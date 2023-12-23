@@ -1,0 +1,16 @@
+from __future__ import annotations
+
+from io import BytesIO
+
+from piltover.tl_new.primitives import *
+from piltover.tl_new.tl_object import TLObject, tl_object, TLField
+import piltover.tl_new as tl_new
+from typing import Optional, Any
+
+{warning}
+
+
+@tl_object(id={id}, name="{qualname}")
+class {name}(TLObject):
+    {fields}
+
