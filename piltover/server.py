@@ -1,31 +1,32 @@
-import os
-import time
 import asyncio
-import secrets
 import hashlib
+import os
+import secrets
+import time
+from asyncio import Task
+from collections import defaultdict
+from io import BytesIO
+from types import SimpleNamespace
+from typing import Callable, Awaitable, Optional, cast, TypeVar
 
 import tgcrypto
-
-from types import SimpleNamespace
-from io import BytesIO
-from typing import Callable, Awaitable, Optional, cast
-from collections import defaultdict
-
-from loguru import logger
 from icecream import ic
+from loguru import logger
 
+from piltover.connection import Connection
 from piltover.enums import Transport
 from piltover.exceptions import Disconnection, InvalidConstructor
-from piltover.connection import Connection
-from piltover.types import Keys
 from piltover.tl.types import (
-    Int32,
-    Int64,
     CoreMessage,
     EncryptedMessage,
     DecryptedMessage,
     UnencryptedMessage,
 )
+from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Int, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
+    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, Pong
+from piltover.tl_new.primitives.types import MsgContainer, Message, RpcResult
+from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, HttpWait, MsgsAck
+from piltover.types import Keys
 from piltover.utils import (
     read_int,
     generate_large_prime,
@@ -37,9 +38,11 @@ from piltover.utils import (
     kdf,
     background,
 )
-from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 from piltover.utils.buffered_stream import BufferedStream
-from piltover.tl import TL
+from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
+
+
+T = TypeVar("T")
 
 
 class Server:
@@ -47,10 +50,10 @@ class Server:
     PORT = 4430
 
     def __init__(
-        self,
-        host: str | None = None,
-        port: int | None = None,
-        server_keys: Keys | None = None,
+            self,
+            host: str | None = None,
+            port: int | None = None,
+            server_keys: Keys | None = None,
     ):
         self.host = host if host is not None else self.HOST
         self.port = port if port is not None else self.PORT
@@ -69,8 +72,8 @@ class Server:
         self.auth_keys: dict[int, tuple[bytes, SimpleNamespace]] = {}
         self.handlers: defaultdict[
             # TODO incorporate the session_id, perhaps into a contextvar
-            str,
-            list[Callable[[Client, CoreMessage, int], Awaitable[TL | dict | None]]],
+            int,
+            list[Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]],
         ] = defaultdict(list)
         self.salt: int = 0
 
@@ -94,17 +97,13 @@ class Server:
                 await stream.read(1)  # discard
                 # TCP Intermediate
                 # 0xeeeeeeee
-                assert (
-                    await stream.read(3) == b"\xee\xee\xee"
-                ), "Invalid TCP Intermediate header"
+                assert await stream.read(3) == b"\xee\xee\xee", "Invalid TCP Intermediate header"
                 transport = Transport.Intermediate
             elif header == b"\xdd":
                 await stream.read(1)  # discard
                 # Padded Intermediate
                 # 0xdddddddd
-                assert (
-                    await stream.read(3) == b"\xdd\xdd\xdd"
-                ), "Invalid TCP Intermediate header"
+                assert await stream.read(3) == b"\xdd\xdd\xdd", "Invalid TCP Intermediate header"
                 transport = Transport.PaddedIntermediate
             # else:
             #     # TCP Full, obfuscation
@@ -121,7 +120,7 @@ class Server:
                     transport = Transport.Obfuscated
 
             assert (
-                transport is not None
+                    transport is not None
             ), f"Transport is None, aborting... (header: {header})"
             logger.info(f"Connected client with {transport} {extra}")
 
@@ -131,11 +130,7 @@ class Server:
                 "Client disconnected before even trying to generate an auth key :("
             )
 
-    async def welcome(
-        self,
-        stream: BufferedStream,
-        transport: Transport,
-    ):
+    async def welcome(self, stream: BufferedStream, transport: Transport):
         client = Client(
             transport=transport,
             server=self,
@@ -150,43 +145,28 @@ class Server:
         async with server:
             await server.serve_forever()
 
-    async def register_auth_key(
-        self, auth_key_id: int, auth_key: bytes, shared: SimpleNamespace
-    ):
+    async def register_auth_key(self, auth_key_id: int, auth_key: bytes, shared: SimpleNamespace):
         self.auth_keys[auth_key_id] = (auth_key, shared)
 
-    async def get_auth_key(
-        self, auth_key_id: int
-    ) -> tuple[bytes, SimpleNamespace] | None:
+    async def get_auth_key(self, auth_key_id: int) -> tuple[bytes, SimpleNamespace] | None:
         return self.auth_keys.get(auth_key_id, None)
 
-    def on_message(self, typ: str):
-        def decorator(
-            func: Callable[[Client, CoreMessage, int], Awaitable[TL | dict | None]]
-        ):
+    def on_message(self, typ: type[T]):
+        def decorator(func: Callable[[Client, CoreMessage[T], int], Awaitable[TLObject | dict | None]]):
             logger.debug("Added handler for function {typ!r}", typ=typ)
 
-            self.handlers[typ].append(func)
+            self.handlers[typ.tlid()].append(func)
             return func
 
         return decorator
 
 
 class Client:
-    def __init__(
-        self,
-        server: Server,
-        transport: Transport,
-        stream: BufferedStream,
-        peerinfo: tuple,
-    ):
+    def __init__(self, server: Server, transport: Transport, stream: BufferedStream, peerinfo: tuple):
         self.server: Server = server
         self.peerinfo: tuple = peerinfo
 
-        self.conn: Connection = Connection.new(
-            transport=transport,
-            stream=stream,
-        )
+        self.conn: Connection = Connection.new(transport=transport, stream=stream)
 
         self.auth_data = None
 
@@ -209,10 +189,10 @@ class Client:
         return EncryptedMessage(auth_key_id, msg_key, encrypted_data)
 
     async def send(
-        self,
-        objects: TL | list[tuple[TL, CoreMessage]],
-        session_id: int,
-        originating_request: Optional[CoreMessage] = None,
+            self,
+            objects: TLObject | list[tuple[TLObject, CoreMessage]],
+            session_id: int,
+            originating_request: Optional[CoreMessage] = None,
     ):
         await self.conn.send(
             await self.encrypt(
@@ -224,269 +204,233 @@ class Client:
             )
         )
 
-    async def handle_unencrypted_message(self, obj: TL):
-        match obj._:
-            case "req_pq_multi" | "req_pq":
-                req_pq_multi = obj
-                p = generate_large_prime(31)
-                q = generate_large_prime(31)
+    async def handle_unencrypted_message(self, obj: TLObject):
+        if isinstance(obj, (ReqPqMulti, ReqPq)):
+            req_pq_multi = obj
+            p = generate_large_prime(31)
+            q = generate_large_prime(31)
 
-                if p > q:
-                    p, q = q, p
+            if p > q:
+                p, q = q, p
 
-                self.auth_data = SimpleNamespace()
-                self.auth_data.p, self.auth_data.q = p, q
+            self.auth_data = SimpleNamespace()
+            self.auth_data.p, self.auth_data.q = p, q
 
-                assert p != -1, "p is -1"
-                assert q != -1, "q is -1"
-                assert p != q
+            assert p != -1, "p is -1"
+            assert q != -1, "q is -1"
+            assert p != q
 
-                pq = self.auth_data.p * self.auth_data.q
-                ic(p, q, pq)
+            pq = self.auth_data.p * self.auth_data.q
+            ic(p, q, pq)
 
-                # print(f"server {p=}")
-                # print(f"server {q=}")
-                # print(f"server {pq=}")
+            # print(f"server {p=}")
+            # print(f"server {q=}")
+            # print(f"server {pq=}")
 
-                self.auth_data.server_nonce = int.from_bytes(
-                    secrets.token_bytes(128 // 8), byteorder="big", signed=False
-                )
+            self.auth_data.server_nonce = int.from_bytes(
+                secrets.token_bytes(128 // 8), byteorder="big", signed=False
+            )
 
-                res_pq = TL.encode(
-                    {
-                        "_": "resPQ",
-                        "nonce": req_pq_multi.nonce,
-                        "server_nonce": self.auth_data.server_nonce,
-                        "pq": pq.to_bytes(64 // 8, "big", signed=False),
-                        "server_public_key_fingerprints": [self.server.fingerprint],
-                    }
-                )
+            res_pq = ResPQ(
+                nonce=req_pq_multi.nonce,
+                server_nonce=self.auth_data.server_nonce,
+                pq=pq.to_bytes(64 // 8, "big", signed=False),
+                server_public_key_fingerprints=[self.server.fingerprint]
+            )
+            res_pq = SerializationUtils.write(res_pq)
 
-                await self.conn.send(
-                    bytes(8)
-                    + Int64.serialize(self.msg_id(in_reply=True))
-                    + Int32.serialize(len(res_pq))
-                    + res_pq
-                )
-            case "req_DH_params":
-                assert self.auth_data
+            await self.conn.send(
+                bytes(8)
+                + SerializationUtils.write(self.msg_id(in_reply=True), Long)
+                + SerializationUtils.write(len(res_pq), Int)
+                + res_pq
+            )
+        elif isinstance(obj, ReqDHParams):
+            assert self.auth_data
 
-                req_dh_params = obj
+            req_dh_params = obj
 
-                assert (
-                    len(req_dh_params.p) == 4
-                ), f"client_p size must be 4 bytes, not {len(req_dh_params.p)}"
-                assert (
-                    len(req_dh_params.q) == 4
-                ), f"client_q size must be 4 bytes, not {len(req_dh_params.q)}"
-                client_p = int.from_bytes(req_dh_params.p, "big", signed=False)
-                client_q = int.from_bytes(req_dh_params.q, "big", signed=False)
-                assert (
-                    client_p == self.auth_data.p
-                ), "client_p is different than server_p"
-                assert (
-                    client_q == self.auth_data.q
-                ), "client_q is different than server_q"
+            assert len(req_dh_params.p) == 4, f"client_p size must be 4 bytes, not {len(req_dh_params.p)}"
+            assert len(req_dh_params.q) == 4, f"client_q size must be 4 bytes, not {len(req_dh_params.q)}"
+            client_p = int.from_bytes(req_dh_params.p, "big", signed=False)
+            client_q = int.from_bytes(req_dh_params.q, "big", signed=False)
+            assert client_p == self.auth_data.p, "client_p is different than server_p"
+            assert client_q == self.auth_data.q, "client_q is different than server_q"
 
-                assert self.auth_data.server_nonce == req_dh_params.server_nonce
-                # TODO: check server_nonce in other places too
+            assert self.auth_data.server_nonce == req_dh_params.server_nonce
+            # TODO: check server_nonce in other places too
 
-                # print(f"{client_p=} {client_q=}")
+            # print(f"{client_p=} {client_q=}")
 
-                encrypted_data = req_dh_params.encrypted_data
-                assert len(encrypted_data) == 256, "Invalid encrypted data"
+            encrypted_data: bytes = req_dh_params.encrypted_data
+            assert len(encrypted_data) == 256, "Invalid encrypted data"
 
-                old = False  # Whether to use old pre-RSA_PAD encryption? No. TODO
+            old = False  # Whether to use old pre-RSA_PAD encryption? No. TODO
 
-                if old:
-                    key_aes_encrypted = rsa_decrypt(
-                        encrypted_data,
-                        public_key=self.server.public_key,
-                        private_key=self.server.private_key,
-                    ).lstrip(b"\0")
-                else:
-                    key_aes_encrypted = rsa_pad_inverse(
-                        encrypted_data,
-                        public_key=self.server.public_key,
-                        private_key=self.server.private_key,
-                    ).lstrip(b"\0")
+            if old:
+                key_aes_encrypted = rsa_decrypt(
+                    encrypted_data,
+                    public_key=self.server.public_key,
+                    private_key=self.server.private_key,
+                ).lstrip(b"\0")
+            else:
+                key_aes_encrypted = rsa_pad_inverse(
+                    encrypted_data,
+                    public_key=self.server.public_key,
+                    private_key=self.server.private_key,
+                ).lstrip(b"\0")
 
-                # idk TODO: restart generation with dh_fail instead
-                # assert key_aes_encrypted >= public.n, "key_aes_encrypted greater than RSA modulus, aborting..."
+            # idk TODO: restart generation with dh_fail instead
+            # assert key_aes_encrypted >= public.n, "key_aes_encrypted greater than RSA modulus, aborting..."
 
-                # print(key_aes_encrypted)
-                # ic(key_aes_encrypted.hex())
+            # print(key_aes_encrypted)
+            # ic(key_aes_encrypted.hex())
 
-                if old:
-                    p_q_inner_data = TL.decode(BytesIO(key_aes_encrypted[20:]))
+            if old:
+                p_q_inner_data = SerializationUtils.read(BytesIO(key_aes_encrypted[20:]), PQInnerData)
 
-                    assert (
-                        hashlib.sha1(TL.encode(p_q_inner_data)).digest()
-                        == key_aes_encrypted[:20]
-                    ), "sha1 of data doesn't match"
-                else:
-                    p_q_inner_data = TL.decode(BytesIO(key_aes_encrypted))
+                assert hashlib.sha1(SerializationUtils.write(p_q_inner_data)).digest() == key_aes_encrypted[:20], \
+                    "sha1 of data doesn't match"
+            else:
+                p_q_inner_data = SerializationUtils.read(BytesIO(key_aes_encrypted), PQInnerData)
 
-                assert p_q_inner_data._ in [
-                    "p_q_inner_data",
-                    "p_q_inner_data_dc",
-                    "p_q_inner_data_temp_dc",
-                ], f"Expected p_q_inner_data_*, got instead {p_q_inner_data._}"
+            assert isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTempDc)), \
+                f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}"
 
-                new_nonce: bytes = p_q_inner_data.new_nonce.to_bytes(
-                    256 // 8, "little", signed=False
-                )
-                self.auth_data.new_nonce = new_nonce
+            new_nonce: bytes = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
+            self.auth_data.new_nonce = new_nonce
 
-                # new_nonce_hash = hashlib.sha1(new_nonce).digest()[:128 // 8]
-                logger.info("Generating safe prime...")
-                self.auth_data.dh_prime, g = gen_safe_prime(2048)
+            # new_nonce_hash = hashlib.sha1(new_nonce).digest()[:128 // 8]
+            logger.info("Generating safe prime...")
+            self.auth_data.dh_prime, g = gen_safe_prime(2048)
 
-                # ic(dh_prime, g)
-                logger.info("Prime successfully generated")
+            # ic(dh_prime, g)
+            logger.info("Prime successfully generated")
 
-                self.auth_data.a = int.from_bytes(secrets.token_bytes(256), "big")
-                g_a = pow(g, self.auth_data.a, self.auth_data.dh_prime).to_bytes(
-                    256, "big"
-                )
+            self.auth_data.a = int.from_bytes(secrets.token_bytes(256), "big")
+            g_a = pow(g, self.auth_data.a, self.auth_data.dh_prime).to_bytes(256, "big")
 
-                # https://core.telegram.org/mtproto/auth_key#dh-key-exchange-complete
-                # IMPORTANT: Apart from the conditions on the Diffie-Hellman
-                # prime dh_prime and generator g, both sides are to check
-                # that g, g_a and g_b are greater than 1 and less than dh_prime - 1.
-                # We recommend checking that g_a and g_b are between 2^{2048-64} and dh_prime - 2^{2048-64} as well.
-                # TODO
+            # https://core.telegram.org/mtproto/auth_key#dh-key-exchange-complete
+            # IMPORTANT: Apart from the conditions on the Diffie-Hellman
+            # prime dh_prime and generator g, both sides are to check
+            # that g, g_a and g_b are greater than 1 and less than dh_prime - 1.
+            # We recommend checking that g_a and g_b are between 2^{2048-64} and dh_prime - 2^{2048-64} as well.
+            # TODO
 
-                answer = TL.encode(
-                    {
-                        "_": "server_DH_inner_data",
-                        "nonce": p_q_inner_data.nonce,
-                        "server_nonce": self.auth_data.server_nonce,
-                        "g": g,
-                        "dh_prime": self.auth_data.dh_prime.to_bytes(
-                            2048 // 8, "big", signed=False
-                        ),
-                        "g_a": g_a,
-                        "server_time": int(time.time()),
-                    }
-                )
-                self.auth_data.server_nonce_bytes = (
-                    server_nonce_bytes
-                ) = self.auth_data.server_nonce.to_bytes(
-                    128 // 8, "little", signed=False
-                )
+            answer = ServerDHInnerData(
+                nonce=p_q_inner_data.nonce,
+                server_nonce=self.auth_data.server_nonce,
+                g=g,
+                dh_prime=self.auth_data.dh_prime.to_bytes(2048 // 8, "big", signed=False),
+                g_a=g_a,
+                server_time=int(time.time()),
+            )
+            answer = SerializationUtils.write(answer)
 
-                answer_with_hash = hashlib.sha1(answer).digest() + answer
-                answer_with_hash += secrets.token_bytes(-len(answer_with_hash) % 16)
-                self.auth_data.tmp_aes_key = (
+            self.auth_data.server_nonce_bytes = server_nonce_bytes = self.auth_data.server_nonce.to_bytes(
+                128 // 8, "little", signed=False
+            )
+
+            answer_with_hash = hashlib.sha1(answer).digest() + answer
+            answer_with_hash += secrets.token_bytes(-len(answer_with_hash) % 16)
+            self.auth_data.tmp_aes_key = (
                     hashlib.sha1(new_nonce + server_nonce_bytes).digest()
                     + hashlib.sha1(server_nonce_bytes + new_nonce).digest()[:12]
-                )
-                self.auth_data.tmp_aes_iv = (
+            )
+            self.auth_data.tmp_aes_iv = (
                     hashlib.sha1(server_nonce_bytes + new_nonce).digest()[12:]
                     + hashlib.sha1(new_nonce + new_nonce).digest()
                     + new_nonce[:4]
+            )
+            encrypted_answer = tgcrypto.ige256_encrypt(
+                answer_with_hash,
+                self.auth_data.tmp_aes_key,
+                self.auth_data.tmp_aes_iv,
+            )
+
+            server_dh_params_ok = ServerDHParamsOk(
+                nonce=p_q_inner_data.nonce,
+                server_nonce=p_q_inner_data.server_nonce,
+                encrypted_answer=encrypted_answer,
+            )
+            server_dh_params_ok = SerializationUtils.write(server_dh_params_ok)
+
+            await self.conn.send(
+                bytes(8)
+                + SerializationUtils.write(self.msg_id(in_reply=True), Long)
+                + SerializationUtils.write(len(server_dh_params_ok), Int)
+                + server_dh_params_ok
+            )
+        elif isinstance(obj, SetClientDHParams):
+            assert self.auth_data
+            assert hasattr(self.auth_data, "tmp_aes_key")
+            set_client_DH_params = obj
+            decrypted_params = tgcrypto.ige256_decrypt(
+                set_client_DH_params.encrypted_data,
+                self.auth_data.tmp_aes_key,
+                self.auth_data.tmp_aes_iv,
+            )
+            client_DH_inner_data = SerializationUtils.read(BytesIO(decrypted_params[20:]), ClientDHInnerData)
+            assert hashlib.sha1(SerializationUtils.write(client_DH_inner_data)).digest() == decrypted_params[:20], \
+                "sha1 hash mismatch for client_DH_inner_data"
+
+            self.auth_data.auth_key = auth_key = (
+                pow(
+                    int.from_bytes(client_DH_inner_data.g_b, "big"),
+                    self.auth_data.a,
+                    self.auth_data.dh_prime,
                 )
-                encrypted_answer = tgcrypto.ige256_encrypt(
-                    answer_with_hash,
-                    self.auth_data.tmp_aes_key,
-                    self.auth_data.tmp_aes_iv,
-                )
+            ).to_bytes(256, "big")
 
-                server_dh_params_ok = TL.encode(
-                    {
-                        "_": "server_DH_params_ok",
-                        "nonce": p_q_inner_data.nonce,
-                        "server_nonce": p_q_inner_data.server_nonce,
-                        "encrypted_answer": encrypted_answer,
-                    }
-                )
+            auth_key_digest = hashlib.sha1(auth_key).digest()
+            auth_key_hash = auth_key_digest[-8:]
+            auth_key_aux_hash = auth_key_digest[:8]
 
-                await self.conn.send(
-                    bytes(8)
-                    + Int64.serialize(self.msg_id(in_reply=True))
-                    + Int32.serialize(len(server_dh_params_ok))
-                    + server_dh_params_ok
-                )
-            case "set_client_DH_params":
-                assert self.auth_data
-                assert hasattr(self.auth_data, "tmp_aes_key")
-                set_client_DH_params = obj
-                decrypted_params = tgcrypto.ige256_decrypt(
-                    set_client_DH_params.encrypted_data,
-                    self.auth_data.tmp_aes_key,
-                    self.auth_data.tmp_aes_iv,
-                )
-                client_DH_inner_data = TL.decode(BytesIO(decrypted_params[20:]))
-                assert (
-                    hashlib.sha1(TL.encode(client_DH_inner_data)).digest()
-                    == decrypted_params[:20]
-                ), "sha1 hash mismatch for client_DH_inner_data"
+            # ic(shared.server_nonce_bytes, auth_key, auth_key_hash)
+            # print("AUTH KEY:", auth_key.hex())
+            # print("SHA1(auth_key) =", hashlib.sha1(auth_key).hexdigest())
+            # ic(shared.new_nonce.hex())
+            # ic(auth_key_aux_hash.hex())
 
-                self.auth_data.auth_key = auth_key = (
-                    pow(
-                        int.from_bytes(client_DH_inner_data.g_b, "big", signed=False),
-                        self.auth_data.a,
-                        self.auth_data.dh_prime,
-                    )
-                ).to_bytes(256, "big", signed=False)
+            dh_gen_ok = DhGenOk(
+                nonce=client_DH_inner_data.nonce,
+                server_nonce=self.auth_data.server_nonce,
+                new_nonce_hash1=int.from_bytes(
+                    hashlib.sha1(self.auth_data.new_nonce + bytes([1]) + auth_key_aux_hash).digest()[-16:],
+                    "little",
+                ),
+            )
+            dh_gen_ok = SerializationUtils.write(dh_gen_ok)
 
-                auth_key_digest = hashlib.sha1(auth_key).digest()
-                auth_key_hash = auth_key_digest[-8:]
-                auth_key_aux_hash = auth_key_digest[:8]
+            await self.conn.send(
+                bytes(8)
+                + SerializationUtils.write(self.msg_id(in_reply=True), Long)
+                + SerializationUtils.write(len(dh_gen_ok), Int)
+                + dh_gen_ok
+            )
 
-                # ic(shared.server_nonce_bytes, auth_key, auth_key_hash)
-                # print("AUTH KEY:", auth_key.hex())
-                # print("SHA1(auth_key) =", hashlib.sha1(auth_key).hexdigest())
-                # ic(shared.new_nonce.hex())
-                # ic(auth_key_aux_hash.hex())
+            self.auth_data.auth_key_id = read_int(auth_key_hash)
+            await self.server.register_auth_key(
+                auth_key_id=self.auth_data.auth_key_id,
+                auth_key=self.auth_data.auth_key,
+                shared=self.auth_data,  # TODO remove shared
+            )
+            logger.info("Auth key generation successfully completed!")
+            # self.auth_key = self.auth_data.auth_key
+            # self.auth_key_id = auth_key_id
 
-                dh_gen_ok = TL.encode(
-                    {
-                        "_": "dh_gen_ok",
-                        "nonce": client_DH_inner_data.nonce,
-                        "server_nonce": self.auth_data.server_nonce,
-                        "new_nonce_hash1": int.from_bytes(
-                            hashlib.sha1(
-                                self.auth_data.new_nonce
-                                + bytes([1])
-                                + auth_key_aux_hash
-                            ).digest()[-16:],
-                            "little",
-                            signed=False,
-                        ),
-                    }
-                )
-
-                await self.conn.send(
-                    bytes(8)
-                    + Int64.serialize(self.msg_id(in_reply=True))
-                    + Int32.serialize(len(dh_gen_ok))
-                    + dh_gen_ok
-                )
-
-                self.auth_data.auth_key_id = read_int(auth_key_hash)
-                await self.server.register_auth_key(
-                    auth_key_id=self.auth_data.auth_key_id,
-                    auth_key=self.auth_data.auth_key,
-                    shared=self.auth_data,  # TODO remove shared
-                )
-                logger.info("Auth key generation successfully completed!")
-                # self.auth_key = self.auth_data.auth_key
-                # self.auth_key_id = auth_key_id
-
-                # Maybe we should keep it
-                # self.auth_data = None
-            case _:
-                raise RuntimeError(
-                    "Received unexpected unencrypted message"
-                )  # TODO right error
+            # Maybe we should keep it
+            # self.auth_data = None
+        else:
+            raise RuntimeError(
+                "Received unexpected unencrypted message"
+            )  # TODO right error
 
     async def handle_encrypted_message(
-        self, core_message: CoreMessage, session_id: int
+            self, core_message: CoreMessage, session_id: int
     ):
         self.update_incoming_content_related_msgs(
-            cast(TL, core_message.obj), session_id, core_message.seq_no
+            cast(TLObject, core_message.obj), session_id, core_message.seq_no
         )
         await self.propagate(
             core_message, session_id
@@ -499,13 +443,13 @@ class Client:
             # Steps: run tdesktop, restart the server, receive a message:
             # AttributeError: 'types.SimpleNamespace' object has no attribute 'auth_key'
             decrypted = await self.decrypt(message)
-            core_message = decrypted.to_core_message(TL)
+            core_message = decrypted.to_core_message()
             logger.debug(core_message)
             await self.handle_encrypted_message(core_message, decrypted.session_id)
         elif isinstance(message, UnencryptedMessage):
             # TODO validate message_id (useless since it's not encrypted but ¯\_(ツ)_/¯)
             # TODO handle invalid constructors
-            decoded = TL.decode(BytesIO(message.message_data))
+            decoded = SerializationUtils.read(BytesIO(message.message_data), TLObject)
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 
@@ -514,10 +458,10 @@ class Client:
     # TODO don't mix list and non-list parameters
     # TODO this method doesn't do what it says it does - it should ONLY encrypt
     async def encrypt(
-        self,
-        objects: TL | list[tuple[TL, CoreMessage]],
-        session_id: int,
-        originating_request: Optional[int] = None,
+            self,
+            objects: TLObject | list[tuple[TLObject, CoreMessage]],
+            session_id: int,
+            originating_request: Optional[int] = None,
     ) -> bytes:
         if self.auth_data.auth_key is None:
             assert False, "FATAL: self.auth_key is None"
@@ -526,9 +470,9 @@ class Client:
 
         ic("SENDING", objects)
 
-        if isinstance(objects, TL):
+        if isinstance(objects, TLObject):
             final_obj = objects
-            serialized = TL.encode(objects)
+            serialized = SerializationUtils.write(objects)
 
             if originating_request is None:
                 msg_id = self.msg_id(in_reply=False)
@@ -541,12 +485,9 @@ class Client:
                     msg_id = originating_request + 1
             seq_no = self.get_outgoing_seq_no(objects, session_id)
         else:
-            container = {
-                "_": "msg_container",
-                "messages": [],
-            }
+            container = MsgContainer(messages=[])
             for obj, core_message in objects:
-                serialized = TL.encode(obj)
+                serialized = SerializationUtils.write(obj)
 
                 # TODO what if there is no core_message (rename it to originating_request too)
                 if self.is_content_related(obj):
@@ -556,43 +497,33 @@ class Client:
                     msg_id = core_message.message_id + 1
                 seq_no = self.get_outgoing_seq_no(obj, session_id)
 
-                container["messages"].append(
-                    (
-                        Int64.serialize(msg_id)
-                        + Int32.serialize(seq_no)
-                        + Int32.serialize(len(serialized))
-                        + serialized
-                    )
-                )
-            final_obj = TL.from_dict(container)
-            serialized = TL.encode(final_obj)
+                container.messages.append(Message(msg_id=msg_id, seqno=seq_no, bytes=len(serialized), body=serialized))
+
+            final_obj = container
+            serialized = SerializationUtils.write(container)
 
         # ic(self.session_id, self.auth_key_id)
         data = (
-            Int64.serialize(self.server.salt)
-            + Int64.serialize(session_id)
-            + Int64.serialize(self.msg_id(in_reply=True))
-            + self.get_outgoing_seq_no(final_obj, session_id).to_bytes(
-                4, "little", signed=False
-            )
-            + len(serialized).to_bytes(4, "little", signed=False)
-            + serialized
+                SerializationUtils.write(self.server.salt, Long)
+                + SerializationUtils.write(session_id, Long)
+                + SerializationUtils.write(self.msg_id(in_reply=True), Long)
+                + self.get_outgoing_seq_no(final_obj, session_id).to_bytes(4, "little")
+                + len(serialized).to_bytes(4, "little")
+                + serialized
         )
 
         padding = os.urandom(-(len(data) + 12) % 16 + 12)
 
         # 96 = 88 + 8 (8 = incoming message (server message); 0 = outgoing (client message))
-        msg_key_large = hashlib.sha256(
-            self.auth_data.auth_key[96 : 96 + 32] + data + padding
-        ).digest()
+        msg_key_large = hashlib.sha256(self.auth_data.auth_key[96: 96 + 32] + data + padding).digest()
         msg_key = msg_key_large[8:24]
         # ic(self.auth_key[96:96 + 32])
         aes_key, aes_iv = kdf(self.auth_data.auth_key, msg_key, False)
 
         result = (
-            Int64.serialize(self.auth_data.auth_key_id)
-            + msg_key
-            + tgcrypto.ige256_encrypt(data + padding, aes_key, aes_iv)
+                SerializationUtils.write(self.auth_data.auth_key_id, Long)
+                + msg_key
+                + tgcrypto.ige256_encrypt(data + padding, aes_key, aes_iv)
         )
         ic(len(result))
         return result
@@ -609,26 +540,22 @@ class Client:
 
         aes_key, aes_iv = kdf(self.auth_data.auth_key, message.msg_key, True)
 
-        decypted = BytesIO(
-            tgcrypto.ige256_decrypt(message.encrypted_data, aes_key, aes_iv)
-        )
-        salt = decypted.read(8)  # Salt
-        session_id = read_int(decypted.read(8))
-        message_id = read_int(decypted.read(8))
-        seq_no = read_int(decypted.read(4))
-        message_data_length = read_int(decypted.read(4))
+        decrypted = BytesIO(tgcrypto.ige256_decrypt(message.encrypted_data, aes_key, aes_iv))
+        salt = decrypted.read(8)  # Salt
+        session_id = read_int(decrypted.read(8))
+        message_id = read_int(decrypted.read(8))
+        seq_no = read_int(decrypted.read(4))
+        message_data_length = read_int(decrypted.read(4))
         return DecryptedMessage(
             salt,
             session_id,
             message_id,
             seq_no,
-            decypted.read(message_data_length),
-            decypted.read(),
+            decrypted.read(message_data_length),
+            decrypted.read(),
         )
 
-    async def reply_invalid_constructor(
-        self, e: InvalidConstructor, decrypted: DecryptedMessage
-    ):
+    async def reply_invalid_constructor(self, e: InvalidConstructor, decrypted: DecryptedMessage):
         formatted = f"{e.cid:x}".zfill(8).upper()
         logger.error(
             "Invalid constructor: {formatted} (message_id={message_id})",
@@ -638,18 +565,9 @@ class Client:
 
         await self.conn.send(
             await self.encrypt(
-                TL.from_dict(
-                    {
-                        "_": "rpc_result",
-                        "req_msg_id": decrypted.message_id,
-                        "result": TL.from_dict(
-                            {
-                                "_": "rpc_error",
-                                "error_code": 400,
-                                "error_message": f"INPUT_CONSTRUCTOR_INVALID_{formatted}",
-                            }
-                        ),
-                    }
+                RpcResult(
+                    req_msg_id=decrypted.message_id,
+                    result=RpcError(error_code=400, error_message=f"INPUT_CONSTRUCTOR_INVALID_{formatted}")
                 ),
                 session_id=decrypted.session_id,
                 originating_request=decrypted.message_id,
@@ -661,18 +579,11 @@ class Client:
             await asyncio.sleep(10)
             logger.debug("Sending ping...")
 
-            await self.send(
-                TL.from_dict(
-                    {
-                        "_": "ping",
-                        "ping_id": int.from_bytes(os.urandom(4), "big"),
-                    }
-                )
-            )
+            await self.send(Ping(ping_id=int.from_bytes(os.urandom(4), "big")))
 
     @logger.catch
     async def worker(self):
-        ping = None
+        ping: Task | None = None
         try:
             self.conn = await self.conn.init()
             # ping = asyncio.create_task(self.ping_worker())
@@ -696,8 +607,8 @@ class Client:
                 ping.cancel()
 
     @staticmethod
-    def is_content_related(obj: TL) -> bool:
-        return obj._ in ["ping", "pong", "http_wait", "msgs_ack", "msg_container"]
+    def is_content_related(obj: TLObject) -> bool:
+        return isinstance(obj, (Ping, Pong, HttpWait, MsgsAck, MsgContainer))
 
     def msg_id(self, in_reply: bool) -> int:
         # credits to pyrogram
@@ -708,18 +619,14 @@ class Client:
         # a client message, and 3 otherwise.
 
         now = int(time.time())
-        self._msg_id_offset = (
-            (self._msg_id_offset + 4) if now == self._msg_id_last_time else 0
-        )
-        msg_id = (now * 2**32) + self._msg_id_offset + (1 if in_reply else 3)
+        self._msg_id_offset = (self._msg_id_offset + 4) if now == self._msg_id_last_time else 0
+        msg_id = (now * 2 ** 32) + self._msg_id_offset + (1 if in_reply else 3)
         self._msg_id_last_time = now
 
         assert msg_id % 4 in [1, 3], f"Invalid server msg_id: {msg_id}"
         return msg_id
 
-    def update_incoming_content_related_msgs(
-        self, obj: TL, session_id: int, seq_no: int
-    ):
+    def update_incoming_content_related_msgs(self, obj: TLObject, session_id: int, seq_no: int):
         # TODO split by session ID
         expected = self._incoming_content_related_msgs * 2
         if self.is_content_related(obj):
@@ -727,7 +634,7 @@ class Client:
             expected += 1
         # TODO(security) validate according to https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
 
-    def get_outgoing_seq_no(self, obj: TL, session_id: int) -> int:
+    def get_outgoing_seq_no(self, obj: TLObject, session_id: int) -> int:
         # TODO split by session id
         ret = self._outgoing_content_related_msgs * 2
         if self.is_content_related(obj):
@@ -735,44 +642,27 @@ class Client:
             ret += 1
         return ret
 
-    async def propagate(
-        self, request: CoreMessage, session_id: int, just_return: bool = False
-    ):
-        if request.obj._ == "msg_container":
+    async def propagate(self, request: CoreMessage, session_id: int, just_return: bool = False):
+        if isinstance(request.obj, MsgContainer):
             results = []
             for msg in request.obj.messages:
                 msg: CoreMessage
-                handlers = self.server.handlers.get(msg.obj._, [])
+                handlers = self.server.handlers.get(msg.obj.tlid(), [])
 
                 result = None
                 for rpc in handlers:
                     result = await rpc(self, msg, session_id)
-                    if result is None:
-                        continue
-                    elif isinstance(result, dict):
-                        result = TL.from_dict(result)
-                    break
+                    if result is not None:
+                        break
 
                 if result is None:
                     logger.warning("No handler found for obj:\n{obj}", obj=msg.obj)
-                    result = TL.from_dict(
-                        {
-                            "_": "rpc_error",
-                            "error_code": 501,
-                            "error_message": "Not implemented",
-                        }
-                    )
+                    result = RpcError(error_code=501, error_message="Not implemented")
                 if result is False:
                     continue
 
-                if result._ not in ("ping", "pong", "rpc_result"):
-                    result = TL.from_dict(
-                        {
-                            "_": "rpc_result",
-                            "req_msg_id": msg.message_id,
-                            "result": result,
-                        }
-                    )
+                if not isinstance(result, (Ping, Pong, RpcResult)):
+                    result = RpcResult(req_msg_id=msg.message_id, result=result)
                 results.append((result, msg))
 
             if not results:
@@ -785,38 +675,23 @@ class Client:
             #     return results
             await self.send(results, session_id)
         else:
-            handlers = self.server.handlers.get(request.obj._, [])
+            handlers = self.server.handlers.get(request.obj.tlid(), [])
 
             result = None
             for rpc in handlers:
                 result = await rpc(self, request, session_id)
 
-                if result is None:
-                    continue
-                elif isinstance(result, dict):
-                    result = TL.from_dict(result)
-                break
+                if result is not None:
+                    break
 
             if result is None:
                 logger.warning("No handler found for obj:\n{obj}", obj=request.obj)
-                result = TL.from_dict(
-                    {
-                        "_": "rpc_error",
-                        "error_code": 501,
-                        "error_message": "Not implemented",
-                    }
-                )
+                result = RpcError(error_code=501, error_message="Not implemented")
             if result is False:
                 return
 
-            if result._ not in ("ping", "pong", "rpc_result"):
-                result = TL.from_dict(
-                    {
-                        "_": "rpc_result",
-                        "req_msg_id": request.message_id,
-                        "result": result,
-                    }
-                )
+            if not isinstance(result, (Ping, Pong, RpcResult)):
+                result = RpcResult(req_msg_id=request.message_id, result=result)
 
             if just_return:
                 return result

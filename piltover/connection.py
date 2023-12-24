@@ -1,22 +1,18 @@
 import os
-
-import tgcrypto
-
 from abc import ABC, abstractmethod
 from zlib import crc32
+
+import tgcrypto
 
 from piltover.enums import Transport
 from piltover.utils.buffered_stream import BufferedStream
 
 
-from icecream import ic
-
-
 class Connection(ABC):
     @staticmethod
     def new(
-        transport: Transport,
-        stream: BufferedStream,
+            transport: Transport,
+            stream: BufferedStream,
     ) -> "Connection":
         MODES = {
             Transport.Abridged: TCPAbridged,
@@ -34,10 +30,7 @@ class Connection(ABC):
         return self
 
     @abstractmethod
-    def __init__(
-        self,
-        stream: BufferedStream,
-    ):
+    def __init__(self, stream: BufferedStream):
         ...
 
     @abstractmethod
@@ -54,10 +47,7 @@ class Connection(ABC):
 
 
 class TCPAbridged(Connection):
-    def __init__(
-        self,
-        stream: BufferedStream,
-    ):
+    def __init__(self, stream: BufferedStream):
         self.stream = stream
 
     async def send(self, data: bytes):
@@ -93,10 +83,7 @@ class TCPAbridged(Connection):
 
 
 class TCPIntermediate(Connection):
-    def __init__(
-        self,
-        stream: BufferedStream,
-    ):
+    def __init__(self, stream: BufferedStream):
         self.stream = stream
 
     async def send(self, data: bytes):
@@ -122,11 +109,8 @@ class TCPIntermediate(Connection):
 
 
 class TCPIntermediatePadded(TCPIntermediate):
-    def __init__(
-        self,
-        stream: BufferedStream,
-    ):
-        self.stream = stream
+    def __init__(self, stream: BufferedStream):
+        super().__init__(stream)
 
     async def send(self, data: bytes):
         length = len(data)
@@ -136,10 +120,7 @@ class TCPIntermediatePadded(TCPIntermediate):
 
 
 class TCPFull(Connection):
-    def __init__(
-        self,
-        stream: BufferedStream,
-    ):
+    def __init__(self, stream: BufferedStream):
         self.stream = stream
         self.seq_no = 0
         self.client_seq_no = 0
@@ -182,12 +163,13 @@ class TCPFull(Connection):
 
 class TCPObfuscated(Connection):
     def __init__(
-        self,
-        stream: BufferedStream,
+            self,
+            stream: BufferedStream,
     ):
         self.stream = stream
         self.conn: Connection | None = None
 
+    # noinspection PyAttributeOutsideInit
     async def init(self) -> Connection:
         self.nonce = await self.stream.read(64)
         temp = self.nonce[8:56][::-1]
@@ -195,7 +177,7 @@ class TCPObfuscated(Connection):
         self.decrypt = (temp[0:32], temp[32:48], bytearray(1))
         decrypted = tgcrypto.ctr256_decrypt(self.nonce, *self.encrypt)
 
-        header = decrypted[56 : 56 + 4]
+        header = decrypted[56:56 + 4]
 
         if header == b"\xef\xef\xef\xef":
             return TCPAbridgedObfuscated(
@@ -230,10 +212,10 @@ class TCPObfuscated(Connection):
 
 class TCPAbridgedObfuscated(Connection):
     def __init__(
-        self,
-        stream: BufferedStream,
-        encrypt: tuple[bytes, bytes, bytearray],
-        decrypt: tuple[bytes, bytes, bytearray],
+            self,
+            stream: BufferedStream,
+            encrypt: tuple[bytes, bytes, bytearray],
+            decrypt: tuple[bytes, bytes, bytearray],
     ):
         self.stream = stream
         self.encrypt = encrypt
@@ -242,8 +224,8 @@ class TCPAbridgedObfuscated(Connection):
     async def send(self, data: bytes):
         length = len(data) // 4
         data = (
-            bytes([length]) if length <= 126 else b"\x7f" + length.to_bytes(3, "little")
-        ) + data
+                   bytes([length]) if length <= 126 else b"\x7f" + length.to_bytes(3, "little")
+               ) + data
 
         payload = tgcrypto.ctr256_encrypt(data, *self.decrypt)
 
@@ -268,10 +250,10 @@ class TCPAbridgedObfuscated(Connection):
 class TCPIntermediateObfuscated(Connection):
     # TODO: Garbage, probably doesn't work
     def __init__(
-        self,
-        stream: BufferedStream,
-        encrypt: tuple[bytes, bytes, bytearray],
-        decrypt: tuple[bytes, bytes, bytearray],
+            self,
+            stream: BufferedStream,
+            encrypt: tuple[bytes, bytes, bytearray],
+            decrypt: tuple[bytes, bytes, bytearray],
     ):
         self.stream = stream
         self.encrypt = encrypt
@@ -300,10 +282,10 @@ class TCPIntermediateObfuscated(Connection):
 class TCPPaddedIntermediateObfuscated(Connection):
     # TODO: Garbage, probably doesn't work
     def __init__(
-        self,
-        stream: BufferedStream,
-        encrypt: tuple[bytes, bytes, bytearray],
-        decrypt: tuple[bytes, bytes, bytearray],
+            self,
+            stream: BufferedStream,
+            encrypt: tuple[bytes, bytes, bytearray],
+            decrypt: tuple[bytes, bytes, bytearray],
     ):
         self.stream = stream
         self.encrypt = encrypt

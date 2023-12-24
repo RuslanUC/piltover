@@ -7,7 +7,7 @@ T = TypeVar("T")
 
 BOOL_TRUE = b"\xb5\x75\x72\x99"
 BOOL_FALSE = b"\x37\x97\x79\xbc"
-VECTOR = b"\x1c\xb5\xc4\x15"
+VECTOR = b"\x15\xc4\xb5\x1c"
 
 
 class SerializationUtils:
@@ -46,7 +46,7 @@ class SerializationUtils:
         elif isinstance(value, list):
             result = VECTOR + len(value).to_bytes(4, 'little')
             for v in value:
-                result += SerializationUtils.write(v)
+                result += SerializationUtils.write(v, int_type)
             return result
 
     @staticmethod

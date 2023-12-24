@@ -16,7 +16,6 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
 
-import json
 import os
 import re
 import shutil
@@ -24,17 +23,12 @@ from functools import partial
 from pathlib import Path
 from typing import NamedTuple, List, Tuple
 
-# from autoflake import fix_code
-# from black import format_str, FileMode
-
 SECTION_RE = re.compile(r"---(\w+)---")
 LAYER_RE = re.compile(r"//\sLAYER\s(\d+)")
 COMBINATOR_RE = re.compile(r"^([\w.]+)#([0-9a-f]+)\s(?:.*)=\s([\w<>.]+);$", re.MULTILINE)
 ARGS_RE = re.compile(r"[^{](\w+):([\w?!.<>#]+)")
 FLAGS_RE = re.compile(r"flags(\d?)\.(\d+)\?")
-FLAGS_RE_2 = re.compile(r"flags(\d?)\.(\d+)\?([\w<>.]+)")
 FLAGS_RE_3 = re.compile(r"flags(\d?):#")
-INT_RE = re.compile(r"int(\d+)")
 
 CORE_TYPES = ["int", "long", "int128", "int256", "double", "bytes", "string", "Bool", "true"]
 CORE_TYPES_D = {"int": "Int", "long": "Long", "int128": "Int128", "int256": "Int256"}
@@ -56,16 +50,6 @@ constructors_to_functions = {}
 namespaces_to_types = {}
 namespaces_to_constructors = {}
 namespaces_to_functions = {}
-
-try:
-    with open("docs.json") as f:
-        docs = json.load(f)
-except FileNotFoundError:
-    docs = {
-        "type": {},
-        "constructor": {},
-        "method": {}
-    }
 
 
 class Combinator(NamedTuple):
@@ -146,42 +130,17 @@ def sort_args(args):
     return args + flags
 
 
-def remove_whitespaces(source: str) -> str:
-    """Remove whitespaces from blank lines"""
-    lines = source.split("\n")
-
-    for i, _ in enumerate(lines):
-        if re.match(r"^\s+$", lines[i]):
-            lines[i] = ""
-
-    return "\n".join(lines)
-
-
-def get_references(t: str, kind: str):
-    if kind == "constructors":
-        t = constructors_to_functions.get(t)
-    elif kind == "types":
-        t = types_to_functions.get(t)
-    else:
-        raise ValueError("Invalid kind")
-
-    if t:
-        return "\n            ".join(t), len(t)
-
-    return None, 0
-
-
 # noinspection PyShadowingBuiltins
-def start(format: bool = False):
+def start():
     shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
     shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
     shutil.rmtree(DESTINATION_PATH / "base", ignore_errors=True)
 
-    with open(HOME_PATH / "resources/api.tl") as f:
-        schema = f.read().splitlines()
+    with open(HOME_PATH / "resources/mtproto.tl") as f1, open(HOME_PATH / "resources/api.tl") as f2:
+        schema = f1.read().splitlines() + f2.read().splitlines()
 
     with open(HOME_PATH / "templates/type.txt") as f1, \
-        open(HOME_PATH / "templates/combinator.txt") as f2:
+            open(HOME_PATH / "templates/combinator.txt") as f2:
         type_tmpl = f1.read()
         combinator_tmpl = f2.read()
 
@@ -218,7 +177,7 @@ def start(format: bool = False):
             # Pingu!
             has_flags = not not FLAGS_RE_3.findall(line)
 
-            args = ARGS_RE.findall(line)
+            args: list[tuple[str, str]] = ARGS_RE.findall(line)
 
             # Fix arg name being "self" (reserved python keyword)
             for i, item in enumerate(args):
@@ -423,4 +382,4 @@ if "__main__" == __name__:
     HOME_PATH = Path("./tools")
     DESTINATION_PATH = Path("piltover/tl_new")
 
-    start(format=False)
+    start()

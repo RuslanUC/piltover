@@ -9,3 +9,8 @@ data/secrets/
 node_modules/
 package-lock.json
 package.json
+
+/piltover/tl_new/base
+/piltover/tl_new/functions
+/piltover/tl_new/types
+/piltover/tl_new/all.py

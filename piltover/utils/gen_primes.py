@@ -63,7 +63,7 @@ def generate_large_prime(k: int) -> int:
     # r_ = r
 
     while r > 0:
-        n = RNG.randrange(2 ** (k - 1), 2 ** (k))
+        n = RNG.randrange(2 ** (k - 1), 2 ** k)
         r -= 1
         if is_prime(n):
             return n
@@ -92,19 +92,19 @@ def gen_safe_prime(size: int = 2048) -> tuple[int, int]:
 
     # Cached integer
     g = 2
-    return (CURRENT_DH_PRIME, CURRENT_DH_PRIME % (4 * g))
+    return CURRENT_DH_PRIME, CURRENT_DH_PRIME % (4 * g)
 
 
 if __name__ == "__main__":
-    p = generate_large_prime(32)
+    p_ = generate_large_prime(32)
     q = generate_large_prime(32)
 
     safe = gen_safe_prime()
     print(safe)
 
-    assert p != -1
+    assert p_ != -1
     assert q != -1
 
-    print(f"{p=}")
+    print(f"{p_=}")
     print(f"{q=}")
-    print(f"{p*q = }")
+    print(f"{p_*q = }")

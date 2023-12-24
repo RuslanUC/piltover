@@ -12,12 +12,21 @@ class TLObjectBase(object):
 
 class _BaseTLObject:
     __tl_id__: int
+    __tl_name__: str
     __tl_fields__: list[TLField]
     __tl_flags__: list[TLField]
 
 
 @dataclass
 class TLObject(_BaseTLObject):
+    @classmethod
+    def tlid(cls) -> int:
+        return cls.__tl_id__
+
+    @classmethod
+    def tlname(cls) -> str:
+        return cls.__tl_name__
+
     def _calculate_flags(self, field_: TLField) -> int:
         flags = 0
         for field in self.__tl_fields__:
@@ -44,7 +53,12 @@ class TLObject(_BaseTLObject):
             elif flags >= 0 and field.flag > 0 and not value:
                 continue
 
-            result += SerializationUtils.write(value, types[field.name] if isinstance(value, int) else None)
+            type_ = types[field.name]
+            int_type = type_ if isinstance(value, int) else None
+            if get_origin(type_) is list:
+                int_type = get_args(type_)[0] if get_args(type_) else None
+                int_type = int_type if issubclass(int_type, int) else None
+            result += SerializationUtils.write(value, int_type)
 
         return result
 
@@ -88,6 +102,8 @@ def tl_object(id: int, name: str) -> Callable:
             default = MISSING
             if field.flag != -1:
                 default = False if cls.__annotations__[field_name] == "bool" else None
+            if field.is_flags:
+                default = 0
 
             setattr(cls, field_name, dc_field(kw_only=True, default=default))
 
