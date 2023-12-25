@@ -7,8 +7,8 @@ from types import GenericAlias
 from typing import TypeVar, Coroutine
 
 
-def read_int(data: bytes, signed: bool = False) -> int:
-    return int.from_bytes(data, byteorder="little", signed=signed)
+def read_int(data: bytes) -> int:
+    return int.from_bytes(data, byteorder="little")
 
 
 def read_bytes(data: BytesIO) -> bytes:
@@ -33,9 +33,7 @@ def write_bytes(value: bytes, to: BytesIO):
     if length <= 253:
         to.write(bytes([length]) + value + bytes(-(length + 1) % 4))
     else:
-        to.write(
-            bytes([254]) + length.to_bytes(3, "little") + value + bytes(-length % 4)
-        )
+        to.write(bytes([254]) + length.to_bytes(3, "little") + value + bytes(-length % 4))
 
 
 def nameof(class_or_value) -> str:

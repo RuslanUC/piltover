@@ -7,7 +7,7 @@ from asyncio import Task
 from collections import defaultdict
 from io import BytesIO
 from types import SimpleNamespace
-from typing import Callable, Awaitable, Optional, cast, TypeVar
+from typing import Callable, Awaitable, Optional, cast
 
 import tgcrypto
 from icecream import ic
@@ -23,9 +23,10 @@ from piltover.tl.types import (
     UnencryptedMessage,
 )
 from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Int, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
-    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, Pong
+    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping
 from piltover.tl_new.primitives.types import MsgContainer, Message, RpcResult
-from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, HttpWait, MsgsAck
+from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, HttpWait, \
+    MsgsAck
 from piltover.types import Keys
 from piltover.utils import (
     read_int,
@@ -42,7 +43,24 @@ from piltover.utils.buffered_stream import BufferedStream
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 
 
-T = TypeVar("T")
+class MessageHandler:
+    def __init__(self, name: str = None):
+        self.name = name
+        self.server: Server | None = None
+        self.handlers: defaultdict[
+            int,
+            set[Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]],
+        ] = defaultdict(set)
+
+    def on_message(self, typ: type[TLObject]):
+        def decorator(func: Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]):
+            logger.debug("Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""),
+                         typ=typ.tlname())
+
+            self.handlers[typ.tlid()].add(func)
+            return func
+
+        return decorator
 
 
 class Server:
@@ -73,8 +91,8 @@ class Server:
         self.handlers: defaultdict[
             # TODO incorporate the session_id, perhaps into a contextvar
             int,
-            list[Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]],
-        ] = defaultdict(list)
+            set[Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]],
+        ] = defaultdict(set)
         self.salt: int = 0
 
     @logger.catch
@@ -151,14 +169,22 @@ class Server:
     async def get_auth_key(self, auth_key_id: int) -> tuple[bytes, SimpleNamespace] | None:
         return self.auth_keys.get(auth_key_id, None)
 
-    def on_message(self, typ: type[T]):
-        def decorator(func: Callable[[Client, CoreMessage[T], int], Awaitable[TLObject | dict | None]]):
+    def on_message(self, typ: type[TLObject]):
+        def decorator(func: Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]):
             logger.debug("Added handler for function {typ!r}", typ=typ)
 
-            self.handlers[typ.tlid()].append(func)
+            self.handlers[typ.tlid()].add(func)
             return func
 
         return decorator
+
+    def register_handler(self, handler: MessageHandler) -> None:
+        if handler.server is not None:
+            raise RuntimeError(f"Handler {handler} already registered!")
+        for tlid, handlers in handler.handlers.items():
+            self.handlers[tlid].update(handlers)
+
+        handler.server = self
 
 
 class Client:

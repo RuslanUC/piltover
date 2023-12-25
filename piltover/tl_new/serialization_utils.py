@@ -50,7 +50,7 @@ class SerializationUtils:
             return result
 
     @staticmethod
-    def read(stream, type_: type[T], list_type: type=None) -> T:
+    def read(stream, type_: type[T], subtype: type=None) -> T:
         if issubclass(type_, tl_new.primitives.Int):
             return int.from_bytes(stream.read(type_.SIZE), "little")
         elif issubclass(type_, float):
@@ -82,7 +82,7 @@ class SerializationUtils:
             result = []
 
             for _ in range(count):
-                result.append(SerializationUtils.read(stream, list_type))
+                result.append(SerializationUtils.read(stream, subtype))
 
             return result
 

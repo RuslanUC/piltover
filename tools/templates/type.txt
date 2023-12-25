@@ -1,13 +1,14 @@
 {warning}
 
+from __future__ import annotations
 from typing import Union
 from piltover import tl_new
 
-{name} = Union[{types}]
+{name}Type = Union[{types}]
 
 
 # noinspection PyRedeclaration
-class {name}(tl_new.TLObjectBase):
+class {name}Type(tl_new.TLObjectBase):
     QUALNAME = "pyrogram.raw.base.{qualname}"
 
     def __init__(self):

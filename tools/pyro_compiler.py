@@ -110,7 +110,7 @@ def get_type_hint(type: str) -> str:
         return f"Optional[{type}]" if is_flag and type != "bool" else type
     else:
         ns, name = type.split(".") if "." in type else ("", type)
-        type = f'tl_new.base.' + ".".join([ns, name]).strip(".")
+        type = f'tl_new.base.' + ".".join([ns, camel(name)]).strip(".") + "Type"
 
         return f"Optional[{type}]" if is_flag else type
 
@@ -185,6 +185,8 @@ def start():
                     args[i] = ("is_self", item[1])
                 elif item[0] == "from":
                     args[i] = ("from_", item[1])
+                elif item[0] in ("bytes", "str", "type"):
+                    args[i] = (f"{item[0]}_", item[1])
 
             combinator = Combinator(
                 section=section,
@@ -252,7 +254,7 @@ def start():
                     warning=WARNING,
                     name=type,
                     qualname=qualtype,
-                    types=", ".join([f"tl_new.types.{c}" for c in constructors]),
+                    types=", ".join([f"\"tl_new.types.{c}\"" for c in constructors]),
                     doc_name=snake(type).replace("_", "-")
                 )
             )
@@ -322,7 +324,7 @@ def start():
                 if module == "Updates":
                     module = "UpdatesT"
 
-                f.write(f"from .{snake(module)} import {t}\n")
+                f.write(f"from .{snake(module)} import {t}Type\n")
 
             if not namespace:
                 f.write(f"from . import {', '.join(filter(bool, namespaces_to_types))}")
