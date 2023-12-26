@@ -263,12 +263,12 @@ class Client:
                 pq=pq.to_bytes(64 // 8, "big", signed=False),
                 server_public_key_fingerprints=[self.server.fingerprint]
             )
-            res_pq = SerializationUtils.write(res_pq)
+            res_pq = res_pq.write()
 
             await self.conn.send(
                 bytes(8)
-                + SerializationUtils.write(self.msg_id(in_reply=True), Long)
-                + SerializationUtils.write(len(res_pq), Int)
+                + Long.write(self.msg_id(in_reply=True))
+                + Int.write(len(res_pq))
                 + res_pq
             )
         elif isinstance(obj, ReqDHParams):
@@ -291,7 +291,7 @@ class Client:
             encrypted_data: bytes = req_dh_params.encrypted_data
             assert len(encrypted_data) == 256, "Invalid encrypted data"
 
-            old = False  # Whether to use old pre-RSA_PAD encryption? No. TODO
+            old = True  # Whether to use old pre-RSA_PAD encryption? No. TODO
 
             if old:
                 key_aes_encrypted = rsa_decrypt(
@@ -313,12 +313,12 @@ class Client:
             # ic(key_aes_encrypted.hex())
 
             if old:
-                p_q_inner_data = SerializationUtils.read(BytesIO(key_aes_encrypted[20:]), PQInnerData)
+                p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted[20:]))
 
-                assert hashlib.sha1(SerializationUtils.write(p_q_inner_data)).digest() == key_aes_encrypted[:20], \
+                assert hashlib.sha1(p_q_inner_data.write()).digest() == key_aes_encrypted[:20], \
                     "sha1 of data doesn't match"
             else:
-                p_q_inner_data = SerializationUtils.read(BytesIO(key_aes_encrypted), PQInnerData)
+                p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted))
 
             assert isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTempDc)), \
                 f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}"
@@ -351,7 +351,7 @@ class Client:
                 g_a=g_a,
                 server_time=int(time.time()),
             )
-            answer = SerializationUtils.write(answer)
+            answer = answer.write()
 
             self.auth_data.server_nonce_bytes = server_nonce_bytes = self.auth_data.server_nonce.to_bytes(
                 128 // 8, "little", signed=False
@@ -379,12 +379,12 @@ class Client:
                 server_nonce=p_q_inner_data.server_nonce,
                 encrypted_answer=encrypted_answer,
             )
-            server_dh_params_ok = SerializationUtils.write(server_dh_params_ok)
+            server_dh_params_ok = server_dh_params_ok.write()
 
             await self.conn.send(
                 bytes(8)
-                + SerializationUtils.write(self.msg_id(in_reply=True), Long)
-                + SerializationUtils.write(len(server_dh_params_ok), Int)
+                + Long.write(self.msg_id(in_reply=True))
+                + Int.write(len(server_dh_params_ok))
                 + server_dh_params_ok
             )
         elif isinstance(obj, SetClientDHParams):
@@ -396,8 +396,8 @@ class Client:
                 self.auth_data.tmp_aes_key,
                 self.auth_data.tmp_aes_iv,
             )
-            client_DH_inner_data = SerializationUtils.read(BytesIO(decrypted_params[20:]), ClientDHInnerData)
-            assert hashlib.sha1(SerializationUtils.write(client_DH_inner_data)).digest() == decrypted_params[:20], \
+            client_DH_inner_data = ClientDHInnerData.read(BytesIO(decrypted_params[20:]))
+            assert hashlib.sha1(client_DH_inner_data.write()).digest() == decrypted_params[:20], \
                 "sha1 hash mismatch for client_DH_inner_data"
 
             self.auth_data.auth_key = auth_key = (
@@ -426,12 +426,12 @@ class Client:
                     "little",
                 ),
             )
-            dh_gen_ok = SerializationUtils.write(dh_gen_ok)
+            dh_gen_ok = dh_gen_ok.write()
 
             await self.conn.send(
                 bytes(8)
-                + SerializationUtils.write(self.msg_id(in_reply=True), Long)
-                + SerializationUtils.write(len(dh_gen_ok), Int)
+                + Long.write(self.msg_id(in_reply=True))
+                + Int.write(len(dh_gen_ok))
                 + dh_gen_ok
             )
 
@@ -498,7 +498,7 @@ class Client:
 
         if isinstance(objects, TLObject):
             final_obj = objects
-            serialized = SerializationUtils.write(objects)
+            serialized = objects.write()
 
             if originating_request is None:
                 msg_id = self.msg_id(in_reply=False)
@@ -513,7 +513,7 @@ class Client:
         else:
             container = MsgContainer(messages=[])
             for obj, core_message in objects:
-                serialized = SerializationUtils.write(obj)
+                serialized = obj.write()
 
                 # TODO what if there is no core_message (rename it to originating_request too)
                 if self.is_content_related(obj):
@@ -526,13 +526,13 @@ class Client:
                 container.messages.append(Message(msg_id=msg_id, seqno=seq_no, bytes=len(serialized), body=serialized))
 
             final_obj = container
-            serialized = SerializationUtils.write(container)
+            serialized = container.write()
 
         # ic(self.session_id, self.auth_key_id)
         data = (
-                SerializationUtils.write(self.server.salt, Long)
-                + SerializationUtils.write(session_id, Long)
-                + SerializationUtils.write(self.msg_id(in_reply=True), Long)
+                Long.write(self.server.salt)
+                + Long.write(session_id)
+                + Long.write(self.msg_id(in_reply=True))
                 + self.get_outgoing_seq_no(final_obj, session_id).to_bytes(4, "little")
                 + len(serialized).to_bytes(4, "little")
                 + serialized
@@ -547,7 +547,7 @@ class Client:
         aes_key, aes_iv = kdf(self.auth_data.auth_key, msg_key, False)
 
         result = (
-                SerializationUtils.write(self.auth_data.auth_key_id, Long)
+                Long.write(self.auth_data.auth_key_id)
                 + msg_key
                 + tgcrypto.ige256_encrypt(data + padding, aes_key, aes_iv)
         )

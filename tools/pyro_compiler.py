@@ -270,11 +270,17 @@ def start():
             if arg_type == "#":
                 flagnum += 1
                 field_args.append("is_flags=True")
+                if flagnum > 1:
+                    field_args.append(f"flagnum={flagnum}")
             if "?" in arg_type:
                 bit = int(arg_type.split(".")[1].split("?")[0])
                 field_args.append(f"flag=1 << {bit}")
-            if ("?" in arg_type or arg_type == "#") and flagnum > 1:
-                field_args.append(f"flagnum={flagnum}")
+                fieldflagnum = arg_type.split("?")[0].split(".")[0][5:]
+                fieldflagnum = int(fieldflagnum) if fieldflagnum else 1
+                if fieldflagnum > 1:
+                    field_args.append(f"flagnum={fieldflagnum}")
+                if arg_type.split("?")[1] == "Bool":
+                    field_args.append(f"flag_serializable=True")
             field_args = ", ".join(field_args)
             fields.append(f"{arg[0]}: {get_type_hint(arg_type)} = TLField({field_args})")
 

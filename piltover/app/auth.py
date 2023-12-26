@@ -16,7 +16,7 @@ async def send_code(client: Client, request: CoreMessage[SendCode], session_id: 
     code = str(code).encode()
 
     return SentCode(
-        type=SentCodeTypeSms(length=len(code)),
+        type_=SentCodeTypeSms(length=len(code)),
         phone_code_hash=f"{crc32(code):x}".zfill(8),
         timeout=30,
     )

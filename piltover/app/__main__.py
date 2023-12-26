@@ -11,7 +11,7 @@ from piltover.server import Server
 from piltover.types import Keys
 from piltover.utils import gen_keys, get_public_key_fingerprint
 
-root = Path(__file__).parent.parent.resolve(strict=True)
+root = Path(__file__).parent.parent.parent.resolve(strict=True)
 data = root / "data"
 data.mkdir(parents=True, exist_ok=True)
 

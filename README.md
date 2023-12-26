@@ -27,7 +27,7 @@ chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
       are disabled with `python -O`, leading to missing important checks.
 - [ ] Add missing security checks, e.g., checking of `g_a`/`g_b`.
 - [ ] Refactor `piltover/__main__.py`, and use a database for auth
-      keys/messages/users/updates (probably with SQLAlchemy and alambic due to
+      keys/messages/users/updates (probably with SQLAlchemy and alembic due to
       reliable database migrations).
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
@@ -84,7 +84,7 @@ asyncio.run(main())
 
 ```shell
 $ poetry install --no-root
-$ poetry run python -m piltover
+$ poetry run python -m piltover.app
 # Server running on 127.0.0.1:4430...
 ```
 
@@ -111,7 +111,7 @@ Follow instructions at: https://python-poetry.org/docs/#installation
 ```shell
 $ poetry install --no-root
 $ poetry run python tools/gen_tl.py update
-$ poetry run python -m piltover
+$ poetry run python -m piltover.app
 ```
 
 Now wait until it loads correctly and fire a Ctrl-C to stop the process.

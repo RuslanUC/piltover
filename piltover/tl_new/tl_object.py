@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field as dc_field, MISSING
 from inspect import get_annotations
 from typing import Callable, get_origin, get_args, Union
@@ -34,25 +35,31 @@ class TLObject(_BaseTLObject):
         flags = 0
         for field in self.__tl_fields__:
             if field.flag != -1 and field.flagnum == field_.flagnum:
-                flags |= field.flag if getattr(self, field.name) else 0
+                value = getattr(self, field.name)
+                flags |= 0 if value is (False if isinstance(value, bool) else None) else field.flag
 
         return flags
 
     def serialize(self) -> bytes:
         if not self.__tl_fields__:
             return b''
+        flags = {}
         for field in self.__tl_flags__:
             if field.is_flags:
-                setattr(self, field.name, self._calculate_flags(field))
+                value = self._calculate_flags(field)
+                flags[field.flagnum] = value
+                setattr(self, field.name, value)
 
         result = b""
-        flags = -1
         for field in self.__tl_fields__:
             value = getattr(self, field.name)
 
             if field.is_flags:
-                flags = value
-            elif flags >= 0 and field.flag > 0 and not value:
+                flags[field.flagnum] = value
+            elif field.flagnum in flags and field.flag != -1 and (flags[field.flagnum] & field.flag) != field.flag:
+                continue
+
+            if field.flag != -1 and field.type.type == bool and not field.flag_serializable:
                 continue
 
             int_type = field.type.subtype or field.type.type
@@ -64,17 +71,27 @@ class TLObject(_BaseTLObject):
     @classmethod
     def deserialize(cls, stream) -> TLObject:
         args = {}
-        flags = -1
+        flags = {}
         for field in cls.__tl_fields__:
-            if field.flag != -1 and (flags & field.flag) != field.flag:
+            if field.flagnum in flags and field.flag != -1 and (flags[field.flagnum] & field.flag) != field.flag:
+                continue
+            if field.flagnum in flags and field.flag != -1 and field.type.type == bool and not field.flag_serializable:
+                args[field.name] = True
                 continue
 
             value = SerializationUtils.read(stream, field.type.type, field.type.subtype)
             args[field.name] = value
             if field.is_flags:
-                flags = value
+                flags[field.flagnum] = value
 
         return cls(**args)
+
+    @classmethod
+    def read(cls, stream) -> TLObject:
+        return SerializationUtils.read(stream, cls)
+
+    def write(self) -> bytes:
+        return SerializationUtils.write(self)
 
 
 def _resolve_annotation(annotation: type):
@@ -139,6 +156,7 @@ class TLField:
     flagnum: int = 1
     name: str = None
     type: TLType = None
+    flag_serializable: bool = False
     _counter: int = dc_field(default=-1, init=False, repr=False)
 
     def __post_init__(self):

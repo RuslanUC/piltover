@@ -8,13 +8,13 @@ from piltover.tl_new.functions.users import GetFullUser, GetUsers
 from piltover.tl_new.types import UserFull as FullUser
 from piltover.tl_new.types.users import UserFull
 
-handler = MessageHandler("auth")
+handler = MessageHandler("users")
 
 
 # noinspection PyUnusedLocal
 @handler.on_message(GetFullUser)
-async def get_full_user(client: Client, request: CoreMessage, session_id: int):
-    if isinstance(request.obj, InputUserSelf):
+async def get_full_user(client: Client, request: CoreMessage[GetFullUser], session_id: int):
+    if isinstance(request.obj.id, InputUserSelf):
         return UserFull(
             full_user=FullUser(
                 flags=0,
