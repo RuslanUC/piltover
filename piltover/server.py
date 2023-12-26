@@ -291,20 +291,14 @@ class Client:
             encrypted_data: bytes = req_dh_params.encrypted_data
             assert len(encrypted_data) == 256, "Invalid encrypted data"
 
-            old = True  # Whether to use old pre-RSA_PAD encryption? No. TODO
-
-            if old:
-                key_aes_encrypted = rsa_decrypt(
-                    encrypted_data,
-                    public_key=self.server.public_key,
-                    private_key=self.server.private_key,
-                ).lstrip(b"\0")
-            else:
-                key_aes_encrypted = rsa_pad_inverse(
-                    encrypted_data,
-                    public_key=self.server.public_key,
-                    private_key=self.server.private_key,
-                ).lstrip(b"\0")
+            old = False
+            key_aes_encrypted = rsa_decrypt(encrypted_data, self.server.public_key, self.server.private_key)
+            try:
+                key_aes_encrypted = rsa_pad_inverse(key_aes_encrypted)
+            except AssertionError as e:
+                logger.info(f"rsa_pad_inverse raised error: {e}. Using old pre-RSA_PAD encryption.")
+                old = True
+            key_aes_encrypted = key_aes_encrypted.lstrip(b"\0")
 
             # idk TODO: restart generation with dh_fail instead
             # assert key_aes_encrypted >= public.n, "key_aes_encrypted greater than RSA modulus, aborting..."
@@ -315,8 +309,8 @@ class Client:
             if old:
                 p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted[20:]))
 
-                assert hashlib.sha1(p_q_inner_data.write()).digest() == key_aes_encrypted[:20], \
-                    "sha1 of data doesn't match"
+                digest = key_aes_encrypted[:20]
+                assert hashlib.sha1(p_q_inner_data.write()).digest() == digest, "sha1 of data doesn't match"
             else:
                 p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted))
 

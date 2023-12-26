@@ -15,20 +15,20 @@ chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
 - [ ] Refactor the TL de/serialization module since the code is messy (e.g. make
       custom boxed types for list/int/str/bytes).
 - [ ] Refactor the server `authorize()` method.
-- [ ] Support multiple server keys to automatically switch to
+- [x] ~~Support multiple server keys to automatically switch to
       [RSA_PAD](https://core.telegram.org/mtproto/auth_key#presenting-proof-of-work-server-authentication)
       for official clients, whilst keeping clients like Pyrogram/Telethon
       working with the old method. Currently handled manually in `server.py`:
-      `old = False`
+      `old = False`~~
 - [ ] Support TL from multiple layers, and layer-based handlers. Add fallbacks
       eventually.
 - [ ] Add a `tests/` directory with patched assertions from client libraries.
 - [ ] Use custom exceptions instead of Python assertions: `assert` statements
       are disabled with `python -O`, leading to missing important checks.
 - [ ] Add missing security checks, e.g., checking of `g_a`/`g_b`.
-- [ ] Refactor `piltover/__main__.py`, and use a database for auth
+- [x] ~~Refactor `piltover/__main__.py`, and use a database for auth
       keys/messages/users/updates (probably with SQLAlchemy and alembic due to
-      reliable database migrations).
+      reliable database migrations).~~
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
 - [ ] Switch to hypercorn for the tcp server maybe?

@@ -28,9 +28,7 @@ RSA_PAD(data, server_public_key) mentioned above is implemented as follows:
 """
 
 
-def rsa_decrypt(
-    data: bytes, public_key: PublicKeyTypes, private_key: PrivateKeyTypes
-) -> bytes:
+def rsa_decrypt(data: bytes, public_key: PublicKeyTypes, private_key: PrivateKeyTypes) -> bytes:
     private = private_key.private_numbers()  # type: ignore
     public = public_key.public_numbers()  # type: ignore
 
@@ -45,34 +43,19 @@ def xor(x: bytes, y: bytes) -> bytes:
     return bytes(a ^ b for a, b in zip(x, y))
 
 
-def rsa_pad_inverse(
-    encrypted_data: bytes,
-    public_key: PublicKeyTypes,
-    private_key: PrivateKeyTypes,
-) -> bytes:
-    key_aes_encrypted = rsa_decrypt(
-        encrypted_data,
-        public_key=public_key,
-        private_key=private_key,
-    )
+def rsa_pad_inverse(key_aes_encrypted: bytes) -> bytes:
     temp_key_xor = key_aes_encrypted[:32]
     aes_encrypted = key_aes_encrypted[32:]
 
     temp_key = xor(temp_key_xor, sha256(aes_encrypted).digest())
-    data_with_hash = tgcrypto.ige256_decrypt(
-        aes_encrypted, temp_key.zfill(32), bytes(32)
-    )
+    data_with_hash = tgcrypto.ige256_decrypt(aes_encrypted, temp_key.zfill(32), bytes(32))
 
-    assert (
-        len(data_with_hash) == 224
-    ), f"Invalid length for data_with_hash (expected 224, got {len(data_with_hash)})"
+    assert len(data_with_hash) == 224, f"Invalid length for data_with_hash (expected 224, got {len(data_with_hash)})"
 
     data_pad_reversed = data_with_hash[:-32]
     temp_data_hash = data_with_hash[-32:]
 
     data_with_padding = data_pad_reversed[::-1]
-    assert (
-        temp_data_hash == sha256(temp_key + data_with_padding).digest()
-    ), "Invalid data hash"
+    assert temp_data_hash == sha256(temp_key + data_with_padding).digest(), "Invalid data hash"
 
     return data_with_padding
