@@ -16,3 +16,9 @@ class InvalidConstructor(Error):
 
     def __str__(self) -> str:
         return f"{nameof(self)}(cid=0x{self.cid:08x})"
+
+
+class ErrorRpc(Error):
+    def __init__(self, error_code: int, error_message: str):
+        self.error_code = error_code
+        self.error_message = error_message

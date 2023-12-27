@@ -63,6 +63,7 @@ class Combinator(NamedTuple):
     qualtype: str
     typespace: str
     type: str
+    layer: int = 0
 
 
 def snake(s: str):
@@ -130,23 +131,10 @@ def sort_args(args):
     return args + flags
 
 
-# noinspection PyShadowingBuiltins
-def start():
-    shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
-    shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
-    shutil.rmtree(DESTINATION_PATH / "base", ignore_errors=True)
-
-    with open(HOME_PATH / "resources/mtproto.tl") as f1, open(HOME_PATH / "resources/api.tl") as f2:
-        schema = f1.read().splitlines() + f2.read().splitlines()
-
-    with open(HOME_PATH / "templates/type.txt") as f1, \
-            open(HOME_PATH / "templates/combinator.txt") as f2:
-        type_tmpl = f1.read()
-        combinator_tmpl = f2.read()
-
-    section = None
-    layer = None
+def parse_schema(schema: list[str]) -> tuple[list[Combinator], int]:
     combinators = []
+    layer = None
+    section = None
 
     for line in schema:
         # Check for section changer lines
@@ -202,6 +190,74 @@ def start():
             )
 
             combinators.append(combinator)
+
+    return combinators, layer
+
+
+def parse_old_objects(schemaBase: list[Combinator]) -> list[Combinator]:
+    schemaBase = {f"{c.qualname}#{c.id}": c for c in schemaBase}
+
+    layers = sorted([
+        int(file[4:-3])
+        for file in os.listdir(HOME_PATH / "resources")
+        if file.startswith("api_") and file.endswith(".tl")
+    ])
+
+    schemas = {}
+    for layer in layers:
+        with open(HOME_PATH / f"resources/api_{layer}.tl") as f:
+            parsed = parse_schema(f.read().splitlines())[0]
+
+        schemas[layer] = {}
+        for c in parsed:
+            name = f"{c.qualname}#{c.id}"
+            if name in schemaBase:
+                continue
+            c = c._replace(layer=layer)
+            schemas[layer][name] = c
+
+    for i in range(len(layers)):
+        for cname in schemas[layers[i]]:
+            for j in range(i + 1, len(layers)):
+                if cname in schemas[layers[j]]:
+                    del schemas[layers[j]][cname]
+
+    for layer in layers:
+        if len(schemas[layer]) == 0:
+            del schemas[layer]
+            continue
+        for cname in schemas[layer]:
+            c = schemas[layer][cname]
+            schemas[layer][cname] = c._replace(
+                qualname=f"{c.qualname}_{layer}",
+                qualtype=f"{c.qualtype}_{layer}",
+                name=f"{c.name}_{layer}",
+                type=f"{c.type}_{layer}",
+            )
+
+    result = []
+    for schema in schemas.values():
+        result.extend(schema.values())
+
+    return result
+
+
+# noinspection PyShadowingBuiltins
+def start():
+    shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
+    shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
+    shutil.rmtree(DESTINATION_PATH / "base", ignore_errors=True)
+
+    with open(HOME_PATH / "resources/mtproto.tl") as f1, open(HOME_PATH / "resources/api.tl") as f2:
+        schema = f1.read().splitlines() + f2.read().splitlines()
+
+    with open(HOME_PATH / "templates/type.txt") as f1, \
+            open(HOME_PATH / "templates/combinator.txt") as f2:
+        type_tmpl = f1.read()
+        combinator_tmpl = f2.read()
+
+    combinators, layer = parse_schema(schema)
+    combinators.extend(parse_old_objects(combinators))
 
     for c in combinators:
         qualtype = c.qualtype
@@ -373,15 +429,6 @@ def start():
 
         for c in combinators:
             f.write(f'\n    {c.id}: tl_new.{c.section}.{c.qualname},')
-
-        f.write('\n    #0xbc799737: "pyrogram.raw.core.BoolFalse",')
-        f.write('\n    #0x997275b5: "pyrogram.raw.core.BoolTrue",')
-        f.write('\n    #0x1cb5c415: "pyrogram.raw.core.Vector",')
-        f.write('\n    #0x73f1f8dc: "pyrogram.raw.core.MsgContainer",')
-        f.write('\n    #0xae500895: "pyrogram.raw.core.FutureSalts",')
-        f.write('\n    #0x0949d9dc: "pyrogram.raw.core.FutureSalt",')
-        f.write('\n    #0x3072cfa1: "pyrogram.raw.core.GzipPacked",')
-        f.write('\n    #0x5bb8e511: "pyrogram.raw.core.Message",')
 
         f.write("\n}\n")
 

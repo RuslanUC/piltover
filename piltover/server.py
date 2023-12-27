@@ -15,7 +15,7 @@ from loguru import logger
 
 from piltover.connection import Connection
 from piltover.enums import Transport
-from piltover.exceptions import Disconnection, InvalidConstructor
+from piltover.exceptions import Disconnection, InvalidConstructor, ErrorRpc
 from piltover.tl.types import (
     CoreMessage,
     EncryptedMessage,
@@ -173,7 +173,7 @@ class Server:
                 return auth_key_info
 
     def on_message(self, typ: type[TLObject]):
-        def decorator(func: Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]):
+        def decorator(func: Callable[[Client, CoreMessage, int], Awaitable[TLObject | bool | None]]):
             logger.debug("Added handler for function {typ!r}", typ=typ)
 
             self.handlers[typ.tlid()].add(func)
@@ -225,12 +225,8 @@ class Client:
         encrypted_data = data.read()
         return EncryptedMessage(auth_key_id, msg_key, encrypted_data)
 
-    async def send(
-            self,
-            objects: TLObject | list[tuple[TLObject, CoreMessage]],
-            session_id: int,
-            originating_request: Optional[CoreMessage] = None,
-    ):
+    async def send(self, objects: TLObject | list[tuple[TLObject, CoreMessage]], session_id: int,
+                   originating_request: Optional[CoreMessage] = None):
         await self.conn.send(
             await self.encrypt(
                 objects,
@@ -279,7 +275,6 @@ class Client:
                 + res_pq
             )
         elif isinstance(obj, ReqDHParams):
-
             assert self.auth_data
 
             req_dh_params = obj
@@ -453,7 +448,8 @@ class Client:
 
     async def handle_encrypted_message(self, core_message: CoreMessage, session_id: int):
         self.update_incoming_content_related_msgs(cast(TLObject, core_message.obj), session_id, core_message.seq_no)
-        result = await self.propagate(core_message, session_id)
+        if (result := await self.propagate(core_message, session_id)) is None:
+            return
         await self.send(
             result,
             session_id,
@@ -556,7 +552,7 @@ class Client:
         if self.auth_data is None:
             got = await self.server.get_auth_key(message.auth_key_id)
             if got is None:
-                # TODO error -404
+                # TODO: 401 AUTH_KEY_UNREGISTERED
                 assert False, "FATAL: self.auth_key is None"
             # self.auth_data.auth_key = auth_key[0]
             self.auth_data = SimpleNamespace()
@@ -681,20 +677,27 @@ class Client:
                 logger.warning("Empty msg_container, returning...")
                 return
 
-            assert results, "TODO: rpc_error"
             return results
         else:
             handlers = self.server.handlers.get(request.obj.tlid(), [])
 
             result = None
+            error = None
             for rpc in handlers:
-                result = await rpc(self, request, session_id)
-                if result is not None:
-                    break
+                try:
+                    result = await rpc(self, request, session_id)
+                    if result is not None:
+                        break
+                except ErrorRpc as e:
+                    if error is None:
+                        error = RpcError(error_code=e.error_code, error_message=e.error_message)
+                except:
+                    if error is None:
+                        error = RpcError(error_code=500, error_message="Server error")
 
             if result is None:
                 logger.warning("No handler found for obj:\n{obj}", obj=request.obj)
-                result = RpcError(error_code=501, error_message="Not implemented")
+                result = error or RpcError(error_code=500, error_message="Not implemented")
             if result is False:
                 return
 

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from os import getenv
 from pathlib import Path
 
@@ -20,6 +21,8 @@ secrets.mkdir(parents=True, exist_ok=True)
 
 privkey = secrets / "privkey.asc"
 pubkey = secrets / "pubkey.asc"
+
+authkeys = secrets / "auth_keys.json"
 
 if not getenv("DISABLE_HR"):
     # Hot code reloading
@@ -58,7 +61,6 @@ async def main():
             public_key=public_key,
         )
     )
-    auth_keys: dict[int, bytes] = {}
 
     pilt.register_handler(system.handler)
     pilt.register_handler(help_.handler)
@@ -74,14 +76,30 @@ async def main():
 
     @pilt.on_auth_key_set
     async def auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
+        if authkeys.exists():
+            with open(authkeys, "r") as f:
+                auth_keys = json.load(f)
+        else:
+            auth_keys = {}
+
+        auth_keys[auth_key_id] = auth_key_bytes.hex()
+
+        with open(authkeys, "w") as f:
+            json.dump(auth_keys, f)
+
         logger.debug(f"Set auth key: {auth_key_id}")
-        auth_keys[auth_key_id] = auth_key_bytes
 
     @pilt.on_auth_key_get
     async def auth_key_get(auth_key_id: int) -> tuple[int, bytes] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
-        if (auth_key := auth_keys.get(auth_key_id, None)) is not None:
-            return auth_key_id, auth_key
+        if not authkeys.exists():
+            return
+
+        with open(authkeys, "r") as f:
+            auth_keys = json.load(f)
+
+        if (auth_key := auth_keys.get(str(auth_key_id), None)) is not None:
+            return auth_key_id, bytes.fromhex(auth_key)
 
     logger.success("Running on {host}:{port}", host=pilt.HOST, port=pilt.PORT)
     await pilt.serve()
