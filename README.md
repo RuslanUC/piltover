@@ -6,15 +6,13 @@ chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
 ## TODO
 
 - [ ] WebK gets stuck on `sendCode()`. (note to self: inspect the MTProto workers in `chrome://inspect/#workers`)
-- [x] Multiple sessions handling for: ~~Give correct `msg_id`/`seq_no` according
-      to the
+- [x] Multiple sessions handling for: ~~Give correct `msg_id`/`seq_no` according to the
       [Telegram specification](https://core.telegram.org/mtproto/description#message-identifier-msg-id)~~
 - [x] ~~A Websocket proxy for Telegram Web (WebZ / WebK). A work in progress
       temporary implementation is in `tools/websocket_proxy.js`~~
 - [ ] Updates handling: `pts`, `qts`, etc.
 - [ ] Refactor the TL de/serialization module since the code is messy (e.g. make
       custom boxed types for list/int/str/bytes).
-- [ ] Refactor the server `authorize()` method.
 - [x] ~~Support multiple server keys to automatically switch to
       [RSA_PAD](https://core.telegram.org/mtproto/auth_key#presenting-proof-of-work-server-authentication)
       for official clients, whilst keeping clients like Pyrogram/Telethon
@@ -51,31 +49,40 @@ sandbox that doesn't ratelimit their bots.
 The server is meant to be used as a library, providing 100% control of every
 answer
 
-- TODO: allow the user to override `authorize()`
-
 ## Example
 
 An example quick-start (incomplete) code would look like this:
 
 ```python
 import asyncio
-from piltover.server import Server, Client, Request
+from piltover.server import Server, Client
 from piltover.utils import gen_keys
+from piltover.tl.types import CoreMessage
+from piltover.tl_new import Ping, Pong
 
 async def main():
     pilt = Server(server_keys=gen_keys())
+    auth_keys: dict[int, bytes] = {}
     # Running on localhost
     # Port: 4430
+    
+    @pilt.on_auth_key_set
+    async def auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
+        auth_keys[auth_key_id] = auth_key_bytes
+    
+    @pilt.on_auth_key_get
+    async def auth_key_get(auth_key_id: int) -> tuple[int, bytes] | None:
+        if (auth_key := auth_keys.get(auth_key_id, None)) is not None:
+            return auth_key_id, auth_key
 
-    @pilt.on_message("ping")
-    async def pong(client: Client, request: Request):
+    @pilt.on_message(Ping)
+    async def pong(client: Client, request: CoreMessage[Ping], session_id: int):
         print("Received ping:", request.obj)
 
-        return {
-            "_": "pong",
-            "msg_id": request.msg_id,
-            "ping_id": request.obj.ping_id,
-        }
+        return Pong(
+          msg_id=request.message_id,
+          ping_id=request.obj.ping_id
+        )
 
     await pilt.serve()
 
@@ -288,16 +295,14 @@ $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
     transport
   - To distinguish between `TCP Full` and `Obfuscated` transports, a buffered
     reader is needed, to allow for peeking the stream without consuming it.
-- **Type Language** (TL) Data Serialization
-  - In piltover, the TL de/serialization is JIT (Just In Time), allowing for an
+- **Type Language** (TL) Data Serialization (# TODO: json schema is not used)
+  - ~~In piltover, the TL de/serialization is JIT (Just In Time), allowing for an
     easy json-like interface at the cost of slow type checking at runtime
-    (#TODO: do something about this) without complex code-generation parsers
-  - The TL parser (`tools/gen_tl.py`) utility uses **`jinja2`** to generate the
+    (#TODO: do something about this) without complex code-generation parsers~~
+  - ~~The TL parser (`tools/gen_tl.py`) utility uses **`jinja2`** to generate the
     `api_tl.py` / `mtproto_tl.py` files from the official TDesktop repo. (#TODO
-    retrieve as much old schema layers for multi-layer support)
+    retrieve as much old schema layers for multi-layer support)~~
 - [**Authorization Key**](https://core.telegram.org/mtproto/auth_key) generation
-  - An authorization process starts, done by the `authorize()` method of the
-    piltover's `Server` class.
   - Generate random prime numbers for `pq` decomposition, a proof of work to
     avoid clients' DoS to the server
   - Either use an old algorithm or `RSA_PAD` to encrypt the inner data payload
@@ -305,6 +310,9 @@ $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
   - If everything went correctly, we are authorized
   - It is worth noting that every auth key has its own id (the 8 lower order
     bytes of `SHA1(auth_key)`)
+  - Then key must be registered. It is done by creating auth_key_set server event, 
+    which should be overriden in your app (it gives ability to save auth keys anywhere you want
+    (dict, database, etc.)).
   - Apart from the auth key id, every session has its own arbitrary (client
     provided) session_id, bound to the auth key. #TODO: Piltover doesn't
     currently check this value

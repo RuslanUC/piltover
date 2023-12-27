@@ -58,6 +58,7 @@ async def main():
             public_key=public_key,
         )
     )
+    auth_keys: dict[int, bytes] = {}
 
     pilt.register_handler(system.handler)
     pilt.register_handler(help_.handler)
@@ -70,6 +71,17 @@ async def main():
     pilt.register_handler(photos.handler)
     pilt.register_handler(contacts.handler)
     pilt.register_handler(langpack.handler)
+
+    @pilt.on_auth_key_set
+    async def auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
+        logger.debug(f"Set auth key: {auth_key_id}")
+        auth_keys[auth_key_id] = auth_key_bytes
+
+    @pilt.on_auth_key_get
+    async def auth_key_get(auth_key_id: int) -> tuple[int, bytes] | None:
+        logger.debug(f"Requested auth key: {auth_key_id}")
+        if (auth_key := auth_keys.get(auth_key_id, None)) is not None:
+            return auth_key_id, auth_key
 
     logger.success("Running on {host}:{port}", host=pilt.HOST, port=pilt.PORT)
     await pilt.serve()

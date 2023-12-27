@@ -10,10 +10,7 @@ from piltover.utils.buffered_stream import BufferedStream
 
 class Connection(ABC):
     @staticmethod
-    def new(
-            transport: Transport,
-            stream: BufferedStream,
-    ) -> "Connection":
+    def new(transport: Transport, stream: BufferedStream) -> "Connection":
         MODES = {
             Transport.Abridged: TCPAbridged,
             Transport.Intermediate: TCPIntermediate,
@@ -66,13 +63,11 @@ class TCPAbridged(Connection):
     async def recv(self) -> bytes:
         header = await self.stream.read(1)
 
-        length = int.from_bytes(header, byteorder="little", signed=False)
+        length = int.from_bytes(header, byteorder="little")
 
         # assert length != 0, "Received packet length=0"
         if length == 0x7F:  # 127
-            length = int.from_bytes(
-                await self.stream.read(3), byteorder="little", signed=False
-            )
+            length = int.from_bytes(await self.stream.read(3), byteorder="little")
 
         length *= 4
 
@@ -93,9 +88,7 @@ class TCPIntermediate(Connection):
         await self.stream.drain()
 
     async def recv(self) -> bytes:
-        length = int.from_bytes(
-            await self.stream.read(4), byteorder="little", signed=False
-        )
+        length = int.from_bytes(await self.stream.read(4), byteorder="little", signed=False)
 
         assert length != 0, "Received null length"
         # TODO: length check, allow for maximum buffer size (e.g. 1MB)
@@ -139,18 +132,12 @@ class TCPFull(Connection):
         await self.stream.drain()
 
     async def recv(self) -> bytes:
-        length = int.from_bytes(
-            length_bytes := await self.stream.read(4), "little", signed=False
-        )
-        seq_no = int.from_bytes(
-            seq_no_bytes := await self.stream.read(4), "little", signed=False
-        )
+        length = int.from_bytes(length_bytes := await self.stream.read(4), "little", signed=False)
+        seq_no = int.from_bytes(seq_no_bytes := await self.stream.read(4), "little", signed=False)
         payload = await self.stream.read(length - 4 - 4 - 4)
         crc = int.from_bytes(await self.stream.read(4), "little", signed=False)
 
-        assert crc == crc32(
-            length_bytes + seq_no_bytes + payload
-        ), "Mismatching CRC32 in TCPFull.recv()"
+        assert crc == crc32(length_bytes + seq_no_bytes + payload), "Mismatching CRC32 in TCPFull.recv()"
 
         assert seq_no == self.client_seq_no, "Wrong seq_no"
         self.client_seq_no += 1
@@ -162,10 +149,7 @@ class TCPFull(Connection):
 
 
 class TCPObfuscated(Connection):
-    def __init__(
-            self,
-            stream: BufferedStream,
-    ):
+    def __init__(self, stream: BufferedStream):
         self.stream = stream
         self.conn: Connection | None = None
 
@@ -212,10 +196,10 @@ class TCPObfuscated(Connection):
 
 class TCPAbridgedObfuscated(Connection):
     def __init__(
-            self,
-            stream: BufferedStream,
-            encrypt: tuple[bytes, bytes, bytearray],
-            decrypt: tuple[bytes, bytes, bytearray],
+ self,
+ stream: BufferedStream,
+ encrypt: tuple[bytes, bytes, bytearray],
+ decrypt: tuple[bytes, bytes, bytearray],
     ):
         self.stream = stream
         self.encrypt = encrypt
@@ -223,9 +207,7 @@ class TCPAbridgedObfuscated(Connection):
 
     async def send(self, data: bytes):
         length = len(data) // 4
-        data = (
-                   bytes([length]) if length <= 126 else b"\x7f" + length.to_bytes(3, "little")
-               ) + data
+        data = bytes([length]) if length <= 126 else b"\x7f" + length.to_bytes(3, "little") + data
 
         payload = tgcrypto.ctr256_encrypt(data, *self.decrypt)
 
@@ -266,9 +248,7 @@ class TCPIntermediateObfuscated(Connection):
         await self.stream.drain()
 
     async def recv(self) -> bytes:
-        length = int.from_bytes(
-            await self.stream.read(4), byteorder="little", signed=False
-        )
+        length = int.from_bytes(await self.stream.read(4), byteorder="little", signed=False)
 
         assert length != 0, "Received null length"
 

@@ -18,10 +18,6 @@ async def msgs_ack(client: Client, request: CoreMessage[MsgsAck], session_id: in
 # noinspection PyUnusedLocal
 @handler.on_message(Ping)
 async def pong(client: Client, request: CoreMessage[Ping], session_id: int):
-    print(request.obj, request.message_id)
-
-    logger.success("Sent ping ping_id={ping_id}", ping_id=request.obj.ping_id)
-
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 
 
@@ -41,7 +37,6 @@ async def invoke_with_layer(client: Client, request: CoreMessage[InvokeWithLayer
             seq_no=request.seq_no,
         ),
         session_id,
-        just_return=True,
     )
 
 
@@ -54,7 +49,6 @@ async def invoke_after_msg(client: Client, request: CoreMessage[InvokeAfterMsg],
             seq_no=request.seq_no,
         ),
         session_id,
-        just_return=True,
     )
 
 
@@ -67,7 +61,6 @@ async def invoke_without_updates(client: Client, request: CoreMessage[InvokeWith
             seq_no=request.seq_no,
         ),
         session_id,
-        just_return=True,
     )
 
 
@@ -85,7 +78,6 @@ async def init_connection(client: Client, request: CoreMessage, session_id: int)
             seq_no=request.seq_no,
         ),
         session_id,
-        just_return=True,
     )
 
 

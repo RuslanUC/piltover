@@ -7,7 +7,7 @@ from asyncio import Task
 from collections import defaultdict
 from io import BytesIO
 from types import SimpleNamespace
-from typing import Callable, Awaitable, Optional, cast
+from typing import Callable, Awaitable, Optional, cast, List, Tuple
 
 import tgcrypto
 from icecream import ic
@@ -23,7 +23,7 @@ from piltover.tl.types import (
     UnencryptedMessage,
 )
 from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Int, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
-    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping
+    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, Pong
 from piltover.tl_new.primitives.types import MsgContainer, Message, RpcResult
 from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, HttpWait, \
     MsgsAck
@@ -87,12 +87,12 @@ class Server:
 
         self.clients: dict[str, Client] = {}
         self.clients_lock = asyncio.Lock()
-        self.auth_keys: dict[int, tuple[bytes, SimpleNamespace]] = {}
         self.handlers: defaultdict[
             # TODO incorporate the session_id, perhaps into a contextvar
             int,
             set[Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]],
         ] = defaultdict(set)
+        self.sys_handlers = defaultdict(list)
         self.salt: int = 0
 
     @logger.catch
@@ -163,11 +163,14 @@ class Server:
         async with server:
             await server.serve_forever()
 
-    async def register_auth_key(self, auth_key_id: int, auth_key: bytes, shared: SimpleNamespace):
-        self.auth_keys[auth_key_id] = (auth_key, shared)
+    async def register_auth_key(self, auth_key_id: int, auth_key: bytes):
+        for handler in self.sys_handlers["auth_key_set"]:
+            await handler(auth_key_id, auth_key)
 
-    async def get_auth_key(self, auth_key_id: int) -> tuple[bytes, SimpleNamespace] | None:
-        return self.auth_keys.get(auth_key_id, None)
+    async def get_auth_key(self, auth_key_id: int) -> tuple[int, bytes] | None:
+        for handler in self.sys_handlers["auth_key_get"]:
+            if (auth_key_info := await handler(auth_key_id)) is not None:
+                return auth_key_info
 
     def on_message(self, typ: type[TLObject]):
         def decorator(func: Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]):
@@ -185,6 +188,14 @@ class Server:
             self.handlers[tlid].update(handlers)
 
         handler.server = self
+
+    def on_auth_key_set(self, func: Callable[[int, bytes], Awaitable[None]]):
+        self.sys_handlers["auth_key_set"].append(func)
+        return func
+
+    def on_auth_key_get(self, func: Callable[[int], Awaitable[tuple[int, bytes] | None]]):
+        self.sys_handlers["auth_key_get"].append(func)
+        return func
 
 
 class Client:
@@ -224,9 +235,7 @@ class Client:
             await self.encrypt(
                 objects,
                 session_id,
-                originating_request=originating_request.message_id
-                if originating_request is not None
-                else None,
+                originating_request=originating_request.message_id if originating_request is not None else None,
             )
         )
 
@@ -253,9 +262,7 @@ class Client:
             # print(f"server {q=}")
             # print(f"server {pq=}")
 
-            self.auth_data.server_nonce = int.from_bytes(
-                secrets.token_bytes(128 // 8), byteorder="big", signed=False
-            )
+            self.auth_data.server_nonce = int.from_bytes(secrets.token_bytes(128 // 8), byteorder="big")
 
             res_pq = ResPQ(
                 nonce=req_pq_multi.nonce,
@@ -272,6 +279,7 @@ class Client:
                 + res_pq
             )
         elif isinstance(obj, ReqDHParams):
+
             assert self.auth_data
 
             req_dh_params = obj
@@ -296,7 +304,7 @@ class Client:
             try:
                 key_aes_encrypted = rsa_pad_inverse(key_aes_encrypted)
             except AssertionError as e:
-                logger.info(f"rsa_pad_inverse raised error: {e}. Using old pre-RSA_PAD encryption.")
+                logger.debug(f"rsa_pad_inverse raised error: {e}. Using old pre-RSA_PAD encryption.")
                 old = True
             key_aes_encrypted = key_aes_encrypted.lstrip(b"\0")
 
@@ -433,7 +441,6 @@ class Client:
             await self.server.register_auth_key(
                 auth_key_id=self.auth_data.auth_key_id,
                 auth_key=self.auth_data.auth_key,
-                shared=self.auth_data,  # TODO remove shared
             )
             logger.info("Auth key generation successfully completed!")
             # self.auth_key = self.auth_data.auth_key
@@ -442,19 +449,16 @@ class Client:
             # Maybe we should keep it
             # self.auth_data = None
         else:
-            raise RuntimeError(
-                "Received unexpected unencrypted message"
-            )  # TODO right error
+            raise RuntimeError("Received unexpected unencrypted message")  # TODO right error
 
-    async def handle_encrypted_message(
-            self, core_message: CoreMessage, session_id: int
-    ):
-        self.update_incoming_content_related_msgs(
-            cast(TLObject, core_message.obj), session_id, core_message.seq_no
+    async def handle_encrypted_message(self, core_message: CoreMessage, session_id: int):
+        self.update_incoming_content_related_msgs(cast(TLObject, core_message.obj), session_id, core_message.seq_no)
+        result = await self.propagate(core_message, session_id)
+        await self.send(
+            result,
+            session_id,
+            originating_request=(None if isinstance(core_message.obj, MsgContainer) else core_message),
         )
-        await self.propagate(
-            core_message, session_id
-        )  # TODO this should always be just_return and we call self.send manually here
 
     async def recv(self):
         message = await self.read_message()
@@ -555,8 +559,8 @@ class Client:
                 # TODO error -404
                 assert False, "FATAL: self.auth_key is None"
             # self.auth_data.auth_key = auth_key[0]
-            auth_key, auth_data = got
-            self.auth_data = auth_data
+            self.auth_data = SimpleNamespace()
+            self.auth_data.auth_key_id, self.auth_data.auth_key = got
 
         aes_key, aes_iv = kdf(self.auth_data.auth_key, message.msg_key, True)
 
@@ -662,45 +666,29 @@ class Client:
             ret += 1
         return ret
 
-    async def propagate(self, request: CoreMessage, session_id: int, just_return: bool = False):
+    async def propagate(self, request: CoreMessage, session_id: int) -> None | list[tuple[TLObject, CoreMessage]] | TLObject:
         if isinstance(request.obj, MsgContainer):
             results = []
             for msg in request.obj.messages:
                 msg: CoreMessage
-                handlers = self.server.handlers.get(msg.obj.tlid(), [])
 
-                result = None
-                for rpc in handlers:
-                    result = await rpc(self, msg, session_id)
-                    if result is not None:
-                        break
-
+                result = await self.propagate(msg, session_id)
                 if result is None:
-                    logger.warning("No handler found for obj:\n{obj}", obj=msg.obj)
-                    result = RpcError(error_code=501, error_message="Not implemented")
-                if result is False:
                     continue
-
-                if not isinstance(result, (Ping, Pong, RpcResult)):
-                    result = RpcResult(req_msg_id=msg.message_id, result=result)
                 results.append((result, msg))
 
             if not results:
-                # invokeWith_*
                 logger.warning("Empty msg_container, returning...")
                 return
 
             assert results, "TODO: rpc_error"
-            # if just_return:
-            #     return results
-            await self.send(results, session_id)
+            return results
         else:
             handlers = self.server.handlers.get(request.obj.tlid(), [])
 
             result = None
             for rpc in handlers:
                 result = await rpc(self, request, session_id)
-
                 if result is not None:
                     break
 
@@ -713,11 +701,4 @@ class Client:
             if not isinstance(result, (Ping, Pong, RpcResult)):
                 result = RpcResult(req_msg_id=request.message_id, result=result)
 
-            if just_return:
-                return result
-
-            await self.send(
-                result,
-                session_id,
-                originating_request=request,
-            )
+            return result
