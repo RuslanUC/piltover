@@ -1,13 +1,14 @@
 import asyncio
-import json
 from os import getenv
 from pathlib import Path
 
 import uvloop
 from loguru import logger
+from tortoise import Tortoise
 
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack
+from piltover.db.models import AuthKey
 from piltover.server import Server
 from piltover.types import Keys
 from piltover.utils import gen_keys, get_public_key_fingerprint
@@ -76,30 +77,21 @@ async def main():
 
     @pilt.on_auth_key_set
     async def auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
-        if authkeys.exists():
-            with open(authkeys, "r") as f:
-                auth_keys = json.load(f)
-        else:
-            auth_keys = {}
-
-        auth_keys[auth_key_id] = auth_key_bytes.hex()
-
-        with open(authkeys, "w") as f:
-            json.dump(auth_keys, f)
-
+        await AuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes)
         logger.debug(f"Set auth key: {auth_key_id}")
 
     @pilt.on_auth_key_get
     async def auth_key_get(auth_key_id: int) -> tuple[int, bytes] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
-        if not authkeys.exists():
-            return
+        if (auth_key := await AuthKey.get_or_none(id=str(auth_key_id))) is not None:
+            return auth_key_id, auth_key.auth_key
 
-        with open(authkeys, "r") as f:
-            auth_keys = json.load(f)
+    await Tortoise.init(
+        db_url=getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db"),
+        modules={"models": ["piltover.db.models"]},
+    )
 
-        if (auth_key := auth_keys.get(str(auth_key_id), None)) is not None:
-            return auth_key_id, bytes.fromhex(auth_key)
+    await Tortoise.generate_schemas()
 
     logger.success("Running on {host}:{port}", host=pilt.HOST, port=pilt.PORT)
     await pilt.serve()

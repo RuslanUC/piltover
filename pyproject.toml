@@ -11,6 +11,7 @@ tgcrypto = "^1.2.5"
 uvloop = "^0.17.0"
 loguru = "^0.7.0"
 icecream = "^2.1.3"
+tortoise-orm = {extras = ["asyncmy"], version = "^0.20.0"}
 
 
 [tool.poetry.group.dev.dependencies]

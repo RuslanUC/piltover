@@ -30,6 +30,7 @@ async def ping_delay_disconnect(client: Client, request: CoreMessage[PingDelayDi
 
 @handler.on_message(InvokeWithLayer)
 async def invoke_with_layer(client: Client, request: CoreMessage[InvokeWithLayer], session_id: int):
+    client.layer = request.obj.layer
     return await client.propagate(
         CoreMessage(
             obj=request.obj.query,

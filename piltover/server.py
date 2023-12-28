@@ -206,6 +206,7 @@ class Client:
         self.conn: Connection = Connection.new(transport=transport, stream=stream)
 
         self.auth_data = None
+        self.layer = 0
 
         self._msg_id_last_time = 0
         self._msg_id_offset = 0
@@ -695,9 +696,10 @@ class Client:
                     if error is None:
                         error = RpcError(error_code=500, error_message="Server error")
 
+            result = result if error is None else error
             if result is None:
                 logger.warning("No handler found for obj:\n{obj}", obj=request.obj)
-                result = error or RpcError(error_code=500, error_message="Not implemented")
+                result = RpcError(error_code=500, error_message="Not implemented")
             if result is False:
                 return
 

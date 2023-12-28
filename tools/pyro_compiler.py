@@ -77,7 +77,7 @@ def camel(s: str):
 
 
 # noinspection PyShadowingBuiltins, PyShadowingNames
-def get_type_hint(type: str) -> str:
+def get_type_hint(type: str, layer: int) -> str:
     is_flag = FLAGS_RE.match(type)
     is_core = False
 
@@ -105,13 +105,13 @@ def get_type_hint(type: str) -> str:
         is_core = True
 
         sub_type = type.split("<")[1][:-1]
-        type = f"list[{get_type_hint(sub_type)}]"
+        type = f"list[{get_type_hint(sub_type, layer)}]"
 
     if is_core:
         return f"Optional[{type}]" if is_flag and type != "bool" else type
     else:
         ns, name = type.split(".") if "." in type else ("", type)
-        type = f'tl_new.base.' + ".".join([ns, camel(name)]).strip(".") + "Type"
+        type = f'tl_new.base.' + ".".join([ns, camel(name)]).strip(".") + (f"_{layer}Type" if layer and f"{type}_{layer}" in types_to_constructors else "Type")
 
         return f"Optional[{type}]" if is_flag else type
 
@@ -228,12 +228,13 @@ def parse_old_objects(schemaBase: list[Combinator]) -> list[Combinator]:
             continue
         for cname in schemas[layer]:
             c = schemas[layer][cname]
-            schemas[layer][cname] = c._replace(
-                qualname=f"{c.qualname}_{layer}",
-                qualtype=f"{c.qualtype}_{layer}",
-                name=f"{c.name}_{layer}",
-                type=f"{c.type}_{layer}",
-            )
+            replacings = {
+                "qualname": f"{c.qualname}_{layer}",
+                "qualtype": f"{c.qualtype}_{layer}",
+                "name": f"{c.name}_{layer}",
+                "type": f"{c.type}_{layer}",
+            }
+            schemas[layer][cname] = c._replace(**replacings)
 
     result = []
     for schema in schemas.values():
@@ -291,6 +292,8 @@ def start():
     # import json
     # print(json.dumps(namespaces_to_types, indent=2))
 
+    print(types_to_constructors)
+
     for qualtype in types_to_constructors:
         typespace, type = qualtype.split(".") if "." in qualtype else ("", qualtype)
         dir_path = DESTINATION_PATH / "base" / typespace
@@ -338,7 +341,7 @@ def start():
                 if arg_type.split("?")[1] == "Bool":
                     field_args.append(f"flag_serializable=True")
             field_args = ", ".join(field_args)
-            fields.append(f"{arg[0]}: {get_type_hint(arg_type)} = TLField({field_args})")
+            fields.append(f"{arg[0]}: {get_type_hint(arg_type, c.layer)} = TLField({field_args})")
 
         fields = "\n    ".join(fields) if fields else "pass"
 
