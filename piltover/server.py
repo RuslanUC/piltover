@@ -3,6 +3,7 @@ import hashlib
 import os
 import secrets
 import time
+import traceback
 from asyncio import Task
 from collections import defaultdict
 from io import BytesIO
@@ -692,7 +693,8 @@ class Client:
                 except ErrorRpc as e:
                     if error is None:
                         error = RpcError(error_code=e.error_code, error_message=e.error_message)
-                except:
+                except Exception as e:
+                    logger.warning(e)
                     if error is None:
                         error = RpcError(error_code=500, error_message="Server error")
 

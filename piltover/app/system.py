@@ -1,5 +1,9 @@
+from datetime import datetime
+
 from loguru import logger
 
+from piltover.app.utils import auth_required
+from piltover.db.models import User, UserAuthorization
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
 from piltover.tl_new import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
@@ -66,9 +70,17 @@ async def invoke_without_updates(client: Client, request: CoreMessage[InvokeWith
 
 
 @handler.on_message(InitConnection)
-async def init_connection(client: Client, request: CoreMessage, session_id: int):
+@auth_required
+async def init_connection(client: Client, request: CoreMessage[InitConnection], session_id: int, user: User):
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
+    await UserAuthorization.filter(user=user, key__id=str(client.auth_data.auth_key_id)).update(
+        active_at=datetime.now(),
+        device_model=request.obj.device_model,
+        system_version=request.obj.system_version,
+        app_version=request.obj.app_version,
+        # TODO: set ip and api id
+    )
 
     print("initConnection with Api ID:", request.obj.api_id)
 

@@ -1,5 +1,6 @@
 from time import time
 
+from piltover.db.models import AuthKey, UserAuthorization
 from piltover.db.models.sentcode import SentCode
 from piltover.db.models.user import User
 from piltover.exceptions import ErrorRpc
@@ -38,10 +39,13 @@ async def sign_in(client: Client, request: CoreMessage[SignIn], session_id: int)
     if request.obj.phone_code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EMPTY")
     try:
-        int(request.obj.phone_code)
         int(request.obj.phone_number)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+    try:
+        int(request.obj.phone_code)
+    except ValueError:
+        raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID")
     code = await SentCode.get_or_none(phone_number=request.obj.phone_number, hash=request.obj.phone_code_hash[8:],
                                       used=False)
     if code is None or code.code != int(request.obj.phone_code):
@@ -54,9 +58,11 @@ async def sign_in(client: Client, request: CoreMessage[SignIn], session_id: int)
 
     if (user := await User.get_or_none(phone_number=request.obj.phone_number)) is None:
         return AuthorizationSignUpRequired()
-        #raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_UNOCCUPIED") # ???
 
-    return Authorization(user=user.to_tl_user(is_self=True))
+    key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
+    await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
+
+    return Authorization(user=user.to_tl(is_self=True))
 
 
 # noinspection PyUnusedLocal
@@ -87,7 +93,10 @@ async def sign_up(client: Client, request: CoreMessage[SignUp], session_id: int)
         raise ErrorRpc(error_code=400, error_message="LASTNAME_INVALID")
 
     user = await User.create(phone_number=req.phone_number, first_name=req.first_name, last_name=req.last_name)
-    return Authorization(user=user.to_tl_user(is_self=True))
+    key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
+    await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
+
+    return Authorization(user=user.to_tl(is_self=True))
 
 
 # noinspection PyUnusedLocal

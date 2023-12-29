@@ -8,11 +8,12 @@ class User(Model):
     id: int = fields.BigIntField(pk=True)
     phone_number: str = fields.CharField(unique=True, max_length=20)
     first_name: str = fields.CharField(max_length=128)
-    last_name: str | None = fields.CharField(max_length=128, default=None)
-    username: str | None = fields.CharField(max_length=64, null=True, default=None)
+    last_name: str | None = fields.CharField(max_length=128, null=True, default=None)
+    username: str | None = fields.CharField(max_length=64, null=True, default=None, index=True)
     lang_code: str = fields.CharField(max_length=8, default="en")
+    about: str | None = fields.CharField(max_length=240, null=True, default=None)
 
-    def to_tl_user(self, **kwargs) -> TLUser:
+    def to_tl(self, **kwargs) -> TLUser:
         defaults = {
             "contact": False,
             "mutual_contact": False,

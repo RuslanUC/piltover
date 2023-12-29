@@ -1,58 +1,57 @@
-from time import time
+import re
 
-from piltover.app import user
+from piltover.app.utils import auth_required
+from piltover.db.models import User, UserAuthorization
+from piltover.exceptions import ErrorRpc
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
 from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, \
-    SecurePasswordKdfAlgoSHA512, AccountDaysTTL, Authorization
+    SecurePasswordKdfAlgoSHA512, AccountDaysTTL
 from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername
 from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations
 
 handler = MessageHandler("account")
+username_regex = re.compile(r'[a-zA-z0-9_]{5,32}')
+
+
+def validate_username(username: str) -> None:
+    if len(username) not in range(5, 32) or not username_regex.match(username):
+        raise ErrorRpc(error_code=400, error_message="USERNAME_INVALID")
 
 
 # noinspection PyUnusedLocal
 @handler.on_message(CheckUsername)
-async def check_username(client: Client, request: CoreMessage[CheckUsername], session_id: int):
+@auth_required
+async def check_username(client: Client, request: CoreMessage[CheckUsername], session_id: int, user: User):
+    validate_username(request.obj.username)
+    if await User.filter(username=request.obj.username).exists():
+        raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
     return True
 
 
 # noinspection PyUnusedLocal
 @handler.on_message(UpdateUsername)
-async def update_username(client: Client, request: CoreMessage[UpdateUsername], session_id: int):
-    user.username = request.obj.username
+@auth_required
+async def update_username(client: Client, request: CoreMessage[UpdateUsername], session_id: int, user: User):
+    validate_username(request.obj.username)
+    if (target := await User.get_or_none(username__iexact=request.obj.username)) is not None:
+        raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
+
+    await user.update(username=request.obj.username)
     return user
 
 
 # noinspection PyUnusedLocal
 @handler.on_message(GetAuthorizations)
-async def get_authorizations(client: Client, request: CoreMessage[GetAuthorizations], session_id: int):
-    return Authorizations(
-        authorization_ttl_days=15,
-        authorizations=[
-            Authorization(
-                current=True,
-                official_app=True,
-                encrypted_requests_disabled=True,
-                call_requests_disabled=True,
-                hash=0,
-                device_model="Blackberry",
-                platform="Desktop",
-                system_version="42.777.3",
-                api_id=12345,
-                app_name="DTeskdop",
-                app_version="1.2.3",
-                date_created=int(time() - 20),
-                date_active=int(time()),
-                ip="127.0.0.1",
-                country="US",  # "Y-Land",
-                region="Telegram HQ",
-            ),
-        ],
-    )
+@auth_required
+async def get_authorizations(client: Client, request: CoreMessage[GetAuthorizations], session_id: int, user: User):
+    authorizations = await UserAuthorization.filter(user=user).select_related("key").all()
+    authorizations = [auth.to_tl(current=int(auth.key.id) == client.auth_data.auth_key_id) for auth in authorizations]
+
+    return Authorizations(authorization_ttl_days=15, authorizations=authorizations)
 
 
 # noinspection PyUnusedLocal
@@ -132,13 +131,22 @@ async def update_status(client: Client, request: CoreMessage[UpdateStatus], sess
 
 # noinspection PyUnusedLocal
 @handler.on_message(UpdateProfile)
-async def update_profile(client: Client, request: CoreMessage[UpdateProfile], session_id: int):
+@auth_required
+async def update_profile(client: Client, request: CoreMessage[UpdateProfile], session_id: int, user: User):
+    updates = {}
     if request.obj.first_name is not None:
-        user.first_name = request.obj.first_name
+        if len(request.obj.first_name) > 128 or not request.obj.first_name:
+            raise ErrorRpc(error_code=400, error_message="FIRSTNAME_INVALID")
+        updates["first_name"] = request.obj.first_name
     if request.obj.last_name is not None:
-        user.last_name = request.obj.last_name
+        updates["last_name"] = request.obj.last_name[:128]
     if request.obj.about is not None:
-        user.about = request.obj.about
+        if len(request.obj.about) > 240:
+            raise ErrorRpc(error_code=400, error_message="ABOUT_TOO_LONG")
+        updates["about"] = request.obj.about
+
+    if updates:
+        await user.update(**updates)
     return user
 
 

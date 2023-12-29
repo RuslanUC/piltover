@@ -1,6 +1,10 @@
 from time import time
 
-from piltover.app import durov, durov_message, user
+from piltover.app import durov, durov_message
+from piltover.app.account import get_notify_settings
+from piltover.app.updates import get_state
+from piltover.app.utils import auth_required
+from piltover.db.models import User
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
 from piltover.tl_new import Dialog, PeerUser, Message, WebPageEmpty, UpdateShortSentMessage, StickerSet, AttachMenuBots, \
@@ -61,7 +65,7 @@ async def get_peer_dialogs(client: Client, request: CoreMessage[GetPeerDialogs],
         dialogs=[
             Dialog(
                 peer=PeerUser(user_id=durov.id),
-                top_message=0,
+                top_message=456,
                 read_inbox_max_id=0,
                 read_outbox_max_id=0,
                 unread_count=0,
@@ -81,7 +85,8 @@ async def get_peer_dialogs(client: Client, request: CoreMessage[GetPeerDialogs],
 
 # noinspection PyUnusedLocal
 @handler.on_message(GetHistory)
-async def get_history(client: Client, request: CoreMessage[GetHistory], session_id: int):
+@auth_required
+async def get_history(client: Client, request: CoreMessage[GetHistory], session_id: int, user: User):
     if request.obj.peer.user_id == durov.id:
         return Messages(messages=[durov_message], chats=[], users=[])
     if request.obj.offset_id != 0:
