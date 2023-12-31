@@ -70,11 +70,10 @@ async def invoke_without_updates(client: Client, request: CoreMessage[InvokeWith
 
 
 @handler.on_message(InitConnection)
-@auth_required
-async def init_connection(client: Client, request: CoreMessage[InitConnection], session_id: int, user: User):
+async def init_connection(client: Client, request: CoreMessage[InitConnection], session_id: int):
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
-    await UserAuthorization.filter(user=user, key__id=str(client.auth_data.auth_key_id)).update(
+    await UserAuthorization.filter(key__id=str(client.auth_data.auth_key_id)).update(
         active_at=datetime.now(),
         device_model=request.obj.device_model,
         system_version=request.obj.system_version,

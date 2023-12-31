@@ -196,10 +196,10 @@ class TCPObfuscated(Connection):
 
 class TCPAbridgedObfuscated(Connection):
     def __init__(
- self,
- stream: BufferedStream,
- encrypt: tuple[bytes, bytes, bytearray],
- decrypt: tuple[bytes, bytes, bytearray],
+            self,
+            stream: BufferedStream,
+            encrypt: tuple[bytes, bytes, bytearray],
+            decrypt: tuple[bytes, bytes, bytearray],
     ):
         self.stream = stream
         self.encrypt = encrypt
@@ -207,7 +207,7 @@ class TCPAbridgedObfuscated(Connection):
 
     async def send(self, data: bytes):
         length = len(data) // 4
-        data = bytes([length]) if length <= 126 else b"\x7f" + length.to_bytes(3, "little") + data
+        data = (bytes([length]) if length <= 126 else b"\x7f" + length.to_bytes(3, "little")) + data
 
         payload = tgcrypto.ctr256_encrypt(data, *self.decrypt)
 

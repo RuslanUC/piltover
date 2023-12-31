@@ -11,7 +11,7 @@ class User(Model):
     last_name: str | None = fields.CharField(max_length=128, null=True, default=None)
     username: str | None = fields.CharField(max_length=64, null=True, default=None, index=True)
     lang_code: str = fields.CharField(max_length=8, default="en")
-    about: str | None = fields.CharField(max_length=240, null=True, default=None)
+    #about: str | None = fields.CharField(max_length=240, null=True, default=None)
 
     def to_tl(self, **kwargs) -> TLUser:
         defaults = {

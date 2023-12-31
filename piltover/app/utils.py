@@ -11,7 +11,7 @@ def auth_required(func: Callable):
     async def auth_check(client, *args, **kwargs):
         auth = await UserAuthorization.get_or_none(key__id=str(client.auth_data.auth_key_id)).select_related("user")
         if auth is None:
-            raise ErrorRpc(error_code=401, error_message="ACTIVE_USER_REQUIRED")  # ??
+            raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")  # ??
 
         if "user" in signature(func).parameters:
             kwargs["user"] = auth.user

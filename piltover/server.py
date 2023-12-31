@@ -25,7 +25,7 @@ from piltover.tl.types import (
 )
 from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Int, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
     SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, Pong
-from piltover.tl_new.primitives.types import MsgContainer, Message, RpcResult
+from piltover.tl_new.primitives.types_ import MsgContainer, Message, RpcResult
 from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, HttpWait, \
     MsgsAck
 from piltover.types import Keys
@@ -138,9 +138,7 @@ class Server:
                     # Obfuscated Transports
                     transport = Transport.Obfuscated
 
-            assert (
-                    transport is not None
-            ), f"Transport is None, aborting... (header: {header})"
+            assert transport is not None, f"Transport is None, aborting... (header: {header})"
             logger.info(f"Connected client with {transport} {extra}")
 
             await self.welcome(stream=stream, transport=transport)
@@ -445,8 +443,10 @@ class Client:
 
             # Maybe we should keep it
             # self.auth_data = None
+        elif isinstance(obj, MsgsAck):
+            pass
         else:
-            raise RuntimeError("Received unexpected unencrypted message")  # TODO right error
+            raise RuntimeError(f"Received unexpected unencrypted message: {obj}")  # TODO right error
 
     async def handle_encrypted_message(self, core_message: CoreMessage, session_id: int):
         self.update_incoming_content_related_msgs(cast(TLObject, core_message.obj), session_id, core_message.seq_no)
@@ -519,7 +519,7 @@ class Client:
                     msg_id = core_message.message_id + 1
                 seq_no = self.get_outgoing_seq_no(obj, session_id)
 
-                container.messages.append(Message(msg_id=msg_id, seqno=seq_no, bytes=len(serialized), body=serialized))
+                container.messages.append(Message(msg_id=msg_id, seqno=seq_no, length=0, body=obj))
 
             final_obj = container
             serialized = container.write()
@@ -664,7 +664,9 @@ class Client:
             ret += 1
         return ret
 
-    async def propagate(self, request: CoreMessage, session_id: int) -> None | list[tuple[TLObject, CoreMessage]] | TLObject:
+    async def propagate(self, request: CoreMessage | Message, session_id: int) -> None | list[tuple[TLObject, CoreMessage]] | TLObject:
+        if isinstance(request, Message):
+            request = CoreMessage(message_id=request.msg_id, seq_no=request.seqno, obj=request.body)
         if isinstance(request.obj, MsgContainer):
             results = []
             for msg in request.obj.messages:
