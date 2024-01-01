@@ -6,3 +6,4 @@ from .user_authorization import UserAuthorization
 from .chat import Chat
 from .dialog import Dialog
 from .message_draft import MessageDraft
+from .message import Message

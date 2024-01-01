@@ -23,15 +23,14 @@ async def get_full_user(client: Client, request: CoreMessage[GetFullUser], sessi
                 can_pin_message=True,
                 voice_messages_forbidden=True,
                 id=user.id,
-                #about=user.about,
-                about="",
+                about=user.about,
                 settings=PeerSettings(),
                 profile_photo=None,
                 notify_settings=PeerNotifySettings(show_previews=True),
                 common_chats_count=0,
             ),
             chats=[],
-            users=[user.to_tl(is_self=True)],
+            users=[user.to_tl(current_user=user)],
         )
 
     logger.warning("id: inputUser is not inputUserSelf: not implemented")
@@ -45,7 +44,7 @@ async def get_users(client: Client, request: CoreMessage[GetUsers], session_id: 
     result: list[TLObject] = []
     for peer in request.obj.id:
         if isinstance(peer, InputUserSelf):
-            result.append(user.to_tl(is_self=True))
+            result.append(user.to_tl(current_user=user))
         else:
             # TODO: other input users
             result.append(UserEmpty(id=0))

@@ -3,6 +3,7 @@ from os import getenv
 from pathlib import Path
 
 import uvloop
+from aerich import Command
 from loguru import logger
 from tortoise import Tortoise
 
@@ -23,12 +24,11 @@ secrets.mkdir(parents=True, exist_ok=True)
 privkey = secrets / "privkey.asc"
 pubkey = secrets / "pubkey.asc"
 
-authkeys = secrets / "auth_keys.json"
+DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
 
 if not getenv("DISABLE_HR"):
     # Hot code reloading
     import jurigged
-
 
     def log(s: jurigged.live.WatchOperation):
         if hasattr(s, "filename") and "unknown" not in s.filename:
@@ -36,7 +36,23 @@ if not getenv("DISABLE_HR"):
             print("Reloaded", file.relative_to(root))
 
 
-    jurigged.watch("piltover/*.py", logger=log)
+    jurigged.watch("piltover/[!tl_new]*.py", logger=log)
+
+
+async def migrate():
+    migrations_dir = (data / "migrations").absolute()
+
+    command = Command({
+        "connections": {"default": DB_CONNECTION_STRING},
+        "apps": {"models": {"models": ["piltover.db.models", "aerich.models"], "default_connection": "default"}},
+    }, location=str(migrations_dir))
+    await command.init()
+    if Path(migrations_dir).exists():
+        await command.migrate()
+        await command.upgrade(True)
+    else:
+        await command.init_db(True)
+    await Tortoise.close_connections()
 
 
 async def main():
@@ -86,12 +102,11 @@ async def main():
         if (auth_key := await AuthKey.get_or_none(id=str(auth_key_id))) is not None:
             return auth_key_id, auth_key.auth_key
 
+    await migrate()
     await Tortoise.init(
-        db_url=getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db"),
+        db_url=DB_CONNECTION_STRING,
         modules={"models": ["piltover.db.models"]},
     )
-
-    await Tortoise.generate_schemas()
 
     logger.success("Running on {host}:{port}", host=pilt.HOST, port=pilt.PORT)
     await pilt.serve()

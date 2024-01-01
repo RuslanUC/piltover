@@ -3,6 +3,7 @@ venv
 .**/
 !.github/
 data/secrets/
+data/migrations/
 
 !.gitignore
 

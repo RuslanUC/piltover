@@ -8,7 +8,7 @@ from asyncio import Task
 from collections import defaultdict
 from io import BytesIO
 from types import SimpleNamespace
-from typing import Callable, Awaitable, Optional, cast, List, Tuple
+from typing import Callable, Awaitable, Optional, cast
 
 import tgcrypto
 from icecream import ic
@@ -16,7 +16,7 @@ from loguru import logger
 
 from piltover.connection import Connection
 from piltover.enums import Transport
-from piltover.exceptions import Disconnection, InvalidConstructor, ErrorRpc
+from piltover.exceptions import Disconnection, ErrorRpc
 from piltover.tl.types import (
     CoreMessage,
     EncryptedMessage,
@@ -24,7 +24,7 @@ from piltover.tl.types import (
     UnencryptedMessage,
 )
 from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Int, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
-    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, Pong
+    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping
 from piltover.tl_new.primitives.types_ import MsgContainer, Message, RpcResult
 from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, HttpWait, \
     MsgsAck
@@ -143,9 +143,7 @@ class Server:
 
             await self.welcome(stream=stream, transport=transport)
         except Disconnection:
-            logger.error(
-                "Client disconnected before even trying to generate an auth key :("
-            )
+            logger.error("Client disconnected before even trying to generate an auth key :(")
 
     async def welcome(self, stream: BufferedStream, transport: Transport):
         client = Client(
@@ -397,12 +395,10 @@ class Client:
             assert hashlib.sha1(client_DH_inner_data.write()).digest() == decrypted_params[:20], \
                 "sha1 hash mismatch for client_DH_inner_data"
 
-            self.auth_data.auth_key = auth_key = (
-                pow(
-                    int.from_bytes(client_DH_inner_data.g_b, "big"),
-                    self.auth_data.a,
-                    self.auth_data.dh_prime,
-                )
+            self.auth_data.auth_key = auth_key = pow(
+                int.from_bytes(client_DH_inner_data.g_b, "big"),
+                self.auth_data.a,
+                self.auth_data.dh_prime,
             ).to_bytes(256, "big")
 
             auth_key_digest = hashlib.sha1(auth_key).digest()
@@ -462,8 +458,6 @@ class Client:
         message = await self.read_message()
         if isinstance(message, EncryptedMessage):
             # TODO: kick clients sending encrypted messages with invalid auth_key/(auth_key_id?)
-            # Steps: run tdesktop, restart the server, receive a message:
-            # AttributeError: 'types.SimpleNamespace' object has no attribute 'auth_key'
             decrypted = await self.decrypt(message)
             core_message = decrypted.to_core_message()
             logger.debug(core_message)
@@ -490,7 +484,7 @@ class Client:
         elif self.auth_data.auth_key_id is None:
             assert False, "FATAL: self.auth_key_id is None"
 
-        ic("SENDING", objects)
+        # ic("SENDING", objects)
 
         if isinstance(objects, TLObject):
             final_obj = objects
@@ -547,11 +541,10 @@ class Client:
                 + msg_key
                 + tgcrypto.ige256_encrypt(data + padding, aes_key, aes_iv)
         )
-        ic(len(result))
         return result
 
     async def decrypt(self, message: EncryptedMessage) -> DecryptedMessage:
-        if self.auth_data is None:
+        if self.auth_data is None or not hasattr(self.auth_data, "auth_key"):
             got = await self.server.get_auth_key(message.auth_key_id)
             if got is None:
                 # TODO: 401 AUTH_KEY_UNREGISTERED
@@ -575,25 +568,6 @@ class Client:
             seq_no,
             decrypted.read(message_data_length),
             decrypted.read(),
-        )
-
-    async def reply_invalid_constructor(self, e: InvalidConstructor, decrypted: DecryptedMessage):
-        formatted = f"{e.cid:x}".zfill(8).upper()
-        logger.error(
-            "Invalid constructor: {formatted} (message_id={message_id})",
-            formatted=formatted,
-            message_id=decrypted.message_id,
-        )
-
-        await self.conn.send(
-            await self.encrypt(
-                RpcResult(
-                    req_msg_id=decrypted.message_id,
-                    result=RpcError(error_code=400, error_message=f"INPUT_CONSTRUCTOR_INVALID_{formatted}")
-                ),
-                session_id=decrypted.session_id,
-                originating_request=decrypted.message_id,
-            )
         )
 
     async def ping_worker(self):
@@ -664,13 +638,18 @@ class Client:
             ret += 1
         return ret
 
-    async def propagate(self, request: CoreMessage | Message, session_id: int) -> None | list[tuple[TLObject, CoreMessage]] | TLObject:
-        if isinstance(request, Message):
-            request = CoreMessage(message_id=request.msg_id, seq_no=request.seqno, obj=request.body)
+    def to_core_message(self, msg: Message | CoreMessage) -> CoreMessage:
+        if isinstance(msg, Message):
+            return CoreMessage(message_id=msg.msg_id, seq_no=msg.seqno, obj=msg.body)
+        return msg
+
+    async def propagate(self, request: CoreMessage | Message, session_id: int) -> None | list[
+        tuple[TLObject, CoreMessage]] | TLObject:
+        request = self.to_core_message(request)
         if isinstance(request.obj, MsgContainer):
             results = []
             for msg in request.obj.messages:
-                msg: CoreMessage
+                msg = self.to_core_message(msg)
 
                 result = await self.propagate(msg, session_id)
                 if result is None:
@@ -696,7 +675,8 @@ class Client:
                     if error is None:
                         error = RpcError(error_code=e.error_code, error_message=e.error_message)
                 except Exception as e:
-                    logger.warning(e)
+                    traceback.print_exception(e)
+                    # logger.warning(e)
                     if error is None:
                         error = RpcError(error_code=500, error_message="Server error")
 

@@ -426,12 +426,17 @@ def start():
 
     with open(DESTINATION_PATH / "all.py", "w", encoding="utf-8") as f:
         f.write(WARNING + "\n\n")
-        f.write(f"import piltover.tl_new as tl_new\n\n")
+        f.write(f"import piltover.tl_new as tl_new\n")
+        f.write(f"import piltover.tl_new.primitives.types_ as types_\n\n")
         f.write(f"layer = {layer}\n\n")
         f.write("objects = {")
 
         for c in combinators:
             f.write(f'\n    {c.id}: tl_new.{c.section}.{c.qualname},')
+
+        f.write(f'\n    0x5bb8e511: types_.Message,')
+        f.write(f'\n    0x73f1f8dc: types_.MsgContainer,')
+        f.write(f'\n    0xf35c6d01: types_.RpcResult,')
 
         f.write("\n}\n")
 

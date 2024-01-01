@@ -4,11 +4,16 @@ from piltover.app import durov, durov_message
 from piltover.app.account import get_notify_settings
 from piltover.app.updates import get_state
 from piltover.app.utils import auth_required
-from piltover.db.models import User
+from piltover.db.enums import ChatType
+from piltover.db.models import User, Chat, Dialog
+from piltover.db.models.message import Message
+from piltover.exceptions import ErrorRpc
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
-from piltover.tl_new import Dialog, PeerUser, Message, WebPageEmpty, UpdateShortSentMessage, StickerSet, AttachMenuBots, \
-    DefaultHistoryTTL, Updates
+from piltover.tl_new import Dialog as TLDialog, PeerUser, Message as TLMessage, WebPageEmpty, UpdateShortSentMessage, \
+    StickerSet, \
+    AttachMenuBots, \
+    DefaultHistoryTTL, Updates, InputPeerUser, UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -60,25 +65,14 @@ async def get_emoji_keywords_languages(client: Client, request: CoreMessage[GetE
 
 
 @handler.on_message(GetPeerDialogs)
-async def get_peer_dialogs(client: Client, request: CoreMessage[GetPeerDialogs], session_id: int):
+@auth_required
+async def get_peer_dialogs(client: Client, request: CoreMessage[GetPeerDialogs], session_id: int, user: User):
+    dialogs = await Dialog.filter(user=user).select_related("user", "chat").all()
     return PeerDialogs(
-        dialogs=[
-            Dialog(
-                peer=PeerUser(user_id=durov.id),
-                top_message=456,
-                read_inbox_max_id=0,
-                read_outbox_max_id=0,
-                unread_count=0,
-                unread_mentions_count=0,
-                unread_reactions_count=0,
-                notify_settings=await get_notify_settings(
-                    client, request, session_id
-                ),
-            )
-        ],
-        messages=[durov_message],
+        dialogs=[await dialog.to_tl() for dialog in dialogs],
+        messages=[],  # TODO: fetch last messages from dialogs
         chats=[],
-        users=[durov],
+        users=[user],  # TODO: load users from dialogs
         state=await get_state(client, request, session_id)
     )
 
@@ -87,54 +81,70 @@ async def get_peer_dialogs(client: Client, request: CoreMessage[GetPeerDialogs],
 @handler.on_message(GetHistory)
 @auth_required
 async def get_history(client: Client, request: CoreMessage[GetHistory], session_id: int, user: User):
-    if request.obj.peer.user_id == durov.id:
-        return Messages(messages=[durov_message], chats=[], users=[])
-    if request.obj.offset_id != 0:
+    if isinstance(request.obj.peer, InputPeerSelf):
+        chat = await Chat.get_private(user)
+    elif isinstance(request.obj.peer, InputPeerUser):
+        if (to_user := await User.get_or_none(id=request.obj.peer.user_id)) is None:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+        chat = await Chat.get_private(user, to_user)
+    else:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
+
+    if chat is None:
         return Messages(messages=[], chats=[], users=[])
+
+    limit = request.obj.limit
+    if limit > 100 or limit < 1:
+        limit = 100
+    query = {}
+    if request.obj.max_id > 0:
+        query["id__lte"] = request.obj.max_id
+    if request.obj.min_id > 0:
+        query["id__gte"] = request.obj.min_id
+
+    messages = await Message.filter(chat=chat, **query).select_related("author", "chat").limit(limit).all()
+    if not messages:
+        return Messages(messages=[], chats=[], users=[])
+
+    users = {}
+    for message in messages:
+        if message.author.id in users:
+            continue
+        users[message.author.id] = message.author.to_tl(user)
+
     return Messages(
-        messages=[
-            Message(
-                out=True,
-                mentioned=True,
-                media_unread=False,
-                silent=False,
-                post=True,
-                from_scheduled=False,
-                legacy=True,
-                edit_hide=True,
-                pinned=False,
-                noforwards=False,
-                id=1,
-                from_id=PeerUser(user_id=user.id),
-                peer_id=PeerUser(user_id=user.id),
-                date=int(time() - 120),
-                message="aaaaaa",
-                media=None,
-                entities=None,
-                views=40,
-                forwards=None,
-                edit_date=None,
-                post_author=None,
-                grouped_id=None,
-                reactions=None,
-                restriction_reason=None,
-                ttl_period=None,
-            )
-        ],
+        messages=[await message.to_tl(user) for message in messages],
         chats=[],
-        users=[]
+        users=list(users.values()),
     )
 
 
 # noinspection PyUnusedLocal
 @handler.on_message(SendMessage)
-async def send_message(client: Client, request: CoreMessage[SendMessage], session_id: int):
-    return UpdateShortSentMessage(
-        out=True,
-        id=2,
-        pts=2,
-        pts_count=2,
+@auth_required
+async def send_message(client: Client, request: CoreMessage[SendMessage], session_id: int, user: User):
+    if isinstance(request.obj.peer, InputPeerSelf):
+        chat = await Chat.get_or_create_private(user)
+    elif isinstance(request.obj.peer, InputPeerUser):
+        if (to_user := await User.get_or_none(id=request.obj.peer.user_id)) is None:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+        chat = await Chat.get_or_create_private(user, to_user)
+    else:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
+
+    message = await Message.create(message=request.obj.message, author=user, chat=chat)
+
+    return Updates(
+        updates=[
+            UpdateMessageID(id=message.id, random_id=request.obj.random_id),
+            UpdateNewMessage(message=await message.to_tl(user), pts=1, pts_count=1),
+            UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0, pts=2,
+                                   pts_count=1)
+        ],
+        users=[user.to_tl(user)],
+        chats=[],
         date=int(time()),
+        seq=1,
     )
 
 

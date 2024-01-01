@@ -13,7 +13,7 @@ VECTOR = b"\x15\xc4\xb5\x1c"
 class SerializationUtils:
     @staticmethod
     def write(value: Any, int_type: type=None) -> bytes:
-        if isinstance(value, int):
+        if isinstance(value, int) and not isinstance(value, bool):
             value = int_type(value)
 
         if isinstance(value, tl_new.primitives.Int):

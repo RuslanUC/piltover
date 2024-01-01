@@ -1,5 +1,7 @@
+from __future__ import annotations
 from tortoise import fields
 
+from piltover.db import models
 from piltover.tl_new.types.user import User as TLUser
 from piltover.db.models._utils import Model
 
@@ -11,9 +13,9 @@ class User(Model):
     last_name: str | None = fields.CharField(max_length=128, null=True, default=None)
     username: str | None = fields.CharField(max_length=64, null=True, default=None, index=True)
     lang_code: str = fields.CharField(max_length=8, default="en")
-    #about: str | None = fields.CharField(max_length=240, null=True, default=None)
+    about: str | None = fields.CharField(max_length=240, null=True, default=None)
 
-    def to_tl(self, **kwargs) -> TLUser:
+    def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
         defaults = {
             "contact": False,
             "mutual_contact": False,
@@ -40,4 +42,5 @@ class User(Model):
             username=self.username,
             phone=self.phone_number,
             lang_code=self.lang_code,
+            is_self=self == current_user,
         )

@@ -62,7 +62,7 @@ async def sign_in(client: Client, request: CoreMessage[SignIn], session_id: int)
     key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
-    return Authorization(user=user.to_tl(is_self=True))
+    return Authorization(user=user.to_tl(current_user=user))
 
 
 # noinspection PyUnusedLocal
@@ -96,7 +96,7 @@ async def sign_up(client: Client, request: CoreMessage[SignUp], session_id: int)
     key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
-    return Authorization(user=user.to_tl(is_self=True))
+    return Authorization(user=user.to_tl(current_user=user))
 
 
 # noinspection PyUnusedLocal
