@@ -14,5 +14,5 @@ handler = MessageHandler("photos")
 async def get_user_photos(client: Client, request: CoreMessage[GetUserPhotos], session_id: int, user: User):
     return Photos(
         photos=[],
-        users=[user],
+        users=[user.to_tl(user)],
     )

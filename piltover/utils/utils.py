@@ -1,30 +1,11 @@
-import inspect
 import asyncio
-
-from io import BytesIO
 from hashlib import sha256
-from types import GenericAlias
+from io import BytesIO
 from typing import TypeVar, Coroutine
 
 
 def read_int(data: bytes) -> int:
     return int.from_bytes(data, byteorder="little")
-
-
-def read_bytes(data: BytesIO) -> bytes:
-    # https://core.telegram.org/mtproto/serialize#base-types
-
-    length = int.from_bytes(data.read(1), "little")
-
-    if length <= 253:
-        result = data.read(length)
-        data.read(-(length + 1) % 4)
-    else:
-        length = int.from_bytes(data.read(3), "little")
-        result = data.read(length)
-        data.read(-length % 4)
-
-    return result
 
 
 def write_bytes(value: bytes, to: BytesIO):
@@ -34,16 +15,6 @@ def write_bytes(value: bytes, to: BytesIO):
         to.write(bytes([length]) + value + bytes(-(length + 1) % 4))
     else:
         to.write(bytes([254]) + length.to_bytes(3, "little") + value + bytes(-length % 4))
-
-
-def nameof(class_or_value) -> str:
-    if hasattr(class_or_value, "__name__"):
-        return class_or_value.__name__
-    elif isinstance(class_or_value, GenericAlias):
-        return str(class_or_value)
-    elif inspect.isclass(class_or_value):
-        return class_or_value.__name__
-    return type(class_or_value).__name__
 
 
 def kdf(auth_key: bytes, msg_key: bytes, outgoing: bool) -> tuple:

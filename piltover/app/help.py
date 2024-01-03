@@ -2,11 +2,11 @@ from time import time
 
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
-from piltover.tl_new import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
+from piltover.tl_new import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, DataJSON
 from piltover.tl_new.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText
 from piltover.tl_new.types.help import CountriesList, Country, CountryCode, TermsOfServiceUpdate, PromoDataEmpty, \
-    PremiumPromo, InviteText
+    PremiumPromo, InviteText, TermsOfService, TermsOfServiceUpdateEmpty
 
 handler = MessageHandler("help")
 
@@ -91,7 +91,7 @@ async def get_countries_list(client: Client, request: CoreMessage[GetCountriesLi
 # noinspection PyUnusedLocal
 @handler.on_message(GetTermsOfServiceUpdate)
 async def get_terms_of_service_update(client: Client, request: CoreMessage[GetTermsOfServiceUpdate], session_id: int):
-    return TermsOfServiceUpdate(expires=int(time() + 9000))
+    return TermsOfServiceUpdateEmpty(expires=int(time() + 9000))
 
 
 # noinspection PyUnusedLocal

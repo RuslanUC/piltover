@@ -2,6 +2,7 @@ import struct
 from typing import Any, TypeVar
 
 import piltover.tl_new as tl_new
+from piltover.exceptions import InvalidConstructorException
 
 T = TypeVar("T")
 
@@ -75,6 +76,8 @@ class SerializationUtils:
             return SerializationUtils.read(stream, bytes).decode("utf8")
         elif issubclass(type_, (tl_new.TLObject, tl_new.TLObjectBase)):
             constructor = int.from_bytes(stream.read(4), "little")
+            if constructor not in tl_new.all.objects:
+                raise InvalidConstructorException
             return tl_new.all.objects[constructor].deserialize(stream)
         elif issubclass(type_, list):
             assert stream.read(4) == VECTOR

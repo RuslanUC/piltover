@@ -87,7 +87,6 @@ class Server:
         self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
 
         self.clients: dict[str, Client] = {}
-        self.clients_lock = asyncio.Lock()
         self.handlers: defaultdict[
             # TODO incorporate the session_id, perhaps into a contextvar
             int,
@@ -107,7 +106,6 @@ class Server:
             extra = writer.get_extra_info("peername")
             header = await stream.peek(1)
 
-            transport = None
             if header == b"\xef":
                 await stream.read(1)  # discard
                 # TCP Abridged
@@ -150,10 +148,9 @@ class Server:
             transport=transport,
             server=self,
             stream=stream,
-            peerinfo=stream.get_extra_info("peerinfo"),
+            peername=stream.get_extra_info("peername"),
         )
-        task = background(client.worker())
-        # task.add_done_callback(lambda: self.clean(task))
+        background(client.worker())
 
     async def serve(self):
         server = await asyncio.start_server(self.handle, self.HOST, self.PORT)
@@ -196,9 +193,9 @@ class Server:
 
 
 class Client:
-    def __init__(self, server: Server, transport: Transport, stream: BufferedStream, peerinfo: tuple):
+    def __init__(self, server: Server, transport: Transport, stream: BufferedStream, peername: tuple):
         self.server: Server = server
-        self.peerinfo: tuple = peerinfo
+        self.peername: tuple = peername
 
         self.conn: Connection = Connection.new(transport=transport, stream=stream)
 
@@ -213,10 +210,10 @@ class Client:
 
     async def read_message(self) -> EncryptedMessage | UnencryptedMessage:
         data = BytesIO(await self.conn.recv())
-        auth_key_id = read_int(data.read(8))
+        auth_key_id = Long.read(data)
         if auth_key_id == 0:
-            message_id = read_int(data.read(8))
-            message_data_length = read_int(data.read(4))
+            message_id = Long.read(data)
+            message_data_length = Int.read(data)
             message_data = data.read(message_data_length)
             return UnencryptedMessage(message_id, message_data)
         msg_key = data.read(16)
@@ -251,10 +248,6 @@ class Client:
 
             pq = self.auth_data.p * self.auth_data.q
             ic(p, q, pq)
-
-            # print(f"server {p=}")
-            # print(f"server {q=}")
-            # print(f"server {pq=}")
 
             self.auth_data.server_nonce = int.from_bytes(secrets.token_bytes(128 // 8), byteorder="big")
 
@@ -304,9 +297,6 @@ class Client:
             # idk TODO: restart generation with dh_fail instead
             # assert key_aes_encrypted >= public.n, "key_aes_encrypted greater than RSA modulus, aborting..."
 
-            # print(key_aes_encrypted)
-            # ic(key_aes_encrypted.hex())
-
             if old:
                 p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted[20:]))
 
@@ -321,11 +311,9 @@ class Client:
             new_nonce: bytes = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
             self.auth_data.new_nonce = new_nonce
 
-            # new_nonce_hash = hashlib.sha1(new_nonce).digest()[:128 // 8]
             logger.info("Generating safe prime...")
             self.auth_data.dh_prime, g = gen_safe_prime(2048)
 
-            # ic(dh_prime, g)
             logger.info("Prime successfully generated")
 
             self.auth_data.a = int.from_bytes(secrets.token_bytes(256), "big")
@@ -405,12 +393,6 @@ class Client:
             auth_key_hash = auth_key_digest[-8:]
             auth_key_aux_hash = auth_key_digest[:8]
 
-            # ic(shared.server_nonce_bytes, auth_key, auth_key_hash)
-            # print("AUTH KEY:", auth_key.hex())
-            # print("SHA1(auth_key) =", hashlib.sha1(auth_key).hexdigest())
-            # ic(shared.new_nonce.hex())
-            # ic(auth_key_aux_hash.hex())
-
             dh_gen_ok = DhGenOk(
                 nonce=client_DH_inner_data.nonce,
                 server_nonce=self.auth_data.server_nonce,
@@ -434,11 +416,6 @@ class Client:
                 auth_key=self.auth_data.auth_key,
             )
             logger.info("Auth key generation successfully completed!")
-            # self.auth_key = self.auth_data.auth_key
-            # self.auth_key_id = auth_key_id
-
-            # Maybe we should keep it
-            # self.auth_data = None
         elif isinstance(obj, MsgsAck):
             pass
         else:
@@ -484,8 +461,6 @@ class Client:
         elif self.auth_data.auth_key_id is None:
             assert False, "FATAL: self.auth_key_id is None"
 
-        # ic("SENDING", objects)
-
         if isinstance(objects, TLObject):
             final_obj = objects
             serialized = objects.write()
@@ -513,12 +488,11 @@ class Client:
                     msg_id = core_message.message_id + 1
                 seq_no = self.get_outgoing_seq_no(obj, session_id)
 
-                container.messages.append(Message(msg_id=msg_id, seqno=seq_no, length=0, body=obj))
+                container.messages.append(Message(message_id=msg_id, seq_no=seq_no, obj=obj))
 
             final_obj = container
             serialized = container.write()
 
-        # ic(self.session_id, self.auth_key_id)
         data = (
                 Long.write(self.server.salt)
                 + Long.write(session_id)
@@ -533,7 +507,6 @@ class Client:
         # 96 = 88 + 8 (8 = incoming message (server message); 0 = outgoing (client message))
         msg_key_large = hashlib.sha256(self.auth_data.auth_key[96: 96 + 32] + data + padding).digest()
         msg_key = msg_key_large[8:24]
-        # ic(self.auth_key[96:96 + 32])
         aes_key, aes_iv = kdf(self.auth_data.auth_key, msg_key, False)
 
         result = (
@@ -557,10 +530,10 @@ class Client:
 
         decrypted = BytesIO(tgcrypto.ige256_decrypt(message.encrypted_data, aes_key, aes_iv))
         salt = decrypted.read(8)  # Salt
-        session_id = read_int(decrypted.read(8))
-        message_id = read_int(decrypted.read(8))
-        seq_no = read_int(decrypted.read(4))
-        message_data_length = read_int(decrypted.read(4))
+        session_id = Long.read(decrypted)
+        message_id = Long.read(decrypted)
+        seq_no = Int.read(decrypted)
+        message_data_length = Int.read(decrypted)
         return DecryptedMessage(
             salt,
             session_id,
@@ -590,13 +563,8 @@ class Client:
                 except AssertionError:
                     logger.exception("Unexpected failed assertion", backtrace=True)
                 # TODO: except invalid constructor id, raise INPUT_CONSTRUCTOR_INVALID_5EEF0214 (e.g.)
-                # except InvalidConstructor as e:
-                #     await self.reply_invalid_constructor(e, msg)
         except Disconnection:
             logger.info("Client disconnected")
-
-            # import traceback
-            # traceback.print_exc()
         finally:
             # Cleanup tasks: client disconnected, or an error occurred
             if ping is not None:
@@ -640,12 +608,10 @@ class Client:
 
     def to_core_message(self, msg: Message | CoreMessage) -> CoreMessage:
         if isinstance(msg, Message):
-            return CoreMessage(message_id=msg.msg_id, seq_no=msg.seqno, obj=msg.body)
+            return CoreMessage(message_id=msg.message_id, seq_no=msg.seq_no, obj=msg.obj)
         return msg
 
-    async def propagate(self, request: CoreMessage | Message, session_id: int) -> None | list[
-        tuple[TLObject, CoreMessage]] | TLObject:
-        request = self.to_core_message(request)
+    async def propagate(self, request: CoreMessage | Message, session_id: int) -> None | list[tuple[TLObject, CoreMessage]] | TLObject:
         if isinstance(request.obj, MsgContainer):
             results = []
             for msg in request.obj.messages:

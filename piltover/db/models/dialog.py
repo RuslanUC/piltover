@@ -22,7 +22,6 @@ class Dialog(Model):
     async def to_tl(self, **kwargs) -> TLDialog:
         defaults = {
             "view_forum_as_messages": False,
-            "top_message": 0,  # TODO: get top message id
             "read_inbox_max_id": 0,
             "read_outbox_max_id": 0,
             "unread_count": 0,
@@ -31,7 +30,7 @@ class Dialog(Model):
             "notify_settings": PeerNotifySettings(),
         } | kwargs
 
-        top_message = await models.Message.filter(chat=self.chat).order_by("-id").limit(1).get_or_none()
+        top_message = await models.Message.filter(chat=self.chat).order_by("-id").first()
 
         return TLDialog(
             **defaults,

@@ -1,7 +1,5 @@
 from time import time
 
-from piltover.app import durov, durov_message
-from piltover.app.account import get_notify_settings
 from piltover.app.updates import get_state
 from piltover.app.utils import auth_required
 from piltover.db.enums import ChatType
@@ -10,10 +8,10 @@ from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
-from piltover.tl_new import Dialog as TLDialog, PeerUser, Message as TLMessage, WebPageEmpty, UpdateShortSentMessage, \
-    StickerSet, \
+from piltover.tl_new import WebPageEmpty, StickerSet, \
     AttachMenuBots, \
-    DefaultHistoryTTL, Updates, InputPeerUser, UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf
+    DefaultHistoryTTL, Updates, InputPeerUser, UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, \
+    InputStickerSetShortName
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -64,19 +62,6 @@ async def get_emoji_keywords_languages(client: Client, request: CoreMessage[GetE
     return []
 
 
-@handler.on_message(GetPeerDialogs)
-@auth_required
-async def get_peer_dialogs(client: Client, request: CoreMessage[GetPeerDialogs], session_id: int, user: User):
-    dialogs = await Dialog.filter(user=user).select_related("user", "chat").all()
-    return PeerDialogs(
-        dialogs=[await dialog.to_tl() for dialog in dialogs],
-        messages=[],  # TODO: fetch last messages from dialogs
-        chats=[],
-        users=[user],  # TODO: load users from dialogs
-        state=await get_state(client, request, session_id)
-    )
-
-
 # noinspection PyUnusedLocal
 @handler.on_message(GetHistory)
 @auth_required
@@ -123,6 +108,9 @@ async def get_history(client: Client, request: CoreMessage[GetHistory], session_
 @handler.on_message(SendMessage)
 @auth_required
 async def send_message(client: Client, request: CoreMessage[SendMessage], session_id: int, user: User):
+    if isinstance(request.obj.peer, InputPeerUser) and request.obj.peer.user_id == user.id:
+        request.obj.peer = InputPeerSelf()
+
     if isinstance(request.obj.peer, InputPeerSelf):
         chat = await Chat.get_or_create_private(user)
     elif isinstance(request.obj.peer, InputPeerUser):
@@ -160,7 +148,7 @@ async def read_history(client: Client, request: CoreMessage[ReadHistory], sessio
 # noinspection PyUnusedLocal
 @handler.on_message(GetWebPage)
 async def get_web_page(client: Client, request: CoreMessage[GetWebPage], session_id: int):
-    return WebPageEmpty()
+    return WebPageEmpty(id=0)
 
 
 # noinspection PyUnusedLocal
@@ -195,14 +183,42 @@ async def get_recent_reactions(client: Client, request: CoreMessage[GetRecentRea
     return Reactions(hash=0, reactions=[])
 
 
+async def get_dialogs_internal(peers: list | None, user: User):
+    # TODO: get dialogs by peers
+
+    dialogs = await Dialog.filter(user=user).select_related("user", "chat").all()
+    messages = []
+    users = {}
+    for dialog in dialogs:
+        if (message := await Message.filter(chat=dialog.chat).select_related("author", "chat").order_by("-id")
+                .first()) is not None:
+            messages.append(await message.to_tl(user))
+        if dialog.chat.type == ChatType.PRIVATE:
+            peer = await dialog.chat.get_peer(user)
+            if peer.user_id not in users:
+                users[peer.user_id] = (await User.get(id=peer.user_id)).to_tl(user)
+
+    return {
+        "dialogs": [await dialog.to_tl() for dialog in dialogs],
+        "messages": messages,
+        "chats": [],
+        "users": list(users.values()),
+    }
+
+
 # noinspection PyUnusedLocal
 @handler.on_message(GetDialogs)
-async def get_dialogs(client: Client, request: CoreMessage[GetDialogs], session_id: int):
-    return Dialogs(
-        dialogs=[],
-        messages=[],
-        chats=[],
-        users=[],
+@auth_required
+async def get_dialogs(client: Client, request: CoreMessage[GetDialogs], session_id: int, user: User):
+    return Dialogs(**(await get_dialogs_internal(None, user)))
+
+
+@handler.on_message(GetPeerDialogs)
+@auth_required
+async def get_peer_dialogs(client: Client, request: CoreMessage[GetPeerDialogs], session_id: int, user: User):
+    return PeerDialogs(
+        **(await get_dialogs_internal(request.obj.peers, user)),
+        state=await get_state(client, request, session_id)
     )
 
 

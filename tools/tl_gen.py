@@ -289,11 +289,6 @@ def start():
             except KeyError:
                 pass
 
-    # import json
-    # print(json.dumps(namespaces_to_types, indent=2))
-
-    print(types_to_constructors)
-
     for qualtype in types_to_constructors:
         typespace, type = qualtype.split(".") if "." in qualtype else ("", qualtype)
         dir_path = DESTINATION_PATH / "base" / typespace
@@ -319,8 +314,6 @@ def start():
             )
 
     for c in combinators:
-        sorted_args = sort_args(c.args)
-
         fields = []
         flagnum = 0
         for arg in c.args:
@@ -345,17 +338,12 @@ def start():
 
         fields = "\n    ".join(fields) if fields else "pass"
 
-        slots = ", ".join([f'"{i[0]}"' for i in sorted_args])
-        return_arguments = ", ".join([f"{i[0]}={i[0]}" for i in sorted_args])
-
         compiled_combinator = combinator_tmpl.format(
             warning=WARNING,
             name=c.name,
-            slots=slots,
             id=c.id,
             qualname=f"{c.section}.{c.qualname}",
             fields=fields,
-            return_arguments=return_arguments
         )
 
         directory = "types" if c.section == "types" else c.section

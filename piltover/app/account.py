@@ -10,7 +10,7 @@ from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
     SecurePasswordKdfAlgoSHA512, AccountDaysTTL
 from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
-    RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername
+    RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70
 from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations
 
 handler = MessageHandler("account")
@@ -41,7 +41,7 @@ async def update_username(client: Client, request: CoreMessage[UpdateUsername], 
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
 
     await user.update(username=request.obj.username)
-    return user
+    return user.to_tl(user)
 
 
 # noinspection PyUnusedLocal
@@ -61,6 +61,7 @@ async def get_account_ttl(client: Client, request: CoreMessage[GetAccountTTL], s
 
 
 # noinspection PyUnusedLocal
+@handler.on_message(RegisterDevice_70)
 @handler.on_message(RegisterDevice)
 async def register_device(client: Client, request: CoreMessage[RegisterDevice], session_id: int):
     return True
@@ -147,7 +148,7 @@ async def update_profile(client: Client, request: CoreMessage[UpdateProfile], se
 
     if updates:
         await user.update(**updates)
-    return user
+    return user.to_tl(user)
 
 
 # noinspection PyUnusedLocal

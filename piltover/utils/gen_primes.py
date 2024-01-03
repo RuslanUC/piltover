@@ -5,9 +5,6 @@ import json
 import secrets
 
 
-# from cryptography.hazmat.primitives.asymmetric import dh
-
-
 RNG = secrets.SystemRandom()
 
 # avoid black formatter to wrap the line

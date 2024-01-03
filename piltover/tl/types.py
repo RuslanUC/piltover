@@ -4,13 +4,6 @@ from typing import Generic, TypeVar
 
 from piltover.tl_new import TLObject, SerializationUtils
 
-VECTOR_CID = 0x1CB5C415
-BOOL_FALSE = 0xBC799737
-BOOL_TRUE = 0x997275B5
-MSG_CONTAINER_CID = 0x73F1F8DC
-RPC_RESULT_CID = 0xF35C6D01
-RPC_ERROR_CID = 0x2144CA19
-
 T = TypeVar("T")
 
 

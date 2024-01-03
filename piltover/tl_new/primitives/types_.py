@@ -6,10 +6,9 @@ from piltover.tl_new import TLField, TLObject, tl_object, Int, Long, Serializati
 
 @tl_object(id=0x5bb8e511, name="Message")
 class Message(TLObject):
-    msg_id: Long = TLField()
-    seqno: Int = TLField()
-    length: Int = TLField()
-    body: TLObject = TLField()
+    message_id: Long = TLField()
+    seq_no: Int = TLField()
+    obj: TLObject = TLField()
 
     @classmethod
     def deserialize(cls, stream) -> TLObject:
@@ -18,11 +17,11 @@ class Message(TLObject):
         length = Int.read(stream)
         body = SerializationUtils.read(BytesIO(stream.read(length)), TLObject)
 
-        return Message(msg_id=msg_id, seqno=seq_no, length=length, body=body)
+        return Message(message_id=msg_id, seq_no=seq_no, obj=body)
 
     def serialize(self) -> bytes:
-        body = SerializationUtils.write(self.body)
-        return Long.write(self.msg_id) + Int.write(self.seqno) + Int.write(len(body)) + body
+        body = SerializationUtils.write(self.obj)
+        return Long.write(self.message_id) + Int.write(self.seq_no) + Int.write(len(body)) + body
 
 
 @tl_object(id=0x73f1f8dc, name="MsgContainer")

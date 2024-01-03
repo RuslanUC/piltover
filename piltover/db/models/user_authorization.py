@@ -32,7 +32,7 @@ class UserAuthorization(Model):
     key: models.AuthKey = fields.ForeignKeyField("models.AuthKey", on_delete=fields.CASCADE, unique=True)
 
     def to_tl(self, **kwargs) -> Authorization:
-        kwargs["hash"] = 0 if kwargs.get("current", False) else int(self.hash, 16)
+        kwargs["hash"] = 0 if kwargs.get("current", False) else int(self.hash[:-16], 16)
         defaults = {
             "official_app": True,
             "encrypted_requests_disabled": True,
