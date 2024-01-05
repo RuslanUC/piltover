@@ -11,9 +11,9 @@ from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
 from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
-    GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis
+    GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL
 from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, \
-    Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings
+    Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations
 
 handler = MessageHandler("account")
 username_regex = re.compile(r'[a-zA-z0-9_]{5,32}')
@@ -58,8 +58,19 @@ async def get_authorizations(client: Client, request: CoreMessage[GetAuthorizati
 
 # noinspection PyUnusedLocal
 @handler.on_message(GetAccountTTL)
-async def get_account_ttl(client: Client, request: CoreMessage[GetAccountTTL], session_id: int):
-    return AccountDaysTTL(days=15)
+@auth_required
+async def get_account_ttl(client: Client, request: CoreMessage[GetAccountTTL], session_id: int, user: User):
+    return AccountDaysTTL(days=user.ttl_days)
+
+
+# noinspection PyUnusedLocal
+@handler.on_message(SetAccountTTL)
+@auth_required
+async def set_account_ttl(client: Client, request: CoreMessage[SetAccountTTL], session_id: int, user: User):
+    if request.obj.ttl.days not in range(30, 366):
+        raise ErrorRpc(error_code=400, error_message="TTL_DAYS_INVALID")
+    await user.update(ttl_days=request.obj.ttl.days)
+    return True
 
 
 # noinspection PyUnusedLocal
@@ -211,3 +222,9 @@ async def get_auto_download_settings(client: Client, request: CoreMessage[GetAut
 @handler.on_message(GetDefaultProfilePhotoEmojis)
 async def get_default_profile_photo_emojis(client: Client, request: CoreMessage[GetDefaultProfilePhotoEmojis], session_id: int):
     return EmojiList(hash=request.obj.hash, document_id=[])
+
+
+@handler.on_message(GetWebAuthorizations)
+@auth_required
+async def get_web_authorizations(client: Client, request: CoreMessage[GetWebAuthorizations], session_id: int, user: User):
+    return WebAuthorizations(authorizations=[], users=user.to_tl(user))

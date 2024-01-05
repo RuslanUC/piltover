@@ -14,6 +14,7 @@ class User(Model):
     username: str | None = fields.CharField(max_length=64, null=True, default=None, index=True)
     lang_code: str = fields.CharField(max_length=8, default="en")
     about: str | None = fields.CharField(max_length=240, null=True, default=None)
+    ttl_days: int = fields.IntField(default=365)
 
     def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
         defaults = {

@@ -8,7 +8,7 @@ from loguru import logger
 from tortoise import Tortoise
 
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
-    langpack
+    langpack, channels
 from piltover.db.models import AuthKey
 from piltover.server import Server
 from piltover.types import Keys
@@ -90,6 +90,9 @@ async def main():
     pilt.register_handler(photos.handler)
     pilt.register_handler(contacts.handler)
     pilt.register_handler(langpack.handler)
+    pilt.register_handler(channels.handler)
+
+    # TODO: SetPrivacy(key=InputPrivacyKey{...}(), rules=[{...}])
 
     @pilt.on_auth_key_set
     async def auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
