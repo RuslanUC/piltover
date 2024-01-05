@@ -1,7 +1,7 @@
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
-from piltover.tl_new import LangPackLanguage, LangPackString, LangPackDifference
-from piltover.tl_new.functions.langpack import GetLanguages, GetStrings, GetLangPack
+from piltover.tl_new import LangPackLanguage, LangPackString, LangPackDifference, LangPackLanguage_72
+from piltover.tl_new.functions.langpack import GetLanguages, GetStrings, GetLangPack, GetLanguages_72
 
 handler = MessageHandler("langpack")
 
@@ -10,6 +10,11 @@ handler = MessageHandler("langpack")
 @handler.on_message(GetLanguages)
 async def get_languages(client: Client, request: CoreMessage[GetLanguages], session_id: int):
     return [LangPackLanguage(name="Gramz", native_name="Le Gramz", lang_code="grz")]
+
+
+@handler.on_message(GetLanguages_72)
+async def get_languages_72(client: Client, request: CoreMessage[GetLanguages_72], session_id: int):
+    return [LangPackLanguage_72(name="Gramz", native_name="Le Gramz", lang_code="grz")]
 
 
 # noinspection PyUnusedLocal

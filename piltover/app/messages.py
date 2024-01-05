@@ -11,16 +11,17 @@ from piltover.tl.types import CoreMessage
 from piltover.tl_new import WebPageEmpty, StickerSet, \
     AttachMenuBots, \
     DefaultHistoryTTL, Updates, InputPeerUser, UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, \
-    InputStickerSetShortName
+    EmojiKeywordsDifference
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
     ReorderPinnedDialogs, GetStickers, GetSearchCounters, Search, GetSearchResultsPositions, GetDefaultHistoryTTL, \
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
-    GetFavedStickers
+    GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
+    GetEmojiKeywords, DeleteMessages
 from piltover.tl_new.types.messages import AvailableReactions, PeerSettings, Messages, PeerDialogs, AffectedMessages, \
     StickerSet as MsgStickerSet, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, FeaturedStickers, \
-    FavedStickers
+    FavedStickers, ArchivedStickers, AllStickers
 
 handler = MessageHandler("messages")
 
@@ -193,7 +194,7 @@ async def get_dialogs_internal(peers: list | None, user: User):
         if (message := await Message.filter(chat=dialog.chat).select_related("author", "chat").order_by("-id")
                 .first()) is not None:
             messages.append(await message.to_tl(user))
-        if dialog.chat.type == ChatType.PRIVATE:
+        if dialog.chat.type in {ChatType.PRIVATE, ChatType.SAVED}:
             peer = await dialog.chat.get_peer(user)
             if peer.user_id not in users:
                 users[peer.user_id] = (await User.get(id=peer.user_id)).to_tl(user)
@@ -340,3 +341,34 @@ async def search_global(client: Client, request: CoreMessage[SearchGlobal], sess
         chats=[],
         users=[],
     )
+
+
+# noinspection PyUnusedLocal
+@handler.on_message(GetCustomEmojiDocuments)
+async def get_custom_emoji_documents(client: Client, request: CoreMessage[GetCustomEmojiDocuments], session_id: int):
+    return []
+
+
+@handler.on_message(GetMessagesReactions)
+async def get_messages_reactions(client: Client, request: CoreMessage[GetMessagesReactions], session_id: int):
+    return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+
+
+@handler.on_message(GetArchivedStickers)
+async def get_archived_stickers(client: Client, request: CoreMessage[GetArchivedStickers], session_id: int):
+    return ArchivedStickers(count=0, sets=[])
+
+
+@handler.on_message(GetEmojiStickers)
+async def get_emoji_stickers(client: Client, request: CoreMessage[GetEmojiStickers], session_id: int):
+    return AllStickers(hash=request.obj.hash, sets=[])
+
+
+@handler.on_message(GetEmojiKeywords)
+async def get_emoji_keywords(client: Client, request: CoreMessage[GetEmojiKeywords], session_id: int):
+    return EmojiKeywordsDifference(lang_code=request.obj.lang_code, from_version=0, version=0, keywords=[])
+
+
+@handler.on_message(DeleteMessages)
+async def delete_messages(client: Client, request: CoreMessage[DeleteMessages], session_id: int):
+    return AffectedMessages(pts=0, pts_count=0)

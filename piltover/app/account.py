@@ -7,11 +7,13 @@ from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
 from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, \
-    SecurePasswordKdfAlgoSHA512, AccountDaysTTL
+    SecurePasswordKdfAlgoSHA512, AccountDaysTTL, AutoDownloadSettings, EmojiList
 from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
-    RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70
-from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations
+    RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
+    GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis
+from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, \
+    Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings
 
 handler = MessageHandler("account")
 username_regex = re.compile(r'[a-zA-z0-9_]{5,32}')
@@ -64,6 +66,7 @@ async def get_account_ttl(client: Client, request: CoreMessage[GetAccountTTL], s
 @handler.on_message(RegisterDevice_70)
 @handler.on_message(RegisterDevice)
 async def register_device(client: Client, request: CoreMessage[RegisterDevice], session_id: int):
+    print(request.obj)
     return True
 
 
@@ -165,3 +168,46 @@ async def get_notify_settings(client: Client, request: CoreMessage[GetNotifySett
 async def get_default_emoji_statuses(client: Client, request: CoreMessage[GetDefaultEmojiStatuses],
                                      session_id: int):
     return EmojiStatuses(hash=0, statuses=[])
+
+
+@handler.on_message(GetSavedRingtones)
+async def get_saved_ringtones(client: Client, request: CoreMessage[GetSavedRingtones], session_id: int):
+    return SavedRingtones(hash=request.obj.hash, ringtones=[])
+
+
+@handler.on_message(GetAutoDownloadSettings)
+async def get_auto_download_settings(client: Client, request: CoreMessage[GetAutoDownloadSettings], session_id: int):
+    return AccAutoDownloadSettings(
+        low=AutoDownloadSettings(
+            disabled=True,
+            photo_size_max=0,
+            video_size_max=0,
+            file_size_max=0,
+            video_upload_maxbitrate=0,
+            small_queue_active_operations_max=0,
+            large_queue_active_operations_max=0,
+        ),
+        medium=AutoDownloadSettings(
+            disabled=False,
+            photo_size_max=1024 * 1024 * 1,
+            video_size_max=1024 * 1024 * 4,
+            file_size_max=1024 * 1024 * 4,
+            video_upload_maxbitrate=0,
+            small_queue_active_operations_max=0,
+            large_queue_active_operations_max=0,
+        ),
+        high=AutoDownloadSettings(
+            disabled=True,
+            photo_size_max=1024 * 1024 * 4,
+            video_size_max=1024 * 1024 * 4,
+            file_size_max=1024 * 1024 * 4,
+            video_upload_maxbitrate=0,
+            small_queue_active_operations_max=0,
+            large_queue_active_operations_max=0,
+        ),
+    )
+
+
+@handler.on_message(GetDefaultProfilePhotoEmojis)
+async def get_default_profile_photo_emojis(client: Client, request: CoreMessage[GetDefaultProfilePhotoEmojis], session_id: int):
+    return EmojiList(hash=request.obj.hash, document_id=[])

@@ -1,7 +1,9 @@
+from time import time
+
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
-from piltover.tl_new import StoriesStealthMode
-from piltover.tl_new.functions.stories import GetAllStories
+from piltover.tl_new import StoriesStealthMode, Updates
+from piltover.tl_new.functions.stories import GetAllStories, GetAllReadPeerStories
 from piltover.tl_new.types.stories import AllStories
 
 handler = MessageHandler("stories")
@@ -22,3 +24,8 @@ async def get_all_stories(client: Client, request: CoreMessage[GetAllStories], s
             cooldown_until_date=0,
         ),
     )
+
+
+@handler.on_message(GetAllReadPeerStories)
+async def get_all_read_peer_stories(client: Client, request: CoreMessage[GetAllReadPeerStories], session_id: int):
+    return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
