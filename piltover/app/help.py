@@ -1,19 +1,18 @@
 from time import time
 
-from piltover.server import MessageHandler, Client
-from piltover.tl.types import CoreMessage
-from piltover.tl_new import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, DataJSON
+from piltover.high_level import MessageHandler, Client
+from piltover.tl_new import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
 from piltover.tl_new.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText
-from piltover.tl_new.types.help import CountriesList, Country, CountryCode, TermsOfServiceUpdate, PromoDataEmpty, \
-    PremiumPromo, InviteText, TermsOfService, TermsOfServiceUpdateEmpty
+from piltover.tl_new.types.help import CountriesList, Country, CountryCode, PromoDataEmpty, \
+    PremiumPromo, InviteText, TermsOfServiceUpdateEmpty
 
 handler = MessageHandler("help")
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetConfig)
-async def get_config(client: Client, request: CoreMessage[GetConfig], session_id: int):
+@handler.on_request(GetConfig)
+async def get_config(client: Client, request: GetConfig):
     return Config(
         date=int(time()),
         expires=int(time() + 60 * 10),
@@ -32,16 +31,12 @@ async def get_config(client: Client, request: CoreMessage[GetConfig], session_id
         notify_default_delay_ms=10_000,
         push_chat_period_ms=1_000,
         push_chat_limit=1,
-        # saved_gifs_limit=100,
         edit_time_limit=48 * 60 * 60,
         revoke_time_limit=int(2 ** 31 - 1),
         revoke_pm_time_limit=int(2 ** 31 - 1),
         rating_e_decay=2,
         stickers_recent_limit=15,
-        # stickers_faved_limit=5,
         channels_read_media_period=24 * 60 * 60,
-        # pinned_dialogs_count_max=5,
-        # pinned_infolder_count_max=200,
         call_receive_timeout_ms=20_000,
         call_ring_timeout_ms=20_000,
         call_connect_timeout_ms=20_000,
@@ -54,8 +49,8 @@ async def get_config(client: Client, request: CoreMessage[GetConfig], session_id
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetNearestDc)
-async def get_nearest_dc(client: Client, request: CoreMessage[GetNearestDc], session_id: int):
+@handler.on_request(GetNearestDc)
+async def get_nearest_dc(client: Client, request: GetNearestDc):
     return NearestDc(
         country="US",  # "Y-Land",
         this_dc=2,
@@ -64,14 +59,14 @@ async def get_nearest_dc(client: Client, request: CoreMessage[GetNearestDc], ses
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetAppConfig)
-async def get_app_config(client: Client, request: CoreMessage[GetAppConfig], session_id: int):
+@handler.on_request(GetAppConfig)
+async def get_app_config(client: Client, request: GetAppConfig):
     return JsonObject(value=[])
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetCountriesList)
-async def get_countries_list(client: Client, request: CoreMessage[GetCountriesList], session_id: int):
+@handler.on_request(GetCountriesList)
+async def get_countries_list(client: Client, request: GetCountriesList):
     return CountriesList(
         countries=[
             Country(
@@ -89,20 +84,20 @@ async def get_countries_list(client: Client, request: CoreMessage[GetCountriesLi
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetTermsOfServiceUpdate)
-async def get_terms_of_service_update(client: Client, request: CoreMessage[GetTermsOfServiceUpdate], session_id: int):
+@handler.on_request(GetTermsOfServiceUpdate)
+async def get_terms_of_service_update(client: Client, request: GetTermsOfServiceUpdate):
     return TermsOfServiceUpdateEmpty(expires=int(time() + 9000))
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetPromoData)
-async def get_promo_data(client: Client, request: CoreMessage[GetPromoData], session_id: int):
+@handler.on_request(GetPromoData)
+async def get_promo_data(client: Client, request: GetPromoData):
     return PromoDataEmpty(expires=int(time() + 9000))
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetPremiumPromo)
-async def get_premium_promo(client: Client, request: CoreMessage[GetPremiumPromo], session_id: int):
+@handler.on_request(GetPremiumPromo)
+async def get_premium_promo(client: Client, request: GetPremiumPromo):
     return PremiumPromo(
         status_text="Premium Lol",
         status_entities=[],
@@ -121,12 +116,12 @@ async def get_premium_promo(client: Client, request: CoreMessage[GetPremiumPromo
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(SaveAppLog)
-async def save_app_log(client: Client, request: CoreMessage[SaveAppLog], session_id: int):
+@handler.on_request(SaveAppLog)
+async def save_app_log(client: Client, request: SaveAppLog):
     return True
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetInviteText)
-async def get_invite_text(client: Client, request: CoreMessage[GetInviteText], session_id: int):
+@handler.on_request(GetInviteText)
+async def get_invite_text(client: Client, request: GetInviteText):
     return InviteText(message="🐳")

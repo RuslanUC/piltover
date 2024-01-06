@@ -1,10 +1,8 @@
 from loguru import logger
 
-from piltover.app.utils import auth_required
 from piltover.db.models import User
 from piltover.exceptions import ErrorRpc
-from piltover.server import Client, MessageHandler
-from piltover.tl.types import CoreMessage
+from piltover.high_level import Client, MessageHandler
 from piltover.tl_new import InputUserSelf, PeerSettings, PeerNotifySettings, TLObject, UserEmpty
 from piltover.tl_new.functions.users import GetFullUser, GetUsers
 from piltover.tl_new.types import UserFull as FullUser
@@ -14,10 +12,9 @@ handler = MessageHandler("users")
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetFullUser)
-@auth_required
-async def get_full_user(client: Client, request: CoreMessage[GetFullUser], session_id: int, user: User):
-    if isinstance(request.obj.id, InputUserSelf):
+@handler.on_request(GetFullUser, True)
+async def get_full_user(client: Client, request: GetFullUser, user: User):
+    if isinstance(request.id, InputUserSelf):
         return UserFull(
             full_user=FullUser(
                 can_pin_message=True,
@@ -38,11 +35,10 @@ async def get_full_user(client: Client, request: CoreMessage[GetFullUser], sessi
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetUsers)
-@auth_required
-async def get_users(client: Client, request: CoreMessage[GetUsers], session_id: int, user: User):
+@handler.on_request(GetUsers, True)
+async def get_users(client: Client, request: GetUsers, user: User):
     result: list[TLObject] = []
-    for peer in request.obj.id:
+    for peer in request.id:
         if isinstance(peer, InputUserSelf):
             result.append(user.to_tl(current_user=user))
         else:

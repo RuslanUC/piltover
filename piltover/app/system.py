@@ -1,9 +1,6 @@
 from datetime import datetime
 
-from loguru import logger
-
-from piltover.app.utils import auth_required
-from piltover.db.models import User, UserAuthorization
+from piltover.db.models import UserAuthorization
 from piltover.server import MessageHandler, Client
 from piltover.tl.types import CoreMessage
 from piltover.tl_new import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
@@ -15,7 +12,7 @@ handler = MessageHandler("system")
 # noinspection PyUnusedLocal
 @handler.on_message(MsgsAck)
 async def msgs_ack(client: Client, request: CoreMessage[MsgsAck], session_id: int):
-    #print(request.obj, request.message_id)
+    # print(request.obj, request.message_id)
     return False
 
 
@@ -96,7 +93,7 @@ async def init_connection(client: Client, request: CoreMessage[InitConnection], 
 # noinspection PyUnusedLocal
 @handler.on_message(SetClientDHParams)
 async def set_client_dh_params(client: Client, request: CoreMessage[SetClientDHParams], session_id: int):
-    #print(request.obj)
+    # print(request.obj)
     # print(client.shared)
     raise
 

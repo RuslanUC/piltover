@@ -4,8 +4,7 @@ from piltover.db.models import AuthKey, UserAuthorization
 from piltover.db.models.sentcode import SentCode
 from piltover.db.models.user import User
 from piltover.exceptions import ErrorRpc
-from piltover.server import MessageHandler, Client
-from piltover.tl.types import CoreMessage
+from piltover.high_level import MessageHandler, Client
 from piltover.tl_new.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp
 from piltover.tl_new.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
     AuthorizationSignUpRequired
@@ -14,14 +13,14 @@ handler = MessageHandler("auth")
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(SendCode)
-async def send_code(client: Client, request: CoreMessage[SendCode], session_id: int):
+@handler.on_request(SendCode)
+async def send_code(client: Client, request: SendCode):
     try:
-        int(request.obj.phone_number)
+        int(request.phone_number)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
-    code = await SentCode.create(phone_number=int(request.obj.phone_number))
+    code = await SentCode.create(phone_number=int(request.phone_number))
     print(f"Code: {code.code}")
 
     return TLSentCode(
@@ -32,23 +31,23 @@ async def send_code(client: Client, request: CoreMessage[SendCode], session_id: 
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(SignIn)
-async def sign_in(client: Client, request: CoreMessage[SignIn], session_id: int):
-    if len(request.obj.phone_code_hash) != 24:
+@handler.on_request(SignIn)
+async def sign_in(client: Client, request: SignIn):
+    if len(request.phone_code_hash) != 24:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
-    if request.obj.phone_code is None:
+    if request.phone_code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EMPTY")
     try:
-        int(request.obj.phone_number)
+        int(request.phone_number)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
     try:
-        int(request.obj.phone_code)
+        int(request.phone_code)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID")
-    code = await SentCode.get_or_none(phone_number=request.obj.phone_number, hash=request.obj.phone_code_hash[8:],
+    code = await SentCode.get_or_none(phone_number=request.phone_number, hash=request.phone_code_hash[8:],
                                       used=False)
-    if code is None or code.code != int(request.obj.phone_code):
+    if code is None or code.code != int(request.phone_code):
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if code.expires_at < time():
         await code.delete()
@@ -56,7 +55,7 @@ async def sign_in(client: Client, request: CoreMessage[SignIn], session_id: int)
 
     await code.update(used=True)
 
-    if (user := await User.get_or_none(phone_number=request.obj.phone_number)) is None:
+    if (user := await User.get_or_none(phone_number=request.phone_number)) is None:
         return AuthorizationSignUpRequired()
 
     key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
@@ -66,17 +65,15 @@ async def sign_in(client: Client, request: CoreMessage[SignIn], session_id: int)
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(SignUp)
-async def sign_up(client: Client, request: CoreMessage[SignUp], session_id: int):
-    req = request.obj
-
-    if len(req.phone_code_hash) != 24:
+@handler.on_request(SignUp)
+async def sign_up(client: Client, request: SignUp):
+    if len(request.phone_code_hash) != 24:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     try:
-        int(req.phone_number)
+        int(request.phone_number)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
-    code = await SentCode.get_or_none(phone_number=req.phone_number, hash=req.phone_code_hash[8:],
+    code = await SentCode.get_or_none(phone_number=request.phone_number, hash=request.phone_code_hash[8:],
                                       used=True)
     if code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
@@ -84,15 +81,19 @@ async def sign_up(client: Client, request: CoreMessage[SignUp], session_id: int)
         await code.delete()
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EXPIRED")
 
-    if await User.filter(phone_number=req.phone_number).exists():
+    if await User.filter(phone_number=request.phone_number).exists():
         raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")
 
-    if not req.first_name or len(req.first_name) > 128:
+    if not request.first_name or len(request.first_name) > 128:
         raise ErrorRpc(error_code=400, error_message="FIRSTNAME_INVALID")
-    if req.last_name is not None and len(req.last_name) > 128:
+    if request.last_name is not None and len(request.last_name) > 128:
         raise ErrorRpc(error_code=400, error_message="LASTNAME_INVALID")
 
-    user = await User.create(phone_number=req.phone_number, first_name=req.first_name, last_name=req.last_name)
+    user = await User.create(
+        phone_number=request.phone_number,
+        first_name=request.first_name,
+        last_name=request.last_name
+    )
     key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
@@ -100,12 +101,12 @@ async def sign_up(client: Client, request: CoreMessage[SignUp], session_id: int)
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(BindTempAuthKey)
-async def bind_temp_auth_key(client: Client, request: CoreMessage[BindTempAuthKey], session_id: int):
+@handler.on_request(BindTempAuthKey)
+async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
     return True
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(ExportLoginToken)
-async def export_login_token(client: Client, request: CoreMessage[ExportLoginToken], session_id: int):
+@handler.on_request(ExportLoginToken)
+async def export_login_token(client: Client, request: ExportLoginToken):
     return LoginToken(expires=1000, token=b"levlam")

@@ -1,7 +1,6 @@
 from time import time
 
-from piltover.server import Client, MessageHandler
-from piltover.tl.types import CoreMessage
+from piltover.high_level import Client, MessageHandler
 from piltover.tl_new.functions.updates import GetState
 from piltover.tl_new.types.updates import State
 
@@ -9,8 +8,8 @@ handler = MessageHandler("auth")
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetState)
-async def get_state(client: Client, request: CoreMessage[GetState], session_id: int):
+@handler.on_request(GetState)
+async def get_state(client: Client, request: GetState):
     return State(
         pts=0,
         qts=0,

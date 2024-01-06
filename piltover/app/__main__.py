@@ -10,7 +10,7 @@ from tortoise import Tortoise
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels
 from piltover.db.models import AuthKey
-from piltover.server import Server
+from piltover.high_level import Server
 from piltover.types import Keys
 from piltover.utils import gen_keys, get_public_key_fingerprint
 
@@ -79,7 +79,7 @@ async def main():
         )
     )
 
-    pilt.register_handler(system.handler)
+    pilt.register_handler_low(system.handler)
     pilt.register_handler(help_.handler)
     pilt.register_handler(auth.handler)
     pilt.register_handler(updates.handler)

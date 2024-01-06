@@ -3,15 +3,16 @@ import re
 from piltover.app.utils import auth_required
 from piltover.db.models import User, UserAuthorization
 from piltover.exceptions import ErrorRpc
-from piltover.server import MessageHandler, Client
-from piltover.tl.types import CoreMessage
+from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, \
-    SecurePasswordKdfAlgoSHA512, AccountDaysTTL, AutoDownloadSettings, EmojiList
+    SecurePasswordKdfAlgoSHA512, AccountDaysTTL, EmojiList, \
+    AutoDownloadSettings
 from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
-    GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL
+    GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
+    SaveAutoDownloadSettings
 from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, \
     Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations
 
@@ -25,31 +26,28 @@ def validate_username(username: str) -> None:
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(CheckUsername)
-@auth_required
-async def check_username(client: Client, request: CoreMessage[CheckUsername], session_id: int, user: User):
-    validate_username(request.obj.username)
-    if await User.filter(username=request.obj.username).exists():
+@handler.on_request(CheckUsername, True)
+async def check_username(client: Client, request: CheckUsername, user: User):
+    validate_username(request.username)
+    if await User.filter(username=request.username).exists():
         raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
     return True
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(UpdateUsername)
-@auth_required
-async def update_username(client: Client, request: CoreMessage[UpdateUsername], session_id: int, user: User):
-    validate_username(request.obj.username)
-    if (target := await User.get_or_none(username__iexact=request.obj.username)) is not None:
+@handler.on_request(UpdateUsername, True)
+async def update_username(client: Client, request: UpdateUsername, user: User):
+    validate_username(request.username)
+    if (target := await User.get_or_none(username__iexact=request.username)) is not None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
 
-    await user.update(username=request.obj.username)
+    await user.update(username=request.username)
     return user.to_tl(user)
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetAuthorizations)
-@auth_required
-async def get_authorizations(client: Client, request: CoreMessage[GetAuthorizations], session_id: int, user: User):
+@handler.on_request(GetAuthorizations, True)
+async def get_authorizations(client: Client, request: GetAuthorizations, user: User):
     authorizations = await UserAuthorization.filter(user=user).select_related("key").all()
     authorizations = [auth.to_tl(current=int(auth.key.id) == client.auth_data.auth_key_id) for auth in authorizations]
 
@@ -57,40 +55,37 @@ async def get_authorizations(client: Client, request: CoreMessage[GetAuthorizati
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetAccountTTL)
-@auth_required
-async def get_account_ttl(client: Client, request: CoreMessage[GetAccountTTL], session_id: int, user: User):
+@handler.on_request(GetAccountTTL, True)
+async def get_account_ttl(client: Client, request: GetAccountTTL, user: User):
     return AccountDaysTTL(days=user.ttl_days)
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(SetAccountTTL)
-@auth_required
-async def set_account_ttl(client: Client, request: CoreMessage[SetAccountTTL], session_id: int, user: User):
-    if request.obj.ttl.days not in range(30, 366):
+@handler.on_request(SetAccountTTL, True)
+async def set_account_ttl(client: Client, request: SetAccountTTL, user: User):
+    if request.ttl.days not in range(30, 366):
         raise ErrorRpc(error_code=400, error_message="TTL_DAYS_INVALID")
-    await user.update(ttl_days=request.obj.ttl.days)
+    await user.update(ttl_days=request.ttl.days)
     return True
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(RegisterDevice_70)
-@handler.on_message(RegisterDevice)
-async def register_device(client: Client, request: CoreMessage[RegisterDevice], session_id: int):
-    print(request.obj)
+@handler.on_request(RegisterDevice_70)
+@handler.on_request(RegisterDevice)
+async def register_device(client: Client, request: RegisterDevice):
+    print(request)
     return True
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetContactSignUpNotification)
-async def get_contact_sign_up_notification(client: Client, request: CoreMessage[GetContactSignUpNotification],
-                                           session_id: int):
+@handler.on_request(GetContactSignUpNotification)
+async def get_contact_sign_up_notification(client: Client, request: GetContactSignUpNotification):
     return True
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetPassword)
-async def get_password(client: Client, request: CoreMessage[GetPassword], session_id: int):
+@handler.on_request(GetPassword)
+async def get_password(client: Client, request: GetPassword):
     return Password(
         has_password=False,
         new_algo=PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow(
@@ -107,8 +102,8 @@ async def get_password(client: Client, request: CoreMessage[GetPassword], sessio
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetPrivacy)
-async def get_privacy(client: Client, request: CoreMessage[GetPrivacy], session_id: int):
+@handler.on_request(GetPrivacy)
+async def get_privacy(client: Client, request: GetPrivacy):
     return PrivacyRules(
         rules=[],
         chats=[],
@@ -117,21 +112,20 @@ async def get_privacy(client: Client, request: CoreMessage[GetPrivacy], session_
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetThemes)
-async def get_themes(client: Client, request: CoreMessage[GetThemes], session_id: int):
+@handler.on_request(GetThemes)
+async def get_themes(client: Client, request: GetThemes):
     return Themes(hash=0, themes=[])
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetGlobalPrivacySettings)
-async def get_global_privacy_settings(client: Client, request: CoreMessage[GetGlobalPrivacySettings],
-                                      session_id: int):
+@handler.on_request(GetGlobalPrivacySettings)
+async def get_global_privacy_settings(client: Client, request: GetGlobalPrivacySettings):
     return GlobalPrivacySettings(archive_and_mute_new_noncontact_peers=True)
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetContentSettings)
-async def get_content_settings(client: Client, request: CoreMessage[GetContentSettings], session_id: int):
+@handler.on_request(GetContentSettings)
+async def get_content_settings(client: Client, request: GetContentSettings):
     return ContentSettings(
         sensitive_enabled=True,
         sensitive_can_change=True,
@@ -139,26 +133,25 @@ async def get_content_settings(client: Client, request: CoreMessage[GetContentSe
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(UpdateStatus)
-async def update_status(client: Client, request: CoreMessage[UpdateStatus], session_id: int):
+@handler.on_request(UpdateStatus)
+async def update_status(client: Client, request: UpdateStatus):
     return True
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(UpdateProfile)
-@auth_required
-async def update_profile(client: Client, request: CoreMessage[UpdateProfile], session_id: int, user: User):
+@handler.on_request(UpdateProfile, True)
+async def update_profile(client: Client, request: UpdateProfile, user: User):
     updates = {}
-    if request.obj.first_name is not None:
-        if len(request.obj.first_name) > 128 or not request.obj.first_name:
+    if request.first_name is not None:
+        if len(request.first_name) > 128 or not request.first_name:
             raise ErrorRpc(error_code=400, error_message="FIRSTNAME_INVALID")
-        updates["first_name"] = request.obj.first_name
-    if request.obj.last_name is not None:
-        updates["last_name"] = request.obj.last_name[:128]
-    if request.obj.about is not None:
-        if len(request.obj.about) > 240:
+        updates["first_name"] = request.first_name
+    if request.last_name is not None:
+        updates["last_name"] = request.last_name[:128]
+    if request.about is not None:
+        if len(request.about) > 240:
             raise ErrorRpc(error_code=400, error_message="ABOUT_TOO_LONG")
-        updates["about"] = request.obj.about
+        updates["about"] = request.about
 
     if updates:
         await user.update(**updates)
@@ -166,8 +159,8 @@ async def update_profile(client: Client, request: CoreMessage[UpdateProfile], se
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetNotifySettings)
-async def get_notify_settings(client: Client, request: CoreMessage[GetNotifySettings], session_id: int):
+@handler.on_request(GetNotifySettings)
+async def get_notify_settings(client: Client, request: GetNotifySettings):
     return PeerNotifySettings(
         show_previews=True,
         silent=False,
@@ -175,56 +168,91 @@ async def get_notify_settings(client: Client, request: CoreMessage[GetNotifySett
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetDefaultEmojiStatuses)
-async def get_default_emoji_statuses(client: Client, request: CoreMessage[GetDefaultEmojiStatuses],
-                                     session_id: int):
+@handler.on_request(GetDefaultEmojiStatuses)
+async def get_default_emoji_statuses(client: Client, request: GetDefaultEmojiStatuses):
     return EmojiStatuses(hash=0, statuses=[])
 
 
-@handler.on_message(GetSavedRingtones)
-async def get_saved_ringtones(client: Client, request: CoreMessage[GetSavedRingtones], session_id: int):
-    return SavedRingtones(hash=request.obj.hash, ringtones=[])
+# noinspection PyUnusedLocal
+@handler.on_request(GetSavedRingtones)
+async def get_saved_ringtones(client: Client, request: GetSavedRingtones):
+    return SavedRingtones(hash=request.hash, ringtones=[])
 
 
-@handler.on_message(GetAutoDownloadSettings)
-async def get_auto_download_settings(client: Client, request: CoreMessage[GetAutoDownloadSettings], session_id: int):
+# noinspection PyUnusedLocal
+@handler.on_request(GetAutoDownloadSettings)
+async def get_auto_download_settings(client: Client, request: GetAutoDownloadSettings):
     return AccAutoDownloadSettings(
         low=AutoDownloadSettings(
-            disabled=True,
-            photo_size_max=0,
+            disabled=False,
+            audio_preload_next=False,
+            phonecalls_less_data=True,
+            photo_size_max=1048576,
             video_size_max=0,
             file_size_max=0,
-            video_upload_maxbitrate=0,
+            video_upload_maxbitrate=50,
             small_queue_active_operations_max=0,
             large_queue_active_operations_max=0,
         ),
         medium=AutoDownloadSettings(
             disabled=False,
-            photo_size_max=1024 * 1024 * 1,
-            video_size_max=1024 * 1024 * 4,
-            file_size_max=1024 * 1024 * 4,
-            video_upload_maxbitrate=0,
+            audio_preload_next=True,
+            phonecalls_less_data=False,
+            photo_size_max=1048576,
+            video_size_max=10485760,
+            file_size_max=1048576,
+            video_upload_maxbitrate=100,
             small_queue_active_operations_max=0,
             large_queue_active_operations_max=0,
         ),
         high=AutoDownloadSettings(
-            disabled=True,
-            photo_size_max=1024 * 1024 * 4,
-            video_size_max=1024 * 1024 * 4,
-            file_size_max=1024 * 1024 * 4,
-            video_upload_maxbitrate=0,
+            disabled=False,
+            audio_preload_next=True,
+            phonecalls_less_data=False,
+            photo_size_max=1048576,
+            video_size_max=15728640,
+            file_size_max=3145728,
+            video_upload_maxbitrate=100,
             small_queue_active_operations_max=0,
             large_queue_active_operations_max=0,
         ),
     )
 
 
-@handler.on_message(GetDefaultProfilePhotoEmojis)
-async def get_default_profile_photo_emojis(client: Client, request: CoreMessage[GetDefaultProfilePhotoEmojis], session_id: int):
-    return EmojiList(hash=request.obj.hash, document_id=[])
+# noinspection PyUnusedLocal
+@handler.on_request(SaveAutoDownloadSettings)
+async def get_auto_download_settings(client: Client, request: SaveAutoDownloadSettings):
+    """
+    TODO: Seems like this function is doing nothing on official Telegram server??
+    Code used to test it:
+
+    settings_before = app.invoke(GetAutoDownloadSettings())
+    res = app.invoke(SaveAutoDownloadSettings(
+        settings=AutoDownloadSettings(
+            photo_size_max=1048577,
+            video_size_max=0,
+            file_size_max=0,
+            video_upload_maxbitrate=50,
+            disabled=True,
+        ),
+        low=True,
+        high=True,
+    ))
+    assert res  # Always True
+    settings_after = app.invoke(GetAutoDownloadSettings())
+    print(settings_before == settings_after)  # Always True
+    assert settings_before == settings_after
+    """
+    return True
 
 
-@handler.on_message(GetWebAuthorizations)
-@auth_required
-async def get_web_authorizations(client: Client, request: CoreMessage[GetWebAuthorizations], session_id: int, user: User):
+# noinspection PyUnusedLocal
+@handler.on_request(GetDefaultProfilePhotoEmojis)
+async def get_default_profile_photo_emojis(client: Client, request: GetDefaultProfilePhotoEmojis):
+    return EmojiList(hash=request.hash, document_id=[])
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(GetWebAuthorizations, True)
+async def get_web_authorizations(client: Client, request: GetWebAuthorizations, user: User):
     return WebAuthorizations(authorizations=[], users=user.to_tl(user))
