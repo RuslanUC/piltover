@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from asyncio import StreamReader, StreamWriter
 from typing import Any
 
+import tgcrypto
 from loguru import logger
 
 from piltover.exceptions import Disconnection
@@ -57,3 +60,26 @@ class BufferedStream:
 
     def get_extra_info(self, name: str, default: Any = ...) -> Any:
         return self.writer.get_extra_info(name=name, default=default)
+
+
+class ObfuscatedStream(BufferedStream):
+    def __init__(self, reader: StreamReader, writer: StreamWriter, encrypt: tuple[bytes, bytes, bytearray],
+                 decrypt: tuple[bytes, bytes, bytearray]):
+        super().__init__(reader, writer)
+        self.encrypt = encrypt
+        self.decrypt = decrypt
+
+    @classmethod
+    def from_stream(cls, stream: BufferedStream, encrypt: tuple[bytes, bytes, bytearray],
+                    decrypt: tuple[bytes, bytes, bytearray]) -> ObfuscatedStream:
+        obf_stream = ObfuscatedStream(stream.reader, stream.writer, encrypt, decrypt)
+        obf_stream.buf = stream.buf
+        return obf_stream
+
+    async def read(self, n: int = ...) -> bytes:
+        data = await super().read(n)
+        return tgcrypto.ctr256_decrypt(data, *self.encrypt)
+
+    def write(self, data: bytes) -> None:
+        data = tgcrypto.ctr256_encrypt(data, *self.decrypt)
+        super().write(data)

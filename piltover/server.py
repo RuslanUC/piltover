@@ -11,7 +11,6 @@ from types import SimpleNamespace
 from typing import Callable, Awaitable, Optional, cast
 
 import tgcrypto
-from icecream import ic
 from loguru import logger
 
 from piltover.connection import Connection
@@ -230,6 +229,10 @@ class Client:
             )
         )
 
+    async def send_unencrypted(self, obj: TLObject) -> None:
+        obj = obj.write()
+        await self.conn.send(bytes(8) + Long.write(self.msg_id(in_reply=True)) + Int.write(len(obj)) + obj)
+
     async def handle_unencrypted_message(self, obj: TLObject):
         if isinstance(obj, (ReqPqMulti, ReqPq)):
             req_pq_multi = obj
@@ -247,24 +250,16 @@ class Client:
             assert p != q
 
             pq = self.auth_data.p * self.auth_data.q
-            ic(p, q, pq)
+            # ic(p, q, pq)
 
             self.auth_data.server_nonce = int.from_bytes(secrets.token_bytes(128 // 8), byteorder="big")
 
-            res_pq = ResPQ(
+            await self.send_unencrypted(ResPQ(
                 nonce=req_pq_multi.nonce,
                 server_nonce=self.auth_data.server_nonce,
-                pq=pq.to_bytes(64 // 8, "big", signed=False),
+                pq=pq.to_bytes(64 // 8, "big"),
                 server_public_key_fingerprints=[self.server.fingerprint]
-            )
-            res_pq = res_pq.write()
-
-            await self.conn.send(
-                bytes(8)
-                + Long.write(self.msg_id(in_reply=True))
-                + Int.write(len(res_pq))
-                + res_pq
-            )
+            ))
         elif isinstance(obj, ReqDHParams):
             assert self.auth_data
 
@@ -357,19 +352,11 @@ class Client:
                 self.auth_data.tmp_aes_iv,
             )
 
-            server_dh_params_ok = ServerDHParamsOk(
+            await self.send_unencrypted(ServerDHParamsOk(
                 nonce=p_q_inner_data.nonce,
                 server_nonce=p_q_inner_data.server_nonce,
                 encrypted_answer=encrypted_answer,
-            )
-            server_dh_params_ok = server_dh_params_ok.write()
-
-            await self.conn.send(
-                bytes(8)
-                + Long.write(self.msg_id(in_reply=True))
-                + Int.write(len(server_dh_params_ok))
-                + server_dh_params_ok
-            )
+            ))
         elif isinstance(obj, SetClientDHParams):
             assert self.auth_data
             assert hasattr(self.auth_data, "tmp_aes_key")
@@ -393,22 +380,13 @@ class Client:
             auth_key_hash = auth_key_digest[-8:]
             auth_key_aux_hash = auth_key_digest[:8]
 
-            dh_gen_ok = DhGenOk(
+            await self.send_unencrypted(DhGenOk(
                 nonce=client_DH_inner_data.nonce,
                 server_nonce=self.auth_data.server_nonce,
                 new_nonce_hash1=int.from_bytes(
-                    hashlib.sha1(self.auth_data.new_nonce + bytes([1]) + auth_key_aux_hash).digest()[-16:],
-                    "little",
-                ),
-            )
-            dh_gen_ok = dh_gen_ok.write()
-
-            await self.conn.send(
-                bytes(8)
-                + Long.write(self.msg_id(in_reply=True))
-                + Int.write(len(dh_gen_ok))
-                + dh_gen_ok
-            )
+                    hashlib.sha1(self.auth_data.new_nonce + bytes([1]) + auth_key_aux_hash).digest()[-16:], "little"
+                )
+            ))
 
             self.auth_data.auth_key_id = read_int(auth_key_hash)
             await self.server.register_auth_key(
@@ -521,7 +499,7 @@ class Client:
             got = await self.server.get_auth_key(message.auth_key_id)
             if got is None:
                 # TODO: 401 AUTH_KEY_UNREGISTERED
-                assert False, "FATAL: self.auth_key is None"
+                assert False, f"FATAL: self.auth_key is None, {message}"
             # self.auth_data.auth_key = auth_key[0]
             self.auth_data = SimpleNamespace()
             self.auth_data.auth_key_id, self.auth_data.auth_key = got
@@ -611,7 +589,8 @@ class Client:
             return CoreMessage(message_id=msg.message_id, seq_no=msg.seq_no, obj=msg.obj)
         return msg
 
-    async def propagate(self, request: CoreMessage | Message, session_id: int) -> None | list[tuple[TLObject, CoreMessage]] | TLObject:
+    async def propagate(self, request: CoreMessage | Message, session_id: int) -> None | list[
+        tuple[TLObject, CoreMessage]] | TLObject:
         if isinstance(request.obj, MsgContainer):
             results = []
             for msg in request.obj.messages:

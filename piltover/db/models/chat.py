@@ -39,7 +39,7 @@ class Chat(Model):
 
     @staticmethod
     async def get_private(user1: models.User, user2: models.User | None = None) -> Chat | None:
-        if user2 is None:
+        if user2 is None or user1 == user2:
             return await Chat.get_or_none(type=ChatType.SAVED, dialogs__user__id=user1.id)
         return await (Chat.get_or_none(type=ChatType.PRIVATE, dialogs__user__id__in=[user1.id, user2.id])
                       .annotate(user_count=Count("dialogs__user__id", distinct=True))
@@ -49,8 +49,8 @@ class Chat(Model):
     @staticmethod
     async def get_or_create_private(user1: models.User, user2: models.User | None = None) -> Chat:
         chat = await Chat.get_private(user1, user2)
-        if chat is not None:
-            chat = await Chat.create(type=ChatType.PRIVATE if user2 is not None else ChatType.SAVED)
+        if chat is None:
+            chat = await Chat.create(type=ChatType.PRIVATE if user2 is not None or user1 == user2 else ChatType.SAVED)
             await models.Dialog.create(user=user1, chat=chat)
             if user2 is not None:
                 await models.Dialog.create(user=user2, chat=chat)
