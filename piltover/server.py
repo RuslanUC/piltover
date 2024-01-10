@@ -96,6 +96,25 @@ class Server:
 
     @logger.catch
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        #if os.getenv("STREAM_RECORD") == "1":
+        #    _old_read = reader.read
+        #    _old_close = writer.close
+        #    os.makedirs("data/records", exist_ok=True)
+        #    out_file = open(f"data/records/{int(time.time() * 1000)}.bin", "wb")
+
+        #    async def _read(n=-1):
+        #        data = await _old_read(n)
+        #        out_file.write(data)
+        #        return data
+
+        #    def _close():
+        #        out_file.close()
+        #        _old_close()
+
+        #    setattr(reader, "_out_file", out_file.name)
+        #    reader.read = _read
+        #    writer.close = _close
+
         try:
             # Check the transport: https://core.telegram.org/mtproto/mtproto-transports
 

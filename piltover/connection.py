@@ -9,6 +9,8 @@ from piltover.utils.buffered_stream import BufferedStream, ObfuscatedStream
 
 
 class Connection(ABC):
+    stream: BufferedStream
+
     @staticmethod
     def new(transport: Transport, stream: BufferedStream) -> "Connection":
         MODES = {
@@ -53,24 +55,21 @@ class TCPAbridged(Connection):
 
         if length >= 0x7F:  # 127
             self.stream.write(b"\x7f")
-            self.stream.write(length.to_bytes(3, byteorder="little", signed=False))
+            self.stream.write(length.to_bytes(3, byteorder="little"))
         else:
-            self.stream.write(length.to_bytes(1, byteorder="little", signed=False))
+            self.stream.write(length.to_bytes(1, byteorder="little"))
 
         self.stream.write(data)
         await self.stream.drain()
 
     async def recv(self) -> bytes:
-        header = await self.stream.read(1)
+        length = await self.stream.read(1)
+        #needQuickAck = (length[0] >> 7) == 1
 
-        length = int.from_bytes(header, byteorder="little")
+        if length[0] & 0x7F == 0x7F:
+            length = await self.stream.read(3)
 
-        # assert length != 0, "Received packet length=0"
-        if length >= 0x7F:  # 127
-            length = int.from_bytes(await self.stream.read(3), byteorder="little")
-
-        length *= 4
-
+        length = int.from_bytes(length, "little") * 4
         return await self.stream.read(length)
 
     async def close(self):
@@ -153,17 +152,16 @@ class TCPObfuscated(Connection):
         self.stream = stream
         self.conn: Connection | None = None
 
-    # noinspection PyAttributeOutsideInit
     async def init(self) -> Connection:
-        self.nonce = await self.stream.read(64)
-        temp = self.nonce[8:56][::-1]
-        self.encrypt = (self.nonce[8:40], self.nonce[40:56], bytearray(1))
-        self.decrypt = (temp[0:32], temp[32:48], bytearray(1))
-        decrypted = tgcrypto.ctr256_decrypt(self.nonce, *self.encrypt)
+        nonce = await self.stream.read(64)
+        temp = nonce[8:56][::-1]
+        encrypt = (nonce[8:40], nonce[40:56], bytearray(1))
+        decrypt = (temp[0:32], temp[32:48], bytearray(1))
+        decrypted = tgcrypto.ctr256_decrypt(nonce, *encrypt)
 
         header = decrypted[56:56 + 4]
 
-        obf_stream = ObfuscatedStream.from_stream(self.stream, self.encrypt, self.decrypt)
+        obf_stream = ObfuscatedStream.from_stream(self.stream, encrypt, decrypt)
         if header == b"\xef\xef\xef\xef":
             return TCPAbridgedObfuscated(obf_stream)
         elif header == b"\xee\xee\xee\xee":

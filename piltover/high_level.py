@@ -16,7 +16,6 @@ from piltover.tl_new.primitives.types_ import MsgContainer, RpcResult
 from piltover.utils import background
 from piltover.utils.buffered_stream import BufferedStream
 
-
 HandlerFunc = (Callable[["Client", TLObject], Awaitable[TLObject | dict | None]] |
                Callable[["Client", TLObject, User], Awaitable[TLObject | dict | None]])
 
