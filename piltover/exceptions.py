@@ -4,7 +4,7 @@ class Error(Exception):
 
 class Disconnection(Error):
     def __init__(self, error: int | None = None):
-        if error > 0:
+        if error is not None and error > 0:
             error *= -1
         self.transport_error = error
 
