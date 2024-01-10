@@ -1,15 +1,16 @@
 from time import time
 
-from piltover.app.updates import get_state
+from tortoise.expressions import Subquery
+
+from piltover.app.account import username_regex_no_len
+from piltover.app.updates import get_state_internal
 from piltover.db.enums import ChatType
 from piltover.db.models import User, Chat, Dialog
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import WebPageEmpty, StickerSet, \
-    AttachMenuBots, \
-    DefaultHistoryTTL, Updates, InputPeerUser, UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, \
-    EmojiKeywordsDifference
+from piltover.tl_new import WebPageEmpty, StickerSet, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
+    UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -18,8 +19,8 @@ from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableRea
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages
 from piltover.tl_new.types.messages import AvailableReactions, PeerSettings, Messages, PeerDialogs, AffectedMessages, \
-    StickerSet as MsgStickerSet, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, FeaturedStickers, \
-    FavedStickers, ArchivedStickers, AllStickers
+    StickerSet as MsgStickerSet, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
+    FavedStickers, ArchivedStickers, FeaturedStickers
 
 handler = MessageHandler("messages")
 
@@ -179,6 +180,7 @@ async def get_recent_reactions(client: Client, request: GetRecentReactions):
     return Reactions(hash=0, reactions=[])
 
 
+# noinspection PyUnusedLocal
 async def get_dialogs_internal(peers: list | None, user: User):
     # TODO: get dialogs by peers
 
@@ -208,11 +210,12 @@ async def get_dialogs(client: Client, request: GetDialogs, user: User):
     return Dialogs(**(await get_dialogs_internal(None, user)))
 
 
+# noinspection PyUnusedLocal
 @handler.on_request(GetPeerDialogs, True)
 async def get_peer_dialogs(client: Client, request: GetPeerDialogs, user: User):
     return PeerDialogs(
         **(await get_dialogs_internal(request.peers, user)),
-        state=await get_state(client, request, -1)
+        state=await get_state_internal()
     )
 
 
@@ -226,6 +229,7 @@ async def get_attach_menu_bots(client: Client, request: GetAttachMenuBots):
     )
 
 
+# noinspection PyUnusedLocal
 @handler.on_request(GetPinnedDialogs)
 async def get_pinned_dialogs(client: Client, request: GetPinnedDialogs):
     return PeerDialogs(
@@ -233,7 +237,7 @@ async def get_pinned_dialogs(client: Client, request: GetPinnedDialogs):
         messages=[],
         chats=[],
         users=[],
-        state=await get_state(client, request, -1),
+        state=await get_state_internal(),
     )
 
 
@@ -323,12 +327,26 @@ async def get_faved_stickers(client: Client, request: GetFavedStickers):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(SearchGlobal)
-async def search_global(client: Client, request: SearchGlobal):
+@handler.on_request(SearchGlobal, True)
+async def search_global(client: Client, request: SearchGlobal, user: User):
+    messages = []
+    users = []
+
+    q = user_q = request.q
+    if q.startswith("@"):
+        user_q = q[1:]
+    if username_regex_no_len.match(user_q):
+        users = await User.filter(username__istartswith=user_q).limit(10)
+
+    messages = await Message.filter(
+        chat__id__in=Subquery(Dialog.filter(user=user).values_list("chat_id", flat=True)),
+        message__istartswith=q,
+    ).select_related("chat", "author").order_by("-date").limit(10)
+
     return Messages(
-        messages=[],
+        messages=[await message.to_tl(user) for message in messages],
         chats=[],
-        users=[],
+        users=[oth_user.to_tl(user) for oth_user in users],
     )
 
 

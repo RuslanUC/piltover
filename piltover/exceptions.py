@@ -3,7 +3,10 @@ class Error(Exception):
 
 
 class Disconnection(Error):
-    pass
+    def __init__(self, error: int | None = None):
+        if error > 0:
+            error *= -1
+        self.transport_error = error
 
 
 class ErrorRpc(Error):

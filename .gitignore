@@ -4,6 +4,7 @@ venv
 !.github/
 data/secrets/
 data/migrations/
+data/records/
 
 !.gitignore
 

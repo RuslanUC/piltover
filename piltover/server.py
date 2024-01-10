@@ -3,7 +3,6 @@ import hashlib
 import os
 import secrets
 import time
-import traceback
 from asyncio import Task
 from collections import defaultdict
 from io import BytesIO
@@ -87,7 +86,6 @@ class Server:
 
         self.clients: dict[str, Client] = {}
         self.handlers: defaultdict[
-            # TODO incorporate the session_id, perhaps into a contextvar
             int,
             set[Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]],
         ] = defaultdict(set)
@@ -96,25 +94,6 @@ class Server:
 
     @logger.catch
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        #if os.getenv("STREAM_RECORD") == "1":
-        #    _old_read = reader.read
-        #    _old_close = writer.close
-        #    os.makedirs("data/records", exist_ok=True)
-        #    out_file = open(f"data/records/{int(time.time() * 1000)}.bin", "wb")
-
-        #    async def _read(n=-1):
-        #        data = await _old_read(n)
-        #        out_file.write(data)
-        #        return data
-
-        #    def _close():
-        #        out_file.close()
-        #        _old_close()
-
-        #    setattr(reader, "_out_file", out_file.name)
-        #    reader.read = _read
-        #    writer.close = _close
-
         try:
             # Check the transport: https://core.telegram.org/mtproto/mtproto-transports
 
@@ -140,9 +119,6 @@ class Server:
                 # 0xdddddddd
                 assert await stream.read(3) == b"\xdd\xdd\xdd", "Invalid TCP Intermediate header"
                 transport = Transport.PaddedIntermediate
-            # else:
-            #     # TCP Full, obfuscation
-            #     assert False, "TCP Full, transport obfuscation not supported"
             else:
                 # The seq_no in TCPFull always starts with 0, so we can recognize
                 # the transport and distinguish it from obfuscated ones (starting with 64 random bytes)
@@ -517,16 +493,15 @@ class Client:
         if self.auth_data is None or not hasattr(self.auth_data, "auth_key"):
             got = await self.server.get_auth_key(message.auth_key_id)
             if got is None:
-                # TODO: 401 AUTH_KEY_UNREGISTERED
-                assert False, f"FATAL: self.auth_key is None, {message}"
-            # self.auth_data.auth_key = auth_key[0]
+                logger.info("Client sent unknown auth_key_id, disconnecting")
+                raise Disconnection(404)
             self.auth_data = SimpleNamespace()
             self.auth_data.auth_key_id, self.auth_data.auth_key = got
 
         aes_key, aes_iv = kdf(self.auth_data.auth_key, message.msg_key, True)
 
         decrypted = BytesIO(tgcrypto.ige256_decrypt(message.encrypted_data, aes_key, aes_iv))
-        salt = decrypted.read(8)  # Salt
+        salt = decrypted.read(8)
         session_id = Long.read(decrypted)
         message_id = Long.read(decrypted)
         seq_no = Int.read(decrypted)
@@ -559,8 +534,10 @@ class Client:
                     await self.recv()
                 except AssertionError:
                     logger.exception("Unexpected failed assertion", backtrace=True)
-                # TODO: except invalid constructor id, raise INPUT_CONSTRUCTOR_INVALID_5EEF0214 (e.g.)
-        except Disconnection:
+        except Disconnection as err:
+            if err.transport_error is not None:
+                await self.conn.send(int.to_bytes(err.transport_error, 4, "little", signed=True))
+            await self.conn.close()
             logger.info("Client disconnected")
         finally:
             # Cleanup tasks: client disconnected, or an error occurred
@@ -639,8 +616,7 @@ class Client:
                     if error is None:
                         error = RpcError(error_code=e.error_code, error_message=e.error_message)
                 except Exception as e:
-                    traceback.print_exception(e)
-                    # logger.warning(e)
+                    logger.warning(e)
                     if error is None:
                         error = RpcError(error_code=500, error_message="Server error")
 

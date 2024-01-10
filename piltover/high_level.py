@@ -105,6 +105,7 @@ class Client(LowClient):
                     if result is not None:
                         break
                 except Exception as e:
+                    logger.warning("Error while processing {obj}: {err}", obj=request.obj.tlname(), err=e)
                     if error is not None:
                         continue
 

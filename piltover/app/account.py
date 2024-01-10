@@ -18,6 +18,7 @@ from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings
 
 handler = MessageHandler("account")
 username_regex = re.compile(r'[a-zA-z0-9_]{5,32}')
+username_regex_no_len = re.compile(r'[a-zA-z0-9_]{1,32}')
 
 
 def validate_username(username: str) -> None:
