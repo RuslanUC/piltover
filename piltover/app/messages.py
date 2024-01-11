@@ -11,14 +11,14 @@ from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
-    InputDialogPeer
+    InputDialogPeer, UpdateEditMessage
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
     ReorderPinnedDialogs, GetStickers, GetSearchCounters, Search, GetSearchResultsPositions, GetDefaultHistoryTTL, \
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
-    GetEmojiKeywords, DeleteMessages, GetWebPagePreview
+    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage
 from piltover.tl_new.types.messages import AvailableReactions, PeerSettings, Messages, PeerDialogs, AffectedMessages, \
     Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers
@@ -106,17 +106,11 @@ async def get_history(client: Client, request: GetHistory, user: User):
 # noinspection PyUnusedLocal
 @handler.on_request(SendMessage, True)
 async def send_message(client: Client, request: SendMessage, user: User):
-    if isinstance(request.peer, InputPeerUser) and request.peer.user_id == user.id:
-        request.peer = InputPeerSelf()
+    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
+        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
 
-    if isinstance(request.peer, InputPeerSelf):
-        chat = await Chat.get_or_create_private(user)
-    elif isinstance(request.peer, InputPeerUser):
-        if (to_user := await User.get_or_none(id=request.peer.user_id)) is None:
-            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-        chat = await Chat.get_or_create_private(user, to_user)
-    else:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
+    if not request.message:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
 
     message = await Message.create(message=request.message, author=user, chat=chat)
 
@@ -377,3 +371,31 @@ async def delete_messages(client: Client, request: DeleteMessages):
 @handler.on_request(GetWebPagePreview)
 async def get_webpage_preview(client: Client, request: GetWebPagePreview):
     return WebPageEmpty(id=0)
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(EditMessage, True)
+async def edit_message(client: Client, request: EditMessage, user: User):
+    if (chat := await Chat.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if (message := await Message.get_or_none(chat=chat, id=request.id).select_related("chat", "author")) is None:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
+
+    if not request.message:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
+    if message.author != user:
+        raise ErrorRpc(error_code=403, error_message="MESSAGE_AUTHOR_REQUIRED")
+    if message.message == request.message:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
+
+    await message.update(message=request.message)
+
+    return Updates(
+        updates=[UpdateEditMessage(message=await message.to_tl(user), pts=1, pts_count=1)],
+        users=[user.to_tl(user)],
+        chats=[],
+        date=int(time()),
+        seq=1,
+    )
+

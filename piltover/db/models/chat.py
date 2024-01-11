@@ -6,7 +6,8 @@ from tortoise.functions import Count
 from piltover.db import models
 from piltover.db.enums import ChatType
 from piltover.db.models._utils import Model
-from piltover.tl_new import PeerUser
+from piltover.exceptions import ErrorRpc
+from piltover.tl_new import PeerUser, InputPeerUser as TLInputPeerUser, InputPeerSelf as TLInputPeerSelf
 
 
 class Chat(Model):
@@ -54,5 +55,23 @@ class Chat(Model):
             await models.Dialog.create(user=user1, chat=chat)
             if user2 is not None:
                 await models.Dialog.create(user=user2, chat=chat)
+
+        return chat
+
+    @classmethod
+    async def from_input_peer(
+            cls, user: models.User, peer: TLInputPeerUser | TLInputPeerSelf, create: bool = False
+    ) -> Chat | None:
+        if isinstance(peer, TLInputPeerUser) and peer.user_id == user.id:
+            peer = TLInputPeerSelf()
+
+        if isinstance(peer, TLInputPeerSelf):
+            chat = await Chat.get_or_create_private(user) if create else await Chat.get_private(user)
+        elif isinstance(peer, TLInputPeerUser):
+            if (to_user := await models.User.get_or_none(id=peer.user_id)) is None:
+                raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+            chat = await Chat.get_or_create_private(user, to_user) if create else await Chat.get_private(user, to_user)
+        else:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
         return chat
