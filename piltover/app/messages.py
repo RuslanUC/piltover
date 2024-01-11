@@ -9,17 +9,18 @@ from piltover.db.models import User, Chat, Dialog
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import WebPageEmpty, StickerSet, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
-    UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference
+from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
+    UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
+    InputDialogPeer
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
     ReorderPinnedDialogs, GetStickers, GetSearchCounters, Search, GetSearchResultsPositions, GetDefaultHistoryTTL, \
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
-    GetEmojiKeywords, DeleteMessages
+    GetEmojiKeywords, DeleteMessages, GetWebPagePreview
 from piltover.tl_new.types.messages import AvailableReactions, PeerSettings, Messages, PeerDialogs, AffectedMessages, \
-    StickerSet as MsgStickerSet, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
+    Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers
 
 handler = MessageHandler("messages")
@@ -151,21 +152,7 @@ async def get_web_page(client: Client, request: GetWebPage):
 # noinspection PyUnusedLocal
 @handler.on_request(GetStickerSet)
 async def get_sticker_set(client: Client, request: GetStickerSet):
-    import random
-    return MsgStickerSet(
-        set=StickerSet(
-            official=True,
-            id=random.randint(1000000, 9000000),
-            access_hash=random.randint(1000000, 9000000),
-            title="Picker Stack",
-            short_name=random.randbytes(5).hex(),
-            count=0,
-            hash=0,
-        ),
-        packs=[],
-        keywords=[],
-        documents=[],
-    )
+    raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
 
 # noinspection PyUnusedLocal
@@ -181,7 +168,7 @@ async def get_recent_reactions(client: Client, request: GetRecentReactions):
 
 
 # noinspection PyUnusedLocal
-async def get_dialogs_internal(peers: list | None, user: User):
+async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User):
     # TODO: get dialogs by peers
 
     dialogs = await Dialog.filter(user=user).select_related("user", "chat").all()
@@ -353,7 +340,7 @@ async def search_global(client: Client, request: SearchGlobal, user: User):
 # noinspection PyUnusedLocal
 @handler.on_request(GetCustomEmojiDocuments)
 async def get_custom_emoji_documents(client: Client, request: GetCustomEmojiDocuments):
-    return []
+    return [DocumentEmpty(id=doc) for doc in request.document_id]
 
 
 # noinspection PyUnusedLocal
@@ -384,3 +371,9 @@ async def get_emoji_keywords(client: Client, request: GetEmojiKeywords):
 @handler.on_request(DeleteMessages)
 async def delete_messages(client: Client, request: DeleteMessages):
     return AffectedMessages(pts=0, pts_count=0)
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(GetWebPagePreview)
+async def get_webpage_preview(client: Client, request: GetWebPagePreview):
+    return WebPageEmpty(id=0)

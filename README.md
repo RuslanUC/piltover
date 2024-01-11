@@ -11,14 +11,14 @@ chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
 - [x] ~~A Websocket proxy for Telegram Web (WebZ / WebK). A work in progress
       temporary implementation is in `tools/websocket_proxy.js`~~
 - [ ] Updates handling: `pts`, `qts`, etc.
-- [ ] Refactor the TL de/serialization module since the code is messy (e.g. make
+- [x] Refactor the TL de/serialization module since the code is messy (e.g. make
       custom boxed types for list/int/str/bytes).
 - [x] ~~Support multiple server keys to automatically switch to
       [RSA_PAD](https://core.telegram.org/mtproto/auth_key#presenting-proof-of-work-server-authentication)
       for official clients, whilst keeping clients like Pyrogram/Telethon
       working with the old method. Currently handled manually in `server.py`:
       `old = False`~~
-- [ ] Support TL from multiple layers, and layer-based handlers. Add fallbacks
+- [x] Support TL from multiple layers, and layer-based handlers. Add fallbacks
       eventually.
 - [ ] Add a `tests/` directory with patched assertions from client libraries.
 - [ ] Use custom exceptions instead of Python assertions: `assert` statements
@@ -40,7 +40,7 @@ For now, it can be used by MTProto clients developers to understand why their
 code fails, whereas Telegram just closes the connection with a -404 error code.
 
 That being said, it is planned in future to make it usable for most basic
-Telegram featues, including but not limited to, sending and receiving text and
+Telegram features, including but not limited to, sending and receiving text and
 media messages, media, search.
 
 This can be really useful for bots developers that would like to have a testing
@@ -140,7 +140,7 @@ At this point, two files should have been generated in your directory. Namely,
 `data/secrets/privkey.asc` and `data/secrets/pubkey.asc`. Keep in mind that some
 clients might need the PKCS1 public key in the normal ascii format.
 
-Some others like pyrogram, do not have a RSA key parser and hardcode the
+Some others like pyrogram, do not have an RSA key parser and hardcode the
 number/exponent. To extract it, you can use
 [this command](https://github.com/pyrogram/pyrogram/blob/b19764d5dc9e2d59a4ccbb7f520f78505800656b/pyrogram/crypto/rsa.py#L26):
 
@@ -151,7 +151,7 @@ $ grep -v -- - data/secrets/pubkey.asc | tr -d \\n | base64 -d | openssl asn1par
 An example output would look like this:
 
 ```yml
-  0:d=0  hl=4 l= 266 cons: SEQUENCE          
+  0:d=0  hl=4 l= 266 cons:  SEQUENCE          
   4:d=1  hl=4 l= 257 prim:  INTEGER           :C3AE9457FDB44F47B91B9389401933F2D0B27357FE116ED7640798784829FDBC66295169D1D323AB664FD6920EFBAAC8725DA7EACAA491D1F1EEC8259CA68E4CFE86FC6823C903A323DE46C0E64B8DD5C93A188711C1BF78FCBE0C99904227A66C9135241DD8B92A0AD88AB3A6734BC13B57FA38614BB2AA79F3EF0920D577928F7E689B7B5B0A1A8A48DA9D7E4C28F2A8F1AAEDA22AC4DA05324C1CB67538ADFE1AC3201B34A85189B0765E6C79FF443433837B540D6295BF9EE95B8CDA709868C450BE9730C9FCC7442011129AFB45187C2A1913A4974709E9666865C4F06067E981BF57950A0395B45C3A7322FD36F77D803FF97897BC00D5687A3CB575D1
 265:d=1  hl=2 l=   3 prim:  INTEGER           :010001
 ```
@@ -208,9 +208,9 @@ those values for later.**
     the newlines thoroughly and make sure they are there, or it won't work.
 - Build the program, ideally with GitHub Actions
 - Put the executable in a folder, e.g. `tdesk`
-- Since we don't save the auth keys, you should delete the leftover files from
+- ~~Since we don't save the auth keys, you should delete the leftover files from
   tdesktop at every run. You can do this conveniently and run your custom
-  TDesktop with this command:
+  TDesktop with this command:~~
 
 ```shell
 $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram

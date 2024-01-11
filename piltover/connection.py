@@ -63,13 +63,14 @@ class TCPAbridged(Connection):
         await self.stream.drain()
 
     async def recv(self) -> bytes:
-        length = await self.stream.read(1)
+        length = (await self.stream.read(1))[0]
         #needQuickAck = (length[0] >> 7) == 1
 
-        if length[0] & 0x7F == 0x7F:
-            length = await self.stream.read(3)
+        length &= 0x7F
+        if length & 0x7F == 0x7F:
+            length = int.from_bytes(await self.stream.read(3), "little")
 
-        length = int.from_bytes(length, "little") * 4
+        length *= 4
         return await self.stream.read(length)
 
     async def close(self):

@@ -18,7 +18,7 @@ async def proxy(websocket: WebSocketServerProtocol):
 
         async def remote_to_local():
             while True:
-                data = await reader.read()
+                data = await reader.read(1024)
                 await websocket.send(data)
 
         async def local_to_remote():

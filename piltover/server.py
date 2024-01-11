@@ -409,6 +409,7 @@ class Client:
         if isinstance(message, EncryptedMessage):
             # TODO: kick clients sending encrypted messages with invalid auth_key/(auth_key_id?)
             decrypted = await self.decrypt(message)
+            # TODO: check message_id, session_id
             core_message = decrypted.to_core_message()
             logger.debug(core_message)
             await self.handle_encrypted_message(core_message, decrypted.session_id)
@@ -451,8 +452,6 @@ class Client:
         else:
             container = MsgContainer(messages=[])
             for obj, core_message in objects:
-                serialized = obj.write()
-
                 # TODO what if there is no core_message (rename it to originating_request too)
                 if self.is_content_related(obj):
                     msg_id = self.msg_id(in_reply=True)
@@ -470,7 +469,7 @@ class Client:
                 Long.write(self.server.salt)
                 + Long.write(session_id)
                 + Long.write(self.msg_id(in_reply=True))
-                + self.get_outgoing_seq_no(final_obj, session_id).to_bytes(4, "little")
+                + Int.write(self.get_outgoing_seq_no(final_obj, session_id))
                 + len(serialized).to_bytes(4, "little")
                 + serialized
         )
@@ -549,9 +548,6 @@ class Client:
         return isinstance(obj, (Ping, Pong, HttpWait, MsgsAck, MsgContainer))
 
     def msg_id(self, in_reply: bool) -> int:
-        # credits to pyrogram
-        # about msg_id:
-        # https://core.telegram.org/mtproto/description#message-identifier-msg-id
         # Client message identifiers are divisible by 4, server message
         # identifiers modulo 4 yield 1 if the message is a response to
         # a client message, and 3 otherwise.
