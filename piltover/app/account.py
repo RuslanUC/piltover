@@ -1,6 +1,5 @@
 import re
 
-from piltover.app.utils import auth_required
 from piltover.db.models import User, UserAuthorization
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
@@ -43,7 +42,7 @@ async def update_username(client: Client, request: UpdateUsername, user: User):
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
 
     await user.update(username=request.username)
-    return user.to_tl(user)
+    return await user.to_tl(user)
 
 
 # noinspection PyUnusedLocal
@@ -156,7 +155,7 @@ async def update_profile(client: Client, request: UpdateProfile, user: User):
 
     if updates:
         await user.update(**updates)
-    return user.to_tl(user)
+    return await user.to_tl(user)
 
 
 # noinspection PyUnusedLocal
@@ -256,4 +255,4 @@ async def get_default_profile_photo_emojis(client: Client, request: GetDefaultPr
 # noinspection PyUnusedLocal
 @handler.on_request(GetWebAuthorizations, True)
 async def get_web_authorizations(client: Client, request: GetWebAuthorizations, user: User):
-    return WebAuthorizations(authorizations=[], users=user.to_tl(user))
+    return WebAuthorizations(authorizations=[], users=await user.to_tl(user))

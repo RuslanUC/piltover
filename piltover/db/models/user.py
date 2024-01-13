@@ -2,6 +2,7 @@ from __future__ import annotations
 from tortoise import fields
 
 from piltover.db import models
+from piltover.tl_new import UserProfilePhotoEmpty
 from piltover.tl_new.types.user import User as TLUser
 from piltover.db.models._utils import Model
 
@@ -16,7 +17,7 @@ class User(Model):
     about: str | None = fields.CharField(max_length=240, null=True, default=None)
     ttl_days: int = fields.IntField(default=365)
 
-    def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
+    async def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
         defaults = {
             "contact": False,
             "mutual_contact": False,
@@ -35,6 +36,12 @@ class User(Model):
             "access_hash": 0,
         } | kwargs
 
+        photo = UserProfilePhotoEmpty()
+        if await models.UserPhoto.filter(user=self).exists():
+            photo = (await models.UserPhoto.get_or_none(user=self, current=True) or
+                     await models.UserPhoto.filter(user=self).order_by("-id").first())
+            photo = photo.to_tl(current_user)
+
         return TLUser(
             **defaults,
             id=self.id,
@@ -44,4 +51,5 @@ class User(Model):
             phone=self.phone_number,
             lang_code=self.lang_code,
             is_self=self == current_user,
+            photo=photo,
         )

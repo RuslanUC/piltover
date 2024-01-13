@@ -11,3 +11,4 @@ from .uploading_file import UploadingFile, UploadingFilePart
 from .file import File
 from .file_access import FileAccess
 from .message_media import MessageMedia
+from .user_photo import UserPhoto

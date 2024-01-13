@@ -27,7 +27,7 @@ async def get_full_user(client: Client, request: GetFullUser, user: User):
                 common_chats_count=0,
             ),
             chats=[],
-            users=[user.to_tl(current_user=user)],
+            users=[await user.to_tl(current_user=user)],
         )
 
     logger.warning("id: inputUser is not inputUserSelf: not implemented")
@@ -40,7 +40,7 @@ async def get_users(client: Client, request: GetUsers, user: User):
     result: list[TLObject] = []
     for peer in request.id:
         if isinstance(peer, InputUserSelf):
-            result.append(user.to_tl(current_user=user))
+            result.append(await user.to_tl(current_user=user))
         else:
             # TODO: other input users
             result.append(UserEmpty(id=0))

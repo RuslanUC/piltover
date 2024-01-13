@@ -25,7 +25,7 @@ async def resolve_username(client: Client, request: ResolveUsername, user: User)
     if (resolved := await User.get_or_none(username=request.username)) is None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")
 
-    return ResolvedPeer(peer=PeerUser(user_id=resolved.id), chats=[], users=[resolved.to_tl(user)])
+    return ResolvedPeer(peer=PeerUser(user_id=resolved.id), chats=[], users=[await resolved.to_tl(user)])
 
 
 # noinspection PyUnusedLocal

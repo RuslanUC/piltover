@@ -5,6 +5,7 @@ from tortoise.expressions import Subquery
 from piltover.app import files_dir
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
+from piltover.app.utils import upload_file
 from piltover.db.enums import ChatType, FileType
 from piltover.db.models import User, Chat, Dialog, UploadingFile, UploadingFilePart, File, MessageMedia
 from piltover.db.models.message import Message
@@ -95,7 +96,7 @@ async def get_history(client: Client, request: GetHistory, user: User):
     for message in messages:
         if message.author.id in users:
             continue
-        users[message.author.id] = message.author.to_tl(user)
+        users[message.author.id] = await message.author.to_tl(user)
 
     return Messages(
         messages=[await message.to_tl(user) for message in messages],
@@ -124,7 +125,7 @@ async def send_message(client: Client, request: SendMessage, user: User):
             UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0, pts=2,
                                    pts_count=1)
         ],
-        users=[user.to_tl(user)],
+        users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
         seq=1,
@@ -178,7 +179,7 @@ async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User):
         if dialog.chat.type in {ChatType.PRIVATE, ChatType.SAVED}:
             peer = await dialog.chat.get_peer(user)
             if peer.user_id not in users:
-                users[peer.user_id] = (await User.get(id=peer.user_id)).to_tl(user)
+                users[peer.user_id] = await (await User.get(id=peer.user_id)).to_tl(user)
 
     return {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
@@ -396,7 +397,7 @@ async def edit_message(client: Client, request: EditMessage, user: User):
 
     return Updates(
         updates=[UpdateEditMessage(message=await message.to_tl(user), pts=1, pts_count=1)],
-        users=[user.to_tl(user)],
+        users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
         seq=1,
@@ -414,30 +415,7 @@ async def send_media(client: Client, request: SendMedia, user: User):
     if len(request.message) > 2000:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
 
-    uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.media.file.id)
-    parts = await UploadingFilePart.filter(file=uploaded_file).order_by("part_id")
-    if (uploaded_file.total_parts > 0 and uploaded_file.total_parts != len(parts)) or not parts:
-        raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID")
-
-    size = 0
-    for idx, part in enumerate(parts):
-        if part == parts[0]:
-            continue
-        if part.part_id - 1 != parts[idx-1]:
-            raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
-        size += part.size
-
-    file = await File.create(
-        mime_type=request.media.mime_type,
-        size=size,
-        type=FileType.DOCUMENT,
-        attributes=File.attributes_from_tl(request.media.attributes)
-    )
-
-    with open(files_dir / f"{file.physical_id}", "wb") as f_out:
-        for part in parts:
-            with open(files_dir / "parts" / f"{part.physical_id}_{part.part_id}", "rb") as f_part:
-                f_out.write(f_part.read())
+    file = await upload_file(user, request.media.file, request.media.mime_type, request.media.attributes)
 
     message = await Message.create(message=request.message, author=user, chat=chat)
     await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler)
@@ -449,7 +427,7 @@ async def send_media(client: Client, request: SendMedia, user: User):
             UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0, pts=2,
                                    pts_count=1)
         ],
-        users=[user.to_tl(user)],
+        users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
         seq=1,

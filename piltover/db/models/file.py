@@ -53,6 +53,8 @@ class File(Model):
     def attributes_to_tl(self) -> list:
         result = []
         for attribute, value in self.attributes.items():
+            if attribute not in attribute_name_to_cls:
+                continue
             result.append(attribute_name_to_cls[attribute](**value))
 
         return result
@@ -62,7 +64,7 @@ class File(Model):
 
         return TLDocument(
             id=self.id,
-            access_hash=access.access_hash,
+            access_hash=self.id,
             file_reference=access.file_reference,
             date=int(mktime(self.created_at.timetuple())),
             mime_type=self.mime_type,
