@@ -30,11 +30,11 @@ class UserPhoto(Model):
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
     async def to_tl(self, current_user: models.User) -> TLPhoto:
-        access, _ = await models.FileAccess.get_or_create(file=self, user=current_user)
+        access = await models.FileAccess.get_or_renew(current_user, self.file)
 
         return TLPhoto(
             id=self.id,
-            access_hash=self.file.id,
+            access_hash=access.access_hash,
             file_reference=access.file_reference,
             date=int(mktime(self.file.created_at.timetuple())),
             sizes=[PhotoSize(type="c", w=640, h=640, size=self.file.size)],  # TODO: calculate size

@@ -60,11 +60,11 @@ class File(Model):
         return result
 
     async def to_tl_document(self, user: models.User) -> TLDocument:
-        access, _ = await models.FileAccess.get_or_create(file=self, user=user)
+        access = await models.FileAccess.get_or_renew(user, self)
 
         return TLDocument(
             id=self.id,
-            access_hash=self.id,
+            access_hash=access.access_hash,
             file_reference=access.file_reference,
             date=int(mktime(self.created_at.timetuple())),
             mime_type=self.mime_type,
