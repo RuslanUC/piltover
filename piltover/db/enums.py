@@ -18,3 +18,8 @@ class PrivacyRuleKeyType(IntEnum):
     PHONE_NUMBER = 6
     ADDED_BY_PHONE = 7
     VOICE_MESSAGE = 8
+
+
+class FileType(IntEnum):
+    DOCUMENT = 0
+    PHOTO = 1

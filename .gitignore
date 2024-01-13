@@ -5,6 +5,7 @@ venv
 data/secrets/
 data/migrations/
 data/records/
+data/files/
 
 !.gitignore
 

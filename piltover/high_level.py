@@ -109,9 +109,11 @@ class Client(LowClient):
                         continue
 
                     if isinstance(e, ErrorRpc):
+                        logger.warning("{obj}: {err}", obj=request.obj.tlname(), err=f"[{e.error_code} {e.error_message}]")
                         error = RpcError(error_code=e.error_code, error_message=e.error_message)
                     else:
                         logger.warning("Error while processing {obj}: {err}", obj=request.obj.tlname(), err=e)
+                        logger.exception("", backtrace=True)
                         error = RpcError(error_code=500, error_message="Server error")
 
             result = result if error is None else error

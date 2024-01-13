@@ -2,23 +2,24 @@ from time import time
 
 from tortoise.expressions import Subquery
 
+from piltover.app import files_dir
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
-from piltover.db.enums import ChatType
-from piltover.db.models import User, Chat, Dialog
+from piltover.db.enums import ChatType, FileType
+from piltover.db.models import User, Chat, Dialog, UploadingFile, UploadingFilePart, File, MessageMedia
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
-    InputDialogPeer, UpdateEditMessage
+    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
     ReorderPinnedDialogs, GetStickers, GetSearchCounters, Search, GetSearchResultsPositions, GetDefaultHistoryTTL, \
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
-    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage
+    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia
 from piltover.tl_new.types.messages import AvailableReactions, PeerSettings, Messages, PeerDialogs, AffectedMessages, \
     Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers
@@ -111,6 +112,8 @@ async def send_message(client: Client, request: SendMessage, user: User):
 
     if not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
+    if len(request.message) > 2000:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
     message = await Message.create(message=request.message, author=user, chat=chat)
 
@@ -399,3 +402,55 @@ async def edit_message(client: Client, request: EditMessage, user: User):
         seq=1,
     )
 
+
+# noinspection PyUnusedLocal
+@handler.on_request(SendMedia, True)
+async def send_media(client: Client, request: SendMedia, user: User):
+    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
+        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
+
+    if not isinstance(request.media, InputMediaUploadedDocument):
+        raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+    if len(request.message) > 2000:
+        raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
+
+    uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.media.file.id)
+    parts = await UploadingFilePart.filter(file=uploaded_file).order_by("part_id")
+    if (uploaded_file.total_parts > 0 and uploaded_file.total_parts != len(parts)) or not parts:
+        raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID")
+
+    size = 0
+    for idx, part in enumerate(parts):
+        if part == parts[0]:
+            continue
+        if part.part_id - 1 != parts[idx-1]:
+            raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
+        size += part.size
+
+    file = await File.create(
+        mime_type=request.media.mime_type,
+        size=size,
+        type=FileType.DOCUMENT,
+        attributes=File.attributes_from_tl(request.media.attributes)
+    )
+
+    with open(files_dir / f"{file.physical_id}", "wb") as f_out:
+        for part in parts:
+            with open(files_dir / "parts" / f"{part.physical_id}_{part.part_id}", "rb") as f_part:
+                f_out.write(f_part.read())
+
+    message = await Message.create(message=request.message, author=user, chat=chat)
+    await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler)
+
+    return Updates(
+        updates=[
+            UpdateMessageID(id=message.id, random_id=request.random_id),
+            UpdateNewMessage(message=await message.to_tl(user), pts=1, pts_count=1),
+            UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0, pts=2,
+                                   pts_count=1)
+        ],
+        users=[user.to_tl(user)],
+        chats=[],
+        date=int(time()),
+        seq=1,
+    )

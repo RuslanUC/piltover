@@ -8,14 +8,13 @@ from loguru import logger
 from tortoise import Tortoise
 
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
-    langpack, channels
+    langpack, channels, upload, root_dir
 from piltover.db.models import AuthKey
 from piltover.high_level import Server
 from piltover.types import Keys
 from piltover.utils import gen_keys, get_public_key_fingerprint
 
-root = Path(__file__).parent.parent.parent.resolve(strict=True)
-data = root / "data"
+data = root_dir / "data"
 data.mkdir(parents=True, exist_ok=True)
 
 secrets = data / "secrets"
@@ -33,7 +32,7 @@ if not getenv("DISABLE_HR"):
     def log(s: jurigged.live.WatchOperation):
         if hasattr(s, "filename") and "unknown" not in s.filename:
             file = Path(s.filename)
-            print("Reloaded", file.relative_to(root))
+            print("Reloaded", file.relative_to(root_dir))
 
 
     jurigged.watch("piltover/[!tl_new]*.py", logger=log)
@@ -91,6 +90,7 @@ async def main():
     pilt.register_handler(contacts.handler)
     pilt.register_handler(langpack.handler)
     pilt.register_handler(channels.handler)
+    pilt.register_handler(upload.handler)
 
     # TODO: SetPrivacy(key=InputPrivacyKey{...}(), rules=[{...}])
 
