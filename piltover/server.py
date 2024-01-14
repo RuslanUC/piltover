@@ -14,7 +14,7 @@ from loguru import logger
 
 from piltover.connection import Connection
 from piltover.enums import Transport
-from piltover.exceptions import Disconnection, ErrorRpc
+from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.tl.types import (
     CoreMessage,
     EncryptedMessage,
@@ -533,6 +533,9 @@ class Client:
                     await self.recv()
                 except AssertionError:
                     logger.exception("Unexpected failed assertion", backtrace=True)
+                except InvalidConstructorException as e:
+                    logger.error(f"Invalid constructor: {e.constructor}")
+                    raise Disconnection(400)
         except Disconnection as err:
             if err.transport_error is not None:
                 await self.conn.send(int.to_bytes(err.transport_error, 4, "little", signed=True))

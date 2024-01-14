@@ -1,3 +1,4 @@
+from gzip import decompress
 from io import BytesIO
 
 from piltover import tl_new
@@ -49,3 +50,15 @@ class MsgContainer(TLObject):
 class RpcResult(TLObject):
     req_msg_id: Long = TLField()
     result: TLObject = TLField()
+
+
+@tl_object(id=0x3072cfa1, name="GzipPacked")
+class GzipPacked(TLObject):
+    packed_data: bytes = TLField()
+
+    @classmethod
+    def deserialize(cls, stream) -> TLObject:
+        packed_data = SerializationUtils.read(stream, bytes)
+        decompressed_stream = BytesIO(decompress(packed_data))
+
+        return SerializationUtils.read(decompressed_stream, TLObject)

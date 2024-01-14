@@ -30,10 +30,12 @@ async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
 
     size = len(request.bytes_)
+    if (ex_part := await UploadingFilePart.get_or_none(file=file, part_id=request.file_part)) is not None:
+        if size == ex_part.size:
+            return True
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID3")
     if (size % 1024 != 0 or 524288 % size != 0) and last_part is not None and last_part.part_id >= request.file_part:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_INVALID")
-    if await UploadingFilePart.filter(file=file, part_id=request.file_part).exists():
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID3")
     if size > 524288:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_TOO_BIG")
     if size == 0:

@@ -425,6 +425,7 @@ def start():
         f.write(f'\n    0x5bb8e511: types_.Message,')
         f.write(f'\n    0x73f1f8dc: types_.MsgContainer,')
         f.write(f'\n    0xf35c6d01: types_.RpcResult,')
+        f.write(f'\n    0x3072cfa1: types_.GzipPacked,')
 
         f.write("\n}\n")
 

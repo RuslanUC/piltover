@@ -11,7 +11,7 @@ from piltover.db.models._utils import Model
 
 class UploadingFile(Model):
     id: int = fields.BigIntField(pk=True)
-    file_id: int = fields.BigIntField(index=True)
+    file_id: str = fields.CharField(index=True, max_length=64)
     total_parts: int = fields.IntField(default=0)
     created_at: datetime = fields.DatetimeField(default=datetime.now())
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
