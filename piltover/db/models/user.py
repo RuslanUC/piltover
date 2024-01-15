@@ -2,7 +2,7 @@ from __future__ import annotations
 from tortoise import fields
 
 from piltover.db import models
-from piltover.tl_new import UserProfilePhotoEmpty
+from piltover.tl_new import UserProfilePhotoEmpty, UserProfilePhoto, Photo, PhotoEmpty
 from piltover.tl_new.types.user import User as TLUser
 from piltover.db.models._utils import Model
 
@@ -16,6 +16,19 @@ class User(Model):
     lang_code: str = fields.CharField(max_length=8, default="en")
     about: str | None = fields.CharField(max_length=240, null=True, default=None)
     ttl_days: int = fields.IntField(default=365)
+
+    async def get_photo(self, current_user: models.User, profile_photo: bool = False):
+        photo = UserProfilePhotoEmpty() if profile_photo else PhotoEmpty(id=0)
+        if await models.UserPhoto.filter(user=self).exists():
+            photo = (await models.UserPhoto.get_or_none(user=self, current=True).select_related("file") or
+                     await models.UserPhoto.filter(user=self).select_related("file").order_by("-id").first())
+
+            if profile_photo:
+                photo = UserProfilePhoto(has_video=False, photo_id=photo.file.id, dc_id=2)
+            else:
+                photo = await photo.to_tl(current_user)
+
+        return photo
 
     async def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
         defaults = {
@@ -36,12 +49,6 @@ class User(Model):
             "access_hash": 0,
         } | kwargs
 
-        photo = UserProfilePhotoEmpty()
-        if await models.UserPhoto.filter(user=self).exists():
-            photo = (await models.UserPhoto.get_or_none(user=self, current=True) or
-                     await models.UserPhoto.filter(user=self).order_by("-id").first())
-            photo = photo.to_tl(current_user)
-
         return TLUser(
             **defaults,
             id=self.id,
@@ -51,5 +58,5 @@ class User(Model):
             phone=self.phone_number,
             lang_code=self.lang_code,
             is_self=self == current_user,
-            photo=photo,
+            photo=await self.get_photo(current_user, True),
         )

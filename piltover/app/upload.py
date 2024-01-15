@@ -1,13 +1,13 @@
 from time import time
 
 from piltover.app import files_dir
+from piltover.app.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import InputDocumentFileLocation
+from piltover.tl_new import InputDocumentFileLocation, InputPhotoFileLocation
 from piltover.tl_new.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
-from piltover.tl_new.types.storage import FileUnknown, FilePartial, FileJpeg, FileWebp, FileMp4, FileMov, FileMp3, \
-    FilePdf, FilePng, FileGif
+from piltover.tl_new.types.storage import FileUnknown, FilePartial
 from piltover.tl_new.types.upload import File as TLFile
 
 handler = MessageHandler("upload")
@@ -52,41 +52,41 @@ async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart
 # noinspection PyUnusedLocal
 @handler.on_request(GetFile, True)
 async def get_file(client: Client, request: GetFile, user: User):
-    if not isinstance(request.location, InputDocumentFileLocation):
+    if not isinstance(request.location, (InputDocumentFileLocation, InputPhotoFileLocation)):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     if request.limit < 0 or request.limit > 1024 * 1024:
         raise ErrorRpc(error_code=400, error_message="LIMIT_INVALID")
 
-    access = await FileAccess.get_or_none(file__id=request.location.id, user=user).select_related("file")
+    if isinstance(request.location, InputPhotoFileLocation):
+        q = {"file__userphotos__id": request.location.id}
+    else:
+        q = {"file__id": request.location.id}
+    access = await FileAccess.get_or_none(user=user, **q).select_related("file")
     if access is None or access.is_expired() or access.access_hash != request.location.access_hash:
         raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
 
     file = access.file
     if request.offset >= file.size:
-        raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
+        return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")
+        #raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
 
-    with open(files_dir / f"{file.physical_id}", "rb") as f:
+    f_name = str(file.physical_id)
+    if isinstance(request.location, InputPhotoFileLocation):
+        if not (sizes := file.attributes.get("_sizes", [])):
+            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo
+        size = PHOTOSIZE_TO_INT[request.location.thumb_size]
+        available = [size["w"] for size in sizes]
+        if size not in available:
+            size = min(available, key=lambda x: abs(x - size))
+        f_name += f"_{size}"
+
+    with open(files_dir / f_name, "rb") as f:
         f.seek(request.offset)
         data = f.read(request.limit)
 
-    file_type = FileUnknown()
     if len(data) != file.size:
         file_type = FilePartial()
-    elif file.mime_type == "image/jpeg":
-        file_type = FileJpeg()
-    elif file.mime_type == "image/gif":
-        file_type = FileGif()
-    elif file.mime_type == "image/png":
-        file_type = FilePng()
-    elif file.mime_type == "application/pdf":
-        file_type = FilePdf()
-    elif file.mime_type == "audio/mpeg":
-        file_type = FileMp3()
-    elif file.mime_type == "video/quicktime":
-        file_type = FileMov()
-    elif file.mime_type == "video/mp4":
-        file_type = FileMp4()
-    elif file.mime_type == "image/webp":
-        file_type = FileWebp()
+    else:
+        file_type = MIME_TO_TL.get(file.mime_type, FileUnknown())
 
     return TLFile(type_=file_type, mtime=int(time()), bytes_=data)

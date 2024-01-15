@@ -12,6 +12,7 @@ uvloop = "^0.17.0"
 loguru = "^0.7.0"
 tortoise-orm = {extras = ["asyncmy"], version = "^0.20.0"}
 aerich = "^0.7.2"
+pillow = "^10.2.0"
 
 
 [tool.poetry.group.dev.dependencies]

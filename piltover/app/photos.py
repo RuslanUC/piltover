@@ -1,4 +1,4 @@
-from piltover.app.utils import upload_file
+from piltover.app.utils import upload_file, resize_photo
 from piltover.db.models import User, UserPhoto
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
@@ -27,7 +27,7 @@ async def get_user_photos(client: Client, request: GetUserPhotos, user: User):
     else:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
-    photos = await UserPhoto.filter(user=target_user)
+    photos = await UserPhoto.filter(user=target_user).select_related("file")
 
     return Photos(
         photos=[await photo.to_tl(user) for photo in photos],
@@ -42,11 +42,12 @@ async def upload_profile_photo(client: Client, request: UploadProfilePhoto, user
         raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
 
     file = await upload_file(user, request.file, "image/png", [])
+    sizes = await resize_photo(str(file.physical_id))
+    await file.update(attributes=file.attributes | {"_sizes": sizes})
     await UserPhoto.filter(user=user).update(current=False)
     photo = await UserPhoto.create(current=True, file=file, user=user)
 
     return PhotosPhoto(
         photo=await photo.to_tl(user),
-        users=[await user.to_tl(user)],
+        users=[],  # [await user.to_tl(user)],
     )
-

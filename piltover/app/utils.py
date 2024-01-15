@@ -1,8 +1,14 @@
+from asyncio import get_event_loop, gather
+from concurrent.futures import ThreadPoolExecutor
+
+from PIL.Image import Image, open as img_open
+
 from piltover.app import files_dir
 from piltover.db.enums import FileType
 from piltover.db.models import User, UploadingFile, UploadingFilePart, File
 from piltover.exceptions import ErrorRpc
 from piltover.tl_new import InputFile
+from piltover.tl_new.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 
 
 async def upload_file(user: User, input_file: InputFile, mime_type: str, attributes: list) -> File:
@@ -32,3 +38,53 @@ async def upload_file(user: User, input_file: InputFile, mime_type: str, attribu
                 f_out.write(f_part.read())
 
     return file
+
+
+MIME_TO_TL = {
+    "image/jpeg": FileJpeg(),
+    "image/gif": FileGif(),
+    "image/png": FilePng(),
+    "application/pdf": FilePdf(),
+    "audio/mpeg": FileMp3(),
+    "video/quicktime": FileMov(),
+    "video/mp4": FileMp4(),
+    "image/webp": FileWebp(),
+}
+
+PHOTOSIZE_TO_INT = {
+    "a": 160,
+    "b": 320,
+    "c": 640,
+    "d": 1280,
+
+    "s": 100,
+    "m": 320,
+    "x": 800,
+    "y": 1280,
+    "w": 2560,
+}
+
+
+def resize_image_internal(file_id: str, img: Image, size: int) -> int:
+    with open(files_dir / f"{file_id}_{size}", "wb") as f_out:
+        img.resize((size, size)).save(f_out, format="PNG")
+        return f_out.tell()
+
+
+async def resize_photo(file_id: str) -> list[dict[str, int | str]]:
+    types = ["a", "b", "c"]
+    sizes = [160, 320, 640]
+
+    img = img_open(files_dir / f"{file_id}")
+    img.load()
+    with ThreadPoolExecutor() as pool:
+        tasks = [
+            get_event_loop().run_in_executor(pool, lambda: resize_image_internal(file_id, img, size))
+            for size in sizes
+        ]
+        res = await gather(*tasks)
+
+    return [
+        {"type_": types[idx], "w": sizes[idx], "h": sizes[idx], "size": file_size}
+        for idx, file_size in enumerate(res)
+    ]

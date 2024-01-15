@@ -37,6 +37,7 @@ class UserPhoto(Model):
             access_hash=access.access_hash,
             file_reference=access.file_reference,
             date=int(mktime(self.file.created_at.timetuple())),
-            sizes=[PhotoSize(type="c", w=640, h=640, size=self.file.size)],  # TODO: calculate size
+            sizes=[PhotoSize(**size) for size in self.file.attributes.get("_sizes", [])],
             dc_id=2,
+            video_sizes=[],
         )

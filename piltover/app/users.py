@@ -3,7 +3,7 @@ from loguru import logger
 from piltover.db.models import User
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import Client, MessageHandler
-from piltover.tl_new import InputUserSelf, PeerSettings, PeerNotifySettings, TLObject, UserEmpty
+from piltover.tl_new import InputUserSelf, PeerSettings, PeerNotifySettings, TLObject, UserEmpty, InputUser
 from piltover.tl_new.functions.users import GetFullUser, GetUsers
 from piltover.tl_new.types import UserFull as FullUser
 from piltover.tl_new.types.users import UserFull
@@ -14,6 +14,9 @@ handler = MessageHandler("users")
 # noinspection PyUnusedLocal
 @handler.on_request(GetFullUser, True)
 async def get_full_user(client: Client, request: GetFullUser, user: User):
+    if isinstance(request.id, InputUser) and request.id.user_id == user.id:
+        request.id = InputUserSelf()
+
     if isinstance(request.id, InputUserSelf):
         return UserFull(
             full_user=FullUser(
@@ -22,7 +25,7 @@ async def get_full_user(client: Client, request: GetFullUser, user: User):
                 id=user.id,
                 about=user.about,
                 settings=PeerSettings(),
-                profile_photo=None,
+                profile_photo=await user.get_photo(user),
                 notify_settings=PeerNotifySettings(show_previews=True),
                 common_chats_count=0,
             ),
