@@ -2,18 +2,17 @@ from time import time
 
 from tortoise.expressions import Subquery
 
-from piltover.app import files_dir
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
 from piltover.app.utils import upload_file
-from piltover.db.enums import ChatType, FileType
-from piltover.db.models import User, Chat, Dialog, UploadingFile, UploadingFilePart, File, MessageMedia
+from piltover.db.enums import ChatType
+from piltover.db.models import User, Chat, Dialog, MessageMedia
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
-    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument
+    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -21,7 +20,8 @@ from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableRea
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia
-from piltover.tl_new.types.messages import AvailableReactions, PeerSettings, Messages, PeerDialogs, AffectedMessages, \
+from piltover.tl_new.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
+    PeerDialogs, AffectedMessages, \
     Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers
 
@@ -49,7 +49,11 @@ async def set_typing(client: Client, request: SetTyping):
 # noinspection PyUnusedLocal
 @handler.on_request(GetPeerSettings)
 async def get_peer_settings(client: Client, request: GetPeerSettings):
-    return PeerSettings()
+    return MessagesPeerSettings(
+        settings=PeerSettings(),
+        chats=[],
+        users=[],
+    )
 
 
 # noinspection PyUnusedLocal

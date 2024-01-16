@@ -2,7 +2,7 @@ from piltover.app.utils import upload_file, resize_photo
 from piltover.db.models import User, UserPhoto
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import InputUser, InputUserEmpty, InputUserSelf, InputPhoto, Long, Vector
+from piltover.tl_new import InputPhoto, Long, Vector
 from piltover.tl_new.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos
 from piltover.tl_new.types.photos import Photos, Photo as PhotosPhoto
 
@@ -12,20 +12,8 @@ handler = MessageHandler("photos")
 # noinspection PyUnusedLocal
 @handler.on_request(GetUserPhotos, True)
 async def get_user_photos(client: Client, request: GetUserPhotos, user: User):
-    if isinstance(request.user_id, InputUserSelf):
-        target_user = user
-    elif isinstance(request.user_id, InputUser):
-        if request.user_id.user_id == user.id:
-            target_user = user
-        elif (target_user := await User.get_or_none(id=request.user_id.user_id)) is None:
-            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    elif isinstance(request.user_id, InputUserEmpty):
-        return Photos(
-            photos=[],
-            users=[],
-        )
-    else:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
+    if (target_user := await User.from_input_peer(request.user_id, user)) is None:
+        raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
     photos = await UserPhoto.filter(user=target_user).select_related("file").order_by("-id")
 

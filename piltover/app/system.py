@@ -13,7 +13,7 @@ handler = MessageHandler("system")
 @handler.on_message(MsgsAck)
 async def msgs_ack(client: Client, request: CoreMessage[MsgsAck], session_id: int):
     # print(request.obj, request.message_id)
-    return False
+    return True
 
 
 # noinspection PyUnusedLocal

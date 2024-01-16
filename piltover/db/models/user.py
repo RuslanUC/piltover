@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 from tortoise import fields
 
 from piltover.db import models
-from piltover.tl_new import UserProfilePhotoEmpty, UserProfilePhoto, Photo, PhotoEmpty
-from piltover.tl_new.types.user import User as TLUser
 from piltover.db.models._utils import Model
+from piltover.exceptions import ErrorRpc
+from piltover.tl_new import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, InputUser, InputUserSelf, \
+    InputPeerUser, InputPeerSelf
+from piltover.tl_new.types.user import User as TLUser
 
 
 class User(Model):
@@ -32,21 +35,21 @@ class User(Model):
 
     async def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
         defaults = {
-            "contact": False,
-            "mutual_contact": False,
-            "deleted": False,
-            "bot": False,
-            "verified": True,
-            "restricted": False,
-            "min": False,
-            "support": False,
-            "scam": False,
-            "apply_min_photo": False,
-            "fake": False,
-            "bot_attach_menu": False,
-            "premium": False,
-            "attach_menu_enabled": False,
-        } | kwargs
+                       "contact": False,
+                       "mutual_contact": False,
+                       "deleted": False,
+                       "bot": False,
+                       "verified": True,
+                       "restricted": False,
+                       "min": False,
+                       "support": False,
+                       "scam": False,
+                       "apply_min_photo": False,
+                       "fake": False,
+                       "bot_attach_menu": False,
+                       "premium": False,
+                       "attach_menu_enabled": False,
+                   } | kwargs
 
         return TLUser(
             **defaults,
@@ -60,3 +63,16 @@ class User(Model):
             photo=await self.get_photo(current_user, True),
             access_hash=123456789,  # TODO: make table with access hashes for users
         )
+
+    @classmethod
+    async def from_input_peer(cls, peer, current_user: models.User) -> models.User | None:
+        if isinstance(peer, (InputUserSelf, InputPeerSelf)):
+            return current_user
+        elif isinstance(peer, (InputUser, InputPeerUser)):
+            if peer.user_id == current_user.id:
+                return current_user
+            elif (user := await User.get_or_none(id=peer.user_id)) is None:
+                raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+            return user
+        else:
+            return None

@@ -5,7 +5,7 @@ from piltover.app.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import InputDocumentFileLocation, InputPhotoFileLocation
+from piltover.tl_new import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation
 from piltover.tl_new.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
 from piltover.tl_new.types.storage import FileUnknown, FilePartial
 from piltover.tl_new.types.upload import File as TLFile
@@ -52,17 +52,22 @@ async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart
 # noinspection PyUnusedLocal
 @handler.on_request(GetFile, True)
 async def get_file(client: Client, request: GetFile, user: User):
-    if not isinstance(request.location, (InputDocumentFileLocation, InputPhotoFileLocation)):
+    if not isinstance(request.location, (InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     if request.limit < 0 or request.limit > 1024 * 1024:
         raise ErrorRpc(error_code=400, error_message="LIMIT_INVALID")
 
     if isinstance(request.location, InputPhotoFileLocation):
         q = {"file__userphotos__id": request.location.id}
+    elif isinstance(request.location, InputPeerPhotoFileLocation):
+        if (target_user := await User.from_input_peer(request.location.peer, user)) is None:
+            raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+        q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user__id": target_user.id}
     else:
         q = {"file__id": request.location.id}
     access = await FileAccess.get_or_none(user=user, **q).select_related("file")
-    if access is None or access.is_expired() or access.access_hash != request.location.access_hash:
+    if not isinstance(request.location, InputPeerPhotoFileLocation) and \
+            (access is None or access.is_expired() or access.access_hash != request.location.access_hash):
         raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
 
     file = access.file
