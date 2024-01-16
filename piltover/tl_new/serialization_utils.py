@@ -3,6 +3,7 @@ from typing import Any, TypeVar
 
 import piltover.tl_new as tl_new
 from piltover.exceptions import InvalidConstructorException
+from piltover.tl_new.primitives.vector import Vector
 
 T = TypeVar("T")
 
@@ -46,6 +47,9 @@ class SerializationUtils:
             return int.to_bytes(value.__tl_id__, 4, 'little') + value.serialize()
         elif isinstance(value, list):
             result = VECTOR + len(value).to_bytes(4, 'little')
+            if isinstance(value, Vector):
+                int_type = value.value_type if issubclass(value.value_type, int) and not isinstance(value, bool) \
+                    else int_type
             for v in value:
                 result += SerializationUtils.write(v, int_type)
             return result

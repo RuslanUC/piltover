@@ -24,7 +24,7 @@ class User(Model):
                      await models.UserPhoto.filter(user=self).select_related("file").order_by("-id").first())
 
             if profile_photo:
-                photo = UserProfilePhoto(has_video=False, photo_id=photo.file.id, dc_id=2)
+                photo = UserProfilePhoto(has_video=False, photo_id=photo.id, dc_id=2)
             else:
                 photo = await photo.to_tl(current_user)
 
@@ -46,7 +46,6 @@ class User(Model):
             "bot_attach_menu": False,
             "premium": False,
             "attach_menu_enabled": False,
-            "access_hash": 0,
         } | kwargs
 
         return TLUser(
@@ -59,4 +58,5 @@ class User(Model):
             lang_code=self.lang_code,
             is_self=self == current_user,
             photo=await self.get_photo(current_user, True),
+            access_hash=123456789,  # TODO: make table with access hashes for users
         )
