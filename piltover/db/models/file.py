@@ -24,7 +24,7 @@ attribute_name_to_cls = {
 class File(Model):
     id: int = fields.BigIntField(pk=True)
     physical_id: UUID = fields.UUIDField(default=uuid4)
-    created_at: datetime = fields.DatetimeField(default=datetime.now())
+    created_at: datetime = fields.DatetimeField(default=datetime.now)
     mime_type: str = fields.CharField(max_length=200)
     size: int = fields.BigIntField()
     type: FileType = fields.IntEnumField(FileType)

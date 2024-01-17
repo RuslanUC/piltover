@@ -12,3 +12,6 @@ from .file import File
 from .file_access import FileAccess
 from .message_media import MessageMedia
 from .user_photo import UserPhoto
+from .state import State
+from .user_password import UserPassword
+from .srp_session import SrpSession

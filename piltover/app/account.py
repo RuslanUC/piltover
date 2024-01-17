@@ -1,19 +1,22 @@
 import re
 
-from piltover.db.models import User, UserAuthorization
+from piltover.db.models import User, UserAuthorization, SrpSession
+from piltover.db.models.user_password import UserPassword
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, \
-    SecurePasswordKdfAlgoSHA512, AccountDaysTTL, EmojiList, \
-    AutoDownloadSettings
+    AccountDaysTTL, EmojiList, \
+    AutoDownloadSettings, InputCheckPasswordEmpty, InputCheckPasswordSRP
 from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
-    SaveAutoDownloadSettings
+    SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings
 from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, \
-    Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations
+    Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
+from piltover.utils import gen_safe_prime
+from piltover.utils.srp import sha256, xor, itob, btoi
 
 handler = MessageHandler("account")
 username_regex = re.compile(r'[a-zA-z0-9_]{5,32}')
@@ -72,33 +75,88 @@ async def set_account_ttl(client: Client, request: SetAccountTTL, user: User):
 # noinspection PyUnusedLocal
 @handler.on_request(RegisterDevice_70)
 @handler.on_request(RegisterDevice)
-async def register_device(client: Client, request: RegisterDevice):
+async def register_device(client: Client, request: RegisterDevice) -> bool:
     print(request)
     return True
 
 
 # noinspection PyUnusedLocal
 @handler.on_request(GetContactSignUpNotification)
-async def get_contact_sign_up_notification(client: Client, request: GetContactSignUpNotification):
+async def get_contact_sign_up_notification(client: Client, request: GetContactSignUpNotification) -> bool:
     return True
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetPassword)
-async def get_password(client: Client, request: GetPassword):
-    return Password(
-        has_password=False,
-        new_algo=PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow(
-            salt1=b"asd",
-            salt2=b"asd",
-            g=2,
-            p=b"a" * (2048 // 8),
-        ),
-        new_secure_algo=SecurePasswordKdfAlgoSHA512(
-            salt=b"1234"
-        ),
-        secure_random=b"123456"
+@handler.on_request(GetPassword, True)
+async def get_password(client: Client, request: GetPassword, user: User) -> Password:
+    password, _ = await UserPassword.get_or_create(user=user)
+    return await password.to_tl()
+
+
+async def check_password_internal(password: UserPassword, check: InputCheckPasswordEmpty | InputCheckPasswordSRP):
+    if password.password is not None and isinstance(check, InputCheckPasswordEmpty):
+        raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
+
+    if password.password is None:
+        return
+
+    if (sess := await SrpSession.get_current(password)).id != check.srp_id:
+        raise ErrorRpc(error_code=400, error_message="SRP_ID_INVALID")
+
+    p, g = gen_safe_prime()
+
+    u = sha256(check.A + sess.pub_B())
+    s_b = pow(btoi(check.A) * pow(btoi(password.password), btoi(u), p), btoi(sess.priv_b), p)
+    k_b = sha256(itob(s_b))
+
+    M2 = sha256(
+        xor(sha256(itob(p)), sha256(itob(g)))
+        + sha256(password.salt1)
+        + sha256(password.salt2)
+        + check.A
+        + sess.pub_B()
+        + k_b
     )
+
+    if check.M1 != M2:
+        raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(UpdatePasswordSettings, True)
+async def update_password_settings(client: Client, request: UpdatePasswordSettings, user: User) -> bool:
+    password, _ = await UserPassword.get_or_create(user=user)
+    await check_password_internal(password, request.password)
+
+    new = request.new_settings
+
+    if not new.new_password_hash:
+        if password.password is None:
+            raise ErrorRpc(error_code=400, error_message="NEW_SETTINGS_EMPTY")
+        await password.update(password=None, hint=None, salt1=password.salt1[:8])
+        return True
+
+    p, _ = gen_safe_prime()
+    if btoi(new.new_password_hash) >= p or len(new.new_password_hash) != 256:
+        raise ErrorRpc(error_code=400, error_message="NEW_SETTINGS_INVALID")
+    if not isinstance(new.new_algo, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow):
+        raise ErrorRpc(error_code=400, error_message="NEW_SETTINGS_INVALID")
+
+    if new.new_algo.salt2 != password.salt2 or new.new_algo.salt1[:8] != password.salt1[:8] \
+            or len(new.new_algo.salt1) != 40:
+        raise ErrorRpc(error_code=400, error_message="NEW_SALT_INVALID")
+
+    await password.update(password=new.new_password_hash, salt1=new.new_algo.salt1, hint=new.hint)
+    return True
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(GetPasswordSettings, True)
+async def get_password_settings(client: Client, request: GetPasswordSettings, user: User) -> PasswordSettings:
+    password, _ = await UserPassword.get_or_create(user=user)
+    await check_password_internal(password, request.password)
+
+    return PasswordSettings()
 
 
 # noinspection PyUnusedLocal
