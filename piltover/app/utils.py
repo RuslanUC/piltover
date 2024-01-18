@@ -5,10 +5,12 @@ from PIL.Image import Image, open as img_open
 
 from piltover.app import files_dir
 from piltover.db.enums import FileType
-from piltover.db.models import User, UploadingFile, UploadingFilePart, File
+from piltover.db.models import User, UploadingFile, UploadingFilePart, File, UserPassword, SrpSession
 from piltover.exceptions import ErrorRpc
-from piltover.tl_new import InputFile
+from piltover.tl_new import InputFile, InputCheckPasswordEmpty, InputCheckPasswordSRP
 from piltover.tl_new.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
+from piltover.utils import gen_safe_prime
+from piltover.utils.srp import sha256, itob, btoi, xor
 
 
 async def upload_file(user: User, input_file: InputFile, mime_type: str, attributes: list) -> File:
@@ -88,3 +90,32 @@ async def resize_photo(file_id: str) -> list[dict[str, int | str]]:
         {"type_": types[idx], "w": sizes[idx], "h": sizes[idx], "size": file_size}
         for idx, file_size in enumerate(res)
     ]
+
+
+async def check_password_internal(password: UserPassword, check: InputCheckPasswordEmpty | InputCheckPasswordSRP):
+    if password.password is not None and isinstance(check, InputCheckPasswordEmpty):
+        raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
+
+    if password.password is None:
+        return
+
+    if (sess := await SrpSession.get_current(password)).id != check.srp_id:
+        raise ErrorRpc(error_code=400, error_message="SRP_ID_INVALID")
+
+    p, g = gen_safe_prime()
+
+    u = sha256(check.A + sess.pub_B())
+    s_b = pow(btoi(check.A) * pow(btoi(password.password), btoi(u), p), btoi(sess.priv_b), p)
+    k_b = sha256(itob(s_b))
+
+    M2 = sha256(
+        xor(sha256(itob(p)), sha256(itob(g)))
+        + sha256(password.salt1)
+        + sha256(password.salt2)
+        + check.A
+        + sess.pub_B()
+        + k_b
+    )
+
+    if check.M1 != M2:
+        raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")

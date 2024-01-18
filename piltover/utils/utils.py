@@ -41,3 +41,10 @@ def background(coro: Coroutine[None, None, T]) -> asyncio.Task[T]:
     _tasks.add(task)
     task.add_done_callback(_tasks.remove)
     return task
+
+
+def check_flag(flags: int, *check: int) -> bool:
+    for flag in check:
+        if (flags & flag) != flag:
+            return False
+    return True

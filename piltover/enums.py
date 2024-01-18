@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from enum import Enum, auto, IntEnum
 
 
 class Transport(Enum):
@@ -7,3 +7,8 @@ class Transport(Enum):
     PaddedIntermediate = auto()
     Full = auto()
     Obfuscated = auto()
+
+
+class ReqHandlerFlags(IntEnum):
+    AUTH_REQUIRED = 1
+    ALLOW_MFA_PENDING = 2

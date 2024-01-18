@@ -21,6 +21,7 @@ class UserAuthorization(Model):
     ip: str = fields.CharField(max_length=64)
     created_at: datetime = fields.DatetimeField(default=datetime.now)
     active_at: datetime = fields.DatetimeField(default=datetime.now)
+    mfa_pending: bool = fields.BooleanField(default=False)
 
     platform: str = fields.CharField(max_length=128, default="Unknown")
     device_model: str = fields.CharField(max_length=128, default="Unknown")
@@ -51,5 +52,6 @@ class UserAuthorization(Model):
             device_model=self.device_model,
             system_version=self.system_version,
             app_version=self.app_version,
+            password_pending=self.mfa_pending,
             **defaults
         )

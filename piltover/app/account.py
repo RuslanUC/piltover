@@ -1,7 +1,9 @@
 import re
 
+from piltover.app.utils import check_password_internal
 from piltover.db.models import User, UserAuthorization, SrpSession
 from piltover.db.models.user_password import UserPassword
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
@@ -29,7 +31,7 @@ def validate_username(username: str) -> None:
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(CheckUsername, True)
+@handler.on_request(CheckUsername, ReqHandlerFlags.AUTH_REQUIRED)
 async def check_username(client: Client, request: CheckUsername, user: User):
     validate_username(request.username)
     if await User.filter(username=request.username).exists():
@@ -38,7 +40,7 @@ async def check_username(client: Client, request: CheckUsername, user: User):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(UpdateUsername, True)
+@handler.on_request(UpdateUsername, ReqHandlerFlags.AUTH_REQUIRED)
 async def update_username(client: Client, request: UpdateUsername, user: User):
     validate_username(request.username)
     if (target := await User.get_or_none(username__iexact=request.username)) is not None:
@@ -49,7 +51,7 @@ async def update_username(client: Client, request: UpdateUsername, user: User):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetAuthorizations, True)
+@handler.on_request(GetAuthorizations, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_authorizations(client: Client, request: GetAuthorizations, user: User):
     authorizations = await UserAuthorization.filter(user=user).select_related("key").all()
     authorizations = [auth.to_tl(current=int(auth.key.id) == client.auth_data.auth_key_id) for auth in authorizations]
@@ -58,13 +60,13 @@ async def get_authorizations(client: Client, request: GetAuthorizations, user: U
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetAccountTTL, True)
+@handler.on_request(GetAccountTTL, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_account_ttl(client: Client, request: GetAccountTTL, user: User):
     return AccountDaysTTL(days=user.ttl_days)
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(SetAccountTTL, True)
+@handler.on_request(SetAccountTTL, ReqHandlerFlags.AUTH_REQUIRED)
 async def set_account_ttl(client: Client, request: SetAccountTTL, user: User):
     if request.ttl.days not in range(30, 366):
         raise ErrorRpc(error_code=400, error_message="TTL_DAYS_INVALID")
@@ -87,43 +89,14 @@ async def get_contact_sign_up_notification(client: Client, request: GetContactSi
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetPassword, True)
+@handler.on_request(GetPassword, ReqHandlerFlags.AUTH_REQUIRED | ReqHandlerFlags.ALLOW_MFA_PENDING)
 async def get_password(client: Client, request: GetPassword, user: User) -> Password:
     password, _ = await UserPassword.get_or_create(user=user)
     return await password.to_tl()
 
 
-async def check_password_internal(password: UserPassword, check: InputCheckPasswordEmpty | InputCheckPasswordSRP):
-    if password.password is not None and isinstance(check, InputCheckPasswordEmpty):
-        raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
-
-    if password.password is None:
-        return
-
-    if (sess := await SrpSession.get_current(password)).id != check.srp_id:
-        raise ErrorRpc(error_code=400, error_message="SRP_ID_INVALID")
-
-    p, g = gen_safe_prime()
-
-    u = sha256(check.A + sess.pub_B())
-    s_b = pow(btoi(check.A) * pow(btoi(password.password), btoi(u), p), btoi(sess.priv_b), p)
-    k_b = sha256(itob(s_b))
-
-    M2 = sha256(
-        xor(sha256(itob(p)), sha256(itob(g)))
-        + sha256(password.salt1)
-        + sha256(password.salt2)
-        + check.A
-        + sess.pub_B()
-        + k_b
-    )
-
-    if check.M1 != M2:
-        raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
-
-
 # noinspection PyUnusedLocal
-@handler.on_request(UpdatePasswordSettings, True)
+@handler.on_request(UpdatePasswordSettings, ReqHandlerFlags.AUTH_REQUIRED)
 async def update_password_settings(client: Client, request: UpdatePasswordSettings, user: User) -> bool:
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
@@ -134,6 +107,7 @@ async def update_password_settings(client: Client, request: UpdatePasswordSettin
         if password.password is None:
             raise ErrorRpc(error_code=400, error_message="NEW_SETTINGS_EMPTY")
         await password.update(password=None, hint=None, salt1=password.salt1[:8])
+        await UserAuthorization.filter(user=user, mfa_pending=True).delete()
         return True
 
     p, _ = gen_safe_prime()
@@ -151,7 +125,7 @@ async def update_password_settings(client: Client, request: UpdatePasswordSettin
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetPasswordSettings, True)
+@handler.on_request(GetPasswordSettings, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_password_settings(client: Client, request: GetPasswordSettings, user: User) -> PasswordSettings:
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
@@ -197,7 +171,7 @@ async def update_status(client: Client, request: UpdateStatus):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(UpdateProfile, True)
+@handler.on_request(UpdateProfile, ReqHandlerFlags.AUTH_REQUIRED)
 async def update_profile(client: Client, request: UpdateProfile, user: User):
     updates = {}
     if request.first_name is not None:
@@ -279,7 +253,7 @@ async def get_auto_download_settings(client: Client, request: GetAutoDownloadSet
 
 # noinspection PyUnusedLocal
 @handler.on_request(SaveAutoDownloadSettings)
-async def get_auto_download_settings(client: Client, request: SaveAutoDownloadSettings):
+async def save_auto_download_settings(client: Client, request: SaveAutoDownloadSettings) -> bool:
     """
     TODO: Seems like this function is doing nothing on official Telegram server??
     Code used to test it:
@@ -306,11 +280,11 @@ async def get_auto_download_settings(client: Client, request: SaveAutoDownloadSe
 
 # noinspection PyUnusedLocal
 @handler.on_request(GetDefaultProfilePhotoEmojis)
-async def get_default_profile_photo_emojis(client: Client, request: GetDefaultProfilePhotoEmojis):
+async def get_default_profile_photo_emojis(client: Client, request: GetDefaultProfilePhotoEmojis) -> EmojiList:
     return EmojiList(hash=request.hash, document_id=[])
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetWebAuthorizations, True)
-async def get_web_authorizations(client: Client, request: GetWebAuthorizations, user: User):
+@handler.on_request(GetWebAuthorizations, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_web_authorizations(client: Client, request: GetWebAuthorizations, user: User) -> WebAuthorizations:
     return WebAuthorizations(authorizations=[], users=await user.to_tl(user))

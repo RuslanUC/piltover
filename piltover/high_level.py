@@ -7,7 +7,7 @@ from typing import Awaitable, Callable
 from loguru import logger
 
 from piltover.db.models import UserAuthorization, User
-from piltover.enums import Transport
+from piltover.enums import Transport, ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.server import Server as LowServer, Client as LowClient, MessageHandler as LowMessageHandler
 from piltover.tl.types import CoreMessage
@@ -15,18 +15,25 @@ from piltover.tl_new import TLObject, RpcError, Ping, Pong
 from piltover.tl_new.primitives.types_ import MsgContainer, RpcResult
 from piltover.utils import background
 from piltover.utils.buffered_stream import BufferedStream
+from piltover.utils.utils import check_flag
 
 HandlerFunc = (Callable[["Client", TLObject], Awaitable[TLObject | dict | None]] |
                Callable[["Client", TLObject, User], Awaitable[TLObject | dict | None]])
 
 
 class RequestHandler:
-    __slots__ = ("func", "auth_required", "has_user_arg")
+    __slots__ = ("func", "flags", "has_user_arg")
 
-    def __init__(self, func: HandlerFunc, auth_required: bool, has_user_arg: bool):
+    def __init__(self, func: HandlerFunc, flags: int, has_user_arg: bool):
         self.func = func
-        self.auth_required = auth_required
+        self.flags = flags
         self.has_user_arg = has_user_arg
+
+    def auth_required(self) -> bool:
+        return check_flag(self.flags, ReqHandlerFlags.AUTH_REQUIRED)
+
+    def allow_mfa_pending(self) -> bool:
+        return check_flag(self.flags, ReqHandlerFlags.ALLOW_MFA_PENDING)
 
 
 class MessageHandler:
@@ -35,13 +42,13 @@ class MessageHandler:
         self.registered = False
         self.request_handlers: defaultdict[int, set[RequestHandler]] = defaultdict(set)
 
-    def on_request(self, typ: type[TLObject], auth_required: bool=False):
+    def on_request(self, typ: type[TLObject], flags: int=0):
         def decorator(func: HandlerFunc):
             logger.debug("Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""),
                          typ=typ.tlname())
 
-            has_user_arg = auth_required and "user" in signature(func).parameters
-            self.request_handlers[typ.tlid()].add(RequestHandler(func, auth_required, has_user_arg))
+            has_user_arg = check_flag(flags, ReqHandlerFlags.AUTH_REQUIRED) and "user" in signature(func).parameters
+            self.request_handlers[typ.tlid()].add(RequestHandler(func, flags, has_user_arg))
             return func
 
         return decorator
@@ -82,14 +89,21 @@ class Server(LowServer, MessageHandler):
 class Client(LowClient):
     server: Server
 
-    async def get_user(self) -> User | None:
+    async def get_auth(self, allow_mfa_pending: bool = False) -> UserAuthorization | None:
         auth = await UserAuthorization.get_or_none(key__id=str(self.auth_data.auth_key_id)).select_related("user")
-        return auth.user
+        if not allow_mfa_pending and auth.mfa_pending:
+            raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
+        return auth
+
+    async def get_user(self, allow_mfa_pending: bool=False) -> User | None:
+        auth = await self.get_auth(allow_mfa_pending)
+        return auth.user if auth is not None else None
 
     async def propagate(self, request: CoreMessage, session_id: int) -> None | list[tuple[TLObject, CoreMessage]] | TLObject:
         if isinstance(request.obj, MsgContainer):
             return await super().propagate(request, session_id)
         else:
+            handlers: list[RequestHandler]
             if not (handlers := self.server.request_handlers.get(request.obj.tlid(), [])):
                 return await super().propagate(request, session_id)
 
@@ -98,9 +112,9 @@ class Client(LowClient):
             user = None
             for handler in handlers:
                 try:
-                    if handler.auth_required and (user := await self.get_user()) is None:
+                    if handler.auth_required() and (user := await self.get_user(handler.allow_mfa_pending())) is None:
                         raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
-                    user_arg = (user,) if handler.auth_required and handler.has_user_arg else ()
+                    user_arg = (user,) if handler.auth_required() and handler.has_user_arg else ()
                     result = await handler.func(self, request.obj, *user_arg)
                     if result is not None:
                         break

@@ -1,4 +1,5 @@
 from piltover.db.models import User
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import PeerUser
@@ -20,7 +21,7 @@ async def get_contacts(client: Client, request: GetContacts):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(ResolveUsername, True)
+@handler.on_request(ResolveUsername, ReqHandlerFlags.AUTH_REQUIRED)
 async def resolve_username(client: Client, request: ResolveUsername, user: User):
     if (resolved := await User.get_or_none(username=request.username)) is None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")

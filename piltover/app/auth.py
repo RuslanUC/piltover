@@ -1,11 +1,13 @@
 from time import time
 
-from piltover.db.models import AuthKey, UserAuthorization
+from piltover.app.utils import check_password_internal
+from piltover.db.models import AuthKey, UserAuthorization, UserPassword
 from piltover.db.models.sentcode import SentCode
 from piltover.db.models.user import User
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp
+from piltover.tl_new.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword
 from piltover.tl_new.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
     AuthorizationSignUpRequired
 
@@ -58,8 +60,12 @@ async def sign_in(client: Client, request: SignIn):
     if (user := await User.get_or_none(phone_number=request.phone_number)) is None:
         return AuthorizationSignUpRequired()
 
+    password, _ = await UserPassword.get_or_create(user=user)
+
     key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
-    await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
+    await UserAuthorization.create(ip="127.0.0.1", user=user, key=key, mfa_pending=password.password is not None)
+    if password.password is not None:
+        raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
 
     return Authorization(user=await user.to_tl(current_user=user))
 
@@ -97,6 +103,20 @@ async def sign_up(client: Client, request: SignUp):
     key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
+    return Authorization(user=await user.to_tl(current_user=user))
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(CheckPassword, ReqHandlerFlags.AUTH_REQUIRED | ReqHandlerFlags.ALLOW_MFA_PENDING)
+async def check_password(client: Client, request: CheckPassword, user: User):
+    auth = await client.get_auth(True)
+    if not auth.mfa_pending:  # ??
+        return Authorization(user=await user.to_tl(current_user=user))
+
+    password, _ = await UserPassword.get_or_create(user=user)
+    await check_password_internal(password, request.password)
+
+    await auth.update(mfa_pending=False)
     return Authorization(user=await user.to_tl(current_user=user))
 
 

@@ -3,6 +3,7 @@ from time import time
 from piltover.app import files_dir
 from piltover.app.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation
@@ -14,8 +15,8 @@ handler = MessageHandler("upload")
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(SaveFilePart, True)
-@handler.on_request(SaveBigFilePart, True)
+@handler.on_request(SaveFilePart, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(SaveBigFilePart, ReqHandlerFlags.AUTH_REQUIRED)
 async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart, user: User):
     defaults = {}
     if isinstance(request, SaveBigFilePart):
@@ -50,7 +51,7 @@ async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetFile, True)
+@handler.on_request(GetFile, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_file(client: Client, request: GetFile, user: User):
     if not isinstance(request.location, (InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")

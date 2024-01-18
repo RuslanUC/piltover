@@ -8,6 +8,7 @@ from piltover.app.utils import upload_file
 from piltover.db.enums import ChatType
 from piltover.db.models import User, Chat, Dialog, MessageMedia
 from piltover.db.models.message import Message
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
@@ -69,7 +70,7 @@ async def get_emoji_keywords_languages(client: Client, request: GetEmojiKeywords
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetHistory, True)
+@handler.on_request(GetHistory, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_history(client: Client, request: GetHistory, user: User):
     if isinstance(request.peer, InputPeerSelf):
         chat = await Chat.get_private(user)
@@ -110,7 +111,7 @@ async def get_history(client: Client, request: GetHistory, user: User):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(SendMessage, True)
+@handler.on_request(SendMessage, ReqHandlerFlags.AUTH_REQUIRED)
 async def send_message(client: Client, request: SendMessage, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
@@ -194,13 +195,13 @@ async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetDialogs, True)
+@handler.on_request(GetDialogs, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_dialogs(client: Client, request: GetDialogs, user: User):
     return Dialogs(**(await get_dialogs_internal(None, user)))
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetPeerDialogs, True)
+@handler.on_request(GetPeerDialogs, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_peer_dialogs(client: Client, request: GetPeerDialogs, user: User):
     return PeerDialogs(
         **(await get_dialogs_internal(request.peers, user)),
@@ -316,7 +317,7 @@ async def get_faved_stickers(client: Client, request: GetFavedStickers):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(SearchGlobal, True)
+@handler.on_request(SearchGlobal, ReqHandlerFlags.AUTH_REQUIRED)
 async def search_global(client: Client, request: SearchGlobal, user: User):
     messages = []
     users = []
@@ -382,7 +383,7 @@ async def get_webpage_preview(client: Client, request: GetWebPagePreview):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(EditMessage, True)
+@handler.on_request(EditMessage, ReqHandlerFlags.AUTH_REQUIRED)
 async def edit_message(client: Client, request: EditMessage, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -409,7 +410,7 @@ async def edit_message(client: Client, request: EditMessage, user: User):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(SendMedia, True)
+@handler.on_request(SendMedia, ReqHandlerFlags.AUTH_REQUIRED)
 async def send_media(client: Client, request: SendMedia, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
