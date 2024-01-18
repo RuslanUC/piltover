@@ -44,6 +44,7 @@ WARNING = """
 # noinspection PyShadowingBuiltins
 open = partial(open, encoding="utf-8")
 
+all_layers = set()
 types_to_constructors = {}
 types_to_functions = {}
 constructors_to_functions = {}
@@ -74,6 +75,16 @@ def snake(s: str):
 
 def camel(s: str):
     return "".join([i[0].upper() + i[1:] for i in s.split("_")])
+
+
+def layer_suffix(type_: str, layer: int) -> str:
+    found_layer = 0
+    for try_layer in range(layer, min(all_layers)-1, -1):
+        if f"{type_}_{try_layer}" in types_to_constructors:
+            found_layer = try_layer
+            break
+
+    return f"_{found_layer}" if found_layer else ""
 
 
 # noinspection PyShadowingBuiltins, PyShadowingNames
@@ -111,7 +122,12 @@ def get_type_hint(type: str, layer: int) -> str:
         return f"Optional[{type}]" if is_flag and type != "bool" else type
     else:
         ns, name = type.split(".") if "." in type else ("", type)
-        type = f'tl_new.base.' + ".".join([ns, camel(name)]).strip(".") + (f"_{layer}Type" if layer and f"{type}_{layer}" in types_to_constructors else "Type")
+        type = (
+                f'tl_new.base.'
+                + ".".join([ns, camel(name)]).strip(".")
+                + layer_suffix(type, layer)
+                + "Type"
+        )
 
         return f"Optional[{type}]" if is_flag else type
 
@@ -146,7 +162,7 @@ def parse_schema(schema: list[str]) -> tuple[list[Combinator], int]:
         # Save the layer version
         layer_match = LAYER_RE.match(line)
         if layer_match:
-            layer = layer_match.group(1)
+            layer = int(layer_match.group(1))
             continue
 
         combinator_match = COMBINATOR_RE.match(line)
@@ -191,6 +207,8 @@ def parse_schema(schema: list[str]) -> tuple[list[Combinator], int]:
 
             combinators.append(combinator)
 
+    if layer is not None:
+        all_layers.add(layer)
     return combinators, layer
 
 
