@@ -11,6 +11,7 @@ from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
+from piltover.session_manager import SessionManager
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
     InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings
@@ -123,7 +124,7 @@ async def send_message(client: Client, request: SendMessage, user: User):
 
     message = await Message.create(message=request.message, author=user, chat=chat)
 
-    return Updates(
+    updates = Updates(
         updates=[
             UpdateMessageID(id=message.id, random_id=request.random_id),
             UpdateNewMessage(message=await message.to_tl(user), pts=1, pts_count=1),
@@ -135,6 +136,9 @@ async def send_message(client: Client, request: SendMessage, user: User):
         date=int(time()),
         seq=1,
     )
+
+    await SessionManager().send(updates, user.id, exclude=[client])
+    return updates
 
 
 # noinspection PyUnusedLocal
@@ -400,13 +404,16 @@ async def edit_message(client: Client, request: EditMessage, user: User):
 
     await message.update(message=request.message)
 
-    return Updates(
+    updates = Updates(
         updates=[UpdateEditMessage(message=await message.to_tl(user), pts=1, pts_count=1)],
         users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
         seq=1,
     )
+
+    await SessionManager().send(updates, user.id, exclude=[client])
+    return updates
 
 
 # noinspection PyUnusedLocal
@@ -425,7 +432,7 @@ async def send_media(client: Client, request: SendMedia, user: User):
     message = await Message.create(message=request.message, author=user, chat=chat)
     await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler)
 
-    return Updates(
+    updates = Updates(
         updates=[
             UpdateMessageID(id=message.id, random_id=request.random_id),
             UpdateNewMessage(message=await message.to_tl(user), pts=1, pts_count=1),
@@ -437,3 +444,6 @@ async def send_media(client: Client, request: SendMedia, user: User):
         date=int(time()),
         seq=1,
     )
+
+    await SessionManager().send(updates, user.id, exclude=[client])
+    return updates

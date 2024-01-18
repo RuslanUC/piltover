@@ -3,11 +3,10 @@ import hashlib
 import os
 import secrets
 import time
-from asyncio import Task
 from collections import defaultdict
 from io import BytesIO
 from types import SimpleNamespace
-from typing import Callable, Awaitable, Optional, cast
+from typing import Callable, Awaitable
 
 import tgcrypto
 from loguru import logger
@@ -15,6 +14,7 @@ from loguru import logger
 from piltover.connection import Connection
 from piltover.enums import Transport
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
+from piltover.session_manager import Session, SessionManager
 from piltover.tl.types import (
     CoreMessage,
     EncryptedMessage,
@@ -23,9 +23,9 @@ from piltover.tl.types import (
 )
 from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Int, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
     SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping
-from piltover.tl_new.primitives.types_ import MsgContainer, Message, RpcResult
-from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, HttpWait, \
-    MsgsAck
+from piltover.tl_new.core_types import MsgContainer, Message, RpcResult
+from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
+from piltover.tl_new.utils import is_content_related
 from piltover.types import Keys
 from piltover.utils import (
     read_int,
@@ -48,11 +48,11 @@ class MessageHandler:
         self.server: Server | None = None
         self.handlers: defaultdict[
             int,
-            set[Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]],
+            set[Callable[[Client, CoreMessage, Session], Awaitable[TLObject | dict | None]]],
         ] = defaultdict(set)
 
     def on_message(self, typ: type[TLObject]):
-        def decorator(func: Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]):
+        def decorator(func: Callable[[Client, CoreMessage, Session], Awaitable[TLObject | dict | None]]):
             logger.debug("Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""),
                          typ=typ.tlname())
 
@@ -87,7 +87,7 @@ class Server:
         self.clients: dict[str, Client] = {}
         self.handlers: defaultdict[
             int,
-            set[Callable[[Client, CoreMessage, int], Awaitable[TLObject | dict | None]]],
+            set[Callable[[Client, CoreMessage, Session], Awaitable[TLObject | dict | None]]],
         ] = defaultdict(set)
         self.sys_handlers = defaultdict(list)
         self.salt: int = 0
@@ -161,7 +161,7 @@ class Server:
                 return auth_key_info
 
     def on_message(self, typ: type[TLObject]):
-        def decorator(func: Callable[[Client, CoreMessage, int], Awaitable[TLObject | bool | None]]):
+        def decorator(func: Callable[[Client, CoreMessage, Session], Awaitable[TLObject | bool | None]]):
             logger.debug("Added handler for function {typ!r}", typ=typ)
 
             self.handlers[typ.tlid()].add(func)
@@ -194,13 +194,7 @@ class Client:
         self.conn: Connection = Connection.new(transport=transport, stream=stream)
 
         self.auth_data = None
-        self.layer = 0
-
-        self._msg_id_last_time = 0
-        self._msg_id_offset = 0
-        # TODO should be session-specific
-        self._incoming_content_related_msgs = 0
-        self._outgoing_content_related_msgs = 0
+        self.empty_session = Session(self, 0)
 
     async def read_message(self) -> EncryptedMessage | UnencryptedMessage:
         data = BytesIO(await self.conn.recv())
@@ -214,19 +208,22 @@ class Client:
         encrypted_data = data.read()
         return EncryptedMessage(auth_key_id, msg_key, encrypted_data)
 
-    async def send(self, objects: TLObject | list[tuple[TLObject, CoreMessage]], session_id: int,
-                   originating_request: Optional[CoreMessage] = None):
-        await self.conn.send(
-            await self.encrypt(
-                objects,
-                session_id,
-                originating_request=originating_request.message_id if originating_request is not None else None,
-            )
+    async def send(self, objects: TLObject | list[tuple[TLObject, CoreMessage]], session: Session,
+                   originating_request: CoreMessage | None = None, in_reply: bool = True):
+        serialized, out_seq = self.serialize_message(
+            session,
+            objects,
+            originating_request=originating_request.message_id if originating_request is not None else None,
         )
+        await self.conn.send(await self.encrypt(serialized, out_seq, session, in_reply=in_reply))
 
     async def send_unencrypted(self, obj: TLObject) -> None:
         obj = obj.write()
-        await self.conn.send(bytes(8) + Long.write(self.msg_id(in_reply=True)) + Int.write(len(obj)) + obj)
+        await self.conn.send(
+            bytes(8)
+            + Long.write(self.empty_session.msg_id(in_reply=True))
+            + Int.write(len(obj)) + obj
+        )
 
     async def handle_unencrypted_message(self, obj: TLObject):
         if isinstance(obj, (ReqPqMulti, ReqPq)):
@@ -395,12 +392,14 @@ class Client:
             raise RuntimeError(f"Received unexpected unencrypted message: {obj}")  # TODO right error
 
     async def handle_encrypted_message(self, core_message: CoreMessage, session_id: int):
-        self.update_incoming_content_related_msgs(cast(TLObject, core_message.obj), session_id, core_message.seq_no)
-        if (result := await self.propagate(core_message, session_id)) is None:
+        sess = SessionManager().get_or_create(self, session_id)
+        sess.update_incoming_content_related_msgs(core_message.obj, core_message.seq_no)
+
+        if (result := await self.propagate(core_message, sess)) is None:
             return
         await self.send(
             result,
-            session_id,
+            sess,
             originating_request=(None if isinstance(core_message.obj, MsgContainer) else core_message),
         )
 
@@ -409,67 +408,59 @@ class Client:
         if isinstance(message, EncryptedMessage):
             # TODO: kick clients sending encrypted messages with invalid auth_key/(auth_key_id?)
             decrypted = await self.decrypt(message)
-            # TODO: check message_id, session_id
             core_message = decrypted.to_core_message()
             logger.debug(core_message)
             await self.handle_encrypted_message(core_message, decrypted.session_id)
         elif isinstance(message, UnencryptedMessage):
-            # TODO validate message_id (useless since it's not encrypted but ¯\_(ツ)_/¯)
-            # TODO handle invalid constructors
             decoded = SerializationUtils.read(BytesIO(message.message_data), TLObject)
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 
-    # TODO fix indentation
-    # TODO this method has a terrible signature
     # TODO don't mix list and non-list parameters
-    # TODO this method doesn't do what it says it does - it should ONLY encrypt
-    async def encrypt(
-            self,
-            objects: TLObject | list[tuple[TLObject, CoreMessage]],
-            session_id: int,
-            originating_request: Optional[int] = None,
-    ) -> bytes:
-        if self.auth_data.auth_key is None:
-            assert False, "FATAL: self.auth_key is None"
-        elif self.auth_data.auth_key_id is None:
-            assert False, "FATAL: self.auth_key_id is None"
-
+    def serialize_message(self, session: Session, objects: TLObject | list[tuple[TLObject, CoreMessage]],
+                           originating_request: int | None = None) -> tuple[bytes, int]:
         if isinstance(objects, TLObject):
             final_obj = objects
             serialized = objects.write()
 
             if originating_request is None:
-                msg_id = self.msg_id(in_reply=False)
+                msg_id = session.msg_id(in_reply=False)
             else:
                 # TODO check
-                is_content_related = self.is_content_related(objects)
-                if is_content_related:
-                    msg_id = self.msg_id(in_reply=True)
+                if is_content_related(objects):
+                    msg_id = session.msg_id(in_reply=True)
                 else:
                     msg_id = originating_request + 1
-            seq_no = self.get_outgoing_seq_no(objects, session_id)
+            seq_no = session.get_outgoing_seq_no(objects)
         else:
             container = MsgContainer(messages=[])
             for obj, core_message in objects:
                 # TODO what if there is no core_message (rename it to originating_request too)
-                if self.is_content_related(obj):
-                    msg_id = self.msg_id(in_reply=True)
+                if is_content_related(obj):
+                    msg_id = session.msg_id(in_reply=True)
                 else:
                     # suspicious
                     msg_id = core_message.message_id + 1
-                seq_no = self.get_outgoing_seq_no(obj, session_id)
+                seq_no = session.get_outgoing_seq_no(obj)
 
                 container.messages.append(Message(message_id=msg_id, seq_no=seq_no, obj=obj))
 
             final_obj = container
             serialized = container.write()
 
+        return serialized, session.get_outgoing_seq_no(final_obj)
+
+    async def encrypt(self, serialized: bytes, out_seq: int, session: Session, in_reply: bool = True) -> bytes:
+        if self.auth_data.auth_key is None:
+            assert False, "FATAL: self.auth_key is None"
+        elif self.auth_data.auth_key_id is None:
+            assert False, "FATAL: self.auth_key_id is None"
+
         data = (
                 Long.write(self.server.salt)
-                + Long.write(session_id)
-                + Long.write(self.msg_id(in_reply=True))
-                + Int.write(self.get_outgoing_seq_no(final_obj, session_id))
+                + Long.write(session.session_id)
+                + Long.write(session.msg_id(in_reply=in_reply))
+                + Int.write(out_seq)
                 + len(serialized).to_bytes(4, "little")
                 + serialized
         )
@@ -514,19 +505,10 @@ class Client:
             decrypted.read(),
         )
 
-    async def ping_worker(self):
-        while True:
-            await asyncio.sleep(10)
-            logger.debug("Sending ping...")
-
-            await self.send(Ping(ping_id=int.from_bytes(os.urandom(4), "big")))
-
     @logger.catch
     async def worker(self):
-        ping: Task | None = None
         try:
             self.conn = await self.conn.init()
-            # ping = asyncio.create_task(self.ping_worker())
 
             while True:
                 try:
@@ -542,56 +524,20 @@ class Client:
             await self.conn.close()
             logger.info("Client disconnected")
         finally:
-            # Cleanup tasks: client disconnected, or an error occurred
-            if ping is not None:
-                ping.cancel()
-
-    @staticmethod
-    def is_content_related(obj: TLObject) -> bool:
-        return isinstance(obj, (Ping, Pong, HttpWait, MsgsAck, MsgContainer))
-
-    def msg_id(self, in_reply: bool) -> int:
-        # Client message identifiers are divisible by 4, server message
-        # identifiers modulo 4 yield 1 if the message is a response to
-        # a client message, and 3 otherwise.
-
-        now = int(time.time())
-        self._msg_id_offset = (self._msg_id_offset + 4) if now == self._msg_id_last_time else 0
-        msg_id = (now * 2 ** 32) + self._msg_id_offset + (1 if in_reply else 3)
-        self._msg_id_last_time = now
-
-        assert msg_id % 4 in [1, 3], f"Invalid server msg_id: {msg_id}"
-        return msg_id
-
-    def update_incoming_content_related_msgs(self, obj: TLObject, session_id: int, seq_no: int):
-        # TODO split by session ID
-        expected = self._incoming_content_related_msgs * 2
-        if self.is_content_related(obj):
-            self._incoming_content_related_msgs += 1
-            expected += 1
-        # TODO(security) validate according to https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
-
-    def get_outgoing_seq_no(self, obj: TLObject, session_id: int) -> int:
-        # TODO split by session id
-        ret = self._outgoing_content_related_msgs * 2
-        if self.is_content_related(obj):
-            self._outgoing_content_related_msgs += 1
-            ret += 1
-        return ret
+            SessionManager().client_cleanup(self)
 
     def to_core_message(self, msg: Message | CoreMessage) -> CoreMessage:
         if isinstance(msg, Message):
             return CoreMessage(message_id=msg.message_id, seq_no=msg.seq_no, obj=msg.obj)
         return msg
 
-    async def propagate(self, request: CoreMessage | Message, session_id: int) -> None | list[
-        tuple[TLObject, CoreMessage]] | TLObject:
+    async def propagate(self, request: CoreMessage | Message, session: Session) -> list[tuple[TLObject, CoreMessage]] | TLObject | None:
         if isinstance(request.obj, MsgContainer):
             results = []
             for msg in request.obj.messages:
                 msg = self.to_core_message(msg)
 
-                result = await self.propagate(msg, session_id)
+                result = await self.propagate(msg, session)
                 if result is None:
                     continue
                 results.append((result, msg))
@@ -608,7 +554,7 @@ class Client:
             error = None
             for rpc in handlers:
                 try:
-                    result = await rpc(self, request, session_id)
+                    result = await rpc(self, request, session)
                     if result is not None:
                         break
                 except ErrorRpc as e:

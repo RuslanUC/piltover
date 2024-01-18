@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import piltover.tl_new as tl_new
-from piltover.tl_new.utils import classinstancemethod
-
 
 class Vector(list):
     value_type: type

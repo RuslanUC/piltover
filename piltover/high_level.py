@@ -10,9 +10,10 @@ from piltover.db.models import UserAuthorization, User
 from piltover.enums import Transport, ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.server import Server as LowServer, Client as LowClient, MessageHandler as LowMessageHandler
+from piltover.session_manager import Session, SessionManager
 from piltover.tl.types import CoreMessage
 from piltover.tl_new import TLObject, RpcError, Ping, Pong
-from piltover.tl_new.primitives.types_ import MsgContainer, RpcResult
+from piltover.tl_new.core_types import MsgContainer, RpcResult
 from piltover.utils import background
 from piltover.utils.buffered_stream import BufferedStream
 from piltover.utils.utils import check_flag
@@ -99,13 +100,13 @@ class Client(LowClient):
         auth = await self.get_auth(allow_mfa_pending)
         return auth.user if auth is not None else None
 
-    async def propagate(self, request: CoreMessage, session_id: int) -> None | list[tuple[TLObject, CoreMessage]] | TLObject:
+    async def propagate(self, request: CoreMessage, session: Session) -> list[tuple[TLObject, CoreMessage]] | TLObject | None:
         if isinstance(request.obj, MsgContainer):
-            return await super().propagate(request, session_id)
+            return await super().propagate(request, session)
         else:
             handlers: list[RequestHandler]
             if not (handlers := self.server.request_handlers.get(request.obj.tlid(), [])):
-                return await super().propagate(request, session_id)
+                return await super().propagate(request, session)
 
             result = None
             error = None
@@ -129,6 +130,9 @@ class Client(LowClient):
                         logger.warning("Error while processing {obj}: {err}", obj=request.obj.tlname(), err=e)
                         logger.exception("", backtrace=True)
                         error = RpcError(error_code=500, error_message="Server error")
+
+            if user is not None and session.user_id is None:
+                SessionManager().set_user_id(session, user.id)
 
             result = result if error is None else error
             if result is None:

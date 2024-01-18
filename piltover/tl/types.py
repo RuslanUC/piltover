@@ -4,7 +4,7 @@ from typing import Generic, TypeVar
 
 from piltover.tl_new import TLObject, SerializationUtils
 
-T = TypeVar("T")
+T = TypeVar("T", bound=TLObject)
 
 
 @dataclass(init=True, repr=True, frozen=True)
