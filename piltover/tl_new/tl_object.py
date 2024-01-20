@@ -45,18 +45,15 @@ class TLObject(_BaseTLObject):
             return b''
         flags = {}
         for field in self.__tl_flags__:
-            if field.is_flags:
-                value = self._calculate_flags(field)
-                flags[field.flagnum] = value
-                setattr(self, field.name, value)
+            value = self._calculate_flags(field)
+            flags[field.flagnum] = value
+            setattr(self, field.name, value)
 
         result = b""
         for field in self.__tl_fields__:
             value = getattr(self, field.name)
 
-            if field.is_flags:
-                flags[field.flagnum] = value
-            elif field.flagnum in flags and field.flag != -1 and (flags[field.flagnum] & field.flag) != field.flag:
+            if field.flagnum in flags and field.flag != -1 and (flags[field.flagnum] & field.flag) != field.flag:
                 continue
 
             if field.flag != -1 and field.type.type == bool and not field.flag_serializable:
@@ -92,6 +89,19 @@ class TLObject(_BaseTLObject):
 
     def write(self) -> bytes:
         return SerializationUtils.write(self)
+
+    def to_dict(self) -> dict:
+        if not self.__tl_fields__:
+            return {}
+        for field in self.__tl_flags__:
+            value = self._calculate_flags(field)
+            setattr(self, field.name, value)
+
+        result = {}
+        for field in self.__tl_fields__:
+            result[field.name] = getattr(self, field.name)
+
+        return result
 
 
 def _resolve_annotation(annotation: type):

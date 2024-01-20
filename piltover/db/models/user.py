@@ -76,3 +76,11 @@ class User(Model):
             return user
         else:
             return None
+
+    @classmethod
+    async def from_ids(cls, ids: list[int] | set[int]) -> list[models.User]:
+        result = []
+        for uid in ids:
+            if (user := await User.get_or_none(id=uid)) is not None:
+                result.append(user)
+        return result

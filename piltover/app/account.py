@@ -1,7 +1,9 @@
 import re
 
 from piltover.app.utils import check_password_internal
+from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType
 from piltover.db.models import User, UserAuthorization, SrpSession
+from piltover.db.models.privacy_rule import PrivacyRule, TL_KEY_TO_PRIVACY_ENUM
 from piltover.db.models.user_password import UserPassword
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -14,7 +16,7 @@ from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNo
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
-    SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings
+    SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy
 from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, \
     Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
 from piltover.utils import gen_safe_prime
@@ -133,14 +135,34 @@ async def get_password_settings(client: Client, request: GetPasswordSettings, us
     return PasswordSettings()
 
 
-# noinspection PyUnusedLocal
-@handler.on_request(GetPrivacy)
-async def get_privacy(client: Client, request: GetPrivacy):
+async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRules:
+    rules_ = await PrivacyRule.filter(user=user, key=key)
+    rules = []
+    users = []
+    for rule in rules_:
+        rules.append(await rule.to_tl())
+        if rule.value in {PrivacyRuleValueType.ALLOW_USERS, PrivacyRuleValueType.DISALLOW_USERS}:
+            users.extend([await rule_user.to_tl(user) for rule_user in await rule.users.all()])
+
     return PrivacyRules(
-        rules=[],
+        rules=rules,
         chats=[],
-        users=[],
+        users=users,
     )
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(GetPrivacy, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_privacy(client: Client, request: GetPrivacy, user: User):
+    return await get_privacy_internal(TL_KEY_TO_PRIVACY_ENUM[type(request.key)], user)
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(SetPrivacy, ReqHandlerFlags.AUTH_REQUIRED)
+async def set_privacy(client: Client, request: SetPrivacy, user: User):
+    key = TL_KEY_TO_PRIVACY_ENUM[type(request.key)]
+    await PrivacyRule.update_from_tl(user, key, request.rules)
+    return await get_privacy_internal(key, user)
 
 
 # noinspection PyUnusedLocal

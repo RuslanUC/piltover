@@ -434,6 +434,7 @@ def start():
         f.write(WARNING + "\n\n")
         f.write(f"import piltover.tl_new as tl_new\n")
         f.write(f"from piltover.tl_new import core_types\n\n")
+        f.write(f"min_layer = {min(all_layers)}\n")
         f.write(f"layer = {layer}\n\n")
         f.write("objects = {")
 
