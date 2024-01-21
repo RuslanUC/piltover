@@ -1,0 +1,9 @@
+from piltover.tl_new{namespace} import {objects}
+from piltover.tl_new.converter import ConverterBase
+
+
+class {base}Converter(ConverterBase):
+    base = {base}
+    old = [{old}]
+
+{methods}

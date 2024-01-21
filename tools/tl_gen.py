@@ -23,6 +23,9 @@ from functools import partial
 from pathlib import Path
 from typing import NamedTuple, List, Tuple
 
+HOME_PATH = Path("./tools")
+DESTINATION_PATH = Path("piltover/tl_new")
+
 SECTION_RE = re.compile(r"---(\w+)---")
 LAYER_RE = re.compile(r"//\sLAYER\s(\d+)")
 COMBINATOR_RE = re.compile(r"^([\w.]+)#([0-9a-f]+)\s(?:.*)=\s([\w<>.]+);$", re.MULTILINE)
@@ -79,7 +82,7 @@ def camel(s: str):
 
 def layer_suffix(type_: str, layer: int) -> str:
     found_layer = 0
-    for try_layer in range(layer, min(all_layers)-1, -1):
+    for try_layer in range(layer, min(all_layers) - 1, -1):
         if f"{type_}_{try_layer}" in types_to_constructors:
             found_layer = try_layer
             break
@@ -212,7 +215,7 @@ def parse_schema(schema: list[str]) -> tuple[list[Combinator], int]:
     return combinators, layer
 
 
-def parse_old_objects(schemaBase: list[Combinator]) -> list[Combinator]:
+def parse_old_schemas(schemaBase: list[Combinator]) -> dict[int, dict[str, Combinator]]:
     schemaBase = {f"{c.qualname}#{c.id}": c for c in schemaBase}
 
     layers = sorted([
@@ -221,7 +224,7 @@ def parse_old_objects(schemaBase: list[Combinator]) -> list[Combinator]:
         if file.startswith("api_") and file.endswith(".tl")
     ])
 
-    schemas = {}
+    schemas: dict[int, dict[str, Combinator]] = {}
     for layer in layers:
         with open(HOME_PATH / f"resources/api_{layer}.tl") as f:
             parsed = parse_schema(f.read().splitlines())[0]
@@ -246,16 +249,20 @@ def parse_old_objects(schemaBase: list[Combinator]) -> list[Combinator]:
             continue
         for cname in schemas[layer]:
             c = schemas[layer][cname]
-            replacings = {
+            replacements = {
                 "qualname": f"{c.qualname}_{layer}",
                 "qualtype": f"{c.qualtype}_{layer}",
                 "name": f"{c.name}_{layer}",
                 "type": f"{c.type}_{layer}",
             }
-            schemas[layer][cname] = c._replace(**replacings)
+            schemas[layer][cname] = c._replace(**replacements)
 
+    return schemas
+
+
+def parse_old_objects(schemaBase: list[Combinator]) -> list[Combinator]:
     result = []
-    for schema in schemas.values():
+    for schema in parse_old_schemas(schemaBase).values():
         result.extend(schema.values())
 
     return result
@@ -450,7 +457,4 @@ def start():
 
 
 if "__main__" == __name__:
-    HOME_PATH = Path("./tools")
-    DESTINATION_PATH = Path("piltover/tl_new")
-
     start()
