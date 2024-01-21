@@ -80,6 +80,7 @@ def start():
             print(f"Converter for {base} already exists, skipping")
             continue
 
+        layers = ", ".join([f"{d.old_layer}" for d in diff])
         old_ = [f"{base}_{d.old_layer}" for d in diff]
         objects = [base] + old_
         old_ = ", ".join(old_)
@@ -127,6 +128,7 @@ def start():
             f.write(converter_tmpl.format(
                 base=base,
                 old=old_,
+                layers=layers,
                 objects=objects,
                 namespace=namespace,
                 methods=methods,
