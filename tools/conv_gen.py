@@ -13,12 +13,13 @@ open = partial(open, encoding="utf-8")
 class ArgsDifference(NamedTuple):
     name: str
     old_layer: int
+    section: str
     added: set[tuple[str, str]]
     deleted: set[tuple[str, str]]
     updated: list[tuple[tuple[str, str], tuple[str, str]]]
 
 
-def args_difference(qualname: str, layer: int, base: set[tuple[str, str]], old: set[tuple[str, str]]) -> ArgsDifference:
+def args_difference(qualname: str, combinator: Combinator, base: set[tuple[str, str]], old: set[tuple[str, str]]) -> ArgsDifference:
     added = base - old
     deleted = old - base
     updated = []
@@ -32,7 +33,7 @@ def args_difference(qualname: str, layer: int, base: set[tuple[str, str]], old: 
         deleted.remove(arg_old)
         updated.append((arg_old, arg_new))
 
-    return ArgsDifference(qualname, layer, added, deleted, updated)
+    return ArgsDifference(qualname, combinator.layer, combinator.section, added, deleted, updated)
 
 
 def parse_differences(schemaBase: list[Combinator]) -> list[ArgsDifference]:
@@ -49,7 +50,7 @@ def parse_differences(schemaBase: list[Combinator]) -> list[ArgsDifference]:
             base_type = schemaBase[base_type[0]]
             args_this = set(deepcopy(combinator.args))
             args_base = set(deepcopy(base_type.args))
-            differences.append(args_difference(name, combinator.layer, args_base, args_this))
+            differences.append(args_difference(name, combinator, args_base, args_this))
 
     return differences
 
@@ -124,13 +125,17 @@ def start():
             methods += f"        data = obj.to_dict()\n{downgrade}"
             methods += f"        return {base}_{layer}(**data)\n\n"
 
+        namespace_ = f".{diff[0].section}"
+        if namespace:
+            namespace_ += f".{namespace}"
+
         with open(file_path, "w") as f:
             f.write(converter_tmpl.format(
                 base=base,
                 old=old_,
                 layers=layers,
                 objects=objects,
-                namespace=namespace,
+                namespace=namespace_,
                 methods=methods,
             ))
 

@@ -1,4 +1,5 @@
 from piltover.tl_new import TLObject
+from piltover.tl_new.all import layer as base_layer
 from piltover.tl_new.converter import ConverterBase
 from piltover.utils.utils import SingletonMeta
 
@@ -36,6 +37,11 @@ class ConverterManager(metaclass=SingletonMeta):
         func = getattr(conv, f"to_{layer}")
 
         return func(obj)
+
+    def to_layer(self, obj: TLObject, layer: int) -> TLObject:
+        if layer >= base_layer:
+            return self.upgrade(obj)
+        return self.downgrade(obj, layer)
 
 
 """
