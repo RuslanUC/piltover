@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import GetUnreadMentions, GetUnreadMentions_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import GetUnreadMentions, GetUnreadMentions_136
 
 
 class GetUnreadMentionsConverter(ConverterBase):
@@ -18,4 +18,3 @@ class GetUnreadMentionsConverter(ConverterBase):
         del data["flags"]
         del data["top_msg_id"]
         return GetUnreadMentions_136(**data)
-

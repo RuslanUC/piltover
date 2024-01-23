@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.account import UnregisterDevice, UnregisterDevice_70
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import UnregisterDevice, UnregisterDevice_70
 
 
 class UnregisterDeviceConverter(ConverterBase):
@@ -18,4 +18,3 @@ class UnregisterDeviceConverter(ConverterBase):
         data = obj.to_dict()
         del data["other_uids"]
         return UnregisterDevice_70(**data)
-

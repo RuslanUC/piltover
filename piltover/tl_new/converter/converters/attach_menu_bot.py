@@ -1,5 +1,5 @@
-from piltover.tl_new.types import AttachMenuBot, AttachMenuBot_140, AttachMenuBot_143
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import AttachMenuBot, AttachMenuBot_140, AttachMenuBot_143
 
 
 class AttachMenuBotConverter(ConverterBase):
@@ -38,4 +38,3 @@ class AttachMenuBotConverter(ConverterBase):
         if data["peer_types"] is None:
             data["peer_types"] = []
         return AttachMenuBot_143(**data)
-

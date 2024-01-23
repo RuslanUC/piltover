@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageMediaInvoice, MessageMediaInvoice_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageMediaInvoice, MessageMediaInvoice_136
 
 
 class MessageMediaInvoiceConverter(ConverterBase):
@@ -17,4 +17,3 @@ class MessageMediaInvoiceConverter(ConverterBase):
         data = obj.to_dict()
         del data["extended_media"]
         return MessageMediaInvoice_136(**data)
-

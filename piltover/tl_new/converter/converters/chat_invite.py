@@ -1,5 +1,5 @@
-from piltover.tl_new.types import ChatInvite, ChatInvite_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import ChatInvite, ChatInvite_136
 
 
 class ChatInviteConverter(ConverterBase):
@@ -18,4 +18,3 @@ class ChatInviteConverter(ConverterBase):
         data = obj.to_dict()
         del data["color"]
         return ChatInvite_136(**data)
-

@@ -1,5 +1,6 @@
-from piltover.tl_new.types import UpdateUserName, UpdateUserName_136
+from piltover.tl_new import Username
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import UpdateUserName, UpdateUserName_136
 
 
 class UpdateUserNameConverter(ConverterBase):
@@ -10,7 +11,7 @@ class UpdateUserNameConverter(ConverterBase):
     @staticmethod
     def from_136(obj: UpdateUserName_136) -> UpdateUserName:
         data = obj.to_dict()
-        assert False, "required field 'usernames' added in base tl object"  # TODO: add field
+        data["usernames"] = [Username(username=obj.username)]
         del data["username"]
         return UpdateUserName(**data)
 
@@ -18,6 +19,5 @@ class UpdateUserNameConverter(ConverterBase):
     def to_136(obj: UpdateUserName) -> UpdateUserName_136:
         data = obj.to_dict()
         del data["usernames"]
-        assert False, "required field 'username' deleted in base tl object"  # TODO: delete field
+        data["username"] = obj.usernames[0].username
         return UpdateUserName_136(**data)
-

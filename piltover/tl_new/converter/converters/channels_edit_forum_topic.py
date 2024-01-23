@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.channels import EditForumTopic, EditForumTopic_148
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.channels import EditForumTopic, EditForumTopic_148
 
 
 class EditForumTopicConverter(ConverterBase):
@@ -17,4 +17,3 @@ class EditForumTopicConverter(ConverterBase):
         data = obj.to_dict()
         del data["hidden"]
         return EditForumTopic_148(**data)
-

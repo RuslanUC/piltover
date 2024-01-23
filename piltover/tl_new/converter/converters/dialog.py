@@ -1,5 +1,5 @@
-from piltover.tl_new.types import Dialog, Dialog_136, Dialog_138
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import Dialog, Dialog_136, Dialog_138
 
 
 class DialogConverter(ConverterBase):
@@ -32,4 +32,3 @@ class DialogConverter(ConverterBase):
         del data["ttl_period"]
         del data["view_forum_as_messages"]
         return Dialog_138(**data)
-

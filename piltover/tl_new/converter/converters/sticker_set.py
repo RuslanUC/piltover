@@ -1,5 +1,5 @@
-from piltover.tl_new.types import StickerSet, StickerSet_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import StickerSet, StickerSet_136
 
 
 class StickerSetConverter(ConverterBase):
@@ -18,4 +18,3 @@ class StickerSetConverter(ConverterBase):
         del data["thumb_document_id"]
         del data["text_color"]
         return StickerSet_136(**data)
-

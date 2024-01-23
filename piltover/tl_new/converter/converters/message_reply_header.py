@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageReplyHeader, MessageReplyHeader_136, MessageReplyHeader_166
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageReplyHeader, MessageReplyHeader_136, MessageReplyHeader_166
 
 
 class MessageReplyHeaderConverter(ConverterBase):
@@ -36,4 +36,3 @@ class MessageReplyHeaderConverter(ConverterBase):
         data = obj.to_dict()
         del data["quote_offset"]
         return MessageReplyHeader_166(**data)
-

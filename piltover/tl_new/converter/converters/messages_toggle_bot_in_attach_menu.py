@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import ToggleBotInAttachMenu, ToggleBotInAttachMenu_140
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import ToggleBotInAttachMenu, ToggleBotInAttachMenu_140
 
 
 class ToggleBotInAttachMenuConverter(ConverterBase):
@@ -18,4 +18,3 @@ class ToggleBotInAttachMenuConverter(ConverterBase):
         del data["write_allowed"]
         del data["flags"]
         return ToggleBotInAttachMenu_140(**data)
-

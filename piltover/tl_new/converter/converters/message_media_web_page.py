@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageMediaWebPage, MessageMediaWebPage_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageMediaWebPage, MessageMediaWebPage_136
 
 
 class MessageMediaWebPageConverter(ConverterBase):
@@ -21,4 +21,3 @@ class MessageMediaWebPageConverter(ConverterBase):
         del data["flags"]
         del data["force_small_media"]
         return MessageMediaWebPage_136(**data)
-

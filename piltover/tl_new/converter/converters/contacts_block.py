@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.contacts import Block, Block_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.contacts import Block, Block_136
 
 
 class BlockConverter(ConverterBase):
@@ -18,4 +18,3 @@ class BlockConverter(ConverterBase):
         del data["my_stories_from"]
         del data["flags"]
         return Block_136(**data)
-

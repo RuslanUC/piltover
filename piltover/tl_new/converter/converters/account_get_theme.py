@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.account import GetTheme, GetTheme_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import GetTheme, GetTheme_136
 
 
 class GetThemeConverter(ConverterBase):
@@ -18,4 +18,3 @@ class GetThemeConverter(ConverterBase):
         data = obj.to_dict()
         data["document_id"] = 0  # Method should not be downgraded
         return GetTheme_136(**data)
-

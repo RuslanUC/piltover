@@ -21,4 +21,3 @@ class UpdateMessagePollVoteConverter(ConverterBase):
         del data["peer"]
         data["user_id"] = obj.peer.user_id
         return UpdateMessagePollVote_136(**data)
-

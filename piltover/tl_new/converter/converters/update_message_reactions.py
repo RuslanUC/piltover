@@ -1,5 +1,5 @@
-from piltover.tl_new.types import UpdateMessageReactions, UpdateMessageReactions_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import UpdateMessageReactions, UpdateMessageReactions_136
 
 
 class UpdateMessageReactionsConverter(ConverterBase):
@@ -18,4 +18,3 @@ class UpdateMessageReactionsConverter(ConverterBase):
         del data["top_msg_id"]
         del data["flags"]
         return UpdateMessageReactions_136(**data)
-

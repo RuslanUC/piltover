@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.stories import EditStory, EditStory_160, EditStory_161
+from piltover.tl_new import InputPeerEmpty
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stories import EditStory, EditStory_160, EditStory_161
 
 
 class EditStoryConverter(ConverterBase):
@@ -10,7 +11,7 @@ class EditStoryConverter(ConverterBase):
     @staticmethod
     def from_160(obj: EditStory_160) -> EditStory:
         data = obj.to_dict()
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["peer"] = InputPeerEmpty()
         return EditStory(**data)
 
     @staticmethod
@@ -23,7 +24,7 @@ class EditStoryConverter(ConverterBase):
     @staticmethod
     def from_161(obj: EditStory_161) -> EditStory:
         data = obj.to_dict()
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["peer"] = InputPeerEmpty()
         return EditStory(**data)
 
     @staticmethod
@@ -31,4 +32,3 @@ class EditStoryConverter(ConverterBase):
         data = obj.to_dict()
         del data["peer"]
         return EditStory_161(**data)
-

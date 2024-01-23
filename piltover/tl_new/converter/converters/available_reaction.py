@@ -1,5 +1,5 @@
-from piltover.tl_new.types import AvailableReaction, AvailableReaction_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import AvailableReaction, AvailableReaction_136
 
 
 class AvailableReactionConverter(ConverterBase):
@@ -19,4 +19,3 @@ class AvailableReactionConverter(ConverterBase):
         del data["around_animation"]
         del data["center_icon"]
         return AvailableReaction_136(**data)
-

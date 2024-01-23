@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.stories import CanSendStory, CanSendStory_162
+from piltover.tl_new import InputPeerEmpty
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stories import CanSendStory, CanSendStory_162
 
 
 class CanSendStoryConverter(ConverterBase):
@@ -10,7 +11,7 @@ class CanSendStoryConverter(ConverterBase):
     @staticmethod
     def from_162(obj: CanSendStory_162) -> CanSendStory:
         data = obj.to_dict()
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["peer"] = InputPeerEmpty()
         return CanSendStory(**data)
 
     @staticmethod
@@ -18,4 +19,3 @@ class CanSendStoryConverter(ConverterBase):
         data = obj.to_dict()
         del data["peer"]
         return CanSendStory_162(**data)
-

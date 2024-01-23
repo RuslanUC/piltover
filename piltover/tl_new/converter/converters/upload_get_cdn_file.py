@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.upload import GetCdnFile, GetCdnFile_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.upload import GetCdnFile, GetCdnFile_136
 
 
 class GetCdnFileConverter(ConverterBase):
@@ -16,4 +16,3 @@ class GetCdnFileConverter(ConverterBase):
     def to_136(obj: GetCdnFile) -> GetCdnFile_136:
         data = obj.to_dict()
         return GetCdnFile_136(**data)
-

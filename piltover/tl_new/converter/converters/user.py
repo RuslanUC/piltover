@@ -1,5 +1,6 @@
-from piltover.tl_new.types import User, User_136, User_145, User_148, User_160, User_166
+from piltover.tl_new import PeerColor
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import User, User_136, User_145, User_148, User_160, User_166
 
 
 class UserConverter(ConverterBase):
@@ -81,13 +82,15 @@ class UserConverter(ConverterBase):
     def from_166(obj: User_166) -> User:
         data = obj.to_dict()
         del data["background_emoji_id"]
-        assert False, "type of field 'color' changed (flags2.7?int -> flags2.8?PeerColor)"  # TODO: type changed
+        if data["color"] is not None:
+            data["color"] = PeerColor(color=obj.color, background_emoji_id=obj.background_emoji_id)
         return User(**data)
 
     @staticmethod
     def to_166(obj: User) -> User_166:
         data = obj.to_dict()
         del data["profile_color"]
-        assert False, "type of field 'color' changed (flags2.8?PeerColor -> flags2.7?int)"  # TODO: type changed
+        if data["color"] is not None:
+            data["color"] = obj.color.color
+            data["background_emoji_id"] = obj.color.background_emoji_id
         return User_166(**data)
-

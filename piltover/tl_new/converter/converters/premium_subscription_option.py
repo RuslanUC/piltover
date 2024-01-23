@@ -1,5 +1,5 @@
-from piltover.tl_new.types import PremiumSubscriptionOption, PremiumSubscriptionOption_145
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import PremiumSubscriptionOption, PremiumSubscriptionOption_145
 
 
 class PremiumSubscriptionOptionConverter(ConverterBase):
@@ -17,4 +17,3 @@ class PremiumSubscriptionOptionConverter(ConverterBase):
         data = obj.to_dict()
         del data["transaction"]
         return PremiumSubscriptionOption_145(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageActionSetChatWallPaper, MessageActionSetChatWallPaper_158
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageActionSetChatWallPaper, MessageActionSetChatWallPaper_158
 
 
 class MessageActionSetChatWallPaperConverter(ConverterBase):
@@ -19,4 +19,3 @@ class MessageActionSetChatWallPaperConverter(ConverterBase):
         del data["same"]
         del data["flags"]
         return MessageActionSetChatWallPaper_158(**data)
-

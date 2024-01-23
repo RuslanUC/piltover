@@ -1,5 +1,5 @@
-from piltover.tl_new.types import WebPageEmpty, WebPageEmpty_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import WebPageEmpty, WebPageEmpty_136
 
 
 class WebPageEmptyConverter(ConverterBase):
@@ -18,4 +18,3 @@ class WebPageEmptyConverter(ConverterBase):
         del data["url"]
         del data["flags"]
         return WebPageEmpty_136(**data)
-

@@ -10,7 +10,7 @@ class StoryViewsListConverter(ConverterBase):
     @staticmethod
     def from_160(obj: StoryViewsList_160) -> StoryViewsList:
         data = obj.to_dict()
-        assert False, "required field 'reactions_count' added in base tl object"  # TODO: add field
+        data["reactions_count"] = 0
         return StoryViewsList(**data)
 
     @staticmethod
@@ -20,4 +20,3 @@ class StoryViewsListConverter(ConverterBase):
         del data["flags"]
         del data["next_offset"]
         return StoryViewsList_160(**data)
-

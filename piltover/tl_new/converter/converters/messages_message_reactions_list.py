@@ -1,6 +1,6 @@
-from piltover.tl_new import MessagePeerReaction
-from piltover.tl_new.types.messages import MessageReactionsList, MessageReactionsList_136
+from piltover.tl_new import MessagePeerReaction, MessageUserReaction_136, PeerUser
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.messages import MessageReactionsList, MessageReactionsList_136
 
 
 class MessageReactionsListConverter(ConverterBase):
@@ -12,13 +12,18 @@ class MessageReactionsListConverter(ConverterBase):
     def from_136(obj: MessageReactionsList_136) -> MessageReactionsList:
         data = obj.to_dict()
         data["chats"] = []
-        assert False, "type of field 'reactions' changed (Vector<MessageUserReaction> -> Vector<MessagePeerReaction>)"  # TODO: type changed
+        data["reactions"] = [
+            MessagePeerReaction(peer_id=PeerUser(user_id=reaction.user_id), date=0, reaction=reaction.reaction)
+            for reaction in obj.reactions
+        ]
         return MessageReactionsList(**data)
 
     @staticmethod
     def to_136(obj: MessageReactionsList) -> MessageReactionsList_136:
         data = obj.to_dict()
         del data["chats"]
-        assert False, "type of field 'reactions' changed (Vector<MessagePeerReaction> -> Vector<MessageUserReaction>)"  # TODO: type changed
+        data["reactions"] = [
+            MessageUserReaction_136(user_id=reaction.peer_id.user_id, date=0, reaction=reaction.reaction)
+            for reaction in obj.reactions if isinstance(reaction.peer_id, PeerUser)
+        ]
         return MessageReactionsList_136(**data)
-

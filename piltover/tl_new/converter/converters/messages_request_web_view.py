@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.messages import RequestWebView, RequestWebView_140, RequestWebView_143, RequestWebView_145, RequestWebView_148
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import RequestWebView, RequestWebView_140, RequestWebView_143, \
+    RequestWebView_145, RequestWebView_148
 
 
 class RequestWebViewConverter(ConverterBase):
@@ -10,7 +11,7 @@ class RequestWebViewConverter(ConverterBase):
     @staticmethod
     def from_140(obj: RequestWebView_140) -> RequestWebView:
         data = obj.to_dict()
-        assert False, "required field 'platform' added in base tl object"  # TODO: add field
+        data["platform"] = "linux"
         del data["reply_to_msg_id"]
         return RequestWebView(**data)
 
@@ -25,7 +26,7 @@ class RequestWebViewConverter(ConverterBase):
     @staticmethod
     def from_143(obj: RequestWebView_143) -> RequestWebView:
         data = obj.to_dict()
-        assert False, "required field 'platform' added in base tl object"  # TODO: add field
+        data["platform"] = "linux"
         del data["reply_to_msg_id"]
         return RequestWebView(**data)
 
@@ -60,4 +61,3 @@ class RequestWebViewConverter(ConverterBase):
         data = obj.to_dict()
         del data["reply_to"]
         return RequestWebView_148(**data)
-

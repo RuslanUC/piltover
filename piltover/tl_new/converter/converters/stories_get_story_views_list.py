@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.stories import GetStoryViewsList, GetStoryViewsList_160, GetStoryViewsList_161
+from piltover.tl_new import InputPeerEmpty
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stories import GetStoryViewsList, GetStoryViewsList_160, GetStoryViewsList_161
 
 
 class GetStoryViewsListConverter(ConverterBase):
@@ -10,8 +11,8 @@ class GetStoryViewsListConverter(ConverterBase):
     @staticmethod
     def from_160(obj: GetStoryViewsList_160) -> GetStoryViewsList:
         data = obj.to_dict()
-        assert False, "required field 'offset' added in base tl object"  # TODO: add field
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["offset"] = ""
+        data["peer"] = InputPeerEmpty()
         del data["offset_date"]
         del data["offset_id"]
         return GetStoryViewsList(**data)
@@ -25,14 +26,14 @@ class GetStoryViewsListConverter(ConverterBase):
         del data["flags"]
         del data["q"]
         del data["peer"]
-        assert False, "required field 'offset_date' deleted in base tl object"  # TODO: delete field
-        assert False, "required field 'offset_id' deleted in base tl object"  # TODO: delete field
+        data["offset_date"] = 0
+        data["offset_id"] = 0
         return GetStoryViewsList_160(**data)
 
     @staticmethod
     def from_161(obj: GetStoryViewsList_161) -> GetStoryViewsList:
         data = obj.to_dict()
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["peer"] = InputPeerEmpty()
         return GetStoryViewsList(**data)
 
     @staticmethod
@@ -40,4 +41,3 @@ class GetStoryViewsListConverter(ConverterBase):
         data = obj.to_dict()
         del data["peer"]
         return GetStoryViewsList_161(**data)
-

@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.stories import GetStoriesByID, GetStoriesByID_160
+from piltover.tl_new import InputPeerUser, InputUser
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stories import GetStoriesByID, GetStoriesByID_160
 
 
 class GetStoriesByIDConverter(ConverterBase):
@@ -10,7 +11,7 @@ class GetStoriesByIDConverter(ConverterBase):
     @staticmethod
     def from_160(obj: GetStoriesByID_160) -> GetStoriesByID:
         data = obj.to_dict()
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["peer"] = InputPeerUser(user_id=obj.user_id, access_hash=obj.user_id.access_hash)
         del data["user_id"]
         return GetStoriesByID(**data)
 
@@ -18,6 +19,5 @@ class GetStoriesByIDConverter(ConverterBase):
     def to_160(obj: GetStoriesByID) -> GetStoriesByID_160:
         data = obj.to_dict()
         del data["peer"]
-        assert False, "required field 'user_id' deleted in base tl object"  # TODO: delete field
+        data["peer"] = InputUser(user_id=obj.peer.user_id, access_hash=obj.peer.access_hash)
         return GetStoriesByID_160(**data)
-

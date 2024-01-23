@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageActionPaymentSent, MessageActionPaymentSent_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageActionPaymentSent, MessageActionPaymentSent_136
 
 
 class MessageActionPaymentSentConverter(ConverterBase):
@@ -20,4 +20,3 @@ class MessageActionPaymentSentConverter(ConverterBase):
         del data["recurring_init"]
         del data["flags"]
         return MessageActionPaymentSent_136(**data)
-

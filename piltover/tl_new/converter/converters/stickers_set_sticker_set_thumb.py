@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.stickers import SetStickerSetThumb, SetStickerSetThumb_136
+from piltover.tl_new import InputDocument
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stickers import SetStickerSetThumb, SetStickerSetThumb_136
 
 
 class SetStickerSetThumbConverter(ConverterBase):
@@ -10,7 +11,6 @@ class SetStickerSetThumbConverter(ConverterBase):
     @staticmethod
     def from_136(obj: SetStickerSetThumb_136) -> SetStickerSetThumb:
         data = obj.to_dict()
-        assert False, "type of field 'thumb' changed (InputDocument -> flags.0?InputDocument)"  # TODO: type changed
         return SetStickerSetThumb(**data)
 
     @staticmethod
@@ -18,6 +18,6 @@ class SetStickerSetThumbConverter(ConverterBase):
         data = obj.to_dict()
         del data["thumb_document_id"]
         del data["flags"]
-        assert False, "type of field 'thumb' changed (flags.0?InputDocument -> InputDocument)"  # TODO: type changed
+        if data["thumb"] is None:
+            data["thumb"] = InputDocument(id=0, access_hash=0, file_reference=b"")
         return SetStickerSetThumb_136(**data)
-

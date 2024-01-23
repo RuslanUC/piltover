@@ -1,5 +1,5 @@
-from piltover.tl_new.types import GlobalPrivacySettings, GlobalPrivacySettings_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import GlobalPrivacySettings, GlobalPrivacySettings_136
 
 
 class GlobalPrivacySettingsConverter(ConverterBase):
@@ -18,4 +18,3 @@ class GlobalPrivacySettingsConverter(ConverterBase):
         del data["keep_archived_unmuted"]
         del data["keep_archived_folders"]
         return GlobalPrivacySettings_136(**data)
-

@@ -1,6 +1,6 @@
 from piltover.tl_new import PremiumSubscriptionOption
-from piltover.tl_new.types.help import PremiumPromo, PremiumPromo_143
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.help import PremiumPromo, PremiumPromo_143
 
 
 class PremiumPromoConverter(ConverterBase):
@@ -25,4 +25,3 @@ class PremiumPromoConverter(ConverterBase):
         data["monthly_amount"] = obj.period_options[0].amount
         data["currency"] = obj.period_options[0].currency
         return PremiumPromo_143(**data)
-

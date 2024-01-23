@@ -1,5 +1,5 @@
-from piltover.tl_new.types import InputReplyToMessage, InputReplyToMessage_160, InputReplyToMessage_166
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import InputReplyToMessage, InputReplyToMessage_160, InputReplyToMessage_166
 
 
 class InputReplyToMessageConverter(ConverterBase):
@@ -31,4 +31,3 @@ class InputReplyToMessageConverter(ConverterBase):
         data = obj.to_dict()
         del data["quote_offset"]
         return InputReplyToMessage_166(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types.auth import SentCodeTypeEmailCode, SentCodeTypeEmailCode_145
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.auth import SentCodeTypeEmailCode, SentCodeTypeEmailCode_145
 
 
 class SentCodeTypeEmailCodeConverter(ConverterBase):
@@ -19,4 +19,3 @@ class SentCodeTypeEmailCodeConverter(ConverterBase):
         del data["reset_available_period"]
         del data["reset_pending_date"]
         return SentCodeTypeEmailCode_145(**data)
-

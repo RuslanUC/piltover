@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageReactions, MessageReactions_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageReactions, MessageReactions_136
 
 
 class MessageReactionsConverter(ConverterBase):
@@ -18,4 +18,3 @@ class MessageReactionsConverter(ConverterBase):
         data = obj.to_dict()
         del data["recent_reactions"]
         return MessageReactions_136(**data)
-

@@ -1,6 +1,6 @@
 from piltover.tl_new import EmailVerifyPurposeLoginSetup, EmailVerificationCode
-from piltover.tl_new.functions.account import VerifyEmail, VerifyEmail_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import VerifyEmail, VerifyEmail_136
 
 
 class VerifyEmailConverter(ConverterBase):
@@ -25,4 +25,3 @@ class VerifyEmailConverter(ConverterBase):
         del data["purpose"]
         del data["verification"]
         return VerifyEmail_136(**data)
-

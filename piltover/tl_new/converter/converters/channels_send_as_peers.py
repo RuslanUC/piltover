@@ -1,6 +1,6 @@
 from piltover.tl_new import SendAsPeer
-from piltover.tl_new.types.channels import SendAsPeers, SendAsPeers_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.channels import SendAsPeers, SendAsPeers_136
 
 
 class SendAsPeersConverter(ConverterBase):
@@ -19,4 +19,3 @@ class SendAsPeersConverter(ConverterBase):
         data = obj.to_dict()
         data["peers"] = [peer.peer for peer in data["peers"]]
         return SendAsPeers_136(**data)
-

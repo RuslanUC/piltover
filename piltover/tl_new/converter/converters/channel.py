@@ -1,6 +1,6 @@
 from piltover.tl_new import PeerColor
-from piltover.tl_new.types import Channel, Channel_136, Channel_148, Channel_164, Channel_166
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import Channel, Channel_136, Channel_148, Channel_164, Channel_166
 
 
 class ChannelConverter(ConverterBase):
@@ -66,4 +66,3 @@ class ChannelConverter(ConverterBase):
         if data["color"] is not None:
             data["color"] = obj.color.color
         return Channel_166(**data)
-

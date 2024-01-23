@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.messages import SendScreenshotNotification, SendScreenshotNotification_136
+from piltover.tl_new import InputReplyToMessage
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import SendScreenshotNotification, SendScreenshotNotification_136
 
 
 class SendScreenshotNotificationConverter(ConverterBase):
@@ -10,7 +11,7 @@ class SendScreenshotNotificationConverter(ConverterBase):
     @staticmethod
     def from_136(obj: SendScreenshotNotification_136) -> SendScreenshotNotification:
         data = obj.to_dict()
-        assert False, "required field 'reply_to' added in base tl object"  # TODO: add field
+        data["reply_to"] = InputReplyToMessage(reply_to_msg_id=obj.reply_to_msg_id)
         del data["reply_to_msg_id"]
         return SendScreenshotNotification(**data)
 
@@ -18,6 +19,5 @@ class SendScreenshotNotificationConverter(ConverterBase):
     def to_136(obj: SendScreenshotNotification) -> SendScreenshotNotification_136:
         data = obj.to_dict()
         del data["reply_to"]
-        assert False, "required field 'reply_to_msg_id' deleted in base tl object"  # TODO: delete field
+        data["reply_to_msg_id"] = obj.reply_to.reply_to_msg_id
         return SendScreenshotNotification_136(**data)
-

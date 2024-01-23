@@ -1,6 +1,6 @@
 from piltover.tl_new import ChatReactionsSome, ReactionEmoji
-from piltover.tl_new.types import ChatFull, ChatFull_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import ChatFull, ChatFull_136
 
 
 class ChatFullConverter(ConverterBase):
@@ -27,4 +27,3 @@ class ChatFullConverter(ConverterBase):
                 if isinstance(reaction, ReactionEmoji)
             ]
         return ChatFull_136(**data)
-

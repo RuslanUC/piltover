@@ -1,5 +1,5 @@
-from piltover.tl_new.types import UpdateChannelReadMessagesContents, UpdateChannelReadMessagesContents_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import UpdateChannelReadMessagesContents, UpdateChannelReadMessagesContents_136
 
 
 class UpdateChannelReadMessagesContentsConverter(ConverterBase):
@@ -18,4 +18,3 @@ class UpdateChannelReadMessagesContentsConverter(ConverterBase):
         del data["flags"]
         del data["top_msg_id"]
         return UpdateChannelReadMessagesContents_136(**data)
-

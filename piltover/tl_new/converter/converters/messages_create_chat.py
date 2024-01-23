@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import CreateChat, CreateChat_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import CreateChat, CreateChat_136
 
 
 class CreateChatConverter(ConverterBase):
@@ -18,4 +18,3 @@ class CreateChatConverter(ConverterBase):
         del data["flags"]
         del data["ttl_period"]
         return CreateChat_136(**data)
-

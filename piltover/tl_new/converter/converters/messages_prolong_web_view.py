@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.messages import ProlongWebView, ProlongWebView_140, ProlongWebView_143, ProlongWebView_148
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import ProlongWebView, ProlongWebView_140, ProlongWebView_143, \
+    ProlongWebView_148
 
 
 class ProlongWebViewConverter(ConverterBase):
@@ -44,4 +45,3 @@ class ProlongWebViewConverter(ConverterBase):
         data = obj.to_dict()
         del data["reply_to"]
         return ProlongWebView_148(**data)
-

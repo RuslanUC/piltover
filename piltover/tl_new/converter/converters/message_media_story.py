@@ -1,6 +1,6 @@
 from piltover.tl_new import PeerUser
-from piltover.tl_new.types import MessageMediaStory, MessageMediaStory_160
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageMediaStory, MessageMediaStory_160
 
 
 class MessageMediaStoryConverter(ConverterBase):
@@ -21,4 +21,3 @@ class MessageMediaStoryConverter(ConverterBase):
         del data["peer"]
         data["user_id"] = obj.peer.user_id
         return MessageMediaStory_160(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.upload import GetFile, GetFile_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.upload import GetFile, GetFile_136
 
 
 class GetFileConverter(ConverterBase):
@@ -16,4 +16,3 @@ class GetFileConverter(ConverterBase):
     def to_136(obj: GetFile) -> GetFile_136:
         data = obj.to_dict()
         return GetFile_136(**data)
-

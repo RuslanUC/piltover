@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.account import RegisterDevice, RegisterDevice_70
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import RegisterDevice, RegisterDevice_70
 
 
 class RegisterDeviceConverter(ConverterBase):
@@ -24,4 +24,3 @@ class RegisterDeviceConverter(ConverterBase):
         del data["other_uids"]
         del data["secret"]
         return RegisterDevice_70(**data)
-

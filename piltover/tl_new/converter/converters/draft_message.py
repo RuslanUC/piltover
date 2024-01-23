@@ -1,5 +1,5 @@
-from piltover.tl_new.types import DraftMessage, DraftMessage_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import DraftMessage, DraftMessage_136
 
 
 class DraftMessageConverter(ConverterBase):
@@ -20,4 +20,3 @@ class DraftMessageConverter(ConverterBase):
         del data["reply_to"]
         del data["media"]
         return DraftMessage_136(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import LangPackLanguage, LangPackLanguage_72
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import LangPackLanguage, LangPackLanguage_72
 
 
 class LangPackLanguageConverter(ConverterBase):
@@ -29,4 +29,3 @@ class LangPackLanguageConverter(ConverterBase):
         del data["translations_url"]
         del data["base_lang_code"]
         return LangPackLanguage_72(**data)
-

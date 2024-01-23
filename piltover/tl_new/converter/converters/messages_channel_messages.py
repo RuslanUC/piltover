@@ -1,5 +1,5 @@
-from piltover.tl_new.types.messages import ChannelMessages, ChannelMessages_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.messages import ChannelMessages, ChannelMessages_136
 
 
 class ChannelMessagesConverter(ConverterBase):
@@ -18,4 +18,3 @@ class ChannelMessagesConverter(ConverterBase):
         data = obj.to_dict()
         del data["topics"]
         return ChannelMessages_136(**data)
-

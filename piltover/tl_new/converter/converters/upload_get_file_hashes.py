@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.upload import GetFileHashes, GetFileHashes_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.upload import GetFileHashes, GetFileHashes_136
 
 
 class GetFileHashesConverter(ConverterBase):
@@ -16,4 +16,3 @@ class GetFileHashesConverter(ConverterBase):
     def to_136(obj: GetFileHashes) -> GetFileHashes_136:
         data = obj.to_dict()
         return GetFileHashes_136(**data)
-

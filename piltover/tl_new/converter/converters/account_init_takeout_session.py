@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.account import InitTakeoutSession, InitTakeoutSession_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import InitTakeoutSession, InitTakeoutSession_136
 
 
 class InitTakeoutSessionConverter(ConverterBase):
@@ -16,4 +16,3 @@ class InitTakeoutSessionConverter(ConverterBase):
     def to_136(obj: InitTakeoutSession) -> InitTakeoutSession_136:
         data = obj.to_dict()
         return InitTakeoutSession_136(**data)
-

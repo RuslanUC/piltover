@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.messages import TranslateText, TranslateText_137
+from piltover.tl_new import TextWithEntities
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import TranslateText, TranslateText_137
 
 
 class TranslateTextConverter(ConverterBase):
@@ -12,13 +13,14 @@ class TranslateTextConverter(ConverterBase):
         data = obj.to_dict()
         del data["from_lang"]
         del data["msg_id"]
-        assert False, "type of field 'text' changed (flags.1?string -> flags.1?Vector<TextWithEntities>)"  # TODO: type changed
+        if data["text"] is not None:
+            data["text"] = [TextWithEntities(text=data["text"], entities=[])]
         return TranslateText(**data)
 
     @staticmethod
     def to_137(obj: TranslateText) -> TranslateText_137:
         data = obj.to_dict()
         del data["id"]
-        assert False, "type of field 'text' changed (flags.1?Vector<TextWithEntities> -> flags.1?string)"  # TODO: type changed
+        if data["text"] is not None and data["text"]:
+            data["text"] = obj.text[0].text
         return TranslateText_137(**data)
-

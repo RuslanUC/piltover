@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.updates import GetDifference, GetDifference_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.updates import GetDifference, GetDifference_136
 
 
 class GetDifferenceConverter(ConverterBase):
@@ -18,4 +18,3 @@ class GetDifferenceConverter(ConverterBase):
         del data["pts_limit"]
         del data["qts_limit"]
         return GetDifference_136(**data)
-

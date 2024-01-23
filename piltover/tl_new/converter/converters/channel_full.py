@@ -1,6 +1,6 @@
 from piltover.tl_new import ChatReactionsSome, ReactionEmoji
-from piltover.tl_new.types import ChannelFull, ChannelFull_136, ChannelFull_140, ChannelFull_145
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import ChannelFull, ChannelFull_136, ChannelFull_140, ChannelFull_145
 
 
 class ChannelFullConverter(ConverterBase):
@@ -75,4 +75,3 @@ class ChannelFullConverter(ConverterBase):
         del data["stories_pinned_available"]
         del data["view_forum_as_messages"]
         return ChannelFull_145(**data)
-

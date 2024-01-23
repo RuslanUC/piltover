@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageActionGiftPremium, MessageActionGiftPremium_144
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageActionGiftPremium, MessageActionGiftPremium_144
 
 
 class MessageActionGiftPremiumConverter(ConverterBase):
@@ -19,4 +19,3 @@ class MessageActionGiftPremiumConverter(ConverterBase):
         del data["crypto_amount"]
         del data["crypto_currency"]
         return MessageActionGiftPremium_144(**data)
-

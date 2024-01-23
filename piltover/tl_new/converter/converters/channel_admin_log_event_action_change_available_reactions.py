@@ -1,6 +1,7 @@
 from piltover.tl_new import ChatReactionsSome, ReactionEmoji
-from piltover.tl_new.types import ChannelAdminLogEventActionChangeAvailableReactions, ChannelAdminLogEventActionChangeAvailableReactions_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import ChannelAdminLogEventActionChangeAvailableReactions, \
+    ChannelAdminLogEventActionChangeAvailableReactions_136
 
 
 class ChannelAdminLogEventActionChangeAvailableReactionsConverter(ConverterBase):
@@ -9,7 +10,8 @@ class ChannelAdminLogEventActionChangeAvailableReactionsConverter(ConverterBase)
     layers = [136]
 
     @staticmethod
-    def from_136(obj: ChannelAdminLogEventActionChangeAvailableReactions_136) -> ChannelAdminLogEventActionChangeAvailableReactions:
+    def from_136(
+            obj: ChannelAdminLogEventActionChangeAvailableReactions_136) -> ChannelAdminLogEventActionChangeAvailableReactions:
         data = obj.to_dict()
         data["new_value"] = ChatReactionsSome(
             reactions=[ReactionEmoji(emoticon=reaction) for reaction in obj.new_value]
@@ -20,7 +22,8 @@ class ChannelAdminLogEventActionChangeAvailableReactionsConverter(ConverterBase)
         return ChannelAdminLogEventActionChangeAvailableReactions(**data)
 
     @staticmethod
-    def to_136(obj: ChannelAdminLogEventActionChangeAvailableReactions) -> ChannelAdminLogEventActionChangeAvailableReactions_136:
+    def to_136(
+            obj: ChannelAdminLogEventActionChangeAvailableReactions) -> ChannelAdminLogEventActionChangeAvailableReactions_136:
         data = obj.to_dict()
         data["new_value"] = []
         data["prev_value"] = []
@@ -33,4 +36,3 @@ class ChannelAdminLogEventActionChangeAvailableReactionsConverter(ConverterBase)
                 reaction.emoticon for reaction in obj.prev_value.reactions if isinstance(reaction, ReactionEmoji)
             ]
         return ChannelAdminLogEventActionChangeAvailableReactions_136(**data)
-

@@ -1,5 +1,6 @@
-from piltover.tl_new.types.stats import MessageStats, MessageStats_136
+from piltover.tl_new import StatsGraph, DataJSON
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.stats import MessageStats, MessageStats_136
 
 
 class MessageStatsConverter(ConverterBase):
@@ -10,7 +11,7 @@ class MessageStatsConverter(ConverterBase):
     @staticmethod
     def from_136(obj: MessageStats_136) -> MessageStats:
         data = obj.to_dict()
-        assert False, "required field 'reactions_by_emotion_graph' added in base tl object"  # TODO: add field
+        data["reactions_by_emotion_graph"] = StatsGraph(json=DataJSON(data="{}"))
         return MessageStats(**data)
 
     @staticmethod
@@ -18,4 +19,3 @@ class MessageStatsConverter(ConverterBase):
         data = obj.to_dict()
         del data["reactions_by_emotion_graph"]
         return MessageStats_136(**data)
-

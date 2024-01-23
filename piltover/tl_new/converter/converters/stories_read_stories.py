@@ -1,6 +1,6 @@
 from piltover.tl_new import PeerUser
-from piltover.tl_new.functions.stories import ReadStories, ReadStories_160
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stories import ReadStories, ReadStories_160
 
 
 class ReadStoriesConverter(ConverterBase):
@@ -19,6 +19,5 @@ class ReadStoriesConverter(ConverterBase):
     def to_160(obj: ReadStories) -> ReadStories_160:
         data = obj.to_dict()
         del data["peer"]
-        assert False, "required field 'user_id' deleted in base tl object"  # TODO: delete field
+        data["user_id"] = obj.peer.user_id
         return ReadStories_160(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import CodeSettings, CodeSettings_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import CodeSettings, CodeSettings_136
 
 
 class CodeSettingsConverter(ConverterBase):
@@ -19,4 +19,3 @@ class CodeSettingsConverter(ConverterBase):
         del data["allow_firebase"]
         del data["app_sandbox"]
         return CodeSettings_136(**data)
-

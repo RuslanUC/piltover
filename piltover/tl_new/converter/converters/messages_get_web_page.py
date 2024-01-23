@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import GetWebPage, GetWebPage_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import GetWebPage, GetWebPage_136
 
 
 class GetWebPageConverter(ConverterBase):
@@ -16,4 +16,3 @@ class GetWebPageConverter(ConverterBase):
     def to_136(obj: GetWebPage) -> GetWebPage_136:
         data = obj.to_dict()
         return GetWebPage_136(**data)
-

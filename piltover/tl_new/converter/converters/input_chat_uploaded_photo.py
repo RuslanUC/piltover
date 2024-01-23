@@ -1,5 +1,5 @@
-from piltover.tl_new.types import InputChatUploadedPhoto, InputChatUploadedPhoto_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import InputChatUploadedPhoto, InputChatUploadedPhoto_136
 
 
 class InputChatUploadedPhotoConverter(ConverterBase):
@@ -17,4 +17,3 @@ class InputChatUploadedPhotoConverter(ConverterBase):
         data = obj.to_dict()
         del data["video_emoji_markup"]
         return InputChatUploadedPhoto_136(**data)
-

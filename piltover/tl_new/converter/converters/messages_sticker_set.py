@@ -1,5 +1,5 @@
-from piltover.tl_new.types.messages import StickerSet, StickerSet_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.messages import StickerSet, StickerSet_136
 
 
 class StickerSetConverter(ConverterBase):
@@ -10,7 +10,7 @@ class StickerSetConverter(ConverterBase):
     @staticmethod
     def from_136(obj: StickerSet_136) -> StickerSet:
         data = obj.to_dict()
-        assert False, "required field 'keywords' added in base tl object"  # TODO: add field
+        data["keywords"] = []
         return StickerSet(**data)
 
     @staticmethod
@@ -18,4 +18,3 @@ class StickerSetConverter(ConverterBase):
         data = obj.to_dict()
         del data["keywords"]
         return StickerSet_136(**data)
-

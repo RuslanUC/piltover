@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageActionTopicEdit, MessageActionTopicEdit_148
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageActionTopicEdit, MessageActionTopicEdit_148
 
 
 class MessageActionTopicEditConverter(ConverterBase):
@@ -17,4 +17,3 @@ class MessageActionTopicEditConverter(ConverterBase):
         data = obj.to_dict()
         del data["hidden"]
         return MessageActionTopicEdit_148(**data)
-

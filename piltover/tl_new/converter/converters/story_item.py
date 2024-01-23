@@ -1,5 +1,5 @@
-from piltover.tl_new.types import StoryItem, StoryItem_160, StoryItem_161
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import StoryItem, StoryItem_160, StoryItem_161
 
 
 class StoryItemConverter(ConverterBase):
@@ -32,4 +32,3 @@ class StoryItemConverter(ConverterBase):
         del data["out"]
         del data["fwd_from"]
         return StoryItem_161(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageActionSetMessagesTTL, MessageActionSetMessagesTTL_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageActionSetMessagesTTL, MessageActionSetMessagesTTL_136
 
 
 class MessageActionSetMessagesTTLConverter(ConverterBase):
@@ -18,4 +18,3 @@ class MessageActionSetMessagesTTLConverter(ConverterBase):
         del data["auto_setting_from"]
         del data["flags"]
         return MessageActionSetMessagesTTL_136(**data)
-

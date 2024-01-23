@@ -1,5 +1,5 @@
-from piltover.tl_new.types.messages import BotResults, BotResults_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.messages import BotResults, BotResults_136
 
 
 class BotResultsConverter(ConverterBase):
@@ -17,4 +17,3 @@ class BotResultsConverter(ConverterBase):
         data = obj.to_dict()
         del data["switch_webview"]
         return BotResults_136(**data)
-

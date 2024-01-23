@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import ReadMentions, ReadMentions_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import ReadMentions, ReadMentions_136
 
 
 class ReadMentionsConverter(ConverterBase):
@@ -18,4 +18,3 @@ class ReadMentionsConverter(ConverterBase):
         del data["flags"]
         del data["top_msg_id"]
         return ReadMentions_136(**data)
-

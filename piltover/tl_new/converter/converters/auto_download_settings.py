@@ -1,5 +1,5 @@
-from piltover.tl_new.types import AutoDownloadSettings, AutoDownloadSettings_136, AutoDownloadSettings_143
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import AutoDownloadSettings, AutoDownloadSettings_136, AutoDownloadSettings_143
 
 
 class AutoDownloadSettingsConverter(ConverterBase):
@@ -36,4 +36,3 @@ class AutoDownloadSettingsConverter(ConverterBase):
         del data["large_queue_active_operations_max"]
         del data["small_queue_active_operations_max"]
         return AutoDownloadSettings_143(**data)
-

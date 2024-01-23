@@ -1,5 +1,5 @@
-from piltover.tl_new.types import Invoice, Invoice_136, Invoice_143
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import Invoice, Invoice_136, Invoice_143
 
 
 class InvoiceConverter(ConverterBase):
@@ -30,4 +30,3 @@ class InvoiceConverter(ConverterBase):
         data = obj.to_dict()
         del data["terms_url"]
         return Invoice_143(**data)
-

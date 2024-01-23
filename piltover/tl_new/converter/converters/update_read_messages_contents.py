@@ -1,5 +1,5 @@
-from piltover.tl_new.types import UpdateReadMessagesContents, UpdateReadMessagesContents_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import UpdateReadMessagesContents, UpdateReadMessagesContents_136
 
 
 class UpdateReadMessagesContentsConverter(ConverterBase):
@@ -18,4 +18,3 @@ class UpdateReadMessagesContentsConverter(ConverterBase):
         del data["date"]
         del data["flags"]
         return UpdateReadMessagesContents_136(**data)
-

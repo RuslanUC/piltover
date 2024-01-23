@@ -1,5 +1,5 @@
-from piltover.tl_new.types import StoryViews, StoryViews_160, StoryViews_161
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import StoryViews, StoryViews_160, StoryViews_161
 
 
 class StoryViewsConverter(ConverterBase):
@@ -24,7 +24,6 @@ class StoryViewsConverter(ConverterBase):
     @staticmethod
     def from_161(obj: StoryViews_161) -> StoryViews:
         data = obj.to_dict()
-        assert False, "type of field 'reactions_count' changed (int -> flags.4?int)"  # TODO: type changed
         return StoryViews(**data)
 
     @staticmethod
@@ -33,6 +32,6 @@ class StoryViewsConverter(ConverterBase):
         del data["has_viewers"]
         del data["reactions"]
         del data["forwards_count"]
-        assert False, "type of field 'reactions_count' changed (flags.4?int -> int)"  # TODO: type changed
+        if data["reactions_count"] is None:
+            data["reactions_count"] = 0
         return StoryViews_161(**data)
-

@@ -1,6 +1,6 @@
 from piltover.tl_new import InputPeerEmpty
-from piltover.tl_new.functions.stories import TogglePinned, TogglePinned_160
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stories import TogglePinned, TogglePinned_160
 
 
 class TogglePinnedConverter(ConverterBase):
@@ -19,4 +19,3 @@ class TogglePinnedConverter(ConverterBase):
         data = obj.to_dict()
         del data["peer"]
         return TogglePinned_160(**data)
-

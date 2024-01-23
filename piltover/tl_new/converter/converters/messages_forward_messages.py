@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import ForwardMessages, ForwardMessages_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import ForwardMessages, ForwardMessages_136
 
 
 class ForwardMessagesConverter(ConverterBase):
@@ -17,4 +17,3 @@ class ForwardMessagesConverter(ConverterBase):
         data = obj.to_dict()
         del data["top_msg_id"]
         return ForwardMessages_136(**data)
-

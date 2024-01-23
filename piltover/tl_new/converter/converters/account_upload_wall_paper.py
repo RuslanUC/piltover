@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.account import UploadWallPaper, UploadWallPaper_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import UploadWallPaper, UploadWallPaper_136
 
 
 class UploadWallPaperConverter(ConverterBase):
@@ -18,4 +18,3 @@ class UploadWallPaperConverter(ConverterBase):
         del data["for_chat"]
         del data["flags"]
         return UploadWallPaper_136(**data)
-

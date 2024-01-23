@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.account import DeleteAccount, DeleteAccount_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import DeleteAccount, DeleteAccount_136
 
 
 class DeleteAccountConverter(ConverterBase):
@@ -18,4 +18,3 @@ class DeleteAccountConverter(ConverterBase):
         del data["password"]
         del data["flags"]
         return DeleteAccount_136(**data)
-

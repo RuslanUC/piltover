@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageActionBotAllowed, MessageActionBotAllowed_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageActionBotAllowed, MessageActionBotAllowed_136
 
 
 class MessageActionBotAllowedConverter(ConverterBase):
@@ -22,4 +22,3 @@ class MessageActionBotAllowedConverter(ConverterBase):
         if data["domain"] is None:
             data["domain"] = ""
         return MessageActionBotAllowed_136(**data)
-

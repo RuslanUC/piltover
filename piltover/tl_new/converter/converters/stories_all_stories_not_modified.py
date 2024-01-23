@@ -1,5 +1,6 @@
-from piltover.tl_new.types.stories import AllStoriesNotModified, AllStoriesNotModified_160
+from piltover.tl_new import StoriesStealthMode
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.stories import AllStoriesNotModified, AllStoriesNotModified_160
 
 
 class AllStoriesNotModifiedConverter(ConverterBase):
@@ -10,7 +11,7 @@ class AllStoriesNotModifiedConverter(ConverterBase):
     @staticmethod
     def from_160(obj: AllStoriesNotModified_160) -> AllStoriesNotModified:
         data = obj.to_dict()
-        assert False, "required field 'stealth_mode' added in base tl object"  # TODO: add field
+        data["stealth_mode"] = StoriesStealthMode()
         return AllStoriesNotModified(**data)
 
     @staticmethod
@@ -19,4 +20,3 @@ class AllStoriesNotModifiedConverter(ConverterBase):
         del data["stealth_mode"]
         del data["flags"]
         return AllStoriesNotModified_160(**data)
-

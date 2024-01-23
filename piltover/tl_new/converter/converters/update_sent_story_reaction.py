@@ -1,6 +1,6 @@
 from piltover.tl_new import PeerUser
-from piltover.tl_new.types import UpdateSentStoryReaction, UpdateSentStoryReaction_161
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import UpdateSentStoryReaction, UpdateSentStoryReaction_161
 
 
 class UpdateSentStoryReactionConverter(ConverterBase):
@@ -21,4 +21,3 @@ class UpdateSentStoryReactionConverter(ConverterBase):
         del data["peer"]
         data["user_id"] = obj.peer.user_id
         return UpdateSentStoryReaction_161(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import DocumentAttributeVideo, DocumentAttributeVideo_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import DocumentAttributeVideo, DocumentAttributeVideo_136
 
 
 class DocumentAttributeVideoConverter(ConverterBase):
@@ -20,4 +20,3 @@ class DocumentAttributeVideoConverter(ConverterBase):
         del data["nosound"]
         data["duration"] = int(data["duration"])
         return DocumentAttributeVideo_136(**data)
-

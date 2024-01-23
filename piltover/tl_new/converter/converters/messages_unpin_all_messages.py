@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import UnpinAllMessages, UnpinAllMessages_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import UnpinAllMessages, UnpinAllMessages_136
 
 
 class UnpinAllMessagesConverter(ConverterBase):
@@ -18,4 +18,3 @@ class UnpinAllMessagesConverter(ConverterBase):
         del data["flags"]
         del data["top_msg_id"]
         return UnpinAllMessages_136(**data)
-

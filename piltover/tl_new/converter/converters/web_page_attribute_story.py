@@ -1,6 +1,6 @@
 from piltover.tl_new import PeerUser
-from piltover.tl_new.types import WebPageAttributeStory, WebPageAttributeStory_160
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import WebPageAttributeStory, WebPageAttributeStory_160
 
 
 class WebPageAttributeStoryConverter(ConverterBase):
@@ -21,4 +21,3 @@ class WebPageAttributeStoryConverter(ConverterBase):
         del data["peer"]
         data["user_id"] = obj.peer.user_id
         return WebPageAttributeStory_160(**data)
-

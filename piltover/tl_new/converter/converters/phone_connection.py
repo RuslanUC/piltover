@@ -1,5 +1,5 @@
-from piltover.tl_new.types import PhoneConnection, PhoneConnection_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import PhoneConnection, PhoneConnection_136
 
 
 class PhoneConnectionConverter(ConverterBase):
@@ -18,4 +18,3 @@ class PhoneConnectionConverter(ConverterBase):
         del data["tcp"]
         del data["flags"]
         return PhoneConnection_136(**data)
-

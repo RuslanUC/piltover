@@ -1,5 +1,5 @@
-from piltover.tl_new.types import SecureFile, SecureFile_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import SecureFile, SecureFile_136
 
 
 class SecureFileConverter(ConverterBase):
@@ -16,4 +16,3 @@ class SecureFileConverter(ConverterBase):
     def to_136(obj: SecureFile) -> SecureFile_136:
         data = obj.to_dict()
         return SecureFile_136(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import SponsoredMessage, SponsoredMessage_136, SponsoredMessage_155, SponsoredMessage_160
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import SponsoredMessage, SponsoredMessage_136, SponsoredMessage_155, SponsoredMessage_160
 
 
 class SponsoredMessageConverter(ConverterBase):
@@ -47,4 +47,3 @@ class SponsoredMessageConverter(ConverterBase):
         del data["button_text"]
         del data["app"]
         return SponsoredMessage_160(**data)
-

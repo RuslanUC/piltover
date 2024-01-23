@@ -1,5 +1,5 @@
-from piltover.tl_new.types.messages import FeaturedStickers, FeaturedStickers_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.messages import FeaturedStickers, FeaturedStickers_136
 
 
 class FeaturedStickersConverter(ConverterBase):
@@ -18,4 +18,3 @@ class FeaturedStickersConverter(ConverterBase):
         del data["premium"]
         del data["flags"]
         return FeaturedStickers_136(**data)
-

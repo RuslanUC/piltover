@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.payments import GetPaymentForm, GetPaymentForm_136
+from piltover.tl_new import InputInvoiceMessage, InputPeerEmpty
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.payments import GetPaymentForm, GetPaymentForm_136
 
 
 class GetPaymentFormConverter(ConverterBase):
@@ -10,7 +11,7 @@ class GetPaymentFormConverter(ConverterBase):
     @staticmethod
     def from_136(obj: GetPaymentForm_136) -> GetPaymentForm:
         data = obj.to_dict()
-        assert False, "required field 'invoice' added in base tl object"  # TODO: add field
+        data["invoice"] = InputInvoiceMessage(peer=obj.peer, msg_id=obj.msg_id)
         del data["msg_id"]
         del data["peer"]
         return GetPaymentForm(**data)
@@ -19,7 +20,6 @@ class GetPaymentFormConverter(ConverterBase):
     def to_136(obj: GetPaymentForm) -> GetPaymentForm_136:
         data = obj.to_dict()
         del data["invoice"]
-        assert False, "required field 'msg_id' deleted in base tl object"  # TODO: delete field
-        assert False, "required field 'peer' deleted in base tl object"  # TODO: delete field
+        data["msg_id"] = obj.invoice.msg_id
+        data["peer"] = InputPeerEmpty()
         return GetPaymentForm_136(**data)
-

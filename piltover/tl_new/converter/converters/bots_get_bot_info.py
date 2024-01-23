@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.bots import GetBotInfo, GetBotInfo_155
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.bots import GetBotInfo, GetBotInfo_155
 
 
 class GetBotInfoConverter(ConverterBase):
@@ -18,4 +18,3 @@ class GetBotInfoConverter(ConverterBase):
         del data["bot"]
         del data["flags"]
         return GetBotInfo_155(**data)
-

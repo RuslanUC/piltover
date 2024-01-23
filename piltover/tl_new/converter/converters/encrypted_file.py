@@ -1,5 +1,5 @@
-from piltover.tl_new.types import EncryptedFile, EncryptedFile_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import EncryptedFile, EncryptedFile_136
 
 
 class EncryptedFileConverter(ConverterBase):
@@ -16,4 +16,3 @@ class EncryptedFileConverter(ConverterBase):
     def to_136(obj: EncryptedFile) -> EncryptedFile_136:
         data = obj.to_dict()
         return EncryptedFile_136(**data)
-

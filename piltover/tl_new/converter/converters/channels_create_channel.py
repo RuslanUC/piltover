@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.channels import CreateChannel, CreateChannel_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.channels import CreateChannel, CreateChannel_136
 
 
 class CreateChannelConverter(ConverterBase):
@@ -18,4 +18,3 @@ class CreateChannelConverter(ConverterBase):
         del data["ttl_period"]
         del data["forum"]
         return CreateChannel_136(**data)
-

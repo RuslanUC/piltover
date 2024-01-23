@@ -1,5 +1,6 @@
-from piltover.tl_new.types import PollResults, PollResults_136
+from piltover.tl_new import PeerUser
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import PollResults, PollResults_136
 
 
 class PollResultsConverter(ConverterBase):
@@ -10,12 +11,13 @@ class PollResultsConverter(ConverterBase):
     @staticmethod
     def from_136(obj: PollResults_136) -> PollResults:
         data = obj.to_dict()
-        assert False, "type of field 'recent_voters' changed (flags.3?Vector<long> -> flags.3?Vector<Peer>)"  # TODO: type changed
+        if data["recent_voters"] is not None:
+            data["recent_voters"] = [PeerUser(user_id=uid) for uid in obj.recent_voters]
         return PollResults(**data)
 
     @staticmethod
     def to_136(obj: PollResults) -> PollResults_136:
         data = obj.to_dict()
-        assert False, "type of field 'recent_voters' changed (flags.3?Vector<Peer> -> flags.3?Vector<long>)"  # TODO: type changed
+        if data["recent_voters"] is not None:
+            data["recent_voters"] = [peer.user_id for peer in obj.recent_voters if isinstance(peer, PeerUser)]
         return PollResults_136(**data)
-

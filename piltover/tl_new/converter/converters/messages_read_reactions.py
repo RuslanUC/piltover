@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import ReadReactions, ReadReactions_138
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import ReadReactions, ReadReactions_138
 
 
 class ReadReactionsConverter(ConverterBase):
@@ -18,4 +18,3 @@ class ReadReactionsConverter(ConverterBase):
         del data["flags"]
         del data["top_msg_id"]
         return ReadReactions_138(**data)
-

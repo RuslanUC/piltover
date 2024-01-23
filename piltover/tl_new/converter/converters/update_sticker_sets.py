@@ -1,5 +1,5 @@
-from piltover.tl_new.types import UpdateStickerSets, UpdateStickerSets_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import UpdateStickerSets, UpdateStickerSets_136
 
 
 class UpdateStickerSetsConverter(ConverterBase):
@@ -19,4 +19,3 @@ class UpdateStickerSetsConverter(ConverterBase):
         del data["emojis"]
         del data["flags"]
         return UpdateStickerSets_136(**data)
-

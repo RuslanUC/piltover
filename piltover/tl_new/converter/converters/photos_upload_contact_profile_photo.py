@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.photos import UploadContactProfilePhoto, UploadContactProfilePhoto_151
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.photos import UploadContactProfilePhoto, UploadContactProfilePhoto_151
 
 
 class UploadContactProfilePhotoConverter(ConverterBase):
@@ -17,4 +17,3 @@ class UploadContactProfilePhotoConverter(ConverterBase):
         data = obj.to_dict()
         del data["video_emoji_markup"]
         return UploadContactProfilePhoto_151(**data)
-

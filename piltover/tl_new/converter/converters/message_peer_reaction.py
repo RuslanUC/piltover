@@ -1,6 +1,6 @@
 from piltover.tl_new import ReactionEmoji
-from piltover.tl_new.types import MessagePeerReaction, MessagePeerReaction_138, MessagePeerReaction_145
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessagePeerReaction, MessagePeerReaction_138, MessagePeerReaction_145
 
 
 class MessagePeerReactionConverter(ConverterBase):
@@ -35,4 +35,3 @@ class MessagePeerReactionConverter(ConverterBase):
         del data["my"]
         del data["date"]
         return MessagePeerReaction_145(**data)
-

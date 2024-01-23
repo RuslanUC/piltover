@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.langpack import GetLanguages, GetLanguages_72
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.langpack import GetLanguages, GetLanguages_72
 
 
 class GetLanguagesConverter(ConverterBase):
@@ -18,4 +18,3 @@ class GetLanguagesConverter(ConverterBase):
         data = obj.to_dict()
         del data["lang_pack"]
         return GetLanguages_72(**data)
-

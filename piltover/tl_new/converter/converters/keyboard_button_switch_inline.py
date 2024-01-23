@@ -1,5 +1,5 @@
-from piltover.tl_new.types import KeyboardButtonSwitchInline, KeyboardButtonSwitchInline_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import KeyboardButtonSwitchInline, KeyboardButtonSwitchInline_136
 
 
 class KeyboardButtonSwitchInlineConverter(ConverterBase):
@@ -17,4 +17,3 @@ class KeyboardButtonSwitchInlineConverter(ConverterBase):
         data = obj.to_dict()
         del data["peer_types"]
         return KeyboardButtonSwitchInline_136(**data)
-

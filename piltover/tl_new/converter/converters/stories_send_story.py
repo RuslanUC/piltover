@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.stories import SendStory, SendStory_160, SendStory_161, SendStory_164
+from piltover.tl_new import InputPeerEmpty
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stories import SendStory, SendStory_160, SendStory_161, SendStory_164
 
 
 class SendStoryConverter(ConverterBase):
@@ -10,7 +11,7 @@ class SendStoryConverter(ConverterBase):
     @staticmethod
     def from_160(obj: SendStory_160) -> SendStory:
         data = obj.to_dict()
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["peer"] = InputPeerEmpty()
         return SendStory(**data)
 
     @staticmethod
@@ -26,7 +27,7 @@ class SendStoryConverter(ConverterBase):
     @staticmethod
     def from_161(obj: SendStory_161) -> SendStory:
         data = obj.to_dict()
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["peer"] = InputPeerEmpty()
         return SendStory(**data)
 
     @staticmethod
@@ -50,4 +51,3 @@ class SendStoryConverter(ConverterBase):
         del data["fwd_from_story"]
         del data["fwd_from_id"]
         return SendStory_164(**data)
-

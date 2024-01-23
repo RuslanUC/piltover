@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.payments import AssignAppStoreTransaction, AssignAppStoreTransaction_143
+from piltover.tl_new import InputStorePaymentPremiumSubscription
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.payments import AssignAppStoreTransaction, AssignAppStoreTransaction_143
 
 
 class AssignAppStoreTransactionConverter(ConverterBase):
@@ -10,7 +11,7 @@ class AssignAppStoreTransactionConverter(ConverterBase):
     @staticmethod
     def from_143(obj: AssignAppStoreTransaction_143) -> AssignAppStoreTransaction:
         data = obj.to_dict()
-        assert False, "required field 'purpose' added in base tl object"  # TODO: add field
+        data["purpose"] = InputStorePaymentPremiumSubscription()
         del data["restore"]
         del data["flags"]
         return AssignAppStoreTransaction(**data)
@@ -20,4 +21,3 @@ class AssignAppStoreTransactionConverter(ConverterBase):
         data = obj.to_dict()
         del data["purpose"]
         return AssignAppStoreTransaction_143(**data)
-

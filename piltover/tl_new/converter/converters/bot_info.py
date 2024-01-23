@@ -1,6 +1,6 @@
 from piltover.tl_new import BotMenuButton
-from piltover.tl_new.types import BotInfo, BotInfo_136, BotInfo_140
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import BotInfo, BotInfo_136, BotInfo_140
 
 
 class BotInfoConverter(ConverterBase):
@@ -48,4 +48,3 @@ class BotInfoConverter(ConverterBase):
         if data["commands"] is None:
             data["commands"] = []
         return BotInfo_140(**data)
-

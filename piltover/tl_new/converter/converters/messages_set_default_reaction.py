@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.messages import SetDefaultReaction, SetDefaultReaction_136
+from piltover.tl_new import ReactionEmoji
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import SetDefaultReaction, SetDefaultReaction_136
 
 
 class SetDefaultReactionConverter(ConverterBase):
@@ -10,12 +11,11 @@ class SetDefaultReactionConverter(ConverterBase):
     @staticmethod
     def from_136(obj: SetDefaultReaction_136) -> SetDefaultReaction:
         data = obj.to_dict()
-        assert False, "type of field 'reaction' changed (string -> Reaction)"  # TODO: type changed
+        data["reaction"] = ReactionEmoji(emoticon=obj.reaction)
         return SetDefaultReaction(**data)
 
     @staticmethod
     def to_136(obj: SetDefaultReaction) -> SetDefaultReaction_136:
         data = obj.to_dict()
-        assert False, "type of field 'reaction' changed (Reaction -> string)"  # TODO: type changed
+        data["reaction"] = obj.reaction.emoticon
         return SetDefaultReaction_136(**data)
-

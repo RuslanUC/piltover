@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.channels import DeleteHistory, DeleteHistory_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.channels import DeleteHistory, DeleteHistory_136
 
 
 class DeleteHistoryConverter(ConverterBase):
@@ -18,4 +18,3 @@ class DeleteHistoryConverter(ConverterBase):
         del data["for_everyone"]
         del data["flags"]
         return DeleteHistory_136(**data)
-

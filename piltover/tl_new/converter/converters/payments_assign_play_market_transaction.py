@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.payments import AssignPlayMarketTransaction, AssignPlayMarketTransaction_143
+from piltover.tl_new import DataJSON
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.payments import AssignPlayMarketTransaction, AssignPlayMarketTransaction_143
 
 
 class AssignPlayMarketTransactionConverter(ConverterBase):
@@ -10,8 +11,7 @@ class AssignPlayMarketTransactionConverter(ConverterBase):
     @staticmethod
     def from_143(obj: AssignPlayMarketTransaction_143) -> AssignPlayMarketTransaction:
         data = obj.to_dict()
-        assert False, "required field 'purpose' added in base tl object"  # TODO: add field
-        assert False, "required field 'receipt' added in base tl object"  # TODO: add field
+        data["receipt"] = DataJSON(data="{}")
         del data["purchase_token"]
         return AssignPlayMarketTransaction(**data)
 
@@ -20,6 +20,5 @@ class AssignPlayMarketTransactionConverter(ConverterBase):
         data = obj.to_dict()
         del data["purpose"]
         del data["receipt"]
-        assert False, "required field 'purchase_token' deleted in base tl object"  # TODO: delete field
+        data["purchase_token"] = ""
         return AssignPlayMarketTransaction_143(**data)
-

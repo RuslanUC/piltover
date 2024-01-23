@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import SendInlineBotResult, SendInlineBotResult_136, SendInlineBotResult_148
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import SendInlineBotResult, SendInlineBotResult_136, SendInlineBotResult_148
 
 
 class SendInlineBotResultConverter(ConverterBase):
@@ -31,4 +31,3 @@ class SendInlineBotResultConverter(ConverterBase):
         data = obj.to_dict()
         del data["reply_to"]
         return SendInlineBotResult_148(**data)
-

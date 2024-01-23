@@ -1,5 +1,5 @@
-from piltover.tl_new.types import StickerSetFullCovered, StickerSetFullCovered_144
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import StickerSetFullCovered, StickerSetFullCovered_144
 
 
 class StickerSetFullCoveredConverter(ConverterBase):
@@ -10,7 +10,7 @@ class StickerSetFullCoveredConverter(ConverterBase):
     @staticmethod
     def from_144(obj: StickerSetFullCovered_144) -> StickerSetFullCovered:
         data = obj.to_dict()
-        assert False, "required field 'keywords' added in base tl object"  # TODO: add field
+        data["keywords"] = []
         return StickerSetFullCovered(**data)
 
     @staticmethod
@@ -18,4 +18,3 @@ class StickerSetFullCoveredConverter(ConverterBase):
         data = obj.to_dict()
         del data["keywords"]
         return StickerSetFullCovered_144(**data)
-

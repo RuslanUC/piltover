@@ -1,5 +1,5 @@
-from piltover.tl_new.types import MessageMediaDocument, MessageMediaDocument_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import MessageMediaDocument, MessageMediaDocument_136
 
 
 class MessageMediaDocumentConverter(ConverterBase):
@@ -19,4 +19,3 @@ class MessageMediaDocumentConverter(ConverterBase):
         del data["nopremium"]
         del data["alt_document"]
         return MessageMediaDocument_136(**data)
-

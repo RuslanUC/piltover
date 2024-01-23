@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import SaveDraft, SaveDraft_136, SaveDraft_148
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import SaveDraft, SaveDraft_136, SaveDraft_148
 
 
 class SaveDraftConverter(ConverterBase):
@@ -35,4 +35,3 @@ class SaveDraftConverter(ConverterBase):
         del data["reply_to"]
         del data["media"]
         return SaveDraft_148(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import InputPeerNotifySettings, InputPeerNotifySettings_136, InputPeerNotifySettings_140
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import InputPeerNotifySettings, InputPeerNotifySettings_136, InputPeerNotifySettings_140
 
 
 class InputPeerNotifySettingsConverter(ConverterBase):
@@ -34,4 +34,3 @@ class InputPeerNotifySettingsConverter(ConverterBase):
         del data["stories_hide_sender"]
         del data["stories_sound"]
         return InputPeerNotifySettings_140(**data)
-

@@ -1,5 +1,6 @@
-from piltover.tl_new.types.stories import AllStories, AllStories_160, AllStories_161
+from piltover.tl_new import UserStories_160, PeerStories, PeerUser, StoriesStealthMode
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.stories import AllStories, AllStories_160, AllStories_161
 
 
 class AllStoriesConverter(ConverterBase):
@@ -10,9 +11,12 @@ class AllStoriesConverter(ConverterBase):
     @staticmethod
     def from_160(obj: AllStories_160) -> AllStories:
         data = obj.to_dict()
-        assert False, "required field 'peer_stories' added in base tl object"  # TODO: add field
-        assert False, "required field 'stealth_mode' added in base tl object"  # TODO: add field
-        assert False, "required field 'chats' added in base tl object"  # TODO: add field
+        data["chats"] = []
+        data["peer_stories"] = [
+            PeerStories(peer=PeerUser(user_id=story.user_id), stories=story.stories, max_read_id=story.max_read_id)
+            for story in obj.user_stories
+        ]
+        data["stealth_mode"] = StoriesStealthMode()
         del data["user_stories"]
         return AllStories(**data)
 
@@ -22,14 +26,20 @@ class AllStoriesConverter(ConverterBase):
         del data["peer_stories"]
         del data["stealth_mode"]
         del data["chats"]
-        assert False, "required field 'user_stories' deleted in base tl object"  # TODO: delete field
+        data["user_stories"] = [
+            UserStories_160(user_id=story.peer.user_id, stories=story.stories, max_read_id=story.max_read_id)
+            for story in obj.peer_stories if isinstance(story.peer, PeerUser)
+        ]
         return AllStories_160(**data)
 
     @staticmethod
     def from_161(obj: AllStories_161) -> AllStories:
         data = obj.to_dict()
-        assert False, "required field 'peer_stories' added in base tl object"  # TODO: add field
-        assert False, "required field 'chats' added in base tl object"  # TODO: add field
+        data["chats"] = []
+        data["peer_stories"] = [
+            PeerStories(peer=PeerUser(user_id=story.user_id), stories=story.stories, max_read_id=story.max_read_id)
+            for story in obj.user_stories
+        ]
         del data["user_stories"]
         return AllStories(**data)
 
@@ -38,6 +48,8 @@ class AllStoriesConverter(ConverterBase):
         data = obj.to_dict()
         del data["peer_stories"]
         del data["chats"]
-        assert False, "required field 'user_stories' deleted in base tl object"  # TODO: delete field
+        data["user_stories"] = [
+            UserStories_160(user_id=story.peer.user_id, stories=story.stories, max_read_id=story.max_read_id)
+            for story in obj.peer_stories if isinstance(story.peer, PeerUser)
+        ]
         return AllStories_161(**data)
-

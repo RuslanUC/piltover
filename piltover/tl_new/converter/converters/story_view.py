@@ -1,5 +1,5 @@
-from piltover.tl_new.types import StoryView, StoryView_160
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import StoryView, StoryView_160
 
 
 class StoryViewConverter(ConverterBase):
@@ -20,4 +20,3 @@ class StoryViewConverter(ConverterBase):
         del data["blocked"]
         del data["flags"]
         return StoryView_160(**data)
-

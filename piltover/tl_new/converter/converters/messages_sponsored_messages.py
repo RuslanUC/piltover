@@ -1,5 +1,5 @@
-from piltover.tl_new.types.messages import SponsoredMessages, SponsoredMessages_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.messages import SponsoredMessages, SponsoredMessages_136
 
 
 class SponsoredMessagesConverter(ConverterBase):
@@ -18,4 +18,3 @@ class SponsoredMessagesConverter(ConverterBase):
         del data["posts_between"]
         del data["flags"]
         return SponsoredMessages_136(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import Document, Document_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import Document, Document_136
 
 
 class DocumentConverter(ConverterBase):
@@ -16,4 +16,3 @@ class DocumentConverter(ConverterBase):
     def to_136(obj: Document) -> Document_136:
         data = obj.to_dict()
         return Document_136(**data)
-

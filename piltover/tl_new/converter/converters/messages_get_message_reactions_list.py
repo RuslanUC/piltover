@@ -1,6 +1,6 @@
 from piltover.tl_new import ReactionEmoji
-from piltover.tl_new.functions.messages import GetMessageReactionsList, GetMessageReactionsList_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import GetMessageReactionsList, GetMessageReactionsList_136
 
 
 class GetMessageReactionsListConverter(ConverterBase):
@@ -20,4 +20,3 @@ class GetMessageReactionsListConverter(ConverterBase):
         data = obj.to_dict()
         data["reaction"] = obj.reaction.emoticon if isinstance(obj.reaction, ReactionEmoji) else None
         return GetMessageReactionsList_136(**data)
-

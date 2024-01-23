@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.photos import UpdateProfilePhoto, UpdateProfilePhoto_136, UpdateProfilePhoto_151
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.photos import UpdateProfilePhoto, UpdateProfilePhoto_136, UpdateProfilePhoto_151
 
 
 class UpdateProfilePhotoConverter(ConverterBase):
@@ -30,4 +30,3 @@ class UpdateProfilePhotoConverter(ConverterBase):
         data = obj.to_dict()
         del data["bot"]
         return UpdateProfilePhoto_151(**data)
-

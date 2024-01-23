@@ -1,5 +1,5 @@
-from piltover.tl_new.types import FileHash, FileHash_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import FileHash, FileHash_136
 
 
 class FileHashConverter(ConverterBase):
@@ -16,4 +16,3 @@ class FileHashConverter(ConverterBase):
     def to_136(obj: FileHash) -> FileHash_136:
         data = obj.to_dict()
         return FileHash_136(**data)
-

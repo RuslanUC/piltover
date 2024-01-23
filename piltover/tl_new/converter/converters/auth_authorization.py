@@ -1,5 +1,5 @@
-from piltover.tl_new.types.auth import Authorization, Authorization_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.auth import Authorization, Authorization_136
 
 
 class AuthorizationConverter(ConverterBase):
@@ -17,4 +17,3 @@ class AuthorizationConverter(ConverterBase):
         data = obj.to_dict()
         del data["future_auth_token"]
         return Authorization_136(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.contacts import GetBlocked, GetBlocked_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.contacts import GetBlocked, GetBlocked_136
 
 
 class GetBlockedConverter(ConverterBase):
@@ -18,4 +18,3 @@ class GetBlockedConverter(ConverterBase):
         del data["my_stories_from"]
         del data["flags"]
         return GetBlocked_136(**data)
-

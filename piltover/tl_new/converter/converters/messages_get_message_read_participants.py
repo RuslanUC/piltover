@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import GetMessageReadParticipants, GetMessageReadParticipants_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import GetMessageReadParticipants, GetMessageReadParticipants_136
 
 
 class GetMessageReadParticipantsConverter(ConverterBase):
@@ -16,4 +16,3 @@ class GetMessageReadParticipantsConverter(ConverterBase):
     def to_136(obj: GetMessageReadParticipants) -> GetMessageReadParticipants_136:
         data = obj.to_dict()
         return GetMessageReadParticipants_136(**data)
-

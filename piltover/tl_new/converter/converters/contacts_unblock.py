@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.contacts import Unblock, Unblock_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.contacts import Unblock, Unblock_136
 
 
 class UnblockConverter(ConverterBase):
@@ -18,4 +18,3 @@ class UnblockConverter(ConverterBase):
         del data["my_stories_from"]
         del data["flags"]
         return Unblock_136(**data)
-

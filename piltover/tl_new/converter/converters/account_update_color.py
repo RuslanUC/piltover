@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.account import UpdateColor, UpdateColor_166
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import UpdateColor, UpdateColor_166
 
 
 class UpdateColorConverter(ConverterBase):
@@ -19,4 +19,3 @@ class UpdateColorConverter(ConverterBase):
         if data["color"] is None:
             data["color"] = 0
         return UpdateColor_166(**data)
-

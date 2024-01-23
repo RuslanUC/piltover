@@ -1,5 +1,5 @@
-from piltover.tl_new.types.messages import TranscribedAudio, TranscribedAudio_143
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.messages import TranscribedAudio, TranscribedAudio_143
 
 
 class TranscribedAudioConverter(ConverterBase):
@@ -18,4 +18,3 @@ class TranscribedAudioConverter(ConverterBase):
         del data["trial_remains_until_date"]
         del data["trial_remains_num"]
         return TranscribedAudio_143(**data)
-

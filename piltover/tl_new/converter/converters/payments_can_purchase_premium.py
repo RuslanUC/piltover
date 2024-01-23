@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.payments import CanPurchasePremium, CanPurchasePremium_143
+from piltover.tl_new import InputStorePaymentPremiumSubscription
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.payments import CanPurchasePremium, CanPurchasePremium_143
 
 
 class CanPurchasePremiumConverter(ConverterBase):
@@ -10,7 +11,7 @@ class CanPurchasePremiumConverter(ConverterBase):
     @staticmethod
     def from_143(obj: CanPurchasePremium_143) -> CanPurchasePremium:
         data = obj.to_dict()
-        assert False, "required field 'purpose' added in base tl object"  # TODO: add field
+        data["purpose"] = InputStorePaymentPremiumSubscription()
         return CanPurchasePremium(**data)
 
     @staticmethod
@@ -18,4 +19,3 @@ class CanPurchasePremiumConverter(ConverterBase):
         data = obj.to_dict()
         del data["purpose"]
         return CanPurchasePremium_143(**data)
-

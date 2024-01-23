@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.messages import SendMedia, SendMedia_136, SendMedia_148
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.messages import SendMedia, SendMedia_136, SendMedia_148
 
 
 class SendMediaConverter(ConverterBase):
@@ -34,4 +34,3 @@ class SendMediaConverter(ConverterBase):
         del data["reply_to"]
         del data["invert_media"]
         return SendMedia_148(**data)
-

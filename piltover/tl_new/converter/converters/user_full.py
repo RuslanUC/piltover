@@ -1,5 +1,7 @@
-from piltover.tl_new.types import UserFull, UserFull_136, UserFull_140, UserFull_144, UserFull_151, UserFull_158, UserFull_160
+from piltover.tl_new import PeerUser, UserStories_160, PeerStories
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import UserFull, UserFull_136, UserFull_140, UserFull_144, UserFull_151, UserFull_158, \
+    UserFull_160
 
 
 class UserFullConverter(ConverterBase):
@@ -99,7 +101,10 @@ class UserFullConverter(ConverterBase):
     @staticmethod
     def from_160(obj: UserFull_160) -> UserFull:
         data = obj.to_dict()
-        assert False, "type of field 'stories' changed (flags.25?UserStories -> flags.25?PeerStories)"  # TODO: type changed
+        data["stories"] = [
+            PeerStories(peer=PeerUser(user_id=story.user_id), stories=story.stories, max_read_id=story.max_read_id)
+            for story in obj.stories
+        ]
         return UserFull(**data)
 
     @staticmethod
@@ -107,6 +112,8 @@ class UserFullConverter(ConverterBase):
         data = obj.to_dict()
         del data["blocked_my_stories_from"]
         del data["wallpaper_overridden"]
-        assert False, "type of field 'stories' changed (flags.25?PeerStories -> flags.25?UserStories)"  # TODO: type changed
+        data["stories"] = [
+            UserStories_160(user_id=story.peer.user_id, stories=story.stories, max_read_id=story.max_read_id)
+            for story in obj.stories if isinstance(story.peer, PeerUser)
+        ]
         return UserFull_160(**data)
-

@@ -1,5 +1,6 @@
-from piltover.tl_new.functions.stories import GetStoriesViews, GetStoriesViews_160
+from piltover.tl_new import InputPeerEmpty
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.stories import GetStoriesViews, GetStoriesViews_160
 
 
 class GetStoriesViewsConverter(ConverterBase):
@@ -10,7 +11,7 @@ class GetStoriesViewsConverter(ConverterBase):
     @staticmethod
     def from_160(obj: GetStoriesViews_160) -> GetStoriesViews:
         data = obj.to_dict()
-        assert False, "required field 'peer' added in base tl object"  # TODO: add field
+        data["peer"] = InputPeerEmpty()
         return GetStoriesViews(**data)
 
     @staticmethod
@@ -18,4 +19,3 @@ class GetStoriesViewsConverter(ConverterBase):
         data = obj.to_dict()
         del data["peer"]
         return GetStoriesViews_160(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types import WebPagePending, WebPagePending_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import WebPagePending, WebPagePending_136
 
 
 class WebPagePendingConverter(ConverterBase):
@@ -18,4 +18,3 @@ class WebPagePendingConverter(ConverterBase):
         del data["url"]
         del data["flags"]
         return WebPagePending_136(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.help import GetAppConfig, GetAppConfig_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.help import GetAppConfig, GetAppConfig_136
 
 
 class GetAppConfigConverter(ConverterBase):
@@ -18,4 +18,3 @@ class GetAppConfigConverter(ConverterBase):
         data = obj.to_dict()
         del data["hash"]
         return GetAppConfig_136(**data)
-

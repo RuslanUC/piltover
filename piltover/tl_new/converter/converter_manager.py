@@ -46,12 +46,17 @@ class ConverterManager(metaclass=SingletonMeta):
 
 """
 from piltover.tl_new.converter.converter_manager import ConverterManager
-from piltover.tl_new.converter.converters.user_ import UserConverter
+from piltover.tl_new.converter.converters.user import UserConverter
 from piltover.tl_new import User, User_136
 
 ConverterManager().register(UserConverter)
 
 u136 = User_136(flags=0, id=123, bot=True, fake=True, phone="123123")
 u = ConverterManager().upgrade(u136)
-u160 = ConverterManager().downgrade(u, 160)
+u160 = ConverterManager().to_layer(u, 160)
+
+assert u136.id == u.id == u160.id
+assert u136.bot == u.bot == u160.bot
+assert u136.fake == u.fake == u160.fake
+assert u136.phone == u.phone == u160.phone
 """

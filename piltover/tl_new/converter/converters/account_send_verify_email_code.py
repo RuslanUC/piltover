@@ -1,6 +1,6 @@
 from piltover.tl_new import EmailVerifyPurposeLoginSetup
-from piltover.tl_new.functions.account import SendVerifyEmailCode, SendVerifyEmailCode_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.account import SendVerifyEmailCode, SendVerifyEmailCode_136
 
 
 class SendVerifyEmailCodeConverter(ConverterBase):
@@ -19,4 +19,3 @@ class SendVerifyEmailCodeConverter(ConverterBase):
         data = obj.to_dict()
         del data["purpose"]
         return SendVerifyEmailCode_136(**data)
-

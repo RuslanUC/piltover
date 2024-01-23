@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.auth import SignIn, SignIn_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.auth import SignIn, SignIn_136
 
 
 class SignInConverter(ConverterBase):
@@ -20,4 +20,3 @@ class SignInConverter(ConverterBase):
         if data["phone_code"] is None:
             data["phone_code"] = ""
         return SignIn_136(**data)
-

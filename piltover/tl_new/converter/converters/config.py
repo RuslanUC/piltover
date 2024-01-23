@@ -1,5 +1,5 @@
-from piltover.tl_new.types import Config, Config_136, Config_145
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import Config, Config_136, Config_145
 
 
 class ConfigConverter(ConverterBase):
@@ -51,4 +51,3 @@ class ConfigConverter(ConverterBase):
         data["pinned_infolder_count_max"] = 5
         data["pinned_dialogs_count_max"] = 5
         return Config_145(**data)
-

@@ -1,5 +1,5 @@
-from piltover.tl_new.types.account import Password, Password_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.account import Password, Password_136
 
 
 class PasswordConverter(ConverterBase):
@@ -17,4 +17,3 @@ class PasswordConverter(ConverterBase):
         data = obj.to_dict()
         del data["login_email_pattern"]
         return Password_136(**data)
-

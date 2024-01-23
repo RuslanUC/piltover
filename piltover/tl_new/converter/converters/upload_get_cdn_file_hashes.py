@@ -1,5 +1,5 @@
-from piltover.tl_new.functions.upload import GetCdnFileHashes, GetCdnFileHashes_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.functions.upload import GetCdnFileHashes, GetCdnFileHashes_136
 
 
 class GetCdnFileHashesConverter(ConverterBase):
@@ -16,4 +16,3 @@ class GetCdnFileHashesConverter(ConverterBase):
     def to_136(obj: GetCdnFileHashes) -> GetCdnFileHashes_136:
         data = obj.to_dict()
         return GetCdnFileHashes_136(**data)
-

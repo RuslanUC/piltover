@@ -1,5 +1,6 @@
-from piltover.tl_new.types.stats import BroadcastStats, BroadcastStats_136
+from piltover.tl_new import StatsGraph, DataJSON, StatsAbsValueAndPrev
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types.stats import BroadcastStats, BroadcastStats_136
 
 
 class BroadcastStatsConverter(ConverterBase):
@@ -10,14 +11,14 @@ class BroadcastStatsConverter(ConverterBase):
     @staticmethod
     def from_136(obj: BroadcastStats_136) -> BroadcastStats:
         data = obj.to_dict()
-        assert False, "required field 'story_interactions_graph' added in base tl object"  # TODO: add field
-        assert False, "required field 'reactions_per_post' added in base tl object"  # TODO: add field
-        assert False, "required field 'views_per_story' added in base tl object"  # TODO: add field
-        assert False, "required field 'story_reactions_by_emotion_graph' added in base tl object"  # TODO: add field
-        assert False, "required field 'reactions_per_story' added in base tl object"  # TODO: add field
-        assert False, "required field 'recent_posts_interactions' added in base tl object"  # TODO: add field
-        assert False, "required field 'reactions_by_emotion_graph' added in base tl object"  # TODO: add field
-        assert False, "required field 'shares_per_story' added in base tl object"  # TODO: add field
+        data["story_interactions_graph"] = StatsGraph(json=DataJSON(data="{}"))
+        data["reactions_per_post"] = StatsAbsValueAndPrev(current=0, previous=0)
+        data["views_per_story"] = StatsAbsValueAndPrev(current=0, previous=0)
+        data["reactions_per_story"] = StatsAbsValueAndPrev(current=0, previous=0)
+        data["story_reactions_by_emotion_graph"] = StatsGraph(json=DataJSON(data="{}"))
+        data["recent_posts_interactions"] = []
+        data["reactions_by_emotion_graph"] = StatsGraph(json=DataJSON(data="{}"))
+        data["shares_per_story"] = StatsAbsValueAndPrev(current=0, previous=0)
         del data["recent_message_interactions"]
         return BroadcastStats(**data)
 
@@ -32,6 +33,5 @@ class BroadcastStatsConverter(ConverterBase):
         del data["recent_posts_interactions"]
         del data["reactions_by_emotion_graph"]
         del data["shares_per_story"]
-        assert False, "required field 'recent_message_interactions' deleted in base tl object"  # TODO: delete field
+        data["recent_message_interactions"] = []
         return BroadcastStats_136(**data)
-

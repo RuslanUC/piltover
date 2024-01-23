@@ -1,5 +1,5 @@
-from piltover.tl_new.types import InputStickerSetItem, InputStickerSetItem_136
 from piltover.tl_new.converter import ConverterBase
+from piltover.tl_new.types import InputStickerSetItem, InputStickerSetItem_136
 
 
 class InputStickerSetItemConverter(ConverterBase):
@@ -17,4 +17,3 @@ class InputStickerSetItemConverter(ConverterBase):
         data = obj.to_dict()
         del data["keywords"]
         return InputStickerSetItem_136(**data)
-
