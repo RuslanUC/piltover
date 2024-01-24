@@ -1,6 +1,7 @@
 import asyncio
 from os import getenv
 from pathlib import Path
+from time import time
 
 import uvloop
 from aerich import Command
@@ -10,6 +11,7 @@ from tortoise import Tortoise
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels, upload, root_dir
 from piltover.db.models import AuthKey
+from piltover.db.models.authkey import TempAuthKey
 from piltover.high_level import Server
 from piltover.types import Keys
 from piltover.utils import gen_keys, get_public_key_fingerprint
@@ -92,16 +94,20 @@ async def main():
     pilt.register_handler(channels.handler)
     pilt.register_handler(upload.handler)
 
-    # TODO: SetPrivacy(key=InputPrivacyKey{...}(), rules=[{...}])
-
     @pilt.on_auth_key_set
     async def auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
         await AuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes)
         logger.debug(f"Set auth key: {auth_key_id}")
 
     @pilt.on_auth_key_get
-    async def auth_key_get(auth_key_id: int) -> tuple[int, bytes] | None:
+    async def auth_key_get(auth_key_id: int, temp: bool=False) -> tuple[int, bytes] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
+        if temp:
+            auth_key = await TempAuthKey.get_or_none(id=str(auth_key_id), expires__gt=int(time()))\
+                .select_related("perm_key")
+            if auth_key is None:
+                return
+            return auth_key_id, auth_key.auth_key
         if (auth_key := await AuthKey.get_or_none(id=str(auth_key_id))) is not None:
             return auth_key_id, auth_key.auth_key
 

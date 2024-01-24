@@ -480,7 +480,8 @@ class Client:
         return result
 
     async def decrypt(self, message: EncryptedMessage) -> DecryptedMessage:
-        if self.auth_data is None or not hasattr(self.auth_data, "auth_key"):
+        if self.auth_data is None or not hasattr(self.auth_data, "auth_key") \
+                or not hasattr(self.auth_data, "auth_key_id") or self.auth_data.auth_key_id != message.auth_key_id:
             got = await self.server.get_auth_key(message.auth_key_id)
             if got is None:
                 logger.info("Client sent unknown auth_key_id, disconnecting")

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from piltover.db.models import UserAuthorization
+from piltover.db.models._utils import user_auth_q_temp
 from piltover.server import MessageHandler, Client
 from piltover.session_manager import Session
 from piltover.tl.types import CoreMessage
@@ -71,7 +72,7 @@ async def invoke_without_updates(client: Client, request: CoreMessage[InvokeWith
 async def init_connection(client: Client, request: CoreMessage[InitConnection], session: Session):
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
-    await UserAuthorization.filter(key__id=str(client.auth_data.auth_key_id)).update(
+    await UserAuthorization.filter(user_auth_q_temp(client.auth_data.auth_key_id)).update(
         active_at=datetime.now(),
         device_model=request.obj.device_model,
         system_version=request.obj.system_version,

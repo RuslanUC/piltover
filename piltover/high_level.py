@@ -7,6 +7,7 @@ from typing import Awaitable, Callable
 from loguru import logger
 
 from piltover.db.models import UserAuthorization, User
+from piltover.db.models._utils import user_auth_q_temp
 from piltover.enums import Transport, ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.server import Server as LowServer, Client as LowClient, MessageHandler as LowMessageHandler
@@ -91,7 +92,7 @@ class Client(LowClient):
     server: Server
 
     async def get_auth(self, allow_mfa_pending: bool = False) -> UserAuthorization | None:
-        auth = await UserAuthorization.get_or_none(key__id=str(self.auth_data.auth_key_id)).select_related("user")
+        auth = await UserAuthorization.get_or_none(user_auth_q_temp(self.auth_data.auth_key_id)).select_related("user")
         if not allow_mfa_pending and auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         return auth

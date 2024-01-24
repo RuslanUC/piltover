@@ -1,12 +1,16 @@
+from io import BytesIO
 from time import time
 
 from piltover.app.utils import check_password_internal
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword
+from piltover.db.models.authkey import TempAuthKey
 from piltover.db.models.sentcode import SentCode
 from piltover.db.models.user import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
+from piltover.tl.types import EncryptedMessage
+from piltover.tl_new import Long, BindAuthKeyInner
 from piltover.tl_new.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword
 from piltover.tl_new.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
     AuthorizationSignUpRequired
@@ -62,7 +66,9 @@ async def sign_in(client: Client, request: SignIn):
 
     password, _ = await UserPassword.get_or_create(user=user)
 
-    key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
+    key = await AuthKey.get_or_temp(client.auth_data.auth_key_id)
+    if isinstance(key, TempAuthKey):
+        key = key.perm_key
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key, mfa_pending=password.password is not None)
     if password.password is not None:
         raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
@@ -100,7 +106,9 @@ async def sign_up(client: Client, request: SignUp):
         first_name=request.first_name,
         last_name=request.last_name
     )
-    key = await AuthKey.get(id=str(client.auth_data.auth_key_id))
+    key = await AuthKey.get_or_temp(client.auth_data.auth_key_id)
+    if isinstance(key, TempAuthKey):
+        key = key.perm_key
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
     return Authorization(user=await user.to_tl(current_user=user))
@@ -123,6 +131,30 @@ async def check_password(client: Client, request: CheckPassword, user: User):
 # noinspection PyUnusedLocal
 @handler.on_request(BindTempAuthKey)
 async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
+    data = BytesIO(request.encrypted_message)
+    auth_key_id = Long.read(data)
+    if auth_key_id != request.perm_auth_key_id:
+        raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
+    msg_key = data.read(16)
+    encrypted_data = data.read()
+    try:
+        message = await client.decrypt(EncryptedMessage(auth_key_id, msg_key, encrypted_data))
+        # TODO: check message.message_id == request message id
+        if message.seq_no != 0 or len(message.message_data) != 40:
+            raise Exception
+
+        obj = BindAuthKeyInner.read(BytesIO(message.message_data))
+        # TODO: check obj.temp_session_id == request session id
+        # TODO: check obj.temp_auth_key_id == request key id
+        if obj.perm_auth_key_id != auth_key_id or obj.nonce != request.nonce:
+            raise Exception
+    except:
+        raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
+
+    perm_key = await AuthKey.get(id=str(obj.perm_auth_key_id))
+    await TempAuthKey.filter(perm_key__id=str(obj.perm_auth_key_id)).delete()
+    await TempAuthKey.filter(id=str(obj.temp_auth_key_id)).update(perm_key=perm_key)
+
     return True
 
 

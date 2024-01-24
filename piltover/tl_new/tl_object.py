@@ -4,6 +4,7 @@ from dataclasses import dataclass, field as dc_field, MISSING
 from inspect import get_annotations
 from typing import Callable, get_origin, get_args, Union
 
+from piltover.exceptions import Error
 from piltover.tl_new.serialization_utils import SerializationUtils
 
 
@@ -84,8 +85,11 @@ class TLObject(_BaseTLObject):
         return cls(**args)
 
     @classmethod
-    def read(cls, stream) -> TLObject:
-        return SerializationUtils.read(stream, cls)
+    def read(cls, stream, strict_type: bool = False) -> TLObject:
+        obj = SerializationUtils.read(stream, cls)
+        if strict_type and not isinstance(obj, cls):
+            raise Error(f"Expected object type {cls.__name__}, got {obj.__class__.__name__}")
+        return obj
 
     def write(self) -> bytes:
         return SerializationUtils.write(self)
