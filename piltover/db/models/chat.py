@@ -23,14 +23,18 @@ class Chat(Model):
 
     dialogs: fields.ReverseRelation[models.Dialog]
 
+    async def get_other_user(self, current_user: models.User) -> models.User | None:
+        other_dialog = await (models.Dialog.get_or_none(chat=self, user__id__not=current_user.id)
+                              .select_related("user"))
+        return other_dialog.user if other_dialog is not None else None
+
     async def get_peer(self, current_user: models.User):
         peer = PeerUser(user_id=0)
         if self.type == ChatType.SAVED:
             return PeerUser(user_id=current_user.id)
         if self.type == ChatType.PRIVATE:
-            other_dialog = await (models.Dialog.get_or_none(chat=self, user__id__not=current_user.id)
-                                  .select_related("user"))
-            peer = PeerUser(user_id=(other_dialog.user if other_dialog is not None else current_user).id)
+            user = await self.get_other_user(current_user) or current_user
+            peer = PeerUser(user_id=user.id)
         # elif self.chat.type == ChatType.GROUP:
         #    peer = PeerChat(chat_id=self.chat.id)
         # elif self.chat.type == ChatType.CHANNEL:

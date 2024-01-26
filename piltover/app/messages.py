@@ -4,7 +4,8 @@ from tortoise.expressions import Subquery
 
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
-from piltover.app.utils import upload_file
+from piltover.app.utils.utils import upload_file
+from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import ChatType
 from piltover.db.models import User, Chat, Dialog, MessageMedia
 from piltover.db.models.message import Message
@@ -124,13 +125,14 @@ async def send_message(client: Client, request: SendMessage, user: User):
 
     message = await Message.create(message=request.message, author=user, chat=chat)
 
+    u_new_msg = UpdateNewMessage(message=await message.to_tl(user), pts=0, pts_count=1)
+    u_msg_id = UpdateMessageID(id=message.id, random_id=request.random_id)
+    u_read_history = UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0,
+                                            pts=0, pts_count=1)
+    await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
+
     updates = Updates(
-        updates=[
-            UpdateMessageID(id=message.id, random_id=request.random_id),
-            UpdateNewMessage(message=await message.to_tl(user), pts=1, pts_count=1),
-            UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0, pts=2,
-                                   pts_count=1)
-        ],
+        updates=[u_msg_id, u_new_msg, u_read_history],
         users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
@@ -209,7 +211,7 @@ async def get_dialogs(client: Client, request: GetDialogs, user: User):
 async def get_peer_dialogs(client: Client, request: GetPeerDialogs, user: User):
     return PeerDialogs(
         **(await get_dialogs_internal(request.peers, user)),
-        state=await get_state_internal()
+        state=await get_state_internal(user)
     )
 
 
@@ -224,14 +226,14 @@ async def get_attach_menu_bots(client: Client, request: GetAttachMenuBots):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetPinnedDialogs)
-async def get_pinned_dialogs(client: Client, request: GetPinnedDialogs):
+@handler.on_request(GetPinnedDialogs, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_pinned_dialogs(client: Client, request: GetPinnedDialogs, user: User):
     return PeerDialogs(
         dialogs=[],
         messages=[],
         chats=[],
         users=[],
-        state=await get_state_internal(),
+        state=await get_state_internal(user),
     )
 
 
@@ -404,8 +406,11 @@ async def edit_message(client: Client, request: EditMessage, user: User):
 
     await message.update(message=request.message)
 
+    upd = UpdateEditMessage(message=await message.to_tl(user), pts=0, pts_count=1)
+    await UpdatesManager().write_updates(user, upd)
+
     updates = Updates(
-        updates=[UpdateEditMessage(message=await message.to_tl(user), pts=1, pts_count=1)],
+        updates=[upd],
         users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
@@ -432,13 +437,14 @@ async def send_media(client: Client, request: SendMedia, user: User):
     message = await Message.create(message=request.message, author=user, chat=chat)
     await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler)
 
+    u_new_msg = UpdateNewMessage(message=await message.to_tl(user), pts=0, pts_count=1)
+    u_msg_id = UpdateMessageID(id=message.id, random_id=request.random_id)
+    u_read_history = UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0,
+                                            pts=0, pts_count=1)
+    await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
+
     updates = Updates(
-        updates=[
-            UpdateMessageID(id=message.id, random_id=request.random_id),
-            UpdateNewMessage(message=await message.to_tl(user), pts=1, pts_count=1),
-            UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0, pts=2,
-                                   pts_count=1)
-        ],
+        updates=[u_msg_id, u_new_msg, u_read_history],
         users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),

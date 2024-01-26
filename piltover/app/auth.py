@@ -1,7 +1,8 @@
 from io import BytesIO
 from time import time
 
-from piltover.app.utils import check_password_internal
+from piltover.app.utils.utils import check_password_internal
+from piltover.context import request_ctx
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword
 from piltover.db.models.authkey import TempAuthKey
 from piltover.db.models.sentcode import SentCode
@@ -131,6 +132,8 @@ async def check_password(client: Client, request: CheckPassword, user: User):
 # noinspection PyUnusedLocal
 @handler.on_request(BindTempAuthKey)
 async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
+    ctx = request_ctx.get()
+
     data = BytesIO(request.encrypted_message)
     auth_key_id = Long.read(data)
     if auth_key_id != request.perm_auth_key_id:
@@ -139,8 +142,7 @@ async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
     encrypted_data = data.read()
     try:
         message = await client.decrypt(EncryptedMessage(auth_key_id, msg_key, encrypted_data))
-        # TODO: check message.message_id == request message id
-        if message.seq_no != 0 or len(message.message_data) != 40:
+        if message.seq_no != 0 or len(message.message_data) != 40 or message.message_id != ctx.message_id:
             raise Exception
 
         obj = BindAuthKeyInner.read(BytesIO(message.message_data))

@@ -12,6 +12,7 @@ import tgcrypto
 from loguru import logger
 
 from piltover.connection import Connection
+from piltover.context import RequestContext, request_ctx
 from piltover.enums import Transport
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
@@ -406,9 +407,12 @@ class Client:
     async def recv(self):
         message = await self.read_message()
         if isinstance(message, EncryptedMessage):
-            # TODO: kick clients sending encrypted messages with invalid auth_key/(auth_key_id?)
             decrypted = await self.decrypt(message)
             core_message = decrypted.to_core_message()
+            request_ctx.set(
+                RequestContext(message.auth_key_id, decrypted.message_id, decrypted.session_id, core_message.obj)
+            )
+
             logger.debug(core_message)
             await self.handle_encrypted_message(core_message, decrypted.session_id)
         elif isinstance(message, UnencryptedMessage):
@@ -418,7 +422,7 @@ class Client:
 
     # TODO don't mix list and non-list parameters
     def serialize_message(self, session: Session, objects: TLObject | list[tuple[TLObject, CoreMessage]],
-                           originating_request: int | None = None) -> tuple[bytes, int]:
+                          originating_request: int | None = None) -> tuple[bytes, int]:
         if isinstance(objects, TLObject):
             final_obj = objects
             serialized = objects.write()
@@ -517,6 +521,8 @@ class Client:
                 except AssertionError:
                     logger.exception("Unexpected failed assertion", backtrace=True)
                 except InvalidConstructorException as e:
+                    if e.wrong_type:
+                        continue
                     logger.error(f"Invalid constructor: {e.constructor}")
                     raise Disconnection(400)
         except Disconnection as err:

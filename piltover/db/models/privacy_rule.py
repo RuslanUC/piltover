@@ -86,8 +86,8 @@ class PrivacyRule(Model):
             await PrivacyRule.create(user=user, key=rule_key, value=key)
 
         async def _fill_users_rule(val: PrivacyRuleValueType, users: set[int]) -> None:
-            rule = await PrivacyRule.create(user=user, key=rule_key, value=val)
-            await rule.users.add(*await models.User.from_ids(users))
+            rule_ = await PrivacyRule.create(user=user, key=rule_key, value=val)
+            await rule_.users.add(*await models.User.from_ids(users))
 
         disallow = set()
         if PrivacyRuleValueType.DISALLOW_USERS in new_rules:

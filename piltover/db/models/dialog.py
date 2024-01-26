@@ -3,9 +3,8 @@ from __future__ import annotations
 from tortoise import fields
 
 from piltover.db import models
-from piltover.db.enums import ChatType
 from piltover.db.models._utils import Model
-from piltover.tl_new import PeerUser, PeerNotifySettings, PeerChat, PeerChannel
+from piltover.tl_new import PeerNotifySettings
 from piltover.tl_new.types import Dialog as TLDialog
 
 

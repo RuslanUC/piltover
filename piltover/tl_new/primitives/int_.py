@@ -12,6 +12,7 @@ class Int(int):
     def read(cls, stream) -> Int:
         return tl_new.SerializationUtils.read(stream, cls)
 
+    # noinspection PyMethodParameters
     @classinstancemethod
     def write(cls: type[int], self: int) -> bytes:
         return tl_new.SerializationUtils.write(self, cls)

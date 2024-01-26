@@ -1,8 +1,8 @@
 import re
 
-from piltover.app.utils import check_password_internal
+from piltover.app.utils.utils import check_password_internal
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType
-from piltover.db.models import User, UserAuthorization, SrpSession
+from piltover.db.models import User, UserAuthorization
 from piltover.db.models.privacy_rule import PrivacyRule, TL_KEY_TO_PRIVACY_ENUM
 from piltover.db.models.user_password import UserPassword
 from piltover.enums import ReqHandlerFlags
@@ -11,7 +11,7 @@ from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, \
     AccountDaysTTL, EmojiList, \
-    AutoDownloadSettings, InputCheckPasswordEmpty, InputCheckPasswordSRP
+    AutoDownloadSettings
 from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
@@ -20,7 +20,7 @@ from piltover.tl_new.functions.account import UpdateStatus, UpdateProfile, GetNo
 from piltover.tl_new.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, \
     Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
 from piltover.utils import gen_safe_prime
-from piltover.utils.srp import sha256, xor, itob, btoi
+from piltover.utils.srp import btoi
 
 handler = MessageHandler("account")
 username_regex = re.compile(r'[a-zA-z0-9_]{5,32}')

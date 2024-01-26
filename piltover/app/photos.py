@@ -1,4 +1,4 @@
-from piltover.app.utils import upload_file, resize_photo
+from piltover.app.utils.utils import upload_file, resize_photo
 from piltover.db.models import User, UserPhoto
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc

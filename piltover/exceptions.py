@@ -16,5 +16,6 @@ class ErrorRpc(Error):
 
 
 class InvalidConstructorException(Error):
-    def __init__(self, constructor: int):
+    def __init__(self, constructor: int, wrong_type: bool = False):
         self.constructor = constructor
+        self.wrong_type = wrong_type

@@ -66,6 +66,7 @@ class TLObject(_BaseTLObject):
 
         return result
 
+    # noinspection PyTypeChecker
     @classmethod
     def deserialize(cls, stream) -> TLObject:
         args = {}
@@ -121,19 +122,20 @@ def _resolve_annotation(annotation: type):
     raise RuntimeError(f"Unknown annotation type {annotation}!")
 
 
+# noinspection PyShadowingBuiltins
 def tl_object(id: int, name: str) -> Callable:
     def wrapper(cls: type):
         setattr(cls, "__tl_id__", id)
         setattr(cls, "__tl_name__", name)
         fields: list[TLField] = []
         flags: list[TLField] = []
-        annotations = get_annotations(cls, eval_str=True)
+        cls_annotations = get_annotations(cls, eval_str=True)
         for field_name, field in cls.__dict__.items():
             if not isinstance(field, TLField):
                 continue
 
             field.name = field_name
-            field.type = TLType(*_resolve_annotation(annotations[field_name]))
+            field.type = TLType(*_resolve_annotation(cls_annotations[field_name]))
             fields.append(field)
             if field.is_flags:
                 flags.append(field)
@@ -150,6 +152,7 @@ def tl_object(id: int, name: str) -> Callable:
         setattr(cls, "__tl_fields__", fields)
         setattr(cls, "__tl_flags__", flags)
 
+        # noinspection PyTypeChecker
         return dataclass(slots=True, order=True)(cls)
 
     return wrapper

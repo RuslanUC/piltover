@@ -1,7 +1,7 @@
 from time import time
 
 from piltover.app import files_dir
-from piltover.app.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
+from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc

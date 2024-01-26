@@ -62,3 +62,18 @@ class GzipPacked(TLObject):
         decompressed_stream = BytesIO(decompress(packed_data))
 
         return SerializationUtils.read(decompressed_stream, TLObject)
+
+
+class SerializedObject(TLObject):
+    def __init__(self, serialized_data: bytes):
+        super().__init__()
+        self.__tl_id__ = int.from_bytes(serialized_data[:4], "little")
+        self._data = serialized_data
+
+    def serialize(self) -> bytes:
+        return self._data[4:]
+
+    @classmethod
+    def deserialize(cls, stream) -> TLObject:
+        raise RuntimeError("SerializedObject.deserialize should not be called")
+
