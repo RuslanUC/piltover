@@ -16,6 +16,7 @@ class Message(Model):
     message: str = fields.TextField()
     pinned: bool = fields.BooleanField(default=False)
     date: datetime = fields.DatetimeField(default=datetime.now)
+    edit_date: datetime = fields.DatetimeField(null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     chat: models.Chat = fields.ForeignKeyField("models.Chat", on_delete=fields.CASCADE)
@@ -51,5 +52,6 @@ class Message(Model):
             date=int(mktime(self.date.timetuple())),
             out=current_user == self.author,
             media=tl_media,
+            edit_date=int(mktime(self.edit_date.timetuple())) if self.edit_date is not None else None,
             **defaults
         )

@@ -1,3 +1,4 @@
+from datetime import datetime
 from time import time
 
 from tortoise.expressions import Subquery
@@ -22,11 +23,11 @@ from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableRea
     ReorderPinnedDialogs, GetStickers, GetSearchCounters, Search, GetSearchResultsPositions, GetDefaultHistoryTTL, \
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
-    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia
+    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData
 from piltover.tl_new.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, \
     Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
-    FavedStickers, ArchivedStickers, FeaturedStickers
+    FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData
 
 handler = MessageHandler("messages")
 
@@ -136,7 +137,7 @@ async def send_message(client: Client, request: SendMessage, user: User):
         users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
-        seq=1,
+        seq=0,
     )
 
     await SessionManager().send(updates, user.id, exclude=[client])
@@ -404,7 +405,7 @@ async def edit_message(client: Client, request: EditMessage, user: User):
     if message.message == request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
-    await message.update(message=request.message)
+    await message.update(message=request.message, edit_date=datetime.now())
 
     upd = UpdateEditMessage(message=await message.to_tl(user), pts=0, pts_count=1)
     await UpdatesManager().write_updates(user, upd)
@@ -414,7 +415,7 @@ async def edit_message(client: Client, request: EditMessage, user: User):
         users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
-        seq=1,
+        seq=0,
     )
 
     await SessionManager().send(updates, user.id, exclude=[client])
@@ -448,8 +449,14 @@ async def send_media(client: Client, request: SendMedia, user: User):
         users=[await user.to_tl(user)],
         chats=[],
         date=int(time()),
-        seq=1,
+        seq=0,
     )
 
     await SessionManager().send(updates, user.id, exclude=[client])
     return updates
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(GetMessageEditData)
+async def send_media(client: Client, request: GetMessageEditData, user: User):
+    return MessageEditData()
