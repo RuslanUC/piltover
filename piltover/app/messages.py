@@ -5,8 +5,9 @@ from tortoise.expressions import Subquery
 
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
+from piltover.app.utils.to_tl import ToTL
 from piltover.app.utils.utils import upload_file
-from piltover.app.utils.updates_manager import UpdatesManager
+from piltover.app.utils.updates_manager import UpdatesManager, UpdatesContext
 from piltover.db.enums import ChatType
 from piltover.db.models import User, Chat, Dialog, MessageMedia
 from piltover.db.models.message import Message
@@ -126,12 +127,22 @@ async def send_message(client: Client, request: SendMessage, user: User):
 
     message = await Message.create(message=request.message, author=user, chat=chat)
 
-    u_new_msg = UpdateNewMessage(message=await message.to_tl(user), pts=0, pts_count=1)
     u_msg_id = UpdateMessageID(id=message.id, random_id=request.random_id)
-    u_read_history = UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0,
-                                            pts=0, pts_count=1)
-    await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
+    u_new_msg = ToTL(UpdateNewMessage, ["message"], message=message, pts=0, pts_count=1)
+    u_read_history = ToTL(UpdateReadHistoryInbox, ["peer.get_peer"], peer=chat, max_id=message.id,
+                          still_unread_count=0, pts=0, pts_count=1)
 
+    await UpdatesManager().send_updates(
+        UpdatesContext(chat, [user]),
+        u_msg_id, u_new_msg,
+        update_users=list({user, await chat.get_other_user(user)}),
+        date=int(time()),
+        exclude=[client]
+    )
+
+    u_new_msg = await u_new_msg.to_tl(user)
+    u_read_history = await u_read_history.to_tl(user)
+    await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
     updates = Updates(
         updates=[u_msg_id, u_new_msg, u_read_history],
         users=[await user.to_tl(user)],
@@ -407,9 +418,18 @@ async def edit_message(client: Client, request: EditMessage, user: User):
 
     await message.update(message=request.message, edit_date=datetime.now())
 
-    upd = UpdateEditMessage(message=await message.to_tl(user), pts=0, pts_count=1)
-    await UpdatesManager().write_updates(user, upd)
+    upd = ToTL(UpdateEditMessage, ["message"], message=message, pts=0, pts_count=1)
 
+    await UpdatesManager().send_updates(
+        UpdatesContext(chat, [user]),
+        upd,
+        update_users=list({user, await chat.get_other_user(user)}),
+        date=int(time()),
+        exclude=[client]
+    )
+
+    upd = await upd.to_tl(user)
+    await UpdatesManager().write_updates(user, upd)
     updates = Updates(
         updates=[upd],
         users=[await user.to_tl(user)],
@@ -438,12 +458,22 @@ async def send_media(client: Client, request: SendMedia, user: User):
     message = await Message.create(message=request.message, author=user, chat=chat)
     await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler)
 
-    u_new_msg = UpdateNewMessage(message=await message.to_tl(user), pts=0, pts_count=1)
     u_msg_id = UpdateMessageID(id=message.id, random_id=request.random_id)
-    u_read_history = UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id, still_unread_count=0,
-                                            pts=0, pts_count=1)
-    await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
+    u_new_msg = ToTL(UpdateNewMessage, ["message"], message=message, pts=0, pts_count=1)
+    u_read_history = ToTL(UpdateReadHistoryInbox, ["peer.get_peer"], peer=chat, max_id=message.id,
+                          still_unread_count=0, pts=0, pts_count=1)
 
+    await UpdatesManager().send_updates(
+        UpdatesContext(chat, [user]),
+        u_msg_id, u_new_msg,
+        update_users=list({user, await chat.get_other_user(user)}),
+        date=int(time()),
+        exclude=[client]
+    )
+
+    u_new_msg = await u_new_msg.to_tl(user)
+    u_read_history = await u_read_history.to_tl(user)
+    await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
     updates = Updates(
         updates=[u_msg_id, u_new_msg, u_read_history],
         users=[await user.to_tl(user)],

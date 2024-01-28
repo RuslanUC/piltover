@@ -64,6 +64,13 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
                 continue
 
         other_updates.append(upd)
+        if not update.user_ids_to_fetch:
+            continue
+
+        for uid in update.user_ids_to_fetch:
+            if uid in users or (u := await User.get_or_none(id=uid)) is None:
+                continue
+            users[uid] = await u.to_tl(user)
 
     return Difference(
         new_messages=list(new_messages.values()),

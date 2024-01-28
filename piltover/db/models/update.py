@@ -18,4 +18,5 @@ class Update(Model):
     date: int = fields.BigIntField(default=gen_date)
     update_type: int = fields.BigIntField()
     update_data: bytes = fields.BinaryField()
+    user_ids_to_fetch: list[int] = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)

@@ -6,6 +6,7 @@ from typing import Awaitable, Callable
 
 from loguru import logger
 
+from piltover.context import SerializationContext, serialization_ctx
 from piltover.db.models import UserAuthorization, User
 from piltover.db.models._utils import user_auth_q_temp
 from piltover.enums import Transport, ReqHandlerFlags
@@ -92,7 +93,7 @@ class Client(LowClient):
     server: Server
 
     async def get_auth(self, allow_mfa_pending: bool = False) -> UserAuthorization | None:
-        auth = await UserAuthorization.get_or_none(user_auth_q_temp(self.auth_data.auth_key_id)).select_related("user")
+        auth = await UserAuthorization.get_or_none(key__id=str(self.auth_data.auth_key_id)).select_related("user")
         if not allow_mfa_pending and auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         return auth
@@ -116,6 +117,7 @@ class Client(LowClient):
                 try:
                     if handler.auth_required() and (user := await self.get_user(handler.allow_mfa_pending())) is None:
                         raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
+                    serialization_ctx.set(SerializationContext(user, session.layer if session.layer > 0 else 167))
                     user_arg = (user,) if handler.auth_required() and handler.has_user_arg else ()
                     result = await handler.func(self, request.obj, *user_arg)
                     if result is not None:
@@ -133,7 +135,7 @@ class Client(LowClient):
                         error = RpcError(error_code=500, error_message="Server error")
 
             if user is not None and session.user_id is None:
-                SessionManager().set_user_id(session, user.id)
+                SessionManager().set_user(session, user)
 
             result = result if error is None else error
             if result is None:

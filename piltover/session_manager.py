@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING
 
+from piltover.context import rewrite_ctx, serialization_ctx
+from piltover.db.models import User
 from piltover.tl_new import TLObject
 from piltover.tl_new.utils import is_content_related
 from piltover.utils.utils import SingletonMeta
@@ -25,7 +27,9 @@ class Session:
     session_id: int
     auth_key: KeyInfo | None = None
     user_id: int | None = None
+    user: User | None = None
     min_msg_id: int = 0
+    layer = 0
 
     msg_id_last_time = 0
     msg_id_offset = 0
@@ -105,6 +109,10 @@ class SessionManager(metaclass=SingletonMeta):
         self.by_user_id[user_id].add(session)
         session.user_id = user_id
 
+    def set_user(self, session: Session, user: User) -> None:
+        self.set_user_id(session, user.id)
+        session.user = user.id
+
     async def send(self, obj: TLObject, user_id: int | None = None, key_id: int | None = None, *,
                    exclude: list[Client] | None = None) -> None:
         if user_id is None and key_id is None:
@@ -120,4 +128,5 @@ class SessionManager(metaclass=SingletonMeta):
         for session in sessions:
             if session.client in exclude or session.client not in self.by_client:
                 continue
-            await session.client.send(obj, session, None, False)
+            with rewrite_ctx(serialization_ctx, user=session.user, layer=(session.layer if session.layer > 0 else 167)):
+                await session.client.send(obj, session, None, False)

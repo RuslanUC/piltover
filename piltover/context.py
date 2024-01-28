@@ -1,8 +1,11 @@
 from __future__ import annotations
+
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from piltover.tl_new.tl_object import TLObject
+    from piltover.db.models import User
 
 
 class RequestContext:
@@ -17,3 +20,21 @@ class RequestContext:
 
 request_ctx: ContextVar[RequestContext] = ContextVar("request_ctx")
 
+
+class SerializationContext:
+    __slots__ = ("user", "layer")
+
+    def __init__(self, user: User | None, layer: int):
+        self.user = user
+        self.layer = layer
+
+
+serialization_ctx: ContextVar[SerializationContext] = ContextVar("request_ctx", default=SerializationContext(None, 167))
+
+
+@contextmanager
+def rewrite_ctx(ctx: ContextVar, **kwargs):
+    cls = type(ctx.get())
+    old_ctx = ctx.set(cls(**kwargs))
+    yield
+    ctx.reset(old_ctx)

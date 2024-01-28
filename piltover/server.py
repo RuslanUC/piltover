@@ -12,7 +12,7 @@ import tgcrypto
 from loguru import logger
 
 from piltover.connection import Connection
-from piltover.context import RequestContext, request_ctx
+from piltover.context import RequestContext, request_ctx, serialization_ctx, SerializationContext
 from piltover.enums import Transport
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
@@ -555,6 +555,7 @@ class Client:
 
             return results
         else:
+            serialization_ctx.set(SerializationContext(None, session.layer if session.layer > 0 else 167))
             handlers = self.server.handlers.get(request.obj.tlid(), [])
 
             result = None

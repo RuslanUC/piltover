@@ -22,22 +22,7 @@ data.mkdir(parents=True, exist_ok=True)
 secrets = data / "secrets"
 secrets.mkdir(parents=True, exist_ok=True)
 
-privkey = secrets / "privkey.asc"
-pubkey = secrets / "pubkey.asc"
-
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
-
-if not getenv("DISABLE_HR"):
-    # Hot code reloading
-    import jurigged
-
-    def log(s: jurigged.live.WatchOperation):
-        if hasattr(s, "filename") and "unknown" not in s.filename:
-            file = Path(s.filename)
-            print("Reloaded", file.relative_to(root_dir))
-
-
-    jurigged.watch("piltover/[!tl_new]*.py", logger=log)
 
 
 async def migrate():
@@ -56,54 +41,56 @@ async def migrate():
     await Tortoise.close_connections()
 
 
-async def main():
-    if not (pubkey.exists() and privkey.exists()):
-        with privkey.open("w+") as priv, pubkey.open("w+") as pub:
-            keys: Keys = gen_keys()
-            priv.write(keys.private_key)
-            pub.write(keys.public_key)
+class PiltoverApp:
+    def __init__(self, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int=4430):
+        self._host = host
+        self._port = port
 
-    private_key = privkey.read_text()
-    public_key = pubkey.read_text()
+        privkey = privkey if isinstance(privkey, Path) else Path(privkey)
+        pubkey = pubkey if isinstance(pubkey, Path) else Path(pubkey)
+        if not (pubkey.exists() and privkey.exists()):
+            with privkey.open("w+") as priv, pubkey.open("w+") as pub:
+                keys: Keys = gen_keys()
+                priv.write(keys.private_key)
+                pub.write(keys.public_key)
 
-    fp = get_public_key_fingerprint(public_key, signed=True)
-    logger.info(
-        "Pubkey fingerprint: {fp:x} ({no_sign})",
-        fp=fp,
-        no_sign=fp.to_bytes(8, "big", signed=True).hex(),
-    )
+        self._private_key = privkey.read_text()
+        self._public_key = pubkey.read_text()
 
-    pilt = Server(
-        server_keys=Keys(
-            private_key=private_key,
-            public_key=public_key,
+        self._server = Server(
+            host=host,
+            port=port,
+            server_keys=Keys(
+                private_key=self._private_key,
+                public_key=self._public_key,
+            )
         )
-    )
 
-    pilt.register_handler_low(system.handler)
-    pilt.register_handler(help_.handler)
-    pilt.register_handler(auth.handler)
-    pilt.register_handler(updates.handler)
-    pilt.register_handler(users.handler)
-    pilt.register_handler(stories.handler)
-    pilt.register_handler(account.handler)
-    pilt.register_handler(messages.handler)
-    pilt.register_handler(photos.handler)
-    pilt.register_handler(contacts.handler)
-    pilt.register_handler(langpack.handler)
-    pilt.register_handler(channels.handler)
-    pilt.register_handler(upload.handler)
+        self._server.register_handler_low(system.handler)
+        self._server.register_handler(help_.handler)
+        self._server.register_handler(auth.handler)
+        self._server.register_handler(updates.handler)
+        self._server.register_handler(users.handler)
+        self._server.register_handler(stories.handler)
+        self._server.register_handler(account.handler)
+        self._server.register_handler(messages.handler)
+        self._server.register_handler(photos.handler)
+        self._server.register_handler(contacts.handler)
+        self._server.register_handler(langpack.handler)
+        self._server.register_handler(channels.handler)
+        self._server.register_handler(upload.handler)
 
-    @pilt.on_auth_key_set
-    async def auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
+        self._server.on_auth_key_set(self._auth_key_set)
+        self._server.on_auth_key_get(self._auth_key_get)
+
+    async def _auth_key_set(self, auth_key_id: int, auth_key_bytes: bytes) -> None:
         await AuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes)
         logger.debug(f"Set auth key: {auth_key_id}")
 
-    @pilt.on_auth_key_get
-    async def auth_key_get(auth_key_id: int, temp: bool=False) -> tuple[int, bytes] | None:
+    async def _auth_key_get(self, auth_key_id: int, temp: bool = False) -> tuple[int, bytes] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
         if temp:
-            auth_key = await TempAuthKey.get_or_none(id=str(auth_key_id), expires__gt=int(time()))\
+            auth_key = await TempAuthKey.get_or_none(id=str(auth_key_id), expires__gt=int(time())) \
                 .select_related("perm_key")
             if auth_key is None:
                 return
@@ -111,19 +98,49 @@ async def main():
         if (auth_key := await AuthKey.get_or_none(id=str(auth_key_id))) is not None:
             return auth_key_id, auth_key.auth_key
 
-    await migrate()
-    await Tortoise.init(
-        db_url=DB_CONNECTION_STRING,
-        modules={"models": ["piltover.db.models"]},
-    )
+    def _setup_reload(self):
+        if getenv("DISABLE_HR"):
+            return
 
-    logger.success("Running on {host}:{port}", host=pilt.HOST, port=pilt.PORT)
-    await pilt.serve()
+        import jurigged
+
+        def log(s: jurigged.live.WatchOperation):
+            if hasattr(s, "filename") and "unknown" not in s.filename:
+                file = Path(s.filename)
+                print("Reloaded", file.relative_to(root_dir))
+
+        jurigged.watch("piltover/[!tl_new]*.py", logger=log)
+
+    async def run(self, host: str | None = None, port: int | None = None, *, reload: bool = False):
+        self._host = host or self._host
+        self._port = port or self._port
+
+        fp = get_public_key_fingerprint(self._public_key, signed=True)
+        logger.info(
+            "Pubkey fingerprint: {fp:x} ({no_sign})",
+            fp=fp,
+            no_sign=fp.to_bytes(8, "big", signed=True).hex(),
+        )
+
+        if reload:
+            self._setup_reload()
+            await migrate()
+
+        await Tortoise.init(
+            db_url=DB_CONNECTION_STRING,
+            modules={"models": ["piltover.db.models"]},
+        )
+
+        logger.success("Running on {host}:{port}", host=self._host, port=self._port)
+        await self._server.serve()
+
+
+app = PiltoverApp(secrets / "privkey.asc", secrets / "pubkey.asc")
 
 
 if __name__ == "__main__":
     try:
         uvloop.install()
-        asyncio.run(main())
+        asyncio.run(app.run(reload=True))
     except KeyboardInterrupt:
         pass
