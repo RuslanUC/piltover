@@ -6,8 +6,8 @@ from time import time
 from typing import TYPE_CHECKING
 
 from piltover.context import rewrite_ctx, serialization_ctx
-from piltover.db.models import User
-from piltover.tl_new import TLObject
+from piltover.db.models import User, UserAuthorization
+from piltover.tl_new import TLObject, Updates
 from piltover.tl_new.utils import is_content_related
 from piltover.utils.utils import SingletonMeta
 
@@ -125,8 +125,14 @@ class SessionManager(metaclass=SingletonMeta):
         if key_id is not None:
             sessions.update(self.by_key_id[key_id])
 
+        #print(f"[{user_id}] sent {obj} ({obj.write()})")
+
         for session in sessions:
             if session.client in exclude or session.client not in self.by_client:
                 continue
+            if isinstance(obj, Updates):
+                auth = await UserAuthorization.get(key__id=str(session.auth_key.auth_key_id))
+                await auth.update(upd_seq=auth.upd_seq+1)
+                obj.seq = auth.upd_seq
             with rewrite_ctx(serialization_ctx, user=session.user, layer=(session.layer if session.layer > 0 else 167)):
                 await session.client.send(obj, session, None, False)

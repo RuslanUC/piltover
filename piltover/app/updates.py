@@ -1,8 +1,10 @@
+from datetime import datetime
 from io import BytesIO
 from time import time
 
+from piltover.context import request_ctx
 from piltover.db.enums import ChatType
-from piltover.db.models import User, Update, Message
+from piltover.db.models import User, Update, Message, UserAuthorization
 from piltover.enums import ReqHandlerFlags
 from piltover.high_level import Client, MessageHandler
 from piltover.tl_new import UpdateEditMessage, UpdateNewMessage
@@ -16,11 +18,12 @@ IGNORED_UPD = [UpdateNewMessage.tlid()]
 
 async def get_state_internal(user: User) -> State:
     last_update = await Update.filter(user=user).order_by("-pts").first()
+    auth = await UserAuthorization.get(key__id=str(request_ctx.get().auth_key_id))
 
     return State(
         pts=last_update.pts if last_update is not None else 0,
         qts=0,
-        seq=1,
+        seq=auth.upd_seq,
         date=int(time()),
         unread_count=0,
     )
@@ -38,6 +41,7 @@ async def get_state(client: Client, request: GetState, user: User):
 async def get_difference(client: Client, request: GetDifference | GetDifference_136, user: User):
     requested_update = await Update.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
     date = requested_update.date if requested_update is not None else request.date
+    date = datetime.fromtimestamp(date)
 
     new = await Message.filter(chat__dialogs__user=user, date__gt=date).select_related("author", "chat")
     new_messages = {}

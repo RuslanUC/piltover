@@ -77,3 +77,6 @@ class SerializedObject(TLObject):
     def deserialize(cls, stream) -> TLObject:
         raise RuntimeError("SerializedObject.deserialize should not be called")
 
+    #def __repr__(self):
+    #    return repr(TLObject.read(BytesIO(self._data)))
+

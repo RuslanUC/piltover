@@ -1,7 +1,7 @@
 from datetime import datetime
 from time import time
 
-from tortoise.expressions import Subquery
+from tortoise.expressions import Subquery, Q
 
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
@@ -132,10 +132,15 @@ async def send_message(client: Client, request: SendMessage, user: User):
     u_read_history = ToTL(UpdateReadHistoryInbox, ["peer.get_peer"], peer=chat, max_id=message.id,
                           still_unread_count=0, pts=0, pts_count=1)
 
+    users = {user, await chat.get_other_user(user)}
+    if None in users:
+        users.remove(None)
+    users = list(users)
+
     await UpdatesManager().send_updates(
         UpdatesContext(chat, [user]),
-        u_msg_id, u_new_msg,
-        update_users=list({user, await chat.get_other_user(user)}),
+        u_new_msg,
+        update_users=users,
         date=int(time()),
         exclude=[client]
     )
@@ -145,7 +150,7 @@ async def send_message(client: Client, request: SendMessage, user: User):
     await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
     updates = Updates(
         updates=[u_msg_id, u_new_msg, u_read_history],
-        users=[await user.to_tl(user)],
+        users=[await u.to_tl(user) for u in users],
         chats=[],
         date=int(time()),
         seq=0,
@@ -189,10 +194,21 @@ async def get_recent_reactions(client: Client, request: GetRecentReactions):
 
 
 # noinspection PyUnusedLocal
-async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User):
+async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0,
+                               offset_date: int = 0, limit: int = 100):
     # TODO: get dialogs by peers
 
-    dialogs = await Dialog.filter(user=user).select_related("user", "chat").all()
+    query = Q(user=user)
+    if offset_id:
+        query &= Q(chat__messages__id__gt=offset_id)
+    if offset_date:
+        query &= Q(chat__messages__date__gt=datetime.utcfromtimestamp(offset_date))
+
+    if limit > 100 or limit < 1:
+        limit = 100
+
+    dialogs = await Dialog.filter(query).select_related("user", "chat").order_by("-chat__messages__date")\
+        .limit(limit).all()
     messages = []
     users = {}
     for dialog in dialogs:
@@ -215,7 +231,9 @@ async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User):
 # noinspection PyUnusedLocal
 @handler.on_request(GetDialogs, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_dialogs(client: Client, request: GetDialogs, user: User):
-    return Dialogs(**(await get_dialogs_internal(None, user)))
+    return Dialogs(**(
+        await get_dialogs_internal(None, user, request.offset_id, request.offset_date, request.limit)
+    ))
 
 
 # noinspection PyUnusedLocal
