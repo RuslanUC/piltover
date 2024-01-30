@@ -30,12 +30,14 @@ class Dialog(Model):
         } | kwargs
 
         top_message = await models.Message.filter(chat=self.chat).order_by("-id").first()
+        draft = await models.MessageDraft.get_or_none(dialog=self)
+        draft = await draft.to_tl() if draft else None
 
         return TLDialog(
             **defaults,
             pinned=self.pinned,
             unread_mark=self.unread_mark,
             peer=await self.chat.get_peer(self.user),
-            top_message=top_message.id if top_message is not None else 0
-            # draft=self.draft,
+            top_message=top_message.id if top_message is not None else 0,
+            draft=draft,
         )

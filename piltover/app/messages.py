@@ -9,7 +9,7 @@ from piltover.app.utils.to_tl import ToTL
 from piltover.app.utils.utils import upload_file
 from piltover.app.utils.updates_manager import UpdatesManager, UpdatesContext
 from piltover.db.enums import ChatType
-from piltover.db.models import User, Chat, Dialog, MessageMedia
+from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft
 from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -17,14 +17,15 @@ from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
-    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings
+    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage, \
+    UpdateShortSentMessage, UpdateShortMessage
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
     ReorderPinnedDialogs, GetStickers, GetSearchCounters, Search, GetSearchResultsPositions, GetDefaultHistoryTTL, \
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
-    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData
+    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft
 from piltover.tl_new.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, \
     Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
@@ -127,37 +128,44 @@ async def send_message(client: Client, request: SendMessage, user: User):
 
     message = await Message.create(message=request.message, author=user, chat=chat)
 
-    u_msg_id = UpdateMessageID(id=message.id, random_id=request.random_id)
-    u_new_msg = ToTL(UpdateNewMessage, ["message"], message=message, pts=0, pts_count=1)
-    u_read_history = ToTL(UpdateReadHistoryInbox, ["peer.get_peer"], peer=chat, max_id=message.id,
-                          still_unread_count=0, pts=0, pts_count=1)
+    if chat.type == ChatType.SAVED:
+        u_msg_id = UpdateMessageID(id=message.id, random_id=request.random_id)
+        u_new_msg = UpdateNewMessage(message=message, pts=0, pts_count=1)
+        u_read_history = UpdateReadHistoryInbox(peer=chat, max_id=message.id, still_unread_count=0, pts=0, pts_count=1)
+        await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
+        updates = Updates(
+            updates=[u_msg_id, u_new_msg, u_read_history],
+            users=[await user.to_tl(user)],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+        await SessionManager().send(updates, user.id, exclude=[client])
+        return updates
+    elif chat.type == ChatType.PRIVATE:
+        other = await chat.get_other_user(user)
 
-    users = {user, await chat.get_other_user(user)}
-    if None in users:
-        users.remove(None)
-    users = list(users)
+        update = UpdateShortMessage(
+            out=True,
+            id=message.id,
+            user_id=other.id,
+            message=message.message,
+            pts=0,
+            pts_count=1,
+            date=message.utime(),
+        )
+        await UpdatesManager().write_updates(user, update)
+        await SessionManager().send(update, user.id, exclude=[client])
+        sent_pts = update.pts
 
-    await UpdatesManager().send_updates(
-        UpdatesContext(chat, [user]),
-        u_new_msg,
-        update_users=users,
-        date=int(time()),
-        exclude=[client]
-    )
+        update.out = False
+        update.user_id = user.id
+        await UpdatesManager().write_updates(other, update)
+        await SessionManager().send(update, other.id)
 
-    u_new_msg = await u_new_msg.to_tl(user)
-    u_read_history = await u_read_history.to_tl(user)
-    await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
-    updates = Updates(
-        updates=[u_msg_id, u_new_msg, u_read_history],
-        users=[await u.to_tl(user) for u in users],
-        chats=[],
-        date=int(time()),
-        seq=0,
-    )
+        return UpdateShortSentMessage(out=True, id=message.id, pts=sent_pts, pts_count=1, date=message.utime())
 
-    await SessionManager().send(updates, user.id, exclude=[client])
-    return updates
+    assert False, "unknown chat type ?"
 
 
 # noinspection PyUnusedLocal
@@ -506,5 +514,29 @@ async def send_media(client: Client, request: SendMedia, user: User):
 
 # noinspection PyUnusedLocal
 @handler.on_request(GetMessageEditData)
-async def send_media(client: Client, request: GetMessageEditData, user: User):
+async def get_message_edit_data(client: Client, request: GetMessageEditData, user: User):
     return MessageEditData()
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(SaveDraft, ReqHandlerFlags.AUTH_REQUIRED)
+async def save_draft(client: Client, request: SaveDraft, user: User):
+    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
+        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
+
+    dialog = await Dialog.get(user=user, chat=chat)
+    draft, _ = await MessageDraft.get_or_create(
+        dialog=dialog,
+        defaults={"message": request.message, "date": datetime.now()}
+    )
+
+    updates = Updates(
+        updates=[UpdateDraftMessage(peer=await chat.get_peer(user), draft=await draft.to_tl())],
+        users=[await user.to_tl(user)],
+        chats=[],
+        date=int(time()),
+        seq=0,
+    )
+
+    await SessionManager().send(updates, user.id)
+    return True

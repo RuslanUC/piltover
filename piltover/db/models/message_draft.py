@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 from datetime import datetime
+from time import mktime
 
 from tortoise import fields
 
 from piltover.db import models
 from piltover.db.models._utils import Model
+from piltover.tl_new import DraftMessage
 
 
 class MessageDraft(Model):
     id: int = fields.BigIntField(pk=True)
     message: str = fields.TextField()
     date: datetime = fields.DatetimeField(default=datetime.now)
-    dialog: models.Dialog = fields.ForeignKeyField("models.Dialog", on_delete=fields.CASCADE)
+    dialog: models.Dialog = fields.ForeignKeyField("models.Dialog", on_delete=fields.CASCADE, unique=True)
 
-    #reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)  # ??
+    async def to_tl(self) -> DraftMessage:
+        return DraftMessage(
+            message=self.message,
+            date=int(mktime(self.date.timetuple()))
+        )

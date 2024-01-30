@@ -23,6 +23,9 @@ class Message(Model):
 
     #reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)  # ??
 
+    def utime(self) -> int:
+        return int(mktime(self.date.timetuple()))
+
     async def to_tl(self, current_user: models.User, **kwargs) -> TLMessage:
         defaults = {
             "mentioned": False,

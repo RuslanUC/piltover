@@ -2,18 +2,20 @@ from datetime import datetime
 from io import BytesIO
 from time import time
 
+from loguru import logger
+
 from piltover.context import request_ctx
 from piltover.db.enums import ChatType
 from piltover.db.models import User, Update, Message, UserAuthorization
 from piltover.enums import ReqHandlerFlags
 from piltover.high_level import Client, MessageHandler
-from piltover.tl_new import UpdateEditMessage, UpdateNewMessage
+from piltover.tl_new import UpdateEditMessage, UpdateNewMessage, UpdateShortMessage
 from piltover.tl_new.core_types import SerializedObject
 from piltover.tl_new.functions.updates import GetState, GetDifference, GetDifference_136
 from piltover.tl_new.types.updates import State, Difference
 
 handler = MessageHandler("auth")
-IGNORED_UPD = [UpdateNewMessage.tlid()]
+IGNORED_UPD = [UpdateNewMessage.tlid(), UpdateShortMessage.tlid()]
 
 
 async def get_state_internal(user: User) -> State:
@@ -59,7 +61,7 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
             if (other_user := await chat.get_other_user(user)) is not None and other_user.id not in users:
                 users[other_user.id] = await other_user.to_tl(user)
 
-    new_updates = await Update.filter(user=user, pts__lte=request.pts, update_type__not_in=IGNORED_UPD).order_by("pts")
+    new_updates = await Update.filter(user=user, pts__gt=request.pts, update_type__not_in=IGNORED_UPD).order_by("pts")
     for update in new_updates:
         upd = SerializedObject(update.update_data)
         if upd.__tl_id__ == UpdateEditMessage.tlid():

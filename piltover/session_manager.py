@@ -128,7 +128,7 @@ class SessionManager(metaclass=SingletonMeta):
         #print(f"[{user_id}] sent {obj} ({obj.write()})")
 
         for session in sessions:
-            if session.client in exclude or session.client not in self.by_client:
+            if (exclude is not None and session.client in exclude) or session.client not in self.by_client:
                 continue
             if isinstance(obj, Updates):
                 auth = await UserAuthorization.get(key__id=str(session.auth_key.auth_key_id))

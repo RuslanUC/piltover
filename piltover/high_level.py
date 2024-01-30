@@ -124,6 +124,7 @@ class Client(LowClient):
                         break
                 except Exception as e:
                     if error is not None:
+                        logger.warning("Error while processing {obj}: {err}", obj=request.obj.tlname(), err=e)
                         continue
 
                     if isinstance(e, ErrorRpc):
