@@ -1,11 +1,15 @@
+from time import time
 from typing import Any, TypeVar, Generic
 
 from piltover.app.utils.to_tl import ToTL
+from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import ChatType
-from piltover.db.models import User, Update, Chat
+from piltover.db.models import User, Update, Chat, Message
 from piltover.session_manager import SessionManager
-from piltover.tl_new import TLObject, PeerUser, DialogPeer, NotifyForumTopic, NotifyPeer, Updates
+from piltover.tl_new import TLObject, PeerUser, DialogPeer, NotifyForumTopic, NotifyPeer, Updates, \
+    UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox
 from piltover.tl_new.core_types import SerializedObject
+from piltover.tl_new.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
 
@@ -90,3 +94,51 @@ class UpdatesManager(metaclass=SingletonMeta):
 
         if isinstance(context.context, Chat):
             return await self._send_updates_chat(context, *updates, update_users=update_users, date=date, **kwargs)
+
+    async def send_message(self, user: User, message: Message) -> Updates | UpdateShortSentMessage:
+        """
+        Sends a newly-created message to the users from message chat.
+        Returns update object that should be sent as response to `sendMessage` request.
+        """
+
+        ctx: RequestContext[SendMessage] = request_ctx.get()
+        client = ctx.client
+        chat = message.chat
+        if chat.type == ChatType.SAVED:
+            u_msg_id = UpdateMessageID(id=message.id, random_id=ctx.obj.random_id)
+            u_new_msg = UpdateNewMessage(message=await message.to_tl(user), pts=0, pts_count=1)
+            u_read_history = UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id,
+                                                    still_unread_count=0,
+                                                    pts=0, pts_count=1)
+            await self.write_updates(user, u_msg_id, u_new_msg, u_read_history)
+            updates = Updates(
+                updates=[u_msg_id, u_new_msg, u_read_history],
+                users=[await user.to_tl(user)],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            )
+            await SessionManager().send(updates, user.id, exclude=[client])
+            return updates
+        elif chat.type == ChatType.PRIVATE:
+            other = await chat.get_other_user(user)
+
+            update = UpdateShortMessage(
+                out=True,
+                id=message.id,
+                user_id=other.id,
+                message=message.message,
+                pts=0,
+                pts_count=1,
+                date=message.utime(),
+            )
+            await self.write_updates(user, update)
+            await SessionManager().send(update, user.id, exclude=[client])
+            sent_pts = update.pts
+
+            update.out = False
+            update.user_id = user.id
+            await self.write_updates(other, update)
+            await SessionManager().send(update, other.id)
+
+            return UpdateShortSentMessage(out=True, id=message.id, pts=sent_pts, pts_count=1, date=message.utime())

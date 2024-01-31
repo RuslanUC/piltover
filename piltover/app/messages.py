@@ -6,8 +6,8 @@ from tortoise.expressions import Subquery, Q
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
 from piltover.app.utils.to_tl import ToTL
-from piltover.app.utils.utils import upload_file
 from piltover.app.utils.updates_manager import UpdatesManager, UpdatesContext
+from piltover.app.utils.utils import upload_file
 from piltover.db.enums import ChatType
 from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft
 from piltover.db.models.message import Message
@@ -17,8 +17,7 @@ from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
-    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage, \
-    UpdateShortSentMessage, UpdateShortMessage
+    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -128,44 +127,10 @@ async def send_message(client: Client, request: SendMessage, user: User):
 
     message = await Message.create(message=request.message, author=user, chat=chat)
 
-    if chat.type == ChatType.SAVED:
-        u_msg_id = UpdateMessageID(id=message.id, random_id=request.random_id)
-        u_new_msg = UpdateNewMessage(message=message, pts=0, pts_count=1)
-        u_read_history = UpdateReadHistoryInbox(peer=chat, max_id=message.id, still_unread_count=0, pts=0, pts_count=1)
-        await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
-        updates = Updates(
-            updates=[u_msg_id, u_new_msg, u_read_history],
-            users=[await user.to_tl(user)],
-            chats=[],
-            date=int(time()),
-            seq=0,
-        )
-        await SessionManager().send(updates, user.id, exclude=[client])
-        return updates
-    elif chat.type == ChatType.PRIVATE:
-        other = await chat.get_other_user(user)
+    if (upd := await UpdatesManager().send_message(user, message)) is None:
+        assert False, "unknown chat type ?"
 
-        update = UpdateShortMessage(
-            out=True,
-            id=message.id,
-            user_id=other.id,
-            message=message.message,
-            pts=0,
-            pts_count=1,
-            date=message.utime(),
-        )
-        await UpdatesManager().write_updates(user, update)
-        await SessionManager().send(update, user.id, exclude=[client])
-        sent_pts = update.pts
-
-        update.out = False
-        update.user_id = user.id
-        await UpdatesManager().write_updates(other, update)
-        await SessionManager().send(update, other.id)
-
-        return UpdateShortSentMessage(out=True, id=message.id, pts=sent_pts, pts_count=1, date=message.utime())
-
-    assert False, "unknown chat type ?"
+    return upd
 
 
 # noinspection PyUnusedLocal
@@ -489,31 +454,14 @@ async def send_media(client: Client, request: SendMedia, user: User):
     u_read_history = ToTL(UpdateReadHistoryInbox, ["peer.get_peer"], peer=chat, max_id=message.id,
                           still_unread_count=0, pts=0, pts_count=1)
 
-    await UpdatesManager().send_updates(
-        UpdatesContext(chat, [user]),
-        u_msg_id, u_new_msg,
-        update_users=list({user, await chat.get_other_user(user)}),
-        date=int(time()),
-        exclude=[client]
-    )
+    if (upd := await UpdatesManager().send_message(user, message)) is None:
+        assert False, "unknown chat type ?"
 
-    u_new_msg = await u_new_msg.to_tl(user)
-    u_read_history = await u_read_history.to_tl(user)
-    await UpdatesManager().write_updates(user, u_msg_id, u_new_msg, u_read_history)
-    updates = Updates(
-        updates=[u_msg_id, u_new_msg, u_read_history],
-        users=[await user.to_tl(user)],
-        chats=[],
-        date=int(time()),
-        seq=0,
-    )
-
-    await SessionManager().send(updates, user.id, exclude=[client])
-    return updates
+    return upd
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetMessageEditData)
+@handler.on_request(GetMessageEditData, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_message_edit_data(client: Client, request: GetMessageEditData, user: User):
     return MessageEditData()
 

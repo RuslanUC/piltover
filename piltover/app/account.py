@@ -1,6 +1,7 @@
 import re
 
 from piltover.app.utils.utils import check_password_internal
+from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType
 from piltover.db.models import User, UserAuthorization
 from piltover.db.models.privacy_rule import PrivacyRule, TL_KEY_TO_PRIVACY_ENUM
@@ -8,6 +9,7 @@ from piltover.db.models.user_password import UserPassword
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
+from piltover.session_manager import SessionManager
 from piltover.tl_new import PeerNotifySettings, GlobalPrivacySettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, \
     AccountDaysTTL, EmojiList, \
@@ -77,10 +79,17 @@ async def set_account_ttl(client: Client, request: SetAccountTTL, user: User):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(RegisterDevice_70)
-@handler.on_request(RegisterDevice)
-async def register_device(client: Client, request: RegisterDevice) -> bool:
-    print(request)
+@handler.on_request(RegisterDevice_70, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(RegisterDevice, ReqHandlerFlags.AUTH_REQUIRED)
+async def register_device(client: Client, request: RegisterDevice, user: User) -> bool:
+    if request.token_type != 7:
+        return False
+    sess_id = int(request.token)
+    key_id = request_ctx.get().auth_key_id
+    if (session := SessionManager().sessions.get(sess_id, {}).get(key_id, None)) is None:
+        return False
+
+    SessionManager().set_user(session, user)
     return True
 
 

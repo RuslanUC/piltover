@@ -75,11 +75,11 @@ class SessionManager(metaclass=SingletonMeta):
         self.by_key_id: dict[int, set[Session]] = defaultdict(set)
         self.by_user_id: dict[int, set[Session]] = defaultdict(set)
 
-    def get_or_create(self, client: Client, session_id: int) -> Session:
+    def get_or_create(self, client: Client, session_id: int) -> tuple[Session, bool]:
         if session_id not in self.sessions:
             self.sessions[session_id] = {}
         if client.auth_data.auth_key_id in self.sessions[session_id]:
-            return self.sessions[session_id][client.auth_data.auth_key_id]
+            return self.sessions[session_id][client.auth_data.auth_key_id], False
 
         session = Session(
             client=client,
@@ -92,7 +92,7 @@ class SessionManager(metaclass=SingletonMeta):
         self.sessions[session_id][client.auth_data.auth_key_id] = session
         self.by_client[client].add(session)
         self.by_key_id[session.auth_key.auth_key_id].add(session)
-        return session
+        return session, True
 
     def client_cleanup(self, client: Client) -> None:
         if (sessions := self.by_client.get(client, None)) is None:

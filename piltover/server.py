@@ -23,7 +23,7 @@ from piltover.tl.types import (
     UnencryptedMessage,
 )
 from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Int, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
-    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping
+    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated
 from piltover.tl_new.core_types import MsgContainer, Message, RpcResult
 from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
 from piltover.tl_new.utils import is_content_related
@@ -112,13 +112,13 @@ class Server:
                 await stream.read(1)  # discard
                 # TCP Intermediate
                 # 0xeeeeeeee
-                assert await stream.read(3) == b"\xee\xee\xee", "Invalid TCP Intermediate header"
+                assert (hd := await stream.read(3)) == b"\xee\xee\xee", f"Invalid TCP Intermediate header: {hd}"
                 transport = Transport.Intermediate
             elif header == b"\xdd":
                 await stream.read(1)  # discard
                 # Padded Intermediate
                 # 0xdddddddd
-                assert await stream.read(3) == b"\xdd\xdd\xdd", "Invalid TCP Intermediate header"
+                assert (hd := await stream.read(3)) == b"\xdd\xdd\xdd", f"Invalid TCP Intermediate header: {hd}"
                 transport = Transport.PaddedIntermediate
             else:
                 # The seq_no in TCPFull always starts with 0, so we can recognize
@@ -393,8 +393,15 @@ class Client:
             raise RuntimeError(f"Received unexpected unencrypted message: {obj}")  # TODO right error
 
     async def handle_encrypted_message(self, core_message: CoreMessage, session_id: int):
-        sess = SessionManager().get_or_create(self, session_id)
+        sess, created = SessionManager().get_or_create(self, session_id)
         sess.update_incoming_content_related_msgs(core_message.obj, core_message.seq_no)
+
+        if created:
+            logger.info(f"Created session {session_id}")
+            await self.send(
+                NewSessionCreated(first_msg_id=core_message.message_id, unique_id=sess.session_id, server_salt=0),
+                sess, in_reply=False
+            )
 
         if (result := await self.propagate(core_message, sess)) is None:
             return
@@ -409,9 +416,9 @@ class Client:
         if isinstance(message, EncryptedMessage):
             decrypted = await self.decrypt(message)
             core_message = decrypted.to_core_message()
-            request_ctx.set(
-                RequestContext(message.auth_key_id, decrypted.message_id, decrypted.session_id, core_message.obj)
-            )
+            request_ctx.set(RequestContext(
+                message.auth_key_id, decrypted.message_id, decrypted.session_id, core_message.obj, self
+            ))
 
             logger.debug(core_message)
             await self.handle_encrypted_message(core_message, decrypted.session_id)
@@ -531,6 +538,9 @@ class Client:
             await self.conn.close()
             logger.info("Client disconnected")
         finally:
+            if (sess := SessionManager().by_client.get(self, None)) is not None:
+                for s in sess:
+                    logger.info(f"Session {s.session_id} removed")
             SessionManager().client_cleanup(self)
 
     def to_core_message(self, msg: Message | CoreMessage) -> CoreMessage:
