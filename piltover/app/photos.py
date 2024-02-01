@@ -1,9 +1,10 @@
-from piltover.app.utils.utils import upload_file, resize_photo
+from piltover.app.utils.updates_manager import UpdatesManager
+from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.models import User, UserPhoto
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import InputPhoto, Long, Vector
+from piltover.tl_new import InputPhoto, Long, Vector, UpdateUser
 from piltover.tl_new.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos
 from piltover.tl_new.types.photos import Photos, Photo as PhotosPhoto
 
@@ -32,9 +33,13 @@ async def upload_profile_photo(client: Client, request: UploadProfilePhoto, user
 
     file = await upload_file(user, request.file, "image/png", [])
     sizes = await resize_photo(str(file.physical_id))
-    await file.update(attributes=file.attributes | {"_sizes": sizes})
+    stripped = await generate_stripped(str(file.physical_id))
+    await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
     await UserPhoto.filter(user=user).update(current=False)
     photo = await UserPhoto.create(current=True, file=file, user=user)
+
+    #update = UpdateUser(user_id=user.id)
+    #await UpdatesManager().write_update(user, update)
 
     return PhotosPhoto(
         photo=await photo.to_tl(user),

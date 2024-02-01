@@ -36,3 +36,8 @@ class PrivacyRuleValueType(IntEnum):
 class FileType(IntEnum):
     DOCUMENT = 0
     PHOTO = 1
+
+
+class MediaType(IntEnum):
+    DOCUMENT = 0
+    PHOTO = 1

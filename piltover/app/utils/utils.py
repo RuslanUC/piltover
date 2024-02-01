@@ -1,5 +1,6 @@
 from asyncio import get_event_loop, gather
 from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 
 from PIL.Image import Image, open as img_open
 
@@ -66,6 +67,29 @@ PHOTOSIZE_TO_INT = {
     "w": 2560,
 }
 
+TELEGRAM_QUANTIZATION_TABLES = {
+    0: [
+        40, 28, 25, 40, 60, 100, 128, 153,
+        30, 30, 35, 48, 65, 145, 150, 138,
+        35, 33, 40, 60, 100, 143, 173, 140,
+        35, 43, 55, 73, 128, 218, 200, 155,
+        45, 55, 93, 140, 170, 255, 255, 193,
+        60, 88, 138, 160, 203, 255, 255, 230,
+        123, 160, 195, 218, 255, 255, 255, 253,
+        180, 230, 238, 245, 255, 250, 255, 248
+    ],
+    1: [
+        43, 45, 60, 118, 248, 248, 248, 248,
+        45, 53, 65, 165, 248, 248, 248, 248,
+        60, 65, 140, 248, 248, 248, 248, 248,
+        118, 165, 248, 248, 248, 248, 248, 248,
+        248, 248, 248, 248, 248, 248, 248, 248,
+        248, 248, 248, 248, 248, 248, 248, 248,
+        248, 248, 248, 248, 248, 248, 248, 248,
+        248, 248, 248, 248, 248, 248, 248, 248
+    ]
+}
+
 
 def resize_image_internal(file_id: str, img: Image, size: int) -> int:
     with open(files_dir / f"{file_id}_{size}", "wb") as f_out:
@@ -90,6 +114,25 @@ async def resize_photo(file_id: str) -> list[dict[str, int | str]]:
         {"type_": types[idx], "w": sizes[idx], "h": sizes[idx], "size": file_size}
         for idx, file_size in enumerate(res)
     ]
+
+
+async def generate_stripped(file_id: str, size: int = 8) -> bytes:
+    def _gen(im: Image) -> bytes:
+        img_file = BytesIO()
+
+        im = im.convert("RGB").resize((size, size))
+        im.save(img_file, 'JPEG', qtables=TELEGRAM_QUANTIZATION_TABLES)
+
+        img_file.seek(0)
+        header_offset = 623  # 619 + 4, 619 is header size, 4 is width and height
+
+        return img_file.read()[header_offset:]
+
+    img = img_open(files_dir / f"{file_id}")
+    with ThreadPoolExecutor() as pool:
+        res = await gather(get_event_loop().run_in_executor(pool, lambda: _gen(img)))
+
+    return res[0]
 
 
 async def check_password_internal(password: UserPassword, check: InputCheckPasswordEmpty | InputCheckPasswordSRP):

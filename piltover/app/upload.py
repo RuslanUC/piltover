@@ -2,7 +2,7 @@ from time import time
 
 from piltover.app import files_dir
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
-from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess
+from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
@@ -71,16 +71,22 @@ async def get_file(client: Client, request: GetFile, user: User):
             (access is None or access.is_expired() or access.access_hash != request.location.access_hash):
         raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
 
-    file = access.file
+    if isinstance(request.location, InputPeerPhotoFileLocation):
+        file = await File.get_or_none(userphotos__id=request.location.photo_id)
+    else:
+        file = access.file
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")
         #raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
 
     f_name = str(file.physical_id)
-    if isinstance(request.location, InputPhotoFileLocation):
+    if isinstance(request.location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         if not (sizes := file.attributes.get("_sizes", [])):
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo
-        size = PHOTOSIZE_TO_INT[request.location.thumb_size]
+        if isinstance(request.location, InputPhotoFileLocation):
+            size = PHOTOSIZE_TO_INT[request.location.thumb_size]
+        else:
+            size = 640 if request.location.big else 160
         available = [size["w"] for size in sizes]
         if size not in available:
             size = min(available, key=lambda x: abs(x - size))

@@ -6,6 +6,7 @@ from os import urandom
 from tortoise import fields
 
 from piltover.db import models
+from piltover.db.enums import MediaType
 from piltover.db.models._utils import Model
 
 
@@ -24,5 +25,6 @@ def gen_expires() -> datetime:
 class MessageMedia(Model):
     id: int = fields.BigIntField(pk=True)
     spoiler: bool = fields.BooleanField(default=False)
+    type: MediaType = fields.IntEnumField(MediaType, default=MediaType.DOCUMENT)
     file: models.File = fields.ForeignKeyField("models.File", on_delete=fields.CASCADE)
     message: models.Message = fields.ForeignKeyField("models.Message", on_delete=fields.CASCADE, unique=True)

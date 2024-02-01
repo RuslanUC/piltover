@@ -10,7 +10,8 @@ from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.db.models._utils import Model
 from piltover.tl_new import DocumentAttributeImageSize, DocumentAttributeAnimated, \
-    DocumentAttributeVideo, DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument
+    DocumentAttributeVideo, DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, \
+    PhotoStrippedSize, PhotoSize
 
 attribute_name_to_cls = {
     "image_size": DocumentAttributeImageSize,
@@ -71,4 +72,25 @@ class File(Model):
             size=self.size,
             dc_id=2,
             attributes=self.attributes_to_tl(),
+        )
+
+    async def to_tl_photo(self, user: models.User) -> TLPhoto:
+        access = await models.FileAccess.get_or_renew(user, self)
+
+        sizes: list[PhotoStrippedSize | PhotoSize]
+        sizes = [PhotoSize(**size) for size in self.attributes.get("_sizes", [])]
+        if "_size_stripped" in self.attributes:
+            sizes.insert(0, PhotoStrippedSize(
+                type_="i",
+                bytes_=bytes.fromhex(self.attributes["_size_stripped"])
+            ))
+
+        return TLPhoto(
+            id=self.id,
+            access_hash=access.access_hash,
+            file_reference=access.file_reference,
+            date=int(mktime(self.created_at.timetuple())),
+            sizes=sizes,
+            dc_id=2,
+            video_sizes=[],
         )

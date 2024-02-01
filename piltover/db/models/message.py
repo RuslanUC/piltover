@@ -6,8 +6,9 @@ from time import mktime
 from tortoise import fields
 
 from piltover.db import models
+from piltover.db.enums import MediaType
 from piltover.db.models._utils import Model
-from piltover.tl_new import MessageMediaDocument
+from piltover.tl_new import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto
 from piltover.tl_new.types import Message as TLMessage
 
 
@@ -42,10 +43,17 @@ class Message(Model):
 
         tl_media = None
         if (media := await models.MessageMedia.get_or_none(message=self).select_related("file")) is not None:
-            tl_media = MessageMediaDocument(
-                spoiler=media.spoiler,
-                document=await media.file.to_tl_document(current_user)
-            )
+            tl_media = MessageMediaUnsupported()
+            if media.type == MediaType.DOCUMENT:
+                tl_media = MessageMediaDocument(
+                    spoiler=media.spoiler,
+                    document=await media.file.to_tl_document(current_user)
+                )
+            elif media.type == MediaType.PHOTO:
+                tl_media = MessageMediaPhoto(
+                    spoiler=media.spoiler,
+                    photo=await media.file.to_tl_photo(current_user)
+                )
 
         return TLMessage(
             id=self.id,

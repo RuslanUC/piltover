@@ -7,8 +7,8 @@ from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
 from piltover.app.utils.to_tl import ToTL
 from piltover.app.utils.updates_manager import UpdatesManager, UpdatesContext
-from piltover.app.utils.utils import upload_file
-from piltover.db.enums import ChatType
+from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
+from piltover.db.enums import ChatType, MediaType
 from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft
 from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
@@ -17,7 +17,8 @@ from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
-    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage
+    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage, \
+    InputMediaUploadedPhoto
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -439,20 +440,22 @@ async def send_media(client: Client, request: SendMedia, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
 
-    if not isinstance(request.media, InputMediaUploadedDocument):
+    if not isinstance(request.media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
     if len(request.message) > 2000:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
 
-    file = await upload_file(user, request.media.file, request.media.mime_type, request.media.attributes)
+    mime = request.media.mime_type if isinstance(request.media, InputMediaUploadedDocument) else "image/jpeg"
+    attributes = request.media.attributes if isinstance(request.media, InputMediaUploadedDocument) else []
+    media_type = MediaType.DOCUMENT if isinstance(request.media, InputMediaUploadedDocument) else MediaType.PHOTO
+
+    file = await upload_file(user, request.media.file, mime, attributes)
+    sizes = await resize_photo(str(file.physical_id))
+    stripped = await generate_stripped(str(file.physical_id))
+    await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
 
     message = await Message.create(message=request.message, author=user, chat=chat)
-    await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler)
-
-    u_msg_id = UpdateMessageID(id=message.id, random_id=request.random_id)
-    u_new_msg = ToTL(UpdateNewMessage, ["message"], message=message, pts=0, pts_count=1)
-    u_read_history = ToTL(UpdateReadHistoryInbox, ["peer.get_peer"], peer=chat, max_id=message.id,
-                          still_unread_count=0, pts=0, pts_count=1)
+    await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler, type=media_type)
 
     if (upd := await UpdatesManager().send_message(user, message)) is None:
         assert False, "unknown chat type ?"
