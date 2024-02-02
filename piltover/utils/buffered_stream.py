@@ -23,7 +23,7 @@ class BufferedStream:
         self.writer = writer
         self.buf = b""
 
-    async def read(self, n: int = ...) -> bytes:
+    async def _read(self, n: int = ...) -> bytes:
         try:
             if n is ...:
                 return check(await self.reader.read())
@@ -37,6 +37,16 @@ class BufferedStream:
             return data
         except ConnectionResetError:
             raise Disconnection()
+
+    async def read(self, n: int) -> bytes:
+        """
+        Reads exactly n bytes
+        """
+        data = b""
+        while len(data) < n:
+            data += await self._read(n - len(data))
+
+        return data
 
     async def peek(self, n: int) -> bytes:
         cached = min(len(self.buf), n)
