@@ -8,7 +8,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl_new import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation
 from piltover.tl_new.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
-from piltover.tl_new.types.storage import FileUnknown, FilePartial
+from piltover.tl_new.types.storage import FileUnknown, FilePartial, FileJpeg
 from piltover.tl_new.types.upload import File as TLFile
 
 handler = MessageHandler("upload")
@@ -94,7 +94,9 @@ async def get_file(client: Client, request: GetFile, user: User):
         f.seek(request.offset)
         data = f.read(request.limit)
 
-    if len(data) != file.size:
+    if isinstance(request.location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
+        file_type = FileJpeg()
+    elif len(data) != file.size:
         file_type = FilePartial()
     else:
         file_type = MIME_TO_TL.get(file.mime_type, FileUnknown())

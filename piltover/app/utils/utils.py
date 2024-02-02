@@ -93,7 +93,7 @@ TELEGRAM_QUANTIZATION_TABLES = {
 
 def resize_image_internal(file_id: str, img: Image, size: int) -> int:
     with open(files_dir / f"{file_id}_{size}", "wb") as f_out:
-        img.resize((size, size)).save(f_out, format="PNG")
+        img.resize((size, size)).save(f_out, format="JPEG")
         return f_out.tell()
 
 
