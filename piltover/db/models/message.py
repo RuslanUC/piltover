@@ -8,7 +8,7 @@ from tortoise import fields
 from piltover.db import models
 from piltover.db.enums import MediaType
 from piltover.db.models._utils import Model
-from piltover.tl_new import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto
+from piltover.tl_new import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader
 from piltover.tl_new.types import Message as TLMessage
 
 
@@ -21,8 +21,8 @@ class Message(Model):
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     chat: models.Chat = fields.ForeignKeyField("models.Chat", on_delete=fields.CASCADE)
-
-    #reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)  # ??
+    reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None,
+                                                      on_delete=fields.SET_NULL)
 
     def utime(self) -> int:
         return int(mktime(self.date.timetuple()))
@@ -55,6 +55,12 @@ class Message(Model):
                     photo=await media.file.to_tl_photo(current_user)
                 )
 
+        await self.fetch_related("reply_to")
+        reply_to = None
+        if self.reply_to is not None:
+            reply_to = MessageReplyHeader(reply_to_msg_id=self.reply_to.id)
+        print(reply_to)
+
         return TLMessage(
             id=self.id,
             message=self.message,
@@ -64,5 +70,6 @@ class Message(Model):
             out=current_user == self.author,
             media=tl_media,
             edit_date=int(mktime(self.edit_date.timetuple())) if self.edit_date is not None else None,
+            reply_to=reply_to,
             **defaults
         )

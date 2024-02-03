@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime
 from time import time
 
@@ -9,16 +10,16 @@ from piltover.app.utils.to_tl import ToTL
 from piltover.app.utils.updates_manager import UpdatesManager, UpdatesContext
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.enums import ChatType, MediaType
-from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft
+from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft, Update
 from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
-    UpdateMessageID, UpdateNewMessage, UpdateReadHistoryInbox, InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
+    InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
     InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage, \
-    InputMediaUploadedPhoto
+    InputMediaUploadedPhoto, UpdateUserTyping
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -47,8 +48,24 @@ async def get_available_reactions(client: Client, request: GetAvailableReactions
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(SetTyping)
-async def set_typing(client: Client, request: SetTyping):
+@handler.on_request(SetTyping, ReqHandlerFlags.AUTH_REQUIRED)
+async def set_typing(client: Client, request: SetTyping, user: User):
+    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
+        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
+
+    if chat.type != ChatType.PRIVATE:
+        return True
+
+    other = await chat.get_other_user(user)
+    updates = Updates(
+        updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
+        users=[await user.to_tl(other)],
+        chats=[],
+        date=int(time()),
+        seq=0,
+    )
+    await SessionManager().send(updates, other.id)
+
     return True
 
 
@@ -126,7 +143,11 @@ async def send_message(client: Client, request: SendMessage, user: User):
     if len(request.message) > 2000:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
-    message = await Message.create(message=request.message, author=user, chat=chat)
+    reply = None
+    if request.reply_to is not None:
+        reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, chat=chat)
+
+    message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
 
     if (upd := await UpdatesManager().send_message(user, message)) is None:
         assert False, "unknown chat type ?"
@@ -381,9 +402,25 @@ async def get_emoji_keywords(client: Client, request: GetEmojiKeywords):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(DeleteMessages)
-async def delete_messages(client: Client, request: DeleteMessages):
-    return AffectedMessages(pts=0, pts_count=0)
+@handler.on_request(DeleteMessages, ReqHandlerFlags.AUTH_REQUIRED)
+async def delete_messages(client: Client, request: DeleteMessages, user: User):
+    ids = request.id[:100]
+    delete_ids = defaultdict(list)
+    chats = {}
+    for message in await Message.filter(id__in=ids, chat__dialogs__user=user).select_related("chat"):
+        if message.chat.id not in chats:
+            chats[message.chat.id] = message.chat
+        delete_ids[message.chat.id].append(message.id)
+
+    all_ids = [i for ids in delete_ids.values() for i in ids]
+    await Message.filter(id__in=all_ids).delete()
+
+    if not all_ids:
+        last_update = await Update.filter(user=user).order_by("-pts").first()
+        return AffectedMessages(pts=last_update.pts, pts_count=0)
+
+    pts = await UpdatesManager().delete_messages(user, list(chats.values()), delete_ids)
+    return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
 
 # noinspection PyUnusedLocal
@@ -454,10 +491,14 @@ async def send_media(client: Client, request: SendMedia, user: User):
     stripped = await generate_stripped(str(file.physical_id))
     await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
 
-    message = await Message.create(message=request.message, author=user, chat=chat)
+    reply = None
+    if request.reply_to is not None:
+        reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, chat=chat)
+
+    message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
     await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler, type=media_type)
 
-    if (upd := await UpdatesManager().send_message(user, message)) is None:
+    if (upd := await UpdatesManager().send_message(user, message, True)) is None:
         assert False, "unknown chat type ?"
 
     return upd

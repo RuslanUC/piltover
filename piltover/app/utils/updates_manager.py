@@ -7,7 +7,8 @@ from piltover.db.enums import ChatType
 from piltover.db.models import User, Update, Chat, Message
 from piltover.session_manager import SessionManager
 from piltover.tl_new import TLObject, PeerUser, DialogPeer, NotifyForumTopic, NotifyPeer, Updates, \
-    UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox
+    UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
+    UpdateDeleteMessages
 from piltover.tl_new.core_types import SerializedObject
 from piltover.tl_new.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
@@ -39,6 +40,8 @@ class UpdatesManager(metaclass=SingletonMeta):
         last_pts = last_update.pts if last_update is not None else 0
 
         this_pts = last_pts + 1
+        if hasattr(obj, "pts_count"):
+            this_pts += getattr(obj, "pts_count", 1) - 1
         if hasattr(obj, "pts"):
             setattr(obj, "pts", this_pts)
 
@@ -95,7 +98,8 @@ class UpdatesManager(metaclass=SingletonMeta):
         if isinstance(context.context, Chat):
             return await self._send_updates_chat(context, *updates, update_users=update_users, date=date, **kwargs)
 
-    async def send_message(self, user: User, message: Message) -> Updates | UpdateShortSentMessage:
+    async def send_message(self, user: User, message: Message, has_media: bool = False) -> (Updates |
+                                                                                            UpdateShortSentMessage):
         """
         Sends a newly-created message to the users from message chat.
         Returns update object that should be sent as response to `sendMessage` request.
@@ -104,7 +108,10 @@ class UpdatesManager(metaclass=SingletonMeta):
         ctx: RequestContext[SendMessage] = request_ctx.get()
         client = ctx.client
         chat = message.chat
-        if chat.type == ChatType.SAVED:
+        if chat.type == ChatType.SAVED or has_media:
+            u_new_msg = ToTL(UpdateNewMessage, ["message"], message=message, pts=0, pts_count=1)
+            await self.send_updates(UpdatesContext(chat, [user]), u_new_msg, update_users=[user], date=message.utime())
+
             u_msg_id = UpdateMessageID(id=message.id, random_id=ctx.obj.random_id)
             u_new_msg = UpdateNewMessage(message=await message.to_tl(user), pts=0, pts_count=1)
             u_read_history = UpdateReadHistoryInbox(peer=await chat.get_peer(user), max_id=message.id,
@@ -130,7 +137,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                 message=message.message,
                 pts=0,
                 pts_count=1,
-                date=message.utime(),
+                date=message.utime(),  # TODO: add reply_to
             )
             await self.write_updates(user, update)
             await SessionManager().send(update, user.id, exclude=[client])
@@ -142,3 +149,21 @@ class UpdatesManager(metaclass=SingletonMeta):
             await SessionManager().send(update, other.id)
 
             return UpdateShortSentMessage(out=True, id=message.id, pts=sent_pts, pts_count=1, date=message.utime())
+
+    async def delete_messages(self, user: User, chats: list[Chat], message_ids: dict[int, list[int]]) -> int:
+        for chat in chats:
+            upd = UpdateDeleteMessages(messages=message_ids[chat.id], pts=0, pts_count=len(message_ids[chat.id]))
+            await self.send_updates(UpdatesContext(chat, [user]), upd, update_users=[], date=int(time()))
+
+        all_ids = [i for ids in message_ids.values() for i in ids]
+        self_upd = UpdateDeleteMessages(messages=all_ids, pts=0, pts_count=len(all_ids))
+        update = await self.write_update(user, self_upd)
+        updates = Updates(
+            updates=[self_upd],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+        await SessionManager().send(updates, user.id)
+        return update.pts
