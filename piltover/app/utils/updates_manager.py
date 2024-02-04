@@ -128,6 +128,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             await SessionManager().send(updates, user.id, exclude=[client])
             return updates
         elif chat.type == ChatType.PRIVATE:
+            msg_tl = await message.to_tl(user)
             other = await chat.get_other_user(user)
 
             update = UpdateShortMessage(
@@ -137,7 +138,8 @@ class UpdatesManager(metaclass=SingletonMeta):
                 message=message.message,
                 pts=0,
                 pts_count=1,
-                date=message.utime(),  # TODO: add reply_to
+                date=message.utime(),
+                reply_to=msg_tl.reply_to,
             )
             await self.write_updates(user, update)
             await SessionManager().send(update, user.id, exclude=[client])

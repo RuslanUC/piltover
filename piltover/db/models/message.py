@@ -58,8 +58,7 @@ class Message(Model):
         await self.fetch_related("reply_to")
         reply_to = None
         if self.reply_to is not None:
-            reply_to = MessageReplyHeader(reply_to_msg_id=self.reply_to.id)
-        print(reply_to)
+            reply_to = MessageReplyHeader(reply_to_msg_id=self.reply_to.id, quote_entities=[])
 
         return TLMessage(
             id=self.id,

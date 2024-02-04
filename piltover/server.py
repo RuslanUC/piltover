@@ -530,7 +530,8 @@ class Client:
                 except InvalidConstructorException as e:
                     if e.wrong_type:
                         continue
-                    logger.error(f"Invalid constructor: {e.constructor}")
+                    logger.error(f"Invalid constructor: {e.constructor} ({hex(e.constructor)[2:]})" +
+                                 ("" if not e.leftover_bytes else f", leftover bytes={e.leftover_bytes}"))
                     raise Disconnection(400)
         except Disconnection as err:
             if err.transport_error is not None:

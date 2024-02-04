@@ -81,7 +81,7 @@ class SerializationUtils:
         elif issubclass(type_, (tl_new.TLObject, tl_new.TLObjectBase)):
             constructor = int.from_bytes(stream.read(4), "little")
             if constructor not in tl_new.all.objects:
-                raise InvalidConstructorException(constructor)
+                raise InvalidConstructorException(constructor, stream.read())
             return tl_new.all.objects[constructor].deserialize(stream)
         elif issubclass(type_, list):
             assert stream.read(4) == VECTOR
