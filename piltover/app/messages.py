@@ -19,7 +19,7 @@ from piltover.session_manager import SessionManager
 from piltover.tl_new import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
     InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage, \
-    InputMediaUploadedPhoto, UpdateUserTyping
+    InputMediaUploadedPhoto, UpdateUserTyping, DraftMessageEmpty, DraftMessage
 from piltover.tl_new.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -148,6 +148,8 @@ async def send_message(client: Client, request: SendMessage, user: User):
         reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, chat=chat)
 
     message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
+    await MessageDraft.filter(dialog__chat=chat, dialog__user=user).delete()
+    await send_update_draft(user, chat, DraftMessageEmpty())
 
     if (upd := await UpdatesManager().send_message(user, message)) is None:
         assert False, "unknown chat type ?"
@@ -210,10 +212,8 @@ async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User, 
         if (message := await Message.filter(chat=dialog.chat).select_related("author", "chat").order_by("-id")
                 .first()) is not None:
             messages.append(await message.to_tl(user))
-        if dialog.chat.type in {ChatType.PRIVATE, ChatType.SAVED}:
-            peer = await dialog.chat.get_peer(user)
-            if peer.user_id not in users:
-                users[peer.user_id] = await (await User.get(id=peer.user_id)).to_tl(user)
+        users_, _ = await dialog.chat.to_tl_users_chats(user, users)
+        users.update(users_)
 
     return {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
@@ -290,8 +290,22 @@ async def get_search_results_positions(client: Client, request: GetSearchResults
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(Search)
-async def messages_search(client: Client, request: Search):
+@handler.on_request(Search, ReqHandlerFlags.AUTH_REQUIRED)
+async def messages_search(client: Client, request: Search, user: User):
+    if (chat := await Chat.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    query = Q(chat=chat)
+    query &= Q(message__istartswith=request.q)
+    if isinstance(request.from_id, (InputPeerUser, InputPeerSelf)):
+        if isinstance(request.from_id, InputPeerUser):
+            query &= Q(author__id=request.from_id.user_id)
+        else:
+            query &= Q(author__id=user.id)
+
+    limit = max(min(100, request.limit), 1)
+    messages = await Message.filter(query).limit(limit)
+
     return Messages(
         messages=[],
         chats=[],
@@ -326,11 +340,22 @@ async def get_featured_stickers(client: Client, request: GetFeaturedStickers | G
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(GetAllDrafts)
-async def get_all_drafts(client: Client, request: GetAllDrafts):
+@handler.on_request(GetAllDrafts, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_all_drafts(client: Client, request: GetAllDrafts, user: User):
+    users = {}
+    updates = []
+    drafts = await MessageDraft.filter(dialog__user=user).select_related("dialog", "dialog__chat")
+    for draft in drafts:
+        updates.append(UpdateDraftMessage(
+            peer=draft.dialog.chat.get_peer(user),
+            draft=await draft.to_tl(),
+        ))
+        users_, _ = await draft.dialog.chat.to_tl_users_chats(user, users)
+        users.update(users_)
+
     return Updates(
-        updates=[],  # list of updateDraftMessage
-        users=[],
+        updates=updates,
+        users=list(users.values()),
         chats=[],
         date=int(time()),
         seq=0,
@@ -497,6 +522,8 @@ async def send_media(client: Client, request: SendMedia, user: User):
 
     message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
     await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler, type=media_type)
+    await MessageDraft.filter(dialog__chat=chat, dialog__user=user).delete()
+    await send_update_draft(user, chat, DraftMessageEmpty())
 
     if (upd := await UpdatesManager().send_message(user, message, True)) is None:
         assert False, "unknown chat type ?"
@@ -508,6 +535,21 @@ async def send_media(client: Client, request: SendMedia, user: User):
 @handler.on_request(GetMessageEditData, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_message_edit_data(client: Client, request: GetMessageEditData, user: User):
     return MessageEditData()
+
+
+async def send_update_draft(user: User, chat: Chat, draft: MessageDraft | DraftMessage | DraftMessageEmpty):
+    if isinstance(draft, MessageDraft):
+        draft = await draft.to_tl()
+
+    updates = Updates(
+        updates=[UpdateDraftMessage(peer=await chat.get_peer(user), draft=draft)],
+        users=[await user.to_tl(user)],
+        chats=[],
+        date=int(time()),
+        seq=0,
+    )
+
+    await SessionManager().send(updates, user.id)
 
 
 # noinspection PyUnusedLocal
@@ -522,13 +564,5 @@ async def save_draft(client: Client, request: SaveDraft, user: User):
         defaults={"message": request.message, "date": datetime.now()}
     )
 
-    updates = Updates(
-        updates=[UpdateDraftMessage(peer=await chat.get_peer(user), draft=await draft.to_tl())],
-        users=[await user.to_tl(user)],
-        chats=[],
-        date=int(time()),
-        seq=0,
-    )
-
-    await SessionManager().send(updates, user.id)
+    await send_update_draft(user, chat, draft)
     return True

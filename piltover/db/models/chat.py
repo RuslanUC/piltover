@@ -79,3 +79,12 @@ class Chat(Model):
             raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
         return chat
+
+    async def to_tl_users_chats(self, user: models.User, existing_users) -> tuple[dict, None]:
+        users = {}
+        if self.type in {ChatType.PRIVATE, ChatType.SAVED}:
+            peer = await self.get_peer(user)
+            if peer.user_id not in existing_users and peer.user_id not in users:
+                users[peer.user_id] = await (await models.User.get(id=peer.user_id)).to_tl(user)
+
+        return users, None

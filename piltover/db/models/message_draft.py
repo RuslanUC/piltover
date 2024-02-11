@@ -19,5 +19,5 @@ class MessageDraft(Model):
     async def to_tl(self) -> DraftMessage:
         return DraftMessage(
             message=self.message,
-            date=int(mktime(self.date.timetuple()))
+            date=int(self.date.timestamp())
         )

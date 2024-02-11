@@ -34,16 +34,25 @@ class UpdatesContext(Generic[T]):
         self.exclude: list[int] = [excl.id if isinstance(excl, User) else excl for excl in exclude]
 
 
+class FakeUpdate:
+    __slots__ = ["update_data"]
+
+    def __init__(self, update_data: bytes):
+        self.update_data = update_data
+
+
 class UpdatesManager(metaclass=SingletonMeta):
-    async def write_update(self, user: User, obj: TLObject, *, last_update: Update | None = None) -> Update:
+    async def write_update(self, user: User, obj: TLObject, *, last_update: Update | None = None) -> Update | FakeUpdate:
+        if not hasattr(obj, "pts"):
+            return FakeUpdate(update_data=obj.write())
+
         last_update = last_update or await Update.filter(user=user).order_by("-pts").first()
         last_pts = last_update.pts if last_update is not None else 0
 
         this_pts = last_pts + 1
         if hasattr(obj, "pts_count"):
             this_pts += getattr(obj, "pts_count", 1) - 1
-        if hasattr(obj, "pts"):
-            setattr(obj, "pts", this_pts)
+        setattr(obj, "pts", this_pts)
 
         ids = None
         for attr in ("user_id", "peer", "peer_id"):
@@ -58,14 +67,16 @@ class UpdatesManager(metaclass=SingletonMeta):
         return await Update.create(pts=this_pts, update_type=obj.tlid(), update_data=obj.write(),
                                    user_ids_to_fetch=ids, user=user)
 
-    async def write_updates(self, user: User, *objs: TLObject | ToTL) -> list[Update]:
-        last_update = None
+    async def write_updates(self, user: User, *objs: TLObject | ToTL) -> list[Update | FakeUpdate]:
+        last_real_update = None
         result = []
         for obj in objs:
             if isinstance(obj, ToTL):
                 obj = await obj.to_tl(user)
-            last_update = await self.write_update(user, obj, last_update=last_update)
+            last_update = await self.write_update(user, obj, last_update=last_real_update)
             result.append(last_update)
+            if isinstance(last_update, Update):
+                last_real_update = last_update
 
         return result
 
