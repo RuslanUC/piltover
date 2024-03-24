@@ -8,8 +8,7 @@ from piltover.exceptions import Error
 from piltover.tl_new.serialization_utils import SerializationUtils
 
 
-class TLObjectBase(object):
-    pass
+CLASSES_TO_PROCESS = []
 
 
 class _BaseTLObject:
@@ -21,7 +20,7 @@ class _BaseTLObject:
 
 @dataclass
 class TLObject(_BaseTLObject):
-    def __init__(self, **k):
+    def __init__(self, **_):
         pass
 
     @classmethod
@@ -115,8 +114,8 @@ def _resolve_annotation(annotation: type):
         return _resolve_annotation(get_args(annotation)[0])
     if origin is list:
         args = get_args(annotation)
-        return list, args[0]
-    if origin in (int, float, bool, str, bytes) or issubclass(origin, (int, TLObject, TLObjectBase)):
+        return list, _resolve_annotation(args[0])[0]
+    if origin in (int, float, bool, str, bytes) or issubclass(origin, (int, TLObject)):
         return origin, None
 
     raise RuntimeError(f"Unknown annotation type {annotation}!")
@@ -129,13 +128,19 @@ def tl_object(id: int, name: str) -> Callable:
         setattr(cls, "__tl_name__", name)
         fields: list[TLField] = []
         flags: list[TLField] = []
-        cls_annotations = get_annotations(cls, eval_str=True)
+        try:
+            cls_annotations = get_annotations(cls, eval_str=True)
+        except AttributeError:
+            cls_annotations = None
+            CLASSES_TO_PROCESS.append(cls)
+
         for field_name, field in cls.__dict__.items():
             if not isinstance(field, TLField):
                 continue
 
             field.name = field_name
-            field.type = TLType(*_resolve_annotation(cls_annotations[field_name]))
+            field.type = TLType(*_resolve_annotation(cls_annotations[field_name])) if cls_annotations is not None \
+                else None
             fields.append(field)
             if field.is_flags:
                 flags.append(field)

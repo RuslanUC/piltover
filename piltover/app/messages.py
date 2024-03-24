@@ -10,7 +10,7 @@ from piltover.app.utils.to_tl import ToTL
 from piltover.app.utils.updates_manager import UpdatesManager, UpdatesContext
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.enums import ChatType, MediaType
-from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft, Update
+from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft, Update, ReadState
 from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -158,11 +158,20 @@ async def send_message(client: Client, request: SendMessage, user: User):
 
 
 # noinspection PyUnusedLocal
-@handler.on_request(ReadHistory)
-async def read_history(client: Client, request: ReadHistory):
+@handler.on_request(ReadHistory, ReqHandlerFlags.AUTH_REQUIRED)
+async def read_history(client: Client, request: ReadHistory, user: User):
+    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
+        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
+    ex = await ReadState.get_or_none(dialog__user=user, dialog__chat=chat)
+    message = await Message.filter(
+        id__lte=min(request.max_id, ex.last_message_id if ex is not None else request.max_id), chat=chat
+    ).order_by("-id").limit(1)
+    messages_count = await Message.filter(
+        id__gt=ex.last_message_id if ex is not None else 0, id__lt=message[0].id, chat=chat
+    ).count()
     return AffectedMessages(
         pts=3,
-        pts_count=1,
+        pts_count=messages_count,
     )
 
 

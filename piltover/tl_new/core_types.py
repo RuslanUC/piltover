@@ -79,4 +79,3 @@ class SerializedObject(TLObject):
 
     #def __repr__(self):
     #    return repr(TLObject.read(BytesIO(self._data)))
-

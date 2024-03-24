@@ -78,7 +78,7 @@ class SerializationUtils:
             return result
         elif issubclass(type_, str):
             return SerializationUtils.read(stream, bytes).decode("utf8")
-        elif issubclass(type_, (tl_new.TLObject, tl_new.TLObjectBase)):
+        elif issubclass(type_, tl_new.TLObject):
             constructor = int.from_bytes(stream.read(4), "little")
             if constructor not in tl_new.all.objects:
                 raise InvalidConstructorException(constructor, stream.read())

@@ -48,9 +48,8 @@ WARNING = """
 open = partial(open, encoding="utf-8")
 
 all_layers = set()
-types_to_constructors = {}
+types_to_constructors = {"future_salt": ["FutureSalt"]}
 types_to_functions = {}
-constructors_to_functions = {}
 namespaces_to_types = {}
 namespaces_to_constructors = {}
 namespaces_to_functions = {}
@@ -124,13 +123,10 @@ def get_type_hint(type: str, layer: int) -> str:
     if is_core:
         return f"Optional[{type}]" if is_flag and type != "bool" else type
     else:
-        ns, name = type.split(".") if "." in type else ("", type)
-        type = (
-                f'tl_new.base.'
-                + ".".join([ns, camel(name)]).strip(".")
-                + layer_suffix(type, layer)
-                + "Type"
-        )
+        base_type = f"{type}{layer_suffix(type, layer)}"
+        constructors = types_to_constructors[base_type]
+        type = ", ".join([f"tl_new.types.{constr}" for constr in constructors])
+        type = f"Union[{type}]" if len(constructors) > 1 else type
 
         return f"Optional[{type}]" if is_flag else type
 
@@ -277,9 +273,7 @@ def start():
     with open(HOME_PATH / "resources/mtproto.tl") as f1, open(HOME_PATH / "resources/api.tl") as f2:
         schema = f1.read().splitlines() + f2.read().splitlines()
 
-    with open(HOME_PATH / "templates/type.txt") as f1, \
-            open(HOME_PATH / "templates/combinator.txt") as f2:
-        type_tmpl = f1.read()
+    with open(HOME_PATH / "templates/combinator.txt") as f2:
         combinator_tmpl = f2.read()
 
     combinators, layer = parse_schema(schema)
@@ -298,45 +292,14 @@ def start():
 
         d[qualtype].append(c.qualname)
 
-        if c.section == "types":
-            key = c.namespace
+        #if c.section == "types":
+        #    key = c.namespace
 
-            if key not in namespaces_to_types:
-                namespaces_to_types[key] = []
+        #    if key not in namespaces_to_types:
+        #        namespaces_to_types[key] = []
 
-            if c.type not in namespaces_to_types[key]:
-                namespaces_to_types[key].append(c.type)
-
-    for k, v in types_to_constructors.items():
-        for i in v:
-            try:
-                constructors_to_functions[i] = types_to_functions[k]
-            except KeyError:
-                pass
-
-    for qualtype in types_to_constructors:
-        typespace, type = qualtype.split(".") if "." in qualtype else ("", qualtype)
-        dir_path = DESTINATION_PATH / "base" / typespace
-
-        module = type
-
-        if module == "Updates":
-            module = "UpdatesT"
-
-        os.makedirs(dir_path, exist_ok=True)
-
-        constructors = sorted(types_to_constructors[qualtype])
-
-        with open(dir_path / f"{snake(module)}.py", "w") as f:
-            f.write(
-                type_tmpl.format(
-                    warning=WARNING,
-                    name=type,
-                    qualname=qualtype,
-                    types=", ".join([f"\"tl_new.types.{c}\"" for c in constructors]),
-                    doc_name=snake(type).replace("_", "-")
-                )
-            )
+        #    if c.type not in namespaces_to_types[key]:
+        #        namespaces_to_types[key].append(c.type)
 
     for c in combinators:
         fields = []
@@ -391,21 +354,6 @@ def start():
             d[c.namespace] = []
 
         d[c.namespace].append(c.name)
-
-    for namespace, types in namespaces_to_types.items():
-        with open(DESTINATION_PATH / "base" / namespace / "__init__.py", "w") as f:
-            f.write(f"{WARNING}\n\n")
-
-            for t in types:
-                module = t
-
-                if module == "Updates":
-                    module = "UpdatesT"
-
-                f.write(f"from .{snake(module)} import {t}Type\n")
-
-            if not namespace:
-                f.write(f"from . import {', '.join(filter(bool, namespaces_to_types))}")
 
     for namespace, types in namespaces_to_constructors.items():
         with open(DESTINATION_PATH / "types" / namespace / "__init__.py", "w") as f:
