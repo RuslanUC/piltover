@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import os
 import secrets
 import time
 from collections import defaultdict
@@ -10,19 +9,14 @@ from typing import Callable, Awaitable
 
 import tgcrypto
 from loguru import logger
+from mtproto import Connection, ConnectionRole
+from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
+    ErrorPacket
 
-from piltover.connection import Connection
 from piltover.context import RequestContext, request_ctx, serialization_ctx, SerializationContext
-from piltover.enums import Transport
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
-from piltover.tl.types import (
-    CoreMessage,
-    EncryptedMessage,
-    DecryptedMessage,
-    UnencryptedMessage,
-)
-from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Int, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
+from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
     SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated
 from piltover.tl_new.core_types import MsgContainer, Message, RpcResult
 from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
@@ -36,10 +30,8 @@ from piltover.utils import (
     get_public_key_fingerprint,
     restore_private_key,
     restore_public_key,
-    kdf,
     background,
 )
-from piltover.utils.buffered_stream import BufferedStream
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 
 
@@ -49,11 +41,11 @@ class MessageHandler:
         self.server: Server | None = None
         self.handlers: defaultdict[
             int,
-            set[Callable[[Client, CoreMessage, Session], Awaitable[TLObject | dict | None]]],
+            set[Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]]],
         ] = defaultdict(set)
 
     def on_message(self, typ: type[TLObject]):
-        def decorator(func: Callable[[Client, CoreMessage, Session], Awaitable[TLObject | dict | None]]):
+        def decorator(func: Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]]):
             logger.debug("Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""),
                          typ=typ.tlname())
 
@@ -88,67 +80,18 @@ class Server:
         self.clients: dict[str, Client] = {}
         self.handlers: defaultdict[
             int,
-            set[Callable[[Client, CoreMessage, Session], Awaitable[TLObject | dict | None]]],
+            set[Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]]],
         ] = defaultdict(set)
         self.sys_handlers = defaultdict(list)
         self.salt: int = 0
 
     @logger.catch
-    async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        try:
-            # Check the transport: https://core.telegram.org/mtproto/mtproto-transports
-
-            stream = BufferedStream(reader=reader, writer=writer)
-
-            # https://docs.python.org/3/library/asyncio-protocol.html#asyncio.BaseTransport.get_extra_info
-            extra = writer.get_extra_info("peername")
-            header = await stream.peek(1)
-
-            if header == b"\xef":
-                await stream.read(1)  # discard
-                # TCP Abridged
-                transport = Transport.Abridged
-            elif header == b"\xee":
-                await stream.read(1)  # discard
-                # TCP Intermediate
-                # 0xeeeeeeee
-                assert (hd := await stream.read(3)) == b"\xee\xee\xee", f"Invalid TCP Intermediate header: {hd}"
-                transport = Transport.Intermediate
-            elif header == b"\xdd":
-                await stream.read(1)  # discard
-                # Padded Intermediate
-                # 0xdddddddd
-                assert (hd := await stream.read(3)) == b"\xdd\xdd\xdd", f"Invalid TCP Intermediate header: {hd}"
-                transport = Transport.PaddedIntermediate
-            else:
-                # The seq_no in TCPFull always starts with 0, so we can recognize
-                # the transport and distinguish it from obfuscated ones (starting with 64 random bytes)
-                # by checking whether the seq_no bytes are zeroed
-                soon = await stream.peek(8)
-                if soon[-4:] == b"\0\0\0\0":
-                    transport = Transport.Full
-                else:
-                    # Obfuscated Transports
-                    transport = Transport.Obfuscated
-
-            assert transport is not None, f"Transport is None, aborting... (header: {header})"
-            logger.info(f"Connected client with {transport} {extra}")
-
-            await self.welcome(stream=stream, transport=transport)
-        except Disconnection:
-            logger.error("Client disconnected before even trying to generate an auth key :(")
-
-    async def welcome(self, stream: BufferedStream, transport: Transport):
-        client = Client(
-            transport=transport,
-            server=self,
-            stream=stream,
-            peername=stream.get_extra_info("peername"),
-        )
+    async def accept_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        client = Client(server=self, reader=reader, writer=writer)
         background(client.worker())
 
     async def serve(self):
-        server = await asyncio.start_server(self.handle, self.HOST, self.PORT)
+        server = await asyncio.start_server(self.accept_client, self.HOST, self.PORT)
         async with server:
             await server.serve_forever()
 
@@ -162,7 +105,7 @@ class Server:
                 return auth_key_info
 
     def on_message(self, typ: type[TLObject]):
-        def decorator(func: Callable[[Client, CoreMessage, Session], Awaitable[TLObject | bool | None]]):
+        def decorator(func: Callable[[Client, Message, Session], Awaitable[TLObject | bool | None]]):
             logger.debug("Added handler for function {typ!r}", typ=typ)
 
             self.handlers[typ.tlid()].add(func)
@@ -187,44 +130,84 @@ class Server:
         return func
 
 
+class AuthData:
+    __slots__ = ("auth_key_id", "auth_key",)
+
+    def __init__(self):
+        self.auth_key_id: int | None = None
+        self.auth_key: bytes | None = None
+
+    def check_key(self, expected_auth_key_id: int) -> bool:
+        if self.auth_key is None or expected_auth_key_id is None:
+            return False
+        return self.auth_key_id == expected_auth_key_id
+
+
+class GenAuthData(AuthData):
+    __slots__ = (
+        "p", "q", "server_nonce", "new_nonce", "dh_prime", "server_nonce_bytes", "tmp_aes_key", "tmp_aes_iv", "a",
+    )
+
+    def __init__(self):
+        super().__init__()
+
+        self.p: ... | None = None
+        self.q: ... | None = None
+        self.server_nonce: ... | None = None
+        self.new_nonce: ... | None = None
+        self.dh_prime: ... | None = None
+        self.server_nonce_bytes: ... | None = None
+        self.tmp_aes_key: ... | None = None
+        self.tmp_aes_iv: ... | None = None
+        self.a: ... | None = None
+
+
 class Client:
-    def __init__(self, server: Server, transport: Transport, stream: BufferedStream, peername: tuple):
+    def __init__(self, server: Server, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.server: Server = server
-        self.peername: tuple = peername
 
-        self.conn: Connection = Connection.new(transport=transport, stream=stream)
+        self.reader = reader
+        self.writer = writer
+        self.conn = Connection(role=ConnectionRole.SERVER)
+        self.peername: tuple[str, int] = writer.get_extra_info("peername")
 
-        self.auth_data = None
+        self.auth_data: AuthData | None = None
         self.empty_session = Session(self, 0)
 
-    async def read_message(self) -> EncryptedMessage | UnencryptedMessage:
-        data = BytesIO(await self.conn.recv())
-        auth_key_id = Long.read(data)
-        if auth_key_id == 0:
-            message_id = Long.read(data)
-            message_data_length = Int.read(data)
-            message_data = data.read(message_data_length)
-            return UnencryptedMessage(message_id, message_data)
-        msg_key = data.read(16)
-        encrypted_data = data.read()
-        return EncryptedMessage(auth_key_id, msg_key, encrypted_data)
+    async def read_message(self) -> MessagePacket | None:
+        packet = self.conn.receive(await self.reader.read(32 * 1024))
+        if not isinstance(packet, MessagePacket):
+            return
+        return packet
 
-    async def send(self, objects: TLObject | list[tuple[TLObject, CoreMessage]], session: Session,
-                   originating_request: CoreMessage | None = None, in_reply: bool = True):
-        serialized, out_seq = self.serialize_message(
-            session,
-            objects,
-            originating_request=originating_request.message_id if originating_request is not None else None,
-        )
-        await self.conn.send(await self.encrypt(serialized, out_seq, session, in_reply=in_reply))
+    async def send(
+            self, objects: TLObject | list[tuple[TLObject, Message]], session: Session,
+            originating_request: Message | None = None, in_reply: bool = True
+    ):
+        serialized, out_seq = self.serialize_message(session, objects, originating_request=originating_request)
+
+        assert self.auth_data.auth_key is not None, "FATAL: self.auth_key is None"
+        assert self.auth_data.auth_key_id is not None, "FATAL: self.auth_key_id is None"
+
+        encrypted = DecryptedMessagePacket(
+            salt=Long.write(self.server.salt),
+            session_id=session.session_id,
+            message_id=session.msg_id(in_reply=in_reply),
+            seq_no=out_seq,
+            data=serialized,
+        ).encrypt(self.auth_data.auth_key, ConnectionRole.SERVER)
+
+        to_send = self.conn.send(encrypted)
+        self.writer.write(to_send)
+        await self.writer.drain()
 
     async def send_unencrypted(self, obj: TLObject) -> None:
-        obj = obj.write()
-        await self.conn.send(
-            bytes(8)
-            + Long.write(self.empty_session.msg_id(in_reply=True))
-            + Int.write(len(obj)) + obj
-        )
+        to_send = self.conn.send(UnencryptedMessagePacket(
+            self.empty_session.msg_id(in_reply=True),
+            obj.write(),
+        ))
+        self.writer.write(to_send)
+        await self.writer.drain()
 
     async def handle_unencrypted_message(self, obj: TLObject):
         if isinstance(obj, (ReqPqMulti, ReqPq)):
@@ -235,7 +218,7 @@ class Client:
             if p > q:
                 p, q = q, p
 
-            self.auth_data = SimpleNamespace()
+            self.auth_data = GenAuthData()
             self.auth_data.p, self.auth_data.q = p, q
 
             assert p != -1, "p is -1"
@@ -243,7 +226,6 @@ class Client:
             assert p != q
 
             pq = self.auth_data.p * self.auth_data.q
-            # ic(p, q, pq)
 
             self.auth_data.server_nonce = int.from_bytes(secrets.token_bytes(128 // 8), byteorder="big")
 
@@ -267,8 +249,6 @@ class Client:
 
             assert self.auth_data.server_nonce == req_dh_params.server_nonce
             # TODO: check server_nonce in other places too
-
-            # print(f"{client_p=} {client_q=}")
 
             encrypted_data: bytes = req_dh_params.encrypted_data
             assert len(encrypted_data) == 256, "Invalid encrypted data"
@@ -392,7 +372,7 @@ class Client:
         else:
             raise RuntimeError(f"Received unexpected unencrypted message: {obj}")  # TODO right error
 
-    async def handle_encrypted_message(self, core_message: CoreMessage, session_id: int):
+    async def handle_encrypted_message(self, core_message: Message, session_id: int):
         sess, created = SessionManager().get_or_create(self, session_id)
         sess.update_incoming_content_related_msgs(core_message.obj, core_message.seq_no)
 
@@ -413,23 +393,25 @@ class Client:
 
     async def recv(self):
         message = await self.read_message()
-        if isinstance(message, EncryptedMessage):
+        if isinstance(message, EncryptedMessagePacket):
             decrypted = await self.decrypt(message)
-            core_message = decrypted.to_core_message()
+            payload = Message.read(BytesIO(decrypted.data))
             request_ctx.set(RequestContext(
-                message.auth_key_id, decrypted.message_id, decrypted.session_id, core_message.obj, self
+                message.auth_key_id, decrypted.message_id, decrypted.session_id, payload.obj, self
             ))
 
-            logger.debug(core_message)
-            await self.handle_encrypted_message(core_message, decrypted.session_id)
-        elif isinstance(message, UnencryptedMessage):
+            logger.debug(payload)
+            await self.handle_encrypted_message(payload, decrypted.session_id)
+        elif isinstance(message, UnencryptedMessagePacket):
             decoded = SerializationUtils.read(BytesIO(message.message_data), TLObject)
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 
-    # TODO don't mix list and non-list parameters
-    def serialize_message(self, session: Session, objects: TLObject | list[tuple[TLObject, CoreMessage]],
-                          originating_request: int | None = None) -> tuple[bytes, int]:
+    # TODO: rewrite because i have no idea what is happening here
+    def serialize_message(
+            self, session: Session, objects: TLObject | list[tuple[TLObject, Message]],
+            originating_request: Message | None = None
+    ) -> tuple[bytes, int]:
         if isinstance(objects, TLObject):
             final_obj = objects
             serialized = objects.write()
@@ -441,7 +423,7 @@ class Client:
                 if is_content_related(objects):
                     msg_id = session.msg_id(in_reply=True)
                 else:
-                    msg_id = originating_request + 1
+                    msg_id = originating_request.message_id + 1
             seq_no = session.get_outgoing_seq_no(objects)
         else:
             container = MsgContainer(messages=[])
@@ -461,67 +443,24 @@ class Client:
 
         return serialized, session.get_outgoing_seq_no(final_obj)
 
-    async def encrypt(self, serialized: bytes, out_seq: int, session: Session, in_reply: bool = True) -> bytes:
-        if self.auth_data.auth_key is None:
-            assert False, "FATAL: self.auth_key is None"
-        elif self.auth_data.auth_key_id is None:
-            assert False, "FATAL: self.auth_key_id is None"
-
-        data = (
-                Long.write(self.server.salt)
-                + Long.write(session.session_id)
-                + Long.write(session.msg_id(in_reply=in_reply))
-                + Int.write(out_seq)
-                + len(serialized).to_bytes(4, "little")
-                + serialized
-        )
-
-        padding = os.urandom(-(len(data) + 12) % 16 + 12)
-
-        # 96 = 88 + 8 (8 = incoming message (server message); 0 = outgoing (client message))
-        msg_key_large = hashlib.sha256(self.auth_data.auth_key[96: 96 + 32] + data + padding).digest()
-        msg_key = msg_key_large[8:24]
-        aes_key, aes_iv = kdf(self.auth_data.auth_key, msg_key, False)
-
-        result = (
-                Long.write(self.auth_data.auth_key_id)
-                + msg_key
-                + tgcrypto.ige256_encrypt(data + padding, aes_key, aes_iv)
-        )
-        return result
-
-    async def decrypt(self, message: EncryptedMessage) -> DecryptedMessage:
-        if self.auth_data is None or not hasattr(self.auth_data, "auth_key") \
-                or not hasattr(self.auth_data, "auth_key_id") or self.auth_data.auth_key_id != message.auth_key_id:
+    async def decrypt(self, message: EncryptedMessagePacket) -> DecryptedMessagePacket:
+        if self.auth_data is None or not self.auth_data.check_key(message.auth_key_id):
             got = await self.server.get_auth_key(message.auth_key_id)
             if got is None:
-                logger.info("Client sent unknown auth_key_id, disconnecting")
+                logger.info("Client sent unknown auth_key_id, disconnecting with 404")
                 raise Disconnection(404)
             self.auth_data = SimpleNamespace()
             self.auth_data.auth_key_id, self.auth_data.auth_key = got
 
-        aes_key, aes_iv = kdf(self.auth_data.auth_key, message.msg_key, True)
-
-        decrypted = BytesIO(tgcrypto.ige256_decrypt(message.encrypted_data, aes_key, aes_iv))
-        salt = decrypted.read(8)
-        session_id = Long.read(decrypted)
-        message_id = Long.read(decrypted)
-        seq_no = Int.read(decrypted)
-        message_data_length = Int.read(decrypted)
-        return DecryptedMessage(
-            salt,
-            session_id,
-            message_id,
-            seq_no,
-            decrypted.read(message_data_length),
-            decrypted.read(),
-        )
+        try:
+            return message.decrypt(self.auth_data.auth_key, ConnectionRole.CLIENT)
+        except ValueError:
+            logger.info("Failed to decrypt encrypted packet, disconnecting with 404")
+            raise Disconnection(404)
 
     @logger.catch
     async def worker(self):
         try:
-            self.conn = await self.conn.init()
-
             while True:
                 try:
                     await self.recv()
@@ -535,8 +474,10 @@ class Client:
                     raise Disconnection(400)
         except Disconnection as err:
             if err.transport_error is not None:
-                await self.conn.send(int.to_bytes(err.transport_error, 4, "little", signed=True))
-            await self.conn.close()
+                self.writer.write(self.conn.send(ErrorPacket(err.transport_error)))
+                await self.writer.drain()
+            self.writer.close()
+            await self.writer.wait_closed()
             logger.info("Client disconnected")
         finally:
             if (sess := SessionManager().by_client.get(self, None)) is not None:
@@ -544,17 +485,10 @@ class Client:
                     logger.info(f"Session {s.session_id} removed")
             SessionManager().client_cleanup(self)
 
-    def to_core_message(self, msg: Message | CoreMessage) -> CoreMessage:
-        if isinstance(msg, Message):
-            return CoreMessage(message_id=msg.message_id, seq_no=msg.seq_no, obj=msg.obj)
-        return msg
-
-    async def propagate(self, request: CoreMessage | Message, session: Session) -> list[tuple[TLObject, CoreMessage]] | TLObject | None:
+    async def propagate(self, request: Message, session: Session) -> list[tuple[TLObject, Message]] | TLObject | None:
         if isinstance(request.obj, MsgContainer):
             results = []
             for msg in request.obj.messages:
-                msg = self.to_core_message(msg)
-
                 result = await self.propagate(msg, session)
                 if result is None:
                     continue

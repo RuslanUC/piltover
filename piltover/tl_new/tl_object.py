@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field as dc_field, MISSING
 from inspect import get_annotations
-from typing import Callable, get_origin, get_args, Union
+from typing import Callable, get_origin, get_args, Union, TypeVar
 
 from piltover.exceptions import Error
 from piltover.tl_new.serialization_utils import SerializationUtils
@@ -115,6 +115,8 @@ def _resolve_annotation(annotation: type):
     if origin is list:
         args = get_args(annotation)
         return list, _resolve_annotation(args[0])[0]
+    if isinstance(origin, TypeVar):
+        origin = origin.__bound__
     if origin in (int, float, bool, str, bytes) or issubclass(origin, (int, TLObject)):
         return origin, None
 

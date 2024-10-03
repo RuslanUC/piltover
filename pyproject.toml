@@ -3,6 +3,7 @@ name = "piltover"
 version = "0.0.0"
 description = ""
 authors = []
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -13,6 +14,7 @@ loguru = "^0.7.0"
 tortoise-orm = {extras = ["asyncmy"], version = "^0.20.0"}
 aerich = "^0.7.2"
 pillow = "^10.2.0"
+mtproto = "^0.1.0a1"
 
 
 [tool.poetry.group.dev.dependencies]

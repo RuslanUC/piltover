@@ -1,6 +1,8 @@
 from io import BytesIO
 from time import time
 
+from mtproto.packets import EncryptedMessagePacket
+
 from piltover.app.utils.utils import check_password_internal
 from piltover.context import request_ctx
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword
@@ -10,7 +12,6 @@ from piltover.db.models.user import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl.types import EncryptedMessage
 from piltover.tl_new import Long, BindAuthKeyInner
 from piltover.tl_new.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword
 from piltover.tl_new.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
@@ -141,11 +142,11 @@ async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
     msg_key = data.read(16)
     encrypted_data = data.read()
     try:
-        message = await client.decrypt(EncryptedMessage(auth_key_id, msg_key, encrypted_data))
-        if message.seq_no != 0 or len(message.message_data) != 40 or message.message_id != ctx.message_id:
+        message = await client.decrypt(EncryptedMessagePacket(auth_key_id, msg_key, encrypted_data))
+        if message.seq_no != 0 or len(message.data) != 40 or message.message_id != ctx.message_id:
             raise Exception
 
-        obj = BindAuthKeyInner.read(BytesIO(message.message_data))
+        obj = BindAuthKeyInner.read(BytesIO(message.data))
         # TODO: check obj.temp_session_id == request session id
         # TODO: check obj.temp_auth_key_id == request key id
         if obj.perm_auth_key_id != auth_key_id or obj.nonce != request.nonce:

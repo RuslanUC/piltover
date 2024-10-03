@@ -1,15 +1,18 @@
 from gzip import decompress
 from io import BytesIO
+from typing import TypeVar, Generic
 
 from piltover import tl_new
 from piltover.tl_new import TLField, TLObject, tl_object, Int, Long, SerializationUtils
 
+T = TypeVar("T", bound=TLObject)
+
 
 @tl_object(id=0x5bb8e511, name="Message")
-class Message(TLObject):
+class Message(TLObject, Generic[T]):
     message_id: Long = TLField()
     seq_no: Int = TLField()
-    obj: TLObject = TLField()
+    obj: T = TLField()
 
     @classmethod
     def deserialize(cls, stream) -> TLObject:

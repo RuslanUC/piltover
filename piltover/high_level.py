@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from asyncio import StreamReader, StreamWriter
 from collections import defaultdict
 from inspect import signature
 from typing import Awaitable, Callable
@@ -8,16 +9,13 @@ from loguru import logger
 
 from piltover.context import SerializationContext, serialization_ctx
 from piltover.db.models import UserAuthorization, User
-from piltover.db.models._utils import user_auth_q_temp
-from piltover.enums import Transport, ReqHandlerFlags
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.server import Server as LowServer, Client as LowClient, MessageHandler as LowMessageHandler
 from piltover.session_manager import Session, SessionManager
-from piltover.tl.types import CoreMessage
 from piltover.tl_new import TLObject, RpcError, Ping, Pong
-from piltover.tl_new.core_types import MsgContainer, RpcResult
+from piltover.tl_new.core_types import MsgContainer, RpcResult, Message
 from piltover.utils import background
-from piltover.utils.buffered_stream import BufferedStream
 from piltover.utils.utils import check_flag
 
 HandlerFunc = (Callable[["Client", TLObject], Awaitable[TLObject | dict | None]] |
@@ -73,13 +71,8 @@ class Server(LowServer, MessageHandler):
         super().__init__(*args, **kwargs)
         super(LowServer, self).__init__(name="Server")
 
-    async def welcome(self, stream: BufferedStream, transport: Transport):
-        client = Client(
-            transport=transport,
-            server=self,
-            stream=stream,
-            peername=stream.get_extra_info("peername"),
-        )
+    async def accept_client(self, reader: StreamReader, writer: StreamWriter) -> None:
+        client = Client(server=self, reader=reader, writer=writer)
         background(client.worker())
 
     def register_handler(self, handler: MessageHandler) -> None:
@@ -102,7 +95,7 @@ class Client(LowClient):
         auth = await self.get_auth(allow_mfa_pending)
         return auth.user if auth is not None else None
 
-    async def propagate(self, request: CoreMessage, session: Session) -> list[tuple[TLObject, CoreMessage]] | TLObject | None:
+    async def propagate(self, request: Message, session: Session) -> list[tuple[TLObject, Message]] | TLObject | None:
         if isinstance(request.obj, MsgContainer):
             return await super().propagate(request, session)
         else:
