@@ -23,6 +23,7 @@ from functools import partial
 from pathlib import Path
 from typing import NamedTuple, List, Tuple
 
+from black.trans import defaultdict
 from tqdm import tqdm
 
 HOME_PATH = Path("./tools")
@@ -35,8 +36,8 @@ ARGS_RE = re.compile(r"[^{](\w+):([\w?!.<>#]+)")
 FLAGS_RE = re.compile(r"flags(\d?)\.(\d+)\?")
 FLAGS_RE_3 = re.compile(r"flags(\d?):#")
 
-CORE_TYPES = ["int", "long", "int128", "int256", "double", "bytes", "string", "Bool", "true"]
-CORE_TYPES_D = {"int": "Int", "long": "Long", "int128": "Int128", "int256": "Int256"}
+CORE_TYPES = {"int", "long", "int128", "int256", "double", "bytes", "string", "Bool", "true", "#"}
+CORE_TYPES_D = {"int": "Int", "#": "Int", "long": "Long", "int128": "Int128", "int256": "Int256"}
 
 WARNING = """
 # # # # # # # # # # # # # # # # # # # # # # # #
@@ -53,8 +54,8 @@ all_layers = set()
 types_to_constructors = {"future_salt": ["FutureSalt"]}
 types_to_functions = {}
 namespaces_to_types = {}
-namespaces_to_constructors = {}
-namespaces_to_functions = {}
+namespaces_to_constructors = defaultdict(list)
+namespaces_to_functions = defaultdict(list)
 
 
 class Combinator(NamedTuple):
@@ -99,7 +100,7 @@ def get_type_hint(type: str, layer: int) -> str:
     if is_flag:
         type = type.split("?")[1]
 
-    if type in CORE_TYPES or type == "#":
+    if type in CORE_TYPES:
         is_core = True
 
         if type == "long" or type == "#" or "int" in type:
@@ -131,6 +132,13 @@ def get_type_hint(type: str, layer: int) -> str:
         type = f"Union[{type}]" if len(constructors) > 1 else type
 
         return f"Optional[{type}]" if is_flag else type
+
+
+def is_tl_object(field_type: str) -> bool:
+    if field_type in CORE_TYPES or re.match("^vector", field_type, re.I):
+        return False
+
+    return True
 
 
 def sort_args(args):
@@ -266,17 +274,42 @@ def parse_old_objects(schemaBase: list[Combinator]) -> list[Combinator]:
     return result
 
 
+def indent(lines: list[str], spaces: int) -> list[str]:
+    return [" " * spaces + line for line in lines]
+
+
+class Field:
+    _COUNTER = 0
+
+    __slots__ = ("position", "name", "is_flag", "flag_bit", "flag_num", "full_type", "write",)
+
+    def __init__(
+            self, name: str, is_flag: bool = False, flag_bit: int | None = None, flag_num: int | None = None,
+            type_: str = None, write: bool = True,
+    ):
+        self.position = self.__class__._COUNTER
+        self.__class__._COUNTER += 1
+        self.name = name
+        self.is_flag = is_flag
+        self.flag_bit = flag_bit
+        self.flag_num = flag_num
+        self.full_type = type_
+        self.write = write
+
+    def opt(self) -> bool:
+        return self.flag_bit is not None and not self.is_flag
+
+    def type(self) -> str:
+        return self.full_type if "?" not in self.full_type else self.full_type.split("?", 1)[1]
+
+
 # noinspection PyShadowingBuiltins
 def start():
     shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
     shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
-    shutil.rmtree(DESTINATION_PATH / "base", ignore_errors=True)
 
     with open(HOME_PATH / "resources/mtproto.tl") as f1, open(HOME_PATH / "resources/api.tl") as f2:
         schema = f1.read().splitlines() + f2.read().splitlines()
-
-    with open(HOME_PATH / "templates/combinator.txt") as f2:
-        combinator_tmpl = f2.read()
 
     combinators, layer = parse_schema(schema)
     combinators.extend(parse_old_objects(combinators))
@@ -296,59 +329,150 @@ def start():
 
     for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
         fields = []
-        flagnum = 0
+        flag_num = 1
         for arg in c.args:
+            fields.append((field := Field(arg[0])))
+
             arg_type = arg[1]
-            field_args = []
             if arg_type == "#":
-                flagnum += 1
-                field_args.append("is_flags=True")
-                if flagnum > 1:
-                    field_args.append(f"flagnum={flagnum}")
+                field.is_flag = True
+                field.flag_num = flag_num
+                flag_num += 1
             if "?" in arg_type:
                 bit = int(arg_type.split(".")[1].split("?")[0])
-                field_args.append(f"flag=1 << {bit}")
-                fieldflagnum = arg_type.split("?")[0].split(".")[0][5:]
-                fieldflagnum = int(fieldflagnum) if fieldflagnum else 1
-                if fieldflagnum > 1:
-                    field_args.append(f"flagnum={fieldflagnum}")
-                if arg_type.split("?")[1] == "Bool":
-                    field_args.append(f"flag_serializable=True")
-            field_args = ", ".join(field_args)
-            fields.append(f"{arg[0]}: {get_type_hint(arg_type, c.layer)} = TLField({field_args})")
+                this_flag_num = arg_type.split("?")[0].split(".")[0][5:]
 
-        fields = "\n    ".join(fields) if fields else "pass"
+                field.flag_bit = bit
+                field.flag_num = int(this_flag_num) if this_flag_num else 1
+                field.write = arg_type.split("?")[1] != "true"
 
-        directory = "types" if c.section == "types" else c.section
+                arg_type = arg_type.split("?", 1)[1]
 
-        dir_path = DESTINATION_PATH / directory / c.namespace
+            field.full_type = arg_type
 
-        os.makedirs(dir_path, exist_ok=True)
+        third_dot = "." if "." in c.qualname else ""
+        slots = [f"\"{field.name}\"" for field in fields if not field.is_flag]
+        slots.append("")  # For trailing comma
 
-        module = c.name
+        init_args = [
+            f"{field.name}: {get_type_hint(field.full_type, c.layer)}"
+            for field in sorted(fields, key=lambda fd: (fd.flag_bit != -1, fd.position))
+            if not field.is_flag
+        ]
+        if init_args:
+            init_args.insert(0, "*")
 
-        if module == "Updates":
-            module = "UpdatesT"
+        deserialize_cls_args = [
+            f"{field.name}={field.name}"
+            for field in fields if not field.is_flag
+        ]
 
+        serialize_body = []
+        deserialize_body = []
+        for field in fields:
+            tmp_ = field.type().split("Vector<")
+            is_vec = len(tmp_) > 1
+
+            int_type = CORE_TYPES_D.get(field.type().lower(), None)
+            int_subtype = None
+            if is_vec and int_type is None:
+                int_subtype = CORE_TYPES_D.get(tmp_[1].lower().split(">")[0], None)
+
+            int_type_name = (int_subtype if int_subtype is not None else int_type) or ""
+            if int_type_name:
+                int_type_name = f", {int_type_name}"
+
+            subtype_name = None
+            if is_vec:
+                type_name = "list"
+                tmp_ = tmp_[1].split(">")[0]
+                if is_tl_object(tmp_):
+                    subtype_name = "TLObject"
+                else:
+                    subtype_name = get_type_hint(tmp_, c.layer)
+            else:
+                tmp_ = tmp_[0]
+                if is_tl_object(field.type()):
+                    type_name = "TLObject"
+                else:
+                    type_name = get_type_hint(tmp_, c.layer)
+
+            subtype_name = f", {subtype_name}" if subtype_name is not None else ""
+
+            if field.is_flag:
+                flag_var = f"flags{field.flag_num}"
+                serialize_body.append(f"{flag_var} = 0")
+                for ffield in fields:
+                    if not ffield.opt() or ffield.flag_num != field.flag_num:
+                        continue
+                    serialize_body.append(f"if self.{ffield.name}: {flag_var} |= (1 << {ffield.flag_bit})")
+                serialize_body.append(f"result += SerializationUtils.write({flag_var}, Int)")
+
+                deserialize_body.append(f"{flag_var} = SerializationUtils.read(stream, Int)")
+                continue
+
+            if field.opt():
+                if field.write:
+                    serialize_body.append(f"if self.{field.name}:")
+                    serialize_body.append(f"    SerializationUtils.write(self.{field.name}{int_type_name})")
+                    deserialize_body.append(
+                        f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name}) "
+                        f"if (flags{field.flag_num} & (1 << {field.flag_bit})) == (1 << {field.flag_bit}) else None"
+                    )
+                elif field.type() == "true":
+                    deserialize_body.append(
+                        f"{field.name} = (flags{field.flag_num} & (1 << {field.flag_bit})) == (1 << {field.flag_bit})"
+                    )
+
+                continue
+
+            serialize_body.append(f"result += SerializationUtils.write(self.{field.name}{int_type_name})")
+            deserialize_body.append(f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name})")
+
+        result = [
+            f"from __future__ import annotations",
+            f"from typing import Optional, Union",
+            f"from {third_dot}..primitives import *",
+            f"from {third_dot}.. import types, SerializationUtils",
+            f"from {third_dot}..tl_object import TLObject",
+            f"",
+            f"",
+            f"class {c.name}(TLObject):",
+            f"    __tl_id__ = {c.id}",
+            f"    __tl_name__ = \"{c.section}.{c.qualname}\"",
+            f"",
+            f"    __slots__ = ({', '.join(slots)})",
+            f"",
+            f"    def __init__(self, {', '.join(init_args)}):",
+            f"        ...",
+            *[
+                f"        self.{field.name} = {field.name}"
+                for field in fields if not field.is_flag
+            ],
+            f"",
+            f"    def serialize(self) -> bytes:",
+            f"        result = b\"\"",
+            *indent(serialize_body, 8),
+            f"        return result",
+            f"",
+            f"    @classmethod",
+            f"    def deserialize(cls, stream) -> TLObject:",
+            *indent(deserialize_body, 8),
+            f"        return cls({', '.join(deserialize_cls_args)})",
+            f"",
+        ]
+
+        dir_path = DESTINATION_PATH / ".." / "tl_new_c" / c.section / c.namespace
+        dir_path.mkdir(parents=True, exist_ok=True)
+        module = c.name if c.name != "Updates" else "UpdatesT"
         with open(dir_path / f"{snake(module)}.py", "w") as f:
-            f.write(combinator_tmpl.format(
-                warning=WARNING,
-                name=c.name,
-                id=c.id,
-                qualname=f"{c.section}.{c.qualname}",
-                fields=fields,
-                third_dot="." if "." in c.qualname else "",
-            ))
+            f.write("\n".join(result))
 
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
-
-        if c.namespace not in d:
-            d[c.namespace] = []
-
         d[c.namespace].append(c.name)
 
     for namespace, types in namespaces_to_constructors.items():
-        with open(DESTINATION_PATH / "types" / namespace / "__init__.py", "w") as f:
+        with open(DESTINATION_PATH / ".." / "tl_new_c" / "types" / namespace / "__init__.py", "w") as f:
             f.write(f"{WARNING}\n\n")
 
             for t in types:
@@ -363,7 +487,7 @@ def start():
                 f.write(f"from . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
 
     for namespace, types in namespaces_to_functions.items():
-        with open(DESTINATION_PATH / "functions" / namespace / "__init__.py", "w") as f:
+        with open(DESTINATION_PATH / ".." / "tl_new_c" / "functions" / namespace / "__init__.py", "w") as f:
             f.write(f"{WARNING}\n\n")
 
             for t in types:
@@ -377,7 +501,7 @@ def start():
             if not namespace:
                 f.write(f"from . import {', '.join(filter(bool, namespaces_to_functions))}")
 
-    with open(DESTINATION_PATH / "all.py", "w", encoding="utf-8") as f:
+    with open(DESTINATION_PATH / ".." / "tl_new_c" / "all.py", "w", encoding="utf-8") as f:
         f.write(WARNING + "\n\n")
         f.write(f"from . import core_types, types, functions\n\n")
         f.write(f"min_layer = {min(all_layers)}\n")
@@ -394,7 +518,10 @@ def start():
 
         f.write("\n}\n")
 
-    shutil.copy(DESTINATION_PATH / "all.py", DESTINATION_PATH / ".." / "tl_new_c" / "all.py")
+
+# TODO: call tl_compile from here, put zip to data/
+# TODO: move not-compiled files from tl_new_c to tl_new
+# TODO: rename tl_new back to tl
 
 
 if "__main__" == __name__:

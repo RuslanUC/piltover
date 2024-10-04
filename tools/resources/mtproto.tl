@@ -68,7 +68,7 @@ rpc_answer_dropped_running#cd78e586 = RpcDropAnswer;
 rpc_answer_dropped#a43ad8b7 msg_id:long seq_no:int bytes:int = RpcDropAnswer;
 
 future_salt#0949d9dc valid_since:int valid_until:int salt:long = FutureSalt;
-future_salts#ae500895 req_msg_id:long now:int salts:vector<future_salt> = FutureSalts;
+future_salts#ae500895 req_msg_id:long now:int salts:Vector<future_salt> = FutureSalts;
 
 pong#347773c5 msg_id:long ping_id:long = Pong;
 
@@ -78,7 +78,7 @@ destroy_session_none#62d350c9 session_id:long = DestroySessionRes;
 new_session_created#9ec20908 first_msg_id:long unique_id:long server_salt:long = NewSession;
 
 //message msg_id:long seqno:int bytes:int body:Object = Message; // parsed manually
-//msg_container#73f1f8dc messages:vector<Message> = MessageContainer;
+//msg_container#73f1f8dc messages:Vector<Message> = MessageContainer;
 //msg_copy#e06046b2 orig_message:Message = MessageCopy; // parsed manually, not used - use msg_container
 //gzip_packed#3072cfa1 packed_data:string = Object; // parsed manually
 
@@ -89,10 +89,10 @@ http_wait#9299359f max_delay:int wait_after:int max_wait:int = HttpWait;
 
 ipPort#d433ad73 ipv4:int port:int = IpPort;
 ipPortSecret#37982646 ipv4:int port:int secret:bytes = IpPort;
-accessPointRule#4679b65f phone_prefix_rules:string dc_id:int ips:vector<IpPort> = AccessPointRule;
-help.configSimple#5a592a6c date:int expires:int rules:vector<AccessPointRule> = help.ConfigSimple;
+accessPointRule#4679b65f phone_prefix_rules:string dc_id:int ips:Vector<IpPort> = AccessPointRule;
+help.configSimple#5a592a6c date:int expires:int rules:Vector<AccessPointRule> = help.ConfigSimple;
 
-tlsClientHello blocks:vector<TlsBlock> = TlsClientHello;
+tlsClientHello blocks:Vector<TlsBlock> = TlsClientHello;
 
 tlsBlockString data:string = TlsBlock;
 tlsBlockRandom length:int = TlsBlock;
