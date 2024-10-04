@@ -17,3 +17,10 @@ package.json
 /piltover/tl_new/functions
 /piltover/tl_new/types
 /piltover/tl_new/all.py
+/piltover/tl_new.zip
+
+/piltover/tl_new_c/base
+/piltover/tl_new_c/functions
+/piltover/tl_new_c/types
+/piltover/tl_new_c/converter
+/piltover/tl_new_c/all.py

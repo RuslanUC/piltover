@@ -18,8 +18,8 @@ DST_TL = SRC / "tl_new_c"
 def type_annotation(field, opt_ack: bool = False, type_ack: bool = False) -> str:
     if field.flag != -1 and not opt_ack:
         if field.type.type is not bool or field.flag_serializable:
-            return f"Optional[{type_annotation(field, True, type_ack)}]"
-        return type_annotation(field, True, type_ack)
+            return f"Optional[{type_annotation(field, True, type_ack)}] = None"
+        return f"{type_annotation(field, True, type_ack)} = False"
     if field.type.type is list and not type_ack:
         return f"list[{type_annotation(field, opt_ack, True)}]"
     t = field.type.type if not type_ack else field.type.subtype

@@ -394,6 +394,8 @@ def start():
 
         f.write("\n}\n")
 
+    shutil.copy(DESTINATION_PATH / "all.py", DESTINATION_PATH / ".." / "tl_new_c" / "all.py")
+
 
 if "__main__" == __name__:
     start()

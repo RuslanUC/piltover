@@ -2,25 +2,29 @@ import os
 from compileall import compile_dir
 from shutil import copy
 from pathlib import Path
+from zipfile import ZipFile, Path as ZipPath
 
 SRC = Path("piltover/tl_new_c")
-DST = Path("piltover/tl_new_compiled")
 copied = set()
+out_zip = ZipFile("piltover/tl_new.zip", "w")
+out_zip.mkdir("tl_new")
 
 
 def copy_compiled(path: Path) -> None:
     for _, dirs, _ in os.walk(path):
         for d in dirs:
             if d == "__pycache__" and path not in copied:
-                out = DST / path.relative_to(SRC)
-                out.mkdir(parents=True, exist_ok=True)
-                #(out / "__pycache__").mkdir(parents=True, exist_ok=True)
-                print(f"{path} -> {out}")
+                out = f"tl_new/{path.relative_to(SRC)}"
+                if out == "tl_new/.":
+                    out = "tl_new"
+
+                print(f"{path}...")
                 for file in os.listdir(path / "__pycache__"):
                     if not file.endswith(".pyc"):
                         continue
-                    copy(path / "__pycache__" / file, out / f"{file.split('.')[0]}.pyc")
-                    #copy(path / "__pycache__" / file, out / "__pycache__" / file)
+                    with open(path / "__pycache__" / file, "rb") as f:
+                        out_zip.writestr(f"{out}/{file.split('.')[0]}.pyc", f.read())
+
                 copied.add(path)
             else:
                 copy_compiled(path / d)
