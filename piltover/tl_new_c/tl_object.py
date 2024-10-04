@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod, ABC
 
 from piltover.exceptions import Error
+from .primitives import Int
 from .serialization_utils import SerializationUtils
 
 
@@ -33,7 +34,11 @@ class TLObject(ABC):
         return obj
 
     def write(self) -> bytes:
-        return SerializationUtils.write(self.__tl_id__) + self.serialize()
+        return SerializationUtils.write(self.__tl_id__, Int) + self.serialize()
 
     def to_dict(self) -> dict:
         return {slot: getattr(self, slot) for slot in self.__slots__}
+
+    def __repr__(self) -> str:
+        slots = ", ".join([f"{slot}={getattr(self, slot)!r}" for slot in self.__slots__])
+        return f"{self.__class__.__name__}({slots})"

@@ -7,13 +7,13 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"
-cryptography = "^41.0.3"
+cryptography = "^43.0.1"
 tgcrypto = "^1.2.5"
-uvloop = "^0.17.0"
+uvloop = "^0.20.0"
 loguru = "^0.7.0"
-tortoise-orm = {extras = ["asyncmy"], version = "^0.20.0"}
+tortoise-orm = {extras = ["asyncmy"], version = "^0.21.6"}
 aerich = "^0.7.2"
-pillow = "^10.2.0"
+pillow = "^10.4.0"
 mtproto = "^0.1.0a1"
 
 
@@ -27,6 +27,8 @@ pytest = "^7.4.4"
 icecream = "^2.1.3"
 pytest-cov = "^4.1.0"
 tqdm = "^4.66.5"
+pyrogram = "^2.0.106"
+aiomonitor = "^0.7.0"
 
 [build-system]
 requires = ["poetry-core"]

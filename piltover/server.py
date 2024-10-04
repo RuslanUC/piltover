@@ -4,7 +4,6 @@ import secrets
 import time
 from collections import defaultdict
 from io import BytesIO
-from types import SimpleNamespace
 from typing import Callable, Awaitable
 
 import tgcrypto
@@ -91,6 +90,7 @@ class Server:
         background(client.worker())
 
     async def serve(self):
+        #aiomonitor.start_monitor(get_event_loop(), port=0, console_port=0, webui_port=50080)
         server = await asyncio.start_server(self.accept_client, self.HOST, self.PORT)
         async with server:
             await server.serve_forever()
@@ -133,9 +133,9 @@ class Server:
 class AuthData:
     __slots__ = ("auth_key_id", "auth_key",)
 
-    def __init__(self):
-        self.auth_key_id: int | None = None
-        self.auth_key: bytes | None = None
+    def __init__(self, auth_key_id: int | None = None, auth_key: bytes | None = None):
+        self.auth_key_id = auth_key_id
+        self.auth_key = auth_key
 
     def check_key(self, expected_auth_key_id: int) -> bool:
         if self.auth_key is None or expected_auth_key_id is None:
@@ -175,7 +175,10 @@ class Client:
         self.empty_session = Session(self, 0)
 
     async def read_message(self) -> MessagePacket | None:
-        packet = self.conn.receive(await self.reader.read(32 * 1024))
+        recv = await self.reader.read(32 * 1024)
+        if not recv:
+            raise Disconnection
+        packet = self.conn.receive(recv)
         if not isinstance(packet, MessagePacket):
             return
         return packet
@@ -202,6 +205,7 @@ class Client:
         await self.writer.drain()
 
     async def send_unencrypted(self, obj: TLObject) -> None:
+        logger.debug(obj)
         to_send = self.conn.send(UnencryptedMessagePacket(
             self.empty_session.msg_id(in_reply=True),
             obj.write(),
@@ -240,18 +244,20 @@ class Client:
 
             req_dh_params = obj
 
-            assert len(req_dh_params.p) == 4, f"client_p size must be 4 bytes, not {len(req_dh_params.p)}"
-            assert len(req_dh_params.q) == 4, f"client_q size must be 4 bytes, not {len(req_dh_params.q)}"
+            if len(req_dh_params.p) != 4 or len(req_dh_params.q) != 4:
+                raise Disconnection(404)
             client_p = int.from_bytes(req_dh_params.p, "big", signed=False)
             client_q = int.from_bytes(req_dh_params.q, "big", signed=False)
-            assert client_p == self.auth_data.p, "client_p is different than server_p"
-            assert client_q == self.auth_data.q, "client_q is different than server_q"
+            if client_p != self.auth_data.p or client_q != self.auth_data.q:
+                raise Disconnection(404)
 
-            assert self.auth_data.server_nonce == req_dh_params.server_nonce
             # TODO: check server_nonce in other places too
+            if self.auth_data.server_nonce != req_dh_params.server_nonce:
+                raise Disconnection(404)
 
             encrypted_data: bytes = req_dh_params.encrypted_data
-            assert len(encrypted_data) == 256, "Invalid encrypted data"
+            if len(encrypted_data) != 256:
+                raise Disconnection(404)
 
             old = False
             key_aes_encrypted = rsa_decrypt(encrypted_data, self.server.public_key, self.server.private_key)
@@ -262,7 +268,7 @@ class Client:
                 old = True
             key_aes_encrypted = key_aes_encrypted.lstrip(b"\0")
 
-            # idk TODO: restart generation with dh_fail instead
+            # TODO: restart generation with dh_fail instead?
             # assert key_aes_encrypted >= public.n, "key_aes_encrypted greater than RSA modulus, aborting..."
 
             if old:
@@ -331,8 +337,8 @@ class Client:
                 encrypted_answer=encrypted_answer,
             ))
         elif isinstance(obj, SetClientDHParams):
-            assert self.auth_data
-            assert hasattr(self.auth_data, "tmp_aes_key")
+            if self.auth_data is None or self.auth_data.tmp_aes_key is None:
+                raise Disconnection(404)
             set_client_DH_params = obj
             decrypted_params = tgcrypto.ige256_decrypt(
                 set_client_DH_params.encrypted_data,
@@ -368,9 +374,10 @@ class Client:
             )
             logger.info("Auth key generation successfully completed!")
         elif isinstance(obj, MsgsAck):
-            pass
+            return
         else:
-            raise RuntimeError(f"Received unexpected unencrypted message: {obj}")  # TODO right error
+            logger.debug(f"Received unexpected unencrypted message: {obj}")
+            raise Disconnection(404)
 
     async def handle_encrypted_message(self, core_message: Message, session_id: int):
         sess, created = SessionManager().get_or_create(self, session_id)
@@ -396,8 +403,10 @@ class Client:
         if isinstance(message, EncryptedMessagePacket):
             decrypted = await self.decrypt(message)
             payload = Message.read(BytesIO(decrypted.data))
+            if not isinstance(payload, Message):
+                payload = Message(message_id=decrypted.message_id, seq_no=decrypted.seq_no, obj=payload)
             request_ctx.set(RequestContext(
-                message.auth_key_id, decrypted.message_id, decrypted.session_id, payload.obj, self
+                message.auth_key_id, decrypted.message_id, decrypted.session_id, payload, self
             ))
 
             logger.debug(payload)
@@ -449,8 +458,7 @@ class Client:
             if got is None:
                 logger.info("Client sent unknown auth_key_id, disconnecting with 404")
                 raise Disconnection(404)
-            self.auth_data = SimpleNamespace()
-            self.auth_data.auth_key_id, self.auth_data.auth_key = got
+            self.auth_data = AuthData(*got)
 
         try:
             return message.decrypt(self.auth_data.auth_key, ConnectionRole.CLIENT)

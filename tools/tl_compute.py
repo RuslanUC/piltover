@@ -64,6 +64,8 @@ def main() -> None:
 
         fields = [field.name for field in class_.__tl_fields__ if not field.is_flags]
         slots = [f"\"{slot}\"" for slot in fields]
+        if len(slots) == 1:
+            slots.append("")  # append empty string for __slots__ to be like ("field_name",) instead of ("field_name")
 
         init_args = [
             f"{field.name}: {type_annotation(field)}"
