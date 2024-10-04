@@ -1,9 +1,8 @@
 import struct
 from typing import Any, TypeVar
 
-import piltover.tl_new as tl_new
+from . import primitives
 from piltover.exceptions import InvalidConstructorException
-from piltover.tl_new.primitives.vector import Vector
 
 T = TypeVar("T")
 
@@ -15,11 +14,13 @@ VECTOR = b"\x15\xc4\xb5\x1c"
 class SerializationUtils:
     @staticmethod
     def write(value: Any, int_type: type=None) -> bytes:
+        from . import TLObject
+
         if isinstance(value, int) and not isinstance(value, bool):
             value = int_type(value)
 
-        if isinstance(value, tl_new.primitives.Int):
-            return value.to_bytes(value.SIZE, 'little')
+        if isinstance(value, primitives.Int):
+            return value.write()
         elif isinstance(value, float):
             return struct.pack("<d", value)
         elif isinstance(value, bool):
@@ -43,11 +44,11 @@ class SerializationUtils:
             return result
         elif isinstance(value, str):
             return SerializationUtils.write(value.encode("utf8"))
-        elif isinstance(value, tl_new.TLObject):
+        elif isinstance(value, TLObject):
             return int.to_bytes(value.__tl_id__, 4, 'little') + value.serialize()
         elif isinstance(value, list):
             result = VECTOR + len(value).to_bytes(4, 'little')
-            if isinstance(value, Vector):
+            if isinstance(value, primitives.Vector):
                 int_type = value.value_type if issubclass(value.value_type, int) and not isinstance(value, bool) \
                     else int_type
             for v in value:
@@ -56,8 +57,10 @@ class SerializationUtils:
 
     @staticmethod
     def read(stream, type_: type[T], subtype: type=None) -> T:
-        if issubclass(type_, tl_new.primitives.Int):
-            return int.from_bytes(stream.read(type_.SIZE), "little")
+        from . import TLObject, all
+
+        if issubclass(type_, primitives.Int):
+            return type_.read(stream)
         elif issubclass(type_, float):
             return struct.unpack("<d", stream.read(8))[0]
         elif issubclass(type_, bool):
@@ -78,18 +81,17 @@ class SerializationUtils:
             return result
         elif issubclass(type_, str):
             return SerializationUtils.read(stream, bytes).decode("utf8")
-        elif issubclass(type_, tl_new.TLObject):
+        elif issubclass(type_, TLObject):
             constructor = int.from_bytes(stream.read(4), "little")
-            if constructor not in tl_new.all.objects:
+            if constructor not in all.objects:
                 raise InvalidConstructorException(constructor, stream.read())
-            return tl_new.all.objects[constructor].deserialize(stream)
+            return all.objects[constructor].deserialize(stream)
         elif issubclass(type_, list):
             assert stream.read(4) == VECTOR
-            count = SerializationUtils.read(stream, tl_new.primitives.Int)
+            count = SerializationUtils.read(stream, primitives.Int)
             result = []
 
             for _ in range(count):
                 result.append(SerializationUtils.read(stream, subtype))
 
             return result
-

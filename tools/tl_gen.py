@@ -23,6 +23,8 @@ from functools import partial
 from pathlib import Path
 from typing import NamedTuple, List, Tuple
 
+from tqdm import tqdm
+
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl_new")
 
@@ -125,7 +127,7 @@ def get_type_hint(type: str, layer: int) -> str:
     else:
         base_type = f"{type}{layer_suffix(type, layer)}"
         constructors = types_to_constructors[base_type]
-        type = ", ".join([f"tl_new.types.{constr}" for constr in constructors])
+        type = ", ".join([f"types.{constr}" for constr in constructors])
         type = f"Union[{type}]" if len(constructors) > 1 else type
 
         return f"Optional[{type}]" if is_flag else type
@@ -146,12 +148,12 @@ def sort_args(args):
     return args + flags
 
 
-def parse_schema(schema: list[str]) -> tuple[list[Combinator], int]:
+def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Combinator], int]:
     combinators = []
     layer = None
     section = None
 
-    for line in schema:
+    for line in tqdm(schema, desc=f"Parsing schema for layer {layer_ or '?'}", leave=False):
         # Check for section changer lines
         section_match = SECTION_RE.match(line)
         if section_match:
@@ -223,7 +225,7 @@ def parse_old_schemas(schemaBase: list[Combinator]) -> dict[int, dict[str, Combi
     schemas: dict[int, dict[str, Combinator]] = {}
     for layer in layers:
         with open(HOME_PATH / f"resources/api_{layer}.tl") as f:
-            parsed = parse_schema(f.read().splitlines())[0]
+            parsed = parse_schema(f.read().splitlines(), layer)[0]
 
         schemas[layer] = {}
         for c in parsed:
@@ -279,7 +281,7 @@ def start():
     combinators, layer = parse_schema(schema)
     combinators.extend(parse_old_objects(combinators))
 
-    for c in combinators:
+    for c in tqdm(combinators, desc="Processing combinators", total=len(combinators)):
         qualtype = c.qualtype
 
         if qualtype.startswith("Vector"):
@@ -292,16 +294,7 @@ def start():
 
         d[qualtype].append(c.qualname)
 
-        #if c.section == "types":
-        #    key = c.namespace
-
-        #    if key not in namespaces_to_types:
-        #        namespaces_to_types[key] = []
-
-        #    if c.type not in namespaces_to_types[key]:
-        #        namespaces_to_types[key].append(c.type)
-
-    for c in combinators:
+    for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
         fields = []
         flagnum = 0
         for arg in c.args:
@@ -326,14 +319,6 @@ def start():
 
         fields = "\n    ".join(fields) if fields else "pass"
 
-        compiled_combinator = combinator_tmpl.format(
-            warning=WARNING,
-            name=c.name,
-            id=c.id,
-            qualname=f"{c.section}.{c.qualname}",
-            fields=fields,
-        )
-
         directory = "types" if c.section == "types" else c.section
 
         dir_path = DESTINATION_PATH / directory / c.namespace
@@ -346,7 +331,14 @@ def start():
             module = "UpdatesT"
 
         with open(dir_path / f"{snake(module)}.py", "w") as f:
-            f.write(compiled_combinator)
+            f.write(combinator_tmpl.format(
+                warning=WARNING,
+                name=c.name,
+                id=c.id,
+                qualname=f"{c.section}.{c.qualname}",
+                fields=fields,
+                third_dot="." if "." in c.qualname else "",
+            ))
 
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
 
@@ -387,14 +379,13 @@ def start():
 
     with open(DESTINATION_PATH / "all.py", "w", encoding="utf-8") as f:
         f.write(WARNING + "\n\n")
-        f.write(f"import piltover.tl_new as tl_new\n")
-        f.write(f"from piltover.tl_new import core_types\n\n")
+        f.write(f"from . import core_types, types, functions\n\n")
         f.write(f"min_layer = {min(all_layers)}\n")
         f.write(f"layer = {layer}\n\n")
         f.write("objects = {")
 
         for c in combinators:
-            f.write(f'\n    {c.id}: tl_new.{c.section}.{c.qualname},')
+            f.write(f'\n    {c.id}: {c.section}.{c.qualname},')
 
         f.write(f'\n    0x5bb8e511: core_types.Message,')
         f.write(f'\n    0x73f1f8dc: core_types.MsgContainer,')

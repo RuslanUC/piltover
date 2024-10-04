@@ -1,6 +1,6 @@
-from piltover.tl_new import TLObject
-from piltover.tl_new.all import layer as base_layer
-from piltover.tl_new.converter import ConverterBase
+from .. import TLObject
+from ..all import layer as base_layer
+from .converter import ConverterBase
 from piltover.utils.utils import SingletonMeta
 
 

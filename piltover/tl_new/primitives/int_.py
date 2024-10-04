@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import piltover.tl_new as tl_new
 from piltover.utils.utils import classinstancemethod
 
 
@@ -9,13 +8,13 @@ class Int(int):
     SIZE = BIT_SIZE // 8
 
     @classmethod
-    def read(cls, stream) -> Int:
-        return tl_new.SerializationUtils.read(stream, cls)
+    def read(cls, stream) -> int:
+        return int.from_bytes(stream.read(cls.SIZE), "little")
 
     # noinspection PyMethodParameters
     @classinstancemethod
-    def write(cls: type[int], self: int) -> bytes:
-        return tl_new.SerializationUtils.write(self, cls)
+    def write(cls: type[Int], self: int) -> bytes:
+        return self.to_bytes(cls.SIZE, 'little')
 
 
 class Long(Int):

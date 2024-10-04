@@ -2,8 +2,7 @@ from gzip import decompress
 from io import BytesIO
 from typing import TypeVar, Generic
 
-from piltover import tl_new
-from piltover.tl_new import TLField, TLObject, tl_object, Int, Long, SerializationUtils
+from . import TLField, TLObject, tl_object, Int, Long, SerializationUtils
 
 T = TypeVar("T", bound=TLObject)
 
@@ -34,7 +33,7 @@ class MsgContainer(TLObject):
 
     @classmethod
     def deserialize(cls, stream) -> TLObject:
-        count = SerializationUtils.read(stream, tl_new.primitives.Int)
+        count = SerializationUtils.read(stream, Int)
         result = []
 
         for _ in range(count):

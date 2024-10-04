@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import piltover.tl_new as tl_new
-from piltover.tl_new import core_types
+from . import TLObject
 
 
-def is_content_related(obj: tl_new.TLObject) -> bool:
-    return isinstance(obj, (tl_new.Ping, tl_new.Pong, tl_new.HttpWait, tl_new.MsgsAck, core_types.MsgContainer))
+def is_content_related(obj: TLObject) -> bool:
+    from . import core_types, Ping, Pong, HttpWait, MsgsAck
+    return isinstance(obj, (Ping, Pong, HttpWait, MsgsAck, core_types.MsgContainer))

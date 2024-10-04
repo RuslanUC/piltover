@@ -5,7 +5,7 @@ from inspect import get_annotations
 from typing import Callable, get_origin, get_args, Union, TypeVar
 
 from piltover.exceptions import Error
-from piltover.tl_new.serialization_utils import SerializationUtils
+from .serialization_utils import SerializationUtils
 
 
 CLASSES_TO_PROCESS = []

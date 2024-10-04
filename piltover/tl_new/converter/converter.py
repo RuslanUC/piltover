@@ -1,4 +1,4 @@
-from piltover.tl_new import TLObject
+from .. import TLObject
 
 
 class ConverterBase:
