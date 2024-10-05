@@ -1,9 +1,9 @@
 from time import time
 
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import StoriesStealthMode, Updates
-from piltover.tl_new.functions.stories import GetAllStories, GetAllReadPeerStories
-from piltover.tl_new.types.stories import AllStories
+from piltover.tl import StoriesStealthMode, Updates
+from piltover.tl.functions.stories import GetAllStories, GetAllReadPeerStories
+from piltover.tl.types.stories import AllStories
 
 handler = MessageHandler("stories")
 

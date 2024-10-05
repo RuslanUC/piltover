@@ -2,17 +2,15 @@ from datetime import datetime
 from io import BytesIO
 from time import time
 
-from loguru import logger
-
 from piltover.context import request_ctx
 from piltover.db.enums import ChatType
 from piltover.db.models import User, Update, Message, UserAuthorization
 from piltover.enums import ReqHandlerFlags
 from piltover.high_level import Client, MessageHandler
-from piltover.tl_new import UpdateEditMessage, UpdateNewMessage, UpdateShortMessage
-from piltover.tl_new.core_types import SerializedObject
-from piltover.tl_new.functions.updates import GetState, GetDifference, GetDifference_136
-from piltover.tl_new.types.updates import State, Difference
+from piltover.tl import UpdateEditMessage, UpdateNewMessage, UpdateShortMessage
+from piltover.tl.core_types import SerializedObject
+from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136
+from piltover.tl.types.updates import State, Difference
 
 handler = MessageHandler("auth")
 IGNORED_UPD = [UpdateNewMessage.tlid(), UpdateShortMessage.tlid()]

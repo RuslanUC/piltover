@@ -1,0 +1,340 @@
+from piltover.tl.converter import ConverterManager
+
+from .account_delete_account import DeleteAccountConverter
+from .account_get_theme import GetThemeConverter
+from .account_init_takeout_session import InitTakeoutSessionConverter
+from .account_password import PasswordConverter
+from .account_register_device import RegisterDeviceConverter
+from .account_send_verify_email_code import SendVerifyEmailCodeConverter
+from .account_unregister_device import UnregisterDeviceConverter
+from .account_update_color import UpdateColorConverter
+from .account_upload_wall_paper import UploadWallPaperConverter
+from .account_verify_email import VerifyEmailConverter
+from .attach_menu_bot import AttachMenuBotConverter
+from .auth_authorization import AuthorizationConverter
+from .auth_sent_code_type_email_code import SentCodeTypeEmailCodeConverter
+from .auth_sign_in import SignInConverter
+from .auto_download_settings import AutoDownloadSettingsConverter
+from .available_reaction import AvailableReactionConverter
+from .bot_info import BotInfoConverter
+from .bots_get_bot_info import GetBotInfoConverter
+from .bots_set_bot_info import SetBotInfoConverter
+from .channel_admin_log_event_action_change_available_reactions import \
+    ChannelAdminLogEventActionChangeAvailableReactionsConverter
+from .channel_admin_log_event_action_participant_join_by_invite import \
+    ChannelAdminLogEventActionParticipantJoinByInviteConverter
+from .channel_full import ChannelFullConverter
+from .channel import ChannelConverter
+from .channels_create_channel import CreateChannelConverter
+from .channels_delete_history import DeleteHistoryConverter
+from .channels_edit_forum_topic import EditForumTopicConverter
+from .channels_send_as_peers import SendAsPeersConverter
+from .chat_full import ChatFullConverter
+from .chat_invite import ChatInviteConverter
+from .code_settings import CodeSettingsConverter
+from .config import ConfigConverter
+from .contacts_block import BlockConverter
+from .contacts_get_blocked import GetBlockedConverter
+from .contacts_unblock import UnblockConverter
+from .dialog import DialogConverter
+from .document_attribute_video import DocumentAttributeVideoConverter
+from .document import DocumentConverter
+from .draft_message import DraftMessageConverter
+from .encrypted_file import EncryptedFileConverter
+from .file_hash import FileHashConverter
+from .global_privacy_settings import GlobalPrivacySettingsConverter
+from .help_get_app_config import GetAppConfigConverter
+from .help_premium_promo import PremiumPromoConverter
+from .input_chat_uploaded_photo import InputChatUploadedPhotoConverter
+from .input_media_invoice import InputMediaInvoiceConverter
+from .input_media_story import InputMediaStoryConverter
+from .input_peer_notify_settings import InputPeerNotifySettingsConverter
+from .input_reply_to_message import InputReplyToMessageConverter
+from .input_sticker_set_item import InputStickerSetItemConverter
+from .invoice import InvoiceConverter
+from .keyboard_button_switch_inline import KeyboardButtonSwitchInlineConverter
+from .langpack_get_languages import GetLanguagesConverter
+from .lang_pack_language import LangPackLanguageConverter
+from .message_action_bot_allowed import MessageActionBotAllowedConverter
+from .message_action_gift_premium import MessageActionGiftPremiumConverter
+from .message_action_payment_sent import MessageActionPaymentSentConverter
+from .message_action_set_chat_wall_paper import MessageActionSetChatWallPaperConverter
+from .message_action_set_messages_ttl import MessageActionSetMessagesTTLConverter
+from .message_action_topic_edit import MessageActionTopicEditConverter
+from .message_media_document import MessageMediaDocumentConverter
+from .message_media_invoice import MessageMediaInvoiceConverter
+from .message_media_story import MessageMediaStoryConverter
+from .message_media_web_page import MessageMediaWebPageConverter
+from .message_peer_reaction import MessagePeerReactionConverter
+from .message_reactions import MessageReactionsConverter
+from .message_reply_header import MessageReplyHeaderConverter
+from .messages_bot_results import BotResultsConverter
+from .messages_channel_messages import ChannelMessagesConverter
+from .messages_create_chat import CreateChatConverter
+from .messages_featured_stickers import FeaturedStickersConverter
+from .messages_forward_messages import ForwardMessagesConverter
+from .messages_get_document_by_hash import GetDocumentByHashConverter
+from .messages_get_message_reactions_list import GetMessageReactionsListConverter
+from .messages_get_message_read_participants import GetMessageReadParticipantsConverter
+from .messages_get_search_counters import GetSearchCountersConverter
+from .messages_get_unread_mentions import GetUnreadMentionsConverter
+from .messages_get_unread_reactions import GetUnreadReactionsConverter
+from .messages_get_web_page import GetWebPageConverter
+from .messages_message_reactions_list import MessageReactionsListConverter
+from .messages_prolong_web_view import ProlongWebViewConverter
+from .messages_read_mentions import ReadMentionsConverter
+from .messages_read_reactions import ReadReactionsConverter
+from .messages_request_simple_web_view import RequestSimpleWebViewConverter
+from .messages_request_web_view import RequestWebViewConverter
+from .messages_save_draft import SaveDraftConverter
+from .messages_send_inline_bot_result import SendInlineBotResultConverter
+from .messages_send_media import SendMediaConverter
+from .messages_send_message import SendMessageConverter
+from .messages_send_multi_media import SendMultiMediaConverter
+from .messages_send_reaction import SendReactionConverter
+from .messages_send_screenshot_notification import SendScreenshotNotificationConverter
+from .messages_set_chat_available_reactions import SetChatAvailableReactionsConverter
+from .messages_set_default_reaction import SetDefaultReactionConverter
+from .messages_set_inline_bot_results import SetInlineBotResultsConverter
+from .messages_sponsored_messages import SponsoredMessagesConverter
+from .messages_sticker_set import StickerSetConverter
+from .messages_toggle_bot_in_attach_menu import ToggleBotInAttachMenuConverter
+from .messages_transcribed_audio import TranscribedAudioConverter
+from .messages_translate_text import TranslateTextConverter
+from .messages_unpin_all_messages import UnpinAllMessagesConverter
+from .messages_votes_list import VotesListConverter
+from .payments_assign_app_store_transaction import AssignAppStoreTransactionConverter
+from .payments_assign_play_market_transaction import AssignPlayMarketTransactionConverter
+from .payments_can_purchase_premium import CanPurchasePremiumConverter
+from .payments_get_payment_form import GetPaymentFormConverter
+from .payments_payment_form import PaymentFormConverter
+from .payments_send_payment_form import SendPaymentFormConverter
+from .payments_validate_requested_info import ValidateRequestedInfoConverter
+from .peer_notify_settings import PeerNotifySettingsConverter
+from .phone_connection import PhoneConnectionConverter
+from .photos_update_profile_photo import UpdateProfilePhotoConverter
+from .photos_upload_contact_profile_photo import UploadContactProfilePhotoConverter
+from .photos_upload_profile_photo import UploadProfilePhotoConverter
+from .poll_results import PollResultsConverter
+from .premium_subscription_option import PremiumSubscriptionOptionConverter
+from .reaction_count import ReactionCountConverter
+from .secure_file import SecureFileConverter
+from .sponsored_message import SponsoredMessageConverter
+from .stats_broadcast_stats import BroadcastStatsConverter
+from .stats_message_stats import MessageStatsConverter
+from .sticker_set_full_covered import StickerSetFullCoveredConverter
+from .sticker_set import StickerSetConverter
+from .stickers_set_sticker_set_thumb import SetStickerSetThumbConverter
+from .stories_all_stories_not_modified import AllStoriesNotModifiedConverter
+from .stories_all_stories import AllStoriesConverter
+from .stories_can_send_story import CanSendStoryConverter
+from .stories_delete_stories import DeleteStoriesConverter
+from .stories_edit_story import EditStoryConverter
+from .stories_export_story_link import ExportStoryLinkConverter
+from .stories_get_pinned_stories import GetPinnedStoriesConverter
+from .stories_get_stories_archive import GetStoriesArchiveConverter
+from .stories_get_stories_by_id import GetStoriesByIDConverter
+from .stories_get_stories_views import GetStoriesViewsConverter
+from .stories_get_story_views_list import GetStoryViewsListConverter
+from .stories_increment_story_views import IncrementStoryViewsConverter
+from .stories_read_stories import ReadStoriesConverter
+from .stories_report import ReportConverter
+from .stories_send_reaction import SendReactionConverter
+from .stories_send_story import SendStoryConverter
+from .stories_stories import StoriesConverter
+from .stories_story_views_list import StoryViewsListConverter
+from .stories_toggle_pinned import TogglePinnedConverter
+from .story_item import StoryItemConverter
+from .story_view import StoryViewConverter
+from .story_views import StoryViewsConverter
+from .update_channel_pinned_topic import UpdateChannelPinnedTopicConverter
+from .update_channel_read_messages_contents import UpdateChannelReadMessagesContentsConverter
+from .update_draft_message import UpdateDraftMessageConverter
+from .update_message_poll_vote import UpdateMessagePollVoteConverter
+from .update_message_reactions import UpdateMessageReactionsConverter
+from .update_peer_blocked import UpdatePeerBlockedConverter
+from .update_read_messages_contents import UpdateReadMessagesContentsConverter
+from .update_read_stories import UpdateReadStoriesConverter
+from .update_sent_story_reaction import UpdateSentStoryReactionConverter
+from .updates_get_difference import GetDifferenceConverter
+from .update_sticker_sets import UpdateStickerSetsConverter
+from .update_story import UpdateStoryConverter
+from .update_user_name import UpdateUserNameConverter
+from .upload_get_cdn_file_hashes import GetCdnFileHashesConverter
+from .upload_get_cdn_file import GetCdnFileConverter
+from .upload_get_file_hashes import GetFileHashesConverter
+from .upload_get_file import GetFileConverter
+from .user_full import UserFullConverter
+from .user import UserConverter
+from .web_page_attribute_story import WebPageAttributeStoryConverter
+from .web_page_empty import WebPageEmptyConverter
+from .web_page_pending import WebPagePendingConverter
+
+
+ConverterManager().register(DeleteAccountConverter)
+ConverterManager().register(GetThemeConverter)
+ConverterManager().register(InitTakeoutSessionConverter)
+ConverterManager().register(PasswordConverter)
+ConverterManager().register(RegisterDeviceConverter)
+ConverterManager().register(SendVerifyEmailCodeConverter)
+ConverterManager().register(UnregisterDeviceConverter)
+ConverterManager().register(UpdateColorConverter)
+ConverterManager().register(UploadWallPaperConverter)
+ConverterManager().register(VerifyEmailConverter)
+ConverterManager().register(AttachMenuBotConverter)
+ConverterManager().register(AuthorizationConverter)
+ConverterManager().register(SentCodeTypeEmailCodeConverter)
+ConverterManager().register(SignInConverter)
+ConverterManager().register(AutoDownloadSettingsConverter)
+ConverterManager().register(AvailableReactionConverter)
+ConverterManager().register(BotInfoConverter)
+ConverterManager().register(GetBotInfoConverter)
+ConverterManager().register(SetBotInfoConverter)
+ConverterManager().register(ChannelAdminLogEventActionChangeAvailableReactionsConverter)
+ConverterManager().register(ChannelAdminLogEventActionParticipantJoinByInviteConverter)
+ConverterManager().register(ChannelFullConverter)
+ConverterManager().register(ChannelConverter)
+ConverterManager().register(CreateChannelConverter)
+ConverterManager().register(DeleteHistoryConverter)
+ConverterManager().register(EditForumTopicConverter)
+ConverterManager().register(SendAsPeersConverter)
+ConverterManager().register(ChatFullConverter)
+ConverterManager().register(ChatInviteConverter)
+ConverterManager().register(CodeSettingsConverter)
+ConverterManager().register(ConfigConverter)
+ConverterManager().register(BlockConverter)
+ConverterManager().register(GetBlockedConverter)
+ConverterManager().register(UnblockConverter)
+ConverterManager().register(DialogConverter)
+ConverterManager().register(DocumentAttributeVideoConverter)
+ConverterManager().register(DocumentConverter)
+ConverterManager().register(DraftMessageConverter)
+ConverterManager().register(EncryptedFileConverter)
+ConverterManager().register(FileHashConverter)
+ConverterManager().register(GlobalPrivacySettingsConverter)
+ConverterManager().register(GetAppConfigConverter)
+ConverterManager().register(PremiumPromoConverter)
+ConverterManager().register(InputChatUploadedPhotoConverter)
+ConverterManager().register(InputMediaInvoiceConverter)
+ConverterManager().register(InputMediaStoryConverter)
+ConverterManager().register(InputPeerNotifySettingsConverter)
+ConverterManager().register(InputReplyToMessageConverter)
+ConverterManager().register(InputStickerSetItemConverter)
+ConverterManager().register(InvoiceConverter)
+ConverterManager().register(KeyboardButtonSwitchInlineConverter)
+ConverterManager().register(GetLanguagesConverter)
+ConverterManager().register(LangPackLanguageConverter)
+ConverterManager().register(MessageActionBotAllowedConverter)
+ConverterManager().register(MessageActionGiftPremiumConverter)
+ConverterManager().register(MessageActionPaymentSentConverter)
+ConverterManager().register(MessageActionSetChatWallPaperConverter)
+ConverterManager().register(MessageActionSetMessagesTTLConverter)
+ConverterManager().register(MessageActionTopicEditConverter)
+ConverterManager().register(MessageMediaDocumentConverter)
+ConverterManager().register(MessageMediaInvoiceConverter)
+ConverterManager().register(MessageMediaStoryConverter)
+ConverterManager().register(MessageMediaWebPageConverter)
+ConverterManager().register(MessagePeerReactionConverter)
+ConverterManager().register(MessageReactionsConverter)
+ConverterManager().register(MessageReplyHeaderConverter)
+ConverterManager().register(BotResultsConverter)
+ConverterManager().register(ChannelMessagesConverter)
+ConverterManager().register(CreateChatConverter)
+ConverterManager().register(FeaturedStickersConverter)
+ConverterManager().register(ForwardMessagesConverter)
+ConverterManager().register(GetDocumentByHashConverter)
+ConverterManager().register(GetMessageReactionsListConverter)
+ConverterManager().register(GetMessageReadParticipantsConverter)
+ConverterManager().register(GetSearchCountersConverter)
+ConverterManager().register(GetUnreadMentionsConverter)
+ConverterManager().register(GetUnreadReactionsConverter)
+ConverterManager().register(GetWebPageConverter)
+ConverterManager().register(MessageReactionsListConverter)
+ConverterManager().register(ProlongWebViewConverter)
+ConverterManager().register(ReadMentionsConverter)
+ConverterManager().register(ReadReactionsConverter)
+ConverterManager().register(RequestSimpleWebViewConverter)
+ConverterManager().register(RequestWebViewConverter)
+ConverterManager().register(SaveDraftConverter)
+ConverterManager().register(SendInlineBotResultConverter)
+ConverterManager().register(SendMediaConverter)
+ConverterManager().register(SendMessageConverter)
+ConverterManager().register(SendMultiMediaConverter)
+ConverterManager().register(SendReactionConverter)
+ConverterManager().register(SendScreenshotNotificationConverter)
+ConverterManager().register(SetChatAvailableReactionsConverter)
+ConverterManager().register(SetDefaultReactionConverter)
+ConverterManager().register(SetInlineBotResultsConverter)
+ConverterManager().register(SponsoredMessagesConverter)
+ConverterManager().register(StickerSetConverter)
+ConverterManager().register(ToggleBotInAttachMenuConverter)
+ConverterManager().register(TranscribedAudioConverter)
+ConverterManager().register(TranslateTextConverter)
+ConverterManager().register(UnpinAllMessagesConverter)
+ConverterManager().register(VotesListConverter)
+ConverterManager().register(AssignAppStoreTransactionConverter)
+ConverterManager().register(AssignPlayMarketTransactionConverter)
+ConverterManager().register(CanPurchasePremiumConverter)
+ConverterManager().register(GetPaymentFormConverter)
+ConverterManager().register(PaymentFormConverter)
+ConverterManager().register(SendPaymentFormConverter)
+ConverterManager().register(ValidateRequestedInfoConverter)
+ConverterManager().register(PeerNotifySettingsConverter)
+ConverterManager().register(PhoneConnectionConverter)
+ConverterManager().register(UpdateProfilePhotoConverter)
+ConverterManager().register(UploadContactProfilePhotoConverter)
+ConverterManager().register(UploadProfilePhotoConverter)
+ConverterManager().register(PollResultsConverter)
+ConverterManager().register(PremiumSubscriptionOptionConverter)
+ConverterManager().register(ReactionCountConverter)
+ConverterManager().register(SecureFileConverter)
+ConverterManager().register(SponsoredMessageConverter)
+ConverterManager().register(BroadcastStatsConverter)
+ConverterManager().register(MessageStatsConverter)
+ConverterManager().register(StickerSetFullCoveredConverter)
+ConverterManager().register(StickerSetConverter)
+ConverterManager().register(SetStickerSetThumbConverter)
+ConverterManager().register(AllStoriesNotModifiedConverter)
+ConverterManager().register(AllStoriesConverter)
+ConverterManager().register(CanSendStoryConverter)
+ConverterManager().register(DeleteStoriesConverter)
+ConverterManager().register(EditStoryConverter)
+ConverterManager().register(ExportStoryLinkConverter)
+ConverterManager().register(GetPinnedStoriesConverter)
+ConverterManager().register(GetStoriesArchiveConverter)
+ConverterManager().register(GetStoriesByIDConverter)
+ConverterManager().register(GetStoriesViewsConverter)
+ConverterManager().register(GetStoryViewsListConverter)
+ConverterManager().register(IncrementStoryViewsConverter)
+ConverterManager().register(ReadStoriesConverter)
+ConverterManager().register(ReportConverter)
+ConverterManager().register(SendReactionConverter)
+ConverterManager().register(SendStoryConverter)
+ConverterManager().register(StoriesConverter)
+ConverterManager().register(StoryViewsListConverter)
+ConverterManager().register(TogglePinnedConverter)
+ConverterManager().register(StoryItemConverter)
+ConverterManager().register(StoryViewConverter)
+ConverterManager().register(StoryViewsConverter)
+ConverterManager().register(UpdateChannelPinnedTopicConverter)
+ConverterManager().register(UpdateChannelReadMessagesContentsConverter)
+ConverterManager().register(UpdateDraftMessageConverter)
+ConverterManager().register(UpdateMessagePollVoteConverter)
+ConverterManager().register(UpdateMessageReactionsConverter)
+ConverterManager().register(UpdatePeerBlockedConverter)
+ConverterManager().register(UpdateReadMessagesContentsConverter)
+ConverterManager().register(UpdateReadStoriesConverter)
+ConverterManager().register(UpdateSentStoryReactionConverter)
+ConverterManager().register(GetDifferenceConverter)
+ConverterManager().register(UpdateStickerSetsConverter)
+ConverterManager().register(UpdateStoryConverter)
+ConverterManager().register(UpdateUserNameConverter)
+ConverterManager().register(GetCdnFileHashesConverter)
+ConverterManager().register(GetCdnFileConverter)
+ConverterManager().register(GetFileHashesConverter)
+ConverterManager().register(GetFileConverter)
+ConverterManager().register(UserFullConverter)
+ConverterManager().register(UserConverter)
+ConverterManager().register(WebPageAttributeStoryConverter)
+ConverterManager().register(WebPageEmptyConverter)
+ConverterManager().register(WebPagePendingConverter)

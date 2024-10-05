@@ -2,7 +2,7 @@ from asyncio import iscoroutinefunction
 from typing import Iterable
 
 from piltover.db.models import User
-from piltover.tl_new import TLObject
+from piltover.tl import TLObject
 
 
 class ToTL:

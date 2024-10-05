@@ -6,10 +6,10 @@ from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAcces
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation
-from piltover.tl_new.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
-from piltover.tl_new.types.storage import FileUnknown, FilePartial, FileJpeg
-from piltover.tl_new.types.upload import File as TLFile
+from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation
+from piltover.tl.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
+from piltover.tl.types.storage import FileUnknown, FilePartial, FileJpeg
+from piltover.tl.types.upload import File as TLFile
 
 handler = MessageHandler("upload")
 

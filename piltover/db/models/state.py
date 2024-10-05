@@ -6,7 +6,7 @@ from tortoise import fields
 
 from piltover.db import models
 from piltover.db.models._utils import Model
-from piltover.tl_new.types.updates import State as TLState
+from piltover.tl.types.updates import State as TLState
 
 
 class State(Model):

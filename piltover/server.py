@@ -15,11 +15,11 @@ from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMe
 from piltover.context import RequestContext, request_ctx, serialization_ctx, SerializationContext
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
-from piltover.tl_new import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
+from piltover.tl import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
     SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated
-from piltover.tl_new.core_types import MsgContainer, Message, RpcResult
-from piltover.tl_new.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
-from piltover.tl_new.utils import is_content_related
+from piltover.tl.core_types import MsgContainer, Message, RpcResult
+from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
+from piltover.tl.utils import is_content_related
 from piltover.types import Keys
 from piltover.utils import (
     read_int,

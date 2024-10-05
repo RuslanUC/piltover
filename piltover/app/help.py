@@ -1,10 +1,10 @@
 from time import time
 
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
-from piltover.tl_new.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
+from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
+from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText
-from piltover.tl_new.types.help import CountriesList, Country, CountryCode, PromoDataEmpty, \
+from piltover.tl.types.help import CountriesList, Country, CountryCode, PromoDataEmpty, \
     PremiumPromo, InviteText, TermsOfServiceUpdateEmpty
 
 handler = MessageHandler("help")

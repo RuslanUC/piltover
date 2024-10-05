@@ -6,11 +6,11 @@ from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import ChatType
 from piltover.db.models import User, Update, Chat, Message
 from piltover.session_manager import SessionManager
-from piltover.tl_new import TLObject, PeerUser, DialogPeer, NotifyForumTopic, NotifyPeer, Updates, \
+from piltover.tl import TLObject, PeerUser, DialogPeer, NotifyForumTopic, NotifyPeer, Updates, \
     UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateDeleteMessages
-from piltover.tl_new.core_types import SerializedObject
-from piltover.tl_new.functions.messages import SendMessage
+from piltover.tl.core_types import SerializedObject
+from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
 

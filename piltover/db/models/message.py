@@ -8,8 +8,8 @@ from tortoise import fields
 from piltover.db import models
 from piltover.db.enums import MediaType
 from piltover.db.models._utils import Model
-from piltover.tl_new import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader
-from piltover.tl_new.types import Message as TLMessage
+from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader
+from piltover.tl.types import Message as TLMessage
 
 
 class Message(Model):

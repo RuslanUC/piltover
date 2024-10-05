@@ -1,12 +1,11 @@
-from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.models import User, UserPhoto
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import InputPhoto, Long, Vector, UpdateUser
-from piltover.tl_new.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos
-from piltover.tl_new.types.photos import Photos, Photo as PhotosPhoto
+from piltover.tl import InputPhoto, Long, Vector
+from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos
+from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
 
 handler = MessageHandler("photos")
 

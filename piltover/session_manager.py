@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 from piltover.context import rewrite_ctx, serialization_ctx
 from piltover.db.models import User, UserAuthorization
-from piltover.tl_new import TLObject, Updates
-from piltover.tl_new.utils import is_content_related
+from piltover.tl import TLObject, Updates
+from piltover.tl.utils import is_content_related
 from piltover.utils.utils import SingletonMeta
 
 if TYPE_CHECKING:

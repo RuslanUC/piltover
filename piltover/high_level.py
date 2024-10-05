@@ -13,8 +13,8 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.server import Server as LowServer, Client as LowClient, MessageHandler as LowMessageHandler
 from piltover.session_manager import Session, SessionManager
-from piltover.tl_new import TLObject, RpcError, Ping, Pong
-from piltover.tl_new.core_types import MsgContainer, RpcResult, Message
+from piltover.tl import TLObject, RpcError, Ping, Pong
+from piltover.tl.core_types import MsgContainer, RpcResult, Message
 from piltover.utils import background
 from piltover.utils.utils import check_flag
 

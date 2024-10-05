@@ -57,8 +57,8 @@ An example quick-start (incomplete) code would look like this:
 import asyncio
 from piltover.server import Server, Client
 from piltover.utils import gen_keys
-from piltover.tl.types import CoreMessage
-from piltover.tl_new import Ping, Pong
+from piltover.tl.core_types import Message
+from piltover.tl import Ping, Pong
 
 async def main():
     pilt = Server(server_keys=gen_keys())
@@ -76,7 +76,7 @@ async def main():
             return auth_key_id, auth_key
 
     @pilt.on_message(Ping)
-    async def pong(client: Client, request: CoreMessage[Ping], session_id: int):
+    async def pong(client: Client, request: Message[Ping], session_id: int):
         print("Received ping:", request.obj)
 
         return Pong(

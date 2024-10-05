@@ -1,6 +1,6 @@
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import LangPackLanguage, LangPackString, LangPackDifference, LangPackLanguage_72
-from piltover.tl_new.functions.langpack import GetLanguages, GetStrings, GetLangPack, GetLanguages_72
+from piltover.tl import LangPackLanguage, LangPackString, LangPackDifference, LangPackLanguage_72
+from piltover.tl.functions.langpack import GetLanguages, GetStrings, GetLangPack, GetLanguages_72
 
 handler = MessageHandler("langpack")
 

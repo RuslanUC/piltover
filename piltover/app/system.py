@@ -4,8 +4,8 @@ from piltover.db.models import UserAuthorization
 from piltover.db.models._utils import user_auth_q_temp
 from piltover.server import MessageHandler, Client
 from piltover.session_manager import Session
-from piltover.tl_new.core_types import Message
-from piltover.tl_new import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
+from piltover.tl.core_types import Message
+from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
     InvokeWithoutUpdates, SetClientDHParams, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown
 
 handler = MessageHandler("system")

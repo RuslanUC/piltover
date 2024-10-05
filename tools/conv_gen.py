@@ -142,6 +142,6 @@ def start():
 
 if "__main__" == __name__:
     HOME_PATH = Path("./tools")
-    DESTINATION_PATH = Path("piltover/tl_new")
+    DESTINATION_PATH = Path("piltover/tl")
 
     start()

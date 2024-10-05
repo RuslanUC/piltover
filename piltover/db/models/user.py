@@ -5,9 +5,9 @@ from tortoise import fields
 from piltover.db import models
 from piltover.db.models._utils import Model
 from piltover.exceptions import ErrorRpc
-from piltover.tl_new import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, InputUser, InputUserSelf, \
+from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, InputUser, InputUserSelf, \
     InputPeerUser, InputPeerSelf
-from piltover.tl_new.types.user import User as TLUser
+from piltover.tl.types.user import User as TLUser
 
 
 class User(Model):

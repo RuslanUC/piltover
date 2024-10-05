@@ -9,7 +9,7 @@ from tortoise import fields
 from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.db.models._utils import Model
-from piltover.tl_new import DocumentAttributeImageSize, DocumentAttributeAnimated, \
+from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, \
     DocumentAttributeVideo, DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, \
     PhotoStrippedSize, PhotoSize
 

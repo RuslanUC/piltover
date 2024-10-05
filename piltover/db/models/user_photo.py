@@ -4,7 +4,7 @@ from tortoise import fields
 
 from piltover.db import models
 from piltover.db.models._utils import Model
-from piltover.tl_new import Photo as TLPhoto
+from piltover.tl import Photo as TLPhoto
 
 
 class UserPhoto(Model):

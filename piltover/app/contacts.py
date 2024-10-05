@@ -2,10 +2,10 @@ from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import PeerUser
-from piltover.tl_new.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
+from piltover.tl import PeerUser
+from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts
-from piltover.tl_new.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer
+from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer
 
 handler = MessageHandler("contacts")
 

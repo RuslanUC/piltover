@@ -5,20 +5,20 @@ from time import time
 from loguru import logger
 
 _current_dir = Path(__file__).parent
-if (_current_dir / "tl_new.zip").exists():
+if (_current_dir / "tl.zip").exists():
     logger.debug("Importing tl from zip...")
     start_time = time()
 
-    sys.path.insert(0, str((_current_dir / "tl_new.zip").absolute()))
-    import tl_new
-    sys.modules["piltover.tl_new"] = tl_new
+    sys.path.insert(0, str((_current_dir / "tl.zip").absolute()))
+    import tl
+    sys.modules["piltover.tl"] = tl
 
     logger.debug(f"Importing tl from zip took {time() - start_time:.2f} seconds.")
     start_time = time()
 
     add_modules = {}
     for mod_name, mod in sys.modules.items():
-        if not mod_name.startswith("tl_new"):
+        if not mod_name.startswith("tl"):
             continue
         add_modules[f"piltover.{mod_name}"] = mod
     sys.modules.update(add_modules)

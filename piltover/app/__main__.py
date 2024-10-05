@@ -109,7 +109,7 @@ class PiltoverApp:
                 file = Path(s.filename)
                 print("Reloaded", file.relative_to(root_dir))
 
-        jurigged.watch("piltover/[!tl_new]*.py", logger=log)
+        jurigged.watch("piltover/[!tl]*.py", logger=log)
 
     async def run(self, host: str | None = None, port: int | None = None, *, reload: bool = False):
         self._host = host or self._host

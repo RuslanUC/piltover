@@ -2,10 +2,10 @@ from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import Client, MessageHandler
-from piltover.tl_new import InputUserSelf, PeerSettings, PeerNotifySettings, TLObject, UserEmpty
-from piltover.tl_new.functions.users import GetFullUser, GetUsers
-from piltover.tl_new.types import UserFull as FullUser
-from piltover.tl_new.types.users import UserFull
+from piltover.tl import InputUserSelf, PeerSettings, PeerNotifySettings, TLObject, UserEmpty
+from piltover.tl.functions.users import GetFullUser, GetUsers
+from piltover.tl.types import UserFull as FullUser
+from piltover.tl.types.users import UserFull
 
 handler = MessageHandler("users")
 

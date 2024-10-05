@@ -12,9 +12,9 @@ from piltover.db.models.user import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl_new import Long, BindAuthKeyInner
-from piltover.tl_new.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword
-from piltover.tl_new.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
+from piltover.tl import Long, BindAuthKeyInner
+from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword
+from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
     AuthorizationSignUpRequired
 
 handler = MessageHandler("auth")

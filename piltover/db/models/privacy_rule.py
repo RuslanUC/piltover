@@ -5,7 +5,7 @@ from tortoise import fields
 from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType, PrivacyRuleValueType
 from piltover.db.models._utils import Model
-from piltover.tl_new import PrivacyValueAllowContacts, PrivacyValueAllowAll, PrivacyValueAllowUsers, \
+from piltover.tl import PrivacyValueAllowContacts, PrivacyValueAllowAll, PrivacyValueAllowUsers, \
     PrivacyValueDisallowContacts, PrivacyValueDisallowAll, PrivacyValueDisallowUsers, InputPrivacyKeyStatusTimestamp, \
     InputPrivacyKeyChatInvite, InputPrivacyKeyPhoneCall, InputPrivacyKeyPhoneP2P, InputPrivacyKeyForwards, \
     InputPrivacyKeyProfilePhoto, InputPrivacyKeyPhoneNumber, InputPrivacyKeyAddedByPhone, InputPrivacyKeyVoiceMessages, \

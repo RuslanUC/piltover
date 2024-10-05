@@ -7,7 +7,7 @@ from piltover.db import models
 from piltover.db.enums import ChatType
 from piltover.db.models._utils import Model
 from piltover.exceptions import ErrorRpc
-from piltover.tl_new import PeerUser, InputPeerUser as TLInputPeerUser, InputPeerSelf as TLInputPeerSelf
+from piltover.tl import PeerUser, InputPeerUser as TLInputPeerUser, InputPeerSelf as TLInputPeerSelf
 
 
 class Chat(Model):

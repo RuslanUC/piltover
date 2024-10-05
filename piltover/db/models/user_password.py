@@ -6,9 +6,9 @@ from tortoise import fields
 
 from piltover.db import models
 from piltover.db.models._utils import Model
-from piltover.tl_new import SecurePasswordKdfAlgoSHA512, \
+from piltover.tl import SecurePasswordKdfAlgoSHA512, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow
-from piltover.tl_new.types.account import Password as TLPassword
+from piltover.tl.types.account import Password as TLPassword
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import itob
 

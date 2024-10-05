@@ -1,9 +1,9 @@
 from io import BytesIO
 from typing import Optional
 
-from piltover.tl_new.primitives.int_ import Int, Long, Int128, Int256
-from piltover.tl_new.tl_object import TLObject, tl_object, TLField
-from piltover.tl_new.all import objects
+from piltover.tl.primitives.int_ import Int, Long, Int128, Int256
+from piltover.tl.tl_object import TLObject
+from piltover.tl.all import objects
 
 
 def test_builtin_types():

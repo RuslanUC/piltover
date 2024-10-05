@@ -8,7 +8,7 @@ from tortoise import fields
 
 from piltover.db import models
 from piltover.db.models._utils import Model
-from piltover.tl_new import Authorization
+from piltover.tl import Authorization
 
 
 def gen_hash():

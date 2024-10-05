@@ -8,8 +8,8 @@ from piltover.app import files_dir
 from piltover.db.enums import FileType
 from piltover.db.models import User, UploadingFile, UploadingFilePart, File, UserPassword, SrpSession
 from piltover.exceptions import ErrorRpc
-from piltover.tl_new import InputFile, InputCheckPasswordEmpty, InputCheckPasswordSRP
-from piltover.tl_new.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
+from piltover.tl import InputFile, InputCheckPasswordEmpty, InputCheckPasswordSRP
+from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256, itob, btoi, xor
 

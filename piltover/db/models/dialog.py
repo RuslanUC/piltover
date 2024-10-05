@@ -4,8 +4,8 @@ from tortoise import fields
 
 from piltover.db import models
 from piltover.db.models._utils import Model
-from piltover.tl_new import PeerNotifySettings
-from piltover.tl_new.types import Dialog as TLDialog
+from piltover.tl import PeerNotifySettings
+from piltover.tl.types import Dialog as TLDialog
 
 
 class Dialog(Model):

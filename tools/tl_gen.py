@@ -15,19 +15,21 @@
 #
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
-
+import glob
 import os
+import py_compile
 import re
 import shutil
 from functools import partial
 from pathlib import Path
 from typing import NamedTuple, List, Tuple
+from zipfile import ZipFile
 
 from black.trans import defaultdict
 from tqdm import tqdm
 
 HOME_PATH = Path("./tools")
-DESTINATION_PATH = Path("piltover/tl_new")
+DESTINATION_PATH = Path("piltover/tl")
 
 SECTION_RE = re.compile(r"---(\w+)---")
 LAYER_RE = re.compile(r"//\sLAYER\s(\d+)")
@@ -48,6 +50,7 @@ WARNING = """
 """.strip()
 
 # noinspection PyShadowingBuiltins
+open_ = open
 open = partial(open, encoding="utf-8")
 
 all_layers = set()
@@ -303,10 +306,33 @@ class Field:
         return self.full_type if "?" not in self.full_type else self.full_type.split("?", 1)[1]
 
 
+def compile_to_zip(zip_file: ZipFile, file: Path) -> None:
+    dir_path = file.parent
+
+    compiled_path = py_compile.compile(str(file), doraise=True, optimize=2, quiet=True)
+    zip_path = f"tl/{dir_path.relative_to(DESTINATION_PATH)}"
+    if zip_path == "tl/.":
+        zip_path = "tl"
+
+    with open_(compiled_path, "rb") as f:
+        zip_file.writestr(f"{zip_path}/{file.name[:-3]}.pyc", f.read())
+
+
 # noinspection PyShadowingBuiltins
 def start():
     shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
     shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
+
+    out_zip = ZipFile(DESTINATION_PATH / ".." / "tl.zip", "w")
+    compile_to_zip(out_zip, DESTINATION_PATH / "__init__.py")
+    compile_to_zip(out_zip, DESTINATION_PATH / "core_types.py")
+    compile_to_zip(out_zip, DESTINATION_PATH / "serialization_utils.py")
+    compile_to_zip(out_zip, DESTINATION_PATH / "tl_object.py")
+    compile_to_zip(out_zip, DESTINATION_PATH / "utils.py")
+    for filename in glob.iglob(str(DESTINATION_PATH / "primitives/*.py"), recursive=True):
+        compile_to_zip(out_zip, Path(filename))
+    for filename in glob.iglob(str(DESTINATION_PATH / "converter/*.py"), recursive=True):
+        compile_to_zip(out_zip, Path(filename))
 
     with open(HOME_PATH / "resources/mtproto.tl") as f1, open(HOME_PATH / "resources/api.tl") as f2:
         schema = f1.read().splitlines() + f2.read().splitlines()
@@ -462,17 +488,21 @@ def start():
             f"",
         ]
 
-        dir_path = DESTINATION_PATH / ".." / "tl_new_c" / c.section / c.namespace
+        dir_path = DESTINATION_PATH / c.section / c.namespace
         dir_path.mkdir(parents=True, exist_ok=True)
         module = c.name if c.name != "Updates" else "UpdatesT"
-        with open(dir_path / f"{snake(module)}.py", "w") as f:
+        out_path = dir_path / f"{snake(module)}.py"
+        with open(out_path, "w") as f:
             f.write("\n".join(result))
+
+        compile_to_zip(out_zip, out_path)
 
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
         d[c.namespace].append(c.name)
 
     for namespace, types in namespaces_to_constructors.items():
-        with open(DESTINATION_PATH / ".." / "tl_new_c" / "types" / namespace / "__init__.py", "w") as f:
+        out_path = DESTINATION_PATH / "types" / namespace / "__init__.py"
+        with open(out_path, "w") as f:
             f.write(f"{WARNING}\n\n")
 
             for t in types:
@@ -486,8 +516,11 @@ def start():
             if not namespace:
                 f.write(f"from . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
 
+        compile_to_zip(out_zip, out_path)
+
     for namespace, types in namespaces_to_functions.items():
-        with open(DESTINATION_PATH / ".." / "tl_new_c" / "functions" / namespace / "__init__.py", "w") as f:
+        out_path = DESTINATION_PATH / "functions" / namespace / "__init__.py"
+        with open(out_path, "w") as f:
             f.write(f"{WARNING}\n\n")
 
             for t in types:
@@ -501,7 +534,9 @@ def start():
             if not namespace:
                 f.write(f"from . import {', '.join(filter(bool, namespaces_to_functions))}")
 
-    with open(DESTINATION_PATH / ".." / "tl_new_c" / "all.py", "w", encoding="utf-8") as f:
+        compile_to_zip(out_zip, out_path)
+
+    with open(DESTINATION_PATH / "all.py", "w", encoding="utf-8") as f:
         f.write(WARNING + "\n\n")
         f.write(f"from . import core_types, types, functions\n\n")
         f.write(f"min_layer = {min(all_layers)}\n")
@@ -518,10 +553,10 @@ def start():
 
         f.write("\n}\n")
 
+    compile_to_zip(out_zip, DESTINATION_PATH / "all.py")
+
 
 # TODO: call tl_compile from here, put zip to data/
-# TODO: move not-compiled files from tl_new_c to tl_new
-# TODO: rename tl_new back to tl
 
 
 if "__main__" == __name__:
