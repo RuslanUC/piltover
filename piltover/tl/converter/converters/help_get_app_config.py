@@ -17,4 +17,4 @@ class GetAppConfigConverter(ConverterBase):
     def to_136(obj: GetAppConfig) -> GetAppConfig_136:
         data = obj.to_dict()
         del data["hash"]
-        return GetAppConfig_136(**data)
+        return GetAppConfig_136()

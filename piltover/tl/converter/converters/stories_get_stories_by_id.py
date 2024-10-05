@@ -11,7 +11,7 @@ class GetStoriesByIDConverter(ConverterBase):
     @staticmethod
     def from_160(obj: GetStoriesByID_160) -> GetStoriesByID:
         data = obj.to_dict()
-        data["peer"] = InputPeerUser(user_id=obj.user_id, access_hash=obj.user_id.access_hash)
+        data["peer"] = InputPeerUser(user_id=obj.user_id.user_id, access_hash=obj.user_id.access_hash)
         del data["user_id"]
         return GetStoriesByID(**data)
 

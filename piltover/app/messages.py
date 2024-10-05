@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, UTC
 from time import time
 
 from tortoise.expressions import Subquery, Q
@@ -208,7 +208,7 @@ async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User, 
     if offset_id:
         query &= Q(chat__messages__id__gt=offset_id)
     if offset_date:
-        query &= Q(chat__messages__date__gt=datetime.utcfromtimestamp(offset_date))
+        query &= Q(chat__messages__date__gt=datetime.fromtimestamp(offset_date, UTC))
 
     if limit > 100 or limit < 1:
         limit = 100
@@ -356,7 +356,7 @@ async def get_all_drafts(client: Client, request: GetAllDrafts, user: User):
     drafts = await MessageDraft.filter(dialog__user=user).select_related("dialog", "dialog__chat")
     for draft in drafts:
         updates.append(UpdateDraftMessage(
-            peer=draft.dialog.chat.get_peer(user),
+            peer=await draft.dialog.chat.get_peer(user),
             draft=await draft.to_tl(),
         ))
         users_, _ = await draft.dialog.chat.to_tl_users_chats(user, users)
@@ -401,7 +401,7 @@ async def search_global(client: Client, request: SearchGlobal, user: User):
     return Messages(
         messages=[await message.to_tl(user) for message in messages],
         chats=[],
-        users=[oth_user.to_tl(user) for oth_user in users],
+        users=[await oth_user.to_tl(user) for oth_user in users],
     )
 
 
@@ -493,6 +493,7 @@ async def edit_message(client: Client, request: EditMessage, user: User):
 
     upd = await upd.to_tl(user)
     await UpdatesManager().write_updates(user, upd)
+    # noinspection PyTypeChecker
     updates = Updates(
         updates=[upd],
         users=[await user.to_tl(user)],

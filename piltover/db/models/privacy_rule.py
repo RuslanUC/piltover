@@ -8,10 +8,10 @@ from piltover.db.models._utils import Model
 from piltover.tl import PrivacyValueAllowContacts, PrivacyValueAllowAll, PrivacyValueAllowUsers, \
     PrivacyValueDisallowContacts, PrivacyValueDisallowAll, PrivacyValueDisallowUsers, InputPrivacyKeyStatusTimestamp, \
     InputPrivacyKeyChatInvite, InputPrivacyKeyPhoneCall, InputPrivacyKeyPhoneP2P, InputPrivacyKeyForwards, \
-    InputPrivacyKeyProfilePhoto, InputPrivacyKeyPhoneNumber, InputPrivacyKeyAddedByPhone, InputPrivacyKeyVoiceMessages, \
-    InputPrivacyValueAllowContacts, InputPrivacyValueAllowAll, InputPrivacyValueAllowUsers, \
-    InputPrivacyValueDisallowContacts, InputPrivacyValueDisallowAll, InputPrivacyValueDisallowUsers, InputUserSelf, \
-    InputUser, InputPrivacyKeyAbout
+    InputPrivacyKeyProfilePhoto, InputPrivacyKeyPhoneNumber, InputPrivacyKeyAddedByPhone, \
+    InputPrivacyKeyVoiceMessages, InputPrivacyValueAllowContacts, InputPrivacyValueAllowAll, \
+    InputPrivacyValueAllowUsers, InputPrivacyValueDisallowContacts, InputPrivacyValueDisallowAll, \
+    InputPrivacyValueDisallowUsers, InputUserSelf, InputUser, InputPrivacyKeyAbout
 
 PRIVACY_ENUM_TO_TL = {
     PrivacyRuleValueType.ALLOW_CONTACTS: PrivacyValueAllowContacts,

@@ -31,4 +31,5 @@ class ToTL:
 
             new_kwargs[arg_name] = await func(user)
 
+        # noinspection PyArgumentList
         return self.cls(**(self.kwargs | new_kwargs))

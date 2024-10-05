@@ -10,7 +10,8 @@ from piltover.utils.utils import write_bytes
 
 def get_public_key_fingerprint(public_key: str, signed: bool = False) -> int:
     # https://core.telegram.org/mtproto/auth_key#dh-exchange-initiation
-    # server_public_key_fingerprints is a list of public RSA key fingerprints (64 lower-order bits of SHA1 (server_public_key);
+    # server_public_key_fingerprints is a list of public RSA key fingerprints
+    # (64 lower-order bits of SHA1 (server_public_key);
 
     # return int.from_bytes(
     #     sha1(public_key.strip().encode()).digest()[-64 // 8:],

@@ -17,4 +17,4 @@ class GetLanguagesConverter(ConverterBase):
     def to_72(obj: GetLanguages) -> GetLanguages_72:
         data = obj.to_dict()
         del data["lang_pack"]
-        return GetLanguages_72(**data)
+        return GetLanguages_72()

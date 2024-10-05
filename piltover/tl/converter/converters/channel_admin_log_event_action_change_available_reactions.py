@@ -4,6 +4,7 @@ from piltover.tl.types import ChannelAdminLogEventActionChangeAvailableReactions
     ChannelAdminLogEventActionChangeAvailableReactions_136
 
 
+# noinspection PyPep8
 class ChannelAdminLogEventActionChangeAvailableReactionsConverter(ConverterBase):
     base = ChannelAdminLogEventActionChangeAvailableReactions
     old = [ChannelAdminLogEventActionChangeAvailableReactions_136]

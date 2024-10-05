@@ -11,7 +11,7 @@ class InputMediaStoryConverter(ConverterBase):
     @staticmethod
     def from_160(obj: InputMediaStory_160) -> InputMediaStory:
         data = obj.to_dict()
-        data["peer"] = PeerUser(user_id=obj.user_id)
+        data["peer"] = PeerUser(user_id=obj.user_id.user_id)
         del data["user_id"]
         return InputMediaStory(**data)
 

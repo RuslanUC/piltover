@@ -103,7 +103,7 @@ class UserFullConverter(ConverterBase):
         data = obj.to_dict()
         data["stories"] = [
             PeerStories(peer=PeerUser(user_id=story.user_id), stories=story.stories, max_read_id=story.max_read_id)
-            for story in obj.stories
+            for story in obj.stories.stories
         ]
         return UserFull(**data)
 

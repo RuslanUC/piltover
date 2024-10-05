@@ -52,7 +52,7 @@ async def get_config(client: Client, request: GetConfig):
 @handler.on_request(GetNearestDc)
 async def get_nearest_dc(client: Client, request: GetNearestDc):
     return NearestDc(
-        country="US",  # "Y-Land",
+        country="US",
         this_dc=2,
         nearest_dc=2,
     )

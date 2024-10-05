@@ -96,7 +96,7 @@ def layer_suffix(type_: str, layer: int) -> str:
 
 
 # noinspection PyShadowingBuiltins, PyShadowingNames
-def get_type_hint(type: str, layer: int) -> str:
+def get_type_hint(type: str, layer: int, int_is_int: bool = False) -> str:
     is_flag = FLAGS_RE.match(type)
     is_core = False
 
@@ -107,7 +107,7 @@ def get_type_hint(type: str, layer: int) -> str:
         is_core = True
 
         if type == "long" or type == "#" or "int" in type:
-            type = CORE_TYPES_D.get(type, "Int")
+            type = "int" if int_is_int else CORE_TYPES_D.get(type, "Int")
         elif type == "double":
             type = "float"
         elif type == "string":
@@ -124,7 +124,7 @@ def get_type_hint(type: str, layer: int) -> str:
         is_core = True
 
         sub_type = type.split("<")[1][:-1]
-        type = f"list[{get_type_hint(sub_type, layer)}]"
+        type = f"list[{get_type_hint(sub_type, layer, int_is_int)}]"
 
     if is_core:
         return f"Optional[{type}]" if is_flag and type != "bool" else type
@@ -381,8 +381,9 @@ def start():
         slots.append("")  # For trailing comma
 
         init_args = [
-            f"{field.name}: {get_type_hint(field.full_type, c.layer)}"
-            for field in sorted(fields, key=lambda fd: (fd.flag_bit != -1, fd.position))
+            f"{field.name}: {get_type_hint(field.full_type, c.layer, True)}"
+            + ("" if not field.opt() else (" = False" if field.type() in ("true", "Bool") else " = None"))
+            for field in sorted(fields, key=lambda fd: (fd.opt(), fd.position))
             if not field.is_flag
         ]
         if init_args:

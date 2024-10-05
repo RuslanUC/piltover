@@ -11,7 +11,7 @@ class ReadStoriesConverter(ConverterBase):
     @staticmethod
     def from_160(obj: ReadStories_160) -> ReadStories:
         data = obj.to_dict()
-        data["peer"] = PeerUser(user_id=obj.user_id)
+        data["peer"] = PeerUser(user_id=obj.user_id.user_id)
         del data["user_id"]
         return ReadStories(**data)
 

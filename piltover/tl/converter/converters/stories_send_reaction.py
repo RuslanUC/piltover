@@ -11,7 +11,7 @@ class SendReactionConverter(ConverterBase):
     @staticmethod
     def from_161(obj: SendReaction_161) -> SendReaction:
         data = obj.to_dict()
-        data["peer"] = PeerUser(user_id=obj.user_id)
+        data["peer"] = PeerUser(user_id=obj.user_id.user_id)
         del data["user_id"]
         return SendReaction(**data)
 

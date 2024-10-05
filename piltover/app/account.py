@@ -127,7 +127,8 @@ async def update_password_settings(client: Client, request: UpdatePasswordSettin
     if not isinstance(new.new_algo, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow):
         raise ErrorRpc(error_code=400, error_message="NEW_SETTINGS_INVALID")
 
-    if new.new_algo.salt2 != password.salt2 or new.new_algo.salt1[:8] != password.salt1[:8] \
+    if new.new_algo.salt2 != password.salt2 \
+            or new.new_algo.salt1[:8] != password.salt1[:8] \
             or len(new.new_algo.salt1) != 40:
         raise ErrorRpc(error_code=400, error_message="NEW_SALT_INVALID")
 
@@ -318,4 +319,4 @@ async def get_default_profile_photo_emojis(client: Client, request: GetDefaultPr
 # noinspection PyUnusedLocal
 @handler.on_request(GetWebAuthorizations, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_web_authorizations(client: Client, request: GetWebAuthorizations, user: User) -> WebAuthorizations:
-    return WebAuthorizations(authorizations=[], users=await user.to_tl(user))
+    return WebAuthorizations(authorizations=[], users=[await user.to_tl(user)])

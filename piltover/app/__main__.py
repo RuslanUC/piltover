@@ -83,11 +83,13 @@ class PiltoverApp:
         self._server.on_auth_key_set(self._auth_key_set)
         self._server.on_auth_key_get(self._auth_key_get)
 
-    async def _auth_key_set(self, auth_key_id: int, auth_key_bytes: bytes) -> None:
+    @staticmethod
+    async def _auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
         await AuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes)
         logger.debug(f"Set auth key: {auth_key_id}")
 
-    async def _auth_key_get(self, auth_key_id: int, temp: bool = False) -> tuple[int, bytes] | None:
+    @staticmethod
+    async def _auth_key_get(auth_key_id: int, temp: bool = False) -> tuple[int, bytes] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
         if temp:
             auth_key = await TempAuthKey.get_or_none(id=str(auth_key_id), expires__gt=int(time())) \
@@ -98,7 +100,8 @@ class PiltoverApp:
         if (auth_key := await AuthKey.get_or_none(id=str(auth_key_id))) is not None:
             return auth_key_id, auth_key.auth_key
 
-    def _setup_reload(self):
+    @staticmethod
+    def _setup_reload():
         if getenv("DISABLE_HR"):
             return
 

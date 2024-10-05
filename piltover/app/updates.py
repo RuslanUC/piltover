@@ -76,6 +76,7 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
                 continue
             users[uid] = await u.to_tl(user)
 
+    # noinspection PyTypeChecker
     return Difference(
         new_messages=list(new_messages.values()),
         new_encrypted_messages=[],

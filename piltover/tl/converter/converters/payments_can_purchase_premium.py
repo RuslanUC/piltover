@@ -18,4 +18,4 @@ class CanPurchasePremiumConverter(ConverterBase):
     def to_143(obj: CanPurchasePremium) -> CanPurchasePremium_143:
         data = obj.to_dict()
         del data["purpose"]
-        return CanPurchasePremium_143(**data)
+        return CanPurchasePremium_143()

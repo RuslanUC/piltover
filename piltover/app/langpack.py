@@ -8,7 +8,15 @@ handler = MessageHandler("langpack")
 # noinspection PyUnusedLocal
 @handler.on_request(GetLanguages)
 async def get_languages(client: Client, request: GetLanguages):
-    return [LangPackLanguage(name="Gramz", native_name="Le Gramz", lang_code="grz")]
+    return [LangPackLanguage(
+        name="Gramz",
+        native_name="Le Gramz",
+        lang_code="grz",
+        plural_code="",
+        strings_count=1,
+        translated_count=1,
+        translations_url="https://127.0.0.1/translations",
+    )]
 
 
 # noinspection PyUnusedLocal

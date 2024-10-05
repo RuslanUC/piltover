@@ -16,7 +16,7 @@ class AuthKey(Model):
     auth_key: bytes = fields.BinaryField()
 
     @classmethod
-    async def get_or_temp(cls, key_id: int) -> AuthKey:
+    async def get_or_temp(cls, key_id: int) -> AuthKey | TempAuthKey:
         if (key := await AuthKey.get_or_none(id=str(key_id))) is not None:
             return key
         return await TempAuthKey.get_or_none(id=str(key_id), expires__gt=int(time())).select_related("perm_key")

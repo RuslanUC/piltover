@@ -18,4 +18,4 @@ class CanSendStoryConverter(ConverterBase):
     def to_162(obj: CanSendStory) -> CanSendStory_162:
         data = obj.to_dict()
         del data["peer"]
-        return CanSendStory_162(**data)
+        return CanSendStory_162()

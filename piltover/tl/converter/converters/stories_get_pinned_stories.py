@@ -11,7 +11,7 @@ class GetPinnedStoriesConverter(ConverterBase):
     @staticmethod
     def from_160(obj: GetPinnedStories_160) -> GetPinnedStories:
         data = obj.to_dict()
-        data["peer"] = InputPeerUser(user_id=obj.user_id, access_hash=obj.user_id.access_hash)
+        data["peer"] = InputPeerUser(user_id=obj.user_id.user_id, access_hash=obj.user_id.access_hash)
         del data["user_id"]
         return GetPinnedStories(**data)
 

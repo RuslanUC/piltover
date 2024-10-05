@@ -18,4 +18,4 @@ class UpdateStickerSetsConverter(ConverterBase):
         del data["masks"]
         del data["emojis"]
         del data["flags"]
-        return UpdateStickerSets_136(**data)
+        return UpdateStickerSets_136()

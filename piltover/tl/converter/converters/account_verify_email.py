@@ -12,7 +12,7 @@ class VerifyEmailConverter(ConverterBase):
     def from_136(obj: VerifyEmail_136) -> VerifyEmail:
         data = obj.to_dict()
         data["purpose"] = EmailVerifyPurposeLoginSetup(phone_number="", phone_code_hash="")
-        data["verification"] = EmailVerificationCode(obj.code)
+        data["verification"] = EmailVerificationCode(code=obj.code)
         del data["code"]
         del data["email"]
         return VerifyEmail(**data)

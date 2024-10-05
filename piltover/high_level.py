@@ -121,7 +121,9 @@ class Client(LowClient):
                         continue
 
                     if isinstance(e, ErrorRpc):
-                        logger.warning("{obj}: {err}", obj=request.obj.tlname(), err=f"[{e.error_code} {e.error_message}]")
+                        logger.warning(
+                            "{obj}: {err}", obj=request.obj.tlname(), err=f"[{e.error_code} {e.error_message}]"
+                        )
                         error = RpcError(error_code=e.error_code, error_message=e.error_message)
                     else:
                         logger.warning("Error while processing {obj}: {err}", obj=request.obj.tlname(), err=e)

@@ -42,7 +42,9 @@ class FakeUpdate:
 
 
 class UpdatesManager(metaclass=SingletonMeta):
-    async def write_update(self, user: User, obj: TLObject, *, last_update: Update | None = None) -> Update | FakeUpdate:
+    async def write_update(
+            self, user: User, obj: TLObject, *, last_update: Update | None = None
+    ) -> Update | FakeUpdate:
         if not hasattr(obj, "pts"):
             return FakeUpdate(update_data=obj.write())
 
@@ -80,8 +82,9 @@ class UpdatesManager(metaclass=SingletonMeta):
 
         return result
 
-    async def _send_updates_chat(self, ctx: UpdatesContext[Chat], *updates: TLObject | ToTL, update_users: list[User], date: int,
-                                 **kwargs):
+    async def _send_updates_chat(
+            self, ctx: UpdatesContext[Chat], *updates: TLObject | ToTL, update_users: list[User], date: int, **kwargs
+    ):
         chat = ctx.context
         users = []
         if chat.type in {ChatType.SAVED, ChatType.PRIVATE}:

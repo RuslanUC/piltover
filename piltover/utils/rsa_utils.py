@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.asymmetric.types import (
     PublicKeyTypes,
 )
 
-
+# noinspection PyPep8
 """
 RSA_PAD(data, server_public_key) mentioned above is implemented as follows:
     - data_with_padding := data + random_padding_bytes; — where random_padding_bytes are chosen so that the resulting length of data_with_padding is precisely 192 bytes, and data is the TL-serialized data to be encrypted as before. One has to check that data is not longer than 144 bytes.

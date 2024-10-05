@@ -105,7 +105,7 @@ async def resize_photo(file_id: str) -> list[dict[str, int | str]]:
     img.load()
     with ThreadPoolExecutor() as pool:
         tasks = [
-            get_event_loop().run_in_executor(pool, lambda: resize_image_internal(file_id, img, size))
+            get_event_loop().run_in_executor(pool, resize_image_internal, file_id, img, size)
             for size in sizes
         ]
         res = await gather(*tasks)
@@ -130,7 +130,7 @@ async def generate_stripped(file_id: str, size: int = 8) -> bytes:
 
     img = img_open(files_dir / f"{file_id}")
     with ThreadPoolExecutor() as pool:
-        res = await gather(get_event_loop().run_in_executor(pool, lambda: _gen(img)))
+        res = await gather(get_event_loop().run_in_executor(pool, _gen, img))
 
     return res[0]
 

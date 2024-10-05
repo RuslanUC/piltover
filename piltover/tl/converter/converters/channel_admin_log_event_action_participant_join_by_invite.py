@@ -3,6 +3,7 @@ from piltover.tl.types import ChannelAdminLogEventActionParticipantJoinByInvite,
     ChannelAdminLogEventActionParticipantJoinByInvite_136
 
 
+# noinspection PyPep8
 class ChannelAdminLogEventActionParticipantJoinByInviteConverter(ConverterBase):
     base = ChannelAdminLogEventActionParticipantJoinByInvite
     old = [ChannelAdminLogEventActionParticipantJoinByInvite_136]
