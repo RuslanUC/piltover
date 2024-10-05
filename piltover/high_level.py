@@ -7,7 +7,6 @@ from typing import Awaitable, Callable
 
 from loguru import logger
 
-from piltover.context import SerializationContext, serialization_ctx
 from piltover.db.models import UserAuthorization, User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -110,7 +109,6 @@ class Client(LowClient):
                 try:
                     if handler.auth_required() and (user := await self.get_user(handler.allow_mfa_pending())) is None:
                         raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
-                    serialization_ctx.set(SerializationContext(user, session.layer if session.layer > 0 else 167))
                     user_arg = (user,) if handler.auth_required() and handler.has_user_arg else ()
                     result = await handler.func(self, request.obj, *user_arg)
                     if result is not None:

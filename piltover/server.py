@@ -12,7 +12,7 @@ from mtproto import Connection, ConnectionRole
 from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
     ErrorPacket
 
-from piltover.context import RequestContext, request_ctx, serialization_ctx, SerializationContext
+from piltover.context import RequestContext, request_ctx
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
 from piltover.tl import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
@@ -508,7 +508,6 @@ class Client:
 
             return results
         else:
-            serialization_ctx.set(SerializationContext(None, session.layer if session.layer > 0 else 167))
             handlers = self.server.handlers.get(request.obj.tlid(), [])
 
             result = None

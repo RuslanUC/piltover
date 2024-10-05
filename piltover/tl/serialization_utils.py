@@ -87,7 +87,8 @@ class SerializationUtils:
                 raise InvalidConstructorException(constructor, stream.read())
             return all.objects[constructor].deserialize(stream)
         elif issubclass(type_, list):
-            assert stream.read(4) == VECTOR
+            if (constructor := stream.read(4)) != VECTOR:
+                raise InvalidConstructorException(constructor, stream.read())
             count = SerializationUtils.read(stream, primitives.Int)
             result = []
 

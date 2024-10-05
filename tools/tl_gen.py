@@ -20,12 +20,12 @@ import os
 import py_compile
 import re
 import shutil
+from collections import defaultdict
 from functools import partial
 from pathlib import Path
 from typing import NamedTuple, List, Tuple
 from zipfile import ZipFile
 
-from black.trans import defaultdict
 from tqdm import tqdm
 
 HOME_PATH = Path("./tools")
@@ -555,9 +555,6 @@ def start():
         f.write("\n}\n")
 
     compile_to_zip(out_zip, DESTINATION_PATH / "all.py")
-
-
-# TODO: call tl_compile from here, put zip to data/
 
 
 if "__main__" == __name__:
