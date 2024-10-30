@@ -53,6 +53,7 @@ async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart
 # noinspection PyUnusedLocal
 @handler.on_request(GetFile, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_file(client: Client, request: GetFile, user: User):
+    # noinspection PyPep8
     if not isinstance(request.location, (InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     if request.limit < 0 or request.limit > 1024 * 1024:

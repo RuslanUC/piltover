@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from os import urandom
-from time import mktime
 
 from tortoise import fields
 
@@ -47,8 +46,8 @@ class UserAuthorization(Model):
         return Authorization(
             api_id=1,
             app_name="Test",
-            date_created=int(mktime(self.created_at.timetuple())),
-            date_active=int(mktime(self.active_at.timetuple())),
+            date_created=int(self.created_at.timestamp()),
+            date_active=int(self.active_at.timestamp()),
             ip=self.ip,
             platform=self.platform,
             device_model=self.device_model,

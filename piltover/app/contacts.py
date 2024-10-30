@@ -4,8 +4,8 @@ from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl import PeerUser
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
-    GetContacts
-from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer
+    GetContacts, GetBirthdays
+from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays
 
 handler = MessageHandler("contacts")
 
@@ -64,3 +64,13 @@ async def get_top_peers(client: Client, request: GetTopPeers):
 @handler.on_request(GetStatuses)
 async def get_statuses(client: Client, request: GetStatuses):
     return []
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(GetBirthdays)
+async def get_birthdays(client: Client, request: GetBirthdays):
+    return ContactBirthdays(
+        contacts=[],
+        users=[],
+    )
+

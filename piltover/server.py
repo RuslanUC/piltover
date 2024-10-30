@@ -151,15 +151,15 @@ class GenAuthData(AuthData):
     def __init__(self):
         super().__init__()
 
-        self.p: ... | None = None
-        self.q: ... | None = None
-        self.server_nonce: ... | None = None
-        self.new_nonce: ... | None = None
-        self.dh_prime: ... | None = None
+        self.p: int | None = None
+        self.q: int | None = None
+        self.server_nonce: int | None = None
+        self.new_nonce: bytes | None = None
+        self.dh_prime: int | None = None
         self.server_nonce_bytes: ... | None = None
-        self.tmp_aes_key: ... | None = None
-        self.tmp_aes_iv: ... | None = None
-        self.a: ... | None = None
+        self.tmp_aes_key: bytes | None = None
+        self.tmp_aes_iv: bytes | None = None
+        self.a: int | None = None
 
 
 class Client:
@@ -174,7 +174,16 @@ class Client:
         self.auth_data: AuthData | None = None
         self.empty_session = Session(self, 0)
 
+        self.no_updates = False
+
+    async def internal_updates_handler(self) -> None:
+        ...
+
     async def read_message(self) -> MessagePacket | None:
+        packet = self.conn.receive(b"")
+        if isinstance(packet, MessagePacket):
+            return packet
+
         recv = await self.reader.read(32 * 1024)
         if not recv:
             raise Disconnection
@@ -188,6 +197,7 @@ class Client:
             originating_request: Message | None = None, in_reply: bool = True
     ):
         serialized, out_seq = self.serialize_message(session, objects, originating_request=originating_request)
+        logger.debug(f"Sending: {objects}")
 
         assert self.auth_data.auth_key is not None, "FATAL: self.auth_key is None"
         assert self.auth_data.auth_key_id is not None, "FATAL: self.auth_key_id is None"
@@ -379,24 +389,34 @@ class Client:
             logger.debug(f"Received unexpected unencrypted message: {obj}")
             raise Disconnection(404)
 
-    async def handle_encrypted_message(self, core_message: Message, session_id: int):
+    async def handle_encrypted_message(self, req_message: Message, session_id: int):
         sess, created = SessionManager().get_or_create(self, session_id)
-        sess.update_incoming_content_related_msgs(core_message.obj, core_message.seq_no)
+        sess.update_incoming_content_related_msgs(req_message.obj, req_message.seq_no)
 
         if created:
             logger.info(f"Created session {session_id}")
             await self.send(
-                NewSessionCreated(first_msg_id=core_message.message_id, unique_id=sess.session_id, server_salt=0),
+                NewSessionCreated(first_msg_id=req_message.message_id, unique_id=sess.session_id, server_salt=0),
                 sess, in_reply=False
             )
 
-        if (result := await self.propagate(core_message, sess)) is None:
+        if isinstance(req_message.obj, MsgContainer):
+            results = []
+            for msg in req_message.obj.messages:
+                result = await self.propagate(msg, sess)
+                if result is None:
+                    continue
+                results.append((result, msg))
+
+            if not results:
+                logger.warning("Empty msg_container, returning...")
+                return
+
+            return await self.send(results, sess)
+
+        if (result := await self.propagate(req_message, sess)) is None:
             return
-        await self.send(
-            result,
-            sess,
-            originating_request=(None if isinstance(core_message.obj, MsgContainer) else core_message),
-        )
+        await self.send(result, sess, originating_request=req_message)
 
     async def recv(self):
         message = await self.read_message()
@@ -493,46 +513,32 @@ class Client:
                     logger.info(f"Session {s.session_id} removed")
             SessionManager().client_cleanup(self)
 
-    async def propagate(self, request: Message, session: Session) -> list[tuple[TLObject, Message]] | TLObject | None:
-        if isinstance(request.obj, MsgContainer):
-            results = []
-            for msg in request.obj.messages:
-                result = await self.propagate(msg, session)
-                if result is None:
-                    continue
-                results.append((result, msg))
+    async def propagate(self, request: Message, session: Session) -> TLObject | None:
+        handlers = self.server.handlers.get(request.obj.tlid(), [])
 
-            if not results:
-                logger.warning("Empty msg_container, returning...")
-                return
+        result = None
+        error = None
+        for rpc in handlers:
+            try:
+                result = await rpc(self, request, session)
+                if result is not None:
+                    break
+            except ErrorRpc as e:
+                if error is None:
+                    error = RpcError(error_code=e.error_code, error_message=e.error_message)
+            except Exception as e:
+                logger.warning(e)
+                if error is None:
+                    error = RpcError(error_code=500, error_message="Server error")
 
-            return results
-        else:
-            handlers = self.server.handlers.get(request.obj.tlid(), [])
+        result = result if error is None else error
+        if result is None:
+            logger.warning("No handler found for obj:\n{obj}", obj=request.obj)
+            result = RpcError(error_code=500, error_message="Not implemented")
+        if result is False:
+            return
 
-            result = None
-            error = None
-            for rpc in handlers:
-                try:
-                    result = await rpc(self, request, session)
-                    if result is not None:
-                        break
-                except ErrorRpc as e:
-                    if error is None:
-                        error = RpcError(error_code=e.error_code, error_message=e.error_message)
-                except Exception as e:
-                    logger.warning(e)
-                    if error is None:
-                        error = RpcError(error_code=500, error_message="Server error")
+        if not isinstance(result, (Ping, Pong, RpcResult)):
+            result = RpcResult(req_msg_id=request.message_id, result=result)
 
-            result = result if error is None else error
-            if result is None:
-                logger.warning("No handler found for obj:\n{obj}", obj=request.obj)
-                result = RpcError(error_code=500, error_message="Not implemented")
-            if result is False:
-                return
-
-            if not isinstance(result, (Ping, Pong, RpcResult)):
-                result = RpcResult(req_msg_id=request.message_id, result=result)
-
-            return result
+        return result

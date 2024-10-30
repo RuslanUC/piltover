@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from loguru import logger
+
 from piltover.db.models import UserAuthorization
 from piltover.db.models._utils import user_auth_q_temp
 from piltover.server import MessageHandler, Client
@@ -15,7 +17,7 @@ handler = MessageHandler("system")
 @handler.on_message(MsgsAck)
 async def msgs_ack(client: Client, request: Message[MsgsAck], session: Session):
     # print(request.obj, request.message_id)
-    return True
+    return False # True
 
 
 # noinspection PyUnusedLocal
@@ -58,6 +60,8 @@ async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], ses
 
 @handler.on_message(InvokeWithoutUpdates)
 async def invoke_without_updates(client: Client, request: Message[InvokeWithoutUpdates], session: Session):
+    client.no_updates = True
+
     return await client.propagate(
         Message(
             obj=request.obj.query,
@@ -72,15 +76,19 @@ async def invoke_without_updates(client: Client, request: Message[InvokeWithoutU
 async def init_connection(client: Client, request: Message[InitConnection], session: Session):
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
-    await UserAuthorization.filter(user_auth_q_temp(client.auth_data.auth_key_id)).update(
-        active_at=datetime.now(),
-        device_model=request.obj.device_model,
-        system_version=request.obj.system_version,
-        app_version=request.obj.app_version,
-        # TODO: set ip and api id
-    )
+    authorization = await UserAuthorization.get_or_none(user_auth_q_temp(client.auth_data.auth_key_id))
+    if authorization is not None:
+        # TODO: set api id
+        authorization.active_at = datetime.now()
+        authorization.device_model = request.obj.device_model
+        authorization.system_version = request.obj.system_version
+        authorization.app_version = request.obj.app_version
+        authorization.ip = client.peername[0]
 
-    print("initConnection with Api ID:", request.obj.api_id)
+        if not client.no_updates:
+            ...  # TODO: subscribe user to updates
+
+    logger.info(f"initConnection with Api ID: {request.obj.api_id}")
 
     return await client.propagate(
         Message(

@@ -134,5 +134,5 @@ class SessionManager(metaclass=SingletonMeta):
                 auth = await UserAuthorization.get(key__id=str(session.auth_key.auth_key_id))
                 await auth.update(upd_seq=auth.upd_seq+1)
                 obj.seq = auth.upd_seq
-            with rewrite_ctx(serialization_ctx, user=session.user, layer=(session.layer if session.layer > 0 else 167)):
+            with rewrite_ctx(serialization_ctx, user=session.user):
                 await session.client.send(obj, session, None, False)

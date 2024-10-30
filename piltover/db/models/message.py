@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from time import mktime
 
 from tortoise import fields
 
@@ -25,7 +24,7 @@ class Message(Model):
                                                       on_delete=fields.SET_NULL)
 
     def utime(self) -> int:
-        return int(mktime(self.date.timetuple()))
+        return int(self.date.timestamp())
 
     async def to_tl(self, current_user: models.User, **kwargs) -> TLMessage:
         defaults = {
@@ -65,10 +64,10 @@ class Message(Model):
             message=self.message,
             pinned=self.pinned,
             peer_id=await self.chat.get_peer(current_user),
-            date=int(mktime(self.date.timetuple())),
+            date=self.utime(),
             out=current_user == self.author,
             media=tl_media,
-            edit_date=int(mktime(self.edit_date.timetuple())) if self.edit_date is not None else None,
+            edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
             reply_to=reply_to,
             **defaults
         )

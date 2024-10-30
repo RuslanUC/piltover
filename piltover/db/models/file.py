@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from time import mktime
 from uuid import UUID, uuid4
 
 from tortoise import fields
@@ -9,8 +8,8 @@ from tortoise import fields
 from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.db.models._utils import Model
-from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, \
-    DocumentAttributeVideo, DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, \
+from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, \
+    DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, \
     Photo as TLPhoto, PhotoStrippedSize, PhotoSize
 
 attribute_name_to_cls = {
@@ -67,7 +66,7 @@ class File(Model):
             id=self.id,
             access_hash=access.access_hash,
             file_reference=access.file_reference,
-            date=int(mktime(self.created_at.timetuple())),
+            date=int(self.created_at.timestamp()),
             mime_type=self.mime_type,
             size=self.size,
             dc_id=2,
@@ -89,7 +88,7 @@ class File(Model):
             id=self.id,
             access_hash=access.access_hash,
             file_reference=access.file_reference,
-            date=int(mktime(self.created_at.timetuple())),
+            date=int(self.created_at.timestamp()),
             sizes=sizes,
             dc_id=2,
             video_sizes=[],

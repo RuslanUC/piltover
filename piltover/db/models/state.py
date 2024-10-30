@@ -25,8 +25,17 @@ class State(Model):
         )
 
     @classmethod
-    async def upd(cls, user: models.User, pts: int) -> models.State:
-        state, _ = await State.get_or_create(user=user)
-        await state.update(pts=state.pts + pts)
+    async def add_pts(cls, user: models.User, pts: int, cache_state: bool = True) -> int:
+        if hasattr(user, "_cached_updates_state") and cache_state:
+            state = getattr(user, "_cached_updates_state")
+        else:
+            state, _ = await State.get_or_create(user=user)
 
-        return state
+        state.pts += pts
+        await state.save(update_fields=["pts"])
+        if cache_state:
+            setattr(user, "_cached_updates_state", state)
+
+        return state.pts
+
+    upd = add_pts

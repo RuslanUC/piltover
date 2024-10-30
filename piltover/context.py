@@ -25,14 +25,13 @@ request_ctx: ContextVar[RequestContext] = ContextVar("request_ctx")
 
 
 class SerializationContext:
-    __slots__ = ("user", "layer")
+    __slots__ = ("user",)
 
-    def __init__(self, user: User | None, layer: int):
+    def __init__(self, user: User | None):
         self.user = user
-        self.layer = layer
 
 
-serialization_ctx: ContextVar[SerializationContext] = ContextVar("request_ctx", default=SerializationContext(None, 167))
+serialization_ctx: ContextVar[SerializationContext] = ContextVar("request_ctx", default=SerializationContext(None))
 
 
 @contextmanager

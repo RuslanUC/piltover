@@ -441,7 +441,7 @@ def start():
             if field.opt():
                 if field.write:
                     serialize_body.append(f"if self.{field.name}:")
-                    serialize_body.append(f"    SerializationUtils.write(self.{field.name}{int_type_name})")
+                    serialize_body.append(f"    result += SerializationUtils.write(self.{field.name}{int_type_name})")
                     deserialize_body.append(
                         f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name}) "
                         f"if (flags{field.flag_num} & (1 << {field.flag_bit})) == (1 << {field.flag_bit}) else None"

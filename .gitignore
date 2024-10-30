@@ -18,3 +18,6 @@ package.json
 /piltover/tl/types
 /piltover/tl/all.py
 /piltover/tl.zip
+
+/coverage.*
+/*.coverage
