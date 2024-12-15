@@ -11,7 +11,8 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import InputFile, InputCheckPasswordEmpty, InputCheckPasswordSRP
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
-from piltover.utils.srp import sha256, itob, btoi, xor
+from piltover.utils.srp import sha256d, itob, btoi
+from piltover.utils.utils import xor
 
 
 async def upload_file(user: User, input_file: InputFile, mime_type: str, attributes: list) -> File:
@@ -147,14 +148,14 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
 
     p, g = gen_safe_prime()
 
-    u = sha256(check.A + sess.pub_B())
+    u = sha256d(check.A + sess.pub_B())
     s_b = pow(btoi(check.A) * pow(btoi(password.password), btoi(u), p), btoi(sess.priv_b), p)
-    k_b = sha256(itob(s_b))
+    k_b = sha256d(itob(s_b))
 
-    M2 = sha256(
-        xor(sha256(itob(p)), sha256(itob(g)))
-        + sha256(password.salt1)
-        + sha256(password.salt2)
+    M2 = sha256d(
+        xor(sha256d(itob(p)), sha256d(itob(g)))
+        + sha256d(password.salt1)
+        + sha256d(password.salt2)
         + check.A
         + sess.pub_B()
         + k_b

@@ -2,10 +2,9 @@ import tgcrypto
 
 from hashlib import sha256
 
-from cryptography.hazmat.primitives.asymmetric.types import (
-    PrivateKeyTypes,
-    PublicKeyTypes,
-)
+from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes, PublicKeyTypes
+
+from piltover.utils.utils import xor
 
 # noinspection PyPep8
 """
@@ -37,10 +36,6 @@ def rsa_decrypt(data: bytes, public_key: PublicKeyTypes, private_key: PrivateKey
         private.d,  # type: ignore
         public.n,  # type: ignore
     ).to_bytes(256, "big", signed=False)
-
-
-def xor(x: bytes, y: bytes) -> bytes:
-    return bytes(a ^ b for a, b in zip(x, y))
 
 
 def rsa_pad_inverse(key_aes_encrypted: bytes) -> bytes:

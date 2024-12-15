@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from . import TLObject
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from . import TLObject
 
 
 def is_content_related(obj: TLObject) -> bool:

@@ -7,15 +7,7 @@ def read_int(data: bytes) -> int:
     return int.from_bytes(data, byteorder="little")
 
 
-def write_bytes(value: bytes, to: BytesIO):
-    length = len(value)
-
-    if length <= 253:
-        to.write(bytes([length]) + value + bytes(-(length + 1) % 4))
-    else:
-        to.write(bytes([254]) + length.to_bytes(3, "little") + value + bytes(-length % 4))
-
-
+# TODO: is there a reason for this set?
 _tasks = set()
 T = TypeVar("T")
 
@@ -63,3 +55,7 @@ class classinstancemethod:
 
         cls = self.owner
         return self.method(cls, instance, *args, **kwargs)
+
+
+def xor(a: bytes, b: bytes) -> bytes:
+    return bytes(i ^ j for i, j in zip(a, b))

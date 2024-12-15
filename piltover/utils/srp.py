@@ -11,16 +11,12 @@ def itob(i: int) -> bytes:
     return i.to_bytes(256, "big")
 
 
-def xor(a: bytes, b: bytes) -> bytes:
-    return bytes(i ^ j for i, j in zip(a, b))
-
-
-def sha256(data: bytes) -> bytes:
+def sha256d(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
 
 
 def salted_hash(data: bytes, salt: bytes) -> bytes:
-    return sha256(salt + data + salt)
+    return sha256d(salt + data + salt)
 
 
 def PH1(password: bytes, salt1: bytes, salt2: bytes) -> bytes:
@@ -32,4 +28,4 @@ def PH2(password: bytes, salt1: bytes, salt2: bytes) -> bytes:
 
 
 p, g = gen_safe_prime()
-SRP_K = btoi(sha256(itob(p) + itob(g)))
+SRP_K = btoi(sha256d(itob(p) + itob(g)))

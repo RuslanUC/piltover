@@ -29,12 +29,10 @@ class SerializationUtils:
             result = b""
             ln = len(value)
             if ln >= 254:
-                result += int.to_bytes(254, 1)
-                result += int.to_bytes(ln & 0xff, 1)
-                result += int.to_bytes((ln >> 8) & 0xff, 1)
-                result += int.to_bytes((ln >> 16) & 0xff, 1)
+                result += bytes([254])
+                result += int.to_bytes(ln, 3, "little")
             else:
-                result += int.to_bytes(ln, 1)
+                result += bytes([ln])
 
             result += value
             padding = len(result) % 4
@@ -67,16 +65,16 @@ class SerializationUtils:
             return stream.read(4) == BOOL_TRUE
         elif issubclass(type_, bytes):
             count = stream.read(1)[0]
-            offset = 1
+            padding = 1
             if count >= 254:
-                count = stream.read(1)[0] + (stream.read(1)[0] << 8) + (stream.read(1)[0] << 16)
-                offset = 4
+                count = int.from_bytes(stream.read(3), "little")
+                padding = 4
 
             result = stream.read(count)
-            offset += len(result)
-            offset %= 4
-            if offset:
-                stream.read(4 - offset)
+            padding += len(result)
+            padding %= 4
+            if padding:
+                stream.read(4 - padding)
 
             return result
         elif issubclass(type_, str):

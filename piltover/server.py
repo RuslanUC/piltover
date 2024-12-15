@@ -27,8 +27,8 @@ from piltover.utils import (
     gen_safe_prime,
     gen_keys,
     get_public_key_fingerprint,
-    restore_private_key,
-    restore_public_key,
+    load_private_key,
+    load_public_key,
     background,
 )
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
@@ -71,8 +71,8 @@ class Server:
         if self.server_keys is None:
             self.server_keys = gen_keys()
 
-        self.public_key = restore_public_key(self.server_keys.public_key)
-        self.private_key = restore_private_key(self.server_keys.private_key)
+        self.public_key = load_public_key(self.server_keys.public_key)
+        self.private_key = load_private_key(self.server_keys.private_key)
 
         self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
 

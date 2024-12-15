@@ -1,11 +1,18 @@
 from hashlib import sha1
-from io import BytesIO
 
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from piltover.types import Keys
-from piltover.utils.utils import write_bytes
+
+
+def write_bytes(value: bytes) -> bytes:
+    length = len(value)
+
+    if length <= 253:
+        return bytes([length]) + value + bytes(-(length + 1) % 4)
+
+    return bytes([254]) + length.to_bytes(3, "little") + value + bytes(-length % 4)
 
 
 def get_public_key_fingerprint(public_key: str, signed: bool = False) -> int:
@@ -13,39 +20,26 @@ def get_public_key_fingerprint(public_key: str, signed: bool = False) -> int:
     # server_public_key_fingerprints is a list of public RSA key fingerprints
     # (64 lower-order bits of SHA1 (server_public_key);
 
-    # return int.from_bytes(
-    #     sha1(public_key.strip().encode()).digest()[-64 // 8:],
-    #     byteorder="big",
-    #     signed=False,
-    # )
-    key = restore_public_key(public_key=public_key)
+    key = load_public_key(public_key=public_key)
     num = key.public_numbers()  # type: ignore
     n, e = num.n, num.e  # type: ignore
 
     n_bytes = n.to_bytes((n.bit_length() + 7) // 8, "big", signed=False)
     e_bytes = e.to_bytes((e.bit_length() + 7) // 8, "big", signed=False)
 
-    buf = BytesIO()
-    write_bytes(n_bytes, to=buf)
-    write_bytes(e_bytes, to=buf)
-
-    return int.from_bytes(sha1(buf.getvalue()).digest()[-8:], "little", signed=signed)
+    rsa_public_key = write_bytes(n_bytes) + write_bytes(e_bytes)
+    return int.from_bytes(sha1(rsa_public_key).digest()[-8:], "little", signed=signed)
 
 
-def restore_private_key(private_key: str):
-    return serialization.load_pem_private_key(
-        private_key.encode(),
-        password=None,
-    )
+def load_private_key(private_key: str):
+    return serialization.load_pem_private_key(private_key.encode(), password=None)
 
 
-def restore_public_key(public_key: str):
-    return serialization.load_pem_public_key(
-        public_key.encode(),
-    )
+def load_public_key(public_key: str):
+    return serialization.load_pem_public_key(public_key.encode())
 
 
-def gen_keys():
+def gen_keys() -> Keys:
     # https://dev.to/aaronktberry/generating-encrypted-key-pairs-in-python-69b
 
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -67,8 +61,3 @@ def gen_keys():
         private_key=private_key,
         public_key=public_key,
     )
-
-
-if __name__ == "__main__":
-    print(keys := gen_keys())
-    print(f"{get_public_key_fingerprint(keys.public_key):x}")

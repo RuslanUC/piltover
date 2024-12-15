@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, TypeVar, Generic
+from typing import TypeVar, Generic
 
-if TYPE_CHECKING:
-    from piltover.db.models import User
 
 T = TypeVar("T")
 
@@ -22,21 +19,3 @@ class RequestContext(Generic[T]):
 
 
 request_ctx: ContextVar[RequestContext] = ContextVar("request_ctx")
-
-
-class SerializationContext:
-    __slots__ = ("user",)
-
-    def __init__(self, user: User | None):
-        self.user = user
-
-
-serialization_ctx: ContextVar[SerializationContext] = ContextVar("request_ctx", default=SerializationContext(None))
-
-
-@contextmanager
-def rewrite_ctx(ctx: ContextVar, **kwargs):
-    cls = type(ctx.get())
-    old_ctx = ctx.set(cls(**kwargs))
-    yield
-    ctx.reset(old_ctx)

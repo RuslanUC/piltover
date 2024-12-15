@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING
 
-from piltover.context import rewrite_ctx, serialization_ctx
 from piltover.db.models import User, UserAuthorization
 from piltover.tl import TLObject, Updates
 from piltover.tl.utils import is_content_related
@@ -134,5 +133,5 @@ class SessionManager(metaclass=SingletonMeta):
                 auth = await UserAuthorization.get(key__id=str(session.auth_key.auth_key_id))
                 await auth.update(upd_seq=auth.upd_seq+1)
                 obj.seq = auth.upd_seq
-            with rewrite_ctx(serialization_ctx, user=session.user):
-                await session.client.send(obj, session, None, False)
+
+            await session.client.send(obj, session, None, False)

@@ -50,7 +50,7 @@ class PiltoverApp:
         pubkey = pubkey if isinstance(pubkey, Path) else Path(pubkey)
         if not (pubkey.exists() and privkey.exists()):
             with privkey.open("w+") as priv, pubkey.open("w+") as pub:
-                keys: Keys = gen_keys()
+                keys = gen_keys()
                 priv.write(keys.private_key)
                 pub.write(keys.public_key)
 
