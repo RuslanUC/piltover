@@ -36,6 +36,8 @@ class User(Model):
         return photo
 
     async def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
+        # TODO: add some "version" field and save tl user in some cache with key f"{self.id}:{current_user.id}:{version}"
+
         defaults = {
                        "contact": False,
                        "mutual_contact": False,

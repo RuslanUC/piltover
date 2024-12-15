@@ -2,12 +2,11 @@ from time import time
 from typing import TypeVar, Generic
 
 from piltover.context import request_ctx, RequestContext
-from piltover.db.enums import ChatType
-from piltover.db.models import User, Chat, Message, State
+from piltover.db.enums import ChatType, UpdateType
+from piltover.db.models import User, Chat, Message, State, UpdateV2
 from piltover.session_manager import SessionManager
-from piltover.tl import TLObject, Updates, \
-    UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
-    UpdateDeleteMessages
+from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, \
+    UpdateMessageID, UpdateReadHistoryInbox, UpdateDeleteMessages, UpdateEditMessage
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
@@ -20,36 +19,11 @@ class UpdatesContext(Generic[T]):
         self.exclude: list[int] = [excl.id if isinstance(excl, User) else excl for excl in exclude]
 
 
-# TODO: this NEEDS to be rewritten
 class UpdatesManager(metaclass=SingletonMeta):
-    async def _send_updates_chat_nowrite(
-            self, ctx: UpdatesContext[Chat], *updates: TLObject, update_users: list[User], date: int, **kwargs
-    ):
-        chat = ctx.context
-        users = []
-        if chat.type in {ChatType.SAVED, ChatType.PRIVATE}:
-            users = await User.filter(dialogs__chat=chat, id__not_in=ctx.exclude)
-
-        updates_ = Updates(
-            updates=[],
-            users=[],
-            chats=[],
-            date=date,
-            seq=0,
-        )
-
-        for user in users:
-            updates_.updates = list(updates)
-            updates_.users = [await upd_user.to_tl(user) for upd_user in update_users]
-
-            await SessionManager().send(updates_, user.id, **kwargs)
-
     @staticmethod
     async def _send_message_chat(chat: Chat, message: Message, exclude_ids: list[int]) -> None:
-        users = await User.filter(dialogs__chat=chat)
+        users = await User.filter(dialogs__chat=chat, id__not_in=exclude_ids)
         for user in users:
-            if user.id in exclude_ids:
-                continue
             updates = Updates(
                 updates=[UpdateNewMessage(
                     message=await message.to_tl(user),
@@ -63,13 +37,9 @@ class UpdatesManager(metaclass=SingletonMeta):
             )
             await SessionManager().send(updates, user.id)
 
-    async def send_message(self, user: User, message: Message, has_media: bool = False) -> (Updates |
-                                                                                            UpdateShortSentMessage):
-        """
-        Sends a newly-created message to the users from message chat.
-        Returns update object that should be sent as response to `sendMessage` request.
-        """
-
+    async def send_message(
+            self, user: User, message: Message, has_media: bool = False
+    ) -> Updates | UpdateShortSentMessage:
         ctx: RequestContext[SendMessage] = request_ctx.get()
         client = ctx.client
         chat = message.chat
@@ -100,6 +70,13 @@ class UpdatesManager(metaclass=SingletonMeta):
                 date=int(time()),
                 seq=0,
             )
+
+            read_history_inbox_args = {
+                "update_type": UpdateType.READ_HISTORY_INBOX, "user": user, "related_id": chat.id,
+            }
+            await UpdateV2.filter(**read_history_inbox_args).delete()
+            await UpdateV2.create(**read_history_inbox_args, pts=updates.updates[2].pts)
+
             await SessionManager().send(updates, user.id, exclude=[client])
             return updates
         elif chat.type == ChatType.PRIVATE:
@@ -126,19 +103,53 @@ class UpdatesManager(metaclass=SingletonMeta):
 
             return UpdateShortSentMessage(out=True, id=message.id, pts=sent_pts, pts_count=1, date=message.utime())
 
-    async def delete_messages(self, user: User, chats: list[Chat], message_ids: dict[int, list[int]]) -> int:
-        for chat in chats:
-            # TODO
-            #for update_user in await User.filter(dialogs__chat=chat, id__not_in=user.id):
-            #    await UpdateV2.bulk_create([
-            #        UpdateV2(type=UpdateType.MESSAGE_DELETE, related_id=message_id, user=chat)
-            #        for message_id in message_ids[chat.id]
-            #    ])
+    @staticmethod
+    async def delete_messages(user: User, chats: list[Chat], message_ids: dict[int, list[int]]) -> int:
+        updates_to_create = []
 
-            upd = UpdateDeleteMessages(messages=message_ids[chat.id], pts=0, pts_count=len(message_ids[chat.id]))
-            await self._send_updates_chat_nowrite(UpdatesContext(chat, [user]), upd, update_users=[], date=int(time()))
+        for chat in chats:
+            for update_user in await User.filter(dialogs__chat=chat, id__not_in=user.id):
+                pts_count = len(message_ids[chat.id])
+                pts = await State.add_pts(update_user, pts_count)
+
+                updates_to_create.append(
+                    UpdateV2(
+                        user=update_user,
+                        type=UpdateType.MESSAGE_DELETE,
+                        pts=pts,
+                        related_id=None,
+                        related_ids=message_ids[chat.id],
+                    )
+                )
+
+                await SessionManager().send(
+                    Updates(
+                        updates=[
+                            UpdateDeleteMessages(
+                                messages=message_ids[chat.id],
+                                pts=pts,
+                                pts_count=pts_count
+                            )
+                        ],
+                        users=[],
+                        chats=[],
+                        date=int(time()),
+                        seq=0,
+                    ),
+                    update_user.id
+                )
 
         all_ids = [i for ids in message_ids.values() for i in ids]
+        updates_to_create.append(
+            UpdateV2(
+                user=user,
+                type=UpdateType.MESSAGE_DELETE,
+                related_id=None,
+                related_ids=all_ids,
+            )
+        )
+        await UpdateV2.bulk_create(updates_to_create)
+
         new_pts = await State.add_pts(user, len(all_ids))
 
         self_upd = UpdateDeleteMessages(messages=all_ids, pts=new_pts, pts_count=len(all_ids))
@@ -146,3 +157,41 @@ class UpdatesManager(metaclass=SingletonMeta):
         await SessionManager().send(updates, user.id)
 
         return new_pts
+
+    @staticmethod
+    async def edit_message(message: Message) -> Updates:
+        updates_to_create = []
+        result_update = None
+
+        for update_user in await User.filter(dialogs__chat=message.chat, id__not_in=message.author.id):
+            pts = await State.add_pts(update_user, 1)
+
+            updates_to_create.append(
+                UpdateV2(
+                    user=update_user,
+                    type=UpdateType.MESSAGE_EDIT,
+                    pts=pts,
+                    related_id=message.id,
+                )
+            )
+
+            update = Updates(
+                updates=[
+                    UpdateEditMessage(
+                        message=await message.to_tl(update_user),
+                        pts=pts,
+                        pts_count=1,
+                    )
+                ],
+                users=[await message.author.to_tl(update_user)],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            )
+            if update_user.id == message.author.id:
+                result_update = update
+
+            await SessionManager().send(update, update_user.id)
+
+        await UpdateV2.bulk_create(updates_to_create)
+        return result_update

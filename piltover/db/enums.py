@@ -44,4 +44,10 @@ class MediaType(IntEnum):
 
 
 class UpdateType(IntEnum):
+    # related_id is a message id
     MESSAGE_DELETE = 0
+    # related_id is a message id
+    MESSAGE_EDIT = 1
+    # Should (probably) be only one update of this type per chat
+    # related_it is a chat id
+    READ_HISTORY_INBOX = 2

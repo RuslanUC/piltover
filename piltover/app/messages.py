@@ -438,6 +438,8 @@ async def get_emoji_keywords(client: Client, request: GetEmojiKeywords):
 # noinspection PyUnusedLocal
 @handler.on_request(DeleteMessages, ReqHandlerFlags.AUTH_REQUIRED)
 async def delete_messages(client: Client, request: DeleteMessages, user: User):
+    # TODO: request.revoke
+
     ids = request.id[:100]
     delete_ids = defaultdict(list)
     chats = {}
@@ -480,21 +482,7 @@ async def edit_message(client: Client, request: EditMessage, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
     await message.update(message=request.message, edit_date=datetime.now())
-
-    # TODO: send and write UpdateEditMessage update
-    # upd = UpdateEditMessage(...)
-    # # noinspection PyTypeChecker
-    # updates = Updates(
-    #     updates=[upd],
-    #     users=[await user.to_tl(user)],
-    #     chats=[],
-    #     date=int(time()),
-    #     seq=0,
-    # )
-    # await SessionManager().send(updates, user.id, exclude=[client])
-    # return updates
-
-    raise ErrorRpc(error_code=500, error_message="INTERNAL_ERROR")
+    return await UpdatesManager.edit_message(message)
 
 
 # noinspection PyUnusedLocal

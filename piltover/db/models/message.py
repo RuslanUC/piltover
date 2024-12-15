@@ -27,6 +27,8 @@ class Message(Model):
         return int(self.date.timestamp())
 
     async def to_tl(self, current_user: models.User, **kwargs) -> TLMessage:
+        # TODO: add some "version" field and save tl message in some cache with key f"{self.id}:{current_user.id}:{version}"
+
         defaults = {
             "mentioned": False,
             "media_unread": False,

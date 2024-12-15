@@ -12,14 +12,13 @@ from piltover.tl.types.updates import State as TLState
 class State(Model):
     id: int = fields.BigIntField(pk=True)
     pts: int = fields.BigIntField(default=0)
-    #seq: int = fields.BigIntField(default=0)
-    user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
+    user: models.User = fields.ForeignKeyField("models.User", unique=True)
 
     async def to_tl(self) -> TLState:
         return State(
             pts=self.pts,
             qts=0,
-            seq=1,
+            seq=0,
             date=int(time()),
             unread_count=0,
         )

@@ -14,6 +14,7 @@ def gen_date() -> int:
     return int(time())
 
 
+# TODO: delete
 class Update(Model):
     id: int = fields.BigIntField(pk=True)
     pts: int = fields.BigIntField()
@@ -29,7 +30,11 @@ class UpdateV2(Model):
     update_type: UpdateType = fields.IntEnumField(UpdateType)
     pts: int = fields.BigIntField()
     date: datetime = fields.DatetimeField(auto_now_add=True)
-    related_id: int = fields.BigIntField()
+    related_id: int = fields.BigIntField(index=True, null=True)
+    # TODO: probably there is a better way to store multiple updates (right now it is only used for deleted messages,
+    #  so maybe create two tables: something like UpdateDeletedMessage and UpdateDeletedMessageId, related_id will point to
+    #  UpdateDeletedMessage.id and UpdateDeletedMessage will have one-to-many relation to UpdateDeletedMessageId)
+    related_ids: list[int] = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User")
     # TODO?: for supergroups/channels
     #parent_chat: models.Chat = fields.ForeignKeyField("models.Chat", null=True, default=None)
