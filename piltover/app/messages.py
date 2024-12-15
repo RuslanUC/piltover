@@ -10,7 +10,7 @@ from piltover.app.utils.to_tl import ToTL
 from piltover.app.utils.updates_manager import UpdatesManager, UpdatesContext
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.enums import ChatType, MediaType
-from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft, Update, ReadState
+from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft, ReadState, State
 from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -450,8 +450,8 @@ async def delete_messages(client: Client, request: DeleteMessages, user: User):
     await Message.filter(id__in=all_ids).delete()
 
     if not all_ids:
-        last_update = await Update.filter(user=user).order_by("-pts").first()
-        return AffectedMessages(pts=last_update.pts, pts_count=0)
+        updates_state, _ = await State.get_or_create(user=user)
+        return AffectedMessages(pts=updates_state.pts, pts_count=0)
 
     pts = await UpdatesManager().delete_messages(user, list(chats.values()), delete_ids)
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
@@ -481,29 +481,20 @@ async def edit_message(client: Client, request: EditMessage, user: User):
 
     await message.update(message=request.message, edit_date=datetime.now())
 
-    upd = ToTL(UpdateEditMessage, ["message"], message=message, pts=0, pts_count=1)
+    # TODO: send and write UpdateEditMessage update
+    # upd = UpdateEditMessage(...)
+    # # noinspection PyTypeChecker
+    # updates = Updates(
+    #     updates=[upd],
+    #     users=[await user.to_tl(user)],
+    #     chats=[],
+    #     date=int(time()),
+    #     seq=0,
+    # )
+    # await SessionManager().send(updates, user.id, exclude=[client])
+    # return updates
 
-    await UpdatesManager().send_updates(
-        UpdatesContext(chat, [user]),
-        upd,
-        update_users=list({user, await chat.get_other_user(user)}),
-        date=int(time()),
-        exclude=[client]
-    )
-
-    upd = await upd.to_tl(user)
-    await UpdatesManager().write_updates(user, upd)
-    # noinspection PyTypeChecker
-    updates = Updates(
-        updates=[upd],
-        users=[await user.to_tl(user)],
-        chats=[],
-        date=int(time()),
-        seq=0,
-    )
-
-    await SessionManager().send(updates, user.id, exclude=[client])
-    return updates
+    raise ErrorRpc(error_code=500, error_message="INTERNAL_ERROR")
 
 
 # noinspection PyUnusedLocal

@@ -41,3 +41,7 @@ class FileType(IntEnum):
 class MediaType(IntEnum):
     DOCUMENT = 0
     PHOTO = 1
+
+
+class UpdateType(IntEnum):
+    MESSAGE_DELETE = 0

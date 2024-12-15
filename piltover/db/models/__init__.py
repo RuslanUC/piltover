@@ -16,5 +16,5 @@ from .state import State
 from .user_password import UserPassword
 from .srp_session import SrpSession
 from .privacy_rule import PrivacyRule
-from .update import Update
+from .update import Update, UpdateV2
 from .read_state import ReadState

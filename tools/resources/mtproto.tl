@@ -92,16 +92,17 @@ ipPortSecret#37982646 ipv4:int port:int secret:bytes = IpPort;
 accessPointRule#4679b65f phone_prefix_rules:string dc_id:int ips:Vector<IpPort> = AccessPointRule;
 help.configSimple#5a592a6c date:int expires:int rules:Vector<AccessPointRule> = help.ConfigSimple;
 
-tlsClientHello blocks:Vector<TlsBlock> = TlsClientHello;
+tlsClientHello#6c52c484 blocks:Vector<TlsBlock> = TlsClientHello;
 
-tlsBlockString data:string = TlsBlock;
-tlsBlockRandom length:int = TlsBlock;
-tlsBlockZero length:int = TlsBlock;
-tlsBlockDomain = TlsBlock;
-tlsBlockGrease seed:int = TlsBlock;
-tlsBlockPublicKey = TlsBlock;
-tlsBlockScope entries:Vector<TlsBlock> = TlsBlock;
-tlsBlockPermutation entries:Vector<Vector<TlsBlock>> = TlsBlock;
+tlsBlockString#4218a164 data:string = TlsBlock;
+tlsBlockRandom#4d4dc41e length:int = TlsBlock;
+tlsBlockZero#09333afb length:int = TlsBlock;
+tlsBlockDomain#10e8636f = TlsBlock;
+tlsBlockGrease#e675a1c1 seed:int = TlsBlock;
+tlsBlockPublicKey#9eb95b5c = TlsBlock;
+tlsBlockScope#e725d44f entries:Vector<TlsBlock> = TlsBlock;
+// idk if current implementation can handle 2d vectors
+// tlsBlockPermutation#02e60fcd entries:Vector<Vector<TlsBlock>> = TlsBlock;
 
 ---functions---
 
