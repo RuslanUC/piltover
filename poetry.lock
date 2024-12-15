@@ -1765,6 +1765,21 @@ files = [
 ]
 
 [[package]]
+name = "utl"
+version = "0.1.0b1"
+description = "A small Telegram Type Language implementation"
+optional = false
+python-versions = "^3.10"
+files = []
+develop = false
+
+[package.source]
+type = "git"
+url = "git@github.com:RuslanUC/utl.git"
+reference = "HEAD"
+resolved_reference = "cd9253d1697de92d7fc06c7079beb9e78a4fd177"
+
+[[package]]
 name = "uvloop"
 version = "0.21.0"
 description = "Fast implementation of asyncio event loop on top of libuv"
@@ -2062,4 +2077,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "5d876412087c7c3485a2e22277bfe975455180b5bff8f8fcb18ae83fe0d29534"
+content-hash = "167837492293eefd86c70dfa71f23eb6472719f611103a9f093f9f8cfd9e75c4"
