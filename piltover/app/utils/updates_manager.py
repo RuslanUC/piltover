@@ -75,7 +75,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                 "update_type": UpdateType.READ_HISTORY_INBOX, "user": user, "related_id": chat.id,
             }
             await UpdateV2.filter(**read_history_inbox_args).delete()
-            await UpdateV2.create(**read_history_inbox_args, pts=updates.updates[2].pts)
+            await UpdateV2.create(**read_history_inbox_args, pts=updates.updates[2].pts, related_ids=[message.id, 0])
 
             await SessionManager().send(updates, user.id, exclude=[client])
             return updates
@@ -148,6 +148,8 @@ class UpdatesManager(metaclass=SingletonMeta):
                 related_ids=all_ids,
             )
         )
+
+        await UpdateV2.filter(related_id__in=all_ids).delete()
         await UpdateV2.bulk_create(updates_to_create)
 
         new_pts = await State.add_pts(user, len(all_ids))

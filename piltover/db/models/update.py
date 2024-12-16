@@ -1,28 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from time import time
 
 from tortoise import fields
 
 from piltover.db import models
 from piltover.db.enums import UpdateType
 from piltover.db.models._utils import Model
-
-
-def gen_date() -> int:
-    return int(time())
-
-
-# TODO: delete
-class Update(Model):
-    id: int = fields.BigIntField(pk=True)
-    pts: int = fields.BigIntField()
-    date: int = fields.BigIntField(default=gen_date)
-    update_type: int = fields.BigIntField()
-    update_data: bytes = fields.BinaryField()
-    user_ids_to_fetch: list[int] = fields.JSONField(null=True, default=None)
-    user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
+from piltover.tl import TLObject, UpdateEditMessage, UpdateReadHistoryInbox
+from piltover.tl.types import UpdateDeleteMessages
+from piltover.tl.types.user import User as TLUser
 
 
 class UpdateV2(Model):
@@ -38,3 +25,37 @@ class UpdateV2(Model):
     user: models.User = fields.ForeignKeyField("models.User")
     # TODO?: for supergroups/channels
     #parent_chat: models.Chat = fields.ForeignKeyField("models.Chat", null=True, default=None)
+
+    async def to_tl(self, current_user: models.User, users: dict[int, TLUser] | None = None) -> TLObject | None:
+        if self.update_type == UpdateType.MESSAGE_DELETE:
+            return UpdateDeleteMessages(
+                messages=self.related_ids,
+                pts=self.pts,
+                pts_count=len(self.related_ids),
+            )
+
+        if self.update_type == UpdateType.MESSAGE_EDIT:
+            if (message := await models.Message.get_or_none(id=self.related_id).select_related("chat", "author")) is None:
+                return
+
+            if users is not None and message.author.id not in users:
+                users[message.author.id] = await message.author.to_tl(current_user)
+
+            return UpdateEditMessage(
+                message=await message.to_tl(current_user),
+                pts=self.pts,
+                pts_count=1,
+            )
+
+        if self.update_type == UpdateType.READ_HISTORY_INBOX:
+            if (chat := await models.Chat.get_or_none(id=self.related_id)) is None:
+                return
+
+            # TODO: fetch read state from db instead of related_ids
+            return UpdateReadHistoryInbox(
+                peer=await chat.get_peer(current_user),
+                max_id=self.related_ids[0],
+                still_unread_count=self.related_ids[1],
+                pts=self.pts,
+                pts_count=1,
+            )

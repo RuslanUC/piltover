@@ -1,27 +1,25 @@
 from datetime import datetime
-from io import BytesIO
 from time import time
 
 from piltover.context import request_ctx
-from piltover.db.enums import ChatType
-from piltover.db.models import User, Update, Message, UserAuthorization
+from piltover.db.enums import ChatType, UpdateType
+from piltover.db.models import User, Message, UserAuthorization, State, UpdateV2
 from piltover.enums import ReqHandlerFlags
 from piltover.high_level import Client, MessageHandler
-from piltover.tl import UpdateEditMessage, UpdateNewMessage, UpdateShortMessage
-from piltover.tl.core_types import SerializedObject
+from piltover.tl import UpdateNewMessage, UpdateShortMessage
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136
-from piltover.tl.types.updates import State, Difference
+from piltover.tl.types.updates import State as TLState, Difference
 
 handler = MessageHandler("auth")
 IGNORED_UPD = [UpdateNewMessage.tlid(), UpdateShortMessage.tlid()]
 
 
-async def get_state_internal(user: User) -> State:
-    last_update = await Update.filter(user=user).order_by("-pts").first()
+async def get_state_internal(user: User) -> TLState:
+    state = await State.get_or_none(user=user)
     auth = await UserAuthorization.get(key__id=str(request_ctx.get().auth_key_id))
 
-    return State(
-        pts=last_update.pts if last_update is not None else 0,
+    return TLState(
+        pts=state.pts if state else 0,
         qts=0,
         seq=auth.upd_seq,
         date=int(time()),
@@ -39,7 +37,7 @@ async def get_state(client: Client, request: GetState, user: User):
 @handler.on_request(GetDifference_136, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(GetDifference, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_difference(client: Client, request: GetDifference | GetDifference_136, user: User):
-    requested_update = await Update.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
+    requested_update = await UpdateV2.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
     date = requested_update.date if requested_update is not None else request.date
     date = datetime.fromtimestamp(date)
 
@@ -59,22 +57,15 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
             if (other_user := await chat.get_other_user(user)) is not None and other_user.id not in users:
                 users[other_user.id] = await other_user.to_tl(user)
 
-    new_updates = await Update.filter(user=user, pts__gt=request.pts, update_type__not_in=IGNORED_UPD).order_by("pts")
+    new_updates = await UpdateV2.filter(user=user, pts__gt=request.pts).order_by("pts")
     for update in new_updates:
-        upd = SerializedObject(update.update_data)
-        if upd.__tl_id__ == UpdateEditMessage.tlid():
-            u = UpdateEditMessage.read(BytesIO(update.update_data))
-            if u.message.id in new_messages:
-                continue
-
-        other_updates.append(upd)
-        if not update.user_ids_to_fetch:
+        if update.update_type == UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
             continue
 
-        for uid in update.user_ids_to_fetch:
-            if uid in users or (u := await User.get_or_none(id=uid)) is None:
-                continue
-            users[uid] = await u.to_tl(user)
+        other_updates.append(await update.to_tl(user, users))
+
+    if user.id not in users:
+        users[user.id] = await user.to_tl(user)
 
     # noinspection PyTypeChecker
     return Difference(
