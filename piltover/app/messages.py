@@ -6,8 +6,7 @@ from tortoise.expressions import Subquery, Q
 
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
-from piltover.app.utils.to_tl import ToTL
-from piltover.app.utils.updates_manager import UpdatesManager, UpdatesContext
+from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.enums import ChatType, MediaType
 from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft, ReadState, State
@@ -18,7 +17,7 @@ from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
     InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
-    InputDialogPeer, UpdateEditMessage, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage, \
+    InputDialogPeer, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage, \
     InputMediaUploadedPhoto, UpdateUserTyping, DraftMessageEmpty, DraftMessage
 from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \

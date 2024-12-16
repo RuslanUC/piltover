@@ -2,9 +2,10 @@ import asyncio
 from os import getenv
 from pathlib import Path
 from time import time
+from typing import cast
 
 import uvloop
-from aerich import Command
+from aerich import Command, Migrate, get_models_describe
 from loguru import logger
 from tortoise import Tortoise
 
@@ -25,6 +26,15 @@ secrets.mkdir(parents=True, exist_ok=True)
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
 
 
+class MigrateNoDowngrade(Migrate):
+    @classmethod
+    def diff_models(cls, old_models: dict[str, dict], new_models: dict[str, dict], upgrade=True) -> None:
+        if not upgrade:
+            return
+
+        return super(MigrateNoDowngrade, cls).diff_models(old_models, new_models, True)
+
+
 async def migrate():
     migrations_dir = (data / "migrations").absolute()
 
@@ -34,7 +44,7 @@ async def migrate():
     }, location=str(migrations_dir))
     await command.init()
     if Path(migrations_dir).exists():
-        await command.migrate()
+        await MigrateNoDowngrade.migrate("update", False)
         await command.upgrade(True)
     else:
         await command.init_db(True)
