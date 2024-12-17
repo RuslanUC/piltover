@@ -40,15 +40,15 @@ class MessageHandler:
     def __init__(self, name: str = None):
         self.name = name
         self.registered = False
-        self.request_handlers: defaultdict[int, set[RequestHandler]] = defaultdict(set)
+        self.request_handlers: dict[int, RequestHandler] = {}
 
-    def on_request(self, typ: type[TLObject], flags: int=0):
+    def on_request(self, typ: type[TLObject], flags: int = 0):
         def decorator(func: HandlerFunc):
             logger.debug("Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""),
                          typ=typ.tlname())
 
             has_user_arg = check_flag(flags, ReqHandlerFlags.AUTH_REQUIRED) and "user" in signature(func).parameters
-            self.request_handlers[typ.tlid()].add(RequestHandler(func, flags, has_user_arg))
+            self.request_handlers[typ.tlid()] = RequestHandler(func, flags, has_user_arg)
             return func
 
         return decorator
@@ -56,9 +56,8 @@ class MessageHandler:
     def register_handler(self, handler: MessageHandler, clear: bool=True) -> None:
         if handler.registered:
             raise RuntimeError(f"Handler {handler} already registered!")
-        for tlid, handlers in handler.request_handlers.items():
-            self.request_handlers[tlid].update(handlers)
 
+        self.request_handlers.update(handler.request_handlers)
         if clear:
             handler.request_handlers.clear()
 
@@ -99,48 +98,38 @@ class Client(LowClient):
     async def propagate(self, request: Message, session: Session) -> list[tuple[TLObject, Message]] | TLObject | None:
         if isinstance(request.obj, MsgContainer):
             return await super().propagate(request, session)
-        else:
-            handlers: list[RequestHandler]
-            if not (handlers := self.server.request_handlers.get(request.obj.tlid(), [])):
-                return await super().propagate(request, session)
 
-            result = None
-            error = None
-            user = None
-            for handler in handlers:
-                try:
-                    if handler.auth_required() and (user := await self.get_user(handler.allow_mfa_pending())) is None:
-                        raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
-                    user_arg = (user,) if handler.auth_required() and handler.has_user_arg else ()
-                    result = await handler.func(self, request.obj, *user_arg)
-                    if result is not None:
-                        break
-                except Exception as e:
-                    if error is not None:
-                        logger.warning("Error while processing {obj}: {err}", obj=request.obj.tlname(), err=e)
-                        continue
+        if not (handler := self.server.request_handlers.get(request.obj.tlid())):
+            return await super().propagate(request, session)
 
-                    if isinstance(e, ErrorRpc):
-                        logger.warning(
-                            "{obj}: {err}", obj=request.obj.tlname(), err=f"[{e.error_code} {e.error_message}]"
-                        )
-                        error = RpcError(error_code=e.error_code, error_message=e.error_message)
-                    else:
-                        logger.warning("Error while processing {obj}: {err}", obj=request.obj.tlname(), err=e)
-                        logger.exception("", backtrace=True)
-                        error = RpcError(error_code=500, error_message="Server error")
+        result = None
+        error = None
+        user = None
 
-            if user is not None and session.user_id is None:
-                SessionManager().set_user(session, user)
+        try:
+            if handler.auth_required() and (user := await self.get_user(handler.allow_mfa_pending())) is None:
+                raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
+            user_arg = (user,) if handler.auth_required() and handler.has_user_arg else ()
+            result = await handler.func(self, request.obj, *user_arg)
+        except Exception as e:
+            if isinstance(e, ErrorRpc):
+                logger.warning(
+                    f"{request.obj.tlname()}: [{e.error_code} {e.error_message}]"
+                )
+                error = RpcError(error_code=e.error_code, error_message=e.error_message)
+            else:
+                logger.opt(exception=e).warning(f"Error while processing {request.obj.tlname()}")
+                error = RpcError(error_code=500, error_message="Server error")
 
-            result = result if error is None else error
-            if result is None:
-                logger.warning("No handler found for obj:\n{obj}", obj=request.obj)
-                result = RpcError(error_code=500, error_message="Not implemented")
-            #if result is False:
-            #    return
+        if user is not None and session.user_id is None:
+            SessionManager().set_user(session, user)
 
-            if not isinstance(result, (Ping, Pong, RpcResult)):
-                result = RpcResult(req_msg_id=request.message_id, result=result)
+        result = result if error is None else error
+        if result is None:
+            logger.warning(f"Handler for {request.obj} returned None")
+            result = RpcError(error_code=500, error_message="Not implemented")
 
-            return result
+        if not isinstance(result, (Ping, Pong, RpcResult)):
+            result = RpcResult(req_msg_id=request.message_id, result=result)
+
+        return result

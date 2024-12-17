@@ -4,7 +4,7 @@ import secrets
 import time
 from collections import defaultdict
 from io import BytesIO
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, cast
 
 import tgcrypto
 from loguru import logger
@@ -14,7 +14,6 @@ from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMe
 
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import RequestContext, request_ctx
-from piltover.db.models import TempAuthKey
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
 from piltover.tl import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
@@ -23,16 +22,8 @@ from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
 from piltover.tl.utils import is_content_related
 from piltover.types import Keys
-from piltover.utils import (
-    read_int,
-    generate_large_prime,
-    gen_safe_prime,
-    gen_keys,
-    get_public_key_fingerprint,
-    load_private_key,
-    load_public_key,
-    background,
-)
+from piltover.utils import read_int, generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
+    load_private_key, load_public_key, background
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 
 
@@ -40,17 +31,17 @@ class MessageHandler:
     def __init__(self, name: str = None):
         self.name = name
         self.server: Server | None = None
-        self.handlers: defaultdict[
+        self.handlers: dict[
             int,
-            set[Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]]],
-        ] = defaultdict(set)
+            Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]],
+        ] = {}
 
     def on_message(self, typ: type[TLObject]):
         def decorator(func: Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]]):
             logger.debug("Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""),
                          typ=typ.tlname())
 
-            self.handlers[typ.tlid()].add(func)
+            self.handlers[typ.tlid()] = func
             return func
 
         return decorator
@@ -79,10 +70,10 @@ class Server:
         self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
 
         self.clients: dict[str, Client] = {}
-        self.handlers: defaultdict[
+        self.handlers: dict[
             int,
-            set[Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]]],
-        ] = defaultdict(set)
+            Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]],
+        ] = {}
         self.sys_handlers = defaultdict(list)
         self.salt: int = 0
 
@@ -110,7 +101,7 @@ class Server:
         def decorator(func: Callable[[Client, Message, Session], Awaitable[TLObject | bool | None]]):
             logger.debug("Added handler for function {typ!r}", typ=typ)
 
-            self.handlers[typ.tlid()].add(func)
+            self.handlers[typ.tlid()] = func
             return func
 
         return decorator
@@ -118,8 +109,7 @@ class Server:
     def register_handler(self, handler: MessageHandler) -> None:
         if handler.server is not None:
             raise RuntimeError(f"Handler {handler} already registered!")
-        for tlid, handlers in handler.handlers.items():
-            self.handlers[tlid].update(handlers)
+        self.handlers.update(handler.handlers)
 
         handler.server = self
 
@@ -265,7 +255,8 @@ class Client:
                 f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}"
 
             self.auth_data.is_temp = isinstance(p_q_inner_data, PQInnerDataTempDc)
-            self.auth_data.expires_in = max(p_q_inner_data.expires_in, 86400) if self.auth_data.is_temp else 0
+            self.auth_data.expires_in = max(cast(PQInnerDataTempDc, p_q_inner_data).expires_in, 86400) \
+                if self.auth_data.is_temp else 0
 
             new_nonce: bytes = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
             self.auth_data.new_nonce = new_nonce
@@ -475,6 +466,7 @@ class Client:
     @logger.catch
     async def worker(self):
         logger.debug(f"Client connected: {self.peername}")
+
         try:
             while True:
                 try:
@@ -501,28 +493,30 @@ class Client:
             SessionManager().client_cleanup(self)
 
     async def propagate(self, request: Message, session: Session) -> TLObject | None:
-        handlers = self.server.handlers.get(request.obj.tlid(), [])
+        handler = self.server.handlers.get(request.obj.tlid())
+        if handler is None:
+            logger.warning(f"No handler found for obj: {request.obj}")
+            return RpcResult(
+                req_msg_id=request.message_id,
+                result=RpcError(error_code=500, error_message="Not implemented"),
+            )
 
         result = None
         error = None
-        for rpc in handlers:
-            try:
-                result = await rpc(self, request, session)
-                if result is not None:
-                    break
-            except ErrorRpc as e:
-                if error is None:
-                    error = RpcError(error_code=e.error_code, error_message=e.error_message)
-            except Exception as e:
-                logger.warning(e)
-                if error is None:
-                    error = RpcError(error_code=500, error_message="Server error")
+
+        try:
+            result = await handler(self, request, session)
+        except ErrorRpc as e:
+            error = RpcError(error_code=e.error_code, error_message=e.error_message)
+        except Exception as e:
+            logger.warning(e)
+            error = RpcError(error_code=500, error_message="Server error")
 
         result = result if error is None else error
         if result is None:
-            logger.warning(f"No handler found for obj: {request.obj}")
-            result = RpcError(error_code=500, error_message="Not implemented")
-        if result is False:
+            logger.warning(f"Handler for function {request.obj} returned None!")
+            result = RpcError(error_code=500, error_message="Server error")
+        elif result is False:
             return
 
         if not isinstance(result, (Ping, Pong, RpcResult)):
