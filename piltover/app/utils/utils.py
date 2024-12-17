@@ -122,7 +122,7 @@ async def generate_stripped(file_id: str, size: int = 8) -> bytes:
         img_file = BytesIO()
 
         im = im.convert("RGB").resize((size, size))
-        im.save(img_file, 'JPEG', qtables=TELEGRAM_QUANTIZATION_TABLES)
+        im.save(img_file, "JPEG", qtables=TELEGRAM_QUANTIZATION_TABLES)
 
         img_file.seek(0)
         header_offset = 623  # 619 + 4, 619 is header size, 4 is width and height
@@ -131,9 +131,7 @@ async def generate_stripped(file_id: str, size: int = 8) -> bytes:
 
     img = img_open(files_dir / f"{file_id}")
     with ThreadPoolExecutor() as pool:
-        res = await gather(get_event_loop().run_in_executor(pool, _gen, img))
-
-    return res[0]
+        return await get_event_loop().run_in_executor(pool, _gen, img)
 
 
 async def check_password_internal(password: UserPassword, check: InputCheckPasswordEmpty | InputCheckPasswordSRP):

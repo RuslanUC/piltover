@@ -15,10 +15,9 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
-from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, \
-    InputPeerSelf, EmojiKeywordsDifference, DocumentEmpty, \
-    InputDialogPeer, InputMediaUploadedDocument, PeerSettings, UpdateDraftMessage, \
-    InputMediaUploadedPhoto, UpdateUserTyping, DraftMessageEmpty, DraftMessage
+from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, InputPeerSelf, \
+    EmojiKeywordsDifference, DocumentEmpty, InputDialogPeer, InputMediaUploadedDocument, PeerSettings, \
+    UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, DraftMessageEmpty, DraftMessage
 from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -27,8 +26,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
-    PeerDialogs, AffectedMessages, \
-    Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
+    PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData
 
 handler = MessageHandler("messages")

@@ -2,10 +2,9 @@ import asyncio
 from os import getenv
 from pathlib import Path
 from time import time
-from typing import cast
 
 import uvloop
-from aerich import Command, Migrate, get_models_describe
+from aerich import Command, Migrate
 from loguru import logger
 from tortoise import Tortoise
 
@@ -94,21 +93,18 @@ class PiltoverApp:
         self._server.on_auth_key_get(self._auth_key_get)
 
     @staticmethod
-    async def _auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
-        await AuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes)
+    async def _auth_key_set(auth_key_id: int, auth_key_bytes: bytes, expires_in: int | None) -> None:
+        if expires_in:
+            await TempAuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes, expires_at=int(time() + expires_in))
+        else:
+            await AuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes)
         logger.debug(f"Set auth key: {auth_key_id}")
 
     @staticmethod
-    async def _auth_key_get(auth_key_id: int, temp: bool = False) -> tuple[int, bytes] | None:
+    async def _auth_key_get(auth_key_id: int) -> tuple[int, bytes] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
-        if temp:
-            auth_key = await TempAuthKey.get_or_none(id=str(auth_key_id), expires__gt=int(time())) \
-                .select_related("perm_key")
-            if auth_key is None:
-                return
-            return auth_key_id, auth_key.auth_key
-        if (auth_key := await AuthKey.get_or_none(id=str(auth_key_id))) is not None:
-            return auth_key_id, auth_key.auth_key
+        if key := await AuthKey.get_or_temp(auth_key_id):
+            return auth_key_id, key.auth_key
 
     @staticmethod
     def _setup_reload():

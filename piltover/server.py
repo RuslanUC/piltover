@@ -95,9 +95,9 @@ class Server:
         async with server:
             await server.serve_forever()
 
-    async def register_auth_key(self, auth_key_id: int, auth_key: bytes):
+    async def register_auth_key(self, auth_key_id: int, auth_key: bytes, expires_in: int | None):
         for handler in self.sys_handlers["auth_key_set"]:
-            await handler(auth_key_id, auth_key)
+            await handler(auth_key_id, auth_key, expires_in)
 
     async def get_auth_key(self, auth_key_id: int) -> tuple[int, bytes] | None:
         for handler in self.sys_handlers["auth_key_get"]:
@@ -121,7 +121,7 @@ class Server:
 
         handler.server = self
 
-    def on_auth_key_set(self, func: Callable[[int, bytes], Awaitable[None]]):
+    def on_auth_key_set(self, func: Callable[[int, bytes, int | None], Awaitable[None]]):
         self.sys_handlers["auth_key_set"].append(func)
         return func
 
@@ -146,6 +146,7 @@ class AuthData:
 class GenAuthData(AuthData):
     __slots__ = (
         "p", "q", "server_nonce", "new_nonce", "dh_prime", "server_nonce_bytes", "tmp_aes_key", "tmp_aes_iv", "a",
+        "expires_in",
     )
 
     def __init__(self):
@@ -160,6 +161,7 @@ class GenAuthData(AuthData):
         self.tmp_aes_key: bytes | None = None
         self.tmp_aes_iv: bytes | None = None
         self.a: int | None = None
+        self.expires_in: int = 0
 
 
 class Client:
@@ -289,8 +291,12 @@ class Client:
             else:
                 p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted))
 
+            logger.debug(f"p_q_inner_data: {p_q_inner_data}")
+
             assert isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTempDc)), \
                 f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}"
+
+            self.auth_data.expires_in = max(p_q_inner_data.expires_in, 86400) if isinstance(p_q_inner_data, PQInnerDataTempDc) else 0
 
             new_nonce: bytes = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
             self.auth_data.new_nonce = new_nonce
@@ -381,6 +387,7 @@ class Client:
             await self.server.register_auth_key(
                 auth_key_id=self.auth_data.auth_key_id,
                 auth_key=self.auth_data.auth_key,
+                expires_in=self.auth_data.expires_in,
             )
             logger.info("Auth key generation successfully completed!")
         elif isinstance(obj, MsgsAck):
@@ -472,22 +479,34 @@ class Client:
 
         return serialized, session.get_outgoing_seq_no(final_obj)
 
-    async def decrypt(self, message: EncryptedMessagePacket) -> DecryptedMessagePacket:
+    async def decrypt(self, message: EncryptedMessagePacket, v1: bool = False) -> DecryptedMessagePacket:
         if self.auth_data is None or not self.auth_data.check_key(message.auth_key_id):
             got = await self.server.get_auth_key(message.auth_key_id)
             if got is None:
                 logger.info("Client sent unknown auth_key_id, disconnecting with 404")
                 raise Disconnection(404)
+            logger.debug(f"{got=}")
             self.auth_data = AuthData(*got)
 
         try:
-            return message.decrypt(self.auth_data.auth_key, ConnectionRole.CLIENT)
+            return message.decrypt(self.auth_data.auth_key, ConnectionRole.CLIENT, v1)
         except ValueError:
             logger.info("Failed to decrypt encrypted packet, disconnecting with 404")
             raise Disconnection(404)
 
+    async def decrypt_noreplace(self, message: EncryptedMessagePacket, v1: bool = False) -> DecryptedMessagePacket:
+        auth_data_bak = self.auth_data
+        try:
+            result = await self.decrypt(message, v1)
+            self.auth_data = auth_data_bak
+            return result
+        except:
+            self.auth_data = auth_data_bak
+            raise
+
     @logger.catch
     async def worker(self):
+        logger.debug(f"Client connected: {self.peername}")
         try:
             while True:
                 try:

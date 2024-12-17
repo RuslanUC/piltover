@@ -15,12 +15,12 @@ handler = MessageHandler("help")
 async def get_config(client: Client, request: GetConfig):
     return Config(
         date=int(time()),
-        expires=int(time() + 60 * 10),
+        expires=int(time() + 60 * 60 * 24),
         this_dc=2,
         test_mode=False,
         dc_options=[DcOption(this_port_only=True, id=2, ip_address="192.168.0.111", port=4430)],
-        dc_txt_domain_name="aa",
-        chat_size_max=200,
+        dc_txt_domain_name="_",
+        chat_size_max=10,
         megagroup_size_max=200000,
         forwarded_count_max=100,
         online_update_period_ms=30_000,

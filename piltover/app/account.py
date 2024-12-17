@@ -10,17 +10,15 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
-from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, \
-    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, \
-    AccountDaysTTL, EmojiList, \
-    AutoDownloadSettings
+from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
+    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy
-from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, \
-    Authorizations, SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
+from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
+    SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
 
@@ -218,7 +216,8 @@ async def update_profile(client: Client, request: UpdateProfile, user: User):
         updates["about"] = request.about
 
     if updates:
-        await user.update(**updates)
+        await user.update_from_dict(updates).save(update_fields=updates.keys())
+
     return await user.to_tl(user)
 
 
