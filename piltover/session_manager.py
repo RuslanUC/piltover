@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING
 
-from piltover.db.models import User, UserAuthorization
+from piltover.auth_data import AuthData
+from piltover.db.models import User, UserAuthorization, AuthKey
 from piltover.tl import TLObject, Updates
 from piltover.tl.utils import is_content_related
 from piltover.utils.utils import SingletonMeta
@@ -130,7 +131,8 @@ class SessionManager(metaclass=SingletonMeta):
             if (exclude is not None and session.client in exclude) or session.client not in self.by_client:
                 continue
             if isinstance(obj, Updates):
-                auth = await UserAuthorization.get(key__id=str(session.auth_key.auth_key_id))
+                key = await AuthKey.get_or_temp(session.auth_key.auth_key_id)
+                auth = await UserAuthorization.get(key__id=str(key.id if isinstance(key, AuthKey) else key.perm_key.id))
                 await auth.update(upd_seq=auth.upd_seq+1)
                 obj.seq = auth.upd_seq
 

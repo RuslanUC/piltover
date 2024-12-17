@@ -1,7 +1,6 @@
 from datetime import datetime
 from time import time
 
-from piltover.context import request_ctx
 from piltover.db.enums import ChatType, UpdateType
 from piltover.db.models import User, Message, UserAuthorization, State, UpdateV2
 from piltover.enums import ReqHandlerFlags
@@ -14,9 +13,9 @@ handler = MessageHandler("auth")
 IGNORED_UPD = [UpdateNewMessage.tlid(), UpdateShortMessage.tlid()]
 
 
-async def get_state_internal(user: User) -> TLState:
+async def get_state_internal(client: Client, user: User) -> TLState:
     state = await State.get_or_none(user=user)
-    auth = await UserAuthorization.get(key__id=str(request_ctx.get().auth_key_id))
+    auth = await UserAuthorization.get(key__id=str(await client.auth_data.get_perm_id()))
 
     return TLState(
         pts=state.pts if state else 0,
@@ -30,7 +29,7 @@ async def get_state_internal(user: User) -> TLState:
 # noinspection PyUnusedLocal
 @handler.on_request(GetState, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_state(client: Client, request: GetState, user: User):
-    return await get_state_internal(user)
+    return await get_state_internal(client, user)
 
 
 # noinspection PyUnusedLocal
@@ -74,5 +73,5 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
         other_updates=other_updates,
         chats=[],
         users=list(users.values()),
-        state=await get_state_internal(user),
+        state=await get_state_internal(client, user),
     )

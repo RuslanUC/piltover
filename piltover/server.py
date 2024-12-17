@@ -12,7 +12,9 @@ from mtproto import Connection, ConnectionRole
 from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
     ErrorPacket
 
+from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import RequestContext, request_ctx
+from piltover.db.models import TempAuthKey
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
 from piltover.tl import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
@@ -99,7 +101,7 @@ class Server:
         for handler in self.sys_handlers["auth_key_set"]:
             await handler(auth_key_id, auth_key, expires_in)
 
-    async def get_auth_key(self, auth_key_id: int) -> tuple[int, bytes] | None:
+    async def get_auth_key(self, auth_key_id: int) -> tuple[int, bytes, bool] | None:
         for handler in self.sys_handlers["auth_key_get"]:
             if (auth_key_info := await handler(auth_key_id)) is not None:
                 return auth_key_info
@@ -125,43 +127,9 @@ class Server:
         self.sys_handlers["auth_key_set"].append(func)
         return func
 
-    def on_auth_key_get(self, func: Callable[[int], Awaitable[tuple[int, bytes] | None]]):
+    def on_auth_key_get(self, func: Callable[[int], Awaitable[tuple[int, bytes, bool] | None]]):
         self.sys_handlers["auth_key_get"].append(func)
         return func
-
-
-class AuthData:
-    __slots__ = ("auth_key_id", "auth_key",)
-
-    def __init__(self, auth_key_id: int | None = None, auth_key: bytes | None = None):
-        self.auth_key_id = auth_key_id
-        self.auth_key = auth_key
-
-    def check_key(self, expected_auth_key_id: int) -> bool:
-        if self.auth_key is None or expected_auth_key_id is None:
-            return False
-        return self.auth_key_id == expected_auth_key_id
-
-
-class GenAuthData(AuthData):
-    __slots__ = (
-        "p", "q", "server_nonce", "new_nonce", "dh_prime", "server_nonce_bytes", "tmp_aes_key", "tmp_aes_iv", "a",
-        "expires_in",
-    )
-
-    def __init__(self):
-        super().__init__()
-
-        self.p: int | None = None
-        self.q: int | None = None
-        self.server_nonce: int | None = None
-        self.new_nonce: bytes | None = None
-        self.dh_prime: int | None = None
-        self.server_nonce_bytes: ... | None = None
-        self.tmp_aes_key: bytes | None = None
-        self.tmp_aes_iv: bytes | None = None
-        self.a: int | None = None
-        self.expires_in: int = 0
 
 
 class Client:
@@ -296,7 +264,8 @@ class Client:
             assert isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTempDc)), \
                 f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}"
 
-            self.auth_data.expires_in = max(p_q_inner_data.expires_in, 86400) if isinstance(p_q_inner_data, PQInnerDataTempDc) else 0
+            self.auth_data.is_temp = isinstance(p_q_inner_data, PQInnerDataTempDc)
+            self.auth_data.expires_in = max(p_q_inner_data.expires_in, 86400) if self.auth_data.is_temp else 0
 
             new_nonce: bytes = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
             self.auth_data.new_nonce = new_nonce
@@ -401,7 +370,7 @@ class Client:
         sess.update_incoming_content_related_msgs(req_message.obj, req_message.seq_no)
 
         if created:
-            logger.info(f"Created session {session_id}")
+            logger.info(f"({self.peername}) Created session {session_id}")
             await self.send(
                 NewSessionCreated(first_msg_id=req_message.message_id, unique_id=sess.session_id, server_salt=0),
                 sess, in_reply=False
@@ -483,9 +452,8 @@ class Client:
         if self.auth_data is None or not self.auth_data.check_key(message.auth_key_id):
             got = await self.server.get_auth_key(message.auth_key_id)
             if got is None:
-                logger.info("Client sent unknown auth_key_id, disconnecting with 404")
+                logger.info(f"Client ({self.peername}) sent unknown auth_key_id {message.auth_key_id}, disconnecting with 404")
                 raise Disconnection(404)
-            logger.debug(f"{got=}")
             self.auth_data = AuthData(*got)
 
         try:
@@ -552,7 +520,7 @@ class Client:
 
         result = result if error is None else error
         if result is None:
-            logger.warning("No handler found for obj:\n{obj}", obj=request.obj)
+            logger.warning(f"No handler found for obj: {request.obj}")
             result = RpcError(error_code=500, error_message="Not implemented")
         if result is False:
             return

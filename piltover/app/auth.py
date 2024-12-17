@@ -14,7 +14,7 @@ from piltover.db.models.user import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl import Long, BindAuthKeyInner, Int
+from piltover.tl import BindAuthKeyInner
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
     AuthorizationSignUpRequired
@@ -25,6 +25,8 @@ handler = MessageHandler("auth")
 # noinspection PyUnusedLocal
 @handler.on_request(SendCode)
 async def send_code(client: Client, request: SendCode):
+    # TODO: android client stuck here for some reason
+
     try:
         int(request.phone_number)
     except ValueError:

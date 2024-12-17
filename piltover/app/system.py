@@ -3,12 +3,11 @@ from datetime import datetime
 from loguru import logger
 
 from piltover.db.models import UserAuthorization
-from piltover.db.models._utils import user_auth_q_temp
 from piltover.server import MessageHandler, Client
 from piltover.session_manager import Session
-from piltover.tl.core_types import Message
 from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
-    InvokeWithoutUpdates, SetClientDHParams, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown
+    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown
+from piltover.tl.core_types import Message
 
 handler = MessageHandler("system")
 
@@ -76,7 +75,7 @@ async def invoke_without_updates(client: Client, request: Message[InvokeWithoutU
 async def init_connection(client: Client, request: Message[InitConnection], session: Session):
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
-    authorization = await UserAuthorization.get_or_none(user_auth_q_temp(client.auth_data.auth_key_id))
+    authorization = await UserAuthorization.get_or_none(key__id=str(await client.auth_data.get_perm_id()))
     if authorization is not None:
         # TODO: set api id
         authorization.active_at = datetime.now()
@@ -98,14 +97,6 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
         ),
         session,
     )
-
-
-# noinspection PyUnusedLocal
-@handler.on_message(SetClientDHParams)
-async def set_client_dh_params(client: Client, request: Message[SetClientDHParams], session: Session):
-    # print(request.obj)
-    # print(client.shared)
-    raise
 
 
 # noinspection PyUnusedLocal

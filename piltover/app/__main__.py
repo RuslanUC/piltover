@@ -101,10 +101,10 @@ class PiltoverApp:
         logger.debug(f"Set auth key: {auth_key_id}")
 
     @staticmethod
-    async def _auth_key_get(auth_key_id: int) -> tuple[int, bytes] | None:
+    async def _auth_key_get(auth_key_id: int) -> tuple[int, bytes, bool] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
         if key := await AuthKey.get_or_temp(auth_key_id):
-            return auth_key_id, key.auth_key
+            return auth_key_id, key.auth_key, isinstance(key, TempAuthKey)
 
     @staticmethod
     def _setup_reload():

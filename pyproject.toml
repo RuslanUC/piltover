@@ -14,7 +14,7 @@ loguru = "^0.7.3"
 tortoise-orm = {extras = ["asyncmy"], version = "^0.22.2"}
 aerich = "^0.8.0"
 pillow = "^11.0.0"
-mtproto = "^0.1.0b3"
+mtproto = "^0.1.0b5"
 
 
 [tool.poetry.group.dev.dependencies]

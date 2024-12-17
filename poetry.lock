@@ -948,13 +948,13 @@ files = [
 
 [[package]]
 name = "mtproto"
-version = "0.1.0b3"
+version = "0.1.0b4"
 description = "Telegram MTProto protocol implementation"
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "mtproto-0.1.0b3-py3-none-any.whl", hash = "sha256:34a690b1c8ab881ecd7ce9966426d6ca1b48eb83fcff6d74f72ccd1723cba2e0"},
-    {file = "mtproto-0.1.0b3.tar.gz", hash = "sha256:21dfbfcb3aca2b5f7e9a5f8029e1da21383b7142d1fcca384672225f290f8392"},
+    {file = "mtproto-0.1.0b4-py3-none-any.whl", hash = "sha256:e6e2e8d5facad6139294a540a65f8c43434a1ca853200985316fa2d9b9c664a7"},
+    {file = "mtproto-0.1.0b4.tar.gz", hash = "sha256:4c871d3547cd574fe1a48d50a1e06b4c8e6f304732dbadc57cc0dac3d10f7425"},
 ]
 
 [package.extras]
@@ -2075,4 +2075,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "8796b8f4d6520ffd4e48a1b9ccc5b60e3723aa497cf64b333b8d0e5f2c196cb0"
+content-hash = "6d5bb73442a6666643b487c946757220fd56542192ef22c07fbd1d01a4d9904d"
