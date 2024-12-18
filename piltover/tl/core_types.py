@@ -55,7 +55,7 @@ class MsgContainer(TLObject):
     def serialize(self) -> bytes:
         result = len(self.messages).to_bytes(4, 'little')
         for message in self.messages:
-            result += SerializationUtils.write(message, None)
+            result += message.serialize()
         return result
 
 

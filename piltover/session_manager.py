@@ -136,4 +136,4 @@ class SessionManager(metaclass=SingletonMeta):
                 await auth.update(upd_seq=auth.upd_seq+1)
                 obj.seq = auth.upd_seq
 
-            await session.client.send(obj, session, None, False)
+            await session.client.send(obj, session, in_reply=False)
