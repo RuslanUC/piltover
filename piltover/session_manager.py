@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from piltover.db.models import User, UserAuthorization, AuthKey
 from piltover.tl import TLObject, Updates
+from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.utils import is_content_related
 from piltover.utils.utils import SingletonMeta
 
@@ -62,6 +63,32 @@ class Session:
             self.outgoing_content_related_msgs += 1
             ret += 1
         return ret
+
+    # https://core.telegram.org/mtproto/description#message-identifier-msg-id
+    def pack_message(self, obj: TLObject, originating_request: Message | None = None) -> Message:
+        if originating_request is None:
+            msg_id = self.msg_id(in_reply=False)
+        else:
+            if is_content_related(obj):
+                msg_id = self.msg_id(in_reply=True)
+            else:
+                msg_id = originating_request.message_id + 1
+
+        return Message(message_id=msg_id, seq_no=self.get_outgoing_seq_no(obj), obj=obj)
+
+    # https://core.telegram.org/mtproto/description#message-identifier-msg-id
+    def pack_container(self, objects: list[tuple[TLObject, Message]]) -> Message:
+        container = MsgContainer(messages=[])
+        for obj, originating_request in objects:
+            if is_content_related(obj):
+                msg_id = self.msg_id(in_reply=True)
+            else:
+                msg_id = originating_request.message_id + 1
+            seq_no = self.get_outgoing_seq_no(obj)
+
+            container.messages.append(Message(message_id=msg_id, seq_no=seq_no, obj=obj))
+
+        return self.pack_message(container)
 
     def __hash__(self) -> int:
         return self.session_id

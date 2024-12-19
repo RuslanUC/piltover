@@ -155,6 +155,8 @@ class Client:
         assert self.auth_data.auth_key is not None, "FATAL: self.auth_key is None"
         assert self.auth_data.auth_key_id is not None, "FATAL: self.auth_key_id is None"
 
+        logger.trace(f"Actually sending: {message}")
+
         encrypted = DecryptedMessagePacket(
             salt=Long.write(self.server.salt),
             session_id=session.session_id,
@@ -167,17 +169,15 @@ class Client:
         self.writer.write(to_send)
         await self.writer.drain()
 
-    async def send(
-            self, obj: TLObject, session: Session,  originating_request: Message | None = None,
-    ):
+    async def send(self, obj: TLObject, session: Session,  originating_request: Message | None = None) -> None:
         logger.debug(f"Sending: {obj}")
-        message = self._pack_message(session, obj, originating_request)
+        message = session.pack_message(obj, originating_request)
 
         await self._send_raw(message, session)
 
     async def send_container(self, objects: list[tuple[TLObject, Message]], session: Session):
         logger.debug(f"Sending: {objects}")
-        message = self._pack_container(session, objects)
+        message = session.pack_container(objects)
 
         await self._send_raw(message, session)
 
@@ -413,42 +413,6 @@ class Client:
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 
-    # TODO: move to session?
-    # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    @staticmethod
-    def _pack_message(
-            session: Session, obj: TLObject, originating_request: Message | None = None
-    ) -> Message:
-        if originating_request is None:
-            msg_id = session.msg_id(in_reply=False)
-        else:
-            if is_content_related(obj):
-                msg_id = session.msg_id(in_reply=True)
-            else:
-                msg_id = originating_request.message_id + 1
-
-        message = Message(message_id=msg_id, seq_no=session.get_outgoing_seq_no(obj), obj=obj)
-        logger.trace(f"Actually sending: {message}")
-
-        return message
-
-    # TODO: move to session?
-    # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    def _pack_container(self, session: Session, objects: list[tuple[TLObject, Message]]) -> Message:
-        container = MsgContainer(messages=[])
-        for obj, originating_request in objects:
-            if is_content_related(obj):
-                msg_id = session.msg_id(in_reply=True)
-            else:
-                msg_id = originating_request.message_id + 1
-            seq_no = session.get_outgoing_seq_no(obj)
-
-            container.messages.append(Message(message_id=msg_id, seq_no=seq_no, obj=obj))
-
-        logger.trace(f"Actually sending: {container}")
-
-        return self._pack_message(session, container)
-
     async def decrypt(self, message: EncryptedMessagePacket, v1: bool = False) -> DecryptedMessagePacket:
         if self.auth_data is None or not self.auth_data.check_key(message.auth_key_id):
             got = await self.server.get_auth_key(message.auth_key_id)
@@ -473,33 +437,43 @@ class Client:
             self.auth_data = auth_data_bak
             raise
 
+    async def _worker_loop(self) -> None:
+        while True:
+            try:
+                await self.recv()
+            except AssertionError:
+                logger.exception("Unexpected failed assertion", backtrace=True)
+            except InvalidConstructorException as e:
+                if e.wrong_type:
+                    continue
+
+                logger.error(
+                    f"Invalid constructor: {e.constructor} ({hex(e.constructor)[2:]}), "
+                    f"leftover bytes={e.leftover_bytes}"
+                )
+
+                raise Disconnection(400)
+
     @logger.catch
     async def worker(self):
         logger.debug(f"Client connected: {self.peername}")
 
         try:
-            while True:
-                try:
-                    await self.recv()
-                except AssertionError:
-                    logger.exception("Unexpected failed assertion", backtrace=True)
-                except InvalidConstructorException as e:
-                    if e.wrong_type:
-                        continue
-                    logger.error(f"Invalid constructor: {e.constructor} ({hex(e.constructor)[2:]})" +
-                                 ("" if not e.leftover_bytes else f", leftover bytes={e.leftover_bytes}"))
-                    raise Disconnection(400)
+            await self._worker_loop()
         except Disconnection as err:
             if err.transport_error is not None:
                 self.writer.write(self.conn.send(ErrorPacket(err.transport_error)))
                 await self.writer.drain()
+
             self.writer.close()
             await self.writer.wait_closed()
+
             logger.info("Client disconnected")
         finally:
             if (sess := SessionManager().by_client.get(self, None)) is not None:
                 for s in sess:
                     logger.info(f"Session {s.session_id} removed")
+
             SessionManager().client_cleanup(self)
 
     async def propagate(self, request: Message, session: Session) -> TLObject | None:
