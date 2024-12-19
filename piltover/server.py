@@ -152,16 +152,16 @@ class Client:
             return
         return packet
 
-    async def _send_raw(self, data: bytes, seq_no: int, session: Session, in_reply: bool = True) -> None:
+    async def _send_raw(self, message: Message, session: Session) -> None:
         assert self.auth_data.auth_key is not None, "FATAL: self.auth_key is None"
         assert self.auth_data.auth_key_id is not None, "FATAL: self.auth_key_id is None"
 
         encrypted = DecryptedMessagePacket(
             salt=Long.write(self.server.salt),
             session_id=session.session_id,
-            message_id=session.msg_id(in_reply=in_reply),
-            seq_no=seq_no,
-            data=data,
+            message_id=message.message_id,
+            seq_no=message.seq_no,
+            data=message.obj.write(),
         ).encrypt(self.auth_data.auth_key, ConnectionRole.SERVER)
 
         to_send = self.conn.send(encrypted)
@@ -169,18 +169,18 @@ class Client:
         await self.writer.drain()
 
     async def send(
-            self, obj: TLObject, session: Session,  originating_request: Message | None = None, in_reply: bool = True
+            self, obj: TLObject, session: Session,  originating_request: Message | None = None,
     ):
         logger.debug(f"Sending: {obj}")
-        serialized, out_seq = self._serialize_message(session, obj, originating_request)
+        message = self._pack_message(session, obj, originating_request)
 
-        await self._send_raw(serialized, out_seq, session, in_reply)
+        await self._send_raw(message, session)
 
     async def send_container(self, objects: list[tuple[TLObject, Message]], session: Session):
         logger.debug(f"Sending: {objects}")
-        serialized, out_seq = self._serialize_container(session, objects)
+        message = self._pack_container(session, objects)
 
-        await self._send_raw(serialized, out_seq, session)
+        await self._send_raw(message, session)
 
     async def send_unencrypted(self, obj: TLObject) -> None:
         logger.debug(obj)
@@ -372,7 +372,7 @@ class Client:
             logger.info(f"({self.peername}) Created session {session_id}")
             await self.send(
                 NewSessionCreated(first_msg_id=req_message.message_id, unique_id=sess.session_id, server_salt=0),
-                sess, in_reply=False
+                sess
             )
 
         if isinstance(req_message.obj, MsgContainer):
@@ -398,11 +398,13 @@ class Client:
         message = await self.read_message()
         if isinstance(message, EncryptedMessagePacket):
             decrypted = await self.decrypt(message)
-            payload = Message.read(BytesIO(decrypted.data))
-            if not isinstance(payload, Message):
-                payload = Message(message_id=decrypted.message_id, seq_no=decrypted.seq_no, obj=payload)
+            payload = Message(
+                message_id=decrypted.message_id,
+                seq_no=decrypted.seq_no,
+                obj=TLObject.read(BytesIO(decrypted.data)),
+            )
             request_ctx.set(RequestContext(
-                message.auth_key_id, decrypted.message_id, decrypted.session_id, payload, self
+                message.auth_key_id, decrypted.message_id, decrypted.session_id, payload.obj, self
             ))
 
             logger.debug(payload)
@@ -415,9 +417,9 @@ class Client:
     # TODO: move to session?
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
     @staticmethod
-    def _serialize_message(
+    def _pack_message(
             session: Session, obj: TLObject, originating_request: Message | None = None
-    ) -> tuple[bytes, int]:
+    ) -> Message:
         if originating_request is None:
             msg_id = session.msg_id(in_reply=False)
         else:
@@ -425,16 +427,15 @@ class Client:
                 msg_id = session.msg_id(in_reply=True)
             else:
                 msg_id = originating_request.message_id + 1
-        seq_no = session.get_outgoing_seq_no(obj)
 
-        message = Message(message_id=msg_id, seq_no=seq_no, obj=obj)
-        logger.trace(f"Actually sending: {obj}")
-        return message.write(), session.get_outgoing_seq_no(obj)
+        message = Message(message_id=msg_id, seq_no=session.get_outgoing_seq_no(obj), obj=obj)
+        logger.trace(f"Actually sending: {message}")
+
+        return message
 
     # TODO: move to session?
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    @staticmethod
-    def _serialize_container(session: Session, objects: list[tuple[TLObject, Message]]) -> tuple[bytes, int]:
+    def _pack_container(self, session: Session, objects: list[tuple[TLObject, Message]]) -> Message:
         container = MsgContainer(messages=[])
         for obj, originating_request in objects:
             if is_content_related(obj):
@@ -447,7 +448,7 @@ class Client:
 
         logger.trace(f"Actually sending: {container}")
 
-        return container.write(), session.get_outgoing_seq_no(container)
+        return self._pack_message(session, container)
 
     async def decrypt(self, message: EncryptedMessagePacket, v1: bool = False) -> DecryptedMessagePacket:
         if self.auth_data is None or not self.auth_data.check_key(message.auth_key_id):
@@ -511,6 +512,9 @@ class Client:
                 result=RpcError(error_code=500, error_message="Not implemented"),
             )
 
+        old_ctx = request_ctx.get()
+        request_ctx.set(old_ctx.clone(obj=request.obj))
+
         result = None
         error = None
 
@@ -521,6 +525,8 @@ class Client:
         except Exception as e:
             logger.warning(e)
             error = RpcError(error_code=500, error_message="Server error")
+
+        request_ctx.set(old_ctx)
 
         result = result if error is None else error
         if result is None:

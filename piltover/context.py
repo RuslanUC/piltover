@@ -17,5 +17,10 @@ class RequestContext(Generic[T]):
         self.obj = obj
         self.client = client
 
+    def clone(self, **kwargs) -> RequestContext:
+        values = {slot: getattr(self, slot) for slot in self.__slots__}
+        values |= kwargs
+        return self.__class__(**values)
+
 
 request_ctx: ContextVar[RequestContext] = ContextVar("request_ctx")

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from asyncio import StreamReader, StreamWriter
-from collections import defaultdict
 from inspect import signature
 from typing import Awaitable, Callable
 
 from loguru import logger
 
+from piltover.context import request_ctx
 from piltover.db.models import UserAuthorization, User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -102,6 +102,9 @@ class Client(LowClient):
         if not (handler := self.server.request_handlers.get(request.obj.tlid())):
             return await super().propagate(request, session)
 
+        old_ctx = request_ctx.get()
+        request_ctx.set(old_ctx.clone(obj=request.obj))
+
         result = None
         error = None
         user = None
@@ -120,6 +123,8 @@ class Client(LowClient):
             else:
                 logger.opt(exception=e).warning(f"Error while processing {request.obj.tlname()}")
                 error = RpcError(error_code=500, error_message="Server error")
+
+        request_ctx.set(old_ctx)
 
         if user is not None and session.user_id is None:
             SessionManager().set_user(session, user)

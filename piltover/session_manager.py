@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING
 
-from piltover.auth_data import AuthData
 from piltover.db.models import User, UserAuthorization, AuthKey
 from piltover.tl import TLObject, Updates
 from piltover.tl.utils import is_content_related
@@ -136,4 +135,4 @@ class SessionManager(metaclass=SingletonMeta):
                 await auth.update(upd_seq=auth.upd_seq+1)
                 obj.seq = auth.upd_seq
 
-            await session.client.send(obj, session, in_reply=False)
+            await session.client.send(obj, session)

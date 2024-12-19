@@ -145,7 +145,15 @@ async def send_message(client: Client, request: SendMessage, user: User):
         reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, chat=chat)
 
     message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
-    await MessageDraft.filter(dialog__chat=chat, dialog__user=user).delete()
+
+    # TODO: rewrite when pypika fixes delete with join
+    # Not doing await MessageDraft.filter(...).delete()
+    # Because pypika generates sql for MySql/MariaDB like "DELETE FROM `messagedraft` LEFT OUTER JOIN"
+    # But `messagedraft` must also be placed between "DELETE" and "FROM", like this:
+    # "DELETE `messagedraft` FROM `messagedraft` LEFT OUTER JOIN"
+    if (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
+        await draft.delete()
+
     await send_update_draft(user, chat, DraftMessageEmpty())
 
     if (upd := await UpdatesManager().send_message(user, message)) is None:
@@ -242,7 +250,7 @@ async def get_dialogs(client: Client, request: GetDialogs, user: User):
 async def get_peer_dialogs(client: Client, request: GetPeerDialogs, user: User):
     return PeerDialogs(
         **(await get_dialogs_internal(request.peers, user)),
-        state=await get_state_internal(user)
+        state=await get_state_internal(client, user)
     )
 
 
@@ -264,7 +272,7 @@ async def get_pinned_dialogs(client: Client, request: GetPinnedDialogs, user: Us
         messages=[],
         chats=[],
         users=[],
-        state=await get_state_internal(user),
+        state=await get_state_internal(client, user),
     )
 
 

@@ -32,6 +32,13 @@ class Message(TLObject, Generic[T]):
         body = SerializationUtils.write(self.obj)
         return Long.write(self.message_id) + Int.write(self.seq_no) + Int.write(len(body)) + body
 
+    @classmethod
+    def read(cls, stream, strict_type: bool = False) -> TLObject:
+        return Message.deserialize(stream)
+
+    def write(self) -> bytes:
+        return self.serialize()
+
 
 class MsgContainer(TLObject):
     __tl_id__ = 0x73f1f8dc
@@ -53,7 +60,7 @@ class MsgContainer(TLObject):
         return MsgContainer(messages=result)
 
     def serialize(self) -> bytes:
-        result = len(self.messages).to_bytes(4, 'little')
+        result = Int.write(len(self.messages))
         for message in self.messages:
             result += message.serialize()
         return result
