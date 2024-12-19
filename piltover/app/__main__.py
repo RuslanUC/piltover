@@ -13,8 +13,7 @@ from piltover.app import system, help as help_, auth, updates, users, stories, a
 from piltover.db.models import AuthKey
 from piltover.db.models.authkey import TempAuthKey
 from piltover.high_level import Server
-from piltover.types import Keys
-from piltover.utils import gen_keys, get_public_key_fingerprint
+from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 
 data = root_dir / "data"
 data.mkdir(parents=True, exist_ok=True)
@@ -106,20 +105,6 @@ class PiltoverApp:
         if key := await AuthKey.get_or_temp(auth_key_id):
             return auth_key_id, key.auth_key, isinstance(key, TempAuthKey)
 
-    @staticmethod
-    def _setup_reload():
-        if getenv("DISABLE_HR"):
-            return
-
-        import jurigged
-
-        def log(s: jurigged.live.WatchOperation):
-            if hasattr(s, "filename") and "unknown" not in s.filename:
-                file = Path(s.filename)
-                print("Reloaded", file.relative_to(root_dir))
-
-        jurigged.watch("piltover/[!tl]*.py", logger=log)
-
     async def run(self, host: str | None = None, port: int | None = None, *, reload: bool = False):
         self._host = host or self._host
         self._port = port or self._port
@@ -132,7 +117,6 @@ class PiltoverApp:
         )
 
         if reload:
-            self._setup_reload()
             await migrate()
 
         await Tortoise.init(

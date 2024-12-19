@@ -21,9 +21,8 @@ from piltover.tl import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, 
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
 from piltover.tl.utils import is_content_related
-from piltover.types import Keys
 from piltover.utils import read_int, generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
-    load_private_key, load_public_key, background
+    load_private_key, load_public_key, background, Keys
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 
 

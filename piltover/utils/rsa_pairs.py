@@ -1,9 +1,14 @@
+from dataclasses import dataclass
 from hashlib import sha1
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from piltover.types import Keys
+
+@dataclass(slots=True)
+class Keys:
+    public_key: str
+    private_key: str
 
 
 def write_bytes(value: bytes) -> bytes:

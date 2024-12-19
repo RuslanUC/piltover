@@ -5,8 +5,8 @@ from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import ChatType, UpdateType
 from piltover.db.models import User, Chat, Message, State, UpdateV2
 from piltover.session_manager import SessionManager
-from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, \
-    UpdateMessageID, UpdateReadHistoryInbox, UpdateDeleteMessages, UpdateEditMessage
+from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
+    UpdateReadHistoryInbox, UpdateDeleteMessages, UpdateEditMessage
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 

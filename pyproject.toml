@@ -18,7 +18,6 @@ mtproto = "^0.1.0b5"
 
 
 [tool.poetry.group.dev.dependencies]
-jurigged = "^0.5.5"
 websockets = "^12.0"
 icecream = "^2.1.3"
 tqdm = "^4.66.5"
