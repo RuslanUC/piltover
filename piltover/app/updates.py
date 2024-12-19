@@ -1,6 +1,8 @@
 from datetime import datetime
 from time import time
 
+from pytz import UTC
+
 from piltover.db.enums import ChatType, UpdateType
 from piltover.db.models import User, Message, UserAuthorization, State, UpdateV2
 from piltover.enums import ReqHandlerFlags
@@ -37,8 +39,7 @@ async def get_state(client: Client, request: GetState, user: User):
 @handler.on_request(GetDifference, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_difference(client: Client, request: GetDifference | GetDifference_136, user: User):
     requested_update = await UpdateV2.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
-    date = requested_update.date if requested_update is not None else request.date
-    date = datetime.fromtimestamp(date)
+    date = requested_update.date if requested_update is not None else datetime.fromtimestamp(request.date, UTC)
 
     new = await Message.filter(chat__dialogs__user=user, date__gt=date).select_related("author", "chat")
     new_messages = {}

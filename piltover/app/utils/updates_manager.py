@@ -108,14 +108,14 @@ class UpdatesManager(metaclass=SingletonMeta):
         updates_to_create = []
 
         for chat in chats:
-            for update_user in await User.filter(dialogs__chat=chat, id__not_in=user.id):
+            for update_user in await User.filter(dialogs__chat=chat, id__not=user.id):
                 pts_count = len(message_ids[chat.id])
                 pts = await State.add_pts(update_user, pts_count)
 
                 updates_to_create.append(
                     UpdateV2(
                         user=update_user,
-                        type=UpdateType.MESSAGE_DELETE,
+                        update_type=UpdateType.MESSAGE_DELETE,
                         pts=pts,
                         related_id=None,
                         related_ids=message_ids[chat.id],
@@ -140,10 +140,12 @@ class UpdatesManager(metaclass=SingletonMeta):
                 )
 
         all_ids = [i for ids in message_ids.values() for i in ids]
+        new_pts = await State.add_pts(user, len(all_ids))
         updates_to_create.append(
             UpdateV2(
                 user=user,
-                type=UpdateType.MESSAGE_DELETE,
+                update_type=UpdateType.MESSAGE_DELETE,
+                pts=new_pts,
                 related_id=None,
                 related_ids=all_ids,
             )
@@ -151,8 +153,6 @@ class UpdatesManager(metaclass=SingletonMeta):
 
         await UpdateV2.filter(related_id__in=all_ids).delete()
         await UpdateV2.bulk_create(updates_to_create)
-
-        new_pts = await State.add_pts(user, len(all_ids))
 
         self_upd = UpdateDeleteMessages(messages=all_ids, pts=new_pts, pts_count=len(all_ids))
         updates = Updates(updates=[self_upd], users=[], chats=[], date=int(time()), seq=0)
@@ -171,7 +171,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             updates_to_create.append(
                 UpdateV2(
                     user=update_user,
-                    type=UpdateType.MESSAGE_EDIT,
+                    update_type=UpdateType.MESSAGE_EDIT,
                     pts=pts,
                     related_id=message.id,
                 )
