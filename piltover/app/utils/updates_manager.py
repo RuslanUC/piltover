@@ -165,7 +165,7 @@ class UpdatesManager(metaclass=SingletonMeta):
         updates_to_create = []
         result_update = None
 
-        for update_user in await User.filter(dialogs__chat=message.chat, id__not_in=message.author.id):
+        for update_user in await User.filter(dialogs__chat=message.chat):
             pts = await State.add_pts(update_user, 1)
 
             updates_to_create.append(

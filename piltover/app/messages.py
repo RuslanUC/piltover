@@ -17,7 +17,8 @@ from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, InputPeerSelf, \
     EmojiKeywordsDifference, DocumentEmpty, InputDialogPeer, InputMediaUploadedDocument, PeerSettings, \
-    UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, DraftMessageEmpty, DraftMessage
+    UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, DraftMessageEmpty, DraftMessage, \
+    InputStickerSetAnimatedEmoji, StickerSet
 from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -27,7 +28,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
-    FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData
+    FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet
 
 handler = MessageHandler("messages")
 
@@ -189,6 +190,23 @@ async def get_web_page(client: Client, request: GetWebPage):
 # noinspection PyUnusedLocal
 @handler.on_request(GetStickerSet)
 async def get_sticker_set(client: Client, request: GetStickerSet):
+    if isinstance(request.stickerset, InputStickerSetAnimatedEmoji):
+        return messages_StickerSet(
+            set=StickerSet(
+                id=1,
+                access_hash=1,
+                title="AnimatedEmoji",
+                short_name="animated_emoji",
+                count=0,
+                hash=1,
+                official=True,
+                emojis=True,
+            ),
+            packs=[],
+            keywords=[],
+            documents=[]
+        )
+
     raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
 

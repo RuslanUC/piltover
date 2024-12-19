@@ -3,9 +3,10 @@ from time import time
 from piltover.high_level import MessageHandler, Client
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
-    GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText
+    GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
+    GetPeerProfileColors
 from piltover.tl.types.help import CountriesList, Country, CountryCode, PromoDataEmpty, \
-    PremiumPromo, InviteText, TermsOfServiceUpdateEmpty
+    PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, PeerColors, PeerColorOption
 
 handler = MessageHandler("help")
 
@@ -125,3 +126,17 @@ async def save_app_log(client: Client, request: SaveAppLog):
 @handler.on_request(GetInviteText)
 async def get_invite_text(client: Client, request: GetInviteText):
     return InviteText(message="🐳")
+
+
+# noinspection PyUnusedLocal
+@handler.on_request(GetPeerColors)
+@handler.on_request(GetPeerProfileColors)
+async def get_peer_colors(client: Client, request: GetPeerColors):
+    return PeerColors(
+        hash=1,
+        colors=[
+            PeerColorOption(color_id=color_id)
+            for color_id in range(6)
+        ],
+    )
+
