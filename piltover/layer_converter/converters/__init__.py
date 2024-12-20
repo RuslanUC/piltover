@@ -1,5 +1,6 @@
 from .base import BaseDowngrader, BaseUpgrader
 from .message_downgrade import *
+from .messagemediadocument_downgrade import *
 from .peernotifysettings_downgrade import *
 from .peersettings_downgrade import *
 from .user_downgrade import *
@@ -36,3 +37,6 @@ LayerConverter.register_for_downgrade(MessageDowngradeTo170)
 LayerConverter.register_for_downgrade(MessageDowngradeTo174)
 LayerConverter.register_for_downgrade(MessageDowngradeTo176)
 LayerConverter.register_for_downgrade(MessageDontDowngrade)
+
+LayerConverter.register_for_downgrade(MessageMediaDocumentDowngradeTo136)
+LayerConverter.register_for_downgrade(MessageMediaDocumentDontDowngrade)

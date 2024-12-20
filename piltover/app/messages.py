@@ -26,7 +26,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
-    SendMessage_148
+    SendMessage_148, SendMedia_148, EditMessage_136
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet
@@ -158,6 +158,7 @@ async def send_message(client: Client, request: SendMessage, user: User):
     # Because pypika generates sql for MySql/MariaDB like "DELETE FROM `messagedraft` LEFT OUTER JOIN"
     # But `messagedraft` must also be placed between "DELETE" and "FROM", like this:
     # "DELETE `messagedraft` FROM `messagedraft` LEFT OUTER JOIN"
+    # NOTE: exact same situation in SendMedia handler
     if (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
         await draft.delete()
 
@@ -495,8 +496,9 @@ async def get_webpage_preview(client: Client, request: GetWebPagePreview):
 
 
 # noinspection PyUnusedLocal
+@handler.on_request(EditMessage_136, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(EditMessage, ReqHandlerFlags.AUTH_REQUIRED)
-async def edit_message(client: Client, request: EditMessage, user: User):
+async def edit_message(client: Client, request: EditMessage | EditMessage_136, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -515,8 +517,9 @@ async def edit_message(client: Client, request: EditMessage, user: User):
 
 
 # noinspection PyUnusedLocal
+@handler.on_request(SendMedia_148, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(SendMedia, ReqHandlerFlags.AUTH_REQUIRED)
-async def send_media(client: Client, request: SendMedia, user: User):
+async def send_media(client: Client, request: SendMedia | SendMedia_148, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
 
@@ -530,17 +533,20 @@ async def send_media(client: Client, request: SendMedia, user: User):
     media_type = MediaType.DOCUMENT if isinstance(request.media, InputMediaUploadedDocument) else MediaType.PHOTO
 
     file = await upload_file(user, request.media.file, mime, attributes)
-    sizes = await resize_photo(str(file.physical_id))
-    stripped = await generate_stripped(str(file.physical_id))
+    sizes = await resize_photo(str(file.physical_id)) if mime.startswith("image/") else []
+    stripped = await generate_stripped(str(file.physical_id)) if mime.startswith("image/") else b""
     await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
 
     reply = None
-    if request.reply_to is not None:
+    if isinstance(request, SendMedia) and request.reply_to is not None:
         reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, chat=chat)
+    elif isinstance(request, SendMedia_148) and request.reply_to_msg_id is not None:
+        reply = await Message.get_or_none(id=request.reply_to_msg_id, chat=chat)
 
     message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
     await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler, type=media_type)
-    await MessageDraft.filter(dialog__chat=chat, dialog__user=user).delete()
+    if (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
+        await draft.delete()
     await send_update_draft(user, chat, DraftMessageEmpty())
 
     if (upd := await UpdatesManager().send_message(user, message, True)) is None:
