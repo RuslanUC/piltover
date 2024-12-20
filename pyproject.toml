@@ -54,3 +54,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.coverage.run]
 data_file = "coverage.coverage"
+omit = [
+    "*piltover/tl.zip/*",
+    "*piltover/tl/*",
+]

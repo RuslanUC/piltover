@@ -11,7 +11,7 @@ class BaseUpgrader:
 
     @classmethod
     @abstractmethod
-    def upgrade(cls, from_obj: T) -> TLObject:
+    def upgrade(cls, from_obj: T) -> TLObject:  # pragma: no cover
         ...
 
 
@@ -21,5 +21,5 @@ class BaseDowngrader:
 
     @classmethod
     @abstractmethod
-    def downgrade(cls, from_obj: T) -> TLObject:
+    def downgrade(cls, from_obj: T) -> TLObject:   # pragma: no cover
         ...
