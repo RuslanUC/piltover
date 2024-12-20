@@ -6,6 +6,7 @@ from time import time
 from typing import TYPE_CHECKING
 
 from piltover.db.models import User, UserAuthorization, AuthKey
+from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.utils import is_content_related
@@ -74,7 +75,11 @@ class Session:
             else:
                 msg_id = originating_request.message_id + 1
 
-        return Message(message_id=msg_id, seq_no=self.get_outgoing_seq_no(obj), obj=obj)
+        return Message(
+            message_id=msg_id,
+            seq_no=self.get_outgoing_seq_no(obj),
+            obj=LayerConverter.downgrade(obj, self.client.layer)
+        )
 
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
     def pack_container(self, objects: list[tuple[TLObject, Message]]) -> Message:

@@ -168,7 +168,7 @@ class Client:
         self.writer.write(to_send)
         await self.writer.drain()
 
-    async def send(self, obj: TLObject, session: Session,  originating_request: Message | None = None) -> None:
+    async def send(self, obj: TLObject, session: Session, originating_request: Message | None = None) -> None:
         logger.debug(f"Sending: {obj}")
         message = session.pack_message(obj, originating_request)
 

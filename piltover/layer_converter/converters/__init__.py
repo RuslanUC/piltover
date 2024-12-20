@@ -1,0 +1,32 @@
+from .base import BaseDowngrader, BaseUpgrader
+
+from .peernotifysettings_downgrade import *
+from .peersettings_downgrade import *
+from .user_downgrade import *
+from .userfull_downgrade import *
+
+from ..manager import LayerConverter
+
+LayerConverter.register_for_downgrade(UserDowngradeTo136)
+LayerConverter.register_for_downgrade(UserDowngradeTo145)
+LayerConverter.register_for_downgrade(UserDowngradeTo148)
+LayerConverter.register_for_downgrade(UserDowngradeTo160)
+LayerConverter.register_for_downgrade(UserDowngradeTo166)
+LayerConverter.register_for_downgrade(UserDontDowngrade)
+
+LayerConverter.register_for_downgrade(UserFullDowngradeTo136)
+LayerConverter.register_for_downgrade(UserFullDowngradeTo140)
+LayerConverter.register_for_downgrade(UserFullDowngradeTo144)
+LayerConverter.register_for_downgrade(UserFullDowngradeTo151)
+LayerConverter.register_for_downgrade(UserFullDowngradeTo158)
+LayerConverter.register_for_downgrade(UserFullDowngradeTo160)
+LayerConverter.register_for_downgrade(UserFullDowngradeTo164)
+LayerConverter.register_for_downgrade(UserFullDowngradeTo176)
+LayerConverter.register_for_downgrade(UserFullDontDowngrade)
+
+LayerConverter.register_for_downgrade(PeerNotifySettingsDowngradeTo136)
+LayerConverter.register_for_downgrade(PeerNotifySettingsDowngradeTo140)
+LayerConverter.register_for_downgrade(PeerNotifySettingsDontDowngrade)
+
+LayerConverter.register_for_downgrade(PeerSettingsDowngradeTo136)
+LayerConverter.register_for_downgrade(PeerSettingsDontDowngrade)

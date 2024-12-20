@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from tortoise import fields
 
-from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.models._utils import Model
 from piltover.exceptions import ErrorRpc
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, InputUser, InputUserSelf, \
     InputPeerUser, InputPeerSelf
 from piltover.tl.types.user import User as TLUser
-from piltover.tl.types.user_148 import User_148 as TLUser_148
 
 
 class User(Model):
@@ -37,7 +35,7 @@ class User(Model):
 
         return photo
 
-    async def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser | TLUser_148:
+    async def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
         # TODO: add some "version" field and save tl user in some cache with key f"{self.id}:{current_user.id}:{version}"
 
         defaults = {
@@ -57,7 +55,7 @@ class User(Model):
                        "attach_menu_enabled": False,
                    } | kwargs
 
-        user = TLUser(
+        return TLUser(
             **defaults,
             id=self.id,
             first_name=self.first_name,
@@ -69,46 +67,6 @@ class User(Model):
             photo=await self.get_photo(current_user, True),
             access_hash=123456789,  # TODO: make table with access hashes for users
         )
-
-        layer = request_ctx.get().client.layer
-        if 160 > layer >= 148:
-            user = TLUser_148(
-                is_self=user.is_self,
-                contact=user.contact,
-                mutual_contact=user.mutual_contact,
-                deleted=user.deleted,
-                bot=user.bot,
-                bot_chat_history=user.bot_chat_history,
-                bot_nochats=user.bot_nochats,
-                verified=user.verified,
-                restricted=user.restricted,
-                min=user.min,
-                bot_inline_geo=user.bot_inline_geo,
-                support=user.support,
-                scam=user.scam,
-                apply_min_photo=user.apply_min_photo,
-                fake=user.fake,
-                bot_attach_menu=user.bot_attach_menu,
-                premium=user.premium,
-                attach_menu_enabled=user.attach_menu_enabled,
-                bot_can_edit=user.bot_can_edit,
-                id=user.id,
-                access_hash=user.access_hash,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                username=user.username,
-                phone=user.phone,
-                photo=user.photo,
-                status=user.status,
-                bot_info_version=user.bot_info_version,
-                restriction_reason=user.restriction_reason,
-                bot_inline_placeholder=user.bot_inline_placeholder,
-                lang_code=user.lang_code,
-                emoji_status=user.emoji_status,
-                usernames=user.usernames,
-            )
-
-        return user
 
     @classmethod
     async def from_input_peer(cls, peer, current_user: models.User) -> models.User | None:
