@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from os import getenv
 from pathlib import Path
 from time import time
@@ -6,7 +7,7 @@ from time import time
 import uvloop
 from aerich import Command, Migrate
 from loguru import logger
-from tortoise import Tortoise
+from tortoise import Tortoise, connections
 
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels, upload, root_dir
@@ -126,6 +127,28 @@ class PiltoverApp:
 
         logger.success("Running on {host}:{port}", host=self._host, port=self._port)
         await self._server.serve()
+
+    @asynccontextmanager
+    async def run_test(self) -> int:
+        await Tortoise.init(
+            db_url="sqlite://:memory:",
+            modules={"models": ["piltover.db.models"]},
+            _create_db=True,
+        )
+        await Tortoise.generate_schemas()
+
+        from piltover.app import testing
+        try:
+            self._server.register_handler(testing.handler)
+        except RuntimeError:
+            ...
+
+        server = await asyncio.start_server(self._server.accept_client, "127.0.0.1", 0)
+        async with server:
+            self._server.host, self._server.port = server.sockets[0].getsockname()
+            yield self._server
+
+        await connections.close_all(True)
 
 
 app = PiltoverApp(secrets / "privkey.asc", secrets / "pubkey.asc")

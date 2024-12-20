@@ -20,7 +20,6 @@ from piltover.tl import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, 
     SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
-from piltover.tl.utils import is_content_related
 from piltover.utils import read_int, generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
     load_private_key, load_public_key, background, Keys
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
@@ -98,7 +97,7 @@ class Server:
 
     def on_message(self, typ: type[TLObject]):
         def decorator(func: Callable[[Client, Message, Session], Awaitable[TLObject | bool | None]]):
-            logger.debug("Added handler for function {typ!r}", typ=typ)
+            logger.debug(f"Added handler for function {typ!r}")
 
             self.handlers[typ.tlid()] = func
             return func
@@ -134,11 +133,9 @@ class Client:
         self.empty_session = Session(self, 0)
 
         self.no_updates = False
+        self.layer = 177
 
-    async def internal_updates_handler(self) -> None:
-        ...
-
-    async def read_message(self) -> MessagePacket | None:
+    async def read_packet(self) -> MessagePacket | None:
         packet = self.conn.receive(b"")
         if isinstance(packet, MessagePacket):
             return packet
@@ -146,9 +143,11 @@ class Client:
         recv = await self.reader.read(32 * 1024)
         if not recv:
             raise Disconnection
+
         packet = self.conn.receive(recv)
         if not isinstance(packet, MessagePacket):
             return
+
         return packet
 
     async def _send_raw(self, message: Message, session: Session) -> None:
@@ -394,22 +393,23 @@ class Client:
         await self.send(result, sess, originating_request=req_message)
 
     async def recv(self):
-        message = await self.read_message()
-        if isinstance(message, EncryptedMessagePacket):
-            decrypted = await self.decrypt(message)
-            payload = Message(
+        packet = await self.read_packet()
+
+        if isinstance(packet, EncryptedMessagePacket):
+            decrypted = await self.decrypt(packet)
+            message = Message(
                 message_id=decrypted.message_id,
                 seq_no=decrypted.seq_no,
                 obj=TLObject.read(BytesIO(decrypted.data)),
             )
             request_ctx.set(RequestContext(
-                message.auth_key_id, decrypted.message_id, decrypted.session_id, payload.obj, self
+                packet.auth_key_id, decrypted.message_id, decrypted.session_id, message.obj, self
             ))
 
-            logger.debug(payload)
-            await self.handle_encrypted_message(payload, decrypted.session_id)
-        elif isinstance(message, UnencryptedMessagePacket):
-            decoded = SerializationUtils.read(BytesIO(message.message_data), TLObject)
+            logger.debug(message)
+            await self.handle_encrypted_message(message, decrypted.session_id)
+        elif isinstance(packet, UnencryptedMessagePacket):
+            decoded = SerializationUtils.read(BytesIO(packet.message_data), TLObject)
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 

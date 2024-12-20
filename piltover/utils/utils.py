@@ -58,3 +58,8 @@ class classinstancemethod:
 
 def xor(a: bytes, b: bytes) -> bytes:
     return bytes(i ^ j for i, j in zip(a, b))
+
+
+def sec_check(cond: ..., exc: type[Exception] = Exception, msg: str | None = None) -> None:
+    if not cond:
+        raise exc(msg) if msg else exc

@@ -15,9 +15,11 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl import BindAuthKeyInner
-from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword
+from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
+    SignUp_136
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
     AuthorizationSignUpRequired
+from piltover.utils.utils import sec_check
 
 handler = MessageHandler("auth")
 
@@ -25,8 +27,6 @@ handler = MessageHandler("auth")
 # noinspection PyUnusedLocal
 @handler.on_request(SendCode)
 async def send_code(client: Client, request: SendCode):
-    # TODO: android client stuck here for some reason
-
     try:
         int(request.phone_number)
     except ValueError:
@@ -83,16 +83,16 @@ async def sign_in(client: Client, request: SignIn):
 
 
 # noinspection PyUnusedLocal
+@handler.on_request(SignUp_136)
 @handler.on_request(SignUp)
-async def sign_up(client: Client, request: SignUp):
+async def sign_up(client: Client, request: SignUp | SignUp_136):
     if len(request.phone_code_hash) != 24:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     try:
         int(request.phone_number)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
-    code = await SentCode.get_or_none(phone_number=request.phone_number, hash=request.phone_code_hash[8:],
-                                      used=True)
+    code = await SentCode.get_or_none(phone_number=request.phone_number, hash=request.phone_code_hash[8:], used=True)
     if code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if code.expires_at < time():
@@ -151,14 +151,15 @@ async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
 
     try:
         message = await client.decrypt_noreplace(encrypted_message, True)
-        if message.seq_no != 0 or len(message.data) != 40 or message.message_id != ctx.message_id:
-            raise Exception
+        sec_check(message.seq_no == 0)
+        sec_check(len(message.data) == 40)
+        sec_check(message.message_id == ctx.message_id)
 
         obj = BindAuthKeyInner.read(BytesIO(message.data))
-        # TODO: check obj.temp_session_id == request session id
-        # TODO: check obj.temp_auth_key_id == request key id
-        if obj.perm_auth_key_id != encrypted_message.auth_key_id or obj.nonce != request.nonce:
-            raise Exception
+        sec_check(obj.perm_auth_key_id == encrypted_message.auth_key_id)
+        sec_check(obj.nonce == request.nonce)
+        sec_check(obj.temp_session_id == ctx.session_id)
+        sec_check(obj.temp_auth_key_id == ctx.auth_key_id)
     except Exception as e:
         logger.opt(exception=e).debug("Failed to decrypt inner message")
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
