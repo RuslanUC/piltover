@@ -20,7 +20,7 @@ chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
       `old = False`~~
 - [x] Support TL from multiple layers, and layer-based handlers. Add fallbacks
       eventually.
-- [ ] Add a `tests/` directory with patched assertions from client libraries.
+- [x] Add a `tests/` directory with patched assertions from client libraries.
 - [ ] Use custom exceptions instead of Python assertions: `assert` statements
       are disabled with `python -O`, leading to missing important checks.
 - [ ] Add missing security checks, e.g., checking of `g_a`/`g_b`.
@@ -279,43 +279,6 @@ $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
 
 #### _Make a pull request if you want to add instructions for your own client._
 
-## How it works
-
-- The client connects with TCP sockets to the server (websockets for web
-  clients)
-- The first bytes sent within a new connection determine the used
-  [transport](https://core.telegram.org/mtproto/mtproto-transports)
-  - `0xef`: Abridged
-  - `0xeeeeeeee`: Intermediate
-  - `0xdddddddd`: Padded Intermediate
-  - `[length: 4 bytes][0x00000000]`: TCP Full, distinguishable by the empty
-    `seq_no` (`0x00000000`)
-  - `[presumably random bytes]`: _Usually_ and
-    [Obfuscated](https://core.telegram.org/mtproto/mtproto-transports#transport-obfuscation)
-    transport
-  - To distinguish between `TCP Full` and `Obfuscated` transports, a buffered
-    reader is needed, to allow for peeking the stream without consuming it.
-- **Type Language** (TL) Data Serialization (# TODO: json schema is not used)
-  - ~~In piltover, the TL de/serialization is JIT (Just In Time), allowing for an
-    easy json-like interface at the cost of slow type checking at runtime
-    (#TODO: do something about this) without complex code-generation parsers~~
-  - ~~The TL parser (`tools/gen_tl.py`) utility uses **`jinja2`** to generate the
-    `api_tl.py` / `mtproto_tl.py` files from the official TDesktop repo. (#TODO
-    retrieve as much old schema layers for multi-layer support)~~
-- [**Authorization Key**](https://core.telegram.org/mtproto/auth_key) generation
-  - Generate random prime numbers for `pq` decomposition, a proof of work to
-    avoid clients' DoS to the server
-  - Either use an old algorithm or `RSA_PAD` to encrypt the inner data payload
-  - The server checks the stuff it needs to check, the client too
-  - If everything went correctly, we are authorized
-  - It is worth noting that every auth key has its own id (the 8 lower order
-    bytes of `SHA1(auth_key)`)
-  - Then key must be registered. It is done by creating auth_key_set server event, 
-    which should be overriden in your app (it gives ability to save auth keys anywhere you want
-    (dict, database, etc.)).
-  - Apart from the auth key id, every session has its own arbitrary (client
-    provided) session_id, bound to the auth key. #TODO: Piltover doesn't
-    currently check this value
 - **Sign in / sign up process**
   - Client sends `invokeWithLayer(initConnection(getConfig(...)))`
   - Client signs in with number / sms
