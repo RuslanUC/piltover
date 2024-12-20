@@ -132,9 +132,7 @@ class Client(LowClient):
             result = await handler(self, request.obj, user)
         except Exception as e:
             if isinstance(e, ErrorRpc):
-                logger.warning(
-                    f"{request.obj.tlname()}: [{e.error_code} {e.error_message}]"
-                )
+                logger.warning(f"{request.obj.tlname()}: [{e.error_code} {e.error_message}]")
                 error = RpcError(error_code=e.error_code, error_message=e.error_message)
             else:
                 logger.opt(exception=e).warning(f"Error while processing {request.obj.tlname()}")

@@ -26,7 +26,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
-    SendMessage_148, SendMedia_148, EditMessage_136
+    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet
@@ -151,7 +151,8 @@ async def send_message(request: SendMessage, user: User):
     # But `messagedraft` must also be placed between "DELETE" and "FROM", like this:
     # "DELETE `messagedraft` FROM `messagedraft` LEFT OUTER JOIN"
     # NOTE: exact same situation in SendMedia handler
-    if (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
+    if request.clear_draft and \
+            (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
         await draft.delete()
 
     await send_update_draft(user, chat, DraftMessageEmpty())
@@ -509,7 +510,8 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
 
     message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
     await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler, type=media_type)
-    if (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
+    if request.clear_draft and \
+            (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
         await draft.delete()
     await send_update_draft(user, chat, DraftMessageEmpty())
 
@@ -552,3 +554,6 @@ async def save_draft(request: SaveDraft, user: User):
 
     await send_update_draft(user, chat, draft)
     return True
+
+
+# TODO: messages pinning: https://core.telegram.org/api/pin

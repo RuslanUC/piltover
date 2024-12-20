@@ -10,7 +10,7 @@ import tgcrypto
 from loguru import logger
 from mtproto import Connection, ConnectionRole
 from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
-    ErrorPacket
+    ErrorPacket, QuickAckPacket
 
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import RequestContext, request_ctx
@@ -397,6 +397,11 @@ class Client:
 
         if isinstance(packet, EncryptedMessagePacket):
             decrypted = await self.decrypt(packet)
+            if packet.needs_quick_ack:
+                to_send = self.conn.send(self._create_quick_ack(decrypted))
+                self.writer.write(to_send)
+                await self.writer.drain()
+
             message = Message(
                 message_id=decrypted.message_id,
                 seq_no=decrypted.seq_no,
@@ -413,13 +418,19 @@ class Client:
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 
-    async def decrypt(self, message: EncryptedMessagePacket, v1: bool = False) -> DecryptedMessagePacket:
-        if self.auth_data is None or not self.auth_data.check_key(message.auth_key_id):
-            got = await self.server.get_auth_key(message.auth_key_id)
+    async def _set_auth_data(self, auth_key_id: int) -> None:
+        if self.auth_data is None or not self.auth_data.check_key(auth_key_id):
+            got = await self.server.get_auth_key(auth_key_id)
             if got is None:
-                logger.info(f"Client ({self.peername}) sent unknown auth_key_id {message.auth_key_id}, disconnecting with 404")
+                logger.info(f"Client ({self.peername}) sent unknown auth_key_id {auth_key_id}, disconnecting with 404")
                 raise Disconnection(404)
             self.auth_data = AuthData(*got)
+
+    def _create_quick_ack(self, message: DecryptedMessagePacket) -> QuickAckPacket:
+        return message.quick_ack_response(self.auth_data.auth_key, ConnectionRole.CLIENT)
+
+    async def decrypt(self, message: EncryptedMessagePacket, v1: bool = False) -> DecryptedMessagePacket:
+        await self._set_auth_data(message.auth_key_id)
 
         try:
             return message.decrypt(self.auth_data.auth_key, ConnectionRole.CLIENT, v1)
