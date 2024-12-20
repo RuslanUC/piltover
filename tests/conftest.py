@@ -1,6 +1,5 @@
 import builtins
 
-import pyrogram.utils
 import pytest_asyncio
 from pyrogram import Client
 from pyrogram.crypto import rsa
@@ -12,7 +11,7 @@ from piltover.high_level import Server
 from piltover.utils import get_public_key_fingerprint
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(autouse=True)
 async def app_server() -> Server:
     async with app.run_test() as test_server:
         print(f"Running on {test_server.port}")
@@ -90,7 +89,7 @@ class TestClient(Client):
             lang_code: str = "en",
             bot_token: str = None,
             phone_number: str = None,
-            phone_code: str = None,
+            phone_code: str = "2" * 5,
             password: str = None,
             workers: int = 2,
             no_updates: bool = None,

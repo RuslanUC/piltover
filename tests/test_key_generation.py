@@ -7,7 +7,7 @@ from piltover.server import Server
 
 
 @pytest.mark.asyncio
-async def test_key_generation(app_server: Server) -> None:
+async def test_key_generation() -> None:
     client_ = SimpleNamespace()
     setattr(client_, "ipv6", False)
     setattr(client_, "proxy", None)

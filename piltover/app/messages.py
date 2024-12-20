@@ -25,7 +25,8 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     ReorderPinnedDialogs, GetStickers, GetSearchCounters, Search, GetSearchResultsPositions, GetDefaultHistoryTTL, \
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
-    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft
+    GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
+    SendMessage_148
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet
@@ -107,13 +108,15 @@ async def get_history(client: Client, request: GetHistory, user: User):
     limit = request.limit
     if limit > 100 or limit < 1:
         limit = 100
-    query = {}
+    query = Q(chat=chat)
     if request.max_id > 0:
-        query["id__lte"] = request.max_id
+        query &= Q(id__lte=request.max_id)
     if request.min_id > 0:
-        query["id__gte"] = request.min_id
+        query &= Q(id__gte=request.min_id)
+    if request.offset_id > 0:
+        query &= Q(id__gt=request.offset_id)
 
-    messages = await Message.filter(chat=chat, **query).select_related("author", "chat").limit(limit).all()
+    messages = await Message.filter(query).select_related("author", "chat").limit(limit).all()
     if not messages:
         return Messages(messages=[], chats=[], users=[])
 
@@ -131,6 +134,7 @@ async def get_history(client: Client, request: GetHistory, user: User):
 
 
 # noinspection PyUnusedLocal
+@handler.on_request(SendMessage_148, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(SendMessage, ReqHandlerFlags.AUTH_REQUIRED)
 async def send_message(client: Client, request: SendMessage, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
@@ -142,8 +146,10 @@ async def send_message(client: Client, request: SendMessage, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
     reply = None
-    if request.reply_to is not None:
+    if isinstance(request, SendMessage) and request.reply_to is not None:
         reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, chat=chat)
+    elif isinstance(request, SendMessage_148) and request.reply_to_msg_id is not None:
+        reply = await Message.get_or_none(id=request.reply_to_msg_id, chat=chat)
 
     message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
 
