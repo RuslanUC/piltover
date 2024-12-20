@@ -15,7 +15,6 @@ handler = MessageHandler("system")
 # noinspection PyUnusedLocal
 @handler.on_message(MsgsAck)
 async def msgs_ack(client: Client, request: Message[MsgsAck], session: Session):
-    # print(request.obj, request.message_id)
     return False # True
 
 

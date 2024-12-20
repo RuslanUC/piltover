@@ -34,21 +34,18 @@ from piltover.tl.types.messages import AvailableReactions, PeerSettings as Messa
 handler = MessageHandler("messages")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetDialogFilters)
-async def get_dialog_filters(client: Client, request: GetDialogFilters):
+async def get_dialog_filters():
     return []
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetAvailableReactions)
-async def get_available_reactions(client: Client, request: GetAvailableReactions):
+async def get_available_reactions():
     return AvailableReactions(hash=0, reactions=[])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SetTyping, ReqHandlerFlags.AUTH_REQUIRED)
-async def set_typing(client: Client, request: SetTyping, user: User):
+async def set_typing(request: SetTyping, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
 
@@ -68,9 +65,8 @@ async def set_typing(client: Client, request: SetTyping, user: User):
     return True
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetPeerSettings)
-async def get_peer_settings(client: Client, request: GetPeerSettings):
+async def get_peer_settings():
     return MessagesPeerSettings(
         settings=PeerSettings(),
         chats=[],
@@ -78,21 +74,18 @@ async def get_peer_settings(client: Client, request: GetPeerSettings):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetScheduledHistory)
-async def get_scheduled_history(client: Client, request: GetScheduledHistory):
+async def get_scheduled_history():
     return Messages(messages=[], chats=[], users=[])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetEmojiKeywordsLanguages)
-async def get_emoji_keywords_languages(client: Client, request: GetEmojiKeywordsLanguages):
+async def get_emoji_keywords_languages():
     return []
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetHistory, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_history(client: Client, request: GetHistory, user: User):
+async def get_history(request: GetHistory, user: User):
     if isinstance(request.peer, InputPeerSelf):
         chat = await Chat.get_private(user)
     elif isinstance(request.peer, InputPeerUser):
@@ -133,10 +126,9 @@ async def get_history(client: Client, request: GetHistory, user: User):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SendMessage_148, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(SendMessage, ReqHandlerFlags.AUTH_REQUIRED)
-async def send_message(client: Client, request: SendMessage, user: User):
+async def send_message(request: SendMessage, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
 
@@ -170,9 +162,8 @@ async def send_message(client: Client, request: SendMessage, user: User):
     return upd
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(ReadHistory, ReqHandlerFlags.AUTH_REQUIRED)
-async def read_history(client: Client, request: ReadHistory, user: User):
+async def read_history(request: ReadHistory, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
     ex = await ReadState.get_or_none(dialog__user=user, dialog__chat=chat)
@@ -188,15 +179,13 @@ async def read_history(client: Client, request: ReadHistory, user: User):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetWebPage)
-async def get_web_page(client: Client, request: GetWebPage):
+async def get_web_page():
     return WebPageEmpty(id=0)
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetStickerSet)
-async def get_sticker_set(client: Client, request: GetStickerSet):
+async def get_sticker_set(request: GetStickerSet):
     if isinstance(request.stickerset, InputStickerSetAnimatedEmoji):
         return messages_StickerSet(
             set=StickerSet(
@@ -217,15 +206,13 @@ async def get_sticker_set(client: Client, request: GetStickerSet):
     raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetTopReactions)
-async def get_top_reactions(client: Client, request: GetTopReactions):
+async def get_top_reactions():
     return Reactions(hash=0, reactions=[])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetRecentReactions)
-async def get_recent_reactions(client: Client, request: GetRecentReactions):
+async def get_recent_reactions():
     return Reactions(hash=0, reactions=[])
 
 
@@ -262,15 +249,13 @@ async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User, 
     }
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetDialogs, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_dialogs(client: Client, request: GetDialogs, user: User):
+async def get_dialogs(request: GetDialogs, user: User):
     return Dialogs(**(
         await get_dialogs_internal(None, user, request.offset_id, request.offset_date, request.limit)
     ))
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetPeerDialogs, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_peer_dialogs(client: Client, request: GetPeerDialogs, user: User):
     return PeerDialogs(
@@ -279,9 +264,8 @@ async def get_peer_dialogs(client: Client, request: GetPeerDialogs, user: User):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetAttachMenuBots)
-async def get_attach_menu_bots(client: Client, request: GetAttachMenuBots):
+async def get_attach_menu_bots():
     return AttachMenuBots(
         hash=0,
         bots=[],
@@ -289,9 +273,8 @@ async def get_attach_menu_bots(client: Client, request: GetAttachMenuBots):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetPinnedDialogs, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_pinned_dialogs(client: Client, request: GetPinnedDialogs, user: User):
+async def get_pinned_dialogs(client: Client, user: User):
     return PeerDialogs(
         dialogs=[],
         messages=[],
@@ -301,36 +284,31 @@ async def get_pinned_dialogs(client: Client, request: GetPinnedDialogs, user: Us
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(ReorderPinnedDialogs)
-async def reorder_pinned_dialogs(client: Client, request: ReorderPinnedDialogs):
+async def reorder_pinned_dialogs():
     return True
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetStickers)
-async def get_stickers(client: Client, request: GetStickers):
+async def get_stickers():
     return Stickers(hash=0, stickers=[])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetDefaultHistoryTTL)
-async def get_default_history_ttl(client: Client, request: GetDefaultHistoryTTL):
+async def get_default_history_ttl():
     return DefaultHistoryTTL(period=10)
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetSearchResultsPositions)
-async def get_search_results_positions(client: Client, request: GetSearchResultsPositions):
+async def get_search_results_positions():
     return SearchResultsPositions(
         count=0,
         positions=[],
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(Search, ReqHandlerFlags.AUTH_REQUIRED)
-async def messages_search(client: Client, request: Search, user: User):
+async def messages_search(request: Search, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -345,6 +323,7 @@ async def messages_search(client: Client, request: Search, user: User):
     limit = max(min(100, request.limit), 1)
     messages = await Message.filter(query).limit(limit)
 
+    # TODO: ?
     return Messages(
         messages=[],
         chats=[],
@@ -352,24 +331,21 @@ async def messages_search(client: Client, request: Search, user: User):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetSearchCounters)
-async def get_search_counters(client: Client, request: GetSearchCounters):
+async def get_search_counters(request: GetSearchCounters):
     return [
         SearchCounter(filter=flt, count=0) for flt in request.filters
     ]
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetSuggestedDialogFilters)
-async def get_suggested_dialog_filters(client: Client, request: GetSuggestedDialogFilters):
+async def get_suggested_dialog_filters():
     return []
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetFeaturedStickers)
 @handler.on_request(GetFeaturedEmojiStickers)
-async def get_featured_stickers(client: Client, request: GetFeaturedStickers | GetFeaturedEmojiStickers):
+async def get_featured_stickers():
     return FeaturedStickers(
         hash=0,
         count=0,
@@ -378,9 +354,8 @@ async def get_featured_stickers(client: Client, request: GetFeaturedStickers | G
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetAllDrafts, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_all_drafts(client: Client, request: GetAllDrafts, user: User):
+async def get_all_drafts(user: User):
     users = {}
     updates = []
     drafts = await MessageDraft.filter(dialog__user=user).select_related("dialog", "dialog__chat")
@@ -401,9 +376,8 @@ async def get_all_drafts(client: Client, request: GetAllDrafts, user: User):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetFavedStickers)
-async def get_faved_stickers(client: Client, request: GetFavedStickers):
+async def get_faved_stickers():
     return FavedStickers(
         hash=0,
         packs=[],
@@ -411,10 +385,8 @@ async def get_faved_stickers(client: Client, request: GetFavedStickers):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SearchGlobal, ReqHandlerFlags.AUTH_REQUIRED)
-async def search_global(client: Client, request: SearchGlobal, user: User):
-    messages = []
+async def search_global(request: SearchGlobal, user: User):
     users = []
 
     q = user_q = request.q
@@ -428,6 +400,7 @@ async def search_global(client: Client, request: SearchGlobal, user: User):
         message__istartswith=q,
     ).select_related("chat", "author").order_by("-date").limit(10)
 
+    # TODO: add users from messages to users list
     return Messages(
         messages=[await message.to_tl(user) for message in messages],
         chats=[],
@@ -435,39 +408,33 @@ async def search_global(client: Client, request: SearchGlobal, user: User):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetCustomEmojiDocuments)
-async def get_custom_emoji_documents(client: Client, request: GetCustomEmojiDocuments):
+async def get_custom_emoji_documents(request: GetCustomEmojiDocuments):
     return [DocumentEmpty(id=doc) for doc in request.document_id]
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetMessagesReactions)
-async def get_messages_reactions(client: Client, request: GetMessagesReactions):
+async def get_messages_reactions():
     return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetArchivedStickers)
-async def get_archived_stickers(client: Client, request: GetArchivedStickers):
+async def get_archived_stickers():
     return ArchivedStickers(count=0, sets=[])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetEmojiStickers)
-async def get_emoji_stickers(client: Client, request: GetEmojiStickers):
+async def get_emoji_stickers(request: GetEmojiStickers):
     return AllStickers(hash=request.hash, sets=[])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetEmojiKeywords)
-async def get_emoji_keywords(client: Client, request: GetEmojiKeywords):
+async def get_emoji_keywords(request: GetEmojiKeywords):
     return EmojiKeywordsDifference(lang_code=request.lang_code, from_version=0, version=0, keywords=[])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(DeleteMessages, ReqHandlerFlags.AUTH_REQUIRED)
-async def delete_messages(client: Client, request: DeleteMessages, user: User):
+async def delete_messages(request: DeleteMessages, user: User):
     # TODO: request.revoke
 
     ids = request.id[:100]
@@ -489,16 +456,14 @@ async def delete_messages(client: Client, request: DeleteMessages, user: User):
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetWebPagePreview)
-async def get_webpage_preview(client: Client, request: GetWebPagePreview):
+async def get_webpage_preview():
     return WebPageEmpty(id=0)
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(EditMessage_136, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(EditMessage, ReqHandlerFlags.AUTH_REQUIRED)
-async def edit_message(client: Client, request: EditMessage | EditMessage_136, user: User):
+async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -516,10 +481,9 @@ async def edit_message(client: Client, request: EditMessage | EditMessage_136, u
     return await UpdatesManager.edit_message(message)
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SendMedia_148, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(SendMedia, ReqHandlerFlags.AUTH_REQUIRED)
-async def send_media(client: Client, request: SendMedia | SendMedia_148, user: User):
+async def send_media(request: SendMedia | SendMedia_148, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
 
@@ -555,9 +519,8 @@ async def send_media(client: Client, request: SendMedia | SendMedia_148, user: U
     return upd
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetMessageEditData, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_message_edit_data(client: Client, request: GetMessageEditData, user: User):
+async def get_message_edit_data():
     return MessageEditData()
 
 
@@ -576,9 +539,8 @@ async def send_update_draft(user: User, chat: Chat, draft: MessageDraft | DraftM
     await SessionManager().send(updates, user.id)
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SaveDraft, ReqHandlerFlags.AUTH_REQUIRED)
-async def save_draft(client: Client, request: SaveDraft, user: User):
+async def save_draft(request: SaveDraft, user: User):
     if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
         raise ErrorRpc(error_code=500, error_message="Failed to create chat")
 

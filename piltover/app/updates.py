@@ -28,13 +28,11 @@ async def get_state_internal(client: Client, user: User) -> TLState:
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetState, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_state(client: Client, request: GetState, user: User):
+async def get_state(client: Client, user: User):
     return await get_state_internal(client, user)
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetDifference_136, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(GetDifference, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_difference(client: Client, request: GetDifference | GetDifference_136, user: User):

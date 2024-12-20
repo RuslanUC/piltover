@@ -1,7 +1,7 @@
 from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler, Client
+from piltover.high_level import MessageHandler
 from piltover.tl import PeerUser
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays
@@ -10,9 +10,8 @@ from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, Resol
 handler = MessageHandler("contacts")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetContacts)
-async def get_contacts(client: Client, request: GetContacts):
+async def get_contacts():
     return Contacts(
         contacts=[],
         saved_count=0,
@@ -20,18 +19,16 @@ async def get_contacts(client: Client, request: GetContacts):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(ResolveUsername, ReqHandlerFlags.AUTH_REQUIRED)
-async def resolve_username(client: Client, request: ResolveUsername, user: User):
+async def resolve_username(request: ResolveUsername, user: User):
     if (resolved := await User.get_or_none(username=request.username)) is None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")
 
     return ResolvedPeer(peer=PeerUser(user_id=resolved.id), chats=[], users=[await resolved.to_tl(user)])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetBlocked)
-async def get_blocked(client: Client, request: GetBlocked):
+async def get_blocked():
     return Blocked(
         blocked=[],
         chats=[],
@@ -39,9 +36,8 @@ async def get_blocked(client: Client, request: GetBlocked):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(Search)
-async def contacts_search(client: Client, request: Search):
+async def contacts_search():
     return Found(
         my_results=[],
         results=[],
@@ -50,9 +46,8 @@ async def contacts_search(client: Client, request: Search):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetTopPeers)
-async def get_top_peers(client: Client, request: GetTopPeers):
+async def get_top_peers():
     return TopPeers(
         categories=[],
         chats=[],
@@ -60,15 +55,13 @@ async def get_top_peers(client: Client, request: GetTopPeers):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetStatuses)
-async def get_statuses(client: Client, request: GetStatuses):
+async def get_statuses():
     return []
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetBirthdays)
-async def get_birthdays(client: Client, request: GetBirthdays):
+async def get_birthdays():
     return ContactBirthdays(
         contacts=[],
         users=[],

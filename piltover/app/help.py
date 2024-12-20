@@ -1,6 +1,6 @@
 from time import time
 
-from piltover.high_level import MessageHandler, Client
+from piltover.high_level import MessageHandler
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
@@ -11,9 +11,8 @@ from piltover.tl.types.help import CountriesList, Country, CountryCode, PromoDat
 handler = MessageHandler("help")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetConfig)
-async def get_config(client: Client, request: GetConfig):
+async def get_config():
     return Config(
         date=int(time()),
         expires=int(time() + 60 * 60 * 24),
@@ -49,9 +48,8 @@ async def get_config(client: Client, request: GetConfig):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetNearestDc)
-async def get_nearest_dc(client: Client, request: GetNearestDc):
+async def get_nearest_dc():
     return NearestDc(
         country="US",
         this_dc=2,
@@ -59,15 +57,13 @@ async def get_nearest_dc(client: Client, request: GetNearestDc):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetAppConfig)
-async def get_app_config(client: Client, request: GetAppConfig):
+async def get_app_config():
     return JsonObject(value=[])
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetCountriesList)
-async def get_countries_list(client: Client, request: GetCountriesList):
+async def get_countries_list():
     return CountriesList(
         countries=[
             Country(
@@ -84,21 +80,18 @@ async def get_countries_list(client: Client, request: GetCountriesList):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetTermsOfServiceUpdate)
-async def get_terms_of_service_update(client: Client, request: GetTermsOfServiceUpdate):
+async def get_terms_of_service_update():
     return TermsOfServiceUpdateEmpty(expires=int(time() + 9000))
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetPromoData)
-async def get_promo_data(client: Client, request: GetPromoData):
+async def get_promo_data():
     return PromoDataEmpty(expires=int(time() + 9000))
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetPremiumPromo)
-async def get_premium_promo(client: Client, request: GetPremiumPromo):
+async def get_premium_promo():
     return PremiumPromo(
         status_text="Premium Lol",
         status_entities=[],
@@ -116,22 +109,19 @@ async def get_premium_promo(client: Client, request: GetPremiumPromo):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SaveAppLog)
-async def save_app_log(client: Client, request: SaveAppLog):
+async def save_app_log():
     return True
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetInviteText)
-async def get_invite_text(client: Client, request: GetInviteText):
+async def get_invite_text():
     return InviteText(message="🐳")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetPeerColors)
 @handler.on_request(GetPeerProfileColors)
-async def get_peer_colors(client: Client, request: GetPeerColors):
+async def get_peer_colors():
     return PeerColors(
         hash=1,
         colors=[

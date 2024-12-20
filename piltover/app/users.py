@@ -1,7 +1,7 @@
 from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import Client, MessageHandler
+from piltover.high_level import MessageHandler
 from piltover.tl import InputUserSelf, PeerSettings, TLObject, UserEmpty, PeerNotifySettings
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser
@@ -10,9 +10,8 @@ from piltover.tl.types.users import UserFull
 handler = MessageHandler("users")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetFullUser, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_full_user(client: Client, request: GetFullUser, user: User):
+async def get_full_user(request: GetFullUser, user: User):
     if (target_user := await User.from_input_peer(request.id, user)) is None:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
@@ -32,9 +31,8 @@ async def get_full_user(client: Client, request: GetFullUser, user: User):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetUsers, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_users(client: Client, request: GetUsers, user: User):
+async def get_users(request: GetUsers, user: User):
     result: list[TLObject] = []
     for peer in request.id:
         if isinstance(peer, InputUserSelf):

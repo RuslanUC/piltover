@@ -24,9 +24,8 @@ from piltover.utils.utils import sec_check
 handler = MessageHandler("auth")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SendCode)
-async def send_code(client: Client, request: SendCode):
+async def send_code(request: SendCode):
     try:
         int(request.phone_number)
     except ValueError:
@@ -42,7 +41,6 @@ async def send_code(client: Client, request: SendCode):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SignIn)
 async def sign_in(client: Client, request: SignIn):
     if len(request.phone_code_hash) != 24:
@@ -82,7 +80,6 @@ async def sign_in(client: Client, request: SignIn):
     return Authorization(user=await user.to_tl(current_user=user))
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SignUp_136)
 @handler.on_request(SignUp)
 async def sign_up(client: Client, request: SignUp | SignUp_136):
@@ -120,7 +117,6 @@ async def sign_up(client: Client, request: SignUp | SignUp_136):
     return Authorization(user=await user.to_tl(current_user=user))
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(CheckPassword, ReqHandlerFlags.AUTH_REQUIRED | ReqHandlerFlags.ALLOW_MFA_PENDING)
 async def check_password(client: Client, request: CheckPassword, user: User):
     auth = await client.get_auth(True)
@@ -134,7 +130,6 @@ async def check_password(client: Client, request: CheckPassword, user: User):
     return Authorization(user=await user.to_tl(current_user=user))
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(BindTempAuthKey)
 async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
     ctx = request_ctx.get()
@@ -171,7 +166,6 @@ async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
     return True
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(ExportLoginToken)
-async def export_login_token(client: Client, request: ExportLoginToken):
+async def export_login_token():
     return LoginToken(expires=1000, token=b"levlam")

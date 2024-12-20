@@ -1,6 +1,6 @@
 from time import time
 
-from piltover.high_level import MessageHandler, Client
+from piltover.high_level import MessageHandler
 from piltover.tl import StoriesStealthMode, Updates
 from piltover.tl.functions.stories import GetAllStories, GetAllReadPeerStories
 from piltover.tl.types.stories import AllStories
@@ -8,9 +8,8 @@ from piltover.tl.types.stories import AllStories
 handler = MessageHandler("stories")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetAllStories)
-async def get_all_stories(client: Client, request: GetAllStories):
+async def get_all_stories():
     return AllStories(
         has_more=False,
         count=0,
@@ -25,7 +24,6 @@ async def get_all_stories(client: Client, request: GetAllStories):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetAllReadPeerStories)
-async def get_all_read_peer_stories(client: Client, request: GetAllReadPeerStories):
+async def get_all_read_peer_stories():
     return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)

@@ -5,7 +5,7 @@ from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler, Client
+from piltover.high_level import MessageHandler
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation
 from piltover.tl.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
 from piltover.tl.types.storage import FileUnknown, FilePartial, FileJpeg
@@ -14,10 +14,9 @@ from piltover.tl.types.upload import File as TLFile
 handler = MessageHandler("upload")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(SaveFilePart, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(SaveBigFilePart, ReqHandlerFlags.AUTH_REQUIRED)
-async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart, user: User):
+async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
     defaults = {}
     if isinstance(request, SaveBigFilePart):
         defaults["total_parts"] = request.file_total_parts
@@ -34,7 +33,7 @@ async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart
     if (ex_part := await UploadingFilePart.get_or_none(file=file, part_id=request.file_part)) is not None:
         if size == ex_part.size:
             return True
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID3")
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
     if (size % 1024 != 0 or 524288 % size != 0) and last_part is not None and last_part.part_id >= request.file_part:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_INVALID")
     if size > 524288:
@@ -50,9 +49,8 @@ async def save_file_part(client: Client, request: SaveFilePart | SaveBigFilePart
     return True
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetFile, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_file(client: Client, request: GetFile, user: User):
+async def get_file(request: GetFile, user: User):
     # noinspection PyPep8
     if not isinstance(request.location, (InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")

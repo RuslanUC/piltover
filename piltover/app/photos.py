@@ -2,7 +2,7 @@ from piltover.app.utils.utils import upload_file, resize_photo, generate_strippe
 from piltover.db.models import User, UserPhoto
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler, Client
+from piltover.high_level import MessageHandler
 from piltover.tl import InputPhoto, Long, Vector
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
@@ -10,9 +10,8 @@ from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
 handler = MessageHandler("photos")
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(GetUserPhotos, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_user_photos(client: Client, request: GetUserPhotos, user: User):
+async def get_user_photos(request: GetUserPhotos, user: User):
     if (target_user := await User.from_input_peer(request.user_id, user)) is None:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
@@ -24,9 +23,8 @@ async def get_user_photos(client: Client, request: GetUserPhotos, user: User):
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(UploadProfilePhoto, ReqHandlerFlags.AUTH_REQUIRED)
-async def upload_profile_photo(client: Client, request: UploadProfilePhoto, user: User):
+async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     if request.file is None:
         raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
 
@@ -46,9 +44,8 @@ async def upload_profile_photo(client: Client, request: UploadProfilePhoto, user
     )
 
 
-# noinspection PyUnusedLocal
 @handler.on_request(DeletePhotos, ReqHandlerFlags.AUTH_REQUIRED)
-async def delete_photos(client: Client, request: DeletePhotos, user: User):
+async def delete_photos(request: DeletePhotos, user: User):
     deleted = Vector(value_type=Long)
 
     for photo in request.id:

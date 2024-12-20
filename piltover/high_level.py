@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from asyncio import StreamReader, StreamWriter
-from inspect import signature
-from typing import Awaitable, Callable
+from inspect import getfullargspec
+from typing import Awaitable, Callable, Any
 
 from loguru import logger
 
@@ -17,23 +17,41 @@ from piltover.tl.core_types import MsgContainer, RpcResult, Message
 from piltover.utils import background
 from piltover.utils.utils import check_flag
 
-HandlerFunc = (Callable[["Client", TLObject], Awaitable[TLObject | dict | None]] |
-               Callable[["Client", TLObject, User], Awaitable[TLObject | dict | None]])
+HandlerResult = Awaitable[TLObject | None]
+HandlerFunc = (Callable[[], HandlerResult] |
+               Callable[[LowClient], HandlerResult] |
+               Callable[[TLObject], HandlerResult] |
+               Callable[[User], HandlerResult] |
+               Callable[[LowClient, TLObject], HandlerResult] |
+               Callable[[LowClient, User], HandlerResult] |
+               Callable[[TLObject, User], HandlerResult] |
+               Callable[[LowClient, TLObject, User], HandlerResult])
 
 
 class RequestHandler:
-    __slots__ = ("func", "flags", "has_user_arg")
+    __slots__ = ("func", "flags", "has_client_arg", "has_request_arg", "has_user_arg",)
 
-    def __init__(self, func: HandlerFunc, flags: int, has_user_arg: bool):
+    def __init__(self, func: HandlerFunc, flags: int):
         self.func = func
         self.flags = flags
-        self.has_user_arg = has_user_arg
+        func_args = set(getfullargspec(func).args)
+        self.has_client_arg = "client" in func_args
+        self.has_request_arg = "request" in func_args
+        self.has_user_arg = "user" in func_args
 
     def auth_required(self) -> bool:
         return check_flag(self.flags, ReqHandlerFlags.AUTH_REQUIRED)
 
     def allow_mfa_pending(self) -> bool:
         return check_flag(self.flags, ReqHandlerFlags.ALLOW_MFA_PENDING)
+
+    async def __call__(self, client: LowClient, request: TLObject, user: User | None) -> Any:
+        kwargs = {}
+        if self.has_client_arg: kwargs["client"] = client
+        if self.has_request_arg: kwargs["request"] = request
+        if self.has_user_arg: kwargs["user"] = user
+
+        return await self.func(**kwargs)
 
 
 class MessageHandler:
@@ -44,11 +62,9 @@ class MessageHandler:
 
     def on_request(self, typ: type[TLObject], flags: int = 0):
         def decorator(func: HandlerFunc):
-            logger.debug("Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""),
-                         typ=typ.tlname())
+            logger.debug(f"Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""))
 
-            has_user_arg = check_flag(flags, ReqHandlerFlags.AUTH_REQUIRED) and "user" in signature(func).parameters
-            self.request_handlers[typ.tlid()] = RequestHandler(func, flags, has_user_arg)
+            self.request_handlers[typ.tlid()] = RequestHandler(func, flags)
             return func
 
         return decorator
@@ -112,8 +128,8 @@ class Client(LowClient):
         try:
             if handler.auth_required() and (user := await self.get_user(handler.allow_mfa_pending())) is None:
                 raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
-            user_arg = (user,) if handler.auth_required() and handler.has_user_arg else ()
-            result = await handler.func(self, request.obj, *user_arg)
+            user = user if handler.auth_required() and handler.has_user_arg else None
+            result = await handler(self, request.obj, user)
         except Exception as e:
             if isinstance(e, ErrorRpc):
                 logger.warning(
