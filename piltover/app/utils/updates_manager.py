@@ -3,7 +3,7 @@ from typing import TypeVar, Generic, cast
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import ChatType, UpdateType
-from piltover.db.models import User, Chat, Message, State, UpdateV2, Dialog
+from piltover.db.models import User, Chat, Message, State, UpdateV2
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
     UpdateReadHistoryInbox, UpdateDeleteMessages, UpdateEditMessage, UpdateDialogPinned

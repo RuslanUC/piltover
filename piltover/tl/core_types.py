@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from gzip import decompress
 from io import BytesIO
 from typing import TypeVar, Generic

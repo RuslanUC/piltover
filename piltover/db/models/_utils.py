@@ -1,5 +1,4 @@
 import tortoise
-from tortoise.expressions import Q
 
 
 class Model(tortoise.Model):

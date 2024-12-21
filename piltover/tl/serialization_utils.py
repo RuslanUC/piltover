@@ -1,8 +1,8 @@
 import struct
 from typing import Any, TypeVar
 
-from . import primitives
 from piltover.exceptions import InvalidConstructorException
+from . import primitives
 
 T = TypeVar("T")
 

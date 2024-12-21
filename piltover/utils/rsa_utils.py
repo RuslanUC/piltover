@@ -1,7 +1,6 @@
-import tgcrypto
-
 from hashlib import sha256
 
+import tgcrypto
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes, PublicKeyTypes
 
 from piltover.utils.utils import xor
