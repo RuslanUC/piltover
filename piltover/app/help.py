@@ -15,6 +15,7 @@ handler = MessageHandler("help")
 async def get_config():
     return Config(
         date=int(time()),
+        # This seems to be hardcoded to 1 hour on some clients, and changing it breaks them
         expires=int(time() + 60 * 60),
         this_dc=2,
         test_mode=False,

@@ -26,10 +26,12 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
-    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, GetQuickReplies
+    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, GetQuickReplies, GetDefaultTagReactions, \
+    GetSavedDialogs, GetSavedReactionTags
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
-    FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet, QuickReplies
+    FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet, QuickReplies, \
+    SavedDialogs, SavedReactionTags
 
 handler = MessageHandler("messages")
 
@@ -563,6 +565,32 @@ async def get_quick_replies() -> QuickReplies:
         messages=[],
         chats=[],
         users=[],
+    )
+
+
+@handler.on_request(GetDefaultTagReactions, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_default_tag_reactions() -> Reactions:
+    return Reactions(
+        hash=0,
+        reactions=[],
+    )
+
+
+@handler.on_request(GetSavedDialogs, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_saved_dialogs() -> SavedDialogs:
+    return SavedDialogs(
+        dialogs=[],
+        messages=[],
+        chats=[],
+        users=[],
+    )
+
+
+@handler.on_request(GetSavedReactionTags, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_saved_reaction_tags() -> SavedReactionTags:
+    return SavedReactionTags(
+        tags=[],
+        hash=0,
     )
 
 
