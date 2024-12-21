@@ -10,7 +10,7 @@ from piltover.tl.types import Dialog as TLDialog
 
 class Dialog(Model):
     id: int = fields.BigIntField(pk=True)
-    pinned: bool = fields.BooleanField(default=False)
+    pinned_index: int = fields.SmallIntField(null=True, default=None)
     unread_mark: bool = fields.BooleanField(default=False)
 
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)

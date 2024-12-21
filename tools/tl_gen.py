@@ -28,6 +28,8 @@ from zipfile import ZipFile
 
 from tqdm import tqdm
 
+CONSTRUCTORS_IN_SEPARATE_FILES = False
+
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl")
 
@@ -456,12 +458,14 @@ def start():
             serialize_body.append(f"result += SerializationUtils.write(self.{field.name}{int_type_name})")
             deserialize_body.append(f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name})")
 
-        result = [
+        imports = [
             f"from __future__ import annotations",
             f"from typing import Optional, Union",
             f"from {third_dot}..primitives import *",
             f"from {third_dot}.. import types, SerializationUtils",
             f"from {third_dot}..tl_object import TLObject",
+        ]
+        result = [
             f"",
             f"",
             f"class {c.name}(TLObject):",
@@ -491,49 +495,68 @@ def start():
 
         dir_path = DESTINATION_PATH / c.section / c.namespace
         dir_path.mkdir(parents=True, exist_ok=True)
-        module = c.name if c.name != "Updates" else "UpdatesT"
-        out_path = dir_path / f"{snake(module)}.py"
-        with open(out_path, "w") as f:
-            f.write("\n".join(result))
 
-        compile_to_zip(out_zip, out_path)
+        if CONSTRUCTORS_IN_SEPARATE_FILES:
+            module = c.name if c.name != "Updates" else "UpdatesT"
+            out_path = dir_path / f"{snake(module)}.py"
+            with open(out_path, "w") as f:
+                f.write("\n".join(imports))
+                f.write("\n".join(result))
+            compile_to_zip(out_zip, out_path)
+        else:
+            out_path = dir_path / f"__init__.py"
+            if not out_path.exists():
+                with open(out_path, "w") as f:
+                    f.write("\n".join(imports))
+            with open(out_path, "a") as f:
+                f.write("\n".join(result))
 
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
         d[c.namespace].append(c.name)
 
     for namespace, types in namespaces_to_constructors.items():
         out_path = DESTINATION_PATH / "types" / namespace / "__init__.py"
-        with open(out_path, "w") as f:
-            f.write(f"{WARNING}\n\n")
 
-            for t in types:
-                module = t
+        if CONSTRUCTORS_IN_SEPARATE_FILES:
+            with open(out_path, "w") as f:
+                f.write(f"{WARNING}\n\n")
 
-                if module == "Updates":
-                    module = "UpdatesT"
+                for t in types:
+                    module = t
 
-                f.write(f"from .{snake(module)} import {t}\n")
+                    if module == "Updates":
+                        module = "UpdatesT"
 
-            if not namespace:
-                f.write(f"from . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
+                    f.write(f"from .{snake(module)} import {t}\n")
+
+                if not namespace:
+                    f.write(f"from . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
+        elif not namespace:
+            with open(out_path, "a") as f:
+                f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
 
         compile_to_zip(out_zip, out_path)
 
     for namespace, types in namespaces_to_functions.items():
         out_path = DESTINATION_PATH / "functions" / namespace / "__init__.py"
-        with open(out_path, "w") as f:
-            f.write(f"{WARNING}\n\n")
 
-            for t in types:
-                module = t
+        if CONSTRUCTORS_IN_SEPARATE_FILES:
+            with open(out_path, "w") as f:
+                f.write(f"{WARNING}\n\n")
 
-                if module == "Updates":
-                    module = "UpdatesT"
+                for t in types:
+                    module = t
 
-                f.write(f"from .{snake(module)} import {t}\n")
+                    if module == "Updates":
+                        module = "UpdatesT"
 
-            if not namespace:
-                f.write(f"from . import {', '.join(filter(bool, namespaces_to_functions))}")
+                    f.write(f"from .{snake(module)} import {t}\n")
+
+                if not namespace:
+                    f.write(f"from . import {', '.join(filter(bool, namespaces_to_functions))}")
+        elif not namespace:
+            with open(out_path, "a") as f:
+                f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_functions))}\n")
 
         compile_to_zip(out_zip, out_path)
 

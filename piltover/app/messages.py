@@ -26,7 +26,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
-    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, GetQuickReplies, GetDefaultTagReactions, \
+    SendMessage_148, SendMedia_148, EditMessage_136, GetQuickReplies, GetDefaultTagReactions, \
     GetSavedDialogs, GetSavedReactionTags, ToggleDialogPin
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
@@ -304,8 +304,14 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
             or (dialog := await Dialog.get_or_none(user=user, chat=chat)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
 
-    dialog.pinned = not dialog.pinned
-    await dialog.save(update_fields=["pinned"])
+    if dialog.pinned_index:
+        dialog.pinned_index = None
+    else:
+        dialog.pinned_index = await Dialog.filter(user=user, chat=chat, pinned_index__not_isnull=True).count()
+        if dialog.pinned_index > 10:
+            raise ErrorRpc(error_code=400, error_message="PINNED_DIALOGS_TOO_MUCH")
+
+    await dialog.save(update_fields=["pinned_index"])
     await UpdatesManager.pin_dialog(user, chat)
 
     return True

@@ -1,12 +1,12 @@
 from time import time
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, cast
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import ChatType, UpdateType
 from piltover.db.models import User, Chat, Message, State, UpdateV2, Dialog
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
-    UpdateReadHistoryInbox, UpdateDeleteMessages, UpdateEditMessage
+    UpdateReadHistoryInbox, UpdateDeleteMessages, UpdateEditMessage, UpdateDialogPinned
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
@@ -212,7 +212,7 @@ class UpdatesManager(metaclass=SingletonMeta):
         tl_update = await update.to_tl(user, users)
 
         updates = Updates(
-            updates=[tl_update],
+            updates=[cast(UpdateDialogPinned, tl_update)],
             users=[await other.to_tl(user) for other in users.values()],
             chats=[],
             date=int(time()),

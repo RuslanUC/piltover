@@ -7,7 +7,7 @@ from piltover.db.models._utils import Model
 from piltover.exceptions import ErrorRpc
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, InputUser, InputUserSelf, \
     InputPeerUser, InputPeerSelf
-from piltover.tl.types.user import User as TLUser
+from piltover.tl.types import User as TLUser
 
 
 class User(Model):

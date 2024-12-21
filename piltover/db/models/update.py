@@ -9,7 +9,7 @@ from piltover.db.enums import UpdateType
 from piltover.db.models._utils import Model
 from piltover.tl import TLObject, UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages
-from piltover.tl.types.user import User as TLUser
+from piltover.tl.types import User as TLUser
 
 
 class UpdateV2(Model):
@@ -71,7 +71,7 @@ class UpdateV2(Model):
                 users[other.id] = other
 
             return UpdateDialogPinned(
-                pinned=dialog.pinned,
+                pinned=dialog.pinned_index is not None,
                 peer=DialogPeer(
                     peer=await chat.get_peer(current_user),
                 ),
