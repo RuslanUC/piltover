@@ -3,7 +3,7 @@ from typing import TypeVar, Generic
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import ChatType, UpdateType
-from piltover.db.models import User, Chat, Message, State, UpdateV2
+from piltover.db.models import User, Chat, Message, State, UpdateV2, Dialog
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
     UpdateReadHistoryInbox, UpdateDeleteMessages, UpdateEditMessage
@@ -197,3 +197,26 @@ class UpdatesManager(metaclass=SingletonMeta):
 
         await UpdateV2.bulk_create(updates_to_create)
         return result_update
+
+    @staticmethod
+    async def pin_dialog(user: User, chat: Chat) -> None:
+        new_pts = await State.add_pts(user, 1)
+        update = await UpdateV2.create(
+            user=user,
+            update_type=UpdateType.DIALOG_PIN,
+            pts=new_pts,
+            related_id=chat.id,
+        )
+
+        users = {user.id: user}
+        tl_update = await update.to_tl(user, users)
+
+        updates = Updates(
+            updates=[tl_update],
+            users=[await other.to_tl(user) for other in users.values()],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager().send(updates, user.id)

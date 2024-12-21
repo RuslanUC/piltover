@@ -7,7 +7,7 @@ from tortoise import fields
 from piltover.db import models
 from piltover.db.enums import UpdateType
 from piltover.db.models._utils import Model
-from piltover.tl import TLObject, UpdateEditMessage, UpdateReadHistoryInbox
+from piltover.tl import TLObject, UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages
 from piltover.tl.types.user import User as TLUser
 
@@ -58,4 +58,21 @@ class UpdateV2(Model):
                 still_unread_count=self.related_ids[1],
                 pts=self.pts,
                 pts_count=1,
+            )
+
+        if self.update_type == UpdateType.DIALOG_PIN:
+            if (chat := await models.Chat.get_or_none(id=self.related_id)) is None \
+                    or (dialog := await models.Dialog.get_or_none(chat=chat, user=current_user)) is None:
+                return
+
+            if users is not None \
+                    and (other := await chat.get_other_user(current_user)) is not None \
+                    and other.id not in users:
+                users[other.id] = other
+
+            return UpdateDialogPinned(
+                pinned=dialog.pinned,
+                peer=DialogPeer(
+                    peer=await chat.get_peer(current_user),
+                ),
             )

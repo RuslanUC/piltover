@@ -51,3 +51,4 @@ class UpdateType(IntEnum):
     # Should (probably) be only one update of this type per chat
     # related_it is a chat id
     READ_HISTORY_INBOX = 2
+    DIALOG_PIN = 3

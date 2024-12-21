@@ -119,8 +119,9 @@ async def get_future_salts(client: Client, request: Message[GetFutureSalts], ses
     base_id = int(time() // (60 * 60))
 
     exists = set(await ServerSalt.filter(id__gt=base_id).limit(limit).values_list("id", flat=True))
-    to_create = set(range(base_id, base_id + limit + 1)) - exists
+    to_create = set(range(base_id, base_id + limit)) - exists
     if to_create:
+        print(to_create, exists)
         await ServerSalt.bulk_create([
             ServerSalt(id=create_id)
             for create_id in to_create

@@ -27,7 +27,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, GetQuickReplies, GetDefaultTagReactions, \
-    GetSavedDialogs, GetSavedReactionTags
+    GetSavedDialogs, GetSavedReactionTags, ToggleDialogPin
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet, QuickReplies, \
@@ -278,17 +278,42 @@ async def get_attach_menu_bots():
 
 @handler.on_request(GetPinnedDialogs, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_pinned_dialogs(client: Client, user: User):
+    dialogs = await Dialog.filter(user=user, pinned=True)\
+        .select_related("user", "chat").order_by("-chat__messages__date")
+    messages = []
+    users = {}
+    for dialog in dialogs:
+        if (message := await Message.filter(chat=dialog.chat).select_related("author", "chat").order_by("-id")
+                .first()) is not None:
+            messages.append(await message.to_tl(user))
+        users_, _ = await dialog.chat.to_tl_users_chats(user, users)
+        users.update(users_)
+
     return PeerDialogs(
-        dialogs=[],
-        messages=[],
+        dialogs=[await dialog.to_tl() for dialog in dialogs],
+        messages=messages,
         chats=[],
-        users=[],
+        users=list(users.values()),
         state=await get_state_internal(client, user),
     )
 
 
+@handler.on_request(ToggleDialogPin, ReqHandlerFlags.AUTH_REQUIRED)
+async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
+    if (chat := await Chat.from_input_peer(user, request.peer.peer)) is None \
+            or (dialog := await Dialog.get_or_none(user=user, chat=chat)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
+
+    dialog.pinned = not dialog.pinned
+    await dialog.save(update_fields=["pinned"])
+    await UpdatesManager.pin_dialog(user, chat)
+
+    return True
+
+
 @handler.on_request(ReorderPinnedDialogs)
 async def reorder_pinned_dialogs():
+    # TODO: pinned dialogs reordering
     return True
 
 
