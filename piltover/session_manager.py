@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING
 
+from mtproto.packets import DecryptedMessagePacket
+
 from piltover.db.models import User, UserAuthorization, AuthKey
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
@@ -66,7 +68,9 @@ class Session:
         return ret
 
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    def pack_message(self, obj: TLObject, originating_request: Message | None = None) -> Message:
+    def pack_message(
+            self, obj: TLObject, originating_request: Message | DecryptedMessagePacket | None = None
+    ) -> Message:
         if originating_request is None:
             msg_id = self.msg_id(in_reply=False)
         else:

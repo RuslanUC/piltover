@@ -18,20 +18,23 @@ async def get_config():
         expires=int(time() + 60 * 60 * 24),
         this_dc=2,
         test_mode=False,
-        dc_options=[DcOption(this_port_only=True, id=2, ip_address="192.168.0.111", port=4430)],
+        dc_options=[
+            DcOption(this_port_only=True, id=dc_id, ip_address="192.168.0.111", port=4430)
+            for dc_id in range(5)
+        ],
         dc_txt_domain_name="_",
-        chat_size_max=10,
-        megagroup_size_max=200000,
-        forwarded_count_max=100,
-        online_update_period_ms=30_000,
-        offline_blur_timeout_ms=30_000,
-        offline_idle_timeout_ms=30_000,
-        online_cloud_timeout_ms=30_000,
-        notify_cloud_delay_ms=60_000,
-        notify_default_delay_ms=10_000,
-        push_chat_period_ms=1_000,
+        chat_size_max=10,  # Telegram default is 200
+        megagroup_size_max=200000,  # Telegram default is 200000
+        forwarded_count_max=100,  # Telegram default is 100
+        online_update_period_ms=30_000,  # Telegram default is 210000
+        offline_blur_timeout_ms=30_000,  # Telegram default is 5000
+        offline_idle_timeout_ms=30_000,  # Telegram default is 30000
+        online_cloud_timeout_ms=30_000,  # Telegram default is 300000
+        notify_cloud_delay_ms=60_000,  # Telegram default is 30000
+        notify_default_delay_ms=10_000,  # Telegram default is 1500
+        push_chat_period_ms=1_000,  # Telegram default is 60000
         push_chat_limit=1,
-        edit_time_limit=48 * 60 * 60,
+        edit_time_limit=48 * 60 * 60,  # Telegram default is 172800
         revoke_time_limit=int(2 ** 31 - 1),
         revoke_pm_time_limit=int(2 ** 31 - 1),
         rating_e_decay=2,
@@ -42,7 +45,7 @@ async def get_config():
         call_connect_timeout_ms=20_000,
         call_packet_timeout_ms=5_000,
         me_url_prefix="https://127.0.0.1/",
-        caption_length_max=2048,
+        caption_length_max=2048,  # Telegram default is 1024
         message_length_max=4096,
         webfile_dc_id=2,
     )

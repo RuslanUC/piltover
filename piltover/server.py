@@ -18,7 +18,8 @@ from piltover.context import RequestContext, request_ctx
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
 from piltover.tl import TLObject, SerializationUtils, ResPQ, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
-    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated, BadServerSalt
+    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated, BadServerSalt, \
+    BadMsgNotification
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
 from piltover.utils import read_int, generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
@@ -169,7 +170,9 @@ class Client:
         self.writer.write(to_send)
         await self.writer.drain()
 
-    async def send(self, obj: TLObject, session: Session, originating_request: Message | None = None) -> None:
+    async def send(
+            self, obj: TLObject, session: Session, originating_request: Message | DecryptedMessagePacket | None = None
+    ) -> None:
         logger.debug(f"Sending: {obj}")
         message = session.pack_message(obj, originating_request)
 
@@ -397,6 +400,59 @@ class Client:
 
         await self.send(result, sess, originating_request=req_message)
 
+    # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
+    async def _is_message_bad(self, packet: DecryptedMessagePacket) -> bool:
+        error_code = 0
+
+        if packet.message_id % 4 != 0:
+            # 18: incorrect two lower order msg_id bits (the server expects client message msg_id to be divisible by 4)
+            logger.debug(f"Client sent message id which is not divisible by 4")
+            error_code = 18
+        elif (packet.message_id >> 32) < (time.time() - 300):
+            # 16: msg_id too low
+            logger.debug(f"Client sent message id which is too low")
+            error_code = 16
+        elif (packet.message_id >> 32) < (time.time() - 300):
+            # 16: msg_id too high
+            logger.debug(f"Client sent message id which is too low")
+            error_code = 17
+
+        # TODO: add validation for message_id duplication (code 19)
+        # TODO: add validation for seq_no too low/high (code 32 and 33)
+        # TODO: add validation for seq_no even/odd (code 34 and 35)
+
+        if error_code:
+            await self.send(
+                BadMsgNotification(
+                    bad_msg_id=packet.message_id,
+                    bad_msg_seqno=packet.seq_no,
+                    error_code=error_code,
+                ),
+                Session(self, packet.session_id),
+                packet,
+            )
+            return True
+
+        # 48: incorrect server salt (in this case, the bad_server_salt response is received with the correct salt,
+        # and the message is to be re-sent with it)
+        if packet.salt != self.server.salt:
+            logger.debug(
+                f"Client sent bad salt ({int.from_bytes(packet.salt, 'little')}), sending correct salt"
+            )
+            await self.send(
+                BadServerSalt(
+                    bad_msg_id=packet.message_id,
+                    bad_msg_seqno=packet.seq_no,
+                    error_code=48,
+                    new_server_salt=int.from_bytes(self.server.salt, "little"),
+                ),
+                Session(self, packet.session_id),
+                packet,
+            )
+            return True
+
+        return False
+
     async def recv(self):
         packet = await self.read_packet()
 
@@ -409,22 +465,14 @@ class Client:
                 self.writer.write(to_send)
                 await self.writer.drain()
 
+            if await self._is_message_bad(decrypted):
+                return
+
             message = Message(
                 message_id=decrypted.message_id,
                 seq_no=decrypted.seq_no,
-                obj=cast(TLObject, None),
+                obj=TLObject.read(BytesIO(decrypted.data)),
             )
-
-            if decrypted.salt != self.server.salt:
-                logger.debug(f"Client send bad salt ({int.from_bytes(decrypted.salt, 'little')}), sending correct salt")
-                return await self.send(BadServerSalt(
-                    bad_msg_id=decrypted.message_id,
-                    bad_msg_seqno=decrypted.seq_no,
-                    error_code=48,
-                    new_server_salt=int.from_bytes(self.server.salt, "little"),
-                ), Session(self, decrypted.session_id), message)
-
-            message.obj = TLObject.read(BytesIO(decrypted.data))
             request_ctx.set(RequestContext(
                 packet.auth_key_id, decrypted.message_id, decrypted.session_id, message.obj, self
             ))
