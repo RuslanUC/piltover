@@ -1,12 +1,14 @@
 from datetime import datetime
+from time import time
 
 from loguru import logger
 
 from piltover.db.models import UserAuthorization
+from piltover.db.models.server_salt import ServerSalt
 from piltover.server import MessageHandler, Client
 from piltover.session_manager import Session
 from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
-    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown
+    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts, FutureSalts
 from piltover.tl.core_types import Message
 
 handler = MessageHandler("system")
@@ -108,3 +110,26 @@ async def destroy_session(client: Client, request: Message[DestroySession], sess
 @handler.on_message(RpcDropAnswer)
 async def rpc_drop_answer(client: Client, request: Message[RpcDropAnswer], session: Session):
     return RpcAnswerUnknown()
+
+
+# noinspection PyUnusedLocal
+@handler.on_message(GetFutureSalts)
+async def get_future_salts(client: Client, request: Message[GetFutureSalts], session: Session):
+    limit = max(min(request.obj.num, 1), 64)
+    base_id = int(time() // (60 * 60))
+
+    exists = set(await ServerSalt.filter(id__gt=base_id).limit(limit).values_list("id", flat=True))
+    to_create = set(range(base_id, base_id + limit + 1)) - exists
+    if to_create:
+        await ServerSalt.bulk_create([
+            ServerSalt(id=create_id)
+            for create_id in to_create
+        ])
+
+    salts = await ServerSalt.filter(id__gt=base_id).limit(limit)
+
+    return FutureSalts(
+        req_msg_id=request.message_id,
+        now=int(time()),
+        salts=[salt.to_tl() for salt in salts]
+    )

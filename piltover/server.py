@@ -4,7 +4,6 @@ import secrets
 import time
 from collections import defaultdict
 from io import BytesIO
-from os import urandom
 from typing import Callable, Awaitable, cast
 
 import tgcrypto
@@ -15,11 +14,12 @@ from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMe
 
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import RequestContext, request_ctx
+from piltover.db.models.server_salt import ServerSalt
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
 from piltover.tl import TLObject, SerializationUtils, ResPQ, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
     SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated, BadServerSalt, \
-    BadMsgNotification
+    BadMsgNotification, Long
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
 from piltover.utils import read_int, generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
@@ -75,7 +75,9 @@ class Server:
             Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]],
         ] = {}
         self.sys_handlers = defaultdict(list)
-        self.salt: bytes = urandom(8)
+
+        self.salt_id = 0
+        self.salt = b"\x00" * 8
 
     @logger.catch
     async def accept_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -121,6 +123,16 @@ class Server:
         self.sys_handlers["auth_key_get"].append(func)
         return func
 
+    async def get_current_salt(self) -> bytes:
+        current_id = int(time.time() // (60 * 60))
+        if self.salt_id != current_id:
+            logger.debug("Current salt is expired, fetching new one")
+            salt, _ = await ServerSalt.get_or_create(id=current_id)
+            self.salt_id = salt.id
+            self.salt = Long.write(salt.salt)
+
+        return self.salt
+
 
 class Client:
     def __init__(self, server: Server, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -159,7 +171,7 @@ class Client:
         logger.trace(f"Actually sending: {message}")
 
         encrypted = DecryptedMessagePacket(
-            salt=self.server.salt,
+            salt=await self.server.get_current_salt(),
             session_id=session.session_id,
             message_id=message.message_id,
             seq_no=message.seq_no,
@@ -376,7 +388,7 @@ class Client:
                 NewSessionCreated(
                     first_msg_id=req_message.message_id,
                     unique_id=sess.session_id,
-                    server_salt=int.from_bytes(self.server.salt, "little"),
+                    server_salt=Long.read_bytes(await self.server.get_current_salt()),
                 ),
                 sess,
             )
@@ -435,7 +447,7 @@ class Client:
 
         # 48: incorrect server salt (in this case, the bad_server_salt response is received with the correct salt,
         # and the message is to be re-sent with it)
-        if packet.salt != self.server.salt:
+        if packet.salt != await self.server.get_current_salt():
             logger.debug(
                 f"Client sent bad salt ({int.from_bytes(packet.salt, 'little')}), sending correct salt"
             )
@@ -444,7 +456,7 @@ class Client:
                     bad_msg_id=packet.message_id,
                     bad_msg_seqno=packet.seq_no,
                     error_code=48,
-                    new_server_salt=int.from_bytes(self.server.salt, "little"),
+                    new_server_salt=Long.read_bytes(await self.server.get_current_salt()),
                 ),
                 Session(self, packet.session_id),
                 packet,

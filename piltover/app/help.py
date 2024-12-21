@@ -15,7 +15,7 @@ handler = MessageHandler("help")
 async def get_config():
     return Config(
         date=int(time()),
-        expires=int(time() + 60 * 60 * 24),
+        expires=int(time() + 60 * 60),
         this_dc=2,
         test_mode=False,
         dc_options=[

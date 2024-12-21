@@ -8,8 +8,12 @@ class Int(int):
     SIZE = BIT_SIZE // 8
 
     @classmethod
+    def read_bytes(cls, data: bytes) -> int:
+        return int.from_bytes(data, "little")
+
+    @classmethod
     def read(cls, stream) -> int:
-        return int.from_bytes(stream.read(cls.SIZE), "little")
+        return cls.read_bytes(stream.read(cls.SIZE))
 
     # noinspection PyMethodParameters
     @classinstancemethod
