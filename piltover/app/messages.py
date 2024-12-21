@@ -26,10 +26,10 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
-    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage
+    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, GetQuickReplies
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
-    FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet
+    FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet, QuickReplies
 
 handler = MessageHandler("messages")
 
@@ -554,6 +554,16 @@ async def save_draft(request: SaveDraft, user: User):
 
     await send_update_draft(user, chat, draft)
     return True
+
+
+@handler.on_request(GetQuickReplies, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_quick_replies() -> QuickReplies:
+    return QuickReplies(
+        quick_replies=[],
+        messages=[],
+        chats=[],
+        users=[],
+    )
 
 
 # TODO: messages pinning: https://core.telegram.org/api/pin

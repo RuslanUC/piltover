@@ -62,7 +62,7 @@ class MessageHandler:
 
     def on_request(self, typ: type[TLObject], flags: int = 0):
         def decorator(func: HandlerFunc):
-            logger.debug(f"Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""))
+            logger.debug(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
 
             self.request_handlers[typ.tlid()] = RequestHandler(func, flags)
             return func

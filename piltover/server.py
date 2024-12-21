@@ -4,6 +4,7 @@ import secrets
 import time
 from collections import defaultdict
 from io import BytesIO
+from os import urandom
 from typing import Callable, Awaitable, cast
 
 import tgcrypto
@@ -16,8 +17,8 @@ from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import RequestContext, request_ctx
 from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
-from piltover.tl import TLObject, SerializationUtils, ResPQ, Long, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
-    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated
+from piltover.tl import TLObject, SerializationUtils, ResPQ, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
+    SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated, BadServerSalt
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
 from piltover.utils import read_int, generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
@@ -73,7 +74,7 @@ class Server:
             Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]],
         ] = {}
         self.sys_handlers = defaultdict(list)
-        self.salt: int = 0
+        self.salt: bytes = urandom(8)
 
     @logger.catch
     async def accept_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -136,7 +137,7 @@ class Client:
         self.layer = 177
 
     async def read_packet(self) -> MessagePacket | None:
-        packet = self.conn.receive(b"")
+        packet = self.conn.receive()
         if isinstance(packet, MessagePacket):
             return packet
 
@@ -157,7 +158,7 @@ class Client:
         logger.trace(f"Actually sending: {message}")
 
         encrypted = DecryptedMessagePacket(
-            salt=Long.write(self.server.salt),
+            salt=self.server.salt,
             session_id=session.session_id,
             message_id=message.message_id,
             seq_no=message.seq_no,
@@ -369,8 +370,12 @@ class Client:
         if created:
             logger.info(f"({self.peername}) Created session {session_id}")
             await self.send(
-                NewSessionCreated(first_msg_id=req_message.message_id, unique_id=sess.session_id, server_salt=0),
-                sess
+                NewSessionCreated(
+                    first_msg_id=req_message.message_id,
+                    unique_id=sess.session_id,
+                    server_salt=int.from_bytes(self.server.salt, "little"),
+                ),
+                sess,
             )
 
         if isinstance(req_message.obj, MsgContainer):
@@ -398,15 +403,28 @@ class Client:
         if isinstance(packet, EncryptedMessagePacket):
             decrypted = await self.decrypt(packet)
             if packet.needs_quick_ack:
-                to_send = self.conn.send(self._create_quick_ack(decrypted))
+                qa = self._create_quick_ack(decrypted)
+                print(f"generated quick ack token: {qa.token.hex()}")
+                to_send = self.conn.send(qa)
                 self.writer.write(to_send)
                 await self.writer.drain()
 
             message = Message(
                 message_id=decrypted.message_id,
                 seq_no=decrypted.seq_no,
-                obj=TLObject.read(BytesIO(decrypted.data)),
+                obj=cast(TLObject, None),
             )
+
+            if decrypted.salt != self.server.salt:
+                logger.debug(f"Client send bad salt ({int.from_bytes(decrypted.salt, 'little')}), sending correct salt")
+                return await self.send(BadServerSalt(
+                    bad_msg_id=decrypted.message_id,
+                    bad_msg_seqno=decrypted.seq_no,
+                    error_code=48,
+                    new_server_salt=int.from_bytes(self.server.salt, "little"),
+                ), Session(self, decrypted.session_id), message)
+
+            message.obj = TLObject.read(BytesIO(decrypted.data))
             request_ctx.set(RequestContext(
                 packet.auth_key_id, decrypted.message_id, decrypted.session_id, message.obj, self
             ))

@@ -24,3 +24,10 @@ if (_current_dir / "tl.zip").exists():
     sys.modules.update(add_modules)
 
     logger.debug(f"Adding tl from zip to sys.modules under {__name__} module took {time() - start_time:.3f} seconds.")
+else:
+    logger.debug("Importing tl piltover.tl module. It may be slow...")
+
+    start_time = time()
+    import piltover.tl
+
+    logger.debug(f"Importing tl piltover.tl module took {time() - start_time:.2f} seconds.")
