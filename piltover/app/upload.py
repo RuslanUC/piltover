@@ -2,7 +2,7 @@ from time import time
 
 from piltover.app import files_dir
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
-from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File
+from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
@@ -58,9 +58,9 @@ async def get_file(request: GetFile, user: User):
         raise ErrorRpc(error_code=400, error_message="LIMIT_INVALID")
 
     if isinstance(request.location, InputPeerPhotoFileLocation):
-        if (target_user := await User.from_input_peer(request.location.peer, user)) is None:
-            raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
-        q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user__id": target_user.id}
+        if (peer := await Peer.from_input_peer(user, request.location.peer)) is None:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+        q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user": peer.user}
     else:
         q = {"file__id": request.location.id}
     access = await FileAccess.get_or_none(user=user, **q).select_related("file")

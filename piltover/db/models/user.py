@@ -69,19 +69,6 @@ class User(Model):
         )
 
     @classmethod
-    async def from_input_peer(cls, peer, current_user: models.User) -> models.User | None:
-        if isinstance(peer, (InputUserSelf, InputPeerSelf)):
-            return current_user
-        elif isinstance(peer, (InputUser, InputPeerUser)):
-            if peer.user_id == current_user.id:
-                return current_user
-            elif (user := await User.get_or_none(id=peer.user_id)) is None:
-                raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-            return user
-        else:
-            return None
-
-    @classmethod
     async def from_ids(cls, ids: list[int] | set[int]) -> list[models.User]:
         result = []
         for uid in ids:
