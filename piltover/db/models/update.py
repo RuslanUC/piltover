@@ -6,12 +6,14 @@ from tortoise import fields
 
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType
+from piltover.db.models import Dialog
 from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
-from piltover.tl.types import UpdateDeleteMessages
+from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs
 from piltover.tl.types import User as TLUser
 
-UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned
+UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned | \
+              UpdatePinnedDialogs
 
 
 class UpdateV2(Model):
@@ -80,4 +82,21 @@ class UpdateV2(Model):
                 peer=DialogPeer(
                     peer=peer.to_tl(),
                 ),
+            )
+
+        if self.update_type is UpdateType.DIALOG_PIN_REORDER:
+            dialogs = await Dialog.filter(
+                peer__owner=current_user, pinned_index__not_isnull=True
+            ).select_related("peer", "peer__user")
+
+            for dialog in dialogs:
+                peer_user = dialog.peer.peer_user(current_user)
+                if users is not None and peer_user.id not in users:
+                    users[peer_user.id] = peer_user
+
+            return UpdatePinnedDialogs(
+                order=[
+                    DialogPeer(peer=dialog.peer.to_tl())
+                    for dialog in dialogs
+                ],
             )

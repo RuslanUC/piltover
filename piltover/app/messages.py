@@ -295,7 +295,7 @@ async def get_attach_menu_bots():
 @handler.on_request(GetPinnedDialogs, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_pinned_dialogs(client: Client, user: User):
     dialogs = await Dialog.filter(peer__owner=user, pinned_index__not_isnull=True)\
-        .select_related("peer", "peer__user").order_by("-peer__messages__date")
+        .select_related("peer", "peer__user").order_by("-pinned_index")
 
     return PeerDialogs(
         **(await format_dialogs(user, dialogs)),
@@ -322,9 +322,39 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
     return True
 
 
-@handler.on_request(ReorderPinnedDialogs)
-async def reorder_pinned_dialogs():
-    # TODO: pinned dialogs reordering
+@handler.on_request(ReorderPinnedDialogs, ReqHandlerFlags.AUTH_REQUIRED)
+async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
+    pinned_now = await Dialog.filter(peer__owner=user, pinned_index__not_isnull=True).select_related("peer")
+    pinned_now = {dialog.peer: dialog for dialog in pinned_now}
+    pinned_after = []
+    to_unpin: dict = pinned_now.copy() if request.force else {}
+
+    for dialog_peer in request.order:
+        if (peer := await Peer.from_input_peer(user, dialog_peer.peer)) is None:
+            continue
+
+        dialog = pinned_now.get(peer, None) or await Dialog.get_or_none(peer=peer).select_related("peer")
+        if not dialog:
+            continue
+
+        pinned_after.append(dialog)
+        to_unpin.pop(peer, None)
+
+    if not request.force:
+        pinned_after.extend(sorted(pinned_now.values(), key=lambda d: d.pinned_index))
+
+    if to_unpin:
+        unpin_ids = [dialog.id for dialog in to_unpin.values()]
+        await Dialog.filter(id__in=unpin_ids).update(pinned_index=None)
+
+    pinned_after.reverse()
+    for idx, dialog in enumerate(pinned_after):
+        dialog.pinned_index = idx
+
+    if pinned_after:
+        await Dialog.bulk_update(pinned_after, fields=["pinned_index"])
+    await UpdatesManager.reorder_pinned_dialogs(user, pinned_after)
+
     return True
 
 

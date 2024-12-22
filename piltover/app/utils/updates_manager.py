@@ -5,10 +5,11 @@ from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import UpdateType, PeerType
-from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer
+from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
-    UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage
+    UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
+    UpdatePinnedDialogs, DialogPeer
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
@@ -235,6 +236,34 @@ class UpdatesManager(metaclass=SingletonMeta):
 
         updates = Updates(
             updates=[UpdateDraftMessage(peer=peer.to_tl(), draft=draft)],
+            users=[await user.to_tl(user)],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager().send(updates, user.id)
+
+    @staticmethod
+    async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
+        new_pts = await State.add_pts(user, 1)
+
+        await UpdateV2.create(
+            user=user,
+            update_type=UpdateType.DIALOG_PIN_REORDER,
+            pts=new_pts,
+            related_id=None,
+        )
+
+        updates = Updates(
+            updates=[
+                UpdatePinnedDialogs(
+                    order=[
+                        DialogPeer(peer=dialog.peer.to_tl())
+                        for dialog in dialogs
+                    ],
+                )
+            ],
             users=[await user.to_tl(user)],
             chats=[],
             date=int(time()),

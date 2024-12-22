@@ -478,6 +478,7 @@ class Client:
                 self.writer.write(to_send)
                 await self.writer.drain()
 
+            # TODO: skip salt validation for bindTempAuthKey?
             #if await self._is_message_bad(decrypted):
             #    return
 
@@ -490,7 +491,7 @@ class Client:
                 packet.auth_key_id, decrypted.message_id, decrypted.session_id, message.obj, self
             ))
 
-            #logger.debug(message)
+            logger.debug(message)
             await self.handle_encrypted_message(message, decrypted.session_id)
         elif isinstance(packet, UnencryptedMessagePacket):
             decoded = SerializationUtils.read(BytesIO(packet.message_data), TLObject)

@@ -19,6 +19,7 @@ class PrivacyRuleKeyType(IntEnum):
     ADDED_BY_PHONE = 7
     VOICE_MESSAGE = 8
     ABOUT = 9
+    BIRTHDAY = 10
 
 
 class PrivacyRuleValueType(IntEnum):
@@ -53,6 +54,7 @@ class UpdateType(IntEnum):
     READ_HISTORY_INBOX = 2
     DIALOG_PIN = 3
     DRAFT_UPDATE = 4
+    DIALOG_PIN_REORDER = 5
 
 
 class PeerType(IntEnum):

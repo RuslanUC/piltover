@@ -11,7 +11,7 @@ from piltover.tl import PrivacyValueAllowContacts, PrivacyValueAllowAll, Privacy
     InputPrivacyKeyProfilePhoto, InputPrivacyKeyPhoneNumber, InputPrivacyKeyAddedByPhone, \
     InputPrivacyKeyVoiceMessages, InputPrivacyValueAllowContacts, InputPrivacyValueAllowAll, \
     InputPrivacyValueAllowUsers, InputPrivacyValueDisallowContacts, InputPrivacyValueDisallowAll, \
-    InputPrivacyValueDisallowUsers, InputUserSelf, InputUser, InputPrivacyKeyAbout
+    InputPrivacyValueDisallowUsers, InputUserSelf, InputUser, InputPrivacyKeyAbout, InputPrivacyKeyBirthday
 
 PRIVACY_ENUM_TO_TL = {
     PrivacyRuleValueType.ALLOW_CONTACTS: PrivacyValueAllowContacts,
@@ -40,6 +40,7 @@ TL_KEY_TO_PRIVACY_ENUM = {
     InputPrivacyKeyAddedByPhone: PrivacyRuleKeyType.ADDED_BY_PHONE,
     InputPrivacyKeyVoiceMessages: PrivacyRuleKeyType.VOICE_MESSAGE,
     InputPrivacyKeyAbout: PrivacyRuleKeyType.ABOUT,
+    InputPrivacyKeyBirthday: PrivacyRuleKeyType.BIRTHDAY,
 }
 
 
