@@ -66,7 +66,7 @@ class User(Model):
             lang_code=self.lang_code,
             is_self=self == current_user,
             photo=await self.get_photo(current_user, True),
-            access_hash=peer.access_hash if peer is not None else 0,
+            access_hash=peer.access_hash if peer is not None else 1,
         )
 
     @classmethod
