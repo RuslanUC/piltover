@@ -16,7 +16,7 @@ async def get_full_user(request: GetFullUser, user: User):
     if (peer := await Peer.from_input_peer(user, request.id)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    target_user = user if peer.type is PeerType.SELF else peer.user
+    target_user = peer.peer_user(user)
 
     return UserFull(
         full_user=FullUser(

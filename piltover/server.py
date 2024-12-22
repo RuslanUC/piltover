@@ -21,7 +21,8 @@ from piltover.tl import TLObject, SerializationUtils, ResPQ, PQInnerData, ReqPqM
     SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated, BadServerSalt, \
     BadMsgNotification, Long
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
-from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck
+from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck, \
+    PQInnerDataTemp
 from piltover.utils import read_int, generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
     load_private_key, load_public_key, background, Keys
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
@@ -273,10 +274,10 @@ class Client:
 
             logger.debug(f"p_q_inner_data: {p_q_inner_data}")
 
-            assert isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTempDc)), \
+            assert isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTemp, PQInnerDataTempDc)), \
                 f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}"
 
-            self.auth_data.is_temp = isinstance(p_q_inner_data, PQInnerDataTempDc)
+            self.auth_data.is_temp = isinstance(p_q_inner_data, (PQInnerDataTemp, PQInnerDataTempDc))
             self.auth_data.expires_in = max(cast(PQInnerDataTempDc, p_q_inner_data).expires_in, 86400) \
                 if self.auth_data.is_temp else 0
 
@@ -449,7 +450,8 @@ class Client:
         # and the message is to be re-sent with it)
         if packet.salt != await self.server.get_current_salt():
             logger.debug(
-                f"Client sent bad salt ({int.from_bytes(packet.salt, 'little')}), sending correct salt"
+                f"Client sent bad salt ({int.from_bytes(packet.salt, 'little')}) "
+                f"in message {packet.message_id}, sending correct salt"
             )
             await self.send(
                 BadServerSalt(
@@ -472,13 +474,12 @@ class Client:
             decrypted = await self.decrypt(packet)
             if packet.needs_quick_ack:
                 qa = self._create_quick_ack(decrypted)
-                print(f"generated quick ack token: {qa.token.hex()}")
                 to_send = self.conn.send(qa)
                 self.writer.write(to_send)
                 await self.writer.drain()
 
-            if await self._is_message_bad(decrypted):
-                return
+            #if await self._is_message_bad(decrypted):
+            #    return
 
             message = Message(
                 message_id=decrypted.message_id,
@@ -489,7 +490,7 @@ class Client:
                 packet.auth_key_id, decrypted.message_id, decrypted.session_id, message.obj, self
             ))
 
-            logger.debug(message)
+            #logger.debug(message)
             await self.handle_encrypted_message(message, decrypted.session_id)
         elif isinstance(packet, UnencryptedMessagePacket):
             decoded = SerializationUtils.read(BytesIO(packet.message_data), TLObject)

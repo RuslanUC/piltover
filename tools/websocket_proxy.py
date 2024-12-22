@@ -14,11 +14,11 @@ async def proxy(websocket: WebSocketServerProtocol):
 
     try:
         reader, writer = await asyncio.open_connection(host="localhost", port=4430)
-        logger.info("{uuid} | Client connected: {addr}", uuid=uuid, addr=addr)
+        logger.info(f"{uuid} | Client connected: {addr}")
 
         async def remote_to_local():
             while True:
-                data = await reader.read(1024)
+                data = await reader.read(1024 * 16)
                 await websocket.send(data)
 
         async def local_to_remote():
@@ -30,7 +30,7 @@ async def proxy(websocket: WebSocketServerProtocol):
 
         await asyncio.gather(remote_to_local(), local_to_remote())
     except websockets.exceptions.ConnectionClosedOK:
-        logger.warning("{uuid} | Client disconnected: {addr}", uuid=uuid, addr=addr)
+        logger.warning(f"{uuid} | Client disconnected: {addr}")
 
 
 async def main():

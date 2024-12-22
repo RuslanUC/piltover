@@ -230,14 +230,14 @@ async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
     messages = []
     users = {}
     for dialog in dialogs:
-        message = await Message.filter(peer=dialog.peer).select_related("author", "chat").order_by("-id").first()
+        message = await Message.filter(peer=dialog.peer).select_related("author", "peer").order_by("-id").first()
         if message is not None:
             messages.append(await message.to_tl(user))
             if message.author.id not in users:
                 users[message.author.id] = await message.author.to_tl(user)
 
-        if dialog.peer.user.id not in users:
-            users[dialog.peer.user.id] = await dialog.peer.user.to_tl(user)
+        if dialog.peer.peer_user(user) is not None and dialog.peer.peer_user(user).id not in users:
+            users[dialog.peer.user.id] = await dialog.peer.peer_user(user).to_tl(user)
 
     return {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
@@ -252,11 +252,11 @@ async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User, 
                                offset_date: int = 0, limit: int = 100):
     # TODO: get dialogs by peers
 
-    query = Q(user=user)
+    query = Q(peer__owner=user)
     if offset_id:
-        query &= Q(chat__messages__id__gt=offset_id)
+        query &= Q(peer__messages__id__gt=offset_id)
     if offset_date:
-        query &= Q(chat__messages__date__gt=datetime.fromtimestamp(offset_date, UTC))
+        query &= Q(peer__messages__date__gt=datetime.fromtimestamp(offset_date, UTC))
 
     if limit > 100 or limit < 1:
         limit = 100
@@ -294,8 +294,8 @@ async def get_attach_menu_bots():
 
 @handler.on_request(GetPinnedDialogs, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_pinned_dialogs(client: Client, user: User):
-    dialogs = await Dialog.filter(peer_owner=user, pinned_index__not_isnull=True)\
-        .select_related("peer", "peer__user").order_by("-chat__messages__date")
+    dialogs = await Dialog.filter(peer__owner=user, pinned_index__not_isnull=True)\
+        .select_related("peer", "peer__user").order_by("-peer__messages__date")
 
     return PeerDialogs(
         **(await format_dialogs(user, dialogs)),
@@ -397,7 +397,7 @@ async def get_featured_stickers():
 async def get_all_drafts(user: User):
     users = {}
     updates = []
-    drafts = await MessageDraft.filter(dialog__user=user).select_related("dialog", "dialog__peer", "dialog__peer__user")
+    drafts = await MessageDraft.filter(dialog__peer__owner=user).select_related("dialog", "dialog__peer", "dialog__peer__user")
     for draft in drafts:
         peer = draft.dialog.peer
         updates.append(UpdateDraftMessage(peer=peer.to_tl(), draft=draft.to_tl()))

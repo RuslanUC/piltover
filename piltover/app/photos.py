@@ -15,11 +15,12 @@ async def get_user_photos(request: GetUserPhotos, user: User):
     if (peer := await Peer.from_input_peer(user, request.user_id)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    photos = await UserPhoto.filter(user=peer.user).select_related("file").order_by("-id")
+    peer_user = peer.peer_user(user)
+    photos = await UserPhoto.filter(user=peer_user).select_related("file").order_by("-id")
 
     return Photos(
         photos=[await photo.to_tl(user) for photo in photos],
-        users=[await peer.user.to_tl(user)],
+        users=[await peer_user.to_tl(user)],
     )
 
 

@@ -35,6 +35,9 @@ class Peer(Model):
     owner_id: int
     user_id: int
 
+    def peer_user(self, user: models.User | None = None) -> models.User | None:
+        return (user or self.owner) if self.type is PeerType.SELF else self.user
+
     @classmethod
     async def from_input_peer(cls, user: models.User, input_peer: InputPeers) -> Peer | None:
         if isinstance(input_peer, InputUserSelf):

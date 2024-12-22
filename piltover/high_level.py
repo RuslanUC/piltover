@@ -103,7 +103,7 @@ class Client(LowClient):
         auth = await UserAuthorization.get_or_none(
             key__id=str(await self.auth_data.get_perm_id()),
         ).select_related("user")
-        if not allow_mfa_pending and auth.mfa_pending:
+        if auth is not None and not allow_mfa_pending and auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         return auth
 
