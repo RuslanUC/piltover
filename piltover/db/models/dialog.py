@@ -13,9 +13,7 @@ class Dialog(Model):
     pinned_index: int = fields.SmallIntField(null=True, default=None)
     unread_mark: bool = fields.BooleanField(default=False)
 
-    user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
-    chat: models.Chat = fields.ForeignKeyField("models.Chat", on_delete=fields.CASCADE)
-
+    peer: models.Peer = fields.ForeignKeyField("models.Peer", unique=True)
     draft: fields.ReverseRelation[models.MessageDraft]
 
     async def to_tl(self, **kwargs) -> TLDialog:
@@ -29,15 +27,15 @@ class Dialog(Model):
             "notify_settings": PeerNotifySettings(),
         } | kwargs
 
-        top_message = await models.Message.filter(chat=self.chat).order_by("-id").first()
+        top_message = await models.Message.filter(peer=self.peer).order_by("-id").first()
         draft = await models.MessageDraft.get_or_none(dialog=self)
-        draft = await draft.to_tl() if draft else None
+        draft = draft.to_tl() if draft else None
 
         return TLDialog(
             **defaults,
-            pinned=self.pinned,
+            pinned=self.pinned_index is not None,
             unread_mark=self.unread_mark,
-            peer=await self.chat.get_peer(self.user),
+            peer=self.peer.to_tl(),
             top_message=top_message.id if top_message is not None else 0,
             draft=draft,
         )

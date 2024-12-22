@@ -5,11 +5,13 @@ from datetime import datetime
 from tortoise import fields
 
 from piltover.db import models
-from piltover.db.enums import UpdateType
+from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models._utils import Model
-from piltover.tl import TLObject, UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
+from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages
 from piltover.tl.types import User as TLUser
+
+UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned
 
 
 class UpdateV2(Model):
@@ -26,7 +28,7 @@ class UpdateV2(Model):
     # TODO?: for supergroups/channels
     #parent_chat: models.Chat = fields.ForeignKeyField("models.Chat", null=True, default=None)
 
-    async def to_tl(self, current_user: models.User, users: dict[int, TLUser] | None = None) -> TLObject | None:
+    async def to_tl(self, current_user: models.User, users: dict[int, TLUser] | None = None) -> UpdateTypes | None:
         if self.update_type == UpdateType.MESSAGE_DELETE:
             return UpdateDeleteMessages(
                 messages=self.related_ids,
@@ -35,7 +37,7 @@ class UpdateV2(Model):
             )
 
         if self.update_type == UpdateType.MESSAGE_EDIT:
-            if (message := await models.Message.get_or_none(id=self.related_id).select_related("chat", "author")) is None:
+            if (message := await models.Message.get_or_none(id=self.related_id).select_related("peer", "author")) is None:
                 return
 
             if users is not None and message.author.id not in users:
@@ -48,12 +50,13 @@ class UpdateV2(Model):
             )
 
         if self.update_type == UpdateType.READ_HISTORY_INBOX:
-            if (chat := await models.Chat.get_or_none(id=self.related_id)) is None:
+            query = {"user__id": self.related_id} if self.related_id else {"type": PeerType.SELF}
+            if (peer := await models.Peer.get_or_none(owner=current_user, **query)) is None:
                 return
 
             # TODO: fetch read state from db instead of related_ids
             return UpdateReadHistoryInbox(
-                peer=await chat.get_peer(current_user),
+                peer=peer.to_tl(),
                 max_id=self.related_ids[0],
                 still_unread_count=self.related_ids[1],
                 pts=self.pts,
@@ -61,18 +64,20 @@ class UpdateV2(Model):
             )
 
         if self.update_type == UpdateType.DIALOG_PIN:
-            if (chat := await models.Chat.get_or_none(id=self.related_id)) is None \
-                    or (dialog := await models.Dialog.get_or_none(chat=chat, user=current_user)) is None:
+            query = {"user__id": self.related_id} if self.related_id else {"type": PeerType.SELF}
+            if (peer := await models.Peer.get_or_none(owner=current_user, **query)) is None \
+                    or (dialog := await models.Dialog.get_or_none(peer=peer)) is None:
                 return
 
             if users is not None \
-                    and (other := await chat.get_other_user(current_user)) is not None \
-                    and other.id not in users:
-                users[other.id] = other
+                    and (other := await peer.get_opposite()) is not None:
+                for opp in other:
+                    if opp.user.id not in users:
+                        users[opp.user.id] = opp.user
 
             return UpdateDialogPinned(
                 pinned=dialog.pinned_index is not None,
                 peer=DialogPeer(
-                    peer=await chat.get_peer(current_user),
+                    peer=peer.to_tl(),
                 ),
             )

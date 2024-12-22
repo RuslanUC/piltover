@@ -13,13 +13,14 @@ from piltover.tl.types import Message as TLMessage
 
 class Message(Model):
     id: int = fields.BigIntField(pk=True)
+    internal_id: int = fields.BigIntField()
     message: str = fields.TextField()
     pinned: bool = fields.BooleanField(default=False)
     date: datetime = fields.DatetimeField(default=datetime.now)
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
-    chat: models.Chat = fields.ForeignKeyField("models.Chat", on_delete=fields.CASCADE)
+    peer: models.Peer = fields.ForeignKeyField("models.Peer")
     reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None,
                                                       on_delete=fields.SET_NULL)
 
@@ -65,7 +66,7 @@ class Message(Model):
             id=self.id,
             message=self.message,
             pinned=self.pinned,
-            peer_id=await self.chat.get_peer(current_user),
+            peer_id=self.peer.to_tl(),
             date=self.utime(),
             out=current_user == self.author,
             media=tl_media,

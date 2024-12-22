@@ -2,14 +2,14 @@ from collections import defaultdict
 from datetime import datetime, UTC
 from time import time
 
-from tortoise.expressions import Subquery, Q
+from tortoise.expressions import Q
 
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
-from piltover.db.enums import ChatType, MediaType
-from piltover.db.models import User, Chat, Dialog, MessageMedia, MessageDraft, ReadState, State
+from piltover.db.enums import MediaType, PeerType
+from piltover.db.models import User, Dialog, MessageDraft, ReadState, State, Peer, MessageMedia
 from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -17,8 +17,7 @@ from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, InputPeerSelf, \
     EmojiKeywordsDifference, DocumentEmpty, InputDialogPeer, InputMediaUploadedDocument, PeerSettings, \
-    UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, DraftMessageEmpty, DraftMessage, \
-    InputStickerSetAnimatedEmoji, StickerSet
+    UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, InputStickerSetAnimatedEmoji, StickerSet
 from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -26,12 +25,13 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetSuggestedDialogFilters, GetFeaturedStickers, GetFeaturedEmojiStickers, GetAllDrafts, SearchGlobal, \
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
-    SendMessage_148, SendMedia_148, EditMessage_136, GetQuickReplies, GetDefaultTagReactions, \
-    GetSavedDialogs, GetSavedReactionTags, ToggleDialogPin
+    SendMessage_148, SendMedia_148, EditMessage_136, GetQuickReplies, GetDefaultTagReactions, GetSavedDialogs, \
+    GetSavedReactionTags, ToggleDialogPin
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet, QuickReplies, \
     SavedDialogs, SavedReactionTags
+from piltover.utils.snowflake import Snowflake
 
 handler = MessageHandler("messages")
 
@@ -48,13 +48,13 @@ async def get_available_reactions():
 
 @handler.on_request(SetTyping, ReqHandlerFlags.AUTH_REQUIRED)
 async def set_typing(request: SetTyping, user: User):
-    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
-        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    if chat.type != ChatType.PRIVATE:
+    if peer.type == PeerType.SELF:
         return True
 
-    other = await chat.get_other_user(user)
+    other = peer.user
     updates = Updates(
         updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
         users=[await user.to_tl(other)],
@@ -88,22 +88,13 @@ async def get_emoji_keywords_languages():
 
 @handler.on_request(GetHistory, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_history(request: GetHistory, user: User):
-    if isinstance(request.peer, InputPeerSelf):
-        chat = await Chat.get_private(user)
-    elif isinstance(request.peer, InputPeerUser):
-        if (to_user := await User.get_or_none(id=request.peer.user_id)) is None:
-            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-        chat = await Chat.get_private(user, to_user)
-    else:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
-
-    if chat is None:
-        return Messages(messages=[], chats=[], users=[])
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     limit = request.limit
     if limit > 100 or limit < 1:
         limit = 100
-    query = Q(chat=chat)
+    query = Q(peer=peer)
     if request.max_id > 0:
         query &= Q(id__lte=request.max_id)
     if request.min_id > 0:
@@ -111,7 +102,7 @@ async def get_history(request: GetHistory, user: User):
     if request.offset_id > 0:
         query &= Q(id__gt=request.offset_id)
 
-    messages = await Message.filter(query).select_related("author", "chat").limit(limit).all()
+    messages = await Message.filter(query).select_related("author", "peer").limit(limit).all()
     if not messages:
         return Messages(messages=[], chats=[], users=[])
 
@@ -131,8 +122,8 @@ async def get_history(request: GetHistory, user: User):
 @handler.on_request(SendMessage_148, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(SendMessage, ReqHandlerFlags.AUTH_REQUIRED)
 async def send_message(request: SendMessage, user: User):
-    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
-        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     if not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
@@ -141,11 +132,24 @@ async def send_message(request: SendMessage, user: User):
 
     reply = None
     if isinstance(request, SendMessage) and request.reply_to is not None:
-        reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, chat=chat)
+        reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, peer=peer)
     elif isinstance(request, SendMessage_148) and request.reply_to_msg_id is not None:
-        reply = await Message.get_or_none(id=request.reply_to_msg_id, chat=chat)
+        reply = await Message.get_or_none(id=request.reply_to_msg_id, peer=peer)
 
-    message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
+    peers = [peer]
+    peers.extend(await peer.get_opposite())
+    messages: dict[Peer, Message] = {}
+
+    internal_id = Snowflake.make_id()
+    for to_peer in peers:
+        await Dialog.get_or_create(peer=to_peer)
+        messages[to_peer] = await Message.create(
+            internal_id=internal_id,
+            message=request.message,
+            author=user,
+            peer=to_peer,
+            reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
+        )
 
     # TODO: rewrite when pypika fixes delete with join
     # Not doing await MessageDraft.filter(...).delete()
@@ -154,12 +158,12 @@ async def send_message(request: SendMessage, user: User):
     # "DELETE `messagedraft` FROM `messagedraft` LEFT OUTER JOIN"
     # NOTE: exact same situation in SendMedia handler
     if request.clear_draft and \
-            (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
+            (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
         await draft.delete()
 
-    await send_update_draft(user, chat, DraftMessageEmpty())
+    await UpdatesManager.update_draft(user, peer, None)
 
-    if (upd := await UpdatesManager().send_message(user, message)) is None:
+    if (upd := await UpdatesManager.send_message(user, messages)) is None:
         assert False, "unknown chat type ?"
 
     return upd
@@ -167,17 +171,20 @@ async def send_message(request: SendMessage, user: User):
 
 @handler.on_request(ReadHistory, ReqHandlerFlags.AUTH_REQUIRED)
 async def read_history(request: ReadHistory, user: User):
-    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
-        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
-    ex = await ReadState.get_or_none(dialog__user=user, dialog__chat=chat)
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    ex = await ReadState.get_or_none(dialog__peer=peer)
     message = await Message.filter(
-        id__lte=min(request.max_id, ex.last_message_id if ex is not None else request.max_id), chat=chat
+        id__lte=min(request.max_id, ex.last_message_id if ex is not None else request.max_id), peer=peer,
     ).order_by("-id").limit(1)
     messages_count = await Message.filter(
-        id__gt=ex.last_message_id if ex is not None else 0, id__lt=message[0].id, chat=chat
+        id__gt=ex.last_message_id if ex is not None else 0, id__lt=message[0].id, peer=peer,
     ).count()
+
+    # TODO: save to database
     return AffectedMessages(
-        pts=3,
+        pts=await State.add_pts(user, messages_count),
         pts_count=messages_count,
     )
 
@@ -219,6 +226,27 @@ async def get_recent_reactions():
     return Reactions(hash=0, reactions=[])
 
 
+async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
+    messages = []
+    users = {}
+    for dialog in dialogs:
+        message = await Message.filter(peer=dialog.peer).select_related("author", "chat").order_by("-id").first()
+        if message is not None:
+            messages.append(await message.to_tl(user))
+            if message.author.id not in users:
+                users[message.author.id] = await message.author.to_tl(user)
+
+        if dialog.peer.user.id not in users:
+            users[dialog.peer.user.id] = await dialog.peer.user.to_tl(user)
+
+    return {
+        "dialogs": [await dialog.to_tl() for dialog in dialogs],
+        "messages": messages,
+        "chats": [],
+        "users": list(users.values()),
+    }
+
+
 # noinspection PyUnusedLocal
 async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0,
                                offset_date: int = 0, limit: int = 100):
@@ -233,23 +261,11 @@ async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User, 
     if limit > 100 or limit < 1:
         limit = 100
 
-    dialogs = await Dialog.filter(query).select_related("user", "chat").order_by("-chat__messages__date")\
-        .limit(limit).all()
-    messages = []
-    users = {}
-    for dialog in dialogs:
-        if (message := await Message.filter(chat=dialog.chat).select_related("author", "chat").order_by("-id")
-                .first()) is not None:
-            messages.append(await message.to_tl(user))
-        users_, _ = await dialog.chat.to_tl_users_chats(user, users)
-        users.update(users_)
+    dialogs = await Dialog.filter(query).select_related(
+        "peer", "peer__owner", "peer__user"
+    ).order_by("-peer__messages__date").limit(limit).all()
 
-    return {
-        "dialogs": [await dialog.to_tl() for dialog in dialogs],
-        "messages": messages,
-        "chats": [],
-        "users": list(users.values()),
-    }
+    return await format_dialogs(user, dialogs)
 
 
 @handler.on_request(GetDialogs, ReqHandlerFlags.AUTH_REQUIRED)
@@ -278,41 +294,30 @@ async def get_attach_menu_bots():
 
 @handler.on_request(GetPinnedDialogs, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_pinned_dialogs(client: Client, user: User):
-    dialogs = await Dialog.filter(user=user, pinned=True)\
-        .select_related("user", "chat").order_by("-chat__messages__date")
-    messages = []
-    users = {}
-    for dialog in dialogs:
-        if (message := await Message.filter(chat=dialog.chat).select_related("author", "chat").order_by("-id")
-                .first()) is not None:
-            messages.append(await message.to_tl(user))
-        users_, _ = await dialog.chat.to_tl_users_chats(user, users)
-        users.update(users_)
+    dialogs = await Dialog.filter(peer_owner=user, pinned_index__not_isnull=True)\
+        .select_related("peer", "peer__user").order_by("-chat__messages__date")
 
     return PeerDialogs(
-        dialogs=[await dialog.to_tl() for dialog in dialogs],
-        messages=messages,
-        chats=[],
-        users=list(users.values()),
-        state=await get_state_internal(client, user),
+        **(await format_dialogs(user, dialogs)),
+        state=await get_state_internal(client, user)
     )
 
 
 @handler.on_request(ToggleDialogPin, ReqHandlerFlags.AUTH_REQUIRED)
 async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
-    if (chat := await Chat.from_input_peer(user, request.peer.peer)) is None \
-            or (dialog := await Dialog.get_or_none(user=user, chat=chat)) is None:
+    if (peer := await Peer.from_input_peer(user, request.peer.peer)) is None \
+            or (dialog := await Dialog.get_or_none(peer=peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
 
     if dialog.pinned_index:
         dialog.pinned_index = None
     else:
-        dialog.pinned_index = await Dialog.filter(user=user, chat=chat, pinned_index__not_isnull=True).count()
+        dialog.pinned_index = await Dialog.filter(peer=peer, pinned_index__not_isnull=True).count()
         if dialog.pinned_index > 10:
             raise ErrorRpc(error_code=400, error_message="PINNED_DIALOGS_TOO_MUCH")
 
     await dialog.save(update_fields=["pinned_index"])
-    await UpdatesManager.pin_dialog(user, chat)
+    await UpdatesManager.pin_dialog(user, peer)
 
     return True
 
@@ -343,10 +348,10 @@ async def get_search_results_positions():
 
 @handler.on_request(Search, ReqHandlerFlags.AUTH_REQUIRED)
 async def messages_search(request: Search, user: User):
-    if (chat := await Chat.from_input_peer(user, request.peer)) is None:
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    query = Q(chat=chat)
+    query = Q(peer=peer)
     query &= Q(message__istartswith=request.q)
     if isinstance(request.from_id, (InputPeerUser, InputPeerSelf)):
         if isinstance(request.from_id, InputPeerUser):
@@ -392,14 +397,12 @@ async def get_featured_stickers():
 async def get_all_drafts(user: User):
     users = {}
     updates = []
-    drafts = await MessageDraft.filter(dialog__user=user).select_related("dialog", "dialog__chat")
+    drafts = await MessageDraft.filter(dialog__user=user).select_related("dialog", "dialog__peer", "dialog__peer__user")
     for draft in drafts:
-        updates.append(UpdateDraftMessage(
-            peer=await draft.dialog.chat.get_peer(user),
-            draft=await draft.to_tl(),
-        ))
-        users_, _ = await draft.dialog.chat.to_tl_users_chats(user, users)
-        users.update(users_)
+        peer = draft.dialog.peer
+        updates.append(UpdateDraftMessage(peer=peer.to_tl(), draft=draft.to_tl()))
+        if peer.user.id not in users:
+            users[peer.user.id] = await peer.user.to_tl(user)
 
     return Updates(
         updates=updates,
@@ -430,9 +433,9 @@ async def search_global(request: SearchGlobal, user: User):
         users = await User.filter(username__istartswith=user_q).limit(10)
 
     messages = await Message.filter(
-        chat__id__in=Subquery(Dialog.filter(user=user).values_list("chat_id", flat=True)),
+        peer__owner=user,
         message__istartswith=q,
-    ).select_related("chat", "author").order_by("-date").limit(10)
+    ).select_related("peer", "author").order_by("-date").limit(10)
 
     # TODO: add users from messages to users list
     return Messages(
@@ -469,24 +472,23 @@ async def get_emoji_keywords(request: GetEmojiKeywords):
 
 @handler.on_request(DeleteMessages, ReqHandlerFlags.AUTH_REQUIRED)
 async def delete_messages(request: DeleteMessages, user: User):
-    # TODO: request.revoke
-
     ids = request.id[:100]
-    delete_ids = defaultdict(list)
-    chats = {}
-    for message in await Message.filter(id__in=ids, chat__dialogs__user=user).select_related("chat"):
-        if message.chat.id not in chats:
-            chats[message.chat.id] = message.chat
-        delete_ids[message.chat.id].append(message.id)
+    messages = defaultdict(list)
+    for message in await Message.filter(id__in=ids, peer__owner=user).select_related("peer", "peer__user", "peer__owner"):
+        messages[user].append(message.id)
+        if request.revoke:
+            for opposite_peer in await message.peer.get_opposite():
+                opp_message = await Message.get_or_none(internal_id=message.internal_id, peer=opposite_peer)
+                if opp_message is not None:
+                    messages[message.peer.user].append(opp_message.id)
 
-    all_ids = [i for ids in delete_ids.values() for i in ids]
-    await Message.filter(id__in=all_ids).delete()
-
+    all_ids = [i for ids in messages.values() for i in ids]
     if not all_ids:
         updates_state, _ = await State.get_or_create(user=user)
         return AffectedMessages(pts=updates_state.pts, pts_count=0)
 
-    pts = await UpdatesManager().delete_messages(user, list(chats.values()), delete_ids)
+    await Message.filter(id__in=all_ids).delete()
+    pts = await UpdatesManager.delete_messages(user, messages)
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
 
@@ -498,10 +500,10 @@ async def get_webpage_preview():
 @handler.on_request(EditMessage_136, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(EditMessage, ReqHandlerFlags.AUTH_REQUIRED)
 async def edit_message(request: EditMessage | EditMessage_136, user: User):
-    if (chat := await Chat.from_input_peer(user, request.peer)) is None:
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    if (message := await Message.get_or_none(chat=chat, id=request.id).select_related("chat", "author")) is None:
+    if (message := await Message.get_or_none(peer=peer, id=request.id).select_related("peer", "author")) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if not request.message:
@@ -511,15 +513,27 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if message.message == request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
-    await message.update(message=request.message, edit_date=datetime.now())
-    return await UpdatesManager.edit_message(message)
+    peers = [peer]
+    peers.extend(await peer.get_opposite())
+    messages: dict[Peer, Message] = {}
+
+    edit_date = datetime.now(UTC)
+    for to_peer in peers:
+        message = await Message.get_or_none(
+            internal_id=message.internal_id, peer=to_peer,
+        ).select_related("author", "peer")
+        if message is not None:
+            await message.update(message=request.message, edit_date=edit_date)
+            messages[to_peer] = message
+
+    return await UpdatesManager.edit_message(user, messages)
 
 
 @handler.on_request(SendMedia_148, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(SendMedia, ReqHandlerFlags.AUTH_REQUIRED)
 async def send_media(request: SendMedia | SendMedia_148, user: User):
-    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
-        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     if not isinstance(request.media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
@@ -537,18 +551,33 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
 
     reply = None
     if isinstance(request, SendMedia) and request.reply_to is not None:
-        reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, chat=chat)
+        reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, peer=peer)
     elif isinstance(request, SendMedia_148) and request.reply_to_msg_id is not None:
-        reply = await Message.get_or_none(id=request.reply_to_msg_id, chat=chat)
+        reply = await Message.get_or_none(id=request.reply_to_msg_id, peer=peer)
 
-    message = await Message.create(message=request.message, author=user, chat=chat, reply_to=reply)
-    await MessageMedia.create(file=file, message=message, spoiler=request.media.spoiler, type=media_type)
+    peers = [peer]
+    peers.extend(await peer.get_opposite())
+    messages: dict[Peer, Message] = {}
+
+    internal_id = Snowflake.make_id()
+    for to_peer in peers:
+        await Dialog.get_or_create(peer=to_peer)
+        messages[to_peer] = await Message.create(
+            internal_id=internal_id,
+            message=request.message,
+            author=user,
+            peer=to_peer,
+            reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
+        )
+        await MessageMedia.create(file=file, message=messages[to_peer], spoiler=request.media.spoiler, type=media_type)
+
     if request.clear_draft and \
-            (draft := await MessageDraft.get_or_none(dialog__chat=chat, dialog__user=user)) is not None:
+            (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
         await draft.delete()
-    await send_update_draft(user, chat, DraftMessageEmpty())
 
-    if (upd := await UpdatesManager().send_message(user, message, True)) is None:
+    await UpdatesManager.update_draft(user, peer, None)
+
+    if (upd := await UpdatesManager.send_message(user, messages, True)) is None:
         assert False, "unknown chat type ?"
 
     return upd
@@ -559,33 +588,18 @@ async def get_message_edit_data():
     return MessageEditData()
 
 
-async def send_update_draft(user: User, chat: Chat, draft: MessageDraft | DraftMessage | DraftMessageEmpty):
-    if isinstance(draft, MessageDraft):
-        draft = await draft.to_tl()
-
-    updates = Updates(
-        updates=[UpdateDraftMessage(peer=await chat.get_peer(user), draft=draft)],
-        users=[await user.to_tl(user)],
-        chats=[],
-        date=int(time()),
-        seq=0,
-    )
-
-    await SessionManager().send(updates, user.id)
-
-
 @handler.on_request(SaveDraft, ReqHandlerFlags.AUTH_REQUIRED)
 async def save_draft(request: SaveDraft, user: User):
-    if (chat := await Chat.from_input_peer(user, request.peer, True)) is None:
-        raise ErrorRpc(error_code=500, error_message="Failed to create chat")
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    dialog = await Dialog.get(user=user, chat=chat)
+    dialog = await Dialog.get_or_create(peer=peer)
     draft, _ = await MessageDraft.get_or_create(
         dialog=dialog,
         defaults={"message": request.message, "date": datetime.now()}
     )
 
-    await send_update_draft(user, chat, draft)
+    await UpdatesManager.update_draft(user, peer, draft)
     return True
 
 

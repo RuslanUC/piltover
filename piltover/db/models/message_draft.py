@@ -15,7 +15,7 @@ class MessageDraft(Model):
     date: datetime = fields.DatetimeField(default=datetime.now)
     dialog: models.Dialog = fields.ForeignKeyField("models.Dialog", on_delete=fields.CASCADE, unique=True)
 
-    async def to_tl(self) -> DraftMessage:
+    def to_tl(self) -> DraftMessage:
         return DraftMessage(
             message=self.message,
             date=int(self.date.timestamp())

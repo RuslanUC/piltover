@@ -1,4 +1,5 @@
-from piltover.db.models import User
+from piltover.db.enums import PeerType
+from piltover.db.models import User, Peer
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
@@ -12,8 +13,10 @@ handler = MessageHandler("users")
 
 @handler.on_request(GetFullUser, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_full_user(request: GetFullUser, user: User):
-    if (target_user := await User.from_input_peer(request.id, user)) is None:
-        raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+    if (peer := await Peer.from_input_peer(user, request.id)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    target_user = user if peer.type is PeerType.SELF else peer.user
 
     return UserFull(
         full_user=FullUser(
@@ -35,9 +38,14 @@ async def get_full_user(request: GetFullUser, user: User):
 async def get_users(request: GetUsers, user: User):
     result: list[TLObject] = []
     for peer in request.id:
-        if isinstance(peer, InputUserSelf):
-            result.append(await user.to_tl(current_user=user))
-        else:
-            # TODO: other input users
+        try:
+            out_peer = await Peer.from_input_peer(user, peer)
+            if out_peer:
+                target_user = user if out_peer.type is PeerType.SELF else out_peer.user
+                await target_user.to_tl(user)
+            else:
+                result.append(UserEmpty(id=0))
+        except ErrorRpc:
             result.append(UserEmpty(id=0))
+
     return result

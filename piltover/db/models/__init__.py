@@ -1,6 +1,5 @@
 from .api_application import ApiApplication
 from .authkey import AuthKey, TempAuthKey
-from .chat import Chat
 from .dialog import Dialog
 from .file import File
 from .file_access import FileAccess
@@ -19,3 +18,4 @@ from .user import User
 from .user_authorization import UserAuthorization
 from .user_password import UserPassword
 from .user_photo import UserPhoto
+from .peer import Peer

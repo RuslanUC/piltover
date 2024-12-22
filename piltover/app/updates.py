@@ -3,7 +3,7 @@ from time import time
 
 from pytz import UTC
 
-from piltover.db.enums import ChatType, UpdateType
+from piltover.db.enums import UpdateType
 from piltover.db.models import User, Message, UserAuthorization, State, UpdateV2
 from piltover.enums import ReqHandlerFlags
 from piltover.high_level import Client, MessageHandler
@@ -39,21 +39,26 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
     requested_update = await UpdateV2.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
     date = requested_update.date if requested_update is not None else datetime.fromtimestamp(request.date, UTC)
 
-    new = await Message.filter(chat__dialogs__user=user, date__gt=date).select_related("author", "chat")
+    new = await Message.filter(
+        peer__owner=user, date__gt=date
+    ).select_related("author", "peer", "peer__owner", "peer__user")
     new_messages = {}
-    processed_chat_ids = set()
+    processed_peer_ids = set()
     other_updates = []
     users = {}
 
     for message in new:
-        chat = message.chat
+        peer = message.peer
+
         new_messages[message.id] = await message.to_tl(user)
         if message.author.id not in users:
             users[message.author.id] = await message.author.to_tl(user)
-        if chat.id not in processed_chat_ids and chat.type == ChatType.PRIVATE:
-            processed_chat_ids.add(chat.id)
-            if (other_user := await chat.get_other_user(user)) is not None and other_user.id not in users:
-                users[other_user.id] = await other_user.to_tl(user)
+
+        if peer.id not in processed_peer_ids:
+            processed_peer_ids.add(peer.id)
+            for other_peer in await peer.get_opposite():
+                if other_peer.user.id not in users:
+                    users[other_peer.user.id] = await other_peer.user.to_tl(user)
 
     new_updates = await UpdateV2.filter(user=user, pts__gt=request.pts).order_by("pts")
     for update in new_updates:

@@ -1,8 +1,8 @@
-from piltover.db.models import User
+from piltover.db.enums import PeerType
+from piltover.db.models import User, Peer
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
-from piltover.tl import PeerUser
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays
@@ -24,7 +24,16 @@ async def resolve_username(request: ResolveUsername, user: User):
     if (resolved := await User.get_or_none(username=request.username)) is None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")
 
-    return ResolvedPeer(peer=PeerUser(user_id=resolved.id), chats=[], users=[await resolved.to_tl(user)])
+    if resolved == user:
+        peer, _ = await Peer.get_or_create(owner=user, user=None, type=PeerType.SELF)
+    else:
+        peer, _ = await Peer.get_or_create(owner=user, user=resolved, type=PeerType.USER)
+
+    return ResolvedPeer(
+        peer=peer.to_tl(),
+        chats=[],
+        users=[await resolved.to_tl(user)],
+    )
 
 
 @handler.on_request(GetBlocked)

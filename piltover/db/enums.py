@@ -52,3 +52,9 @@ class UpdateType(IntEnum):
     # related_it is a chat id
     READ_HISTORY_INBOX = 2
     DIALOG_PIN = 3
+    DRAFT_UPDATE = 4
+
+
+class PeerType(IntEnum):
+    SELF = 0
+    USER = 1

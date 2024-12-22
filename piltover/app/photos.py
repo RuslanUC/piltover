@@ -1,5 +1,5 @@
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
-from piltover.db.models import User, UserPhoto
+from piltover.db.models import User, UserPhoto, Peer
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
@@ -12,14 +12,14 @@ handler = MessageHandler("photos")
 
 @handler.on_request(GetUserPhotos, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_user_photos(request: GetUserPhotos, user: User):
-    if (target_user := await User.from_input_peer(request.user_id, user)) is None:
-        raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+    if (peer := await Peer.from_input_peer(user, request.user_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    photos = await UserPhoto.filter(user=target_user).select_related("file").order_by("-id")
+    photos = await UserPhoto.filter(user=peer.user).select_related("file").order_by("-id")
 
     return Photos(
         photos=[await photo.to_tl(user) for photo in photos],
-        users=[await target_user.to_tl(user)],
+        users=[await peer.user.to_tl(user)],
     )
 
 
