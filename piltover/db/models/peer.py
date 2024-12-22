@@ -58,6 +58,8 @@ class Peer(Model):
 
     async def get_opposite(self) -> list[Peer]:
         if self.type is PeerType.USER:
+            if self.user_id == 777000:
+                return []
             peer, _ = await Peer.get_or_create(type=PeerType.USER, owner=self.user, user=self.owner)
             return [peer]
 

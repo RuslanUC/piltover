@@ -83,12 +83,11 @@ class UpdatesManager(metaclass=SingletonMeta):
                 await SessionManager().send(updates, peer.owner.id)
             elif peer.type is PeerType.USER:
                 msg_tl = await message.to_tl(peer.owner)
-                other = peer.user
 
                 update = UpdateShortMessage(
                     out=True,
                     id=message.id,
-                    user_id=other.id,
+                    user_id=peer.user_id,
                     message=message.message,
                     pts=await State.add_pts(peer.owner, 1),
                     pts_count=1,
@@ -97,11 +96,6 @@ class UpdatesManager(metaclass=SingletonMeta):
                 )
                 await SessionManager().send(update, peer.owner.id, exclude=[client])
                 sent_pts = update.pts
-
-                update.out = False
-                update.user_id = peer.owner.id
-                update.pts = await State.add_pts(other, 1)
-                await SessionManager().send(update, other.id)
 
                 if is_current_user:
                     result = UpdateShortSentMessage(

@@ -3,10 +3,9 @@ from __future__ import annotations
 from tortoise import fields
 
 from piltover.db import models
+from piltover.db.enums import PeerType
 from piltover.db.models._utils import Model
-from piltover.exceptions import ErrorRpc
-from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, InputUser, InputUserSelf, \
-    InputPeerUser, InputPeerSelf
+from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty
 from piltover.tl.types import User as TLUser
 
 
@@ -55,6 +54,8 @@ class User(Model):
                        "attach_menu_enabled": False,
                    } | kwargs
 
+        peer = await models.Peer.get_or_none(owner=current_user, user__id=self.id, type=PeerType.USER)
+
         return TLUser(
             **defaults,
             id=self.id,
@@ -65,7 +66,7 @@ class User(Model):
             lang_code=self.lang_code,
             is_self=self == current_user,
             photo=await self.get_photo(current_user, True),
-            access_hash=123456789,  # TODO: make table with access hashes for users
+            access_hash=peer.access_hash if peer is not None else 0,
         )
 
     @classmethod

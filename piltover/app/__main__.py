@@ -11,7 +11,7 @@ from tortoise import Tortoise, connections
 
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels, upload, root_dir
-from piltover.db.models import AuthKey
+from piltover.db.models import AuthKey, User
 from piltover.db.models.authkey import TempAuthKey
 from piltover.high_level import Server
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
@@ -34,6 +34,14 @@ class MigrateNoDowngrade(Migrate):
         return super(MigrateNoDowngrade, cls).diff_models(old_models, new_models, True)
 
 
+async def _create_system_data() -> None:
+    await User.update_or_create(id=777000, defaults={
+        "phone_number": "42777",
+        "first_name": "Piltover",
+        "username": "piltover",
+    })
+
+
 async def migrate():
     migrations_dir = (data / "migrations").absolute()
 
@@ -47,6 +55,8 @@ async def migrate():
         await command.upgrade(True)
     else:
         await command.init_db(True)
+
+    await _create_system_data()
     await Tortoise.close_connections()
 
 
