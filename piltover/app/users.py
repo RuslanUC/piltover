@@ -3,7 +3,7 @@ from piltover.db.models import User, Peer
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
-from piltover.tl import InputUserSelf, PeerSettings, TLObject, UserEmpty, PeerNotifySettings
+from piltover.tl import PeerSettings, TLObject, UserEmpty, PeerNotifySettings
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser
 from piltover.tl.types.users import UserFull

@@ -1,5 +1,5 @@
 from time import time
-from typing import TypeVar, Generic, cast
+from typing import cast
 
 from tortoise.queryset import QuerySet
 
