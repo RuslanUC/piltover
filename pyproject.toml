@@ -39,7 +39,6 @@ websockets = "^12.0"
 icecream = "^2.1.3"
 tqdm = "^4.66.5"
 aiomonitor = "^0.7.0"
-utl = {git = "git@github.com:RuslanUC/utl.git"}
 
 
 [tool.poetry.group.test.dependencies]
