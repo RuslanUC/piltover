@@ -68,7 +68,7 @@ async def send_code(request: SendCode, user: User) -> SentCode:
 @handler.on_request(SignIn, ReqHandlerFlags.AUTH_REQUIRED)
 async def sign_in(request: SignIn, user: User) -> Authorization:
     if user.id != 777000:
-        raise InvalidConstructorException(SentCode.tlid())
+        raise InvalidConstructorException(SignIn.tlid())
 
     try:
         if int(request.phone_number) < 100000:
@@ -94,7 +94,7 @@ async def sign_in(request: SignIn, user: User) -> Authorization:
 @handler.on_request(GetUserApp, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound:
     if user.id != 777000:
-        raise InvalidConstructorException(SentCode.tlid())
+        raise InvalidConstructorException(GetUserApp.tlid())
 
     target_user = await User.get_or_none(id=Long.read_bytes(request.auth))
     if target_user is None:
@@ -114,7 +114,7 @@ async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound
 @handler.on_request(EditUserApp, ReqHandlerFlags.AUTH_REQUIRED)
 async def edit_user_app(request: EditUserApp, user: User) -> bool:
     if user.id != 777000:
-        raise InvalidConstructorException(SentCode.tlid())
+        raise InvalidConstructorException(EditUserApp.tlid())
 
     target_user = await User.get_or_none(id=Long.read_bytes(request.auth))
     if target_user is None:
@@ -135,7 +135,7 @@ async def edit_user_app(request: EditUserApp, user: User) -> bool:
 @handler.on_request(GetAvailableServers, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_available_servers(client: Client, user: User) -> AvailableServers:
     if user.id != 777000:
-        raise InvalidConstructorException(SentCode.tlid())
+        raise InvalidConstructorException(GetAvailableServers.tlid())
 
     return AvailableServers(
         servers=[
