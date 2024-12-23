@@ -480,7 +480,7 @@ class Client:
                 await self.writer.drain()
 
             # For some reason some clients cant process BadServerSalt response to BindTempAuthKey request
-            if await self._is_message_bad(decrypted, decrypted.data[:4] == Int.write(BindTempAuthKey.tlid())):
+            if await self._is_message_bad(decrypted, decrypted.data[:4] != Int.write(BindTempAuthKey.tlid())):
                 return
 
             message = Message(
