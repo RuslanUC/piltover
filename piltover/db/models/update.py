@@ -101,6 +101,8 @@ class UpdateV2(Model):
 
         if self.update_type is UpdateType.DRAFT_UPDATE:
             peer = await models.Peer.get_or_none(id=self.related_id, owner=current_user).select_related("user")
+            if peer is None:
+                return
 
             if users is not None and peer.user is not None and peer.user.id not in users:
                 users[peer.user.id] = peer.user

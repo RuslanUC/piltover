@@ -10,7 +10,7 @@ from loguru import logger
 from tortoise import Tortoise, connections
 
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
-    langpack, channels, upload, root_dir
+    langpack, channels, upload, root_dir, internal
 from piltover.db.models import AuthKey, User
 from piltover.db.models.authkey import TempAuthKey
 from piltover.high_level import Server
@@ -98,6 +98,7 @@ class PiltoverApp:
         self._server.register_handler(langpack.handler)
         self._server.register_handler(channels.handler)
         self._server.register_handler(upload.handler)
+        self._server.register_handler(internal.handler)
 
         self._server.on_auth_key_set(self._auth_key_set)
         self._server.on_auth_key_get(self._auth_key_get)

@@ -16,5 +16,5 @@ class ApiApplication(Model):
     id: int = fields.BigIntField(pk=True)
     hash: str = fields.CharField(max_length=32, default=gen_hash)
     name: str = fields.CharField(max_length=64)
-    short_name: int = fields.CharField(max_length=32)
+    short_name: str = fields.CharField(max_length=32)
     owner: models.User = fields.ForeignKeyField("models.User", null=True, on_delete=fields.SET_NULL, unique=True)
