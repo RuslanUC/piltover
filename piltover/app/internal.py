@@ -6,7 +6,7 @@ from piltover.db.enums import PeerType
 from piltover.db.models import Peer, Dialog, Message, ApiApplication
 from piltover.db.models.user import User
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.high_level import MessageHandler
 from piltover.server import Client
 from piltover.tl import Long
@@ -30,8 +30,11 @@ LOGIN_MESSAGE_FMT = (
 
 @handler.on_request(SendCode, ReqHandlerFlags.AUTH_REQUIRED)
 async def send_code(request: SendCode, user: User) -> SentCode:
+    if user.id != 777000:
+        raise InvalidConstructorException(SentCode.tlid())
+
     try:
-        if user.id != 777000 or int(request.phone_number) < 100000:
+        if int(request.phone_number) < 100000:
             raise ValueError
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
@@ -64,8 +67,11 @@ async def send_code(request: SendCode, user: User) -> SentCode:
 
 @handler.on_request(SignIn, ReqHandlerFlags.AUTH_REQUIRED)
 async def sign_in(request: SignIn, user: User) -> Authorization:
+    if user.id != 777000:
+        raise InvalidConstructorException(SentCode.tlid())
+
     try:
-        if user.id != 777000 or int(request.phone_number) < 100000:
+        if int(request.phone_number) < 100000:
             raise ValueError
     except ValueError:
         raise ErrorRpc(error_code=10400, error_message="PHONE_NUMBER_INVALID")
@@ -87,11 +93,8 @@ async def sign_in(request: SignIn, user: User) -> Authorization:
 
 @handler.on_request(GetUserApp, ReqHandlerFlags.AUTH_REQUIRED)
 async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound:
-    try:
-        if user.id != 777000:
-            raise ValueError
-    except ValueError:
-        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
+    if user.id != 777000:
+        raise InvalidConstructorException(SentCode.tlid())
 
     target_user = await User.get_or_none(id=Long.read_bytes(request.auth))
     if target_user is None:
@@ -110,11 +113,8 @@ async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound
 
 @handler.on_request(EditUserApp, ReqHandlerFlags.AUTH_REQUIRED)
 async def edit_user_app(request: EditUserApp, user: User) -> bool:
-    try:
-        if user.id != 777000:
-            raise ValueError
-    except ValueError:
-        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
+    if user.id != 777000:
+        raise InvalidConstructorException(SentCode.tlid())
 
     target_user = await User.get_or_none(id=Long.read_bytes(request.auth))
     if target_user is None:
@@ -133,12 +133,9 @@ async def edit_user_app(request: EditUserApp, user: User) -> bool:
 
 
 @handler.on_request(GetAvailableServers, ReqHandlerFlags.AUTH_REQUIRED)
-async def edit_user_app(client: Client, user: User) -> AvailableServers:
-    try:
-        if user.id != 777000:
-            raise ValueError
-    except ValueError:
-        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
+async def get_available_servers(client: Client, user: User) -> AvailableServers:
+    if user.id != 777000:
+        raise InvalidConstructorException(SentCode.tlid())
 
     return AvailableServers(
         servers=[

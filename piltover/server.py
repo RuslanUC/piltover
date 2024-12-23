@@ -587,6 +587,8 @@ class Client:
             result = await handler(self, request, session)
         except ErrorRpc as e:
             error = RpcError(error_code=e.error_code, error_message=e.error_message)
+        except InvalidConstructorException:
+            raise
         except Exception as e:
             logger.warning(e)
             error = RpcError(error_code=500, error_message="Server error")
