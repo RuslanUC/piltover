@@ -36,7 +36,7 @@ LOGIN_MESSAGE_FMT = (
 @handler.on_request(SendCode)
 async def send_code(request: SendCode):
     try:
-        if int(request.phone_number) < 1000:
+        if int(request.phone_number) < 100000:
             raise ValueError
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
