@@ -226,7 +226,13 @@ class UpdatesManager(metaclass=SingletonMeta):
         elif draft is None:
             draft = DraftMessageEmpty()
 
-        # TODO: write draft update
+        new_pts = await State.add_pts(user, 1)
+        await UpdateV2.create(
+            user=user,
+            update_type=UpdateType.DRAFT_UPDATE,
+            pts=new_pts,
+            related_id=peer.id,
+        )
 
         updates = Updates(
             updates=[UpdateDraftMessage(peer=peer.to_tl(), draft=draft)],

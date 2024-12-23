@@ -57,8 +57,6 @@ class Session:
         if is_content_related(obj):
             self.incoming_content_related_msgs += 1
             expected += 1
-        # TODO(security) validate according to
-        #  https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
 
     def get_outgoing_seq_no(self, obj: TLObject) -> int:
         ret = self.outgoing_content_related_msgs * 2

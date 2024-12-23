@@ -9,11 +9,11 @@ from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models import Dialog
 from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
-from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs
+from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty
 from piltover.tl.types import User as TLUser
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned | \
-              UpdatePinnedDialogs
+              UpdatePinnedDialogs | UpdateDraftMessage
 
 
 class UpdateV2(Model):
@@ -27,8 +27,6 @@ class UpdateV2(Model):
     #  UpdateDeletedMessage.id and UpdateDeletedMessage will have one-to-many relation to UpdateDeletedMessageId)
     related_ids: list[int] = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User")
-    # TODO?: for supergroups/channels
-    #parent_chat: models.Chat = fields.ForeignKeyField("models.Chat", null=True, default=None)
 
     async def to_tl(self, current_user: models.User, users: dict[int, TLUser] | None = None) -> UpdateTypes | None:
         if self.update_type == UpdateType.MESSAGE_DELETE:
@@ -99,4 +97,21 @@ class UpdateV2(Model):
                     DialogPeer(peer=dialog.peer.to_tl())
                     for dialog in dialogs
                 ],
+            )
+
+        if self.update_type is UpdateType.DRAFT_UPDATE:
+            peer = await models.Peer.get_or_none(id=self.related_id, owner=current_user).select_related("user")
+
+            if users is not None and peer.user is not None and peer.user.id not in users:
+                users[peer.user.id] = peer.user
+
+            draft = await models.MessageDraft.get_or_none(dialog__peer=peer)
+            if isinstance(draft, models.MessageDraft):
+                draft = draft.to_tl()
+            elif draft is None:
+                draft = DraftMessageEmpty()
+
+            return UpdateDraftMessage(
+                peer=peer.to_tl(),
+                draft=draft,
             )

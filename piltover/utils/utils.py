@@ -2,20 +2,12 @@ import asyncio
 from typing import TypeVar, Coroutine, Callable
 
 
-def read_int(data: bytes) -> int:
-    return int.from_bytes(data, byteorder="little")
-
-
-# TODO: is there a reason for this set?
-_tasks = set()
 T = TypeVar("T")
 
 
 def background(coro: Coroutine[None, None, T]) -> asyncio.Task[T]:
     loop = asyncio.get_event_loop()
     task = loop.create_task(coro)
-    _tasks.add(task)
-    task.add_done_callback(_tasks.remove)
     return task
 
 

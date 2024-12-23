@@ -248,15 +248,31 @@ async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
 
 
 # noinspection PyUnusedLocal
-async def get_dialogs_internal(peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0,
-                               offset_date: int = 0, limit: int = 100):
-    # TODO: get dialogs by peers
-
+async def get_dialogs_internal(
+        peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100
+) -> dict:
     query = Q(peer__owner=user)
     if offset_id:
         query &= Q(peer__messages__id__gt=offset_id)
     if offset_date:
         query &= Q(peer__messages__date__gt=datetime.fromtimestamp(offset_date, UTC))
+
+    if peers:
+        peers_query = None
+        for peer in peers:
+            if isinstance(peer.peer, InputPeerSelf):
+                add_to_query = Q(peer__type=PeerType.SELF, peer__user=None)
+            elif isinstance(peer.peer, InputPeerUser):
+                add_to_query = Q(
+                    peer__type=PeerType.USER, peer__user__id=peer.peer.user_id, peer__access_hash=peer.peer.access_hash,
+                )
+            else:
+                continue
+
+            peers_query = add_to_query if peers_query is None else peers_query | add_to_query
+
+        if peers_query is not None:
+            query &= peers_query
 
     if limit > 100 or limit < 1:
         limit = 100

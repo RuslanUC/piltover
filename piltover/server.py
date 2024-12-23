@@ -19,11 +19,12 @@ from piltover.exceptions import Disconnection, ErrorRpc, InvalidConstructorExcep
 from piltover.session_manager import Session, SessionManager
 from piltover.tl import TLObject, SerializationUtils, ResPQ, PQInnerData, ReqPqMulti, ReqPq, ReqDHParams, \
     SetClientDHParams, PQInnerDataDc, PQInnerDataTempDc, DhGenOk, Ping, NewSessionCreated, BadServerSalt, \
-    BadMsgNotification, Long
+    BadMsgNotification, Long, Int
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
+from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.types import ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, RpcError, Pong, MsgsAck, \
     PQInnerDataTemp
-from piltover.utils import read_int, generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
+from piltover.utils import generate_large_prime, gen_safe_prime, gen_keys, get_public_key_fingerprint, \
     load_private_key, load_public_key, background, Keys
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 
@@ -366,7 +367,7 @@ class Client:
                 )
             ))
 
-            self.auth_data.auth_key_id = read_int(auth_key_hash)
+            self.auth_data.auth_key_id = Int.read_bytes(auth_key_hash)
             await self.server.register_auth_key(
                 auth_key_id=self.auth_data.auth_key_id,
                 auth_key=self.auth_data.auth_key,
@@ -414,7 +415,7 @@ class Client:
         await self.send(result, sess, originating_request=req_message)
 
     # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
-    async def _is_message_bad(self, packet: DecryptedMessagePacket) -> bool:
+    async def _is_message_bad(self, packet: DecryptedMessagePacket, check_salt: bool) -> bool:
         error_code = 0
 
         if packet.message_id % 4 != 0:
@@ -448,7 +449,7 @@ class Client:
 
         # 48: incorrect server salt (in this case, the bad_server_salt response is received with the correct salt,
         # and the message is to be re-sent with it)
-        if packet.salt != await self.server.get_current_salt():
+        if check_salt and packet.salt != await self.server.get_current_salt():
             logger.debug(
                 f"Client sent bad salt ({int.from_bytes(packet.salt, 'little')}) "
                 f"in message {packet.message_id}, sending correct salt"
@@ -478,9 +479,9 @@ class Client:
                 self.writer.write(to_send)
                 await self.writer.drain()
 
-            # TODO: skip salt validation for bindTempAuthKey?
-            #if await self._is_message_bad(decrypted):
-            #    return
+            # For some reason some clients cant process BadServerSalt response to BindTempAuthKey request
+            if await self._is_message_bad(decrypted, decrypted.data[:4] == Int.write(BindTempAuthKey.tlid())):
+                return
 
             message = Message(
                 message_id=decrypted.message_id,
