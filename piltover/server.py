@@ -74,7 +74,7 @@ class Server:
         self.clients: dict[str, Client] = {}
         self.handlers: dict[
             int,
-            Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]],
+            Callable[[Client, Message, Session], Awaitable[TLObject | bool | None]],
         ] = {}
         self.sys_handlers = defaultdict(list)
 

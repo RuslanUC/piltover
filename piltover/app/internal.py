@@ -146,17 +146,18 @@ async def get_available_servers(client: Client, user: User) -> AvailableServers:
     if user.id != 777000:
         raise InvalidConstructorException(GetAvailableServers.tlid())
 
+    server = client.server
     return AvailableServers(
         servers=[
             AvailableServer(
-                address=client.server.host,
-                port=client.server.port,
+                address=server.host,
+                port=server.port,
                 dc_id=2,
                 name="Production",
                 public_keys=[
                     PublicKey(
-                        key="TODO",
-                        fingerprint=0x12345678
+                        key=server.server_keys.public_key,
+                        fingerprint=server.fingerprint
                     )
                 ],
             )
