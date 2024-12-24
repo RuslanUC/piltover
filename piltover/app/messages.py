@@ -4,6 +4,7 @@ from time import time
 
 from loguru import logger
 from tortoise.expressions import Q
+from tortoise.queryset import QuerySet
 
 from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
@@ -88,11 +89,11 @@ async def get_emoji_keywords_languages():
     return []
 
 
-async def get_messages_internal(
+def _get_messages_query(
         peer: Peer, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: TLObject | None = None
-) -> list[Message]:
+) -> QuerySet[Message]:
     query = Q(peer=peer)
 
     if q:
@@ -121,7 +122,16 @@ async def get_messages_internal(
         query = Q(id=0)
 
     limit = max(min(100, limit), 1)
-    return await Message.filter(query).limit(limit).offset(add_offset).select_related("author", "peer", "peer__user")
+    return Message.filter(query).limit(limit).offset(add_offset).select_related("author", "peer", "peer__user")
+
+async def get_messages_internal(
+        peer: Peer, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
+        from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
+        filter_: TLObject | None = None
+) -> list[Message]:
+    return await _get_messages_query(
+        peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_,
+    )
 
 
 async def _format_messages(user: User, messages: list[Message]) -> Messages:
@@ -448,10 +458,16 @@ async def messages_search(request: Search, user: User) -> Messages:
     return await _format_messages(user, messages)
 
 
-@handler.on_request(GetSearchCounters)
-async def get_search_counters(request: GetSearchCounters):
+@handler.on_request(GetSearchCounters, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_search_counters(request: GetSearchCounters, user: User):
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
     return [
-        SearchCounter(filter=flt, count=0) for flt in request.filters
+        SearchCounter(
+            filter=filt,
+            count=await _get_messages_query(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt).count(),
+        ) for filt in request.filters
     ]
 
 
