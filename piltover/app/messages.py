@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import datetime, UTC
 from time import time
 
+from loguru import logger
 from tortoise.expressions import Q
 
 from piltover.app.account import username_regex_no_len
@@ -17,7 +18,8 @@ from piltover.high_level import MessageHandler, Client
 from piltover.session_manager import SessionManager
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, InputPeerSelf, \
     EmojiKeywordsDifference, DocumentEmpty, InputDialogPeer, InputMediaUploadedDocument, PeerSettings, \
-    UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, InputStickerSetAnimatedEmoji, StickerSet
+    UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, InputStickerSetAnimatedEmoji, StickerSet, \
+    InputMessagesFilterEmpty, TLObject, InputMessagesFilterPinned
 from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -89,6 +91,7 @@ async def get_emoji_keywords_languages():
 async def get_messages_internal(
         peer: Peer, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
+        filter_: TLObject | None = None
 ) -> list[Message]:
     query = Q(peer=peer)
 
@@ -110,6 +113,12 @@ async def get_messages_internal(
 
     if offset_id:
         query &= Q(id__gt=offset_id)
+
+    if isinstance(filter_, InputMessagesFilterPinned):
+        query &= Q(pinned=True)
+    elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
+        logger.warning(f"Unsupported filter: {filter_}")
+        query = Q(id=0)
 
     limit = max(min(100, limit), 1)
     return await Message.filter(query).limit(limit).offset(add_offset).select_related("author", "peer", "peer__user")
@@ -433,7 +442,7 @@ async def messages_search(request: Search, user: User) -> Messages:
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, from_user_id,
-        request.min_date, request.max_date, request.q
+        request.min_date, request.max_date, request.q, request.filter
     )
 
     return await _format_messages(user, messages)
