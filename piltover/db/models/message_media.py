@@ -27,4 +27,3 @@ class MessageMedia(Model):
     spoiler: bool = fields.BooleanField(default=False)
     type: MediaType = fields.IntEnumField(MediaType, default=MediaType.DOCUMENT)
     file: models.File = fields.ForeignKeyField("models.File", on_delete=fields.CASCADE)
-    message: models.Message = fields.ForeignKeyField("models.Message", on_delete=fields.CASCADE, unique=True)

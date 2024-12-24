@@ -170,6 +170,41 @@ async def get_history(request: GetHistory, user: User) -> Messages:
     return await _format_messages(user, messages)
 
 
+async def _send_message_internal(
+        user: User, peer: Peer, reply_to_message_id: int | None, clear_draft: bool, author: User, **message_kwargs
+) -> Updates:
+    reply = await Message.get_or_none(id=reply_to_message_id, peer=peer) if reply_to_message_id else None
+
+    peers = [peer]
+    peers.extend(await peer.get_opposite())
+    messages: dict[Peer, Message] = {}
+
+    internal_id = Snowflake.make_id()
+    for to_peer in peers:
+        await Dialog.get_or_create(peer=to_peer)
+        messages[to_peer] = await Message.create(
+            internal_id=internal_id,
+            peer=to_peer,
+            reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
+            author=author,
+            **message_kwargs
+        )
+
+    # TODO: rewrite when pypika fixes delete with join for mysql
+    # Not doing await MessageDraft.filter(...).delete()
+    # Because pypika generates sql for MySql/MariaDB like "DELETE FROM `messagedraft` LEFT OUTER JOIN"
+    # But `messagedraft` must also be placed between "DELETE" and "FROM", like this:
+    # "DELETE `messagedraft` FROM `messagedraft` LEFT OUTER JOIN"
+    if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
+        await draft.delete()
+        await UpdatesManager.update_draft(user, peer, None)
+
+    if (upd := await UpdatesManager.send_message(user, messages, bool(message_kwargs.get("media")))) is None:
+        assert False, "unknown chat type ?"
+
+    return upd
+
+
 @handler.on_request(SendMessage_148, ReqHandlerFlags.AUTH_REQUIRED)
 @handler.on_request(SendMessage, ReqHandlerFlags.AUTH_REQUIRED)
 async def send_message(request: SendMessage, user: User):
@@ -181,43 +216,16 @@ async def send_message(request: SendMessage, user: User):
     if len(request.message) > 2000:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
-    reply = None
+    reply_to_message_id = None
     if isinstance(request, SendMessage) and request.reply_to is not None:
-        reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, peer=peer)
+        reply_to_message_id = request.reply_to.reply_to_msg_id
     elif isinstance(request, SendMessage_148) and request.reply_to_msg_id is not None:
-        reply = await Message.get_or_none(id=request.reply_to_msg_id, peer=peer)
+        reply_to_message_id = request.reply_to_msg_id
 
-    peers = [peer]
-    peers.extend(await peer.get_opposite())
-    messages: dict[Peer, Message] = {}
-
-    internal_id = Snowflake.make_id()
-    for to_peer in peers:
-        await Dialog.get_or_create(peer=to_peer)
-        messages[to_peer] = await Message.create(
-            internal_id=internal_id,
-            message=request.message,
-            author=user,
-            peer=to_peer,
-            reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
-        )
-
-    # TODO: rewrite when pypika fixes delete with join
-    # Not doing await MessageDraft.filter(...).delete()
-    # Because pypika generates sql for MySql/MariaDB like "DELETE FROM `messagedraft` LEFT OUTER JOIN"
-    # But `messagedraft` must also be placed between "DELETE" and "FROM", like this:
-    # "DELETE `messagedraft` FROM `messagedraft` LEFT OUTER JOIN"
-    # NOTE: exact same situation in SendMedia handler
-    if request.clear_draft and \
-            (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
-        await draft.delete()
-
-    await UpdatesManager.update_draft(user, peer, None)
-
-    if (upd := await UpdatesManager.send_message(user, messages)) is None:
-        assert False, "unknown chat type ?"
-
-    return upd
+    return await _send_message_internal(
+        user, peer, reply_to_message_id, request.clear_draft,
+        author=user, message=request.message,
+    )
 
 
 @handler.on_request(ReadHistory, ReqHandlerFlags.AUTH_REQUIRED)
@@ -648,38 +656,18 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
     stripped = await generate_stripped(str(file.physical_id)) if mime.startswith("image/") else b""
     await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
 
-    reply = None
-    if isinstance(request, SendMedia) and request.reply_to is not None:
-        reply = await Message.get_or_none(id=request.reply_to.reply_to_msg_id, peer=peer)
-    elif isinstance(request, SendMedia_148) and request.reply_to_msg_id is not None:
-        reply = await Message.get_or_none(id=request.reply_to_msg_id, peer=peer)
+    media = await MessageMedia.create(file=file, spoiler=request.media.spoiler, type=media_type)
 
-    peers = [peer]
-    peers.extend(await peer.get_opposite())
-    messages: dict[Peer, Message] = {}
+    reply_to_message_id = None
+    if isinstance(request, SendMessage) and request.reply_to is not None:
+        reply_to_message_id = request.reply_to.reply_to_msg_id
+    elif isinstance(request, SendMessage_148) and request.reply_to_msg_id is not None:
+        reply_to_message_id = request.reply_to_msg_id
 
-    internal_id = Snowflake.make_id()
-    for to_peer in peers:
-        await Dialog.get_or_create(peer=to_peer)
-        messages[to_peer] = await Message.create(
-            internal_id=internal_id,
-            message=request.message,
-            author=user,
-            peer=to_peer,
-            reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
-        )
-        await MessageMedia.create(file=file, message=messages[to_peer], spoiler=request.media.spoiler, type=media_type)
-
-    if request.clear_draft and \
-            (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
-        await draft.delete()
-
-    await UpdatesManager.update_draft(user, peer, None)
-
-    if (upd := await UpdatesManager.send_message(user, messages, True)) is None:
-        assert False, "unknown chat type ?"
-
-    return upd
+    return await _send_message_internal(
+        user, peer, reply_to_message_id, request.clear_draft,
+        author=user, message=request.message, media=media,
+    )
 
 
 @handler.on_request(GetMessageEditData, ReqHandlerFlags.AUTH_REQUIRED)
@@ -761,4 +749,6 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
     await Message.bulk_update(messages.values(), ["pinned"])
 
-    return await UpdatesManager.pin_message(user, messages)
+    result = await UpdatesManager.pin_message(user, messages)
+
+    return result

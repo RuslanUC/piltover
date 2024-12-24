@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import NoneType
 
 from tortoise import fields
 
 from piltover.db import models
-from piltover.db.enums import MediaType
+from piltover.db.enums import MediaType, MessageType
 from piltover.db.models._utils import Model
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader
 from piltover.tl.types import Message as TLMessage
@@ -18,9 +19,11 @@ class Message(Model):
     pinned: bool = fields.BooleanField(default=False)
     date: datetime = fields.DatetimeField(default=datetime.now)
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
+    type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
+    media: models.MessageMedia = fields.ForeignKeyField("models.MessageMedia", null=True, default=None)
     reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None,
                                                       on_delete=fields.SET_NULL)
 
@@ -44,17 +47,19 @@ class Message(Model):
         }
 
         tl_media = None
-        if (media := await models.MessageMedia.get_or_none(message=self).select_related("file")) is not None:
+        if not isinstance(self.media, (models.MessageMedia, NoneType)):
+            await self.fetch_related("media")
+        if self.media is not None:
             tl_media = MessageMediaUnsupported()
-            if media.type == MediaType.DOCUMENT:
+            if self.media.type == MediaType.DOCUMENT:
                 tl_media = MessageMediaDocument(
-                    spoiler=media.spoiler,
-                    document=await media.file.to_tl_document(current_user)
+                    spoiler=self.media.spoiler,
+                    document=await self.media.file.to_tl_document(current_user)
                 )
-            elif media.type == MediaType.PHOTO:
+            elif self.media.type == MediaType.PHOTO:
                 tl_media = MessageMediaPhoto(
-                    spoiler=media.spoiler,
-                    photo=await media.file.to_tl_photo(current_user)
+                    spoiler=self.media.spoiler,
+                    photo=await self.media.file.to_tl_photo(current_user)
                 )
 
         await self.fetch_related("reply_to")

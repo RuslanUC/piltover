@@ -61,3 +61,8 @@ class UpdateType(IntEnum):
 class PeerType(IntEnum):
     SELF = 0
     USER = 1
+
+
+class MessageType(IntEnum):
+    REGULAR = 0
+    SERVICE = 1
