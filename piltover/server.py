@@ -257,7 +257,7 @@ class Client:
             key_aes_encrypted = rsa_decrypt(encrypted_data, self.server.public_key, self.server.private_key)
             try:
                 key_aes_encrypted = rsa_pad_inverse(key_aes_encrypted)
-            except AssertionError as e:
+            except RuntimeError as e:
                 logger.debug(f"rsa_pad_inverse raised error: {e}. Using old pre-RSA_PAD encryption.")
                 old = True
             key_aes_encrypted = key_aes_encrypted.lstrip(b"\0")

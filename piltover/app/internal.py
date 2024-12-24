@@ -1,10 +1,9 @@
-from base64 import urlsafe_b64encode, urlsafe_b64decode
 from os import urandom
+from time import time
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
-from piltover.db.models import Peer, Dialog, Message, ApiApplication
-from piltover.db.models.user import User
+from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.high_level import MessageHandler
@@ -14,7 +13,6 @@ from piltover.tl.functions.internal import SendCode, SignIn, GetUserApp, EditUse
 from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers, AvailableServer, \
     PublicKey
 from piltover.utils.snowflake import Snowflake
-from piltover.utils.utils import sec_check
 
 handler = MessageHandler("internal")
 
@@ -39,24 +37,21 @@ async def send_code(request: SendCode, user: User) -> SentCode:
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
-    # TODO: add table for passwords (user, password, random_hash)
-    rand = urandom(8)
-    password = urlsafe_b64encode(rand).decode("utf8")
-    print(f"Password: {password}")
-
-    resp = SentCode(
-        random_hash=rand + request.phone_number.encode("utf8")
-    )
+    random_hash = urandom(16)
+    resp = SentCode(random_hash=random_hash)
 
     target_user = await User.get_or_none(phone_number=request.phone_number)
     if target_user is None:
         return resp
 
+    webauth = await WebAuthorization.create(phone_number=request.phone_number, hash=random_hash.hex())
+    print(f"Password: {webauth.password}")
+
     peer_system, _ = await Peer.get_or_create(owner=target_user, user=user, type=PeerType.USER)
     await Dialog.get_or_create(peer=peer_system)
     message = await Message.create(
         internal_id=Snowflake.make_id(),
-        message=LOGIN_MESSAGE_FMT.format(code=password),
+        message=LOGIN_MESSAGE_FMT.format(code=webauth.password),
         author=user,
         peer=peer_system,
     )
@@ -76,19 +71,38 @@ async def sign_in(request: SignIn, user: User) -> Authorization:
     except ValueError:
         raise ErrorRpc(error_code=10400, error_message="PHONE_NUMBER_INVALID")
 
-    try:
-        sec_check(len(request.random_hash) == (8 + len(request.phone_number)))
-        sec_check(request.random_hash.endswith(request.phone_number.encode("utf8")))
-        sec_check(request.random_hash.startswith(urlsafe_b64decode(request.password)))
-    except Exception:
+    webauth = await WebAuthorization.get_or_none(
+        phone_number=request.phone_number, random_hash=request.random_hash.hex(), expires_at__gt=int(time()),
+        user=None, password=request.password
+    )
+    if webauth is None:
         raise ErrorRpc(error_code=10400, error_message="PASSWORD_INVALID")
 
     target_user = await User.get_or_none(phone_number=request.phone_number)
     if target_user is None:
         raise ErrorRpc(error_code=10400, error_message="PASSWORD_INVALID")
 
-    # TODO: store authorizations in table
-    return Authorization(auth=Long.write(user.id))
+    webauth.user = target_user
+    webauth.expires_at = int(time() + 60 * 60)
+    auth_bytes = urandom(16)
+    webauth.random_hash = auth_bytes.hex()
+    await webauth.save()
+
+    return Authorization(auth=Long.write(webauth.id) + auth_bytes)
+
+
+async def _auth_user(auth_bytes: bytes) -> User:
+    if len(auth_bytes) < 16:
+        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
+
+    webauth_id = Long.read_bytes(auth_bytes[:8])
+    webauth = await WebAuthorization.get_or_none(
+        id=webauth_id, random_hash=auth_bytes[8:].hex(), expires_at__gt=int(time()),
+    ).select_related("user")
+    if webauth is None or webauth.user is None:
+        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
+
+    return webauth.user
 
 
 @handler.on_request(GetUserApp, ReqHandlerFlags.AUTH_REQUIRED)
@@ -96,10 +110,7 @@ async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound
     if user.id != 777000:
         raise InvalidConstructorException(GetUserApp.tlid())
 
-    target_user = await User.get_or_none(id=Long.read_bytes(request.auth))
-    if target_user is None:
-        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
-
+    target_user = await _auth_user(request.auth)
     if (app := await ApiApplication.get_or_none(owner=target_user)) is None:
         return AppNotFound()
 
@@ -116,9 +127,7 @@ async def edit_user_app(request: EditUserApp, user: User) -> bool:
     if user.id != 777000:
         raise InvalidConstructorException(EditUserApp.tlid())
 
-    target_user = await User.get_or_none(id=Long.read_bytes(request.auth))
-    if target_user is None:
-        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
+    target_user = await _auth_user(request.auth)
 
     app, created = await ApiApplication.get_or_create(owner=target_user, defaults={
         "name": request.title,

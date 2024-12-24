@@ -1,7 +1,7 @@
 from hashlib import sha256
 
 import tgcrypto
-from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes, PublicKeyTypes
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey, RSAPrivateKey
 
 from piltover.utils.utils import xor
 
@@ -26,14 +26,14 @@ RSA_PAD(data, server_public_key) mentioned above is implemented as follows:
 """
 
 
-def rsa_decrypt(data: bytes, public_key: PublicKeyTypes, private_key: PrivateKeyTypes) -> bytes:
-    private = private_key.private_numbers()  # type: ignore
-    public = public_key.public_numbers()  # type: ignore
+def rsa_decrypt(data: bytes, public_key: RSAPublicKey, private_key: RSAPrivateKey) -> bytes:
+    private = private_key.private_numbers()
+    public = public_key.public_numbers()
 
     return pow(
         int.from_bytes(data, "big", signed=False),
-        private.d,  # type: ignore
-        public.n,  # type: ignore
+        private.d,
+        public.n,
     ).to_bytes(256, "big", signed=False)
 
 
@@ -44,12 +44,14 @@ def rsa_pad_inverse(key_aes_encrypted: bytes) -> bytes:
     temp_key = xor(temp_key_xor, sha256(aes_encrypted).digest())
     data_with_hash = tgcrypto.ige256_decrypt(aes_encrypted, temp_key.zfill(32), bytes(32))
 
-    assert len(data_with_hash) == 224, f"Invalid length for data_with_hash (expected 224, got {len(data_with_hash)})"
+    if len(data_with_hash) != 224:
+        raise RuntimeError(f"Invalid length for data_with_hash (expected 224, got {len(data_with_hash)})")
 
     data_pad_reversed = data_with_hash[:-32]
     temp_data_hash = data_with_hash[-32:]
 
     data_with_padding = data_pad_reversed[::-1]
-    assert temp_data_hash == sha256(temp_key + data_with_padding).digest(), "Invalid data hash"
+    if temp_data_hash != sha256(temp_key + data_with_padding).digest():
+        raise RuntimeError("Invalid data hash")
 
     return data_with_padding
