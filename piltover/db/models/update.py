@@ -9,11 +9,12 @@ from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models import Dialog
 from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
-from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty
+from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
+    UpdatePinnedMessages
 from piltover.tl.types import User as TLUser
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned | \
-              UpdatePinnedDialogs | UpdateDraftMessage
+              UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages
 
 
 class UpdateV2(Model):
@@ -116,4 +117,24 @@ class UpdateV2(Model):
             return UpdateDraftMessage(
                 peer=peer.to_tl(),
                 draft=draft,
+            )
+
+        if self.update_type is UpdateType.MESSAGE_PIN_UPDATE:
+            message = await models.Message.get_or_none(
+                id=self.related_id, peer__owner=current_user
+            ).select_related("peer", "author")
+            if message is None:
+                return
+
+            if users is not None and message.peer.user is not None and message.peer.user.id not in users:
+                users[message.peer.user.id] = message.peer.user
+            if users is not None and message.author.id not in users:
+                users[message.author.id] = message.author
+
+            return UpdatePinnedMessages(
+                pinned=message.pinned,
+                peer=message.peer.to_tl(),
+                messages=[message.id],
+                pts=self.pts,
+                pts_count=1,
             )

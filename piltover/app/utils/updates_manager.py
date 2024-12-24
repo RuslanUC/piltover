@@ -9,7 +9,7 @@ from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Pee
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
-    UpdatePinnedDialogs, DialogPeer
+    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
@@ -271,3 +271,47 @@ class UpdatesManager(metaclass=SingletonMeta):
         )
 
         await SessionManager().send(updates, user.id)
+
+    @staticmethod
+    async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
+        updates_to_create = []
+        result_update = None
+
+        for peer, message in messages.items():
+            if isinstance(peer.owner, QuerySet):
+                await peer.fetch_related("owner")
+
+            pts = await State.add_pts(peer.owner, 1)
+
+            updates_to_create.append(
+                UpdateV2(
+                    user=peer.owner,
+                    update_type=UpdateType.MESSAGE_PIN_UPDATE,
+                    pts=pts,
+                    related_id=message.id,
+                )
+            )
+
+            update = Updates(
+                updates=[
+                    UpdatePinnedMessages(
+                        pinned=message.pinned,
+                        peer=message.peer.to_tl(),
+                        messages=[message.id],
+                        pts=pts,
+                        pts_count=1,
+                    )
+                ],
+                users=[await message.author.to_tl(peer.owner)],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            )
+
+            if user.id == peer.owner.id:
+                result_update = update
+
+            await SessionManager().send(update, peer.owner.id)
+
+        await UpdateV2.bulk_create(updates_to_create)
+        return result_update

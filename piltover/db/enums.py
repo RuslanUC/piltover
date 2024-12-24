@@ -55,6 +55,7 @@ class UpdateType(IntEnum):
     DIALOG_PIN = 3
     DRAFT_UPDATE = 4
     DIALOG_PIN_REORDER = 5
+    MESSAGE_PIN_UPDATE = 6
 
 
 class PeerType(IntEnum):

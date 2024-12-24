@@ -26,7 +26,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, GetQuickReplies, GetDefaultTagReactions, GetSavedDialogs, \
-    GetSavedReactionTags, ToggleDialogPin
+    GetSavedReactionTags, ToggleDialogPin, UpdatePinnedMessage
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet, QuickReplies, \
@@ -685,4 +685,27 @@ async def get_saved_reaction_tags() -> SavedReactionTags:
     )
 
 
-# TODO: messages pinning: https://core.telegram.org/api/pin
+@handler.on_request(UpdatePinnedMessage, ReqHandlerFlags.AUTH_REQUIRED)
+async def update_pinned_message(request: UpdatePinnedMessage, user: User):
+    # TODO: request.silent (create service message)
+
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if (message := await Message.get_or_none(id=request.id, peer=peer).select_related("peer", "author")) is None:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
+
+    message.pinned = not request.unpin
+    messages = {peer: message}
+
+    if not request.pm_oneside:
+        other_messages = await Message.filter(
+            peer__user=user, internal_id=message.internal_id,
+        ).select_related("peer", "author")
+        for other_message in other_messages:
+            other_message.pinned = message.pinned
+            messages[other_message.peer] = other_message
+
+    await Message.bulk_update(messages.values(), ["pinned"])
+
+    return await UpdatesManager.pin_message(user, messages)
