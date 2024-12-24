@@ -86,37 +86,65 @@ async def get_emoji_keywords_languages():
     return []
 
 
-@handler.on_request(GetHistory, ReqHandlerFlags.AUTH_REQUIRED)
-async def get_history(request: GetHistory, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-
-    limit = request.limit
-    if limit > 100 or limit < 1:
-        limit = 100
+async def get_messages_internal(
+        peer: Peer, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
+        from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
+) -> list[Message]:
     query = Q(peer=peer)
-    if request.max_id > 0:
-        query &= Q(id__lte=request.max_id)
-    if request.min_id > 0:
-        query &= Q(id__gte=request.min_id)
-    if request.offset_id > 0:
-        query &= Q(id__gt=request.offset_id)
 
-    messages = await Message.filter(query).select_related("author", "peer").limit(limit).all()
-    if not messages:
-        return Messages(messages=[], chats=[], users=[])
+    if q:
+        query &= Q(message__istartswith=q)
 
+    if from_user_id:
+        query &= Q(author__id=from_user_id)
+
+    if min_date:
+        query &= Q(date__gt=datetime.fromtimestamp(min_date, UTC))
+    if max_date:
+        query &= Q(date__lt=datetime.fromtimestamp(max_date, UTC))
+
+    if max_id:
+        query &= Q(id__lte=max_id)
+    if min_id:
+        query &= Q(id__gte=min_id)
+
+    if offset_id:
+        query &= Q(id__gt=offset_id)
+
+    limit = max(min(100, limit), 1)
+    return await Message.filter(query).limit(limit).offset(add_offset).select_related("author", "peer", "peer__user")
+
+
+async def _format_messages(user: User, messages: list[Message]) -> Messages:
     users = {}
+    messages_tl = []
     for message in messages:
-        if message.author.id in users:
-            continue
-        users[message.author.id] = await message.author.to_tl(user)
+        messages_tl.append(await message.to_tl(user))
+
+        if message.author.id not in users:
+            users[message.author.id] = await message.author.to_tl(user)
+        if message.peer.user is not None and message.peer.user.id not in users:
+            users[message.peer.user.id] = await message.peer.user.to_tl(user)
 
     return Messages(
-        messages=[await message.to_tl(user) for message in messages],
+        messages=messages_tl,
         chats=[],
         users=list(users.values()),
     )
+
+
+@handler.on_request(GetHistory, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_history(request: GetHistory, user: User) -> Messages:
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    messages = await get_messages_internal(
+        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset
+    )
+    if not messages:
+        return Messages(messages=[], chats=[], users=[])
+
+    return await _format_messages(user, messages)
 
 
 @handler.on_request(SendMessage_148, ReqHandlerFlags.AUTH_REQUIRED)
@@ -393,27 +421,22 @@ async def get_search_results_positions():
 
 
 @handler.on_request(Search, ReqHandlerFlags.AUTH_REQUIRED)
-async def messages_search(request: Search, user: User):
+async def messages_search(request: Search, user: User) -> Messages:
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    query = Q(peer=peer)
-    query &= Q(message__istartswith=request.q)
-    if isinstance(request.from_id, (InputPeerUser, InputPeerSelf)):
-        if isinstance(request.from_id, InputPeerUser):
-            query &= Q(author__id=request.from_id.user_id)
-        else:
-            query &= Q(author__id=user.id)
+    from_user_id = None
+    if isinstance(request.from_id, InputPeerUser):
+        from_user_id = request.from_id.user_id
+    elif isinstance(request.from_id, InputPeerSelf):
+        from_user_id = user.id
 
-    limit = max(min(100, request.limit), 1)
-    messages = await Message.filter(query).limit(limit)
-
-    # TODO: ?
-    return Messages(
-        messages=[],
-        chats=[],
-        users=[],
+    messages = await get_messages_internal(
+        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, from_user_id,
+        request.min_date, request.max_date, request.q
     )
+
+    return await _format_messages(user, messages)
 
 
 @handler.on_request(GetSearchCounters)
