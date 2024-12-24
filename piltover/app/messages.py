@@ -20,7 +20,7 @@ from piltover.session_manager import SessionManager
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, InputPeerSelf, \
     EmojiKeywordsDifference, DocumentEmpty, InputDialogPeer, InputMediaUploadedDocument, PeerSettings, \
     UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, InputStickerSetAnimatedEmoji, StickerSet, \
-    InputMessagesFilterEmpty, TLObject, InputMessagesFilterPinned
+    InputMessagesFilterEmpty, TLObject, InputMessagesFilterPinned, User as TLUser
 from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -90,11 +90,11 @@ async def get_emoji_keywords_languages():
 
 
 def _get_messages_query(
-        peer: Peer, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
+        peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: TLObject | None = None
 ) -> QuerySet[Message]:
-    query = Q(peer=peer)
+    query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
 
     if q:
         query &= Q(message__istartswith=q)
@@ -122,10 +122,11 @@ def _get_messages_query(
         query = Q(id=0)
 
     limit = max(min(100, limit), 1)
-    return Message.filter(query).limit(limit).offset(add_offset).select_related("author", "peer", "peer__user")
+    return Message.filter(query).limit(limit).offset(add_offset).order_by("-date")\
+        .select_related("author", "peer", "peer__user")
 
 async def get_messages_internal(
-        peer: Peer, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
+        peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: TLObject | None = None
 ) -> list[Message]:
@@ -134,8 +135,10 @@ async def get_messages_internal(
     )
 
 
-async def _format_messages(user: User, messages: list[Message]) -> Messages:
-    users = {}
+async def _format_messages(user: User, messages: list[Message], users: dict[int, TLUser] | None = None) -> Messages:
+    if users is None:
+        users = {}
+
     messages_tl = []
     for message in messages:
         messages_tl.append(await message.to_tl(user))
@@ -145,6 +148,7 @@ async def _format_messages(user: User, messages: list[Message]) -> Messages:
         if message.peer.user is not None and message.peer.user.id not in users:
             users[message.peer.user.id] = await message.peer.user.to_tl(user)
 
+    # TODO: MessagesSlice
     return Messages(
         messages=messages_tl,
         chats=[],
@@ -518,25 +522,26 @@ async def get_faved_stickers():
 
 @handler.on_request(SearchGlobal, ReqHandlerFlags.AUTH_REQUIRED)
 async def search_global(request: SearchGlobal, user: User):
-    users = []
+    users = {}
 
     q = user_q = request.q
     if q.startswith("@"):
         user_q = q[1:]
     if username_regex_no_len.match(user_q):
-        users = await User.filter(username__istartswith=user_q).limit(10)
+        users = {
+            oth_user.id: await oth_user.to_tl(user)
+            for oth_user in await User.filter(username__istartswith=user_q).limit(10)
+        }
 
-    messages = await Message.filter(
-        peer__owner=user,
-        message__istartswith=q,
-    ).select_related("peer", "author").order_by("-date").limit(10)
+    limit = max(min(request.limit, 1), 10)
 
-    # TODO: add users from messages to users list
-    return Messages(
-        messages=[await message.to_tl(user) for message in messages],
-        chats=[],
-        users=[await oth_user.to_tl(user) for oth_user in users],
+    # TODO: offset_peer ?
+    messages = await get_messages_internal(
+        user, 0, 0, request.offset_id, limit, 0, 0,
+        request.min_date, request.max_date, request.q, request.filter
     )
+
+    return await _format_messages(user, messages, users)
 
 
 @handler.on_request(GetCustomEmojiDocuments)
