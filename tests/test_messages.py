@@ -68,8 +68,18 @@ async def test_delete_text_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pin_message() -> None:
+async def test_pin_message_both_sides() -> None:
     async with TestClient(phone_number="123456789") as client:
         message = await client.send_message("me", text="test 123")
         assert message.text == "test 123"
-        await message.pin()
+        service_message = await message.pin(both_sides=True)
+        assert service_message is not None
+
+
+@pytest.mark.asyncio
+async def test_pin_message_one_side() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        message = await client.send_message("me", text="test 123")
+        assert message.text == "test 123"
+        service_message = await message.pin(both_sides=False)
+        assert service_message is None

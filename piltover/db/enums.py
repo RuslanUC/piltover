@@ -65,4 +65,4 @@ class PeerType(IntEnum):
 
 class MessageType(IntEnum):
     REGULAR = 0
-    SERVICE = 1
+    SERVICE_PIN_MESSAGE = 1

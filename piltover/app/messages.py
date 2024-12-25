@@ -10,7 +10,7 @@ from piltover.app.account import username_regex_no_len
 from piltover.app.updates import get_state_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
-from piltover.db.enums import MediaType, PeerType
+from piltover.db.enums import MediaType, PeerType, MessageType
 from piltover.db.models import User, Dialog, MessageDraft, ReadState, State, Peer, MessageMedia
 from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
@@ -20,7 +20,7 @@ from piltover.session_manager import SessionManager
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, InputPeerUser, InputPeerSelf, \
     EmojiKeywordsDifference, DocumentEmpty, InputDialogPeer, InputMediaUploadedDocument, PeerSettings, \
     UpdateDraftMessage, InputMediaUploadedPhoto, UpdateUserTyping, InputStickerSetAnimatedEmoji, StickerSet, \
-    InputMessagesFilterEmpty, TLObject, InputMessagesFilterPinned, User as TLUser
+    InputMessagesFilterEmpty, TLObject, InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo
 from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, SetTyping, GetPeerSettings, \
     GetScheduledHistory, GetEmojiKeywordsLanguages, GetPeerDialogs, GetHistory, GetWebPage, SendMessage, ReadHistory, \
     GetStickerSet, GetRecentReactions, GetTopReactions, GetDialogs, GetAttachMenuBots, GetPinnedDialogs, \
@@ -29,7 +29,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, GetArchivedStickers, GetEmojiStickers, \
     GetEmojiKeywords, DeleteMessages, GetWebPagePreview, EditMessage, SendMedia, GetMessageEditData, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, GetQuickReplies, GetDefaultTagReactions, GetSavedDialogs, \
-    GetSavedReactionTags, ToggleDialogPin, UpdatePinnedMessage
+    GetSavedReactionTags, ToggleDialogPin, UpdatePinnedMessage, GetMessages
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, \
     PeerDialogs, AffectedMessages, Reactions, Dialogs, Stickers, SearchResultsPositions, SearchCounter, AllStickers, \
     FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, StickerSet as messages_StickerSet, QuickReplies, \
@@ -95,6 +95,8 @@ def _get_messages_query(
         filter_: TLObject | None = None
 ) -> QuerySet[Message]:
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
+    # TODO: probably dont add this to query if user requested messages with InputMessageReplyTo or something
+    query &= Q(type=MessageType.REGULAR)
 
     if q:
         query &= Q(message__istartswith=q)
@@ -610,7 +612,7 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    if (message := await Message.get_or_none(peer=peer, id=request.id).select_related("peer", "author")) is None:
+    if (message := await Message.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if not request.message:
@@ -728,12 +730,10 @@ async def get_saved_reaction_tags() -> SavedReactionTags:
 
 @handler.on_request(UpdatePinnedMessage, ReqHandlerFlags.AUTH_REQUIRED)
 async def update_pinned_message(request: UpdatePinnedMessage, user: User):
-    # TODO: request.silent (create service message)
-
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    if (message := await Message.get_or_none(id=request.id, peer=peer).select_related("peer", "author")) is None:
+    if (message := await Message.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     message.pinned = not request.unpin
@@ -751,4 +751,26 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
     result = await UpdatesManager.pin_message(user, messages)
 
+    if not request.silent and not request.pm_oneside:
+        updates = await _send_message_internal(
+            user, peer, message.id, False, author=user, type=MessageType.SERVICE_PIN_MESSAGE
+        )
+        result.updates.extend(updates.updates)
+
     return result
+
+
+@handler.on_request(GetMessages, ReqHandlerFlags.AUTH_REQUIRED)
+async def get_messages(request: GetMessages, user: User) -> Messages:
+    query = Q()
+
+    for message_query in request.id:
+        if isinstance(message_query, InputMessageID):
+            query |= Q(id=message_query.id)
+        elif isinstance(message_query, InputMessageReplyTo):
+            query |= Q(reply_to__id=message_query.id)
+        # TODO: InputMessagePinned ?
+
+    query &= Q(peer__owner=user)
+
+    return await _format_messages(user, await Message.filter(query))

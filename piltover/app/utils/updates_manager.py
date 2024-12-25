@@ -33,10 +33,6 @@ class UpdatesManager(metaclass=SingletonMeta):
             if peer.type is PeerType.SELF and (not has_media or is_current_user):
                 updates = Updates(
                     updates=[
-                        UpdateMessageID(
-                            id=message.id,
-                            random_id=ctx.obj.random_id,
-                        ),
                         UpdateNewMessage(
                             message=await message.to_tl(user),
                             pts=await State.add_pts(user, 1),
@@ -56,13 +52,16 @@ class UpdatesManager(metaclass=SingletonMeta):
                     seq=0,
                 )
 
+                if hasattr(ctx.obj, "random_id"):
+                    updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=ctx.obj.random_id))
+
                 # TODO: also create this update if peer.type is not self
                 read_history_inbox_args = {
                     "update_type": UpdateType.READ_HISTORY_INBOX, "user": user, "related_id": 0,
                 }
                 await UpdateV2.filter(**read_history_inbox_args).delete()
                 await UpdateV2.create(
-                    **read_history_inbox_args, pts=updates.updates[2].pts, related_ids=[message.id, 0]
+                    **read_history_inbox_args, pts=updates.updates[-1].pts, related_ids=[message.id, 0]
                 )
 
                 await SessionManager().send(updates, user.id, exclude=[client])
