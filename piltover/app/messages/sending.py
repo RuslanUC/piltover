@@ -168,6 +168,7 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
+    # TODO: InputMediaPhoto
     if not isinstance(request.media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
     if len(request.message) > 2000:

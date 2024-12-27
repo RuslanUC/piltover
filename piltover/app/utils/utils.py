@@ -92,10 +92,15 @@ TELEGRAM_QUANTIZATION_TABLES = {
 }
 
 
-def resize_image_internal(file_id: str, img: Image, size: int) -> int:
-    with open(files_dir / f"{file_id}_{size}", "wb") as f_out:
-        img.resize((size, size)).save(f_out, format="JPEG")
-        return f_out.tell()
+def resize_image_internal(file_id: str, img: Image, width: int) -> tuple[int, int]:
+    original_width, height = img.size
+    factor = width / original_width
+    height *= factor
+    height = int(height)
+
+    with open(files_dir / f"{file_id}_{width}", "wb") as f_out:
+        img.resize((width, height)).save(f_out, format="JPEG")
+        return f_out.tell(), height
 
 
 async def resize_photo(file_id: str) -> list[dict[str, int | str]]:
@@ -112,8 +117,8 @@ async def resize_photo(file_id: str) -> list[dict[str, int | str]]:
         res = await gather(*tasks)
 
     return [
-        {"type_": types[idx], "w": sizes[idx], "h": sizes[idx], "size": file_size}
-        for idx, file_size in enumerate(res)
+        {"type_": types[idx], "w": sizes[idx], "h": height, "size": file_size}
+        for idx, (file_size, height) in enumerate(res)
     ]
 
 

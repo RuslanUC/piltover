@@ -9,7 +9,6 @@ from piltover.app.account import username_regex_no_len
 from piltover.db.enums import MessageType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer
 from piltover.db.models.message import Message
-from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
@@ -47,7 +46,7 @@ def _get_messages_query(
         query &= Q(id__gte=min_id)
 
     if offset_id:
-        query &= Q(id__gt=offset_id)
+        query &= Q(id__lt=offset_id)
 
     if isinstance(filter_, InputMessagesFilterPinned):
         query &= Q(pinned=True)

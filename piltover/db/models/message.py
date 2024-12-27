@@ -79,7 +79,7 @@ class Message(Model):
 
         tl_media = None
         if not isinstance(self.media, (models.MessageMedia, NoneType)):
-            await self.fetch_related("media")
+            await self.fetch_related("media", "media__file")
         if self.media is not None:
             tl_media = MessageMediaUnsupported()
             if self.media.type == MediaType.DOCUMENT:
