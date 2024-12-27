@@ -6,10 +6,10 @@ from piltover.app.utils.utils import upload_file, resize_photo, generate_strippe
 from piltover.db.enums import MediaType, MessageType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File
 from piltover.db.models.message import Message
-from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
-from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto
+from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
+    InputMediaDocument
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage
 from piltover.tl.types.messages import AffectedMessages
@@ -17,8 +17,7 @@ from piltover.utils.snowflake import Snowflake
 
 handler = MessageHandler("messages.sending")
 
-# TODO: InputMediaDocument
-InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto
+InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument
 
 
 async def _send_message_internal(
@@ -168,7 +167,9 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
 
 
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
-    if not isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto)):
+    if not isinstance(media, (
+            InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, InputMediaDocument
+    )):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     file: File | None = None
@@ -186,18 +187,18 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 
     if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
         file = await upload_file(user, media.file, mime, attributes)
-    elif isinstance(media, InputMediaPhoto):
+    elif isinstance(media, (InputMediaPhoto, InputMediaDocument)):
         file_access = await FileAccess.get_or_none(
             user=user, file__id=media.id.id, access_hash=media.id.access_hash, file_reference=media.id.file_reference,
             expires__gt=datetime.now(UTC)
         ).select_related("file")
         if file_access is None \
-                or not file_access.file.mime_type.startswith("image/") \
-                or "_sizes" not in file_access.file.attributes:
+                or (not file_access.file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \
+                or ("_sizes" not in file_access.file.attributes and isinstance(media, InputMediaPhoto)):
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         file = file_access.file
-        media_type = MediaType.PHOTO
+        media_type = MediaType.PHOTO if isinstance(media, InputMediaPhoto) else MediaType.DOCUMENT
 
     if isinstance(media, InputMediaUploadedPhoto):
         sizes = await resize_photo(str(file.physical_id))

@@ -23,9 +23,9 @@ async def upload_file(user: User, input_file: InputFile, mime_type: str, attribu
 
     size = parts[0].size
     for idx, part in enumerate(parts):
-        if part == parts[0]:
+        if idx == 0:
             continue
-        if part.part_id - 1 != parts[idx - 1]:
+        if part.part_id - 1 != parts[idx - 1].part_id:
             raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
         size += part.size
 
