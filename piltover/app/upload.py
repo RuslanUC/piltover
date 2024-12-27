@@ -1,5 +1,7 @@
 from time import time
 
+import aiofiles
+
 from piltover.app import files_dir
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer
@@ -14,8 +16,8 @@ from piltover.tl.types.upload import File as TLFile
 handler = MessageHandler("upload")
 
 
-@handler.on_request(SaveFilePart, ReqHandlerFlags.AUTH_REQUIRED)
-@handler.on_request(SaveBigFilePart, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(SaveFilePart)
+@handler.on_request(SaveBigFilePart)
 async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
     defaults = {}
     if isinstance(request, SaveBigFilePart):
@@ -43,13 +45,13 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
 
     part = await UploadingFilePart.create(file=file, part_id=request.file_part, size=size)
 
-    with open(files_dir / "parts" / f"{part.physical_id}_{request.file_part}", "wb") as f:
-        f.write(request.bytes_)
+    async with aiofiles.open(files_dir / "parts" / f"{part.physical_id}_{request.file_part}", "wb") as f:
+        await f.write(request.bytes_)
 
     return True
 
 
-@handler.on_request(GetFile, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetFile)
 async def get_file(request: GetFile, user: User):
     # noinspection PyPep8
     if not isinstance(request.location, (InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation)):
@@ -89,9 +91,9 @@ async def get_file(request: GetFile, user: User):
             size = min(available, key=lambda x: abs(x - size))
         f_name += f"_{size}"
 
-    with open(files_dir / f_name, "rb") as f:
-        f.seek(request.offset)
-        data = f.read(request.limit)
+    async with aiofiles.open(files_dir / f_name, "rb") as f:
+        await f.seek(request.offset)
+        data = await f.read(request.limit)
 
     if isinstance(request.location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         file_type = FileJpeg()

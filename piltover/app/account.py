@@ -32,7 +32,7 @@ def validate_username(username: str) -> None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_INVALID")
 
 
-@handler.on_request(CheckUsername, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(CheckUsername)
 async def check_username(request: CheckUsername):
     validate_username(request.username)
     if await User.filter(username=request.username).exists():
@@ -40,7 +40,7 @@ async def check_username(request: CheckUsername):
     return True
 
 
-@handler.on_request(UpdateUsername, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(UpdateUsername)
 async def update_username(request: UpdateUsername, user: User):
     validate_username(request.username)
     if (target := await User.get_or_none(username__iexact=request.username)) is not None:
@@ -50,7 +50,7 @@ async def update_username(request: UpdateUsername, user: User):
     return await user.to_tl(user)
 
 
-@handler.on_request(GetAuthorizations, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetAuthorizations)
 async def get_authorizations(client: Client, user: User):
     authorizations = await UserAuthorization.filter(user=user).select_related("key").all()
     authorizations = [auth.to_tl(current=int(auth.key.id) == client.auth_data.auth_key_id) for auth in authorizations]
@@ -58,12 +58,12 @@ async def get_authorizations(client: Client, user: User):
     return Authorizations(authorization_ttl_days=15, authorizations=authorizations)
 
 
-@handler.on_request(GetAccountTTL, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetAccountTTL)
 async def get_account_ttl(user: User):
     return AccountDaysTTL(days=user.ttl_days)
 
 
-@handler.on_request(SetAccountTTL, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(SetAccountTTL)
 async def set_account_ttl(request: SetAccountTTL, user: User):
     if request.ttl.days not in range(30, 366):
         raise ErrorRpc(error_code=400, error_message="TTL_DAYS_INVALID")
@@ -71,8 +71,8 @@ async def set_account_ttl(request: SetAccountTTL, user: User):
     return True
 
 
-@handler.on_request(RegisterDevice_70, ReqHandlerFlags.AUTH_REQUIRED)
-@handler.on_request(RegisterDevice, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(RegisterDevice_70)
+@handler.on_request(RegisterDevice)
 async def register_device(request: RegisterDevice, user: User) -> bool:
     if request.token_type != 7:
         return False
@@ -90,13 +90,13 @@ async def get_contact_sign_up_notification() -> bool:
     return True
 
 
-@handler.on_request(GetPassword, ReqHandlerFlags.AUTH_REQUIRED | ReqHandlerFlags.ALLOW_MFA_PENDING)
+@handler.on_request(GetPassword, ReqHandlerFlags.ALLOW_MFA_PENDING)
 async def get_password(user: User) -> Password:
     password, _ = await UserPassword.get_or_create(user=user)
     return await password.to_tl()
 
 
-@handler.on_request(UpdatePasswordSettings, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(UpdatePasswordSettings)
 async def update_password_settings(request: UpdatePasswordSettings, user: User) -> bool:
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
@@ -125,7 +125,7 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
     return True
 
 
-@handler.on_request(GetPasswordSettings, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetPasswordSettings)
 async def get_password_settings(request: GetPasswordSettings, user: User) -> PasswordSettings:
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
@@ -149,29 +149,29 @@ async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRu
     )
 
 
-@handler.on_request(GetPrivacy, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetPrivacy)
 async def get_privacy(request: GetPrivacy, user: User):
     return await get_privacy_internal(TL_KEY_TO_PRIVACY_ENUM[type(request.key)], user)
 
 
-@handler.on_request(SetPrivacy, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(SetPrivacy)
 async def set_privacy(request: SetPrivacy, user: User):
     key = TL_KEY_TO_PRIVACY_ENUM[type(request.key)]
     await PrivacyRule.update_from_tl(user, key, request.rules)
     return await get_privacy_internal(key, user)
 
 
-@handler.on_request(GetThemes)
+@handler.on_request(GetThemes, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_themes():
     return Themes(hash=0, themes=[])
 
 
-@handler.on_request(GetGlobalPrivacySettings)
+@handler.on_request(GetGlobalPrivacySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_global_privacy_settings():
     return GlobalPrivacySettings(archive_and_mute_new_noncontact_peers=True)
 
 
-@handler.on_request(GetContentSettings)
+@handler.on_request(GetContentSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_content_settings():
     return ContentSettings(
         sensitive_enabled=True,
@@ -179,12 +179,12 @@ async def get_content_settings():
     )
 
 
-@handler.on_request(UpdateStatus)
+@handler.on_request(UpdateStatus, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def update_status():
     return True
 
 
-@handler.on_request(UpdateProfile, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(UpdateProfile)
 async def update_profile(request: UpdateProfile, user: User):
     updates = {}
     if request.first_name is not None:
@@ -204,7 +204,7 @@ async def update_profile(request: UpdateProfile, user: User):
     return await user.to_tl(user)
 
 
-@handler.on_request(GetNotifySettings)
+@handler.on_request(GetNotifySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_notify_settings():
     return PeerNotifySettings(
         show_previews=True,
@@ -212,17 +212,17 @@ async def get_notify_settings():
     )
 
 
-@handler.on_request(GetDefaultEmojiStatuses)
+@handler.on_request(GetDefaultEmojiStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_default_emoji_statuses():
     return EmojiStatuses(hash=0, statuses=[])
 
 
-@handler.on_request(GetSavedRingtones)
+@handler.on_request(GetSavedRingtones, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_saved_ringtones(request: GetSavedRingtones):
     return SavedRingtones(hash=request.hash, ringtones=[])
 
 
-@handler.on_request(GetAutoDownloadSettings)
+@handler.on_request(GetAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_auto_download_settings():
     return AccAutoDownloadSettings(
         low=AutoDownloadSettings(
@@ -261,7 +261,7 @@ async def get_auto_download_settings():
     )
 
 
-@handler.on_request(SaveAutoDownloadSettings)
+@handler.on_request(SaveAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def save_auto_download_settings() -> bool:
     """
     TODO: Seems like this function is doing nothing on official Telegram server??
@@ -287,11 +287,11 @@ async def save_auto_download_settings() -> bool:
     return True
 
 
-@handler.on_request(GetDefaultProfilePhotoEmojis)
+@handler.on_request(GetDefaultProfilePhotoEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_default_profile_photo_emojis(request: GetDefaultProfilePhotoEmojis) -> EmojiList:
     return EmojiList(hash=request.hash, document_id=[])
 
 
-@handler.on_request(GetWebAuthorizations, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetWebAuthorizations)
 async def get_web_authorizations(user: User) -> WebAuthorizations:
     return WebAuthorizations(authorizations=[], users=[await user.to_tl(user)])

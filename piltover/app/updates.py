@@ -28,13 +28,13 @@ async def get_state_internal(client: Client, user: User) -> TLState:
     )
 
 
-@handler.on_request(GetState, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetState)
 async def get_state(client: Client, user: User):
     return await get_state_internal(client, user)
 
 
-@handler.on_request(GetDifference_136, ReqHandlerFlags.AUTH_REQUIRED)
-@handler.on_request(GetDifference, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetDifference_136)
+@handler.on_request(GetDifference)
 async def get_difference(client: Client, request: GetDifference | GetDifference_136, user: User):
     requested_update = await UpdateV2.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
     date = requested_update.date if requested_update is not None else datetime.fromtimestamp(request.date, UTC)

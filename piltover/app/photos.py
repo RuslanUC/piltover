@@ -10,7 +10,7 @@ from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
 handler = MessageHandler("photos")
 
 
-@handler.on_request(GetUserPhotos, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetUserPhotos)
 async def get_user_photos(request: GetUserPhotos, user: User):
     if (peer := await Peer.from_input_peer(user, request.user_id)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -24,7 +24,7 @@ async def get_user_photos(request: GetUserPhotos, user: User):
     )
 
 
-@handler.on_request(UploadProfilePhoto, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(UploadProfilePhoto)
 async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     if request.file is None:
         raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
@@ -45,7 +45,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     )
 
 
-@handler.on_request(DeletePhotos, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(DeletePhotos)
 async def delete_photos(request: DeletePhotos, user: User):
     deleted = Vector(value_type=Long)
 

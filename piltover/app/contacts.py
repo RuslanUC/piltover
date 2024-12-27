@@ -10,7 +10,7 @@ from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, Resol
 handler = MessageHandler("contacts")
 
 
-@handler.on_request(GetContacts)
+@handler.on_request(GetContacts, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_contacts():
     return Contacts(
         contacts=[],
@@ -19,7 +19,7 @@ async def get_contacts():
     )
 
 
-@handler.on_request(ResolveUsername, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(ResolveUsername)
 async def resolve_username(request: ResolveUsername, user: User):
     if (resolved := await User.get_or_none(username=request.username)) is None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")
@@ -36,7 +36,7 @@ async def resolve_username(request: ResolveUsername, user: User):
     )
 
 
-@handler.on_request(GetBlocked)
+@handler.on_request(GetBlocked, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_blocked():
     return Blocked(
         blocked=[],
@@ -45,7 +45,7 @@ async def get_blocked():
     )
 
 
-@handler.on_request(Search)
+@handler.on_request(Search, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def contacts_search():
     return Found(
         my_results=[],
@@ -55,7 +55,7 @@ async def contacts_search():
     )
 
 
-@handler.on_request(GetTopPeers)
+@handler.on_request(GetTopPeers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_top_peers():
     return TopPeers(
         categories=[],
@@ -64,12 +64,12 @@ async def get_top_peers():
     )
 
 
-@handler.on_request(GetStatuses)
+@handler.on_request(GetStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_statuses():
     return []
 
 
-@handler.on_request(GetBirthdays)
+@handler.on_request(GetBirthdays, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_birthdays():
     return ContactBirthdays(
         contacts=[],

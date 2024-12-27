@@ -37,6 +37,17 @@ files = [
 dev = ["pytest", "pytest-asyncio", "pytest-cov", "pytest-repeat", "uvloop"]
 
 [[package]]
+name = "aiofiles"
+version = "24.1.0"
+description = "File support for asyncio."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "aiofiles-24.1.0-py3-none-any.whl", hash = "sha256:b4ec55f4195e3eb5d7abd1bf7e061763e864dd4954231fb8539a0ef8bb8260e5"},
+    {file = "aiofiles-24.1.0.tar.gz", hash = "sha256:22a075c9e5a3810f0c2e48f3008c94d68c65d763b9b03857924c99e57355166c"},
+]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.4.4"
 description = "Happy Eyeballs for asyncio"
@@ -1924,4 +1935,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "9cec5cd5255f8db055719eb3cf107153607445c5c2de4aa8b52d4ee98f697588"
+content-hash = "3144ca28e88e47c674d7583107d5df7145a1e00b5a5b0eb40d792c3bb7a342d4"

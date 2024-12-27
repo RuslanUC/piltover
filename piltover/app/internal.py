@@ -26,7 +26,7 @@ LOGIN_MESSAGE_FMT = (
 )
 
 
-@handler.on_request(SendCode, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(SendCode)
 async def send_code(request: SendCode, user: User) -> SentCode:
     if user.id != 777000:
         raise InvalidConstructorException(SentCode.tlid())
@@ -60,7 +60,7 @@ async def send_code(request: SendCode, user: User) -> SentCode:
     return resp
 
 
-@handler.on_request(SignIn, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(SignIn)
 async def sign_in(request: SignIn, user: User) -> Authorization:
     if user.id != 777000:
         raise InvalidConstructorException(SignIn.tlid())
@@ -105,7 +105,7 @@ async def _auth_user(auth_bytes: bytes) -> User:
     return webauth.user
 
 
-@handler.on_request(GetUserApp, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetUserApp)
 async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound:
     if user.id != 777000:
         raise InvalidConstructorException(GetUserApp.tlid())
@@ -122,7 +122,7 @@ async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound
     )
 
 
-@handler.on_request(EditUserApp, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(EditUserApp)
 async def edit_user_app(request: EditUserApp, user: User) -> bool:
     if user.id != 777000:
         raise InvalidConstructorException(EditUserApp.tlid())
@@ -141,7 +141,7 @@ async def edit_user_app(request: EditUserApp, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetAvailableServers, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetAvailableServers)
 async def get_available_servers(client: Client, user: User) -> AvailableServers:
     if user.id != 777000:
         raise InvalidConstructorException(GetAvailableServers.tlid())

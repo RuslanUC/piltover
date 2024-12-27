@@ -40,7 +40,7 @@ class RequestHandler:
         self.has_user_arg = "user" in func_args
 
     def auth_required(self) -> bool:
-        return check_flag(self.flags, ReqHandlerFlags.AUTH_REQUIRED)
+        return not check_flag(self.flags, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 
     def allow_mfa_pending(self) -> bool:
         return check_flag(self.flags, ReqHandlerFlags.ALLOW_MFA_PENDING)

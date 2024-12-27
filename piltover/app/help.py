@@ -1,5 +1,6 @@
 from time import time
 
+from piltover.enums import ReqHandlerFlags
 from piltover.high_level import MessageHandler
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
@@ -11,7 +12,7 @@ from piltover.tl.types.help import CountriesList, Country, CountryCode, PromoDat
 handler = MessageHandler("help")
 
 
-@handler.on_request(GetConfig)
+@handler.on_request(GetConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_config():
     return Config(
         date=int(time()),
@@ -52,7 +53,7 @@ async def get_config():
     )
 
 
-@handler.on_request(GetNearestDc)
+@handler.on_request(GetNearestDc, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_nearest_dc():
     return NearestDc(
         country="US",
@@ -61,12 +62,12 @@ async def get_nearest_dc():
     )
 
 
-@handler.on_request(GetAppConfig)
+@handler.on_request(GetAppConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_app_config():
     return JsonObject(value=[])
 
 
-@handler.on_request(GetCountriesList)
+@handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_countries_list():
     return CountriesList(
         countries=[
@@ -84,17 +85,17 @@ async def get_countries_list():
     )
 
 
-@handler.on_request(GetTermsOfServiceUpdate)
+@handler.on_request(GetTermsOfServiceUpdate, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_terms_of_service_update():
     return TermsOfServiceUpdateEmpty(expires=int(time() + 9000))
 
 
-@handler.on_request(GetPromoData)
+@handler.on_request(GetPromoData, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_promo_data():
     return PromoDataEmpty(expires=int(time() + 9000))
 
 
-@handler.on_request(GetPremiumPromo)
+@handler.on_request(GetPremiumPromo, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_premium_promo():
     return PremiumPromo(
         status_text="Premium Lol",
@@ -113,18 +114,18 @@ async def get_premium_promo():
     )
 
 
-@handler.on_request(SaveAppLog)
+@handler.on_request(SaveAppLog, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def save_app_log():
     return True
 
 
-@handler.on_request(GetInviteText)
+@handler.on_request(GetInviteText, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_invite_text():
     return InviteText(message="🐳")
 
 
-@handler.on_request(GetPeerColors)
-@handler.on_request(GetPeerProfileColors)
+@handler.on_request(GetPeerColors, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetPeerProfileColors, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_peer_colors():
     return PeerColors(
         hash=1,

@@ -11,7 +11,7 @@ from piltover.tl.types.users import UserFull
 handler = MessageHandler("users")
 
 
-@handler.on_request(GetFullUser, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetFullUser)
 async def get_full_user(request: GetFullUser, user: User):
     if (peer := await Peer.from_input_peer(user, request.id)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -34,7 +34,7 @@ async def get_full_user(request: GetFullUser, user: User):
     )
 
 
-@handler.on_request(GetUsers, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(GetUsers)
 async def get_users(request: GetUsers, user: User):
     result: list[TLObject] = []
     for peer in request.id:

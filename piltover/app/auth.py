@@ -33,7 +33,7 @@ LOGIN_MESSAGE_FMT = (
 )
 
 
-@handler.on_request(SendCode)
+@handler.on_request(SendCode, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def send_code(request: SendCode):
     try:
         if int(request.phone_number) < 100000:
@@ -73,7 +73,7 @@ async def send_code(request: SendCode):
     return resp
 
 
-@handler.on_request(SignIn)
+@handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def sign_in(client: Client, request: SignIn):
     if len(request.phone_code_hash) != 24:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
@@ -113,8 +113,8 @@ async def sign_in(client: Client, request: SignIn):
     return Authorization(user=await user.to_tl(current_user=user))
 
 
-@handler.on_request(SignUp_136)
-@handler.on_request(SignUp)
+@handler.on_request(SignUp_136, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(SignUp, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def sign_up(client: Client, request: SignUp | SignUp_136):
     if len(request.phone_code_hash) != 24:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
@@ -150,7 +150,7 @@ async def sign_up(client: Client, request: SignUp | SignUp_136):
     return Authorization(user=await user.to_tl(current_user=user))
 
 
-@handler.on_request(CheckPassword, ReqHandlerFlags.AUTH_REQUIRED | ReqHandlerFlags.ALLOW_MFA_PENDING)
+@handler.on_request(CheckPassword, ReqHandlerFlags.ALLOW_MFA_PENDING)
 async def check_password(client: Client, request: CheckPassword, user: User):
     auth = await client.get_auth(True)
     if not auth.mfa_pending:  # ??
@@ -163,7 +163,7 @@ async def check_password(client: Client, request: CheckPassword, user: User):
     return Authorization(user=await user.to_tl(current_user=user))
 
 
-@handler.on_request(BindTempAuthKey)
+@handler.on_request(BindTempAuthKey, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
     ctx = request_ctx.get()
 
@@ -199,12 +199,12 @@ async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
     return True
 
 
-@handler.on_request(ExportLoginToken)
+@handler.on_request(ExportLoginToken, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def export_login_token():
     return LoginToken(expires=1000, token=b"levlam")
 
 
-@handler.on_request(LogOut, ReqHandlerFlags.AUTH_REQUIRED)
+@handler.on_request(LogOut)
 async def log_out(client: Client) -> LoggedOut:
     key = await AuthKey.get_or_temp(client.auth_data.auth_key_id)
     if isinstance(key, TempAuthKey):
