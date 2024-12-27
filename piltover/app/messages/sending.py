@@ -4,18 +4,21 @@ from datetime import datetime, UTC
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.enums import MediaType, MessageType
-from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia
+from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File
 from piltover.db.models.message import Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
-from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto
+from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage
 from piltover.tl.types.messages import AffectedMessages
 from piltover.utils.snowflake import Snowflake
 
 handler = MessageHandler("messages.sending")
+
+# TODO: InputMediaDocument
+InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto
 
 
 async def _send_message_internal(
@@ -53,6 +56,13 @@ async def _send_message_internal(
     return upd
 
 
+def _resolve_reply_id(request: SendMessage_148 | SendMessage | SendMedia_148 | SendMedia) -> int | None:
+    if isinstance(request, (SendMessage, SendMedia)) and request.reply_to is not None:
+        return request.reply_to.reply_to_msg_id
+    elif isinstance(request, (SendMessage_148, SendMedia_148)) and request.reply_to_msg_id is not None:
+        return request.reply_to_msg_id
+
+
 @handler.on_request(SendMessage_148)
 @handler.on_request(SendMessage)
 async def send_message(request: SendMessage, user: User):
@@ -64,12 +74,7 @@ async def send_message(request: SendMessage, user: User):
     if len(request.message) > 2000:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
-    reply_to_message_id = None
-    if isinstance(request, SendMessage) and request.reply_to is not None:
-        reply_to_message_id = request.reply_to.reply_to_msg_id
-    elif isinstance(request, SendMessage_148) and request.reply_to_msg_id is not None:
-        reply_to_message_id = request.reply_to_msg_id
-
+    reply_to_message_id = _resolve_reply_id(request)
     return await _send_message_internal(
         user, peer, reply_to_message_id, request.clear_draft,
         author=user, message=request.message,
@@ -162,34 +167,57 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
     return await UpdatesManager.edit_message(user, messages)
 
 
+async def _process_media(user: User, media: InputMedia) -> MessageMedia:
+    if not isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto)):
+        raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+
+    file: File | None = None
+    mime: str | None = None
+    media_type: MediaType | None = None
+    attributes = []
+
+    if isinstance(media, InputMediaUploadedDocument):
+        mime = media.mime_type
+        media_type = MediaType.DOCUMENT
+        attributes = media.attributes
+    elif isinstance(media, InputMediaUploadedPhoto):
+        mime = "image/jpeg"
+        media_type = MediaType.PHOTO
+
+    if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
+        file = await upload_file(user, media.file, mime, attributes)
+    elif isinstance(media, InputMediaPhoto):
+        file_access = await FileAccess.get_or_none(
+            user=user, file__id=media.id.id, access_hash=media.id.access_hash, file_reference=media.id.file_reference,
+            expires__gt=datetime.now(UTC)
+        ).select_related("file")
+        if file_access is None \
+                or not file_access.file.mime_type.startswith("image/") \
+                or "_sizes" not in file_access.file.attributes:
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+
+        file = file_access.file
+        media_type = MediaType.PHOTO
+
+    if isinstance(media, InputMediaUploadedPhoto):
+        sizes = await resize_photo(str(file.physical_id))
+        stripped = await generate_stripped(str(file.physical_id))
+        await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
+
+    return await MessageMedia.create(file=file, spoiler=media.spoiler, type=media_type)
+
+
 @handler.on_request(SendMedia_148)
 @handler.on_request(SendMedia)
 async def send_media(request: SendMedia | SendMedia_148, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    # TODO: InputMediaPhoto
-    if not isinstance(request.media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
-        raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
     if len(request.message) > 2000:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
 
-    mime = request.media.mime_type if isinstance(request.media, InputMediaUploadedDocument) else "image/jpeg"
-    attributes = request.media.attributes if isinstance(request.media, InputMediaUploadedDocument) else []
-    media_type = MediaType.DOCUMENT if isinstance(request.media, InputMediaUploadedDocument) else MediaType.PHOTO
-
-    file = await upload_file(user, request.media.file, mime, attributes)
-    sizes = await resize_photo(str(file.physical_id)) if mime.startswith("image/") else []
-    stripped = await generate_stripped(str(file.physical_id)) if mime.startswith("image/") else b""
-    await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
-
-    media = await MessageMedia.create(file=file, spoiler=request.media.spoiler, type=media_type)
-
-    reply_to_message_id = None
-    if isinstance(request, SendMessage) and request.reply_to is not None:
-        reply_to_message_id = request.reply_to.reply_to_msg_id
-    elif isinstance(request, SendMessage_148) and request.reply_to_msg_id is not None:
-        reply_to_message_id = request.reply_to_msg_id
+    media = await _process_media(user, request.media)
+    reply_to_message_id = _resolve_reply_id(request)
 
     return await _send_message_internal(
         user, peer, reply_to_message_id, request.clear_draft,
