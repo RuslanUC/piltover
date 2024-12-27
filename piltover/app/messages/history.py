@@ -6,13 +6,14 @@ from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.app.account import username_regex_no_len
-from piltover.db.enums import MessageType
+from piltover.db.enums import MessageType, MediaType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
-    InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo
+    InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
+    InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter
@@ -50,7 +51,18 @@ def _get_messages_query(
 
     if isinstance(filter_, InputMessagesFilterPinned):
         query &= Q(pinned=True)
+    elif isinstance(filter_, InputMessagesFilterDocument):
+        query &= Q(media__type=MediaType.DOCUMENT)
+    elif isinstance(filter_, InputMessagesFilterPhotos):
+        query &= Q(media__type=MediaType.PHOTO)
+    elif isinstance(filter_, InputMessagesFilterPhotoVideo):
+        query &= Q(media__type=MediaType.PHOTO)  # TODO: add video filter
     elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
+        # TODO: InputMessagesFilterVideo
+        # TODO: InputMessagesFilterUrl
+        # TODO: InputMessagesFilterGif
+        # TODO: InputMessagesFilterVoice
+        # TODO: InputMessagesFilterMusic
         logger.warning(f"Unsupported filter: {filter_}")
         query = Q(id=0)
 
