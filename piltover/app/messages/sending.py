@@ -9,7 +9,7 @@ from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
-    InputMediaDocument
+    InputMediaDocument, InputPeerEmpty
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148
 from piltover.tl.types.messages import AffectedMessages
@@ -248,7 +248,15 @@ async def save_draft(request: SaveDraft, user: User):
 @handler.on_request(ForwardMessages_148)
 @handler.on_request(ForwardMessages)
 async def forward_messages(request: ForwardMessages | ForwardMessages_148, user: User) -> Updates:
-    if (from_peer := await Peer.from_input_peer(user, request.from_peer)) is None \
+    from_peer = None
+
+    if isinstance(request.from_peer, InputPeerEmpty):
+        first_msg = await Message.get_or_none(peer__owner=user, id=request.id[0]).select_related("peer")
+        if not first_msg:
+            raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
+        from_peer = first_msg.peer
+
+    if (from_peer is None and (from_peer := await Peer.from_input_peer(user, request.from_peer)) is None) \
             or (to_peer := await Peer.from_input_peer(user, request.to_peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
