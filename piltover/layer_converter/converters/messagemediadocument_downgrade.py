@@ -1,30 +1,16 @@
-from copy import copy
-
-from piltover.layer_converter.converters.base import BaseDowngrader
+from piltover.layer_converter.converters.base import AutoDowngrader
 from piltover.tl import MessageMediaDocument, MessageMediaDocument_136
 
 
-class MessageMediaDocumentDowngradeTo136(BaseDowngrader):
+class MessageMediaDocumentDowngradeTo136(AutoDowngrader):
     BASE_TYPE = MessageMediaDocument
     TARGET_LAYER = 136
-
-    @classmethod
-    def downgrade(cls, from_obj: MessageMediaDocument) -> MessageMediaDocument_136:
-        kwargs = from_obj.to_dict()
-        del kwargs["nopremium"]
-        del kwargs["spoiler"]
-        del kwargs["video"]
-        del kwargs["round"]
-        del kwargs["voice"]
-        del kwargs["alt_document"]
-
-        return MessageMediaDocument_136(**kwargs)
+    TARGET_TYPE = MessageMediaDocument_136
+    REMOVE_FIELDS = {"nopremium", "spoiler", "video", "round", "voice", "alt_document"}
 
 
-class MessageMediaDocumentDontDowngrade(BaseDowngrader):
+class MessageMediaDocumentDontDowngrade(AutoDowngrader):
     BASE_TYPE = MessageMediaDocument
     TARGET_LAYER = 177
-
-    @classmethod
-    def downgrade(cls, from_obj: MessageMediaDocument) -> MessageMediaDocument:
-        return copy(from_obj)
+    TARGET_TYPE = MessageMediaDocument
+    REMOVE_FIELDS = set()

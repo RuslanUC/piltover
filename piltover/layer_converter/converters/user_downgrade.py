@@ -1,107 +1,58 @@
-from copy import copy
-
-from piltover.layer_converter.converters.base import BaseDowngrader
+from piltover.layer_converter.converters.base import AutoDowngrader
 from piltover.tl import User, User_136, User_160, User_148, User_145, User_166
 
 
-class UserDowngradeTo136(BaseDowngrader):
+class UserDowngradeTo136(AutoDowngrader):
     BASE_TYPE = User
     TARGET_LAYER = 136
-
-    @classmethod
-    def downgrade(cls, from_obj: User) -> User_136:
-        kwargs = from_obj.to_dict()
-        del kwargs["bot_attach_menu"]
-        del kwargs["premium"]
-        del kwargs["attach_menu_enabled"]
-        del kwargs["bot_can_edit"]
-        del kwargs["close_friend"]
-        del kwargs["stories_hidden"]
-        del kwargs["stories_unavailable"]
-        del kwargs["contact_require_premium"]
-        del kwargs["bot_business"]
-        del kwargs["emoji_status"]
-        del kwargs["usernames"]
-        del kwargs["stories_max_id"]
-        del kwargs["color"]
-        del kwargs["profile_color"]
-
-        return User_136(**kwargs)
+    TARGET_TYPE = User_136
+    REMOVE_FIELDS = {
+        "bot_attach_menu", "premium", "attach_menu_enabled", "bot_can_edit", "close_friend", "stories_hidden",
+        "stories_unavailable", "contact_require_premium", "bot_business", "emoji_status", "usernames", "stories_max_id",
+        "color", "profile_color",
+    }
 
 
-class UserDowngradeTo145(BaseDowngrader):
+class UserDowngradeTo145(AutoDowngrader):
     BASE_TYPE = User
     TARGET_LAYER = 145
-
-    @classmethod
-    def downgrade(cls, from_obj: User) -> User_145:
-        kwargs = from_obj.to_dict()
-        del kwargs["bot_can_edit"]
-        del kwargs["close_friend"]
-        del kwargs["stories_hidden"]
-        del kwargs["stories_unavailable"]
-        del kwargs["contact_require_premium"]
-        del kwargs["bot_business"]
-        del kwargs["usernames"]
-        del kwargs["stories_max_id"]
-        del kwargs["color"]
-        del kwargs["profile_color"]
-
-        return User_145(**kwargs)
+    TARGET_TYPE = User_145
+    REMOVE_FIELDS = {
+        "bot_can_edit", "close_friend", "stories_hidden", "stories_unavailable", "contact_require_premium",
+        "bot_business", "usernames", "stories_max_id", "color", "profile_color",
+    }
 
 
-class UserDowngradeTo148(BaseDowngrader):
+class UserDowngradeTo148(AutoDowngrader):
     BASE_TYPE = User
     TARGET_LAYER = 148
-
-    @classmethod
-    def downgrade(cls, from_obj: User) -> User_148:
-        kwargs = from_obj.to_dict()
-        del kwargs["close_friend"]
-        del kwargs["stories_hidden"]
-        del kwargs["stories_unavailable"]
-        del kwargs["contact_require_premium"]
-        del kwargs["bot_business"]
-        del kwargs["stories_max_id"]
-        del kwargs["color"]
-        del kwargs["profile_color"]
-
-        return User_148(**kwargs)
+    TARGET_TYPE = User_148
+    REMOVE_FIELDS = {
+        "close_friend", "stories_hidden", "stories_unavailable", "contact_require_premium", "bot_business",
+        "stories_max_id", "color", "profile_color",
+    }
 
 
-class UserDowngradeTo160(BaseDowngrader):
+class UserDowngradeTo160(AutoDowngrader):
     BASE_TYPE = User
     TARGET_LAYER = 160
-
-    @classmethod
-    def downgrade(cls, from_obj: User) -> User_160:
-        kwargs = from_obj.to_dict()
-        del kwargs["contact_require_premium"]
-        del kwargs["bot_business"]
-        del kwargs["color"]
-        del kwargs["profile_color"]
-
-        return User_160(**kwargs)
+    TARGET_TYPE = User_160
+    REMOVE_FIELDS = {
+        "contact_require_premium", "bot_business", "color", "profile_color",
+    }
 
 
-class UserDowngradeTo166(BaseDowngrader):
+class UserDowngradeTo166(AutoDowngrader):
     BASE_TYPE = User
     TARGET_LAYER = 166
-
-    @classmethod
-    def downgrade(cls, from_obj: User) -> User_166:
-        kwargs = from_obj.to_dict()
-        del kwargs["contact_require_premium"]
-        del kwargs["bot_business"]
-        del kwargs["profile_color"]
-
-        return User_166(**kwargs)
+    TARGET_TYPE = User_166
+    REMOVE_FIELDS = {
+        "contact_require_premium", "bot_business", "profile_color",
+    }
 
 
-class UserDontDowngrade(BaseDowngrader):
+class UserDontDowngrade(AutoDowngrader):
     BASE_TYPE = User
     TARGET_LAYER = 177
-
-    @classmethod
-    def downgrade(cls, from_obj: User) -> User:
-        return copy(from_obj)
+    TARGET_TYPE = User
+    REMOVE_FIELDS = set()

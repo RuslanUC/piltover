@@ -1,72 +1,40 @@
-from copy import copy
-
-from piltover.layer_converter.converters.base import BaseDowngrader
+from piltover.layer_converter.converters.base import AutoDowngrader
 from piltover.tl import Message_136, Message, Message_170, Message_174, Message_176
 
 
-class MessageDowngradeTo136(BaseDowngrader):
+class MessageDowngradeTo136(AutoDowngrader):
     BASE_TYPE = Message
     TARGET_LAYER = 136
-
-    @classmethod
-    def downgrade(cls, from_obj: Message) -> Message_136:
-        kwargs = from_obj.to_dict()
-        del kwargs["invert_media"]
-        del kwargs["offline"]
-        del kwargs["from_boosts_applied"]
-        del kwargs["saved_peer_id"]
-        del kwargs["via_business_bot_id"]
-        del kwargs["quick_reply_shortcut_id"]
-
-        return Message_136(**kwargs)
+    TARGET_TYPE = Message_136
+    REMOVE_FIELDS = {
+        "invert_media", "offline", "from_boosts_applied", "saved_peer_id", "via_business_bot_id",
+        "quick_reply_shortcut_id"
+    }
 
 
-class MessageDowngradeTo170(BaseDowngrader):
+class MessageDowngradeTo170(AutoDowngrader):
     BASE_TYPE = Message
     TARGET_LAYER = 170
-
-    @classmethod
-    def downgrade(cls, from_obj: Message) -> Message_170:
-        kwargs = from_obj.to_dict()
-        del kwargs["offline"]
-        del kwargs["from_boosts_applied"]
-        del kwargs["via_business_bot_id"]
-        del kwargs["quick_reply_shortcut_id"]
-
-        return Message_170(**kwargs)
+    TARGET_TYPE = Message_170
+    REMOVE_FIELDS = {"offline", "from_boosts_applied", "via_business_bot_id", "quick_reply_shortcut_id"}
 
 
-class MessageDowngradeTo174(BaseDowngrader):
+class MessageDowngradeTo174(AutoDowngrader):
     BASE_TYPE = Message
     TARGET_LAYER = 174
-
-    @classmethod
-    def downgrade(cls, from_obj: Message) -> Message_174:
-        kwargs = from_obj.to_dict()
-        del kwargs["offline"]
-        del kwargs["via_business_bot_id"]
-        del kwargs["quick_reply_shortcut_id"]
-
-        return Message_174(**kwargs)
+    TARGET_TYPE = Message_174
+    REMOVE_FIELDS = {"offline", "via_business_bot_id", "quick_reply_shortcut_id"}
 
 
-class MessageDowngradeTo176(BaseDowngrader):
+class MessageDowngradeTo176(AutoDowngrader):
     BASE_TYPE = Message
     TARGET_LAYER = 176
-
-    @classmethod
-    def downgrade(cls, from_obj: Message) -> Message_176:
-        kwargs = from_obj.to_dict()
-        del kwargs["offline"]
-        del kwargs["via_business_bot_id"]
-
-        return Message_176(**kwargs)
+    TARGET_TYPE = Message_176
+    REMOVE_FIELDS = {"offline", "via_business_bot_id"}
 
 
-class MessageDontDowngrade(BaseDowngrader):
+class MessageDontDowngrade(AutoDowngrader):
     BASE_TYPE = Message
     TARGET_LAYER = 177
-
-    @classmethod
-    def downgrade(cls, from_obj: Message) -> Message:
-        return copy(from_obj)
+    TARGET_TYPE = Message
+    REMOVE_FIELDS = set()

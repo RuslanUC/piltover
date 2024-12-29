@@ -1,218 +1,102 @@
-from copy import copy
-
-from piltover.layer_converter.converters.base import BaseDowngrader
+from piltover.layer_converter.converters import AutoDowngrader
 from piltover.tl import UserFull, UserFull_136, UserFull_140, UserFull_144, UserFull_151, UserFull_158, UserFull_160, \
     UserFull_164, UserFull_176
 
 
-class UserFullDowngradeTo136(BaseDowngrader):
+class UserFullDowngradeTo136(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 136
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull_136:
-        kwargs = from_obj.to_dict()
-        del kwargs["voice_messages_forbidden"]
-        del kwargs["translations_disabled"]
-        del kwargs["stories_pinned_available"]
-        del kwargs["blocked_my_stories_from"]
-        del kwargs["wallpaper_overridden"]
-        del kwargs["contact_require_premium"]
-        del kwargs["read_dates_private"]
-        del kwargs["personal_photo"]
-        del kwargs["fallback_photo"]
-        del kwargs["bot_group_admin_rights"]
-        del kwargs["bot_broadcast_admin_rights"]
-        del kwargs["premium_gifts"]
-        del kwargs["wallpaper"]
-        del kwargs["stories"]
-        del kwargs["business_work_hours"]
-        del kwargs["business_location"]
-        del kwargs["business_greeting_message"]
-        del kwargs["business_away_message"]
-        del kwargs["business_intro"]
-        del kwargs["birthday"]
-        del kwargs["personal_channel_id"]
-        del kwargs["personal_channel_message"]
-
-        return UserFull_136(**kwargs)
+    TARGET_TYPE = UserFull_136
+    REMOVE_FIELDS = {
+        "voice_messages_forbidden", "translations_disabled", "stories_pinned_available", "blocked_my_stories_from",
+        "wallpaper_overridden", "contact_require_premium", "read_dates_private", "personal_photo", "fallback_photo",
+        "bot_group_admin_rights", "bot_broadcast_admin_rights", "premium_gifts", "wallpaper", "stories",
+        "business_work_hours", "business_location", "business_greeting_message", "business_away_message",
+        "business_intro", "birthday", "personal_channel_id", "personal_channel_message",
+    }
 
 
-class UserFullDowngradeTo140(BaseDowngrader):
+class UserFullDowngradeTo140(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 140
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull_140:
-        kwargs = from_obj.to_dict()
-        del kwargs["voice_messages_forbidden"]
-        del kwargs["translations_disabled"]
-        del kwargs["stories_pinned_available"]
-        del kwargs["blocked_my_stories_from"]
-        del kwargs["wallpaper_overridden"]
-        del kwargs["contact_require_premium"]
-        del kwargs["read_dates_private"]
-        del kwargs["personal_photo"]
-        del kwargs["fallback_photo"]
-        del kwargs["premium_gifts"]
-        del kwargs["wallpaper"]
-        del kwargs["stories"]
-        del kwargs["business_work_hours"]
-        del kwargs["business_location"]
-        del kwargs["business_greeting_message"]
-        del kwargs["business_away_message"]
-        del kwargs["business_intro"]
-        del kwargs["birthday"]
-        del kwargs["personal_channel_id"]
-        del kwargs["personal_channel_message"]
-
-        return UserFull_140(**kwargs)
+    TARGET_TYPE = UserFull_140
+    REMOVE_FIELDS = {
+        "voice_messages_forbidden", "translations_disabled", "stories_pinned_available", "blocked_my_stories_from",
+        "wallpaper_overridden", "contact_require_premium", "read_dates_private", "personal_photo", "fallback_photo",
+        "premium_gifts", "wallpaper", "stories", "business_work_hours", "business_location",
+        "business_greeting_message", "business_away_message", "business_intro", "birthday", "personal_channel_id",
+        "personal_channel_message",
+    }
 
 
-class UserFullDowngradeTo144(BaseDowngrader):
+class UserFullDowngradeTo144(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 144
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull_144:
-        kwargs = from_obj.to_dict()
-        del kwargs["translations_disabled"]
-        del kwargs["stories_pinned_available"]
-        del kwargs["blocked_my_stories_from"]
-        del kwargs["wallpaper_overridden"]
-        del kwargs["contact_require_premium"]
-        del kwargs["read_dates_private"]
-        del kwargs["personal_photo"]
-        del kwargs["fallback_photo"]
-        del kwargs["wallpaper"]
-        del kwargs["stories"]
-        del kwargs["business_work_hours"]
-        del kwargs["business_location"]
-        del kwargs["business_greeting_message"]
-        del kwargs["business_away_message"]
-        del kwargs["business_intro"]
-        del kwargs["birthday"]
-        del kwargs["personal_channel_id"]
-        del kwargs["personal_channel_message"]
-
-        return UserFull_144(**kwargs)
+    TARGET_TYPE = UserFull_144
+    REMOVE_FIELDS = {
+        "translations_disabled", "stories_pinned_available", "blocked_my_stories_from", "wallpaper_overridden",
+        "contact_require_premium", "read_dates_private", "personal_photo", "fallback_photo", "wallpaper", "stories",
+        "business_work_hours", "business_location", "business_greeting_message", "business_away_message",
+        "business_intro", "birthday", "personal_channel_id", "personal_channel_message",
+    }
 
 
-class UserFullDowngradeTo151(BaseDowngrader):
+class UserFullDowngradeTo151(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 151
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull_151:
-        kwargs = from_obj.to_dict()
-        del kwargs["stories_pinned_available"]
-        del kwargs["blocked_my_stories_from"]
-        del kwargs["wallpaper_overridden"]
-        del kwargs["contact_require_premium"]
-        del kwargs["read_dates_private"]
-        del kwargs["wallpaper"]
-        del kwargs["stories"]
-        del kwargs["business_work_hours"]
-        del kwargs["business_location"]
-        del kwargs["business_greeting_message"]
-        del kwargs["business_away_message"]
-        del kwargs["business_intro"]
-        del kwargs["birthday"]
-        del kwargs["personal_channel_id"]
-        del kwargs["personal_channel_message"]
-
-        return UserFull_151(**kwargs)
+    TARGET_TYPE = UserFull_151
+    REMOVE_FIELDS = {
+        "stories_pinned_available", "blocked_my_stories_from", "wallpaper_overridden", "contact_require_premium",
+        "read_dates_private", "wallpaper", "stories", "business_work_hours", "business_location",
+        "business_greeting_message", "business_away_message", "business_intro", "birthday", "personal_channel_id",
+        "personal_channel_message",
+    }
 
 
-class UserFullDowngradeTo158(BaseDowngrader):
+class UserFullDowngradeTo158(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 158
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull_158:
-        kwargs = from_obj.to_dict()
-        del kwargs["stories_pinned_available"]
-        del kwargs["blocked_my_stories_from"]
-        del kwargs["wallpaper_overridden"]
-        del kwargs["contact_require_premium"]
-        del kwargs["read_dates_private"]
-        del kwargs["stories"]
-        del kwargs["business_work_hours"]
-        del kwargs["business_location"]
-        del kwargs["business_greeting_message"]
-        del kwargs["business_away_message"]
-        del kwargs["business_intro"]
-        del kwargs["birthday"]
-        del kwargs["personal_channel_id"]
-        del kwargs["personal_channel_message"]
-
-        return UserFull_158(**kwargs)
+    TARGET_TYPE = UserFull_158
+    REMOVE_FIELDS = {
+        "stories_pinned_available", "blocked_my_stories_from", "wallpaper_overridden", "contact_require_premium",
+        "read_dates_private", "stories", "business_work_hours", "business_location", "business_greeting_message",
+        "business_away_message", "business_intro", "birthday", "personal_channel_id", "personal_channel_message",
+    }
 
 
-class UserFullDowngradeTo160(BaseDowngrader):
+class UserFullDowngradeTo160(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 160
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull_160:
-        kwargs = from_obj.to_dict()
-        del kwargs["blocked_my_stories_from"]
-        del kwargs["wallpaper_overridden"]
-        del kwargs["contact_require_premium"]
-        del kwargs["read_dates_private"]
-        del kwargs["business_work_hours"]
-        del kwargs["business_location"]
-        del kwargs["business_greeting_message"]
-        del kwargs["business_away_message"]
-        del kwargs["business_intro"]
-        del kwargs["birthday"]
-        del kwargs["personal_channel_id"]
-        del kwargs["personal_channel_message"]
-
-        return UserFull_160(**kwargs)
+    TARGET_TYPE = UserFull_160
+    REMOVE_FIELDS = {
+        "blocked_my_stories_from", "wallpaper_overridden", "contact_require_premium", "read_dates_private",
+        "business_work_hours", "business_location", "business_greeting_message", "business_away_message",
+        "business_intro", "birthday", "personal_channel_id", "personal_channel_message",
+    }
 
 
-class UserFullDowngradeTo164(BaseDowngrader):
+class UserFullDowngradeTo164(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 164
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull_164:
-        kwargs = from_obj.to_dict()
-        del kwargs["wallpaper_overridden"]
-        del kwargs["contact_require_premium"]
-        del kwargs["read_dates_private"]
-        del kwargs["business_work_hours"]
-        del kwargs["business_location"]
-        del kwargs["business_greeting_message"]
-        del kwargs["business_away_message"]
-        del kwargs["business_intro"]
-        del kwargs["birthday"]
-        del kwargs["personal_channel_id"]
-        del kwargs["personal_channel_message"]
-
-        return UserFull_164(**kwargs)
+    TARGET_TYPE = UserFull_164
+    REMOVE_FIELDS = {
+        "wallpaper_overridden", "contact_require_premium", "read_dates_private", "business_work_hours",
+        "business_location", "business_greeting_message", "business_away_message", "business_intro", "birthday",
+        "personal_channel_id", "personal_channel_message",
+    }
 
 
-class UserFullDowngradeTo176(BaseDowngrader):
+class UserFullDowngradeTo176(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 176
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull_176:
-        kwargs = from_obj.to_dict()
-        del kwargs["business_intro"]
-        del kwargs["birthday"]
-        del kwargs["personal_channel_id"]
-        del kwargs["personal_channel_message"]
-
-        return UserFull_176(**kwargs)
+    TARGET_TYPE = UserFull_176
+    REMOVE_FIELDS = {
+        "business_intro", "birthday", "personal_channel_id", "personal_channel_message",
+    }
 
 
-class UserFullDontDowngrade(BaseDowngrader):
+class UserFullDontDowngrade(AutoDowngrader):
     BASE_TYPE = UserFull
     TARGET_LAYER = 177
-
-    @classmethod
-    def downgrade(cls, from_obj: UserFull) -> UserFull:
-        return copy(from_obj)
+    TARGET_TYPE = UserFull
+    REMOVE_FIELDS = set()

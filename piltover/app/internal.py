@@ -4,7 +4,6 @@ from time import time
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
-from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.high_level import MessageHandler
 from piltover.server import Client

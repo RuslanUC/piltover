@@ -1,44 +1,27 @@
-from copy import copy
-
-from piltover.layer_converter.converters.base import BaseDowngrader
-from piltover.tl import PeerSettings, PeerSettings_136, MessageReplyHeader, MessageReplyHeader_136, \
-    MessageReplyHeader_166
+from piltover.layer_converter.converters.base import AutoDowngrader
+from piltover.tl import MessageReplyHeader, MessageReplyHeader_136, MessageReplyHeader_166
 
 
-class MessageReplyHeaderDowngradeTo136(BaseDowngrader):
+class MessageReplyHeaderDowngradeTo136(AutoDowngrader):
     BASE_TYPE = MessageReplyHeader
     TARGET_LAYER = 136
-
-    @classmethod
-    def downgrade(cls, from_obj: MessageReplyHeader) -> MessageReplyHeader_136:
-        kwargs = from_obj.to_dict()
-        del kwargs["forum_topic"]
-        del kwargs["quote"]
-        del kwargs["reply_from"]
-        del kwargs["reply_media"]
-        del kwargs["quote_text"]
-        del kwargs["quote_entities"]
-        del kwargs["quote_offset"]
-
-        return MessageReplyHeader_136(**kwargs)
+    TARGET_TYPE = MessageReplyHeader_136
+    REMOVE_FIELDS = {
+        "forum_topic", "quote", "reply_from", "reply_media", "quote_text", "quote_entities", "quote_offset"
+    }
 
 
-class MessageReplyHeaderDowngradeTo166(BaseDowngrader):
+class MessageReplyHeaderDowngradeTo166(AutoDowngrader):
     BASE_TYPE = MessageReplyHeader
     TARGET_LAYER = 166
-
-    @classmethod
-    def downgrade(cls, from_obj: MessageReplyHeader) -> MessageReplyHeader_166:
-        kwargs = from_obj.to_dict()
-        del kwargs["quote_offset"]
-
-        return MessageReplyHeader_166(**kwargs)
+    TARGET_TYPE = MessageReplyHeader_166
+    REMOVE_FIELDS = {
+        "quote_offset"
+    }
 
 
-class MessageReplyHeaderDontDowngrade(BaseDowngrader):
+class MessageReplyHeaderDontDowngrade(AutoDowngrader):
     BASE_TYPE = MessageReplyHeader
     TARGET_LAYER = 177
-
-    @classmethod
-    def downgrade(cls, from_obj: MessageReplyHeader) -> MessageReplyHeader:
-        return copy(from_obj)
+    TARGET_TYPE = MessageReplyHeader
+    REMOVE_FIELDS = set()

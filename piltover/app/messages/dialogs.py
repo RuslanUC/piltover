@@ -7,7 +7,6 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Dialog, Peer
 from piltover.db.models.message import Message
-from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
 from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer

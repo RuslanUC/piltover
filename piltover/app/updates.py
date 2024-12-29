@@ -5,7 +5,6 @@ from pytz import UTC
 
 from piltover.db.enums import UpdateType
 from piltover.db.models import User, Message, UserAuthorization, State, UpdateV2
-from piltover.enums import ReqHandlerFlags
 from piltover.high_level import Client, MessageHandler
 from piltover.tl import UpdateNewMessage, UpdateShortMessage
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136

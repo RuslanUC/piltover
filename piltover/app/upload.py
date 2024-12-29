@@ -5,7 +5,6 @@ import aiofiles
 from piltover.app import files_dir
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer
-from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation

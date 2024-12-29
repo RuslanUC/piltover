@@ -1,28 +1,18 @@
-from copy import copy
-
-from piltover.layer_converter.converters.base import BaseDowngrader
+from piltover.layer_converter.converters.base import AutoDowngrader
 from piltover.tl import PeerSettings, PeerSettings_136
 
 
-class PeerSettingsDowngradeTo136(BaseDowngrader):
+class PeerSettingsDowngradeTo136(AutoDowngrader):
     BASE_TYPE = PeerSettings
     TARGET_LAYER = 136
-
-    @classmethod
-    def downgrade(cls, from_obj: PeerSettings) -> PeerSettings_136:
-        kwargs = from_obj.to_dict()
-        del kwargs["business_bot_paused"]
-        del kwargs["business_bot_can_reply"]
-        del kwargs["business_bot_id"]
-        del kwargs["business_bot_manage_url"]
-
-        return PeerSettings_136(**kwargs)
+    TARGET_TYPE = PeerSettings_136
+    REMOVE_FIELDS = {
+        "business_bot_paused", "business_bot_can_reply", "business_bot_id", "business_bot_manage_url",
+    }
 
 
-class PeerSettingsDontDowngrade(BaseDowngrader):
+class PeerSettingsDontDowngrade(AutoDowngrader):
     BASE_TYPE = PeerSettings
     TARGET_LAYER = 177
-
-    @classmethod
-    def downgrade(cls, from_obj: PeerSettings) -> PeerSettings:
-        return copy(from_obj)
+    TARGET_TYPE = PeerSettings
+    REMOVE_FIELDS = set()
