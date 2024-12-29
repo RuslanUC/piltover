@@ -137,6 +137,8 @@ class Server:
 
 
 class Client:
+    __slots__ = ("server", "reader", "writer", "conn", "peername", "auth_data", "empty_session", "no_updates", "layer",)
+
     def __init__(self, server: Server, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.server: Server = server
 
@@ -245,7 +247,6 @@ class Client:
             if client_p != self.auth_data.p or client_q != self.auth_data.q:
                 raise Disconnection(404)
 
-            # TODO: check server_nonce in other places too
             if self.auth_data.server_nonce != req_dh_params.server_nonce:
                 raise Disconnection(404)
 
@@ -262,8 +263,7 @@ class Client:
                 old = True
             key_aes_encrypted = key_aes_encrypted.lstrip(b"\0")
 
-            # TODO: restart generation with dh_fail instead?
-            # assert key_aes_encrypted >= public.n, "key_aes_encrypted greater than RSA modulus, aborting..."
+            # TODO: assert key_aes_encrypted < public.n, "key_aes_encrypted greater than RSA modulus, aborting..."
 
             if old:
                 p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted[20:]))
@@ -278,12 +278,16 @@ class Client:
             assert isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTemp, PQInnerDataTempDc)), \
                 f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}"
 
+            if self.auth_data.server_nonce != p_q_inner_data.server_nonce:
+                raise Disconnection(404)
+
             self.auth_data.is_temp = isinstance(p_q_inner_data, (PQInnerDataTemp, PQInnerDataTempDc))
             self.auth_data.expires_in = max(cast(PQInnerDataTempDc, p_q_inner_data).expires_in, 86400) \
                 if self.auth_data.is_temp else 0
 
             new_nonce: bytes = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
             self.auth_data.new_nonce = new_nonce
+            # TODO: set server salt to server_nonce
 
             logger.info("Generating safe prime...")
             self.auth_data.dh_prime, g = gen_safe_prime(2048)
@@ -291,24 +295,21 @@ class Client:
             logger.info("Prime successfully generated")
 
             self.auth_data.a = int.from_bytes(secrets.token_bytes(256), "big")
-            g_a = pow(g, self.auth_data.a, self.auth_data.dh_prime).to_bytes(256, "big")
+            g_a = pow(g, self.auth_data.a, self.auth_data.dh_prime)
 
-            # https://core.telegram.org/mtproto/auth_key#dh-key-exchange-complete
-            # IMPORTANT: Apart from the conditions on the Diffie-Hellman
-            # prime dh_prime and generator g, both sides are to check
-            # that g, g_a and g_b are greater than 1 and less than dh_prime - 1.
-            # We recommend checking that g_a and g_b are between 2^{2048-64} and dh_prime - 2^{2048-64} as well.
-            # TODO
+            if g <= 1 or g >= self.auth_data.dh_prime - 1 \
+                    or g_a <= 1 or g_a >= self.auth_data.dh_prime - 1 \
+                    or g_a <= 2 ** (2048 - 64) or g_a >= self.auth_data.dh_prime - 2 ** (2048 - 64):
+                raise Disconnection(404)
 
             answer = ServerDHInnerData(
                 nonce=p_q_inner_data.nonce,
                 server_nonce=self.auth_data.server_nonce,
                 g=g,
                 dh_prime=self.auth_data.dh_prime.to_bytes(2048 // 8, "big", signed=False),
-                g_a=g_a,
+                g_a=g_a.to_bytes(256, "big"),
                 server_time=int(time.time()),
-            )
-            answer = answer.write()
+            ).write()
 
             self.auth_data.server_nonce_bytes = server_nonce_bytes = self.auth_data.server_nonce.to_bytes(
                 128 // 8, "little", signed=False
@@ -333,12 +334,15 @@ class Client:
 
             await self.send_unencrypted(ServerDHParamsOk(
                 nonce=p_q_inner_data.nonce,
-                server_nonce=p_q_inner_data.server_nonce,
+                server_nonce=self.auth_data.server_nonce,
                 encrypted_answer=encrypted_answer,
             ))
         elif isinstance(obj, SetClientDHParams):
-            if self.auth_data is None or self.auth_data.tmp_aes_key is None:
+            if self.auth_data is None \
+                    or self.auth_data.tmp_aes_key is None \
+                    or self.auth_data.server_nonce != obj.server_nonce:
                 raise Disconnection(404)
+
             set_client_DH_params = obj
             decrypted_params = tgcrypto.ige256_decrypt(
                 set_client_DH_params.encrypted_data,
@@ -348,6 +352,9 @@ class Client:
             client_DH_inner_data = ClientDHInnerData.read(BytesIO(decrypted_params[20:]))
             assert hashlib.sha1(client_DH_inner_data.write()).digest() == decrypted_params[:20], \
                 "sha1 hash mismatch for client_DH_inner_data"
+
+            if self.auth_data.server_nonce != client_DH_inner_data.server_nonce:
+                raise Disconnection(404)
 
             self.auth_data.auth_key = auth_key = pow(
                 int.from_bytes(client_DH_inner_data.g_b, "big"),

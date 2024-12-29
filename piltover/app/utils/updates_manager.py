@@ -1,6 +1,7 @@
 from time import time
 from typing import cast
 
+from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx, RequestContext
@@ -9,7 +10,7 @@ from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Pee
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
-    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages
+    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
@@ -314,3 +315,30 @@ class UpdatesManager(metaclass=SingletonMeta):
 
         await UpdateV2.bulk_create(updates_to_create)
         return result_update
+
+    @staticmethod
+    async def update_user(user: User) -> None:
+        updates_to_create = []
+
+        peer: Peer
+        async for peer in Peer.filter(Q(user=user) | Q(type=PeerType.SELF)).select_related("owner"):
+            pts = await State.add_pts(peer.owner, 1)
+
+            updates_to_create.append(
+                UpdateV2(
+                    user=peer.owner,
+                    update_type=UpdateType.USER_UPDATE,
+                    pts=pts,
+                    related_id=user.id,
+                )
+            )
+
+            await SessionManager().send(Updates(
+                updates=[UpdateUser(user_id=user.id)],
+                users=[await user.to_tl(peer.owner)],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            ), peer.owner.id)
+
+        await UpdateV2.bulk_create(updates_to_create)

@@ -1,3 +1,4 @@
+from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.models import User, UserPhoto, Peer
 from piltover.exceptions import ErrorRpc
@@ -35,8 +36,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     await UserPhoto.filter(user=user).update(current=False)
     photo = await UserPhoto.create(current=True, file=file, user=user)
 
-    #update = UpdateUser(user_id=user.id)
-    #await UpdatesManager().write_update(user, update)
+    await UpdatesManager.update_user(user)
 
     return PhotosPhoto(
         photo=await photo.to_tl(user),
@@ -57,6 +57,9 @@ async def delete_photos(request: DeletePhotos, user: User):
         await photo.delete()
         deleted.append(photo.id)
 
+    if deleted:
+        await UpdatesManager.update_user(user)
+
     return deleted
 
 
@@ -69,6 +72,8 @@ async def update_profile_photo(request: UpdateProfilePhoto, user: User):
         await UserPhoto.filter(user=user).update(current=False)
         photo.current = True
         await photo.save(update_fields=["current"])
+
+    await UpdatesManager.update_user(user)
 
     return PhotosPhoto(
         photo=await photo.to_tl(user) if photo else PhotoEmpty(id=0),

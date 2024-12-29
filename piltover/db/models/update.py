@@ -10,11 +10,11 @@ from piltover.db.models import Dialog
 from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
-    UpdatePinnedMessages
+    UpdatePinnedMessages, UpdateUser
 from piltover.tl.types import User as TLUser
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned | \
-              UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages
+              UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser
 
 
 class UpdateV2(Model):
@@ -137,4 +137,16 @@ class UpdateV2(Model):
                 messages=[message.id],
                 pts=self.pts,
                 pts_count=1,
+            )
+
+        if self.update_type is UpdateType.USER_UPDATE:
+            if (peer := await models.Peer.from_user_id(current_user, self.related_id)) is None \
+                    or (peer_user := peer.peer_user(current_user)) is None:
+                return
+
+            if users is not None and peer_user.id not in users:
+                users[peer_user.id] = peer_user
+
+            return UpdateUser(
+                user_id=peer_user.id,
             )

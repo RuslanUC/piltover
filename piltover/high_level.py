@@ -55,6 +55,8 @@ class RequestHandler:
 
 
 class MessageHandler:
+    __slots__ = ("name", "registered", "request_handlers",)
+
     def __init__(self, name: str = None):
         self.name = name
         self.registered = False
