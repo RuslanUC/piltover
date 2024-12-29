@@ -25,12 +25,18 @@ class Message(Model):
     date: datetime = fields.DatetimeField(default=datetime.now)
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
+    random_id: int = fields.BigIntField(null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     media: models.MessageMedia = fields.ForeignKeyField("models.MessageMedia", null=True, default=None)
-    reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None,
-                                                      on_delete=fields.SET_NULL)
+    reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
+    fwd_header: models.MessageFwdHeader = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
+
+    class Meta:
+        unique_together = (
+            ("peer", "random_id"),
+        )
 
     def utime(self) -> int:
         return int(self.date.timestamp())
@@ -40,9 +46,8 @@ class Message(Model):
         return await Message.get_or_none(id=id_, peer=peer, type=MessageType.REGULAR).select_related("peer", "author")
 
     async def _make_reply_to_header(self) -> MessageReplyHeader:
-        if not isinstance(self.reply_to, (models.Message, NoneType)):
-            await self.fetch_related("reply_to")
-
+        if self.reply_to is not None:
+            self.reply_to = await self.reply_to
         return MessageReplyHeader(reply_to_msg_id=self.reply_to.id) if self.reply_to is not None else None
 
     async def to_tl(self, current_user: models.User, **kwargs) -> TLMessage | MessageService:
@@ -67,6 +72,7 @@ class Message(Model):
                 action=MESSAGE_TYPE_TO_SERVICE_ACTION[self.type],
                 out=current_user == self.author,
                 reply_to=reply_to,
+                **base_defaults,
             )
 
         regular_defaults = {
@@ -85,13 +91,16 @@ class Message(Model):
             if self.media.type == MediaType.DOCUMENT:
                 tl_media = MessageMediaDocument(
                     spoiler=self.media.spoiler,
-                    document=await self.media.file.to_tl_document(current_user)
+                    document=await self.media.file.to_tl_document(current_user),
                 )
             elif self.media.type == MediaType.PHOTO:
                 tl_media = MessageMediaPhoto(
                     spoiler=self.media.spoiler,
-                    photo=await self.media.file.to_tl_photo(current_user)
+                    photo=await self.media.file.to_tl_photo(current_user),
                 )
+
+        if self.fwd_header is not None:
+            self.fwd_header = await self.fwd_header
 
         return TLMessage(
             id=self.id,
@@ -103,6 +112,7 @@ class Message(Model):
             media=tl_media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
             reply_to=reply_to,
+            fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
             **base_defaults,
             **regular_defaults,
         )

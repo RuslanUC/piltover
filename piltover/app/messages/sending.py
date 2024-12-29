@@ -3,15 +3,15 @@ from datetime import datetime, UTC
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
-from piltover.db.enums import MediaType, MessageType
-from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File
+from piltover.db.enums import MediaType, MessageType, PeerType
+from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File, MessageFwdHeader
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
-    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage
+    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148
 from piltover.tl.types.messages import AffectedMessages
 from piltover.utils.snowflake import Snowflake
 
@@ -21,8 +21,12 @@ InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPh
 
 
 async def _send_message_internal(
-        user: User, peer: Peer, reply_to_message_id: int | None, clear_draft: bool, author: User, **message_kwargs
+        user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
+        **message_kwargs
 ) -> Updates:
+    if random_id is not None and await Message.filter(peer=peer, random_id=random_id).exists():
+        raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
+
     reply = await Message.get_or_none(id=reply_to_message_id, peer=peer) if reply_to_message_id else None
 
     peers = [peer]
@@ -75,7 +79,7 @@ async def send_message(request: SendMessage, user: User):
 
     reply_to_message_id = _resolve_reply_id(request)
     return await _send_message_internal(
-        user, peer, reply_to_message_id, request.clear_draft,
+        user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message,
     )
 
@@ -105,7 +109,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
     if not request.silent and not request.pm_oneside:
         updates = await _send_message_internal(
-            user, peer, message.id, False, author=user, type=MessageType.SERVICE_PIN_MESSAGE
+            user, peer, None, message.id, False, author=user, type=MessageType.SERVICE_PIN_MESSAGE
         )
         result.updates.extend(updates.updates)
 
@@ -221,7 +225,7 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
     reply_to_message_id = _resolve_reply_id(request)
 
     return await _send_message_internal(
-        user, peer, reply_to_message_id, request.clear_draft,
+        user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, media=media,
     )
 
@@ -239,3 +243,69 @@ async def save_draft(request: SaveDraft, user: User):
 
     await UpdatesManager.update_draft(user, peer, draft)
     return True
+
+
+@handler.on_request(ForwardMessages_148)
+@handler.on_request(ForwardMessages)
+async def forward_messages(request: ForwardMessages | ForwardMessages_148, user: User) -> Updates:
+    if (from_peer := await Peer.from_input_peer(user, request.from_peer)) is None \
+            or (to_peer := await Peer.from_input_peer(user, request.to_peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if not request.id:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
+    if len(request.id) != len(request.random_id):
+        raise ErrorRpc(error_code=400, error_message="RANDOM_ID_INVALID")
+    if await Message.filter(peer=to_peer, id__in=request.random_id[:100]).exists():
+        raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
+
+    random_ids = dict(zip(request.id[:100], request.random_id[:100]))
+    messages = await Message.filter(
+        peer=from_peer, id__in=request.id[:100], type=MessageType.REGULAR
+    ).select_related("author")
+
+    peers = [to_peer]
+    peers.extend(await to_peer.get_opposite())
+    result: dict[Peer, Message] = {}
+
+    for message in messages:
+        fwd_header = None
+        if not request.drop_author:
+            if message.fwd_header is not None:
+                message.fwd_header = await message.fwd_header
+                if message.fwd_header is not None and message.fwd_header.from_user is not None:
+                    message.fwd_header.from_user = await message.fwd_header.from_user
+
+            fwd_header = await MessageFwdHeader.create(
+                from_user=message.fwd_header.from_user if message.fwd_header else message.author,
+                from_name=message.fwd_header.from_name if message.fwd_header else message.author.first_name,
+                date=message.fwd_header.date if message.fwd_header else message.date,
+
+                saved_peer=from_peer if to_peer.type == PeerType.SELF else None,
+                saved_id=message.id if to_peer.type == PeerType.SELF else None,
+                saved_from=message.author if to_peer.type == PeerType.SELF else None,
+                saved_name=message.author.first_name if to_peer.type == PeerType.SELF else None,
+                saved_date=message.date if to_peer.type == PeerType.SELF else None,
+            )
+
+        internal_id = Snowflake.make_id()
+        for opp_peer in peers:
+            # TODO: replies
+            # TODO: drop_media_captions
+
+            await Dialog.get_or_create(peer=opp_peer)
+            result[opp_peer] = await Message.create(
+                message=message.message,
+                media=message.media,
+                internal_id=internal_id,
+                peer=opp_peer,
+                author=user,
+                fwd_header=fwd_header,
+                random_id=random_ids.get(message.id) if opp_peer == to_peer else None,
+            )
+
+    if (upd := await UpdatesManager.send_message(user, result)) is None:
+        assert False, "unknown chat type ?"
+
+    return upd
+

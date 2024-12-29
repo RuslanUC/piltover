@@ -20,3 +20,4 @@ from .user_password import UserPassword
 from .user_photo import UserPhoto
 from .peer import Peer
 from .web_authorization import WebAuthorization
+from .message_fwd_header import MessageFwdHeader

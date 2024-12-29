@@ -52,8 +52,8 @@ class UpdatesManager(metaclass=SingletonMeta):
                     seq=0,
                 )
 
-                if hasattr(ctx.obj, "random_id"):
-                    updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=ctx.obj.random_id))
+                if message.random_id:
+                    updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=message.random_id))
 
                 # TODO: also create this update if peer.type is not self
                 read_history_inbox_args = {

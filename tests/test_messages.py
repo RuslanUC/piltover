@@ -83,3 +83,12 @@ async def test_pin_message_one_side() -> None:
         assert message.text == "test 123"
         service_message = await message.pin(both_sides=False)
         assert service_message is None
+
+
+@pytest.mark.asyncio
+async def test_forward_message() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        message = await client.send_message("me", text="test 123")
+        assert message.text == "test 123"
+        fwd_message = await message.forward("me")
+        assert fwd_message is not None
