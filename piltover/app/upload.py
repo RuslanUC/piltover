@@ -62,7 +62,7 @@ async def get_file(request: GetFile, user: User):
     if isinstance(request.location, InputPeerPhotoFileLocation):
         if (peer := await Peer.from_input_peer(user, request.location.peer)) is None:
             raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-        q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user": peer.user}
+        q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user": peer.peer_user(user)}
     else:
         q = {"file__id": request.location.id}
     access = await FileAccess.get_or_none(user=user, **q).select_related("file")

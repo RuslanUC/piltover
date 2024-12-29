@@ -1,10 +1,9 @@
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.models import User, UserPhoto, Peer
-from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
-from piltover.tl import InputPhoto, Long, Vector
-from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos
+from piltover.tl import InputPhoto, Long, Vector, InputPhotoEmpty, PhotoEmpty
+from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
 
 handler = MessageHandler("photos")
@@ -59,3 +58,19 @@ async def delete_photos(request: DeletePhotos, user: User):
         deleted.append(photo.id)
 
     return deleted
+
+
+@handler.on_request(UpdateProfilePhoto)
+async def update_profile_photo(request: UpdateProfilePhoto, user: User):
+    photo = None
+    if isinstance(request.id, InputPhotoEmpty):
+        await UserPhoto.filter(user=user).delete()
+    elif (photo := await UserPhoto.get_or_none(id=request.id.id, user=user)) is not None:
+        await UserPhoto.filter(user=user).update(current=False)
+        photo.current = True
+        await photo.save(update_fields=["current"])
+
+    return PhotosPhoto(
+        photo=await photo.to_tl(user) if photo else PhotoEmpty(id=0),
+        users=[],  # [await user.to_tl(user)],
+    )
