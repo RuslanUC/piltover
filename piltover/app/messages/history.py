@@ -140,9 +140,12 @@ async def read_history(request: ReadHistory, user: User):
     message = await Message.filter(
         id__lte=min(request.max_id, ex.last_message_id if ex is not None else request.max_id), peer=peer,
     ).order_by("-id").limit(1)
-    messages_count = await Message.filter(
-        id__gt=ex.last_message_id if ex is not None else 0, id__lt=message[0].id, peer=peer,
-    ).count()
+    if message:
+        messages_count = await Message.filter(
+            id__gt=ex.last_message_id if ex is not None else 0, id__lt=message[0].id, peer=peer,
+        ).count()
+    else:
+        messages_count = 0
 
     # TODO: save to database
     return AffectedMessages(

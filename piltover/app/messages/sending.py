@@ -24,7 +24,7 @@ async def _send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         **message_kwargs
 ) -> Updates:
-    if random_id is not None and await Message.filter(peer=peer, random_id=random_id).exists():
+    if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
     reply = await Message.get_or_none(id=reply_to_message_id, peer=peer) if reply_to_message_id else None
@@ -35,6 +35,7 @@ async def _send_message_internal(
 
     internal_id = Snowflake.make_id()
     for to_peer in peers:
+        await to_peer.fetch_related("owner", "user")
         await Dialog.get_or_create(peer=to_peer)
         messages[to_peer] = await Message.create(
             internal_id=internal_id,
@@ -44,11 +45,6 @@ async def _send_message_internal(
             **message_kwargs
         )
 
-    # TODO: rewrite when pypika fixes delete with join for mysql
-    # Not doing await MessageDraft.filter(...).delete()
-    # Because pypika generates sql for MySql/MariaDB like "DELETE FROM `messagedraft` LEFT OUTER JOIN"
-    # But `messagedraft` must also be placed between "DELETE" and "FROM", like this:
-    # "DELETE `messagedraft` FROM `messagedraft` LEFT OUTER JOIN"
     if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
         await draft.delete()
         await UpdatesManager.update_draft(user, peer, None)
@@ -309,7 +305,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
                 peer=opp_peer,
                 author=user,
                 fwd_header=fwd_header,
-                random_id=random_ids.get(message.id) if opp_peer == to_peer else None,
+                random_id=str(random_ids.get(message.id)) if opp_peer == to_peer and message.id in random_ids else None,
             )
 
     if (upd := await UpdatesManager.send_message(user, result)) is None:

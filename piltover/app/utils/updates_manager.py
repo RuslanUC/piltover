@@ -54,7 +54,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                 )
 
                 if message.random_id:
-                    updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=message.random_id))
+                    updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
 
                 # TODO: also create this update if peer.type is not self
                 read_history_inbox_args = {
@@ -81,6 +81,9 @@ class UpdatesManager(metaclass=SingletonMeta):
                     seq=0,
                 )
                 await SessionManager().send(updates, peer.owner.id)
+
+                if is_current_user:
+                    result = updates
             elif peer.type is PeerType.USER:
                 msg_tl = await message.to_tl(peer.owner)
 

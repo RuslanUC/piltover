@@ -10,7 +10,7 @@ from piltover.db.enums import MediaType, MessageType
 from piltover.db.models._utils import Model
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
     MessageService
-from piltover.tl.types import Message as TLMessage, MessageActionPinMessage
+from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser
 
 MESSAGE_TYPE_TO_SERVICE_ACTION = {
     MessageType.SERVICE_PIN_MESSAGE: MessageActionPinMessage(),
@@ -25,13 +25,15 @@ class Message(Model):
     date: datetime = fields.DatetimeField(default=datetime.now)
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
-    random_id: int = fields.BigIntField(null=True, default=None)
+    random_id: str = fields.CharField(max_length=24, null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     media: models.MessageMedia = fields.ForeignKeyField("models.MessageMedia", null=True, default=None)
     reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
     fwd_header: models.MessageFwdHeader = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
+
+    author_id: int
 
     class Meta:
         unique_together = (
@@ -113,6 +115,7 @@ class Message(Model):
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
             reply_to=reply_to,
             fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
+            from_id=PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0),
             **base_defaults,
             **regular_defaults,
         )

@@ -56,7 +56,8 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
         if peer.id not in processed_peer_ids:
             processed_peer_ids.add(peer.id)
             for other_peer in await peer.get_opposite():
-                if other_peer.user.id not in users:
+                if other_peer.user_id is not None and other_peer.user_id not in users:
+                    await other_peer.fetch_related("user")
                     users[other_peer.user.id] = await other_peer.user.to_tl(user)
 
     new_updates = await UpdateV2.filter(user=user, pts__gt=request.pts).order_by("pts")
