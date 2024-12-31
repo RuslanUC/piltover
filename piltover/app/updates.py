@@ -3,7 +3,7 @@ from time import time
 
 from pytz import UTC
 
-from piltover.db.enums import UpdateType
+from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models import User, Message, UserAuthorization, State, UpdateV2
 from piltover.high_level import Client, MessageHandler
 from piltover.tl import UpdateNewMessage, UpdateShortMessage
@@ -45,6 +45,7 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
     processed_peer_ids = set()
     other_updates = []
     users = {}
+    chats = {}
 
     for message in new:
         peer = message.peer
@@ -52,6 +53,9 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
         new_messages[message.id] = await message.to_tl(user)
         if message.author.id not in users:
             users[message.author.id] = await message.author.to_tl(user)
+        if message.peer.type is PeerType.CHAT and message.peer.chat_id not in chats:
+            await message.peer.fetch_related("chat")
+            chats[message.peer.chat.id] = await message.peer.chat.to_tl(user)
 
         if peer.id not in processed_peer_ids:
             processed_peer_ids.add(peer.id)
@@ -65,7 +69,7 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
         if update.update_type == UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
             continue
 
-        other_updates.append(await update.to_tl(user, users))
+        other_updates.append(await update.to_tl(user, users, chats))
 
     if user.id not in users:
         users[user.id] = await user.to_tl(user)
@@ -75,7 +79,7 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
         new_messages=list(new_messages.values()),
         new_encrypted_messages=[],
         other_updates=other_updates,
-        chats=[],
+        chats=list(chats.values()),
         users=list(users.values()),
         state=await get_state_internal(client, user),
     )

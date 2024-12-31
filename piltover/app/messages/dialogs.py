@@ -9,7 +9,7 @@ from piltover.db.models import User, Dialog, Peer
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer
+from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer, InputPeerChat
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin
 from piltover.tl.types.messages import PeerDialogs, Dialogs
@@ -20,6 +20,8 @@ handler = MessageHandler("messages.dialogs")
 async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
     messages = []
     users = {}
+    chats = {}
+
     for dialog in dialogs:
         message = await Message.filter(peer=dialog.peer).select_related("author", "peer").order_by("-id").first()
         if message is not None:
@@ -29,11 +31,14 @@ async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
 
         if dialog.peer.peer_user(user) is not None and dialog.peer.peer_user(user).id not in users:
             users[dialog.peer.user.id] = await dialog.peer.peer_user(user).to_tl(user)
+        if dialog.peer.type is PeerType.CHAT and dialog.peer.chat_id not in chats:
+            #await dialog.peer.fetch_related("chat")
+            chats[dialog.peer.chat.id] = await dialog.peer.chat.to_tl(user)
 
     return {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
         "messages": messages,
-        "chats": [],
+        "chats": list(chats.values()),
         "users": list(users.values()),
     }
 
@@ -48,28 +53,29 @@ async def get_dialogs_internal(
     if offset_date:
         query &= Q(peer__messages__date__gt=datetime.fromtimestamp(offset_date, UTC))
 
-    if peers:
-        peers_query = None
-        for peer in peers:
-            if isinstance(peer.peer, InputPeerSelf):
-                add_to_query = Q(peer__type=PeerType.SELF, peer__user=None)
-            elif isinstance(peer.peer, InputPeerUser):
-                add_to_query = Q(
-                    peer__type=PeerType.USER, peer__user__id=peer.peer.user_id, peer__access_hash=peer.peer.access_hash,
-                )
-            else:
-                continue
+    peers_query = None
+    for peer in peers:
+        if isinstance(peer.peer, InputPeerSelf):
+            add_to_query = Q(peer__type=PeerType.SELF, peer__user=None)
+        elif isinstance(peer.peer, InputPeerUser):
+            add_to_query = Q(
+                peer__type=PeerType.USER, peer__user__id=peer.peer.user_id, peer__access_hash=peer.peer.access_hash,
+            )
+        elif isinstance(peer.peer, InputPeerChat):
+            add_to_query = Q(peer__type=PeerType.CHAT, peer__chat__id=peer.peer.chat_id)
+        else:
+            continue
 
-            peers_query = add_to_query if peers_query is None else peers_query | add_to_query
+        peers_query = add_to_query if peers_query is None else peers_query | add_to_query
 
-        if peers_query is not None:
-            query &= peers_query
+    if peers_query is not None:
+        query &= peers_query
 
     if limit > 100 or limit < 1:
         limit = 100
 
     dialogs = await Dialog.filter(query).select_related(
-        "peer", "peer__owner", "peer__user"
+        "peer", "peer__owner", "peer__user", "peer__chat"
     ).order_by("-peer__messages__date").limit(limit).all()
 
     return await format_dialogs(user, dialogs)
@@ -93,7 +99,7 @@ async def get_peer_dialogs(client: Client, request: GetPeerDialogs, user: User):
 @handler.on_request(GetPinnedDialogs)
 async def get_pinned_dialogs(client: Client, user: User):
     dialogs = await Dialog.filter(peer__owner=user, pinned_index__not_isnull=True)\
-        .select_related("peer", "peer__user").order_by("-pinned_index")
+        .select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
 
     return PeerDialogs(
         **(await format_dialogs(user, dialogs)),

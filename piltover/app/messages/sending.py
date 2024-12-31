@@ -20,7 +20,7 @@ handler = MessageHandler("messages.sending")
 InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument
 
 
-async def _send_message_internal(
+async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         **message_kwargs
 ) -> Updates:
@@ -74,7 +74,7 @@ async def send_message(request: SendMessage, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
     reply_to_message_id = _resolve_reply_id(request)
-    return await _send_message_internal(
+    return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message,
     )
@@ -104,7 +104,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     result = await UpdatesManager.pin_message(user, messages)
 
     if not request.silent and not request.pm_oneside:
-        updates = await _send_message_internal(
+        updates = await send_message_internal(
             user, peer, None, message.id, False, author=user, type=MessageType.SERVICE_PIN_MESSAGE
         )
         result.updates.extend(updates.updates)
@@ -220,7 +220,7 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
     media = await _process_media(user, request.media)
     reply_to_message_id = _resolve_reply_id(request)
 
-    return await _send_message_internal(
+    return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, media=media,
     )
@@ -260,7 +260,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
     if len(request.id) != len(request.random_id):
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_INVALID")
-    if await Message.filter(peer=to_peer, id__in=request.random_id[:100]).exists():
+    if await Message.filter(peer=to_peer, id__in=list(map(str, request.random_id[:100]))).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
     random_ids = dict(zip(request.id[:100], request.random_id[:100]))

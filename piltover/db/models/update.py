@@ -10,11 +10,11 @@ from piltover.db.models import Dialog
 from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
-    UpdatePinnedMessages, UpdateUser
-from piltover.tl.types import User as TLUser
+    UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator
+from piltover.tl.types import User as TLUser, Chat as TLChat
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned | \
-              UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser
+              UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants
 
 
 class UpdateV2(Model):
@@ -29,7 +29,10 @@ class UpdateV2(Model):
     related_ids: list[int] = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User")
 
-    async def to_tl(self, current_user: models.User, users: dict[int, TLUser] | None = None) -> UpdateTypes | None:
+    async def to_tl(
+            self, current_user: models.User, users: dict[int, TLUser] | None = None,
+            chats: dict[int, TLChat] | None = None,
+    ) -> UpdateTypes | None:
         if self.update_type == UpdateType.MESSAGE_DELETE:
             return UpdateDeleteMessages(
                 messages=self.related_ids,
@@ -43,6 +46,9 @@ class UpdateV2(Model):
 
             if users is not None and message.author.id not in users:
                 users[message.author.id] = await message.author.to_tl(current_user)
+            if chats is not None and message.peer.type is PeerType.CHAT and message.peer.chat_id not in chats:
+                await message.peer.fetch_related("chat")
+                chats[message.peer.chat.id] = await message.peer.chat.to_tl(current_user)
 
             return UpdateEditMessage(
                 message=await message.to_tl(current_user),
@@ -107,6 +113,9 @@ class UpdateV2(Model):
 
             if users is not None and peer.user is not None and peer.user.id not in users:
                 users[peer.user.id] = peer.user
+            if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
+                await peer.fetch_related("chat")
+                chats[peer.chat.id] = await peer.chat.to_tl(current_user)
 
             draft = await models.MessageDraft.get_or_none(dialog__peer=peer)
             if isinstance(draft, models.MessageDraft):
@@ -130,6 +139,9 @@ class UpdateV2(Model):
                 users[message.peer.user.id] = message.peer.user
             if users is not None and message.author.id not in users:
                 users[message.author.id] = message.author
+            if chats is not None and message.peer.type is PeerType.CHAT and message.peer.chat_id not in chats:
+                await message.peer.fetch_related("chat")
+                chats[message.peer.chat.id] = await message.peer.chat.to_tl(current_user)
 
             return UpdatePinnedMessages(
                 pinned=message.pinned,
@@ -149,4 +161,24 @@ class UpdateV2(Model):
 
             return UpdateUser(
                 user_id=peer_user.id,
+            )
+
+        if self.update_type is UpdateType.CHAT_CREATE:
+            if (peer := await models.Peer.from_chat_id(current_user, self.related_id)) is None:
+                return
+
+            await peer.chat.fetch_related("owner")
+            if peer.chat.creator.id not in users:
+                users[peer.chat.creator.id] = peer.chat.creator
+            if chats is not None and peer.chat_id not in chats:
+                chats[peer.chat.id] = await peer.chat.to_tl(current_user)
+
+            return UpdateChatParticipants(
+                participants=ChatParticipants(
+                    chat_id=peer.chat.creator.id,
+                    participants=[
+                        ChatParticipantCreator(user_id=peer.chat.creator.id)
+                    ],
+                    version=1,
+                ),
             )

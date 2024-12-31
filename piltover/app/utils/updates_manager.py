@@ -6,11 +6,12 @@ from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import UpdateType, PeerType
-from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog
+from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
-    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser
+    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
+    ChatParticipantCreator
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
@@ -32,6 +33,11 @@ class UpdatesManager(metaclass=SingletonMeta):
             is_current_user = peer.owner == user
 
             if peer.type is PeerType.SELF and (not has_media or is_current_user):
+                chats = []
+                if message.peer.type is PeerType.CHAT:
+                    await message.peer.fetch_related("chat")
+                    chats.append(await message.peer.chat.to_tl(peer.owner))
+
                 updates = Updates(
                     updates=[
                         UpdateNewMessage(
@@ -48,7 +54,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                         )
                     ],
                     users=[await user.to_tl(user)],
-                    chats=[],
+                    chats=chats,
                     date=int(time()),
                     seq=0,
                 )
@@ -69,6 +75,11 @@ class UpdatesManager(metaclass=SingletonMeta):
                 if is_current_user:
                     result = updates
             elif has_media:
+                chats = []
+                if message.peer.type is PeerType.CHAT:
+                    await message.peer.fetch_related("chat")
+                    chats.append(await message.peer.chat.to_tl(peer.owner))
+
                 updates = Updates(
                     updates=[UpdateNewMessage(
                         message=await message.to_tl(peer.owner),
@@ -76,19 +87,21 @@ class UpdatesManager(metaclass=SingletonMeta):
                         pts_count=1,
                     )],
                     users=[await upd_peer.user.to_tl(peer.owner) for upd_peer in messages.keys()],
-                    chats=[],
+                    chats=chats,
                     date=message.utime(),
                     seq=0,
                 )
-                await SessionManager().send(updates, peer.owner.id)
-
                 if is_current_user:
+                    if message.random_id:
+                        updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
                     result = updates
+
+                await SessionManager().send(updates, peer.owner.id)
             elif peer.type is PeerType.USER:
                 msg_tl = await message.to_tl(peer.owner)
 
                 update = UpdateShortMessage(
-                    out=True,
+                    out=message.author == peer.owner,
                     id=message.id,
                     user_id=peer.user_id,
                     message=message.message,
@@ -177,6 +190,11 @@ class UpdatesManager(metaclass=SingletonMeta):
                 )
             )
 
+            chats = []
+            if message.peer.type is PeerType.CHAT:
+                await message.peer.fetch_related("chat")
+                chats.append(await message.peer.chat.to_tl(peer.owner))
+
             update = Updates(
                 updates=[
                     UpdateEditMessage(
@@ -186,7 +204,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                     )
                 ],
                 users=[await message.author.to_tl(peer.owner)],
-                chats=[],
+                chats=chats,
                 date=int(time()),
                 seq=0,
             )
@@ -345,3 +363,45 @@ class UpdatesManager(metaclass=SingletonMeta):
             ), peer.owner.id)
 
         await UpdateV2.bulk_create(updates_to_create)
+
+    @staticmethod
+    async def create_chat(user: User, chat: Chat, peers: list[Peer]) -> Updates:
+        updates_to_create = []
+        result_update = None
+
+        for peer in peers:
+            pts = await State.add_pts(peer.owner, 1)
+
+            updates_to_create.append(
+                UpdateV2(
+                    user=peer.owner,
+                    update_type=UpdateType.CHAT_CREATE,
+                    pts=pts,
+                    related_id=chat.id,
+                )
+            )
+
+            updates = Updates(
+                updates=[
+                    UpdateChatParticipants(
+                        participants=ChatParticipants(
+                            chat_id=chat.id,
+                            participants=[
+                                ChatParticipantCreator(user_id=user.id)
+                            ],
+                            version=1,
+                        ),
+                    ),
+                ],
+                users=[await user.to_tl(peer.owner)],
+                chats=[await chat.to_tl(peer.owner)],
+                date=int(time()),
+                seq=0,
+            )
+
+            await SessionManager().send(updates, peer.owner.id)
+            if peer.owner == user:
+                result_update = result_update
+
+        await UpdateV2.bulk_create(updates_to_create)
+        return result_update

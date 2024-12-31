@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from types import NoneType
+from typing import Callable, Awaitable
 
 from tortoise import fields
 
@@ -9,11 +10,25 @@ from piltover.db import models
 from piltover.db.enums import MediaType, MessageType
 from piltover.db.models._utils import Model
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
-    MessageService
-from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser
+    MessageService, TLObject
+from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate
 
-MESSAGE_TYPE_TO_SERVICE_ACTION = {
-    MessageType.SERVICE_PIN_MESSAGE: MessageActionPinMessage(),
+
+async def _service_pin_message(_: Message) -> MessageActionPinMessage:
+    return MessageActionPinMessage()
+
+
+async def _service_create_chat(message: Message) -> MessageActionChatCreate:
+    await message.peer.fetch_related("chat")
+    return MessageActionChatCreate(
+        title=message.peer.chat.name,
+        users=[message.peer.chat.creator_id],
+    )
+
+
+MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message], Awaitable[...]]] = {
+    MessageType.SERVICE_PIN_MESSAGE: _service_pin_message,
+    MessageType.SERVICE_CHAT_CREATE: _service_create_chat,
 }
 
 
@@ -54,7 +69,6 @@ class Message(Model):
 
     async def to_tl(self, current_user: models.User, **kwargs) -> TLMessage | MessageService:
         # TODO: add some "version" field and save tl message in some cache with key f"{self.id}:{current_user.id}:{version}"
-        # TODO: from_id
 
         base_defaults = {
             "mentioned": False,
@@ -64,6 +78,7 @@ class Message(Model):
             "legacy": False,
         }
 
+        from_id = PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0)
         reply_to = await self._make_reply_to_header()
 
         if self.type is not MessageType.REGULAR:
@@ -71,9 +86,10 @@ class Message(Model):
                 id=self.id,
                 peer_id=self.peer.to_tl(),
                 date=self.utime(),
-                action=MESSAGE_TYPE_TO_SERVICE_ACTION[self.type],
+                action=await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self),
                 out=current_user == self.author,
                 reply_to=reply_to,
+                from_id=from_id,
                 **base_defaults,
             )
 
@@ -115,7 +131,7 @@ class Message(Model):
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
             reply_to=reply_to,
             fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
-            from_id=PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0),
+            from_id=from_id,
             **base_defaults,
             **regular_defaults,
         )

@@ -58,13 +58,16 @@ class UpdateType(IntEnum):
     DIALOG_PIN_REORDER = 5
     MESSAGE_PIN_UPDATE = 6
     USER_UPDATE = 7
+    CHAT_CREATE = 8
 
 
 class PeerType(IntEnum):
     SELF = 0
     USER = 1
+    CHAT = 2
 
 
 class MessageType(IntEnum):
     REGULAR = 0
     SERVICE_PIN_MESSAGE = 1
+    SERVICE_CHAT_CREATE = 2
