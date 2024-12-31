@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from asyncio import StreamReader, StreamWriter
 from inspect import getfullargspec
-from typing import Awaitable, Callable, Any
+from typing import Awaitable, Callable, Any, NoReturn
 
 from loguru import logger
 
-from piltover.context import request_ctx
+from piltover.context import RequestContext
 from piltover.db.models import UserAuthorization, User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -31,7 +31,7 @@ HandlerFunc = (Callable[[], HandlerResult] |
 class RequestHandler:
     __slots__ = ("func", "flags", "has_client_arg", "has_request_arg", "has_user_arg",)
 
-    def __init__(self, func: HandlerFunc, flags: int):
+    def __init__(self, func: HandlerFunc, flags: int) -> NoReturn:
         self.func = func
         self.flags = flags
         func_args = set(getfullargspec(func).args)
@@ -57,7 +57,7 @@ class RequestHandler:
 class MessageHandler:
     __slots__ = ("name", "registered", "request_handlers",)
 
-    def __init__(self, name: str = None):
+    def __init__(self, name: str = None) -> NoReturn:
         self.name = name
         self.registered = False
         self.request_handlers: dict[int, RequestHandler] = {}
@@ -71,7 +71,7 @@ class MessageHandler:
 
         return decorator
 
-    def register_handler(self, handler: MessageHandler, clear: bool=True) -> None:
+    def register_handler(self, handler: MessageHandler, clear: bool = True) -> NoReturn:
         if handler.registered:
             raise RuntimeError(f"Handler {handler} already registered!")
 
@@ -107,50 +107,47 @@ class Client(LowClient):
         ).select_related("user")
         if auth is not None and not allow_mfa_pending and auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
+
         return auth
 
-    async def get_user(self, allow_mfa_pending: bool=False) -> User | None:
+    async def get_user(self, allow_mfa_pending: bool = False) -> User | None:
         auth = await self.get_auth(allow_mfa_pending)
         return auth.user if auth is not None else None
 
-    async def propagate(self, request: Message, session: Session) -> list[tuple[TLObject, Message]] | TLObject | None:
+    async def propagate(self, request: Message, session: Session) -> TLObject | RpcResult | None:
         if isinstance(request.obj, MsgContainer):
             return await super().propagate(request, session)
 
         if not (handler := self.server.request_handlers.get(request.obj.tlid())):
             return await super().propagate(request, session)
 
-        old_ctx = request_ctx.get()
-        request_ctx.set(old_ctx.clone(obj=request.obj))
-
-        result = None
-        error = None
         user = None
+        if handler.auth_required():
+            user = await self.get_user(handler.allow_mfa_pending())
+            if user is None:
+                raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
+
+            if session.user_id is None:
+                SessionManager().set_user(session, user)
+
+        RequestContext.save(obj=request.obj)
 
         try:
-            if handler.auth_required() and (user := await self.get_user(handler.allow_mfa_pending())) is None:
-                raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
-            user = user if handler.auth_required() and handler.has_user_arg else None
             result = await handler(self, request.obj, user)
+        except ErrorRpc as e:
+            logger.warning(f"{request.obj.tlname()}: [{e.error_code} {e.error_message}]")
+            result = RpcError(error_code=e.error_code, error_message=e.error_message)
         except Exception as e:
-            if isinstance(e, ErrorRpc):
-                logger.warning(f"{request.obj.tlname()}: [{e.error_code} {e.error_message}]")
-                error = RpcError(error_code=e.error_code, error_message=e.error_message)
-            else:
-                logger.opt(exception=e).warning(f"Error while processing {request.obj.tlname()}")
-                error = RpcError(error_code=500, error_message="Server error")
+            logger.opt(exception=e).warning(f"Error while processing {request.obj.tlname()}")
+            result = RpcError(error_code=500, error_message="Server error")
 
-        request_ctx.set(old_ctx)
+        RequestContext.restore()
 
-        if user is not None and session.user_id is None:
-            SessionManager().set_user(session, user)
+        if isinstance(result, (Ping, Pong, RpcResult)):
+            return result
 
-        result = result if error is None else error
         if result is None:
             logger.warning(f"Handler for {request.obj} returned None")
             result = RpcError(error_code=500, error_message="Not implemented")
 
-        if not isinstance(result, (Ping, Pong, RpcResult)):
-            result = RpcResult(req_msg_id=request.message_id, result=result)
-
-        return result
+        return RpcResult(req_msg_id=request.message_id, result=result)

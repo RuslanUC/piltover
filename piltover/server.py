@@ -10,7 +10,7 @@ import tgcrypto
 from loguru import logger
 from mtproto import Connection, ConnectionRole
 from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
-    ErrorPacket, QuickAckPacket
+    ErrorPacket, QuickAckPacket, BasePacket
 
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import RequestContext, request_ctx
@@ -40,8 +40,7 @@ class MessageHandler:
 
     def on_message(self, typ: type[TLObject]):
         def decorator(func: Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]]):
-            logger.debug("Added handler for function {typ!r}" + (f" on {self.name}" if self.name else ""),
-                         typ=typ.tlname())
+            logger.debug(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
 
             self.handlers[typ.tlid()] = func
             return func
@@ -53,14 +52,9 @@ class Server:
     HOST = "0.0.0.0"
     PORT = 4430
 
-    def __init__(
-            self,
-            host: str | None = None,
-            port: int | None = None,
-            server_keys: Keys | None = None,
-    ):
-        self.host = host if host is not None else self.HOST
-        self.port = port if port is not None else self.PORT
+    def __init__(self, host: str = HOST, port: int = PORT, server_keys: Keys | None = None):
+        self.host = host
+        self.port = port
 
         self.server_keys = server_keys
         if self.server_keys is None:
@@ -87,8 +81,7 @@ class Server:
         background(client.worker())
 
     async def serve(self):
-        #aiomonitor.start_monitor(get_event_loop(), port=0, console_port=0, webui_port=50080)
-        server = await asyncio.start_server(self.accept_client, self.HOST, self.PORT)
+        server = await asyncio.start_server(self.accept_client, self.host, self.port)
         async with server:
             await server.serve_forever()
 
@@ -168,6 +161,11 @@ class Client:
 
         return packet
 
+    async def _write(self, packet: BasePacket) -> None:
+        to_send = self.conn.send(packet)
+        self.writer.write(to_send)
+        await self.writer.drain()
+
     async def _send_raw(self, message: Message, session: Session) -> None:
         assert self.auth_data.auth_key is not None, "FATAL: self.auth_key is None"
         assert self.auth_data.auth_key_id is not None, "FATAL: self.auth_key_id is None"
@@ -182,9 +180,7 @@ class Client:
             data=message.obj.write(),
         ).encrypt(self.auth_data.auth_key, ConnectionRole.SERVER)
 
-        to_send = self.conn.send(encrypted)
-        self.writer.write(to_send)
-        await self.writer.drain()
+        await self._write(encrypted)
 
     async def send(
             self, obj: TLObject, session: Session, originating_request: Message | DecryptedMessagePacket | None = None
@@ -202,12 +198,10 @@ class Client:
 
     async def send_unencrypted(self, obj: TLObject) -> None:
         logger.debug(obj)
-        to_send = self.conn.send(UnencryptedMessagePacket(
+        await self._write(UnencryptedMessagePacket(
             self.empty_session.msg_id(in_reply=True),
             obj.write(),
         ))
-        self.writer.write(to_send)
-        await self.writer.drain()
 
     async def handle_unencrypted_message(self, obj: TLObject):
         if isinstance(obj, (ReqPqMulti, ReqPq)):
@@ -481,10 +475,7 @@ class Client:
         if isinstance(packet, EncryptedMessagePacket):
             decrypted = await self.decrypt(packet)
             if packet.needs_quick_ack:
-                qa = self._create_quick_ack(decrypted)
-                to_send = self.conn.send(qa)
-                self.writer.write(to_send)
-                await self.writer.drain()
+                await self._write(self._create_quick_ack(decrypted))
 
             # For some reason some clients cant process BadServerSalt response to BindTempAuthKey request
             if await self._is_message_bad(decrypted, decrypted.data[:4] != Int.write(BindTempAuthKey.tlid())):
@@ -561,21 +552,20 @@ class Client:
             await self._worker_loop()
         except Disconnection as err:
             if err.transport_error is not None:
-                self.writer.write(self.conn.send(ErrorPacket(err.transport_error)))
-                await self.writer.drain()
+                await self._write(ErrorPacket(err.transport_error))
 
             self.writer.close()
             await self.writer.wait_closed()
 
             logger.info("Client disconnected")
-        finally:
-            if (sess := SessionManager().by_client.get(self, None)) is not None:
-                for s in sess:
-                    logger.info(f"Session {s.session_id} removed")
 
-            SessionManager().client_cleanup(self)
+        if (sess := SessionManager().by_client.get(self, None)) is not None:
+            for s in sess:
+                logger.info(f"Session {s.session_id} removed")
 
-    async def propagate(self, request: Message, session: Session) -> TLObject | None:
+        SessionManager().client_cleanup(self)
+
+    async def propagate(self, request: Message, session: Session) -> TLObject | RpcResult | None:
         handler = self.server.handlers.get(request.obj.tlid())
         if handler is None:
             logger.warning(f"No handler found for obj: {request.obj}")
@@ -584,32 +574,27 @@ class Client:
                 result=RpcError(error_code=500, error_message="Not implemented"),
             )
 
-        old_ctx = request_ctx.get()
-        request_ctx.set(old_ctx.clone(obj=request.obj))
-
-        result = None
-        error = None
+        RequestContext.save(obj=request.obj)
 
         try:
             result = await handler(self, request, session)
         except ErrorRpc as e:
-            error = RpcError(error_code=e.error_code, error_message=e.error_message)
+            result = RpcError(error_code=e.error_code, error_message=e.error_message)
         except InvalidConstructorException:
             raise
         except Exception as e:
             logger.warning(e)
-            error = RpcError(error_code=500, error_message="Server error")
+            result = RpcError(error_code=500, error_message="Server error")
 
-        request_ctx.set(old_ctx)
+        RequestContext.restore()
 
-        result = result if error is None else error
         if result is None:
             logger.warning(f"Handler for function {request.obj} returned None!")
             result = RpcError(error_code=500, error_message="Server error")
         elif result is False:
             return
 
-        if not isinstance(result, (Ping, Pong, RpcResult)):
-            result = RpcResult(req_msg_id=request.message_id, result=result)
+        if isinstance(result, (Ping, Pong, RpcResult)):
+            return result
 
-        return result
+        return RpcResult(req_msg_id=request.message_id, result=result)
