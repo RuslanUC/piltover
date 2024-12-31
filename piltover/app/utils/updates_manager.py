@@ -97,7 +97,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                     result = updates
 
                 await SessionManager().send(updates, peer.owner.id)
-            elif peer.type is PeerType.USER:
+            elif peer.type is PeerType.USER or peer.type is PeerType.CHAT:
                 msg_tl = await message.to_tl(peer.owner)
 
                 update = UpdateShortMessage(
@@ -401,7 +401,7 @@ class UpdatesManager(metaclass=SingletonMeta):
 
             await SessionManager().send(updates, peer.owner.id)
             if peer.owner == user:
-                result_update = result_update
+                result_update = updates
 
         await UpdateV2.bulk_create(updates_to_create)
         return result_update

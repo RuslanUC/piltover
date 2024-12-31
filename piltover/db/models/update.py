@@ -167,7 +167,7 @@ class UpdateV2(Model):
             if (peer := await models.Peer.from_chat_id(current_user, self.related_id)) is None:
                 return
 
-            await peer.chat.fetch_related("owner")
+            await peer.chat.fetch_related("creator")
             if peer.chat.creator.id not in users:
                 users[peer.chat.creator.id] = peer.chat.creator
             if chats is not None and peer.chat_id not in chats:

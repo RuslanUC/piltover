@@ -19,14 +19,15 @@ async def set_typing(request: SetTyping, user: User):
     if peer.type == PeerType.SELF:
         return True
 
-    other = peer.user
-    updates = Updates(
-        updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
-        users=[await user.to_tl(other)],
-        chats=[],
-        date=int(time()),
-        seq=0,
-    )
-    await SessionManager().send(updates, other.id)
+    for other in await peer.get_opposite():
+        #other = peer.user
+        updates = Updates(
+            updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
+            users=[await user.to_tl(other.owner)],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+        await SessionManager().send(updates, other.id)
 
     return True
