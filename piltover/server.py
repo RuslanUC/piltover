@@ -167,8 +167,9 @@ class Client:
         await self.writer.drain()
 
     async def _send_raw(self, message: Message, session: Session) -> None:
-        assert self.auth_data.auth_key is not None, "FATAL: self.auth_key is None"
-        assert self.auth_data.auth_key_id is not None, "FATAL: self.auth_key_id is None"
+        if not self.auth_data or self.auth_data.auth_key is None or self.auth_data.auth_key_id is None:
+            logger.warning("Trying to send encrypted response, but auth_key is empty")
+            raise Disconnection(404)
 
         logger.trace(f"Actually sending: {message}")
 
@@ -215,9 +216,8 @@ class Client:
             self.auth_data = GenAuthData()
             self.auth_data.p, self.auth_data.q = p, q
 
-            assert p != -1, "p is -1"
-            assert q != -1, "q is -1"
-            assert p != q
+            if p == -1 or q == -1 or q == p:
+                raise Disconnection(404)
 
             pq = self.auth_data.p * self.auth_data.q
 
@@ -230,7 +230,8 @@ class Client:
                 server_public_key_fingerprints=[self.server.fingerprint]
             ))
         elif isinstance(obj, ReqDHParams):
-            assert self.auth_data
+            if not self.auth_data:
+                raise Disconnection(404)
 
             req_dh_params = obj
 
@@ -263,14 +264,17 @@ class Client:
                 p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted[20:]))
 
                 digest = key_aes_encrypted[:20]
-                assert hashlib.sha1(p_q_inner_data.write()).digest() == digest, "sha1 of data doesn't match"
+                if hashlib.sha1(p_q_inner_data.write()).digest() != digest:
+                    logger.debug("sha1 of data doesn't match")
+                    raise Disconnection(404)
             else:
                 p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted))
 
             logger.debug(f"p_q_inner_data: {p_q_inner_data}")
 
-            assert isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTemp, PQInnerDataTempDc)), \
-                f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}"
+            if not isinstance(p_q_inner_data, (PQInnerData, PQInnerDataDc, PQInnerDataTemp, PQInnerDataTempDc)):
+                logger.debug(f"Expected p_q_inner_data_*, got instead {type(p_q_inner_data)}")
+                raise Disconnection(404)
 
             if self.auth_data.server_nonce != p_q_inner_data.server_nonce:
                 raise Disconnection(404)
@@ -344,8 +348,9 @@ class Client:
                 self.auth_data.tmp_aes_iv,
             )
             client_DH_inner_data = ClientDHInnerData.read(BytesIO(decrypted_params[20:]))
-            assert hashlib.sha1(client_DH_inner_data.write()).digest() == decrypted_params[:20], \
-                "sha1 hash mismatch for client_DH_inner_data"
+            if hashlib.sha1(client_DH_inner_data.write()).digest() != decrypted_params[:20]:
+                logger.debug("sha1 hash mismatch for client_DH_inner_data")
+                raise Disconnection(404)
 
             if self.auth_data.server_nonce != client_DH_inner_data.server_nonce:
                 raise Disconnection(404)
