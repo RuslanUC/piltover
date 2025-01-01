@@ -1,4 +1,5 @@
 import pytest
+from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified
 
 from tests.conftest import TestClient
 
@@ -26,5 +27,43 @@ async def test_change_username() -> None:
         assert await client.set_username("test_username")
 
         me = await client.get_me()
+        assert me.username == "test_username"
 
+
+@pytest.mark.asyncio
+async def test_change_username_to_invalid() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        for username in ("tes/t_username", "very_long_username"*100, "", "username.with.dots", ".", ":::"):
+            with pytest.raises(UsernameInvalid):
+                assert await client.set_username(username)
+
+            me = await client.get_me()
+            assert me.username is None
+
+
+@pytest.mark.asyncio
+async def test_change_username_to_occupied() -> None:
+    async with TestClient(phone_number="123456789") as client, TestClient(phone_number="1234567890") as client2:
+        assert await client.set_username("test_username")
+        me = await client.get_me()
+        assert me.username == "test_username"
+
+        with pytest.raises(UsernameOccupied):
+            assert await client2.set_username("test_username")
+
+            me = await client2.get_me()
+            assert me.username is None
+
+
+@pytest.mark.asyncio
+async def test_change_username_to_same() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        assert await client.set_username("test_username")
+        me = await client.get_me()
+        assert me.username == "test_username"
+
+        with pytest.raises(UsernameNotModified):
+            assert await client.set_username("test_username")
+
+        me = await client.get_me()
         assert me.username == "test_username"

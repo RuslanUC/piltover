@@ -8,10 +8,9 @@ from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat
 from piltover.session_manager import SessionManager
-from piltover.tl import Updates, UpdateShortSentMessage, UpdateShortMessage, UpdateNewMessage, UpdateMessageID, \
+from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
-    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
-    ChatParticipantCreator
+    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 

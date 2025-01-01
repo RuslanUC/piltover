@@ -24,8 +24,8 @@ from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
 
 handler = MessageHandler("account")
-username_regex = re.compile(r'[a-zA-z0-9_]{5,32}')
-username_regex_no_len = re.compile(r'[a-zA-z0-9_]{1,32}')
+username_regex = re.compile(r'^[a-z0-9_]{5,32}$')
+username_regex_no_len = re.compile(r'[a-z0-9_]{1,32}')
 
 
 def validate_username(username: str) -> None:
@@ -35,6 +35,7 @@ def validate_username(username: str) -> None:
 
 @handler.on_request(CheckUsername)
 async def check_username(request: CheckUsername):
+    request.username = request.username.lower()
     validate_username(request.username)
     if await User.filter(username=request.username).exists():
         raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
@@ -43,6 +44,7 @@ async def check_username(request: CheckUsername):
 
 @handler.on_request(UpdateUsername)
 async def update_username(request: UpdateUsername, user: User):
+    request.username = request.username.lower()
     validate_username(request.username)
     if (target := await User.get_or_none(username__iexact=request.username)) is not None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
