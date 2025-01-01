@@ -269,7 +269,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     random_ids = dict(zip(request.id[:100], request.random_id[:100]))
     messages = await Message.filter(
         peer=from_peer, id__in=request.id[:100], type=MessageType.REGULAR
-    ).select_related("author")
+    ).select_related("author", "media")
 
     peers = [to_peer]
     peers.extend(await to_peer.get_opposite())

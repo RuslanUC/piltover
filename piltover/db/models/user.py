@@ -67,6 +67,7 @@ class User(Model):
             is_self=self == current_user,
             photo=await self.get_photo(current_user, True),
             access_hash=peer.access_hash if peer is not None else 1,
+            status=await models.Presence.to_tl_or_empty(self, current_user),
         )
 
     @classmethod

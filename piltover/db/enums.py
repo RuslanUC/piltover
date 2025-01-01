@@ -71,3 +71,9 @@ class MessageType(IntEnum):
     REGULAR = 0
     SERVICE_PIN_MESSAGE = 1
     SERVICE_CHAT_CREATE = 2
+
+
+class UserStatus(IntEnum):
+    # Idk why
+    OFFLINE = 0
+    ONLINE = 1

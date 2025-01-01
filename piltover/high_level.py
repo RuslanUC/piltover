@@ -130,15 +130,16 @@ class Client(LowClient):
             if session.user_id is None:
                 SessionManager.set_user(session, user)
 
-        RequestContext.save(obj=request.obj)
+        request_obj = request.obj if isinstance(request, Message) else request
+        RequestContext.save(obj=request_obj)
 
         try:
-            result = await handler(self, request.obj, user)
+            result = await handler(self, request_obj, user)
         except ErrorRpc as e:
-            logger.warning(f"{request.obj.tlname()}: [{e.error_code} {e.error_message}]")
+            logger.warning(f"{request_obj.tlname()}: [{e.error_code} {e.error_message}]")
             result = RpcError(error_code=e.error_code, error_message=e.error_message)
         except Exception as e:
-            logger.opt(exception=e).warning(f"Error while processing {request.obj.tlname()}")
+            logger.opt(exception=e).warning(f"Error while processing {request_obj.tlname()}")
             result = RpcError(error_code=500, error_message="Server error")
 
         RequestContext.restore()
@@ -147,7 +148,7 @@ class Client(LowClient):
             return result
 
         if result is None:
-            logger.warning(f"Handler for {request.obj} returned None")
+            logger.warning(f"Handler for {request_obj} returned None")
             result = RpcError(error_code=500, error_message="Not implemented")
 
         return RpcResult(req_msg_id=request.message_id, result=result)

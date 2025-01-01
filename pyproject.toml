@@ -28,8 +28,8 @@ cryptography = "^44.0.0"
 tgcrypto = "^1.2.5"
 uvloop = "^0.21.0"
 loguru = "^0.7.3"
-tortoise-orm = {extras = ["asyncmy"], version = "^0.22.2"}
-aerich = "^0.8.0"
+tortoise-orm = {extras = ["asyncmy"], version = "^0.23.0"}
+aerich = "^0.8.1"
 pillow = "^11.0.0"
 mtproto = "^0.1.0b11"
 aiofiles = "^24.1.0"
@@ -37,7 +37,6 @@ aiofiles = "^24.1.0"
 
 [tool.poetry.group.dev.dependencies]
 websockets = "^12.0"
-icecream = "^2.1.3"
 tqdm = "^4.66.5"
 aiomonitor = "^0.7.0"
 

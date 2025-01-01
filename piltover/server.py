@@ -593,7 +593,8 @@ class Client:
                 result=RpcError(error_code=500, error_message="Not implemented"),
             )
 
-        RequestContext.save(obj=request.obj)
+        request_obj = request.obj if isinstance(request, Message) else request
+        RequestContext.save(obj=request_obj)
 
         try:
             result = await handler(self, request, session)
@@ -608,7 +609,7 @@ class Client:
         RequestContext.restore()
 
         if result is None:
-            logger.warning(f"Handler for function {request.obj} returned None!")
+            logger.warning(f"Handler for function {request_obj} returned None!")
             result = RpcError(error_code=500, error_message="Server error")
         elif result is False:
             return

@@ -22,3 +22,4 @@ from .user_password import UserPassword
 from .user_photo import UserPhoto
 from .web_authorization import WebAuthorization
 from .chat import Chat
+from .presence import Presence
