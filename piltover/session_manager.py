@@ -32,6 +32,7 @@ class Session:
     user_id: int | None = None
     user: User | None = None
     min_msg_id: int = 0
+    online: bool = False
 
     msg_id_last_time = 0
     msg_id_offset = 0
@@ -99,10 +100,13 @@ class Session:
     def __hash__(self) -> int:
         return self.session_id
 
+    def cleanup(self) -> None:
+        self.online = False
+        SessionManager.cleanup(self)
+
 
 class SessionManager(metaclass=SingletonMeta):
     sessions: dict[int, dict[int, Session]] = {}
-    by_client: dict[Client, set[Session]] = defaultdict(set)
     by_key_id: dict[int, set[Session]] = defaultdict(set)
     by_user_id: dict[int, set[Session]] = defaultdict(set)
 
@@ -122,26 +126,26 @@ class SessionManager(metaclass=SingletonMeta):
             ),
         )
         cls.sessions[session_id][client.auth_data.auth_key_id] = session
-        cls.by_client[client].add(session)
         cls.by_key_id[session.auth_key.auth_key_id].add(session)
         return session, True
 
     @classmethod
-    def client_cleanup(cls, client: Client) -> None:
-        if (sessions := cls.by_client.get(client, None)) is None:
-            return
+    def cleanup(cls, session: Session) -> None:
+        key_id = session.auth_key.auth_key_id
+        if session.session_id in cls.sessions and key_id in cls.sessions[session.session_id]:
+            del cls.sessions[session.session_id][key_id]
 
-        del cls.by_client[client]
-        for session in sessions:
-            del cls.sessions[session.session_id][session.auth_key.auth_key_id]
-            cls.by_key_id[session.auth_key.auth_key_id].remove(session)
-            if session.user_id is not None:
-                cls.by_user_id[session.user_id].remove(session)
+        if key_id in cls.by_key_id:
+            cls.by_key_id[key_id].remove(session)
+
+        if session.user_id in cls.by_key_id:
+            cls.by_user_id[session.user_id].remove(session)
 
     @classmethod
     def set_user_id(cls, session: Session, user_id: int) -> None:
         cls.by_user_id[user_id].add(session)
         session.user_id = user_id
+        session.online = True
 
     @classmethod
     def set_user(cls, session: Session, user: User) -> None:
@@ -151,7 +155,7 @@ class SessionManager(metaclass=SingletonMeta):
     @classmethod
     async def send(
             cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None, *,
-            exclude: list[Client] | None = None
+            exclude: list[Session] | None = None
     ) -> None:
         if user_id is None and key_id is None:
             return
@@ -164,7 +168,7 @@ class SessionManager(metaclass=SingletonMeta):
             sessions.update(cls.by_key_id[key_id])
 
         for session in sessions:
-            if (exclude is not None and session.client in exclude) or session.client not in cls.by_client:
+            if exclude is not None and session in exclude or not session.online:
                 continue
             if isinstance(obj, Updates):
                 key = await AuthKey.get_or_temp(session.auth_key.auth_key_id)

@@ -130,7 +130,10 @@ class Server:
 
 
 class Client:
-    __slots__ = ("server", "reader", "writer", "conn", "peername", "auth_data", "empty_session", "no_updates", "layer",)
+    __slots__ = (
+        "server", "reader", "writer", "conn", "peername", "auth_data", "empty_session", "session", "no_updates",
+        "layer",
+    )
 
     def __init__(self, server: Server, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.server: Server = server
@@ -142,9 +145,23 @@ class Client:
 
         self.auth_data: AuthData | None = None
         self.empty_session = Session(self, 0)
+        self.session: Session | None = None
 
         self.no_updates = False
         self.layer = 177
+
+    def _get_session(self, session_id: int) -> tuple[Session, bool]:
+        if self.session is not None:
+            if self.session.session_id == session_id:
+                return self.session, False
+            self.session.cleanup()
+
+        self.session, created = SessionManager.get_or_create(self, session_id)
+        if not created and self.session.online:
+            self.session.cleanup()
+            return self._get_session(session_id)
+
+        return self.session, created
 
     async def read_packet(self) -> MessagePacket | None:
         packet = self.conn.receive()
@@ -387,7 +404,7 @@ class Client:
             raise Disconnection(404)
 
     async def handle_encrypted_message(self, req_message: Message, session_id: int):
-        sess, created = SessionManager.get_or_create(self, session_id)
+        sess, created = self._get_session(session_id)
         sess.update_incoming_content_related_msgs(req_message.obj, req_message.seq_no)
 
         if created:
@@ -564,11 +581,9 @@ class Client:
 
             logger.info("Client disconnected")
 
-        if (sess := SessionManager.by_client.get(self, None)) is not None:
-            for s in sess:
-                logger.info(f"Session {s.session_id} removed")
-
-        SessionManager.client_cleanup(self)
+        if self.session is not None:
+            logger.info(f"Session {self.session.session_id} removed")
+            self.session.cleanup()
 
     async def propagate(self, request: Message, session: Session) -> TLObject | RpcResult | None:
         handler = self.server.handlers.get(request.obj.tlid())

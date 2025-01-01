@@ -18,105 +18,62 @@ from piltover.utils.utils import SingletonMeta
 
 class UpdatesManager(metaclass=SingletonMeta):
     @staticmethod
-    async def send_message(
-            user: User, messages: dict[Peer, Message], has_media: bool = False
-    ) -> Updates | UpdateShortSentMessage:
+    async def send_message(user: User, messages: dict[Peer, Message]) -> Updates | UpdateShortSentMessage:
         ctx: RequestContext[SendMessage] = request_ctx.get()
         client = ctx.client
 
+        users = {upd_peer.user for upd_peer in messages.keys() if isinstance(upd_peer.user, User)}
         result = None
+        chat = None
+        if messages:
+            first_message = messages[next(iter(messages))]
+            if isinstance(first_message.author, User):
+                users.add(first_message.author)
+            if first_message.peer.type is PeerType.CHAT:
+                await first_message.peer.fetch_related("chat")
+                chat = first_message.peer.chat
 
         for peer, message in messages.items():
             if isinstance(peer.owner, QuerySet):
                 await peer.fetch_related("owner")
 
-            is_current_user = peer.owner == user
+            chats = [] if chat is None else [await chat.to_tl(peer.owner)]
 
-            if peer.type is PeerType.SELF and (not has_media or is_current_user):
-                chats = []
-                if message.peer.type is PeerType.CHAT:
-                    await message.peer.fetch_related("chat")
-                    chats.append(await message.peer.chat.to_tl(peer.owner))
+            # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
 
-                updates = Updates(
-                    updates=[
-                        UpdateNewMessage(
-                            message=await message.to_tl(user),
-                            pts=await State.add_pts(user, 1),
-                            pts_count=1,
-                        ),
-                        UpdateReadHistoryInbox(
-                            peer=peer.to_tl(),
-                            max_id=message.id,
-                            still_unread_count=0,
-                            pts=await State.add_pts(user, 1),
-                            pts_count=1,
-                        )
-                    ],
-                    users=[await user.to_tl(user)],
-                    chats=chats,
-                    date=int(time()),
-                    seq=0,
-                )
-
-                if message.random_id:
-                    updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
-
-                # TODO: also create this update if peer.type is not self
-                read_history_inbox_args = {
-                    "update_type": UpdateType.READ_HISTORY_INBOX, "user": user, "related_id": 0,
-                }
-                await UpdateV2.filter(**read_history_inbox_args).delete()
-                await UpdateV2.create(
-                    **read_history_inbox_args, pts=updates.updates[-1].pts, related_ids=[message.id, 0]
-                )
-
-                await SessionManager.send(updates, user.id, exclude=[client])
-                if is_current_user:
-                    result = updates
-            elif has_media:
-                chats = []
-                if message.peer.type is PeerType.CHAT:
-                    await message.peer.fetch_related("chat")
-                    chats.append(await message.peer.chat.to_tl(peer.owner))
-
-                updates = Updates(
-                    updates=[UpdateNewMessage(
+            updates = Updates(
+                updates=[
+                    UpdateNewMessage(
                         message=await message.to_tl(peer.owner),
                         pts=await State.add_pts(peer.owner, 1),
                         pts_count=1,
-                    )],
-                    users=[await upd_peer.user.to_tl(peer.owner) for upd_peer in messages.keys()],
-                    chats=chats,
-                    date=message.utime(),
-                    seq=0,
-                )
-                if is_current_user:
-                    if message.random_id:
-                        updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
-                    result = updates
+                    ),
+                ],
+                users=[await upd_user.to_tl(peer.owner) for upd_user in users],
+                chats=chats,
+                date=int(time()),
+                seq=0,
+            )
 
-                await SessionManager.send(updates, peer.owner.id)
-            elif peer.type is PeerType.USER or peer.type is PeerType.CHAT:
-                msg_tl = await message.to_tl(peer.owner)
+            if message.random_id:
+                updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
 
-                update = UpdateShortMessage(
-                    out=message.author == peer.owner,
-                    id=message.id,
-                    user_id=peer.user_id,
-                    message=message.message,
-                    pts=await State.add_pts(peer.owner, 1),
+            if peer.owner == user:
+                result = updates
+
+                read_history_pts = await State.add_pts(user, 1)
+                updates.updates.append(UpdateReadHistoryInbox(
+                    peer=peer.to_tl(),
+                    max_id=message.id,
+                    still_unread_count=0,
+                    pts=read_history_pts,
                     pts_count=1,
-                    date=message.utime(),
-                    reply_to=msg_tl.reply_to,
-                )
-                await SessionManager.send(update, peer.owner.id, exclude=[client])
-                sent_pts = update.pts
+                ))
+                read_history_inbox_args = {"update_type": UpdateType.READ_HISTORY_INBOX, "user": user, "related_id": 0}
+                await UpdateV2.filter(**read_history_inbox_args).delete()
+                await UpdateV2.create(**read_history_inbox_args, pts=read_history_pts, related_ids=[message.id, 0])
 
-                if is_current_user:
-                    result = UpdateShortSentMessage(
-                        out=True, id=message.id, pts=sent_pts, pts_count=1, date=message.utime()
-                    )
+            await SessionManager.send(updates, user.id, exclude=[client.session])
 
         return result
 

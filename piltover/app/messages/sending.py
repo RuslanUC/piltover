@@ -37,6 +37,8 @@ async def send_message_internal(
     for to_peer in peers:
         await to_peer.fetch_related("owner", "user")
         await Dialog.get_or_create(peer=to_peer)
+        if to_peer == peer and random_id is not None:
+            message_kwargs["random_id"] = str(random_id)
         messages[to_peer] = await Message.create(
             internal_id=internal_id,
             peer=to_peer,
@@ -44,12 +46,13 @@ async def send_message_internal(
             author=author,
             **message_kwargs
         )
+        message_kwargs.pop("random_id", None)
 
     if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
         await draft.delete()
         await UpdatesManager.update_draft(user, peer, None)
 
-    if (upd := await UpdatesManager.send_message(user, messages, bool(message_kwargs.get("media")))) is None:
+    if (upd := await UpdatesManager.send_message(user, messages)) is None:
         assert False, "unknown chat type ?"
 
     return upd
