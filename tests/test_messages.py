@@ -107,3 +107,21 @@ async def test_send_text_message_in_group() -> None:
 
         assert messages[0].id == message.id
         assert messages[0].text == message.text
+
+
+@pytest.mark.asyncio
+async def test_send_text_message_in_pm() -> None:
+    async with TestClient(phone_number="123456789") as client, TestClient(phone_number="1234567890") as client2:
+        await client2.set_username("client2_username")
+
+        messages = [msg async for msg in client.get_chat_history("client2_username")]
+        assert len(messages) == 0
+
+        message = await client.send_message("client2_username", text="test 123456")
+        assert message.text == "test 123456"
+
+        messages = [msg async for msg in client.get_chat_history("client2_username")]
+        assert len(messages) == 1
+
+        assert messages[0].id == message.id
+        assert messages[0].text == message.text

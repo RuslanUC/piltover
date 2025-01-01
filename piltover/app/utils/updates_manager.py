@@ -299,7 +299,7 @@ class UpdatesManager(metaclass=SingletonMeta):
         updates_to_create = []
 
         peer: Peer
-        async for peer in Peer.filter(Q(user=user) | Q(type=PeerType.SELF)).select_related("owner"):
+        async for peer in Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
             pts = await State.add_pts(peer.owner, 1)
 
             updates_to_create.append(

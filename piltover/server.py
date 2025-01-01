@@ -188,7 +188,7 @@ class Client:
             logger.warning("Trying to send encrypted response, but auth_key is empty")
             raise Disconnection(404)
 
-        logger.trace(f"Actually sending: {message}")
+        logger.debug(f"Sending to {self.session.session_id if self.session else 0}: {message}")
 
         encrypted = DecryptedMessagePacket(
             salt=await self.server.get_current_salt(),
@@ -203,7 +203,6 @@ class Client:
     async def send(
             self, obj: TLObject, session: Session, originating_request: Message | DecryptedMessagePacket | None = None
     ) -> None:
-        logger.debug(f"Sending: {obj}")
         message = session.pack_message(obj, originating_request)
 
         await self._send_raw(message, session)
@@ -512,7 +511,7 @@ class Client:
                 packet.auth_key_id, decrypted.message_id, decrypted.session_id, message.obj, self
             ))
 
-            logger.debug(message)
+            logger.debug(f"Received from {self.session.session_id if self.session else 0}: {message}")
             await self.handle_encrypted_message(message, decrypted.session_id)
         elif isinstance(packet, UnencryptedMessagePacket):
             decoded = SerializationUtils.read(BytesIO(packet.message_data), TLObject)
