@@ -71,7 +71,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                     **read_history_inbox_args, pts=updates.updates[-1].pts, related_ids=[message.id, 0]
                 )
 
-                await SessionManager().send(updates, user.id, exclude=[client])
+                await SessionManager.send(updates, user.id, exclude=[client])
                 if is_current_user:
                     result = updates
             elif has_media:
@@ -96,7 +96,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                         updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
                     result = updates
 
-                await SessionManager().send(updates, peer.owner.id)
+                await SessionManager.send(updates, peer.owner.id)
             elif peer.type is PeerType.USER or peer.type is PeerType.CHAT:
                 msg_tl = await message.to_tl(peer.owner)
 
@@ -110,7 +110,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                     date=message.utime(),
                     reply_to=msg_tl.reply_to,
                 )
-                await SessionManager().send(update, peer.owner.id, exclude=[client])
+                await SessionManager.send(update, peer.owner.id, exclude=[client])
                 sent_pts = update.pts
 
                 if is_current_user:
@@ -140,7 +140,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             )
             updates_to_create.append(update)
 
-            await SessionManager().send(
+            await SessionManager.send(
                 Updates(
                     updates=[await update.to_tl(update_user)],
                     users=[],
@@ -166,7 +166,7 @@ class UpdatesManager(metaclass=SingletonMeta):
         await UpdateV2.bulk_create(updates_to_create)
 
         updates = Updates(updates=[await update.to_tl(user)], users=[], chats=[], date=int(time()), seq=0)
-        await SessionManager().send(updates, user.id)
+        await SessionManager.send(updates, user.id)
 
         return new_pts
 
@@ -212,7 +212,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             if user.id == peer.owner.id:
                 result_update = update
 
-            await SessionManager().send(update, peer.owner.id)
+            await SessionManager.send(update, peer.owner.id)
 
         await UpdateV2.bulk_create(updates_to_create)
         return result_update
@@ -238,7 +238,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             seq=0,
         )
 
-        await SessionManager().send(updates, user.id)
+        await SessionManager.send(updates, user.id)
 
     @staticmethod
     async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> None:
@@ -263,7 +263,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             seq=0,
         )
 
-        await SessionManager().send(updates, user.id)
+        await SessionManager.send(updates, user.id)
 
     @staticmethod
     async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
@@ -291,7 +291,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             seq=0,
         )
 
-        await SessionManager().send(updates, user.id)
+        await SessionManager.send(updates, user.id)
 
     @staticmethod
     async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
@@ -332,7 +332,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             if user.id == peer.owner.id:
                 result_update = update
 
-            await SessionManager().send(update, peer.owner.id)
+            await SessionManager.send(update, peer.owner.id)
 
         await UpdateV2.bulk_create(updates_to_create)
         return result_update
@@ -354,7 +354,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                 )
             )
 
-            await SessionManager().send(Updates(
+            await SessionManager.send(Updates(
                 updates=[UpdateUser(user_id=user.id)],
                 users=[await user.to_tl(peer.owner)],
                 chats=[],
@@ -399,7 +399,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                 seq=0,
             )
 
-            await SessionManager().send(updates, peer.owner.id)
+            await SessionManager.send(updates, peer.owner.id)
             if peer.owner == user:
                 result_update = updates
 

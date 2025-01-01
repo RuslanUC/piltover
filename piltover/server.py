@@ -387,7 +387,7 @@ class Client:
             raise Disconnection(404)
 
     async def handle_encrypted_message(self, req_message: Message, session_id: int):
-        sess, created = SessionManager().get_or_create(self, session_id)
+        sess, created = SessionManager.get_or_create(self, session_id)
         sess.update_incoming_content_related_msgs(req_message.obj, req_message.seq_no)
 
         if created:
@@ -564,11 +564,11 @@ class Client:
 
             logger.info("Client disconnected")
 
-        if (sess := SessionManager().by_client.get(self, None)) is not None:
+        if (sess := SessionManager.by_client.get(self, None)) is not None:
             for s in sess:
                 logger.info(f"Session {s.session_id} removed")
 
-        SessionManager().client_cleanup(self)
+        SessionManager.client_cleanup(self)
 
     async def propagate(self, request: Message, session: Session) -> TLObject | RpcResult | None:
         handler = self.server.handlers.get(request.obj.tlid())

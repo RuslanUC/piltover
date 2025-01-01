@@ -128,7 +128,7 @@ class Client(LowClient):
                 raise ErrorRpc(error_code=401, error_message="AUTH_KEY_UNREGISTERED")
 
             if session.user_id is None:
-                SessionManager().set_user(session, user)
+                SessionManager.set_user(session, user)
 
         RequestContext.save(obj=request.obj)
 

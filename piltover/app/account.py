@@ -80,10 +80,10 @@ async def register_device(request: RegisterDevice, user: User) -> bool:
         return False
     sess_id = int(request.token)
     key_id = request_ctx.get().auth_key_id
-    if (session := SessionManager().sessions.get(sess_id, {}).get(key_id, None)) is None:
+    if (session := SessionManager.sessions.get(sess_id, {}).get(key_id, None)) is None:
         return False
 
-    SessionManager().set_user(session, user)
+    SessionManager.set_user(session, user)
     return True
 
 

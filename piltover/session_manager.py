@@ -32,7 +32,6 @@ class Session:
     user_id: int | None = None
     user: User | None = None
     min_msg_id: int = 0
-    layer = 0
 
     msg_id_last_time = 0
     msg_id_offset = 0
@@ -102,17 +101,17 @@ class Session:
 
 
 class SessionManager(metaclass=SingletonMeta):
-    def __init__(self):
-        self.sessions: dict[int, dict[int, Session]] = {}
-        self.by_client: dict[Client, set[Session]] = defaultdict(set)
-        self.by_key_id: dict[int, set[Session]] = defaultdict(set)
-        self.by_user_id: dict[int, set[Session]] = defaultdict(set)
+    sessions: dict[int, dict[int, Session]] = {}
+    by_client: dict[Client, set[Session]] = defaultdict(set)
+    by_key_id: dict[int, set[Session]] = defaultdict(set)
+    by_user_id: dict[int, set[Session]] = defaultdict(set)
 
-    def get_or_create(self, client: Client, session_id: int) -> tuple[Session, bool]:
-        if session_id not in self.sessions:
-            self.sessions[session_id] = {}
-        if client.auth_data.auth_key_id in self.sessions[session_id]:
-            return self.sessions[session_id][client.auth_data.auth_key_id], False
+    @classmethod
+    def get_or_create(cls, client: Client, session_id: int) -> tuple[Session, bool]:
+        if session_id not in cls.sessions:
+            cls.sessions[session_id] = {}
+        if client.auth_data.auth_key_id in cls.sessions[session_id]:
+            return cls.sessions[session_id][client.auth_data.auth_key_id], False
 
         session = Session(
             client=client,
@@ -122,51 +121,55 @@ class SessionManager(metaclass=SingletonMeta):
                 auth_key_id=client.auth_data.auth_key_id,
             ),
         )
-        self.sessions[session_id][client.auth_data.auth_key_id] = session
-        self.by_client[client].add(session)
-        self.by_key_id[session.auth_key.auth_key_id].add(session)
+        cls.sessions[session_id][client.auth_data.auth_key_id] = session
+        cls.by_client[client].add(session)
+        cls.by_key_id[session.auth_key.auth_key_id].add(session)
         return session, True
 
-    def client_cleanup(self, client: Client) -> None:
-        if (sessions := self.by_client.get(client, None)) is None:
+    @classmethod
+    def client_cleanup(cls, client: Client) -> None:
+        if (sessions := cls.by_client.get(client, None)) is None:
             return
 
-        del self.by_client[client]
+        del cls.by_client[client]
         for session in sessions:
-            del self.sessions[session.session_id][session.auth_key.auth_key_id]
-            self.by_key_id[session.auth_key.auth_key_id].remove(session)
+            del cls.sessions[session.session_id][session.auth_key.auth_key_id]
+            cls.by_key_id[session.auth_key.auth_key_id].remove(session)
             if session.user_id is not None:
-                self.by_user_id[session.user_id].remove(session)
+                cls.by_user_id[session.user_id].remove(session)
 
-    def set_user_id(self, session: Session, user_id: int) -> None:
-        self.by_user_id[user_id].add(session)
+    @classmethod
+    def set_user_id(cls, session: Session, user_id: int) -> None:
+        cls.by_user_id[user_id].add(session)
         session.user_id = user_id
 
-    def set_user(self, session: Session, user: User) -> None:
-        self.set_user_id(session, user.id)
+    @classmethod
+    def set_user(cls, session: Session, user: User) -> None:
+        cls.set_user_id(session, user.id)
         session.user = user.id
 
-    async def send(self, obj: TLObject, user_id: int | None = None, key_id: int | None = None, *,
-                   exclude: list[Client] | None = None) -> None:
+    @classmethod
+    async def send(
+            cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None, *,
+            exclude: list[Client] | None = None
+    ) -> None:
         if user_id is None and key_id is None:
             return
 
         sessions = set()
 
         if user_id is not None:
-            sessions.update(self.by_user_id[user_id])
+            sessions.update(cls.by_user_id[user_id])
         if key_id is not None:
-            sessions.update(self.by_key_id[key_id])
-
-        #print(f"[{user_id}] sent {obj} ({obj.write()})")
+            sessions.update(cls.by_key_id[key_id])
 
         for session in sessions:
-            if (exclude is not None and session.client in exclude) or session.client not in self.by_client:
+            if (exclude is not None and session.client in exclude) or session.client not in cls.by_client:
                 continue
             if isinstance(obj, Updates):
                 key = await AuthKey.get_or_temp(session.auth_key.auth_key_id)
                 auth = await UserAuthorization.get(key__id=str(key.id if isinstance(key, AuthKey) else key.perm_key.id))
-                await auth.update(upd_seq=auth.upd_seq+1)
+                await auth.update(upd_seq=auth.upd_seq + 1)
                 obj.seq = auth.upd_seq
 
             await session.client.send(obj, session)
