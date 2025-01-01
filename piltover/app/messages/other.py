@@ -19,11 +19,13 @@ async def set_typing(request: SetTyping, user: User):
     if peer.type == PeerType.SELF:
         return True
 
+    chat = peer.chat if peer.type is PeerType.CHAT else None
     for other in await peer.get_opposite():
+        chats = [] if chat is None else [await chat.to_tl(other.owner)]
         updates = Updates(
             updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
             users=[await user.to_tl(other.owner)],
-            chats=[],
+            chats=chats,
             date=int(time()),
             seq=0,
         )

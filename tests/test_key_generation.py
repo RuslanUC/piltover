@@ -3,8 +3,6 @@ from types import SimpleNamespace
 import pytest
 from pyrogram.session import Auth
 
-from piltover.server import Server
-
 
 @pytest.mark.asyncio
 async def test_key_generation() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from asyncio import StreamReader, StreamWriter
 from inspect import getfullargspec
-from typing import Awaitable, Callable, Any, NoReturn
+from typing import Awaitable, Callable, Any
 
 from loguru import logger
 
@@ -31,7 +31,7 @@ HandlerFunc = (Callable[[], HandlerResult] |
 class RequestHandler:
     __slots__ = ("func", "flags", "has_client_arg", "has_request_arg", "has_user_arg",)
 
-    def __init__(self, func: HandlerFunc, flags: int) -> NoReturn:
+    def __init__(self, func: HandlerFunc, flags: int):
         self.func = func
         self.flags = flags
         func_args = set(getfullargspec(func).args)
@@ -57,7 +57,7 @@ class RequestHandler:
 class MessageHandler:
     __slots__ = ("name", "registered", "request_handlers",)
 
-    def __init__(self, name: str = None) -> NoReturn:
+    def __init__(self, name: str = None):
         self.name = name
         self.registered = False
         self.request_handlers: dict[int, RequestHandler] = {}
@@ -71,7 +71,7 @@ class MessageHandler:
 
         return decorator
 
-    def register_handler(self, handler: MessageHandler, clear: bool = True) -> NoReturn:
+    def register_handler(self, handler: MessageHandler, clear: bool = True):
         if handler.registered:
             raise RuntimeError(f"Handler {handler} already registered!")
 

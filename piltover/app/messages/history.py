@@ -6,14 +6,14 @@ from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.app.account import username_regex_no_len
-from piltover.db.enums import MessageType, MediaType
+from piltover.db.enums import MessageType, MediaType, PeerType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
-    InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo
+    InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, Chat as TLChat
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter
@@ -80,9 +80,14 @@ async def get_messages_internal(
     )
 
 
-async def _format_messages(user: User, messages: list[Message], users: dict[int, TLUser] | None = None) -> Messages:
+async def _format_messages(
+        user: User, messages: list[Message], users: dict[int, TLUser] | None = None,
+        chats: dict[int, TLChat] | None = None,
+) -> Messages:
     if users is None:
         users = {}
+    if chats is None:
+        chats = {}
 
     messages_tl = []
     for message in messages:
@@ -92,11 +97,14 @@ async def _format_messages(user: User, messages: list[Message], users: dict[int,
             users[message.author.id] = await message.author.to_tl(user)
         if message.peer.user is not None and message.peer.user.id not in users:
             users[message.peer.user.id] = await message.peer.user.to_tl(user)
+        if message.peer.type is PeerType.CHAT and message.peer.chat_id is not None:
+            chat = await message.peer.chat
+            chats[chat.id] = await chat.to_tl(user)
 
     # TODO: MessagesSlice
     return Messages(
         messages=messages_tl,
-        chats=[],
+        chats=list(chats.values()),
         users=list(users.values()),
     )
 

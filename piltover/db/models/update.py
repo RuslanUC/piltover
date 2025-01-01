@@ -71,16 +71,18 @@ class UpdateV2(Model):
             )
 
         if self.update_type == UpdateType.DIALOG_PIN:
-            query = {"user__id": self.related_id} if self.related_id else {"type": PeerType.SELF}
-            if (peer := await models.Peer.get_or_none(owner=current_user, **query)) is None \
+            if (peer := await models.Peer.get_or_none(owner=current_user, id=self.related_id)) is None \
                     or (dialog := await models.Dialog.get_or_none(peer=peer)) is None:
                 return
 
-            if users is not None \
-                    and (other := await peer.get_opposite()) is not None:
+            if users is not None and (other := await peer.get_opposite()) is not None:
                 for opp in other:
                     if opp.user.id not in users:
                         users[opp.user.id] = opp.user
+
+            if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
+                chat = await peer.chat
+                chats[peer.chat_id] = await chat.to_tl(current_user)
 
             return UpdateDialogPinned(
                 pinned=dialog.pinned_index is not None,
@@ -95,9 +97,13 @@ class UpdateV2(Model):
             ).select_related("peer", "peer__user")
 
             for dialog in dialogs:
-                peer_user = dialog.peer.peer_user(current_user)
+                peer = dialog.peer
+                peer_user = peer.peer_user(current_user)
                 if users is not None and peer_user.id not in users:
                     users[peer_user.id] = peer_user
+                if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
+                    chat = await peer.chat
+                    chats[peer.chat_id] = await chat.to_tl(current_user)
 
             return UpdatePinnedDialogs(
                 order=[

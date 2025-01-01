@@ -181,7 +181,7 @@ class UpdatesManager(metaclass=SingletonMeta):
             user=user,
             update_type=UpdateType.DIALOG_PIN,
             pts=new_pts,
-            related_id=peer.user.id,
+            related_id=peer.id,
         )
 
         users = {user.id: user}
@@ -190,7 +190,7 @@ class UpdatesManager(metaclass=SingletonMeta):
         updates = Updates(
             updates=[cast(UpdateDialogPinned, tl_update)],
             users=[await other.to_tl(user) for other in users.values()],
-            chats=[],
+            chats=[await peer.chat.to_tl(user)] if peer.type is PeerType.CHAT else [],
             date=int(time()),
             seq=0,
         )
@@ -215,7 +215,7 @@ class UpdatesManager(metaclass=SingletonMeta):
         updates = Updates(
             updates=[UpdateDraftMessage(peer=peer.to_tl(), draft=draft)],
             users=[await user.to_tl(user)],
-            chats=[],
+            chats=[await peer.chat.to_tl(user)] if peer.type is PeerType.CHAT else [],
             date=int(time()),
             seq=0,
         )
@@ -243,7 +243,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                 )
             ],
             users=[await user.to_tl(user)],
-            chats=[],
+            chats=[await dialog.peer.chat.to_tl(user) for dialog in dialogs if dialog.peer.type is PeerType.CHAT],
             date=int(time()),
             seq=0,
         )
@@ -257,7 +257,7 @@ class UpdatesManager(metaclass=SingletonMeta):
 
         for peer, message in messages.items():
             if isinstance(peer.owner, QuerySet):
-                await peer.fetch_related("owner")
+                await peer.fetch_related("owner", "chat")
 
             pts = await State.add_pts(peer.owner, 1)
 
@@ -281,7 +281,7 @@ class UpdatesManager(metaclass=SingletonMeta):
                     )
                 ],
                 users=[await message.author.to_tl(peer.owner)],
-                chats=[],
+                chats=[await peer.chat.to_tl(peer.owner)] if peer.type is PeerType.CHAT else [],
                 date=int(time()),
                 seq=0,
             )

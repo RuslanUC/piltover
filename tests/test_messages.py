@@ -1,14 +1,12 @@
-import logging
 from io import BytesIO
 
 import pytest
 
-from piltover.server import Server
 from tests.conftest import TestClient
 
 
 @pytest.mark.asyncio
-async def test_send_text_message() -> None:
+async def test_send_text_message_to_self() -> None:
     async with TestClient(phone_number="123456789") as client:
         messages = [msg async for msg in client.get_chat_history("me")]
         assert len(messages) == 0
@@ -24,7 +22,7 @@ async def test_send_text_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_message_with_document() -> None:
+async def test_send_message_with_document_to_self() -> None:
     async with TestClient(phone_number="123456789") as client:
         file = BytesIO(b"test document")
         setattr(file, "name", "test.txt")
@@ -35,7 +33,7 @@ async def test_send_message_with_document() -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_text_message() -> None:
+async def test_edit_text_message_in_chat_with_self() -> None:
     async with TestClient(phone_number="123456789") as client:
         message = await client.send_message("me", text="test 123")
         assert message.text == "test 123"
@@ -47,7 +45,7 @@ async def test_edit_text_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_text_message() -> None:
+async def test_delete_text_message_in_chat_with_self() -> None:
     async with TestClient(phone_number="123456789") as client:
         messages = [msg async for msg in client.get_chat_history("me")]
         assert len(messages) == 0
@@ -68,7 +66,7 @@ async def test_delete_text_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pin_message_both_sides() -> None:
+async def test_pin_message_both_sides_in_chat_with_self() -> None:
     async with TestClient(phone_number="123456789") as client:
         message = await client.send_message("me", text="test 123")
         assert message.text == "test 123"
@@ -77,7 +75,7 @@ async def test_pin_message_both_sides() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pin_message_one_side() -> None:
+async def test_pin_message_one_side_in_chat_with_self() -> None:
     async with TestClient(phone_number="123456789") as client:
         message = await client.send_message("me", text="test 123")
         assert message.text == "test 123"
@@ -86,9 +84,26 @@ async def test_pin_message_one_side() -> None:
 
 
 @pytest.mark.asyncio
-async def test_forward_message() -> None:
+async def test_forward_message_in_chat_with_self() -> None:
     async with TestClient(phone_number="123456789") as client:
         message = await client.send_message("me", text="test 123")
         assert message.text == "test 123"
         fwd_message = await message.forward("me")
         assert fwd_message is not None
+
+
+@pytest.mark.asyncio
+async def test_send_text_message_in_group() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        group = await client.create_group("idk", [])
+        messages = [msg async for msg in client.get_chat_history(group.id)]
+        assert len(messages) == 0
+
+        message = await client.send_message(group.id, text="test 123456")
+        assert message.text == "test 123456"
+
+        messages = [msg async for msg in client.get_chat_history(group.id)]
+        assert len(messages) == 1
+
+        assert messages[0].id == message.id
+        assert messages[0].text == message.text
