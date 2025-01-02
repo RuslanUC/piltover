@@ -47,13 +47,12 @@ class Presence(Model):
 
         return EMPTY
 
-    # TODO: call this inside SendMessage, account.UpdateStatus, etc.
-    # TODO: send UpdateUserStatus update (without writing it to database)
     @classmethod
     async def update_to_now(cls, user: models.User, status: UserStatus = UserStatus.ONLINE) -> Presence:
-        presence, created = await cls.get_or_create(user=user, defaults={"status": status})
+        last_seen = datetime.now(UTC)
+        presence, created = await cls.get_or_create(user=user, defaults={"status": status, "last_seen": last_seen})
         if not created:
-            presence.last_seen = datetime.now(UTC)
+            presence.last_seen = last_seen
             await presence.save(update_fields=["last_seen"])
 
         return presence

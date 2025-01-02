@@ -4,7 +4,8 @@ from datetime import datetime, UTC
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
 from piltover.db.enums import MediaType, MessageType, PeerType
-from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File, MessageFwdHeader
+from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File, \
+    MessageFwdHeader, Presence
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
@@ -54,6 +55,9 @@ async def send_message_internal(
 
     if (upd := await UpdatesManager.send_message(user, messages)) is None:
         assert False, "unknown chat type ?"
+
+    presence = await Presence.update_to_now(user)
+    await UpdatesManager.update_status(user, presence, peers[1:])
 
     return upd
 
@@ -121,11 +125,13 @@ async def delete_messages(request: DeleteMessages, user: User):
     messages = defaultdict(list)
     for message in await Message.filter(id__in=ids, peer__owner=user).select_related("peer", "peer__user", "peer__owner"):
         messages[user].append(message.id)
-        if request.revoke:
-            for opposite_peer in await message.peer.get_opposite():
-                opp_message = await Message.get_or_none(internal_id=message.internal_id, peer=opposite_peer)
-                if opp_message is not None:
-                    messages[message.peer.user].append(opp_message.id)
+        if not request.revoke:
+            continue
+
+        for opposite_peer in await message.peer.get_opposite():
+            opp_message = await Message.get_or_none(internal_id=message.internal_id, peer=opposite_peer)
+            if opp_message is not None:
+                messages[message.peer.user].append(opp_message.id)
 
     all_ids = [i for ids in messages.values() for i in ids]
     if not all_ids:
@@ -134,6 +140,10 @@ async def delete_messages(request: DeleteMessages, user: User):
 
     await Message.filter(id__in=all_ids).delete()
     pts = await UpdatesManager.delete_messages(user, messages)
+
+    presence = await Presence.update_to_now(user)
+    await UpdatesManager.update_status(user, presence, list(messages.keys()))
+
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
 
@@ -165,6 +175,9 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
         if message is not None:
             await message.update(message=request.message, edit_date=edit_date)
             messages[to_peer] = message
+
+    presence = await Presence.update_to_now(user)
+    await UpdatesManager.update_status(user, presence, peers[1:])
 
     return await UpdatesManager.edit_message(user, messages)
 
@@ -310,6 +323,9 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
                 fwd_header=fwd_header,
                 random_id=str(random_ids.get(message.id)) if opp_peer == to_peer and message.id in random_ids else None,
             )
+
+    presence = await Presence.update_to_now(user)
+    await UpdatesManager.update_status(user, presence, peers[1:])
 
     if (upd := await UpdatesManager.send_message(user, result)) is None:
         assert False, "unknown chat type ?"

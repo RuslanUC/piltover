@@ -1,7 +1,8 @@
 from time import time
 
+from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer
+from piltover.db.models import User, Peer, Presence
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.session_manager import SessionManager
@@ -20,7 +21,8 @@ async def set_typing(request: SetTyping, user: User):
         return True
 
     chat = peer.chat if peer.type is PeerType.CHAT else None
-    for other in await peer.get_opposite():
+    peers = await peer.get_opposite()
+    for other in peers:
         chats = [] if chat is None else [await chat.to_tl(other.owner)]
         updates = Updates(
             updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
@@ -30,5 +32,8 @@ async def set_typing(request: SetTyping, user: User):
             seq=0,
         )
         await SessionManager.send(updates, other.id)
+
+    presence = await Presence.update_to_now(user)
+    await UpdatesManager.update_status(user, presence, peers)
 
     return True

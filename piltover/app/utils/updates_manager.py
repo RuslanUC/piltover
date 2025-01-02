@@ -6,11 +6,12 @@ from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import UpdateType, PeerType
-from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat
+from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
-    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants
+    UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
+    UpdateUserStatus
 from piltover.tl.functions.messages import SendMessage
 from piltover.utils.utils import SingletonMeta
 
@@ -361,3 +362,21 @@ class UpdatesManager(metaclass=SingletonMeta):
 
         await UpdateV2.bulk_create(updates_to_create)
         return result_update
+
+    @staticmethod
+    async def update_status(user: User, status: Presence, peers: list[Peer]) -> None:
+        for peer in peers:
+            updates = Updates(
+                updates=[
+                    UpdateUserStatus(
+                        user_id=user.id,
+                        status=await status.to_tl(peer.owner),
+                    ),
+                ],
+                users=[await user.to_tl(peer.owner)],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            )
+
+            await SessionManager.send(updates, peer.owner.id)

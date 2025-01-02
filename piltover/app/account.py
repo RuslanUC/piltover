@@ -3,8 +3,8 @@ import re
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType
-from piltover.db.models import User, UserAuthorization
+from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus
+from piltover.db.models import User, UserAuthorization, Peer, Presence
 from piltover.db.models.privacy_rule import PrivacyRule, TL_KEY_TO_PRIVACY_ENUM
 from piltover.db.models.user_password import UserPassword
 from piltover.enums import ReqHandlerFlags
@@ -183,8 +183,11 @@ async def get_content_settings():
     )
 
 
-@handler.on_request(UpdateStatus, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def update_status():
+@handler.on_request(UpdateStatus)
+async def update_status(request: UpdateStatus, user: User) -> bool:
+    presence = await Presence.update_to_now(user, UserStatus.OFFLINE if request.offline else UserStatus.ONLINE)
+    await UpdatesManager.update_status(user, presence, await Peer.filter(user=user).select_related("owner"))
+
     return True
 
 
