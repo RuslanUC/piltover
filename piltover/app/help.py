@@ -7,7 +7,7 @@ from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, Ge
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
     GetPeerProfileColors
 from piltover.tl.types.help import CountriesList, Country, CountryCode, PromoDataEmpty, \
-    PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, PeerColors, PeerColorOption
+    PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, PeerColors, PeerColorOption, AppConfig
 
 handler = MessageHandler("help")
 
@@ -64,7 +64,7 @@ async def get_nearest_dc():
 
 @handler.on_request(GetAppConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_app_config():
-    return JsonObject(value=[])
+    return AppConfig(hash=1, config=JsonObject(value=[]))
 
 
 @handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED)

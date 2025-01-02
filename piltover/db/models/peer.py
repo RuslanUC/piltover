@@ -73,7 +73,9 @@ class Peer(Model):
         if self.type is PeerType.USER:
             if self.user_id == 777000:
                 return []
-            peer, _ = await Peer.get_or_create(type=PeerType.USER, owner=self.user, user=self.owner)
+            peer, created = await Peer.get_or_create(type=PeerType.USER, owner=self.user, user=self.owner)
+            if not created:
+                await peer.fetch_related("owner")
             return [peer]
         elif self.type is PeerType.CHAT:
             return await Peer.filter(type=PeerType.CHAT, owner__id__not=self.owner.id).select_related("owner", "chat")

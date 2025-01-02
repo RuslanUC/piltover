@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from mtproto.packets import DecryptedMessagePacket
 
 from piltover.db.models import User, UserAuthorization, AuthKey
@@ -176,4 +177,7 @@ class SessionManager(metaclass=SingletonMeta):
                 await auth.update(upd_seq=auth.upd_seq + 1)
                 obj.seq = auth.upd_seq
 
-            await session.client.send(obj, session)
+            try:
+                await session.client.send(obj, session)
+            except Exception as e:
+                logger.opt(exception=e).warning(f"Failed to send {obj} to {session.client}")

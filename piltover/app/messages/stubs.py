@@ -10,7 +10,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
     GetAttachMenuBots, GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, \
     GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetMessageEditData, GetQuickReplies, \
-    GetDefaultTagReactions, GetSavedDialogs, GetSavedReactionTags
+    GetDefaultTagReactions, GetSavedDialogs, GetSavedReactionTags, GetSavedHistory, GetEmojiKeywordsDifference
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, Reactions, \
     Stickers, SearchResultsPositions, AllStickers, FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, \
     StickerSet as messages_StickerSet, QuickReplies, SavedDialogs, SavedReactionTags
@@ -203,4 +203,23 @@ async def get_saved_reaction_tags() -> SavedReactionTags:
     return SavedReactionTags(
         tags=[],
         hash=0,
+    )
+
+
+@handler.on_request(GetSavedHistory, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_saved_history() -> Messages:
+    return Messages(
+        messages=[],
+        chats=[],
+        users=[],
+    )
+
+
+@handler.on_request(GetEmojiKeywordsDifference, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_emoji_keywords_difference(request: GetEmojiKeywordsDifference) -> EmojiKeywordsDifference:
+    return EmojiKeywordsDifference(
+        lang_code=request.lang_code,
+        from_version=request.from_version,
+        version=request.from_version,
+        keywords=[],
     )
