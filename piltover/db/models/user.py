@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import date
+
 from tortoise import fields
 
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.db.models._utils import Model
-from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty
+from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday
 from piltover.tl.types import User as TLUser
 
 
@@ -18,6 +20,7 @@ class User(Model):
     lang_code: str = fields.CharField(max_length=8, default="en")
     about: str | None = fields.CharField(max_length=240, null=True, default=None)
     ttl_days: int = fields.IntField(default=365)
+    birthday: date | None = fields.DateField(null=True, default=None)
 
     async def get_photo(self, current_user: models.User, profile_photo: bool = False):
         photo = UserProfilePhotoEmpty() if profile_photo else PhotoEmpty(id=0)
@@ -77,3 +80,13 @@ class User(Model):
             if (user := await User.get_or_none(id=uid)) is not None:
                 result.append(user)
         return result
+
+    def to_tl_birthday(self) -> Birthday | None:
+        if self.birthday is None:
+            return
+
+        return Birthday(
+            day=self.birthday.day,
+            month=self.birthday.month,
+            year=self.birthday.year if self.birthday.year != 1900 else None,
+        )

@@ -80,7 +80,7 @@ class UpdateV2(Model):
             if users is not None and (other := await peer.get_opposite()) is not None:
                 for opp in other:
                     if opp.user.id not in users:
-                        users[opp.user.id] = opp.user
+                        users[opp.user.id] = await opp.user.to_tl(current_user)
 
             if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
                 chat = await peer.chat
@@ -102,7 +102,7 @@ class UpdateV2(Model):
                 peer = dialog.peer
                 peer_user = peer.peer_user(current_user)
                 if users is not None and peer_user.id not in users:
-                    users[peer_user.id] = peer_user
+                    users[peer_user.id] = await peer_user.to_tl(current_user)
                 if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
                     chat = await peer.chat
                     chats[peer.chat_id] = await chat.to_tl(current_user)
@@ -120,7 +120,7 @@ class UpdateV2(Model):
                 return
 
             if users is not None and peer.user is not None and peer.user.id not in users:
-                users[peer.user.id] = peer.user
+                users[peer.user.id] = await peer.user.to_tl(current_user)
             if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
                 await peer.fetch_related("chat")
                 chats[peer.chat.id] = await peer.chat.to_tl(current_user)
@@ -144,9 +144,9 @@ class UpdateV2(Model):
                 return
 
             if users is not None and message.peer.user is not None and message.peer.user.id not in users:
-                users[message.peer.user.id] = message.peer.user
+                users[message.peer.user.id] = await message.peer.user.to_tl(current_user)
             if users is not None and message.author.id not in users:
-                users[message.author.id] = message.author
+                users[message.author.id] = await message.author.to_tl(current_user)
             if chats is not None and message.peer.type is PeerType.CHAT and message.peer.chat_id not in chats:
                 await message.peer.fetch_related("chat")
                 chats[message.peer.chat.id] = await message.peer.chat.to_tl(current_user)
@@ -165,7 +165,7 @@ class UpdateV2(Model):
                 return
 
             if users is not None and peer_user.id not in users:
-                users[peer_user.id] = peer_user
+                users[peer_user.id] = await peer_user.to_tl(current_user)
 
             return UpdateUser(
                 user_id=peer_user.id,
@@ -197,7 +197,7 @@ class UpdateV2(Model):
 
             peer_user = peer.peer_user(current_user)
             if users is not None and peer_user.id not in users:
-                users[peer_user.id] = peer_user
+                users[peer_user.id] = await peer_user.to_tl(current_user)
 
             username = Username(editable=True, active=True, username=peer_user.username)
             return UpdateUserName(

@@ -1,4 +1,5 @@
 import re
+from datetime import date
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal
@@ -17,7 +18,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
-    SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy
+    SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
 from piltover.utils import gen_safe_prime
@@ -306,3 +307,27 @@ async def get_default_profile_photo_emojis(request: GetDefaultProfilePhotoEmojis
 @handler.on_request(GetWebAuthorizations)
 async def get_web_authorizations(user: User) -> WebAuthorizations:
     return WebAuthorizations(authorizations=[], users=[await user.to_tl(user)])
+
+
+@handler.on_request(UpdateBirthday)
+async def update_birthday(request: UpdateBirthday, user: User) -> bool:
+    before = user.birthday
+    after = None
+    if request.birthday:
+        this_year = date.today().year
+        age = this_year - (request.birthday.year if request.birthday.year else this_year)
+        if request.birthday.year and (age < 0 or age > 150):
+            raise ErrorRpc(error_code=400, error_message="BIRTHDAY_INVALID")
+
+        after = date(
+            year=request.birthday.year if request.birthday.year else 1900,
+            month=request.birthday.month,
+            day=request.birthday.day,
+        )
+
+    if before != after:
+        user.birthday = after
+        await user.save(update_fields=["birthday"])
+        await UpdatesManager.update_user(user)
+
+    return True
