@@ -11,23 +11,6 @@ def background(coro: Coroutine[None, None, T]) -> asyncio.Task[T]:
     return task
 
 
-def check_flag(flags: int, *check: int) -> bool:
-    for flag in check:
-        if (flags & flag) != flag:
-            return False
-    return True
-
-
-class SingletonMeta(type):
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            instance = super().__call__(*args, **kwargs)
-            cls._instances[cls] = instance
-        return cls._instances[cls]
-
-
 class classinstancemethod:
     def __init__(self, method: Callable, instance: object = None, owner=None):
         self.method = method

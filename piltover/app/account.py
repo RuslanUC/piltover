@@ -50,7 +50,7 @@ async def update_username(request: UpdateUsername, user: User):
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
 
     await user.update(username=request.username)
-    await UpdatesManager.update_user(user)
+    await UpdatesManager.update_user_name(user)
     return await user.to_tl(user)
 
 
@@ -207,7 +207,10 @@ async def update_profile(request: UpdateProfile, user: User):
 
     if updates:
         await user.update_from_dict(updates).save(update_fields=updates.keys())
-        await UpdatesManager.update_user(user)
+        if "about" in updates:
+            await UpdatesManager.update_user(user)
+        else:
+            await UpdatesManager.update_user_name(user)
 
     return await user.to_tl(user)
 

@@ -13,7 +13,6 @@ from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.utils import is_content_related
-from piltover.utils.utils import SingletonMeta
 
 if TYPE_CHECKING:
     from piltover.server import Client
@@ -106,7 +105,7 @@ class Session:
         SessionManager.cleanup(self)
 
 
-class SessionManager(metaclass=SingletonMeta):
+class SessionManager:
     sessions: dict[int, dict[int, Session]] = {}
     by_key_id: dict[int, set[Session]] = defaultdict(set)
     by_user_id: dict[int, set[Session]] = defaultdict(set)

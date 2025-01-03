@@ -15,7 +15,6 @@ from piltover.session_manager import Session, SessionManager
 from piltover.tl import TLObject, RpcError, Ping, Pong
 from piltover.tl.core_types import MsgContainer, RpcResult, Message
 from piltover.utils import background
-from piltover.utils.utils import check_flag
 
 HandlerResult = Awaitable[TLObject | None]
 HandlerFunc = (Callable[[], HandlerResult] |
@@ -40,10 +39,10 @@ class RequestHandler:
         self.has_user_arg = "user" in func_args
 
     def auth_required(self) -> bool:
-        return not check_flag(self.flags, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+        return not (self.flags & ReqHandlerFlags.AUTH_NOT_REQUIRED)
 
     def allow_mfa_pending(self) -> bool:
-        return check_flag(self.flags, ReqHandlerFlags.ALLOW_MFA_PENDING)
+        return bool(self.flags & ReqHandlerFlags.ALLOW_MFA_PENDING)
 
     async def __call__(self, client: LowClient, request: TLObject, user: User | None) -> Any:
         kwargs = {}
@@ -64,7 +63,7 @@ class MessageHandler:
 
     def on_request(self, typ: type[TLObject], flags: int = 0):
         def decorator(func: HandlerFunc):
-            logger.debug(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
+            logger.trace(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
 
             self.request_handlers[typ.tlid()] = RequestHandler(func, flags)
             return func

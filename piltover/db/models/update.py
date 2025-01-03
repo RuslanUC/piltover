@@ -10,11 +10,13 @@ from piltover.db.models import Dialog
 from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
-    UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator
+    UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
+    UpdateUserName
 from piltover.tl.types import User as TLUser, Chat as TLChat
 
-UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned | \
-              UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants
+UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
+              | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
+              | UpdateUserName
 
 
 class UpdateV2(Model):
@@ -187,4 +189,20 @@ class UpdateV2(Model):
                     ],
                     version=1,
                 ),
+            )
+
+        if self.update_type is UpdateType.USER_UPDATE_NAME:
+            if (peer := await models.Peer.from_user_id(current_user, self.related_id)) is None:
+                return
+
+            peer_user = peer.peer_user(current_user)
+            if users is not None and peer_user.id not in users:
+                users[peer_user.id] = peer_user
+
+            username = Username(editable=True, active=True, username=peer_user.username)
+            return UpdateUserName(
+                user_id=peer_user.id,
+                first_name=peer_user.first_name,
+                last_name=peer_user.last_name,
+                usernames=[username] if peer_user.username else [],
             )

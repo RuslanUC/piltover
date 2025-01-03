@@ -299,7 +299,7 @@ class Client:
             self.auth_data.expires_in = max(cast(PQInnerDataTempDc, p_q_inner_data).expires_in, 86400) \
                 if self.auth_data.is_temp else 0
 
-            new_nonce: bytes = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
+            new_nonce = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
             self.auth_data.new_nonce = new_nonce
             # TODO: set server salt to server_nonce
 

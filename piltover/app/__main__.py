@@ -117,7 +117,7 @@ class PiltoverApp:
         if key := await AuthKey.get_or_temp(auth_key_id):
             return auth_key_id, key.auth_key, isinstance(key, TempAuthKey)
 
-    async def run(self, host: str | None = None, port: int | None = None, *, reload: bool = False):
+    async def run(self, host: str | None = None, port: int | None = None):
         self._host = host or self._host
         self._port = port or self._port
 
@@ -128,8 +128,7 @@ class PiltoverApp:
             no_sign=fp.to_bytes(8, "big", signed=True).hex(),
         )
 
-        if reload:
-            await migrate()
+        await migrate()
 
         await Tortoise.init(
             db_url=DB_CONNECTION_STRING,
@@ -168,6 +167,6 @@ app = PiltoverApp(secrets / "privkey.asc", secrets / "pubkey.asc")
 if __name__ == "__main__":
     try:
         uvloop.install()
-        asyncio.run(app.run(reload=True))
+        asyncio.run(app.run())
     except KeyboardInterrupt:
         pass

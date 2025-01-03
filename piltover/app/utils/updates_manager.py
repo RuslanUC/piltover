@@ -11,12 +11,11 @@ from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
-    UpdateUserStatus
+    UpdateUserStatus, UpdateUserName, Username
 from piltover.tl.functions.messages import SendMessage
-from piltover.utils.utils import SingletonMeta
 
 
-class UpdatesManager(metaclass=SingletonMeta):
+class UpdatesManager:
     @staticmethod
     async def send_message(user: User, messages: dict[Peer, Message]) -> Updates | UpdateShortSentMessage:
         ctx: RequestContext[SendMessage] = request_ctx.get()
@@ -380,3 +379,34 @@ class UpdatesManager(metaclass=SingletonMeta):
             )
 
             await SessionManager.send(updates, peer.owner.id)
+
+    @staticmethod
+    async def update_user_name(user: User) -> None:
+        updates_to_create = []
+
+        usernames = [] if not user.username else [Username(editable=True, active=True, username=user.username)]
+        update = UpdateUserName(
+            user_id=user.id, first_name=user.first_name, last_name=user.last_name, usernames=usernames,
+        )
+        peer: Peer
+        async for peer in Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
+            pts = await State.add_pts(peer.owner, 1)
+
+            updates_to_create.append(
+                UpdateV2(
+                    user=peer.owner,
+                    update_type=UpdateType.USER_UPDATE_NAME,
+                    pts=pts,
+                    related_id=user.id,
+                )
+            )
+
+            await SessionManager.send(Updates(
+                updates=[update],
+                users=[await user.to_tl(peer.owner)],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            ), peer.owner.id)
+
+        await UpdateV2.bulk_create(updates_to_create)

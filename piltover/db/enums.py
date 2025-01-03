@@ -59,6 +59,7 @@ class UpdateType(IntEnum):
     MESSAGE_PIN_UPDATE = 6
     USER_UPDATE = 7
     CHAT_CREATE = 8
+    USER_UPDATE_NAME = 9
 
 
 class PeerType(IntEnum):
