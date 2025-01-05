@@ -22,11 +22,7 @@ async def get_contacts():
     )
 
 
-@handler.on_request(ResolveUsername)
-async def resolve_username(request: ResolveUsername, user: User):
-    if (resolved := await User.get_or_none(username=request.username)) is None:
-        raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")
-
+async def _format_resolved_peer(user: User, resolved: User) -> ResolvedPeer:
     if resolved == user:
         peer, _ = await Peer.get_or_create(owner=user, user=None, type=PeerType.SELF)
     else:
@@ -37,6 +33,14 @@ async def resolve_username(request: ResolveUsername, user: User):
         chats=[],
         users=[await resolved.to_tl(user)],
     )
+
+
+@handler.on_request(ResolveUsername)
+async def resolve_username(request: ResolveUsername, user: User):
+    if (resolved := await User.get_or_none(username=request.username)) is None:
+        raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")
+
+    return await _format_resolved_peer(user, resolved)
 
 
 @handler.on_request(GetBlocked, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -90,17 +94,8 @@ async def get_birthdays(user: User) -> ContactBirthdays:
 
 
 @handler.on_request(ResolvePhone)
-async def resolve_phone(request: ResolvePhone, user: User):
+async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
     if (resolved := await User.get_or_none(phonu_number=request.phone)) is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_NOT_OCCUPIED")
 
-    if resolved == user:
-        peer, _ = await Peer.get_or_create(owner=user, user=None, type=PeerType.SELF)
-    else:
-        peer, _ = await Peer.get_or_create(owner=user, user=resolved, type=PeerType.USER)
-
-    return ResolvedPeer(
-        peer=peer.to_tl(),
-        chats=[],
-        users=[await resolved.to_tl(user)],
-    )
+    return await _format_resolved_peer(user, resolved)

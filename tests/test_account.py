@@ -67,3 +67,13 @@ async def test_change_username_to_same() -> None:
 
         me = await client.get_me()
         assert me.username == "test_username"
+
+
+@pytest.mark.asyncio
+async def test_resolve_username() -> None:
+    async with TestClient(phone_number="123456789") as client, TestClient(phone_number="1234567890") as client2:
+        await client2.set_username("test2_username")
+        user2 = await client.get_users("test2_username")
+        me2 = await client2.get_me()
+
+        assert user2.id == me2.id

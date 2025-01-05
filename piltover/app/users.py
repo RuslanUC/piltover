@@ -42,7 +42,7 @@ async def get_users(request: GetUsers, user: User):
             out_peer = await Peer.from_input_peer(user, peer)
             if out_peer:
                 target_user = user if out_peer.type is PeerType.SELF else out_peer.user
-                await target_user.to_tl(user)
+                result.append(await target_user.to_tl(user))
             else:
                 result.append(UserEmpty(id=0))
         except ErrorRpc:
