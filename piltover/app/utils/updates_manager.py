@@ -363,22 +363,23 @@ class UpdatesManager:
         return result_update
 
     @staticmethod
-    async def update_status(user: User, status: Presence, peers: list[Peer]) -> None:
+    async def update_status(user: User, status: Presence, peers: list[Peer | User]) -> None:
         for peer in peers:
+            peer_user = peer.owner if isinstance(peer, Peer) else peer
             updates = Updates(
                 updates=[
                     UpdateUserStatus(
                         user_id=user.id,
-                        status=await status.to_tl(peer.owner),
+                        status=await status.to_tl(peer_user),
                     ),
                 ],
-                users=[await user.to_tl(peer.owner)],
+                users=[await user.to_tl(peer_user)],
                 chats=[],
                 date=int(time()),
                 seq=0,
             )
 
-            await SessionManager.send(updates, peer.owner.id)
+            await SessionManager.send(updates, peer_user.id)
 
     @staticmethod
     async def update_user_name(user: User) -> None:
