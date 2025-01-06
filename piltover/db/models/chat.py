@@ -34,6 +34,8 @@ DEFAULT_BANNED_RIGHTS = ChatBannedRights(
 class Chat(Model):
     id: int = fields.BigIntField(pk=True)
     name: str = fields.CharField(max_length=64)
+    description: str = fields.CharField(max_length=255, default="")
+    version: int = fields.BigIntField(default=1)
     creator: models.User = fields.ForeignKeyField("models.User")
 
     creator_id: int
@@ -51,7 +53,7 @@ class Chat(Model):
             photo=ChatPhotoEmpty(),
             participants_count=await models.Peer.filter(chat=self, type=PeerType.CHAT).count(),
             date=int(time()),  # ??
-            version=1,
+            version=self.version,
             migrated_to=None,
             admin_rights=None,
             default_banned_rights=DEFAULT_BANNED_RIGHTS,

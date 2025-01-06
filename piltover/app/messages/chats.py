@@ -6,7 +6,8 @@ from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipantCreator, ChatParticipants
-from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle
+from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
+    EditChatAbout
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 
 handler = MessageHandler("messages.chats")
@@ -60,7 +61,7 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             can_set_username=True,
             translations_disabled=True,
             id=chat.id,
-            about="",
+            about=chat.description,
             participants=ChatParticipants(
                 chat_id=chat.id,
                 participants=[
@@ -96,3 +97,28 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE, message=request.title,
     )
+
+
+@handler.on_request(EditChatAbout)
+async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
+    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    # TODO: check if admin
+    chat = peer.chat
+
+    new_desc = request.about.strip()
+    if new_desc == chat.name:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ABOUT_NOT_MODIFIED")
+    if len(new_desc) > 255:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ABOUT_TOO_LONG")
+
+    chat.description = new_desc
+    chat.version += 1
+    await chat.save(update_fields=["description", "version"])
+
+    await UpdatesManager.update_chat(chat)
+
+    return True

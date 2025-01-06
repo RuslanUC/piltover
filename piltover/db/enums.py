@@ -62,6 +62,7 @@ class UpdateType(IntEnum):
     USER_UPDATE_NAME = 9
     UPDATE_CONTACT = 10
     UPDATE_BLOCK = 11
+    UPDATE_CHAT = 12
 
 
 class PeerType(IntEnum):

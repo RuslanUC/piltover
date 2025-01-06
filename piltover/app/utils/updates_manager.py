@@ -11,7 +11,8 @@ from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
-    UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked
+    UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
+    UpdateChat
 from piltover.tl.functions.messages import SendMessage
 
 
@@ -465,3 +466,24 @@ class UpdatesManager:
             date=int(time()),
             seq=0,
         ), user.id)
+
+    @staticmethod
+    async def update_chat(chat: Chat) -> None:
+        updates_to_create = []
+
+        peer: Peer
+        async for peer in Peer.filter(chat=chat).select_related("owner"):
+            pts = await State.add_pts(peer.owner, 1)
+            updates_to_create.append(UpdateV2(
+                user=peer.owner, update_type=UpdateType.UPDATE_CHAT, pts=pts, related_id=chat.id,
+            ))
+
+            await SessionManager.send(Updates(
+                updates=[UpdateChat(chat_id=chat.id)],
+                users=[],
+                chats=[await chat.to_tl(peer.owner)],
+                date=int(time()),
+                seq=0,
+            ), peer.owner.id)
+
+        await UpdateV2.bulk_create(updates_to_create)
