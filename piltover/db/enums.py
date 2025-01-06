@@ -51,7 +51,7 @@ class UpdateType(IntEnum):
     # related_id is a message id
     MESSAGE_EDIT = 1
     # Should (probably) be only one update of this type per chat
-    # related_it is a chat id
+    # related_id is a chat id
     READ_HISTORY_INBOX = 2
     DIALOG_PIN = 3
     DRAFT_UPDATE = 4
@@ -61,6 +61,7 @@ class UpdateType(IntEnum):
     CHAT_CREATE = 8
     USER_UPDATE_NAME = 9
     UPDATE_CONTACT = 10
+    UPDATE_BLOCK = 11
 
 
 class PeerType(IntEnum):

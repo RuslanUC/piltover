@@ -125,3 +125,28 @@ async def test_send_text_message_in_pm() -> None:
 
         assert messages[0].id == message.id
         assert messages[0].text == message.text
+
+
+@pytest.mark.asyncio
+async def test_send_text_message_to_blocked() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        await client1.set_username("test1_username")
+        await client2.set_username("test2_username")
+        user1 = await client2.get_users("test1_username")
+        user2 = await client1.get_users("test2_username")
+
+        assert await client2.send_message(user1.username, "test 123 1")
+        assert len([msg async for msg in client2.get_chat_history(user1.username)]) == 1
+        assert len([msg async for msg in client1.get_chat_history(user2.username)]) == 1
+
+        assert await client1.block_user(user2.username)
+
+        assert await client2.send_message(user1.username, "test 123 2")
+        assert len([msg async for msg in client2.get_chat_history(user1.username)]) == 2
+        assert len([msg async for msg in client1.get_chat_history(user2.username)]) == 1
+
+        assert await client1.unblock_user(user2.username)
+
+        assert await client2.send_message(user1.username, "test 123 3")
+        assert len([msg async for msg in client2.get_chat_history(user1.username)]) == 3
+        assert len([msg async for msg in client1.get_chat_history(user2.username)]) == 2

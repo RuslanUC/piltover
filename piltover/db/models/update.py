@@ -10,12 +10,12 @@ from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
-    UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings
+    UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked
 from piltover.tl.types import User as TLUser, Chat as TLChat
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
-              | UpdateUserName | UpdatePeerSettings
+              | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked
 
 
 class UpdateV2(Model):
@@ -216,4 +216,16 @@ class UpdateV2(Model):
             return UpdatePeerSettings(
                 peer=PeerUser(user_id=contact.target.id),
                 settings=PeerSettings(),
+            )
+
+        if self.update_type is UpdateType.UPDATE_BLOCK:
+            if (peer := await models.Peer.from_user_id(current_user, self.related_id)) is None:
+                return
+
+            if users is not None and peer.user.id not in users:
+                users[peer.user.id] = await peer.user.to_tl(current_user)
+
+            return UpdatePeerBlocked(
+                peer_id=peer.to_tl(),
+                blocked=peer.blocked,
             )

@@ -11,7 +11,7 @@ from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
-    UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser
+    UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked
 from piltover.tl.functions.messages import SendMessage
 
 
@@ -445,3 +445,23 @@ class UpdatesManager:
         await SessionManager.send(updates, user.id)
 
         return updates
+
+    @staticmethod
+    async def block_unblock_user(user: User, target: Peer) -> None:
+        pts = await State.add_pts(user, 1)
+        await UpdateV2.create(
+            user=user, update_type=UpdateType.UPDATE_BLOCK, pts=pts, related_id=target.user.id,
+        )
+
+        await SessionManager.send(Updates(
+            updates=[
+                UpdatePeerBlocked(
+                    peer_id=target.to_tl(),
+                    blocked=target.blocked,
+                ),
+            ],
+            users=[await target.user.to_tl(user)],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        ), user.id)

@@ -6,10 +6,10 @@ from piltover.db.models import User, Peer, Contact
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
-from piltover.tl import ContactBirthday, Updates, Contact as TLContact
+from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
-    GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts
-from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays
+    GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_136, Unblock_136
+from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, BlockedSlice
 
 handler = MessageHandler("contacts")
 
@@ -56,12 +56,29 @@ async def resolve_username(request: ResolveUsername, user: User):
     return await _format_resolved_peer(user, resolved)
 
 
-@handler.on_request(GetBlocked, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_blocked():
+@handler.on_request(GetBlocked)
+async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice:
+    limit = max(min(request.limit, 1), 100)
+    blocked_query = Peer.filter(owner=user, type=PeerType.USER, blocked=True).select_related("user").order_by("-id")
+    blocked_peers = await blocked_query.limit(limit).offset(request.offset)
+    count = await blocked_query.count()
+
+    # TODO: date?
+    peers_blocked = [PeerBlocked(peer_id=peer.to_tl(), date=0) for peer in blocked_peers]
+    users = [await blocked.user.to_tl(user) for blocked in blocked_peers]
+
+    if count > (limit + request.offset):
+        return BlockedSlice(
+            count=count,
+            blocked=peers_blocked,
+            chats=[],
+            users=users,
+        )
+
     return Blocked(
-        blocked=[],
+        blocked=peers_blocked,
         chats=[],
-        users=[],
+        users=users,
     )
 
 
@@ -115,7 +132,7 @@ async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
 
 
 @handler.on_request(AddContact)
-async def get_statuses(request: AddContact, user: User) -> Updates:
+async def add_contact(request: AddContact, user: User) -> Updates:
     if (peer := await Peer.from_input_peer(user, request.id)) is None or peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -134,7 +151,7 @@ async def get_statuses(request: AddContact, user: User) -> Updates:
 
 
 @handler.on_request(DeleteContacts)
-async def get_statuses(request: DeleteContacts, user: User) -> Updates:
+async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
     peers = {}
     for peer_id in request.id:
         try:
@@ -154,3 +171,20 @@ async def get_statuses(request: DeleteContacts, user: User) -> Updates:
     await Contact.filter(id__in=contact_ids).delete()
 
     return await UpdatesManager.add_remove_contact(user, users)
+
+
+@handler.on_request(Unblock_136)
+@handler.on_request(Unblock)
+@handler.on_request(Block_136)
+@handler.on_request(Block)
+async def block_unblock(request: Block, user: User) -> bool:
+    if (peer := await Peer.from_input_peer(user, request.id)) is None or peer.type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    to_block = isinstance(request, (Block, Block_136))
+    if peer.blocked != to_block:
+        peer.blocked = to_block
+        await peer.save(update_fields=["blocked"])
+        await UpdatesManager.block_unblock_user(user, peer)
+
+    return True
