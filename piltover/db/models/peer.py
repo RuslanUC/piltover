@@ -48,7 +48,7 @@ class Peer(Model):
 
     @classmethod
     async def from_chat_id(cls, user: models.User, chat_id: int) -> Peer | None:
-        return await Peer.get_or_none(owner=user, chat__id=chat_id, type=PeerType.CHAT).select_related("chat")
+        return await Peer.get_or_none(owner=user, chat__id=chat_id, type=PeerType.CHAT).select_related("owner", "chat")
 
     @classmethod
     async def from_input_peer(cls, user: models.User, input_peer: InputPeers) -> Peer | None:

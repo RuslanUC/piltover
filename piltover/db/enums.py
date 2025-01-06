@@ -74,6 +74,7 @@ class MessageType(IntEnum):
     REGULAR = 0
     SERVICE_PIN_MESSAGE = 1
     SERVICE_CHAT_CREATE = 2
+    SERVICE_CHAT_EDIT_TITLE = 3
 
 
 class UserStatus(IntEnum):

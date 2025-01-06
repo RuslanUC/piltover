@@ -6,7 +6,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipantCreator, ChatParticipants
-from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat
+from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 
 handler = MessageHandler("messages.chats")
@@ -20,7 +20,8 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 
     updates = await UpdatesManager.create_chat(user, chat, [peer_chat])
     updates_msg = await send_message_internal(
-        user, peer_chat, None, None, False, author=user, type=MessageType.SERVICE_CHAT_CREATE
+        user, peer_chat, None, None, False,
+        author=user, type=MessageType.SERVICE_CHAT_CREATE, message=request.title,
     )
 
     if isinstance(updates_msg, Updates):
@@ -71,4 +72,27 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
         ),
         chats=[await chat.to_tl(user)],
         users=[await user.to_tl(user)],
+    )
+
+
+@handler.on_request(EditChatTitle)
+async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
+    if (peer := await Peer.from_chat_id(user, request.chat_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+
+    # TODO: check if admin
+    chat = peer.chat
+
+    new_title = request.title.strip()
+    if new_title == chat.name:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+    if not new_title:
+        raise ErrorRpc(error_code=400, error_message="CHAT_TITLE_EMPTY")
+
+    chat.name = new_title
+    await chat.save(update_fields=["name"])
+
+    return await send_message_internal(
+        user, peer, None, None, False,
+        author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE, message=request.title,
     )

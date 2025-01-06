@@ -10,8 +10,9 @@ from piltover.db import models
 from piltover.db.enums import MediaType, MessageType
 from piltover.db.models._utils import Model
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
-    MessageService, TLObject
-from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate
+    MessageService
+from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
+    MessageActionChatEditTitle
 
 
 async def _service_pin_message(_: Message) -> MessageActionPinMessage:
@@ -21,14 +22,22 @@ async def _service_pin_message(_: Message) -> MessageActionPinMessage:
 async def _service_create_chat(message: Message) -> MessageActionChatCreate:
     await message.peer.fetch_related("chat")
     return MessageActionChatCreate(
-        title=message.peer.chat.name,
+        title=message.message if message.message is not None else message.peer.chat.name,
         users=[message.peer.chat.creator_id],
+    )
+
+
+async def _service_edit_chat_title(message: Message) -> MessageActionChatEditTitle:
+    await message.peer.fetch_related("chat")
+    return MessageActionChatEditTitle(
+        title=message.message if message.message is not None else message.peer.chat.name,
     )
 
 
 MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message], Awaitable[...]]] = {
     MessageType.SERVICE_PIN_MESSAGE: _service_pin_message,
     MessageType.SERVICE_CHAT_CREATE: _service_create_chat,
+    MessageType.SERVICE_CHAT_EDIT_TITLE: _service_edit_chat_title,
 }
 
 
