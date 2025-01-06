@@ -60,6 +60,7 @@ class UpdateType(IntEnum):
     USER_UPDATE = 7
     CHAT_CREATE = 8
     USER_UPDATE_NAME = 9
+    UPDATE_CONTACT = 10
 
 
 class PeerType(IntEnum):

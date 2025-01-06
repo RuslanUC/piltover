@@ -6,12 +6,12 @@ from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import UpdateType, PeerType
-from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence
+from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence, Contact
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
-    UpdateUserStatus, UpdateUserName, Username
+    UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser
 from piltover.tl.functions.messages import SendMessage
 
 
@@ -411,3 +411,37 @@ class UpdatesManager:
             ), peer.owner.id)
 
         await UpdateV2.bulk_create(updates_to_create)
+
+    @staticmethod
+    async def add_remove_contact(user: User, targets: list[User]) -> Updates:
+        updates = []
+        users = {}
+        updates_to_create = []
+
+        for target in targets:
+            if target.id in users:
+                continue
+
+            pts = await State.add_pts(user, 1)
+            updates_to_create.append(UpdateV2(
+                user=user, update_type=UpdateType.UPDATE_CONTACT, pts=pts, related_id=target.id,
+            ))
+
+            updates.append(UpdatePeerSettings(
+                peer=PeerUser(user_id=target.id),
+                settings=PeerSettings(),
+            ))
+            users[target.id] = await target.to_tl(user)
+
+        updates = Updates(
+            updates=updates,
+            users=list(users.values()),
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await UpdateV2.bulk_create(updates_to_create)
+        await SessionManager.send(updates, user.id)
+
+        return updates

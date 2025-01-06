@@ -41,7 +41,6 @@ class User(Model):
         # TODO: add some "version" field and save tl user in some cache with key f"{self.id}:{current_user.id}:{version}"
 
         defaults = {
-                       "contact": False,
                        "mutual_contact": False,
                        "deleted": False,
                        "bot": False,
@@ -58,12 +57,13 @@ class User(Model):
                    } | kwargs
 
         peer = await models.Peer.get_or_none(owner=current_user, user__id=self.id, type=PeerType.USER)
+        contact = await models.Contact.get_or_none(owner=current_user, target=self)
 
         return TLUser(
             **defaults,
             id=self.id,
-            first_name=self.first_name,
-            last_name=self.last_name,
+            first_name=self.first_name if contact is None or not contact.first_name else contact.first_name,
+            last_name=self.last_name if contact is None or not contact.last_name else contact.last_name,
             username=self.username,
             phone=self.phone_number,
             lang_code=self.lang_code,
@@ -71,6 +71,7 @@ class User(Model):
             photo=await self.get_photo(current_user, True),
             access_hash=peer.access_hash if peer is not None else 1,
             status=await models.Presence.to_tl_or_empty(self, current_user),
+            contact=contact is not None,
         )
 
     @classmethod

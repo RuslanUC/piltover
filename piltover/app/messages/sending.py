@@ -28,7 +28,11 @@ async def send_message_internal(
     if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
-    reply = await Message.get_or_none(id=reply_to_message_id, peer=peer) if reply_to_message_id else None
+    reply = None
+    if reply_to_message_id:
+        reply = await Message.get_or_none(id=reply_to_message_id, peer=peer)
+        if reply is None:
+            raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
 
     peers = [peer]
     peers.extend(await peer.get_opposite())
@@ -75,6 +79,9 @@ async def send_message(request: SendMessage, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
+    if peer.blocked:
+        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+
     if not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
     if len(request.message) > 2000:
@@ -98,7 +105,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     message.pinned = not request.unpin
     messages = {peer: message}
 
-    if not request.pm_oneside:
+    if not request.pm_oneside and not (peer.type is PeerType.USER and (peer.blocked or not await peer.get_opposite())):
         other_messages = await Message.filter(
             peer__user=user, internal_id=message.internal_id,
         ).select_related("peer", "author")
@@ -152,6 +159,9 @@ async def delete_messages(request: DeleteMessages, user: User):
 async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if peer.blocked:
+        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
 
     if (message := await Message.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
@@ -230,6 +240,9 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
+    if peer.blocked:
+        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+
     if len(request.message) > 2000:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
 
@@ -271,6 +284,9 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     if (from_peer is None and (from_peer := await Peer.from_input_peer(user, request.from_peer)) is None) \
             or (to_peer := await Peer.from_input_peer(user, request.to_peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if to_peer.blocked:
+        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
 
     if not request.id:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")

@@ -6,17 +6,16 @@ from tortoise import fields
 
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType
-from piltover.db.models import Dialog
 from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
-    UpdateUserName
+    UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings
 from piltover.tl.types import User as TLUser, Chat as TLChat
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
-              | UpdateUserName
+              | UpdateUserName | UpdatePeerSettings
 
 
 class UpdateV2(Model):
@@ -94,7 +93,7 @@ class UpdateV2(Model):
             )
 
         if self.update_type is UpdateType.DIALOG_PIN_REORDER:
-            dialogs = await Dialog.filter(
+            dialogs = await models.Dialog.filter(
                 peer__owner=current_user, pinned_index__not_isnull=True
             ).select_related("peer", "peer__user")
 
@@ -205,4 +204,16 @@ class UpdateV2(Model):
                 first_name=peer_user.first_name,
                 last_name=peer_user.last_name,
                 usernames=[username] if peer_user.username else [],
+            )
+
+        if self.update_type is UpdateType.UPDATE_CONTACT:
+            if (contact := await models.Contact.get_or_none(owner=current_user, target__id=self.related_id)) is None:
+                return
+
+            if users is not None and contact.target.id not in users:
+                users[contact.target.id] = await contact.target.to_tl(current_user)
+
+            return UpdatePeerSettings(
+                peer=PeerUser(user_id=contact.target.id),
+                settings=PeerSettings(),
             )
