@@ -4,11 +4,10 @@ from datetime import datetime
 from types import NoneType
 from typing import Callable, Awaitable
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import MediaType, MessageType
-from piltover.db.models._utils import Model
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
     MessageService
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \

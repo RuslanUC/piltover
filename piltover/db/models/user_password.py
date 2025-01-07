@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from os import urandom
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.models._utils import Model
 from piltover.tl import SecurePasswordKdfAlgoSHA512, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow
 from piltover.tl.types.account import Password as TLPassword

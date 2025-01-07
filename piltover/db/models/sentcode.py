@@ -2,9 +2,7 @@ from os import urandom
 from random import randint
 from time import time
 
-from tortoise import fields
-
-from piltover.db.models._utils import Model
+from tortoise import fields, Model
 
 
 def gen_phone_code():

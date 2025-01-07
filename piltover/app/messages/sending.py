@@ -183,9 +183,11 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
             internal_id=message.internal_id, peer=to_peer,
         ).select_related("author", "peer")
         if message is not None:
-            await message.update(message=request.message, edit_date=edit_date)
+            message.message = request.message
+            message.edit_date = edit_date
             messages[to_peer] = message
 
+    await Message.bulk_update(messages.values(), ["message", "edit_date"])
     presence = await Presence.update_to_now(user)
     await UpdatesManager.update_status(user, presence, peers[1:])
 
@@ -229,7 +231,8 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     if isinstance(media, InputMediaUploadedPhoto):
         sizes = await resize_photo(str(file.physical_id))
         stripped = await generate_stripped(str(file.physical_id))
-        await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
+        file.attributes = file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()}
+        await file.save(update_fields=["attributes"])
 
     return await MessageMedia.create(file=file, spoiler=media.spoiler, type=media_type)
 

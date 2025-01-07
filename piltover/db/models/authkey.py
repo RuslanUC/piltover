@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from time import time
 
-from tortoise import fields
-
-from piltover.db.models._utils import Model
+from tortoise import fields, Model
 
 
 class AuthKey(Model):

@@ -50,7 +50,9 @@ async def update_username(request: UpdateUsername, user: User):
     if (target := await User.get_or_none(username__iexact=request.username)) is not None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
 
-    await user.update(username=request.username)
+    user.username = request.username
+    await user.save(update_fields=["username"])
+
     await UpdatesManager.update_user_name(user)
     return await user.to_tl(user)
 
@@ -72,7 +74,10 @@ async def get_account_ttl(user: User):
 async def set_account_ttl(request: SetAccountTTL, user: User):
     if request.ttl.days not in range(30, 366):
         raise ErrorRpc(error_code=400, error_message="TTL_DAYS_INVALID")
-    await user.update(ttl_days=request.ttl.days)
+
+    user.ttl_days = request.ttl.days
+    await user.save(update_fields=["ttl_days"])
+
     return True
 
 
@@ -111,7 +116,10 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
     if not new.new_password_hash:
         if password.password is None:
             raise ErrorRpc(error_code=400, error_message="NEW_SETTINGS_EMPTY")
-        await password.update(password=None, hint=None, salt1=password.salt1[:8])
+        password.password = None
+        password.hint = None
+        password.salt1 = password.salt1[:8]
+        await password.save(update_fields=["password", "hint", "salt1"])
         await UserAuthorization.filter(user=user, mfa_pending=True).delete()
         return True
 
@@ -126,7 +134,11 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
             or len(new.new_algo.salt1) != 40:
         raise ErrorRpc(error_code=400, error_message="NEW_SALT_INVALID")
 
-    await password.update(password=new.new_password_hash, salt1=new.new_algo.salt1, hint=new.hint)
+    password.password = new.new_password_hash
+    password.hint = new.hint
+    password.salt1 = new.new_algo.salt1
+    await password.save(update_fields=["password", "hint", "salt1"])
+
     return True
 
 

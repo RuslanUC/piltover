@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType
-from piltover.db.models._utils import Model
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \

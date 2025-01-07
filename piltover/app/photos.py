@@ -32,7 +32,8 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     file = await upload_file(user, request.file, "image/png", [])
     sizes = await resize_photo(str(file.physical_id))
     stripped = await generate_stripped(str(file.physical_id))
-    await file.update(attributes=file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()})
+    file.attributes = file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()}
+    await file.save(update_fields=["attributes"])
     await UserPhoto.filter(user=user).update(current=False)
     photo = await UserPhoto.create(current=True, file=file, user=user)
 

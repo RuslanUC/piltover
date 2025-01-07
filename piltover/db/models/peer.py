@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from os import urandom
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.db.models._utils import Model
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat
 

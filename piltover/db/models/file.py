@@ -3,11 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import FileType
-from piltover.db.models._utils import Model
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, \
     Photo as TLPhoto, PhotoStrippedSize, PhotoSize

@@ -87,15 +87,15 @@ async def sign_in(client: Client, request: SignIn):
         int(request.phone_code)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID")
-    code = await SentCode.get_or_none(phone_number=request.phone_number, hash=request.phone_code_hash[8:],
-                                      used=False)
+    code = await SentCode.get_or_none(phone_number=request.phone_number, hash=request.phone_code_hash[8:], used=False)
     if code is None or code.code != int(request.phone_code):
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if code.expires_at < time():
         await code.delete()
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EXPIRED")
 
-    await code.update(used=True)
+    code.used = True
+    await code.save(update_fields=["used"])
 
     if (user := await User.get_or_none(phone_number=request.phone_number)) is None:
         return AuthorizationSignUpRequired()
@@ -159,7 +159,9 @@ async def check_password(client: Client, request: CheckPassword, user: User):
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
 
-    await auth.update(mfa_pending=False)
+    auth.mfa_pending = False
+    await auth.save(update_fields=["mfa_pending"])
+
     return Authorization(user=await user.to_tl(current_user=user))
 
 

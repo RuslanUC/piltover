@@ -4,10 +4,9 @@ from datetime import datetime, timedelta
 from os import urandom
 
 from pytz import UTC
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.models._utils import Model
 
 
 def gen_access_hash() -> int:

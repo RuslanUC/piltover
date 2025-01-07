@@ -3,10 +3,9 @@ from __future__ import annotations
 from os import urandom
 from time import time
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.models._utils import Model
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import SRP_K, btoi, itob
 

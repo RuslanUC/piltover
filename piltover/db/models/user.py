@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.db.models._utils import Model
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday
 from piltover.tl.types import User as TLUser
 

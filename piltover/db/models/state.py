@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from time import time
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.models._utils import Model
 from piltover.tl.types.updates import State as TLState
 
 

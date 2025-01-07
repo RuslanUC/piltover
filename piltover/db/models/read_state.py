@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from tortoise import fields
+from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.models._utils import Model
 
 
 class ReadState(Model):

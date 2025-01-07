@@ -173,7 +173,8 @@ class SessionManager:
             if isinstance(obj, Updates):
                 key = await AuthKey.get_or_temp(session.auth_key.auth_key_id)
                 auth = await UserAuthorization.get(key__id=str(key.id if isinstance(key, AuthKey) else key.perm_key.id))
-                await auth.update(upd_seq=auth.upd_seq + 1)
+                auth.upd_seq += 1
+                await auth.save(update_fields=["upd_seq"])
                 obj.seq = auth.upd_seq
 
             try:
