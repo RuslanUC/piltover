@@ -30,10 +30,9 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
         raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
 
     file = await upload_file(user, request.file, "image/png", [])
-    sizes = await resize_photo(str(file.physical_id))
-    stripped = await generate_stripped(str(file.physical_id))
-    file.attributes = file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()}
-    await file.save(update_fields=["attributes"])
+    file.photo_sizes = await resize_photo(str(file.physical_id))
+    file.photo_stripped = await generate_stripped(str(file.physical_id))
+    await file.save(update_fields=["photo_sizes", "photo_stripped"])
     await UserPhoto.filter(user=user).update(current=False)
     photo = await UserPhoto.create(current=True, file=file, user=user)
 

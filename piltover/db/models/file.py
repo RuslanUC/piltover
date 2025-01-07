@@ -7,17 +7,9 @@ from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import FileType
-from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, \
-    DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, \
-    Photo as TLPhoto, PhotoStrippedSize, PhotoSize
-
-attribute_name_to_cls = {
-    "image_size": DocumentAttributeImageSize,
-    "animated": DocumentAttributeAnimated,
-    "video": DocumentAttributeVideo,
-    "audio": DocumentAttributeAudio,
-    "filename": DocumentAttributeFilename,
-}
+from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
+    DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
+    PhotoSize
 
 
 class File(Model):
@@ -27,34 +19,75 @@ class File(Model):
     mime_type: str = fields.CharField(max_length=200)
     size: int = fields.BigIntField()
     type: FileType = fields.IntEnumField(FileType)
-    attributes: dict = fields.JSONField(default={})
 
-    @staticmethod
-    def attributes_from_tl(attributes: list) -> dict:
-        result = {}
+    # DocumentAttributeFilename
+    filename: str | None = fields.TextField(null=True, default=None)
+    # DocumentAttributeImageSize, DocumentAttributeVideo
+    width: int | None = fields.IntField(null=True, default=None)
+    height: int | None = fields.IntField(null=True, default=None)
+    # DocumentAttributeVideo, DocumentAttributeAudio
+    duration: float | None = fields.FloatField(null=True, default=None)
+    # DocumentAttributeVideo
+    supports_streaming: bool = fields.BooleanField(default=False)
+    nosound: bool = fields.BooleanField(default=False)
+    preload_prefix_size: int | None = fields.IntField(null=True, default=None)
+    # DocumentAttributeAudio
+    title: str | None = fields.TextField(null=True, default=None)
+    performer: str | None = fields.TextField(null=True, default=None)
+
+    # Photo
+    photo_sizes: list[dict[str, str | int]] | None = fields.JSONField(null=True, default=None)
+    photo_stripped: bytes | None = fields.BinaryField(null=True, default=None)
+
+    def parse_attributes_from_tl(self, attributes: list[TLObject]) -> None:
         for attribute in attributes:
-            if isinstance(attribute, DocumentAttributeImageSize) and "image_size" not in result:
-                result["image_size"] = {"w": attribute.w, "h": attribute.h}
-            elif isinstance(attribute, DocumentAttributeAnimated) and "animated" not in result:
-                result["animated"] = {}
-            elif isinstance(attribute, DocumentAttributeVideo) and "video" not in result:
-                result["video"] = {"round_message": attribute.round_message,
-                                   "supports_streaming": attribute.supports_streaming, "nosound": attribute.nosound,
-                                   "duration": attribute.duration, "w": attribute.w, "h": attribute.h}
-            elif isinstance(attribute, DocumentAttributeAudio) and "audio" not in result:
-                result["audio"] = {"voice": attribute.voice, "duration": attribute.duration,
-                                   "title": attribute.title, "performer": attribute.performer}
-            if isinstance(attribute, DocumentAttributeFilename) and "filename" not in result:
-                result["filename"] = {"file_name": attribute.file_name}
-
-        return result
+            if isinstance(attribute, DocumentAttributeImageSize):
+                self.width = attribute.w
+                self.height = attribute.h
+            elif isinstance(attribute, DocumentAttributeAnimated):
+                self.type = FileType.DOCUMENT_GIF
+            elif isinstance(attribute, DocumentAttributeVideo):
+                self.type = FileType.DOCUMENT_VIDEO_NOTE if attribute.round_message else FileType.DOCUMENT_VIDEO
+                self.width = attribute.w
+                self.height = attribute.h
+                self.duration = attribute.duration
+                self.supports_streaming = attribute.supports_streaming
+                self.nosound = attribute.nosound
+                self.preload_prefix_size = attribute.preload_prefix_size
+            elif isinstance(attribute, DocumentAttributeAudio):
+                self.type = FileType.DOCUMENT_VOICE if attribute.voice else FileType.DOCUMENT_AUDIO
+                self.duration = attribute.duration
+                self.title = attribute.title
+                self.performer = attribute.performer
+            if isinstance(attribute, DocumentAttributeFilename):
+                self.filename = attribute.file_name
 
     def attributes_to_tl(self) -> list:
         result = []
-        for attribute, value in self.attributes.items():
-            if attribute not in attribute_name_to_cls:
-                continue
-            result.append(attribute_name_to_cls[attribute](**value))
+
+        if self.filename:
+            result.append(DocumentAttributeFilename(file_name=self.filename))
+        if self.type not in (FileType.DOCUMENT_VIDEO_NOTE, FileType.DOCUMENT_VIDEO) and self.width and self.height:
+            result.append(DocumentAttributeImageSize(w=self.width, h=self.height))
+        elif self.type in (FileType.DOCUMENT_VIDEO_NOTE, FileType.DOCUMENT_VIDEO):
+            result.append(DocumentAttributeVideo(
+                duration=self.duration,
+                w=self.width,
+                h=self.height,
+                round_message=self.type is FileType.DOCUMENT_VIDEO,
+                supports_streaming=self.supports_streaming,
+                nosound=self.nosound,
+                preload_prefix_size=self.preload_prefix_size,
+            ))
+        if self.type is FileType.DOCUMENT_GIF:
+            result.append(DocumentAttributeAnimated())
+        if self.type in (FileType.DOCUMENT_AUDIO, FileType.DOCUMENT_VOICE):
+            result.append(DocumentAttributeAudio(
+                duration=int(self.duration),
+                voice=self.type is FileType.DOCUMENT_VOICE,
+                title=self.title,
+                performer=self.performer,
+            ))
 
         return result
 
@@ -76,12 +109,9 @@ class File(Model):
         access = await models.FileAccess.get_or_renew(user, self)
 
         sizes: list[PhotoStrippedSize | PhotoSize]
-        sizes = [PhotoSize(**size) for size in self.attributes.get("_sizes", [])]
-        if "_size_stripped" in self.attributes:
-            sizes.insert(0, PhotoStrippedSize(
-                type_="i",
-                bytes_=bytes.fromhex(self.attributes["_size_stripped"])
-            ))
+        sizes = [PhotoSize(**size) for size in self.photo_sizes]
+        if self.photo_stripped:
+            sizes.insert(0, PhotoStrippedSize(type_="i", bytes_=self.photo_stripped))
 
         return TLPhoto(
             id=self.id,

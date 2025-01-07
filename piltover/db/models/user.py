@@ -28,9 +28,9 @@ class User(Model):
                      await models.UserPhoto.filter(user=self).select_related("file").order_by("-id").first())
 
             if profile_photo:
-                stripped: str | None = photo.file.attributes.get("_size_stripped", None)
-                stripped = bytes.fromhex(stripped) if stripped is not None else None
-                photo = UserProfilePhoto(has_video=False, photo_id=photo.id, dc_id=2, stripped_thumb=stripped)
+                photo = UserProfilePhoto(
+                    has_video=False, photo_id=photo.id, dc_id=2, stripped_thumb=photo.file.photo_stripped,
+                )
             else:
                 photo = await photo.to_tl(current_user)
 

@@ -29,12 +29,9 @@ async def upload_file(user: User, input_file: InputFile, mime_type: str, attribu
             raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
         size += part.size
 
-    file = await File.create(
-        mime_type=mime_type,
-        size=size,
-        type=FileType.DOCUMENT,
-        attributes=File.attributes_from_tl(attributes)
-    )
+    file = File(mime_type=mime_type, size=size, type=FileType.DOCUMENT)
+    file.parse_attributes_from_tl(attributes)
+    await file.save()
 
     with open(files_dir / f"{file.physical_id}", "wb") as f_out:
         for part in parts:

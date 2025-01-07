@@ -222,17 +222,16 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         ).select_related("file")
         if file_access is None \
                 or (not file_access.file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \
-                or ("_sizes" not in file_access.file.attributes and isinstance(media, InputMediaPhoto)):
+                or (file_access.file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         file = file_access.file
         media_type = MediaType.PHOTO if isinstance(media, InputMediaPhoto) else MediaType.DOCUMENT
 
     if isinstance(media, InputMediaUploadedPhoto):
-        sizes = await resize_photo(str(file.physical_id))
-        stripped = await generate_stripped(str(file.physical_id))
-        file.attributes = file.attributes | {"_sizes": sizes, "_size_stripped": stripped.hex()}
-        await file.save(update_fields=["attributes"])
+        file.photo_sizes = await resize_photo(str(file.physical_id))
+        file.photo_stripped = await generate_stripped(str(file.physical_id))
+        await file.save(update_fields=["photo_sizes", "photo_stripped"])
 
     return await MessageMedia.create(file=file, spoiler=media.spoiler, type=media_type)
 

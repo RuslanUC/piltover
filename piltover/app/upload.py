@@ -79,13 +79,13 @@ async def get_file(request: GetFile, user: User):
 
     f_name = str(file.physical_id)
     if isinstance(request.location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
-        if not (sizes := file.attributes.get("_sizes", [])):
+        if not file.photo_sizes:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo
         if isinstance(request.location, InputPhotoFileLocation):
             size = PHOTOSIZE_TO_INT[request.location.thumb_size]
         else:
             size = 640 if request.location.big else 160
-        available = [size["w"] for size in sizes]
+        available = [size["w"] for size in file.photo_sizes]
         if size not in available:
             size = min(available, key=lambda x: abs(x - size))
         f_name += f"_{size}"

@@ -38,6 +38,13 @@ class FileType(IntEnum):
     DOCUMENT = 0
     PHOTO = 1
 
+    DOCUMENT_GIF = 3
+    DOCUMENT_VIDEO = 4
+    DOCUMENT_AUDIO = 5
+    DOCUMENT_VOICE = 6
+    DOCUMENT_VIDEO_NOTE = 7
+    DOCUMENT_STICKER = 8
+
 
 class MediaType(IntEnum):
     DOCUMENT = 0
