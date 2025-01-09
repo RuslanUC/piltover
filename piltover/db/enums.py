@@ -71,6 +71,8 @@ class UpdateType(IntEnum):
     UPDATE_BLOCK = 11
     UPDATE_CHAT = 12
     UPDATE_DIALOG_UNREAD_MARK = 13
+    READ_INBOX = 14
+    READ_OUTBOX = 15
 
 
 class PeerType(IntEnum):

@@ -7,7 +7,8 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.exceptions import ErrorRpc
-from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat
+from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
+    User as TLUser, Chat as TLChat
 
 
 def gen_access_hash() -> int:
@@ -95,3 +96,22 @@ class Peer(Model):
             return PeerChat(chat_id=self.chat_id)
 
         assert False, "unknown peer type"
+
+    async def tl_users_chats(
+            self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None
+    ) -> None:
+        if self.type is PeerType.SELF:
+            if users is None or self.owner_id in users:
+                return
+            self.owner = await self.owner
+            users[self.owner.id] = await self.owner.to_tl(user)
+        elif self.type is PeerType.USER:
+            if users is None or self.user_id in users:
+                return
+            self.user = await self.user
+            users[self.user.id] = await self.user.to_tl(user)
+        elif self.type is PeerType.CHAT:
+            if chats is None or self.chat_id in chats:
+                return
+            self.chat = await self.chat
+            chats[self.chat.id] = await self.chat.to_tl(user)

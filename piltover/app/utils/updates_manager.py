@@ -6,13 +6,13 @@ from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import UpdateType, PeerType
-from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence, Contact
+from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
-    UpdateChat, UpdateDialogUnreadMark
+    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox
 from piltover.tl.functions.messages import SendMessage
 
 
@@ -495,6 +495,8 @@ class UpdatesManager:
             user=user, update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK, pts=pts, related_id=dialog.id,
         )
 
+        # TODO: users, chats
+
         await SessionManager.send(Updates(
             updates=[
                 UpdateDialogUnreadMark(
@@ -507,3 +509,59 @@ class UpdatesManager:
             date=int(time()),
             seq=0,
         ), user.id)
+
+    @staticmethod
+    async def update_read_history_inbox(peer: Peer, max_id: int, read_count: int, unread_count: int) -> None:
+        pts = await State.add_pts(peer.owner, read_count)
+        await UpdateV2.create(
+            user=peer.owner, update_type=UpdateType.READ_INBOX, pts=pts, pts_count=read_count, related_id=peer.id,
+            additional_data=[max_id, unread_count],
+        )
+
+        # TODO: users, chats
+
+        await SessionManager.send(Updates(
+            updates=[
+                UpdateReadHistoryInbox(
+                    peer=peer.to_tl(),
+                    max_id=max_id,
+                    still_unread_count=unread_count,
+                    pts=pts,
+                    pts_count=read_count,
+                ),
+            ],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        ), peer.owner.id)
+
+    @staticmethod
+    async def update_read_history_outbox(messages: dict[Peer, tuple[int, int]]) -> None:
+        updates_to_create = []
+
+        for peer, (max_id, count) in messages.items():
+            pts = await State.add_pts(peer.owner, count)
+            updates_to_create.append(UpdateV2(
+                user=peer.owner, update_type=UpdateType.READ_OUTBOX, pts=pts, pts_count=count, related_id=peer.id,
+                additional_data=[max_id],
+            ))
+
+            # TODO: users, chats
+
+            await SessionManager.send(Updates(
+                updates=[
+                    UpdateReadHistoryOutbox(
+                        peer=peer.to_tl(),
+                        max_id=max_id,
+                        pts=pts,
+                        pts_count=count,
+                    ),
+                ],
+                users=[],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            ), peer.owner.id)
+
+        await UpdateV2.bulk_create(updates_to_create)

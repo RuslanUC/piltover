@@ -1,11 +1,13 @@
 from datetime import datetime, UTC
 from time import time
+from typing import cast
 
 from loguru import logger
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.app.account import username_regex_no_len
+from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import MessageType, MediaType, PeerType, FileType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, Dialog
 from piltover.db.models.message import Message
@@ -164,23 +166,35 @@ async def read_history(request: ReadHistory, user: User):
             pts_count=0,
         )
 
-    message_id = await Message.filter(
+    message_id, internal_id = await Message.filter(
         id__lte=request.max_id, peer=peer,
-    ).order_by("-id").first().values_list("id", flat=True)
+    ).order_by("-id").first().values_list("id", "internal_id")
     if not message_id:
         return AffectedMessages(
             pts=state.pts,
             pts_count=0,
         )
 
-    messages_count = await Message.filter(id__gt=read_state.last_message_id, id__lte=message_id, peer=peer).count()
+    old_last_message_id = read_state.last_message_id
+    messages_count = await Message.filter(id__gt=old_last_message_id, id__lte=message_id, peer=peer).count()
+    unread_count = await Message.filter(peer=peer, id__gt=message_id).count()
 
     read_state.last_message_id = message_id
     await read_state.save(update_fields=["last_message_id"])
     state.pts += messages_count
     await state.save(update_fields=["pts"])
 
-    # TODO: save update to database (and send it)
+    messages_out: dict[Peer, tuple[int, int]] = {}
+    for other in await peer.get_opposite():
+        count = await Message.filter(id__gt=old_last_message_id, internal_id__lte=internal_id, peer=other).count()
+        if not count:
+            continue
+        last_id = await Message.filter(peer=other, internal_id__lte=internal_id).first().values_list("id", flat=True)
+        messages_out[other] = (cast(int, last_id), count)
+
+    await UpdatesManager.update_read_history_inbox(peer, message_id, messages_count, unread_count)
+    await UpdatesManager.update_read_history_outbox(messages_out)
+
     return AffectedMessages(
         pts=state.pts,
         pts_count=messages_count,

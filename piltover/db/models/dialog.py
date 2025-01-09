@@ -34,9 +34,10 @@ class Dialog(Model):
             out_read_state = await models.ReadState.filter(
                 dialog__peer__chat__id=self.peer.chat_id, dialog__id__not=self.id
             ).order_by("-last_message_id").first()
-            out_read_max_id = await models.Message.filter(
-                peer=self.peer, id__lte=out_read_state.last_message_id
-            ).order_by("-id").first().values_list("id", flat=True)
+            if out_read_state:
+                out_read_max_id = await models.Message.filter(
+                    peer=self.peer, id__lte=out_read_state.last_message_id
+                ).order_by("-id").first().values_list("id", flat=True)
 
         defaults = {
             "view_forum_as_messages": False,

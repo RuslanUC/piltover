@@ -9,24 +9,28 @@ from piltover.db.enums import UpdateType, PeerType
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
-    UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark
+    UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
+    UpdateReadHistoryOutbox
 from piltover.tl.types import User as TLUser, Chat as TLChat
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
-              | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark
+              | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
+              | UpdateReadHistoryOutbox
 
 
 class UpdateV2(Model):
     id: int = fields.BigIntField(pk=True)
     update_type: UpdateType = fields.IntEnumField(UpdateType)
     pts: int = fields.BigIntField()
+    pts_count: int = fields.IntField(default=0)
     date: datetime = fields.DatetimeField(auto_now_add=True)
     related_id: int = fields.BigIntField(index=True, null=True)
     # TODO: probably there is a better way to store multiple updates (right now it is only used for deleted messages,
     #  so maybe create two tables: something like UpdateDeletedMessage and UpdateDeletedMessageId, related_id will point to
     #  UpdateDeletedMessage.id and UpdateDeletedMessage will have one-to-many relation to UpdateDeletedMessageId)
     related_ids: list[int] = fields.JSONField(null=True, default=None)
+    additional_data: list | dict = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User")
 
     async def to_tl(
@@ -46,9 +50,7 @@ class UpdateV2(Model):
 
             if users is not None and message.author.id not in users:
                 users[message.author.id] = await message.author.to_tl(current_user)
-            if chats is not None and message.peer.type is PeerType.CHAT and message.peer.chat_id not in chats:
-                await message.peer.fetch_related("chat")
-                chats[message.peer.chat.id] = await message.peer.chat.to_tl(current_user)
+            await message.peer.tl_users_chats(current_user, users, chats)
 
             return UpdateEditMessage(
                 message=await message.to_tl(current_user),
@@ -75,14 +77,7 @@ class UpdateV2(Model):
                     or (dialog := await models.Dialog.get_or_none(peer=peer)) is None:
                 return
 
-            if users is not None and (other := await peer.get_opposite()) is not None:
-                for opp in other:
-                    if opp.user.id not in users:
-                        users[opp.user.id] = await opp.user.to_tl(current_user)
-
-            if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
-                chat = await peer.chat
-                chats[peer.chat_id] = await chat.to_tl(current_user)
+            await peer.tl_users_chats(current_user, users, chats)
 
             return UpdateDialogPinned(
                 pinned=dialog.pinned_index is not None,
@@ -97,13 +92,7 @@ class UpdateV2(Model):
             ).select_related("peer", "peer__user")
 
             for dialog in dialogs:
-                peer = dialog.peer
-                peer_user = peer.peer_user(current_user)
-                if users is not None and peer_user.id not in users:
-                    users[peer_user.id] = await peer_user.to_tl(current_user)
-                if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
-                    chat = await peer.chat
-                    chats[peer.chat_id] = await chat.to_tl(current_user)
+                await dialog.peer.tl_users_chats(current_user, users, chats)
 
             return UpdatePinnedDialogs(
                 order=[
@@ -117,11 +106,7 @@ class UpdateV2(Model):
             if peer is None:
                 return
 
-            if users is not None and peer.user is not None and peer.user.id not in users:
-                users[peer.user.id] = await peer.user.to_tl(current_user)
-            if chats is not None and peer.type is PeerType.CHAT and peer.chat_id not in chats:
-                await peer.fetch_related("chat")
-                chats[peer.chat.id] = await peer.chat.to_tl(current_user)
+            await peer.tl_users_chats(current_user, users, chats)
 
             draft = await models.MessageDraft.get_or_none(dialog__peer=peer)
             if isinstance(draft, models.MessageDraft):
@@ -141,13 +126,9 @@ class UpdateV2(Model):
             if message is None:
                 return
 
-            if users is not None and message.peer.user is not None and message.peer.user.id not in users:
-                users[message.peer.user.id] = await message.peer.user.to_tl(current_user)
             if users is not None and message.author.id not in users:
                 users[message.author.id] = await message.author.to_tl(current_user)
-            if chats is not None and message.peer.type is PeerType.CHAT and message.peer.chat_id not in chats:
-                await message.peer.fetch_related("chat")
-                chats[message.peer.chat.id] = await message.peer.chat.to_tl(current_user)
+            await message.peer.tl_users_chats(current_user, users, chats)
 
             return UpdatePinnedMessages(
                 pinned=message.pinned,
@@ -162,8 +143,7 @@ class UpdateV2(Model):
                     or (peer_user := peer.peer_user(current_user)) is None:
                 return
 
-            if users is not None and peer_user.id not in users:
-                users[peer_user.id] = await peer_user.to_tl(current_user)
+            await peer.tl_users_chats(current_user, users, chats)
 
             return UpdateUser(
                 user_id=peer_user.id,
@@ -176,8 +156,7 @@ class UpdateV2(Model):
             await peer.chat.fetch_related("creator")
             if peer.chat.creator.id not in users:
                 users[peer.chat.creator.id] = peer.chat.creator
-            if chats is not None and peer.chat_id not in chats:
-                chats[peer.chat.id] = await peer.chat.to_tl(current_user)
+            await peer.tl_users_chats(current_user, users, chats)
 
             return UpdateChatParticipants(
                 participants=ChatParticipants(
@@ -194,8 +173,7 @@ class UpdateV2(Model):
                 return
 
             peer_user = peer.peer_user(current_user)
-            if users is not None and peer_user.id not in users:
-                users[peer_user.id] = await peer_user.to_tl(current_user)
+            await peer.tl_users_chats(current_user, users, chats)
 
             username = Username(editable=True, active=True, username=peer_user.username)
             return UpdateUserName(
@@ -221,8 +199,7 @@ class UpdateV2(Model):
             if (peer := await models.Peer.from_user_id(current_user, self.related_id)) is None:
                 return
 
-            if users is not None and peer.user.id not in users:
-                users[peer.user.id] = await peer.user.to_tl(current_user)
+            await peer.tl_users_chats(current_user, users, chats)
 
             return UpdatePeerBlocked(
                 peer_id=peer.to_tl(),
@@ -233,8 +210,7 @@ class UpdateV2(Model):
             if (peer := await models.Peer.from_chat_id(current_user, self.related_id)) is None:
                 return
 
-            if chats is not None and peer.chat_id not in chats:
-                chats[peer.chat.id] = await peer.chat.to_tl(current_user)
+            await peer.tl_users_chats(current_user, users, chats)
 
             return UpdateChat(chat_id=peer.chat.id)
 
@@ -242,9 +218,40 @@ class UpdateV2(Model):
             if (dialog := await models.Dialog.get_or_none(id=self.related_id).select_related("peer")) is None:
                 return
 
-            # TODO: add dialog peer to users/chats ?
+            await dialog.peer.tl_users_chats(current_user, users, chats)
 
             return UpdateDialogUnreadMark(
                 peer=DialogPeer(peer=dialog.peer.to_tl()),
                 unread=dialog.unread_mark,
+            )
+
+        if self.update_type is UpdateType.READ_INBOX:
+            if not self.additional_data or len(self.additional_data) != 2:
+                return
+            if (peer := await models.Peer.get_or_none(owner=current_user, id=self.related_id)) is None:
+                return
+
+            await peer.tl_users_chats(current_user, users, chats)
+
+            return UpdateReadHistoryInbox(
+                peer=peer.to_tl(),
+                max_id=self.additional_data[0],
+                still_unread_count=self.additional_data[1],
+                pts=self.pts,
+                pts_count=self.pts_count,
+            )
+
+        if self.update_type is UpdateType.READ_OUTBOX:
+            if not self.additional_data or len(self.additional_data) != 1:
+                return
+            if (peer := await models.Peer.get_or_none(owner=current_user, id=self.related_id)) is None:
+                return
+
+            await peer.tl_users_chats(current_user, users, chats)
+
+            return UpdateReadHistoryOutbox(
+                peer=peer.to_tl(),
+                max_id=self.additional_data[0],
+                pts=self.pts,
+                pts_count=self.pts_count,
             )
