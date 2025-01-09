@@ -5,6 +5,7 @@ from typing import cast
 from tortoise import fields, Model
 
 from piltover.db import models
+from piltover.db.enums import PeerType
 from piltover.tl import PeerNotifySettings
 from piltover.tl.types import Dialog as TLDialog
 
@@ -18,12 +19,27 @@ class Dialog(Model):
     draft: fields.ReverseRelation[models.MessageDraft]
 
     async def to_tl(self) -> TLDialog:
-        read_state, _ = await models.ReadState.get_or_create(dialog=self, defaults={"last_message_id": 0})
-        unread_count = await models.Message.filter(peer=self.peer, id__gt=read_state.last_message_id).count()
+        in_read_state, _ = await models.ReadState.get_or_create(dialog=self, defaults={"last_message_id": 0})
+        unread_count = await models.Message.filter(peer=self.peer, id__gt=in_read_state.last_message_id).count()
+
+        out_read_max_id = 0
+        if self.peer.type is PeerType.SELF:
+            out_read_max_id = in_read_state.last_message_id
+        elif self.peer.type is PeerType.USER:
+            out_read_state = await models.ReadState.get_or_none(
+                dialog__peer__owner__id=self.peer.user_id, dialog__peer__user__id=self.peer.owner_id
+            )
+            out_read_max_id = out_read_state.last_message_id if out_read_state is not None else 0
+        elif self.peer.type is PeerType.CHAT:  # TODO: test this
+            out_read_state = await models.ReadState.filter(
+                dialog__peer__chat__id=self.peer.chat_id, dialog__id__not=self.id
+            ).order_by("-last_message_id").first()
+            out_read_max_id = await models.Message.filter(
+                peer=self.peer, id__lte=out_read_state.last_message_id
+            ).order_by("-id").first().values_list("id", flat=True)
 
         defaults = {
             "view_forum_as_messages": False,
-            "read_outbox_max_id": 0,  # TODO
             "unread_mentions_count": 0,
             "unread_reactions_count": 0,
             "notify_settings": PeerNotifySettings(),
@@ -40,6 +56,7 @@ class Dialog(Model):
             peer=self.peer.to_tl(),
             top_message=cast(int, top_message),
             draft=draft,
-            read_inbox_max_id=read_state.last_message_id,
+            read_inbox_max_id=in_read_state.last_message_id,
+            read_outbox_max_id=out_read_max_id,
             unread_count=unread_count,
         )

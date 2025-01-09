@@ -9,12 +9,12 @@ from piltover.db.enums import UpdateType, PeerType
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
-    UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat
+    UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark
 from piltover.tl.types import User as TLUser, Chat as TLChat
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
-              | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat
+              | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark
 
 
 class UpdateV2(Model):
@@ -237,3 +237,14 @@ class UpdateV2(Model):
                 chats[peer.chat.id] = await peer.chat.to_tl(current_user)
 
             return UpdateChat(chat_id=peer.chat.id)
+
+        if self.update_type is UpdateType.UPDATE_DIALOG_UNREAD_MARK:
+            if (dialog := await models.Dialog.get_or_none(id=self.related_id).select_related("peer")) is None:
+                return
+
+            # TODO: add dialog peer to users/chats ?
+
+            return UpdateDialogUnreadMark(
+                peer=DialogPeer(peer=dialog.peer.to_tl()),
+                unread=dialog.unread_mark,
+            )

@@ -70,6 +70,7 @@ class UpdateType(IntEnum):
     UPDATE_CONTACT = 10
     UPDATE_BLOCK = 11
     UPDATE_CHAT = 12
+    UPDATE_DIALOG_UNREAD_MARK = 13
 
 
 class PeerType(IntEnum):

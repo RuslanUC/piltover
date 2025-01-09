@@ -10,7 +10,7 @@ chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
       [Telegram specification](https://core.telegram.org/mtproto/description#message-identifier-msg-id)~~
 - [x] ~~A Websocket proxy for Telegram Web (WebZ / WebK). A work in progress
       temporary implementation is in `tools/websocket_proxy.js`~~
-- [ ] Updates handling: `pts`, `qts`, etc.
+- [x] Updates handling: `pts`, `qts`, etc.
 - [x] Refactor the TL de/serialization module since the code is messy (e.g. make
       custom boxed types for list/int/str/bytes).
 - [x] ~~Support multiple server keys to automatically switch to
@@ -21,9 +21,9 @@ chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
 - [x] Support TL from multiple layers, and layer-based handlers. Add fallbacks
       eventually.
 - [x] Add a `tests/` directory with patched assertions from client libraries.
-- [ ] Use custom exceptions instead of Python assertions: `assert` statements
+- [x] Use custom exceptions instead of Python assertions: `assert` statements
       are disabled with `python -O`, leading to missing important checks.
-- [ ] Add missing security checks, e.g., checking of `g_a`/`g_b`.
+- [x] Add missing security checks, e.g., checking of `g_a`/`g_b`.
 - [x] ~~Refactor `piltover/__main__.py`, and use a database for auth
       keys/messages/users/updates (probably with SQLAlchemy and alembic due to
       reliable database migrations).~~

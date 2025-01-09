@@ -9,9 +9,9 @@ from piltover.db.models import User, Dialog, Peer
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler, Client
-from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer, InputPeerChat
+from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer, InputPeerChat, DialogPeer
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
-    ToggleDialogPin
+    ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
 from piltover.tl.types.messages import PeerDialogs, Dialogs
 
 handler = MessageHandler("messages.dialogs")
@@ -163,3 +163,29 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
     await UpdatesManager.reorder_pinned_dialogs(user, pinned_after)
 
     return True
+
+
+@handler.on_request(MarkDialogUnread)
+async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
+    if (peer := await Peer.from_input_peer(user, request.peer.peer)) is None \
+            or (dialog := await Dialog.get_or_none(peer=peer).select_related("peer")) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if dialog.unread_mark == request.unread:
+        return True
+
+    dialog.unread_mark = request.unread
+    await dialog.save(update_fields=["unread_mark"])
+    await UpdatesManager.update_dialog_unread_mark(user, dialog)
+
+    return True
+
+
+@handler.on_request(GetDialogUnreadMarks)
+async def get_dialog_unread_marks(user: User) -> list[DialogPeer]:
+    dialogs = await Dialog.filter(peer__owner=user, unread_mark=True).select_related("peer")
+
+    return [
+        DialogPeer(peer=dialog.peer.to_tl())
+        for dialog in dialogs
+    ]

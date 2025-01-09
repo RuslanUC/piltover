@@ -7,7 +7,7 @@ from tortoise.queryset import QuerySet
 
 from piltover.app.account import username_regex_no_len
 from piltover.db.enums import MessageType, MediaType, PeerType, FileType
-from piltover.db.models import User, MessageDraft, ReadState, State, Peer
+from piltover.db.models import User, MessageDraft, ReadState, State, Peer, Dialog
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
@@ -149,20 +149,40 @@ async def read_history(request: ReadHistory, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    ex = await ReadState.get_or_none(dialog__peer=peer)
-    message = await Message.filter(
-        id__lte=min(request.max_id, ex.last_message_id if ex is not None else request.max_id), peer=peer,
-    ).order_by("-id").limit(1)
-    if message:
-        messages_count = await Message.filter(
-            id__gt=ex.last_message_id if ex is not None else 0, id__lt=message[0].id, peer=peer,
-        ).count()
-    else:
-        messages_count = 0
+    state, _ = await State.get_or_create(user=user)
 
-    # TODO: save to database
+    if (dialog := await Dialog.get_or_none(peer=peer)) is None:
+        return AffectedMessages(
+            pts=state.pts,
+            pts_count=0,
+        )
+
+    read_state, created = await ReadState.get_or_create(dialog=dialog, defaults={"last_message_id": 0})
+    if request.max_id <= read_state.last_message_id:
+        return AffectedMessages(
+            pts=state.pts,
+            pts_count=0,
+        )
+
+    message_id = await Message.filter(
+        id__lte=request.max_id, peer=peer,
+    ).order_by("-id").first().values_list("id", flat=True)
+    if not message_id:
+        return AffectedMessages(
+            pts=state.pts,
+            pts_count=0,
+        )
+
+    messages_count = await Message.filter(id__gt=read_state.last_message_id, id__lte=message_id, peer=peer).count()
+
+    read_state.last_message_id = message_id
+    await read_state.save(update_fields=["last_message_id"])
+    state.pts += messages_count
+    await state.save(update_fields=["pts"])
+
+    # TODO: save update to database (and send it)
     return AffectedMessages(
-        pts=await State.add_pts(user, messages_count),
+        pts=state.pts,
         pts_count=messages_count,
     )
 

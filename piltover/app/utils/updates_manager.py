@@ -12,7 +12,7 @@ from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, Updat
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
-    UpdateChat
+    UpdateChat, UpdateDialogUnreadMark
 from piltover.tl.functions.messages import SendMessage
 
 
@@ -487,3 +487,23 @@ class UpdatesManager:
             ), peer.owner.id)
 
         await UpdateV2.bulk_create(updates_to_create)
+
+    @staticmethod
+    async def update_dialog_unread_mark(user: User, dialog: Dialog) -> None:
+        pts = await State.add_pts(user, 1)
+        await UpdateV2.create(
+            user=user, update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK, pts=pts, related_id=dialog.id,
+        )
+
+        await SessionManager.send(Updates(
+            updates=[
+                UpdateDialogUnreadMark(
+                    peer=DialogPeer(peer=dialog.peer.to_tl()),
+                    unread=dialog.unread_mark,
+                ),
+            ],
+            users=[await user.to_tl(user)],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        ), user.id)
