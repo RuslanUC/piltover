@@ -6,14 +6,15 @@ from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.app.account import username_regex_no_len
-from piltover.db.enums import MessageType, MediaType, PeerType
+from piltover.db.enums import MessageType, MediaType, PeerType, FileType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
-    InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, Chat as TLChat
+    InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, Chat as TLChat, InputMessagesFilterVideo, \
+    InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter
@@ -56,13 +57,17 @@ def _get_messages_query(
     elif isinstance(filter_, InputMessagesFilterPhotos):
         query &= Q(media__type=MediaType.PHOTO)
     elif isinstance(filter_, InputMessagesFilterPhotoVideo):
-        query &= Q(media__type=MediaType.PHOTO)  # TODO: add video filter
+        query &= (Q(media__type=MediaType.PHOTO) | Q(media__file__type=FileType.DOCUMENT_VIDEO))
+    elif isinstance(filter_, InputMessagesFilterVideo):
+        query &= Q(media__file__type=FileType.DOCUMENT_VIDEO)
+    elif isinstance(filter_, InputMessagesFilterGif):
+        query &= Q(media__file__type=FileType.DOCUMENT_GIF)
+    elif isinstance(filter_, InputMessagesFilterVoice):
+        query &= (Q(media__file__type=FileType.DOCUMENT_VOICE) | Q(media__file__type=FileType.DOCUMENT_VIDEO_NOTE))
+    elif isinstance(filter_, InputMessagesFilterMusic):
+        query &= Q(media__file__type=FileType.DOCUMENT_AUDIO)
     elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
-        # TODO: InputMessagesFilterVideo
         # TODO: InputMessagesFilterUrl
-        # TODO: InputMessagesFilterGif
-        # TODO: InputMessagesFilterVoice
-        # TODO: InputMessagesFilterMusic
         logger.warning(f"Unsupported filter: {filter_}")
         query = Q(id=0)
 

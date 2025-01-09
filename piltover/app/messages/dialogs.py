@@ -49,10 +49,12 @@ async def get_dialogs_internal(
 ) -> dict:
     query = Q(peer__owner=user)
     if offset_id:
-        query &= Q(peer__messages__id__gt=offset_id)
+        query &= Q(peer__messages__id__lt=offset_id)
     if offset_date:
-        query &= Q(peer__messages__date__gt=datetime.fromtimestamp(offset_date, UTC))
+        query &= Q(peer__messages__date__lt=datetime.fromtimestamp(offset_date, UTC))
 
+    if peers is None:
+        peers = []
     peers_query = None
     for peer in peers:
         if isinstance(peer.peer, InputPeerSelf):
@@ -76,8 +78,9 @@ async def get_dialogs_internal(
 
     dialogs = await Dialog.filter(query).select_related(
         "peer", "peer__owner", "peer__user", "peer__chat"
-    ).order_by("-peer__messages__date").limit(limit).all()
+    ).order_by("-peer__messages__date").limit(limit)
 
+    # TODO: return DialogsSlice if there is more than 100 dialogs ?
     return await format_dialogs(user, dialogs)
 
 

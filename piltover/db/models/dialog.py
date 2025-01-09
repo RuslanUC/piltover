@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from tortoise import fields, Model
 
 from piltover.db import models
@@ -15,18 +17,19 @@ class Dialog(Model):
     peer: models.Peer = fields.ForeignKeyField("models.Peer", unique=True)
     draft: fields.ReverseRelation[models.MessageDraft]
 
-    async def to_tl(self, **kwargs) -> TLDialog:
+    async def to_tl(self) -> TLDialog:
+        read_state, _ = await models.ReadState.get_or_create(dialog=self, defaults={"last_message_id": 0})
+        unread_count = await models.Message.filter(peer=self.peer, id__gt=read_state.last_message_id).count()
+
         defaults = {
             "view_forum_as_messages": False,
-            "read_inbox_max_id": 0,
-            "read_outbox_max_id": 0,
-            "unread_count": 0,
+            "read_outbox_max_id": 0,  # TODO
             "unread_mentions_count": 0,
             "unread_reactions_count": 0,
             "notify_settings": PeerNotifySettings(),
-        } | kwargs
+        }
 
-        top_message = await models.Message.filter(peer=self.peer).order_by("-id").first()
+        top_message = await models.Message.filter(peer=self.peer).order_by("-id").first().values_list("id", flat=True)
         draft = await models.MessageDraft.get_or_none(dialog=self)
         draft = draft.to_tl() if draft else None
 
@@ -35,6 +38,8 @@ class Dialog(Model):
             pinned=self.pinned_index is not None,
             unread_mark=self.unread_mark,
             peer=self.peer.to_tl(),
-            top_message=top_message.id if top_message is not None else 0,
+            top_message=cast(int, top_message),
             draft=draft,
+            read_inbox_max_id=read_state.last_message_id,
+            unread_count=unread_count,
         )

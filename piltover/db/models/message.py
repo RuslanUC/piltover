@@ -75,7 +75,7 @@ class Message(Model):
             self.reply_to = await self.reply_to
         return MessageReplyHeader(reply_to_msg_id=self.reply_to.id) if self.reply_to is not None else None
 
-    async def to_tl(self, current_user: models.User, **kwargs) -> TLMessage | MessageService:
+    async def to_tl(self, current_user: models.User) -> TLMessage | MessageService:
         # TODO: add some "version" field and save tl message in some cache with key f"{self.id}:{current_user.id}:{version}"
 
         base_defaults = {
