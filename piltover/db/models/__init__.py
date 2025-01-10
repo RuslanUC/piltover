@@ -24,3 +24,5 @@ from .web_authorization import WebAuthorization
 from .chat import Chat
 from .presence import Presence
 from .contact import Contact
+from .auth_country import AuthCountry
+from .auth_country_code import AuthCountryCode

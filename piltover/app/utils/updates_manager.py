@@ -495,7 +495,7 @@ class UpdatesManager:
             user=user, update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK, pts=pts, related_id=dialog.id,
         )
 
-        # TODO: users, chats
+        users, chats = await dialog.peer.tl_users_chats(user, {}, {})
 
         await SessionManager.send(Updates(
             updates=[
@@ -504,8 +504,8 @@ class UpdatesManager:
                     unread=dialog.unread_mark,
                 ),
             ],
-            users=[await user.to_tl(user)],
-            chats=[],
+            users=list(users.values()),
+            chats=list(chats.values()),
             date=int(time()),
             seq=0,
         ), user.id)
@@ -518,7 +518,7 @@ class UpdatesManager:
             additional_data=[max_id, unread_count],
         )
 
-        # TODO: users, chats
+        users, chats = await peer.tl_users_chats(peer.owner, {}, {})
 
         await SessionManager.send(Updates(
             updates=[
@@ -530,8 +530,8 @@ class UpdatesManager:
                     pts_count=read_count,
                 ),
             ],
-            users=[],
-            chats=[],
+            users=list(users.values()),
+            chats=list(chats.values()),
             date=int(time()),
             seq=0,
         ), peer.owner.id)
@@ -547,7 +547,7 @@ class UpdatesManager:
                 additional_data=[max_id],
             ))
 
-            # TODO: users, chats
+            users, chats = await peer.tl_users_chats(peer.owner, {}, {})
 
             await SessionManager.send(Updates(
                 updates=[
@@ -558,8 +558,8 @@ class UpdatesManager:
                         pts_count=count,
                     ),
                 ],
-                users=[],
-                chats=[],
+                users=list(users.values()),
+                chats=list(chats.values()),
                 date=int(time()),
                 seq=0,
             ), peer.owner.id)

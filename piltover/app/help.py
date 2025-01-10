@@ -1,15 +1,17 @@
 from time import time
 
+from piltover.db.models import AuthCountry
 from piltover.enums import ReqHandlerFlags
 from piltover.high_level import MessageHandler
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
     GetPeerProfileColors
-from piltover.tl.types.help import CountriesList, Country, CountryCode, PromoDataEmpty, \
-    PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, PeerColors, PeerColorOption, AppConfig
+from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
+    PeerColors, PeerColorOption, AppConfig, CountriesListNotModified
 
 handler = MessageHandler("help")
+CACHED_COUNTRIES_LIST: tuple[CountriesList | None, int] = (None, 0)
 
 
 @handler.on_request(GetConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -68,21 +70,29 @@ async def get_app_config():
 
 
 @handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_countries_list():
-    return CountriesList(
-        countries=[
-            Country(
-                hidden=False,
-                iso2="ch",
-                default_name="ch",
-                name="Switzerland",
-                country_codes=[
-                    CountryCode(country_code="41", prefixes=["41"], patterns=["XXXXX"])
-                ]
-            ),
-        ],
-        hash=0,
-    )
+async def get_countries_list(request: GetCountriesList) -> CountriesList | CountriesListNotModified:
+    global CACHED_COUNTRIES_LIST
+    countries, cache_time = CACHED_COUNTRIES_LIST
+
+    if time() - cache_time > 60 * 60 * 12:
+        countries = CountriesList(countries=[], hash=0)
+
+        country: AuthCountry
+        async for country in AuthCountry.filter().order_by("id"):
+            countries.countries.append(await country.to_tl())
+
+            countries.hash ^= countries.hash >> 21
+            countries.hash ^= countries.hash << 35
+            countries.hash ^= countries.hash >> 4
+            countries.hash += await country.get_internal_hash()
+
+        countries.hash &= 0xffffffff
+        CACHED_COUNTRIES_LIST = countries, time()
+
+    if request.hash == countries.hash and countries.hash != 0:
+        return CountriesListNotModified()
+
+    return countries
 
 
 @handler.on_request(GetTermsOfServiceUpdate, ReqHandlerFlags.AUTH_NOT_REQUIRED)

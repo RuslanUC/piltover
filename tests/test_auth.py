@@ -1,4 +1,6 @@
 import pytest
+from pyrogram.raw.types.help import CountriesList, CountriesListNotModified
+from pyrogram.raw.functions.help import GetCountriesList
 
 from tests.conftest import TestClient
 
@@ -34,3 +36,17 @@ async def test_enable_disable_cloud_password() -> None:
 
         assert await client.change_cloud_password("test_passw0rd", "test_passw0rd_new")
         assert await client.remove_cloud_password("test_passw0rd_new")
+
+
+@pytest.mark.asyncio
+async def test_get_countries_list() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        countries1: CountriesList = await client.invoke(GetCountriesList(lang_code="en", hash=0))
+        assert len(countries1.countries) > 0
+        assert countries1.hash != 0
+
+        countries2: CountriesList = await client.invoke(GetCountriesList(lang_code="en", hash=0))
+        assert countries1 == countries2
+
+        countries3: CountriesList = await client.invoke(GetCountriesList(lang_code="en", hash=countries1.hash))
+        assert isinstance(countries3, CountriesListNotModified)

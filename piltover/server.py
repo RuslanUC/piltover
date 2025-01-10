@@ -40,7 +40,7 @@ class MessageHandler:
 
     def on_message(self, typ: type[TLObject]):
         def decorator(func: Callable[[Client, Message, Session], Awaitable[TLObject | dict | None]]):
-            logger.debug(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
+            logger.trace(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
 
             self.handlers[typ.tlid()] = func
             return func

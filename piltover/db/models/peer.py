@@ -99,19 +99,23 @@ class Peer(Model):
 
     async def tl_users_chats(
             self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None
-    ) -> None:
+    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
+        ret = users, chats
+
         if self.type is PeerType.SELF:
             if users is None or self.owner_id in users:
-                return
+                return ret
             self.owner = await self.owner
             users[self.owner.id] = await self.owner.to_tl(user)
         elif self.type is PeerType.USER:
             if users is None or self.user_id in users:
-                return
+                return ret
             self.user = await self.user
             users[self.user.id] = await self.user.to_tl(user)
         elif self.type is PeerType.CHAT:
             if chats is None or self.chat_id in chats:
-                return
+                return ret
             self.chat = await self.chat
             chats[self.chat.id] = await self.chat.to_tl(user)
+
+        return ret

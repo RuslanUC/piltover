@@ -31,6 +31,9 @@ chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
 - [ ] Switch to hypercorn for the tcp server maybe?
 - [ ] Improve the README.
+- [ ] Proper read states updates (updateReadHistoryInbox, updateReadHistoryOutbox)
+- [ ] Reactions
+- [ ] Stickers ?
 
 ## Purpose
 

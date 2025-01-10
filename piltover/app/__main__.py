@@ -1,8 +1,10 @@
+import argparse
 import asyncio
 from contextlib import asynccontextmanager
 from os import getenv
 from pathlib import Path
 from time import time
+from types import SimpleNamespace
 
 import uvloop
 from aerich import Command, Migrate
@@ -11,7 +13,7 @@ from tortoise import Tortoise, connections
 
 from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels, upload, root_dir, internal
-from piltover.db.models import AuthKey, User
+from piltover.db.models import AuthKey
 from piltover.db.models.authkey import TempAuthKey
 from piltover.high_level import Server
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
@@ -34,12 +36,37 @@ class MigrateNoDowngrade(Migrate):
         return super(MigrateNoDowngrade, cls).diff_models(old_models, new_models, True)
 
 
-async def _create_system_data() -> None:
-    await User.update_or_create(id=777000, defaults={
-        "phone_number": "42777",
-        "first_name": "Piltover",
-        "username": "piltover",
-    })
+async def _create_system_data(system_users: bool = True, countries_list: bool = True) -> None:
+    if system_users:
+        logger.info("Creating system user...")
+
+        from piltover.db.models import User
+        await User.update_or_create(id=777000, defaults={
+            "phone_number": "42777",
+            "first_name": "Piltover",
+            "username": "piltover",
+        })
+
+    auth_countries_list_file = data / "auth_countries_list.json"
+    if countries_list and auth_countries_list_file.exists():
+        logger.info("Creating auth countries...")
+
+        import json
+        from piltover.db.models import AuthCountry, AuthCountryCode
+
+        with open(auth_countries_list_file) as f:
+            countries = json.load(f)
+
+        for country in countries:
+            auth_country, _ = await AuthCountry.get_or_create(iso2=country["iso2"], defaults={
+                "name": country["name"],
+                "hidden": country["hidden"],
+            })
+            for code in country["codes"]:
+                await AuthCountryCode.get_or_create(country=auth_country, code=code["code"], defaults={
+                    "prefixes": code["prefixes"],
+                    "patterns": code["patterns"],
+                })
 
 
 async def migrate():
@@ -56,7 +83,7 @@ async def migrate():
     else:
         await command.init_db(True)
 
-    await _create_system_data()
+    await _create_system_data(args.create_system_user, args.create_auth_countries)
     await Tortoise.close_connections()
 
 
@@ -146,6 +173,7 @@ class PiltoverApp:
             _create_db=True,
         )
         await Tortoise.generate_schemas()
+        await _create_system_data()
 
         from piltover.app import testing
         try:
@@ -161,7 +189,27 @@ class PiltoverApp:
         await connections.close_all(True)
 
 
-app = PiltoverApp(secrets / "privkey.asc", secrets / "pubkey.asc")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--create-system-user", action="store_true", help="Create system user with id 777000")
+    parser.add_argument("--create-auth-countries", action="store_true", help="Insert auth countries to database")
+    parser.add_argument("--privkey-file", type=Path,
+                        help="Path to private key file (will be created if does not exist)",
+                        default=secrets / "privkey.asc")
+    parser.add_argument("--pubkey-file", type=Path,
+                        help="Path to public key file (will be created if does not exist)",
+                        default=secrets / "pubkey.asc")
+    args = parser.parse_args()
+else:
+    args = SimpleNamespace(
+        create_system_user=True,
+        create_auth_countries=True,
+        privkey_file=secrets / "privkey.asc",
+        pubkey_file=secrets / "pubkey.asc",
+    )
+
+
+app = PiltoverApp(args.privkey_file, args.pubkey_file)
 
 
 if __name__ == "__main__":
