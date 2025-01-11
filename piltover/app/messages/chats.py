@@ -1,13 +1,14 @@
 from piltover.app.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
+from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType
-from piltover.db.models import User, Peer, Chat
+from piltover.db.models import User, Peer, Chat, File, UploadingFile
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
-    ChatParticipantCreator, ChatParticipants
+    ChatParticipantCreator, ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
-    EditChatAbout
+    EditChatAbout, EditChatPhoto
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 
 handler = MessageHandler("messages.chats")
@@ -55,6 +56,10 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
         raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
 
     chat = peer.chat
+    photo = PhotoEmpty(id=0)
+    if chat.photo_id:
+        await chat.fetch_related("photo")
+        photo = await chat.photo.to_tl_photo(user)
 
     return MessagesChatFull(
         full_chat=ChatFull(
@@ -70,6 +75,7 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
                 version=1,
             ),
             notify_settings=PeerNotifySettings(),
+            chat_photo=photo,
         ),
         chats=[await chat.to_tl(user)],
         users=[await user.to_tl(user)],
@@ -122,3 +128,43 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
     await UpdatesManager.update_chat(chat)
 
     return True
+
+
+@handler.on_request(EditChatPhoto)
+async def edit_chat_photo(request: EditChatPhoto, user: User):
+    if (peer := await Peer.from_chat_id(user, request.chat_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+
+    # TODO: check if admin
+    chat = peer.chat
+    before = chat.photo
+
+    if isinstance(request.photo, InputChatPhotoEmpty):
+        chat.photo = None
+    elif isinstance(request.photo, InputChatPhoto):
+        if not await Peer.filter(owner=user, chat__photo__id=request.photo.id).exists():
+            raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
+        chat.photo = await File.get_or_none(id=request.photo.id)
+    elif isinstance(request.photo, InputChatUploadedPhoto):
+        if request.photo.file is None:
+            raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
+        uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.photo.file.id)
+        if uploaded_file is None:
+            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+
+        file = await uploaded_file.finalize_upload("image/png", [])
+        file.photo_sizes = await resize_photo(str(file.physical_id))
+        file.photo_stripped = await generate_stripped(str(file.physical_id))
+        await file.save(update_fields=["photo_sizes", "photo_stripped"])
+
+        chat.photo = file
+
+    if chat.photo == before:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+    await chat.save()
+
+    return await send_message_internal(
+        user, peer, None, None, False,
+        author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO, message=str(chat.photo.id if chat.photo else 0),
+    )

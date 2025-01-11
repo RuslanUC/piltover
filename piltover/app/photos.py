@@ -1,6 +1,6 @@
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
-from piltover.db.models import User, UserPhoto, Peer
+from piltover.app.utils.utils import resize_photo, generate_stripped
+from piltover.db.models import User, UserPhoto, Peer, UploadingFile
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import InputPhoto, Long, Vector, InputPhotoEmpty, PhotoEmpty
@@ -29,7 +29,10 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     if request.file is None:
         raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
 
-    file = await upload_file(user, request.file, "image/png", [])
+    uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.file.id)
+    if uploaded_file is None:
+        raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+    file = await uploaded_file.finalize_upload("image/png", [])
     file.photo_sizes = await resize_photo(str(file.physical_id))
     file.photo_stripped = await generate_stripped(str(file.physical_id))
     await file.save(update_fields=["photo_sizes", "photo_stripped"])

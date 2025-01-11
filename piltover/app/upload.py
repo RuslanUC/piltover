@@ -4,6 +4,7 @@ import aiofiles
 
 from piltover.app import files_dir
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
+from piltover.db.enums import PeerType
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
@@ -61,9 +62,15 @@ async def get_file(request: GetFile, user: User):
     if isinstance(request.location, InputPeerPhotoFileLocation):
         if (peer := await Peer.from_input_peer(user, request.location.peer)) is None:
             raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-        q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user": peer.peer_user(user)}
+        if peer.type in (PeerType.SELF, PeerType.USER):
+            q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user": peer.peer_user(user)}
+        elif peer.type is PeerType.CHAT:
+            q = {"file__chats__photo__id": request.location.photo_id, "file__chats__id": peer.chat_id}
+        else:
+            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     else:
         q = {"file__id": request.location.id}
+
     access = await FileAccess.get_or_none(user=user, **q).select_related("file")
     if not isinstance(request.location, InputPeerPhotoFileLocation) and \
             (access is None or access.is_expired() or access.access_hash != request.location.access_hash):
@@ -73,6 +80,7 @@ async def get_file(request: GetFile, user: User):
         file = await File.get_or_none(userphotos__id=request.location.photo_id)
     else:
         file = access.file
+
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")
         #raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")

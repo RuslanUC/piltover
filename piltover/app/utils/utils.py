@@ -5,41 +5,13 @@ from io import BytesIO
 from PIL.Image import Image, open as img_open
 
 from piltover.app import files_dir
-from piltover.db.enums import FileType
-from piltover.db.models import User, UploadingFile, UploadingFilePart, File, UserPassword, SrpSession
+from piltover.db.models import UserPassword, SrpSession
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputFile, InputCheckPasswordEmpty, InputCheckPasswordSRP
+from piltover.tl import InputCheckPasswordEmpty, InputCheckPasswordSRP
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
 from piltover.utils.utils import xor
-
-
-async def upload_file(user: User, input_file: InputFile, mime_type: str, attributes: list) -> File:
-    uploaded_file = await UploadingFile.get_or_none(user=user, file_id=input_file.id)
-    parts = await UploadingFilePart.filter(file=uploaded_file).order_by("part_id")
-    if (uploaded_file.total_parts > 0 and uploaded_file.total_parts != len(parts)) or not parts:
-        raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID")
-
-    size = parts[0].size
-    for idx, part in enumerate(parts):
-        if idx == 0:
-            continue
-        if part.part_id - 1 != parts[idx - 1].part_id:
-            raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
-        size += part.size
-
-    file = File(mime_type=mime_type, size=size, type=FileType.DOCUMENT)
-    file.parse_attributes_from_tl(attributes)
-    await file.save()
-
-    with open(files_dir / f"{file.physical_id}", "wb") as f_out:
-        for part in parts:
-            with open(files_dir / "parts" / f"{part.physical_id}_{part.part_id}", "rb") as f_part:
-                f_out.write(f_part.read())
-
-    return file
-
 
 MIME_TO_TL = {
     "image/jpeg": FileJpeg(),

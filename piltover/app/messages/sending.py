@@ -2,10 +2,10 @@ from collections import defaultdict
 from datetime import datetime, UTC
 
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import upload_file, resize_photo, generate_stripped
+from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File, \
-    MessageFwdHeader, Presence
+    MessageFwdHeader, Presence, UploadingFile
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
@@ -214,7 +214,10 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         media_type = MediaType.PHOTO
 
     if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
-        file = await upload_file(user, media.file, mime, attributes)
+        uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
+        if uploaded_file is None:
+            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+        file = await uploaded_file.finalize_upload(mime, attributes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument)):
         file_access = await FileAccess.get_or_none(
             user=user, file__id=media.id.id, access_hash=media.id.access_hash, file_reference=media.id.file_reference,

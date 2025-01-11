@@ -86,6 +86,7 @@ class MessageType(IntEnum):
     SERVICE_PIN_MESSAGE = 1
     SERVICE_CHAT_CREATE = 2
     SERVICE_CHAT_EDIT_TITLE = 3
+    SERVICE_CHAT_EDIT_PHOTO = 4
 
 
 class UserStatus(IntEnum):

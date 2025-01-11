@@ -1,3 +1,6 @@
+from typing import Any
+
+
 class Error(Exception):
     pass
 
@@ -13,6 +16,11 @@ class ErrorRpc(Error):
     def __init__(self, error_code: int, error_message: str):
         self.error_code = error_code
         self.error_message = error_message
+
+    @classmethod
+    def check(cls, cond: Any, message: str, code: int = 400) -> None:
+        if not cond:
+            raise cls(code, message)
 
 
 class InvalidConstructorException(Error):

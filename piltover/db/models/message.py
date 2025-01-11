@@ -9,16 +9,16 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import MediaType, MessageType
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
-    MessageService
+    MessageService, PhotoEmpty
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
-    MessageActionChatEditTitle
+    MessageActionChatEditTitle, MessageActionChatEditPhoto
 
 
-async def _service_pin_message(_: Message) -> MessageActionPinMessage:
+async def _service_pin_message(_: Message, _u: models.User) -> MessageActionPinMessage:
     return MessageActionPinMessage()
 
 
-async def _service_create_chat(message: Message) -> MessageActionChatCreate:
+async def _service_create_chat(message: Message, _: models.User) -> MessageActionChatCreate:
     await message.peer.fetch_related("chat")
     return MessageActionChatCreate(
         title=message.message if message.message is not None else message.peer.chat.name,
@@ -26,17 +26,32 @@ async def _service_create_chat(message: Message) -> MessageActionChatCreate:
     )
 
 
-async def _service_edit_chat_title(message: Message) -> MessageActionChatEditTitle:
+async def _service_edit_chat_title(message: Message, _: models.User) -> MessageActionChatEditTitle:
     await message.peer.fetch_related("chat")
     return MessageActionChatEditTitle(
         title=message.message if message.message is not None else message.peer.chat.name,
     )
 
 
-MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message], Awaitable[...]]] = {
+async def _service_edit_chat_photo(message: Message, user: models.User) -> MessageActionChatEditPhoto:
+    try:
+        photo_id = int(message.message)
+    except ValueError:
+        return MessageActionChatEditPhoto(photo=PhotoEmpty(id=0))
+
+    await message.peer.fetch_related("chat")
+
+    if photo_id > 0 and (file := await models.File.get_or_none(id=photo_id)) is not None:
+        return MessageActionChatEditPhoto(photo=await file.to_tl_photo(user))
+
+    return MessageActionChatEditPhoto(photo=PhotoEmpty(id=photo_id))
+
+
+MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User], Awaitable[...]]] = {
     MessageType.SERVICE_PIN_MESSAGE: _service_pin_message,
     MessageType.SERVICE_CHAT_CREATE: _service_create_chat,
     MessageType.SERVICE_CHAT_EDIT_TITLE: _service_edit_chat_title,
+    MessageType.SERVICE_CHAT_EDIT_PHOTO: _service_edit_chat_photo,
 }
 
 
@@ -94,7 +109,7 @@ class Message(Model):
                 id=self.id,
                 peer_id=self.peer.to_tl(),
                 date=self.utime(),
-                action=await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self),
+                action=await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, current_user),
                 out=current_user == self.author,
                 reply_to=reply_to,
                 from_id=from_id,
