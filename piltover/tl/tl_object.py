@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod, ABC
+from io import BytesIO
 
 from piltover.exceptions import Error
 from .primitives import Int
@@ -24,10 +25,10 @@ class TLObject(ABC):
 
     @classmethod
     @abstractmethod
-    def deserialize(cls, stream) -> TLObject: ...
+    def deserialize(cls, stream: BytesIO) -> TLObject: ...
 
     @classmethod
-    def read(cls, stream, strict_type: bool = False) -> TLObject:
+    def read(cls, stream: BytesIO, strict_type: bool = False) -> TLObject:
         obj = SerializationUtils.read(stream, cls)
         if strict_type and not isinstance(obj, cls):
             raise Error(f"Expected object type {cls.__name__}, got {obj.__class__.__name__}")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from time import time
@@ -15,7 +16,7 @@ from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
-    from piltover.server import Client
+    from piltover.gateway import Client
 
 
 @dataclass(slots=True)
@@ -155,8 +156,13 @@ class SessionManager:
     @classmethod
     async def send(
             cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None, *,
-            exclude: list[Session] | None = None
+            exclude: list[int] | None = None
     ) -> None:
+        # TODO: send SessionManager messages via rabbitmq
+        warnings.warn(
+            "DO NOT call SessionManager.send directly!"
+            "It may work for now, but it wont work with RabbitMq + Redis!"
+        )
         if user_id is None and key_id is None:
             return
 
@@ -168,7 +174,7 @@ class SessionManager:
             sessions.update(cls.by_key_id[key_id])
 
         for session in sessions:
-            if exclude is not None and session in exclude or not session.online:
+            if exclude is not None and session.session_id in exclude or not session.online:
                 continue
             if isinstance(obj, Updates):
                 key = await AuthKey.get_or_temp(session.auth_key.auth_key_id)

@@ -1,5 +1,5 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels
 from piltover.tl.types.messages import Chats
 

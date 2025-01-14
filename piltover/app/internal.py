@@ -5,8 +5,8 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
-from piltover.high_level import MessageHandler
-from piltover.server import Client
+from piltover.worker import MessageHandler
+from piltover.gateway import Client
 from piltover.tl import Long
 from piltover.tl.functions.internal import SendCode, SignIn, GetUserApp, EditUserApp, GetAvailableServers
 from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers, AvailableServer, \
@@ -145,20 +145,21 @@ async def get_available_servers(client: Client, user: User) -> AvailableServers:
     if user.id != 777000:
         raise InvalidConstructorException(GetAvailableServers.tlid())
 
-    server = client.server
+    # TODO: set keys from worker and somehow set address and port
+    #server = client.server
     return AvailableServers(
         servers=[
-            AvailableServer(
-                address=server.host,
-                port=server.port,
-                dc_id=2,
-                name="Production",
-                public_keys=[
-                    PublicKey(
-                        key=server.server_keys.public_key,
-                        fingerprint=server.fingerprint
-                    )
-                ],
-            )
+            #AvailableServer(
+            #    address=server.host,
+            #    port=server.port,
+            #    dc_id=2,
+            #    name="Production",
+            #    public_keys=[
+            #        PublicKey(
+            #            key=server.server_keys.public_key,
+            #            fingerprint=server.fingerprint
+            #        )
+            #    ],
+            #)
         ]
     )

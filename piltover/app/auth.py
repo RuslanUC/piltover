@@ -3,10 +3,11 @@ from time import time
 from typing import cast
 
 from loguru import logger
+from mtproto import ConnectionRole
 from mtproto.packets import EncryptedMessagePacket, MessagePacket
 
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import check_password_internal
+from piltover.app.utils.utils import check_password_internal, get_perm_key
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Dialog, Message
@@ -15,7 +16,7 @@ from piltover.db.models.sentcode import SentCode
 from piltover.db.models.user import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler, Client
+from piltover.worker import MessageHandler
 from piltover.tl import BindAuthKeyInner
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_136, LogOut
@@ -74,7 +75,7 @@ async def send_code(request: SendCode):
 
 
 @handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def sign_in(client: Client, request: SignIn):
+async def sign_in(request: SignIn):
     if len(request.phone_code_hash) != 24:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if request.phone_code is None:
@@ -102,9 +103,7 @@ async def sign_in(client: Client, request: SignIn):
 
     password, _ = await UserPassword.get_or_create(user=user)
 
-    key = await AuthKey.get_or_temp(client.auth_data.auth_key_id)
-    if isinstance(key, TempAuthKey):
-        key = key.perm_key
+    key = await get_perm_key(request_ctx.get().auth_key_id)
     await UserAuthorization.filter(key=key).delete()
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key, mfa_pending=password.password is not None)
     if password.password is not None:
@@ -115,7 +114,7 @@ async def sign_in(client: Client, request: SignIn):
 
 @handler.on_request(SignUp_136, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 @handler.on_request(SignUp, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def sign_up(client: Client, request: SignUp | SignUp_136):
+async def sign_up(request: SignUp | SignUp_136):
     if len(request.phone_code_hash) != 24:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     try:
@@ -142,17 +141,17 @@ async def sign_up(client: Client, request: SignUp | SignUp_136):
         first_name=request.first_name,
         last_name=request.last_name
     )
-    key = await AuthKey.get_or_temp(client.auth_data.auth_key_id)
-    if isinstance(key, TempAuthKey):
-        key = key.perm_key
+    key = await get_perm_key(request_ctx.get().auth_key_id)
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
     return Authorization(user=await user.to_tl(current_user=user))
 
 
 @handler.on_request(CheckPassword, ReqHandlerFlags.ALLOW_MFA_PENDING)
-async def check_password(client: Client, request: CheckPassword, user: User):
-    auth = await client.get_auth(True)
+async def check_password(request: CheckPassword, user: User):
+    # TODO: add auth_id to ctx (in Worker._handle_tl_rpc)
+    key = await get_perm_key(request_ctx.get().auth_key_id)
+    auth = await UserAuthorization.get_or_none(key=key)
     if not auth.mfa_pending:  # ??
         return Authorization(user=await user.to_tl(current_user=user))
 
@@ -166,7 +165,7 @@ async def check_password(client: Client, request: CheckPassword, user: User):
 
 
 @handler.on_request(BindTempAuthKey, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
+async def bind_temp_auth_key(request: BindTempAuthKey):
     ctx = request_ctx.get()
 
     encrypted_message = MessagePacket.parse(request.encrypted_message)
@@ -179,8 +178,12 @@ async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
         logger.debug(f"Perm auth key id mismatch: {encrypted_message.auth_key_id} != {request.perm_auth_key_id}")
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
 
+    perm_key = await AuthKey.get_or_none(id=str(encrypted_message.auth_key_id))
+
     try:
-        message = await client.decrypt_noreplace(encrypted_message, True)
+        sec_check(perm_key is not None)
+
+        message = encrypted_message.decrypt(perm_key.auth_key, ConnectionRole.CLIENT, True)
         sec_check(message.seq_no == 0)
         sec_check(len(message.data) == 40)
         sec_check(message.message_id == ctx.message_id)
@@ -194,7 +197,6 @@ async def bind_temp_auth_key(client: Client, request: BindTempAuthKey):
         logger.opt(exception=e).debug("Failed to decrypt inner message")
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
 
-    perm_key = await AuthKey.get(id=str(obj.perm_auth_key_id))
     await TempAuthKey.filter(perm_key=perm_key, id__not=str(obj.temp_auth_key_id)).delete()
     await TempAuthKey.filter(id=str(obj.temp_auth_key_id)).update(perm_key=perm_key)
 
@@ -207,10 +209,8 @@ async def export_login_token():
 
 
 @handler.on_request(LogOut)
-async def log_out(client: Client) -> LoggedOut:
-    key = await AuthKey.get_or_temp(client.auth_data.auth_key_id)
-    if isinstance(key, TempAuthKey):
-        key = key.perm_key
+async def log_out() -> LoggedOut:
+    key = await get_perm_key(request_ctx.get().auth_key_id)
     await UserAuthorization.filter(key=key).delete()
 
     return LoggedOut()

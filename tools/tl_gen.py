@@ -444,7 +444,14 @@ def start():
 
             if field.opt():
                 if field.write:
-                    serialize_body.append(f"if self.{field.name}:")
+                    empty_condition = ""
+                    fields_with_this_flag = len([
+                        1 for f in fields if f.flag_num == field.flag_num and f.flag_bit == field.flag_bit
+                    ])
+                    if fields_with_this_flag > 1:
+                        empty_condition = " is not None"
+
+                    serialize_body.append(f"if self.{field.name}{empty_condition}:")
                     serialize_body.append(f"    result += SerializationUtils.write(self.{field.name}{int_type_name})")
                     deserialize_body.append(
                         f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name}) "

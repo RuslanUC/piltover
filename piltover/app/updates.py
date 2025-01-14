@@ -1,11 +1,14 @@
 from datetime import datetime
 from time import time
 
+from loguru import logger
 from pytz import UTC
 
+from piltover.app.utils.utils import get_perm_key
+from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models import User, Message, UserAuthorization, State, UpdateV2
-from piltover.high_level import Client, MessageHandler
+from piltover.worker import MessageHandler
 from piltover.tl import UpdateNewMessage, UpdateShortMessage
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136
 from piltover.tl.types.updates import State as TLState, Difference
@@ -14,27 +17,33 @@ handler = MessageHandler("auth")
 IGNORED_UPD = [UpdateNewMessage.tlid(), UpdateShortMessage.tlid()]
 
 
-async def get_state_internal(client: Client, user: User) -> TLState:
+async def get_state_internal(user: User) -> TLState:
+    ctx = request_ctx.get()
     state = await State.get_or_none(user=user)
-    auth = await UserAuthorization.get(key__id=str(await client.auth_data.get_perm_id()))
+    auth = await UserAuthorization.get_or_none(key=await get_perm_key(ctx.auth_key_id))
+    if auth is None:
+        logger.warning(
+            "Somehow auth is None for key {ctx.auth_key_id}, but it is in get_state_internal, "
+            "where authorization must exist ???"
+        )
 
     return TLState(
         pts=state.pts if state else 0,
         qts=0,
-        seq=auth.upd_seq,
+        seq=auth.upd_seq if auth is not None else 0,
         date=int(time()),
         unread_count=0,
     )
 
 
 @handler.on_request(GetState)
-async def get_state(client: Client, user: User):
-    return await get_state_internal(client, user)
+async def get_state(user: User):
+    return await get_state_internal(user)
 
 
 @handler.on_request(GetDifference_136)
 @handler.on_request(GetDifference)
-async def get_difference(client: Client, request: GetDifference | GetDifference_136, user: User):
+async def get_difference(request: GetDifference | GetDifference_136, user: User):
     requested_update = await UpdateV2.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
     date = requested_update.date if requested_update is not None else datetime.fromtimestamp(request.date, UTC)
 
@@ -81,5 +90,5 @@ async def get_difference(client: Client, request: GetDifference | GetDifference_
         other_updates=other_updates,
         chats=list(chats.values()),
         users=list(users.values()),
-        state=await get_state_internal(client, user),
+        state=await get_state_internal(user),
     )

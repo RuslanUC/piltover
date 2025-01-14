@@ -5,7 +5,7 @@ from io import BytesIO
 from PIL.Image import Image, open as img_open
 
 from piltover.app import files_dir
-from piltover.db.models import UserPassword, SrpSession
+from piltover.db.models import UserPassword, SrpSession, AuthKey, TempAuthKey
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputCheckPasswordEmpty, InputCheckPasswordSRP
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
@@ -135,3 +135,8 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
 
     if check.M1 != M2:
         raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
+
+
+async def get_perm_key(unk_key_id: int) -> AuthKey | None:
+    key = await AuthKey.get_or_temp(unk_key_id)
+    return key.auth_key if isinstance(key, TempAuthKey) else key

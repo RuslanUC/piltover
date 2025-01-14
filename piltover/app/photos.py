@@ -2,7 +2,7 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.models import User, UserPhoto, Peer, UploadingFile
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from piltover.tl import InputPhoto, Long, Vector, InputPhotoEmpty, PhotoEmpty
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto

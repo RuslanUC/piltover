@@ -4,7 +4,7 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateUserTyping
 from piltover.tl.functions.messages import SetTyping

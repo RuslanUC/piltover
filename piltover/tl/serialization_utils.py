@@ -1,4 +1,5 @@
 import struct
+from io import BytesIO
 from typing import Any, TypeVar
 
 from piltover.exceptions import InvalidConstructorException
@@ -54,7 +55,7 @@ class SerializationUtils:
             return result
 
     @staticmethod
-    def read(stream, type_: type[T], subtype: type=None) -> T:
+    def read(stream: BytesIO, type_: type[T], subtype: type=None) -> T:
         from . import TLObject, all
 
         if issubclass(type_, primitives.Int):
@@ -82,11 +83,11 @@ class SerializationUtils:
         elif issubclass(type_, TLObject):
             constructor = int.from_bytes(stream.read(4), "little")
             if constructor not in all.objects:
-                raise InvalidConstructorException(constructor, stream.read())
+                raise InvalidConstructorException(constructor, False, stream.read())
             return all.objects[constructor].deserialize(stream)
         elif issubclass(type_, list):
             if (constructor := stream.read(4)) != VECTOR:
-                raise InvalidConstructorException(constructor, stream.read())
+                raise InvalidConstructorException(constructor, False, stream.read())
             count = SerializationUtils.read(stream, primitives.Int)
             result = []
 

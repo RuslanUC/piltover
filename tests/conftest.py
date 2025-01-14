@@ -6,13 +6,13 @@ from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
 from pyrogram.session.internals import DataCenter
 
-from piltover.app.__main__ import app
-from piltover.high_level import Server
+from piltover.app.app import app
+from piltover.gateway import Gateway
 from piltover.utils import get_public_key_fingerprint
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def app_server() -> Server:
+async def app_server() -> Gateway:
     async with app.run_test() as test_server:
         print(f"Running on {test_server.port}")
         _setup_test_dc(test_server)
@@ -54,7 +54,7 @@ class TestDataCenter(DataCenter):
                 adresses[dc_id] = host
 
 
-def _setup_test_dc(server: Server) -> None:
+def _setup_test_dc(server: Gateway) -> None:
     fingerprint = get_public_key_fingerprint(server.server_keys.public_key, signed=True)
     public_key = server.public_key.public_numbers()
     rsa.server_public_keys[fingerprint] = PublicKey(public_key.n, public_key.e)

@@ -5,7 +5,7 @@ from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Contact
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_136, Unblock_136

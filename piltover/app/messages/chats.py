@@ -4,7 +4,7 @@ from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipantCreator, ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
     InputUserEmpty, InputUserSelf

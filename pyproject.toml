@@ -33,6 +33,9 @@ aerich = "^0.8.1"
 pillow = "^11.0.0"
 mtproto = "^0.1.0b11"
 aiofiles = "^24.1.0"
+taskiq = "^0.11.10"
+taskiq-aio-pika = "^0.4.1"
+taskiq-redis = "^1.0.2"
 
 
 [tool.poetry.group.dev.dependencies]

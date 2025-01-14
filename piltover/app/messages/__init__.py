@@ -1,4 +1,4 @@
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from . import stubs, sending, history, dialogs, other, chats
 
 handler = MessageHandler("messages")

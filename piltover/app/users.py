@@ -1,7 +1,7 @@
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from piltover.tl import PeerSettings, TLObject, UserEmpty, PeerNotifySettings
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser

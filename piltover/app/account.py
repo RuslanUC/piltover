@@ -2,7 +2,7 @@ import re
 from datetime import date
 
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import check_password_internal
+from piltover.app.utils.utils import check_password_internal, get_perm_key
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus
 from piltover.db.models import User, UserAuthorization, Peer, Presence
@@ -10,7 +10,7 @@ from piltover.db.models.privacy_rule import PrivacyRule, TL_KEY_TO_PRIVACY_ENUM
 from piltover.db.models.user_password import UserPassword
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler, Client
+from piltover.worker import MessageHandler
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow
@@ -58,9 +58,10 @@ async def update_username(request: UpdateUsername, user: User):
 
 
 @handler.on_request(GetAuthorizations)
-async def get_authorizations(client: Client, user: User):
+async def get_authorizations(user: User):
+    current_key = await get_perm_key(request_ctx.get().auth_key_id)
     authorizations = await UserAuthorization.filter(user=user).select_related("key").all()
-    authorizations = [auth.to_tl(current=int(auth.key.id) == client.auth_data.auth_key_id) for auth in authorizations]
+    authorizations = [auth.to_tl(current=auth.key == current_key) for auth in authorizations]
 
     return Authorizations(authorization_ttl_days=15, authorizations=authorizations)
 

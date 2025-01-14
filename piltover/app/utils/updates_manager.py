@@ -21,7 +21,6 @@ class UpdatesManager:
     @staticmethod
     async def send_message(user: User, messages: dict[Peer, Message]) -> Updates | UpdateShortSentMessage:
         ctx: RequestContext[SendMessage] = request_ctx.get()
-        client = ctx.client
 
         users = {upd_peer.user for upd_peer in messages.keys() if isinstance(upd_peer.user, User)}
         result = None
@@ -74,7 +73,7 @@ class UpdatesManager:
                 await UpdateV2.filter(**read_history_inbox_args).delete()
                 await UpdateV2.create(**read_history_inbox_args, pts=read_history_pts, related_ids=[message.id, 0])
 
-            await SessionManager.send(updates, user.id, exclude=[client.session])
+            await SessionManager.send(updates, user.id, exclude=[ctx.session_id])
 
         return result
 

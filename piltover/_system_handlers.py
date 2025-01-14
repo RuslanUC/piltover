@@ -1,78 +1,63 @@
+from __future__ import annotations
+
 from datetime import datetime
 from time import time
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from piltover.db.models import UserAuthorization
 from piltover.db.models.server_salt import ServerSalt
-from piltover.server import MessageHandler, Client
 from piltover.session_manager import Session
 from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
     InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts, FutureSalts
-from piltover.tl.core_types import Message
+from piltover.tl.core_types import Message, RpcResult
 
-handler = MessageHandler("system")
-
-
-# noinspection PyUnusedLocal
-@handler.on_message(MsgsAck)
-async def msgs_ack(client: Client, request: Message[MsgsAck], session: Session):
-    return False # True
+if TYPE_CHECKING:
+    from piltover.gateway import Client
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(Ping)
-async def pong(client: Client, request: Message[Ping], session: Session):
+async def msgs_ack(client: Client, request: Message[MsgsAck], session: Session) -> None:
+    return
+
+
+# noinspection PyUnusedLocal
+async def ping(client: Client, request: Message[Ping], session: Session):
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(PingDelayDisconnect)
 async def ping_delay_disconnect(client: Client, request: Message[PingDelayDisconnect], session: Session):
-    # TODO: disconnect
+    # TODO: disconnect after request.disconnect_delay
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 
 
-@handler.on_message(InvokeWithLayer)
+async def _invoke_inner_query(client: Client, request: Message, session: Session):
+    return await client.propagate(
+        Message(
+            obj=request.obj.query,
+            message_id=request.message_id,
+            seq_no=request.seq_no,
+        ),
+        session,
+    )
+
+
 async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], session: Session):
     client.layer = request.obj.layer
-    return await client.propagate(
-        Message(
-            obj=request.obj.query,
-            message_id=request.message_id,
-            seq_no=request.seq_no,
-        ),
-        session,
-    )
+    return await _invoke_inner_query(client, request, session)
 
 
-@handler.on_message(InvokeAfterMsg)
 async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], session: Session):
-    return await client.propagate(
-        Message(
-            obj=request.obj.query,
-            message_id=request.message_id,
-            seq_no=request.seq_no,
-        ),
-        session,
-    )
+    return await _invoke_inner_query(client, request, session)
 
 
-@handler.on_message(InvokeWithoutUpdates)
 async def invoke_without_updates(client: Client, request: Message[InvokeWithoutUpdates], session: Session):
     client.no_updates = True
-
-    return await client.propagate(
-        Message(
-            obj=request.obj.query,
-            message_id=request.message_id,
-            seq_no=request.seq_no,
-        ),
-        session,
-    )
+    return await _invoke_inner_query(client, request, session)
 
 
-@handler.on_message(InitConnection)
 async def init_connection(client: Client, request: Message[InitConnection], session: Session):
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
@@ -86,34 +71,24 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
         authorization.ip = client.peername[0]
 
         if not client.no_updates:
-            ...  # TODO: subscribe user to updates
+            ...  # TODO: subscribe user to updates manually
 
     logger.info(f"initConnection with Api ID: {request.obj.api_id}")
 
-    return await client.propagate(
-        Message(
-            obj=request.obj.query,
-            message_id=request.message_id,
-            seq_no=request.seq_no,
-        ),
-        session,
-    )
+    return await _invoke_inner_query(client, request, session)
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(DestroySession)
 async def destroy_session(client: Client, request: Message[DestroySession], session: Session):
-    return DestroySessionOk(session_id=request.obj.session_id)
+    return RpcResult(req_msg_id=request.message_id, result=DestroySessionOk(session_id=request.obj.session_id))
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(RpcDropAnswer)
 async def rpc_drop_answer(client: Client, request: Message[RpcDropAnswer], session: Session):
-    return RpcAnswerUnknown()
+    return RpcResult(req_msg_id=request.message_id, result=RpcAnswerUnknown())
 
 
 # noinspection PyUnusedLocal
-@handler.on_message(GetFutureSalts)
 async def get_future_salts(client: Client, request: Message[GetFutureSalts], session: Session):
     limit = max(min(request.obj.num, 1), 64)
     base_id = int(time() // (60 * 60))
@@ -128,8 +103,25 @@ async def get_future_salts(client: Client, request: Message[GetFutureSalts], ses
 
     salts = await ServerSalt.filter(id__gt=base_id).limit(limit)
 
-    return FutureSalts(
+    return RpcResult(
         req_msg_id=request.message_id,
-        now=int(time()),
-        salts=[salt.to_tl() for salt in salts]
+        result=FutureSalts(
+            req_msg_id=request.message_id,
+            now=int(time()),
+            salts=[salt.to_tl() for salt in salts]
+        ),
     )
+
+
+SYSTEM_HANDLERS = {
+    MsgsAck.tlid(): msgs_ack,
+    Ping.tlid(): ping,
+    PingDelayDisconnect.tlid(): ping_delay_disconnect,
+    InvokeWithLayer.tlid(): invoke_with_layer,
+    InvokeAfterMsg.tlid(): invoke_after_msg,
+    InvokeWithoutUpdates.tlid(): invoke_without_updates,
+    InitConnection.tlid(): init_connection,
+    DestroySession.tlid(): destroy_session,
+    RpcDropAnswer.tlid(): rpc_drop_answer,
+    GetFutureSalts.tlid(): get_future_salts,
+}

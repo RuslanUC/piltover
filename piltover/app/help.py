@@ -2,7 +2,7 @@ from time import time
 
 from piltover.db.models import AuthCountry
 from piltover.enums import ReqHandlerFlags
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \

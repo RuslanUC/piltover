@@ -8,7 +8,7 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
     MessageFwdHeader, Presence, UploadingFile
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler
+from piltover.worker import MessageHandler
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \

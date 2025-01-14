@@ -3,7 +3,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from os import getenv
 from pathlib import Path
-from time import time
 from types import SimpleNamespace
 
 import uvloop
@@ -11,11 +10,9 @@ from aerich import Command, Migrate
 from loguru import logger
 from tortoise import Tortoise, connections
 
-from piltover.app import system, help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
+from piltover.app import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels, upload, root_dir, internal
-from piltover.db.models import AuthKey
-from piltover.db.models.authkey import TempAuthKey
-from piltover.high_level import Server
+from piltover.gateway import Gateway
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 
 data = root_dir / "data"
@@ -88,7 +85,10 @@ async def migrate():
 
 
 class PiltoverApp:
-    def __init__(self, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int=4430):
+    def __init__(
+            self, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int = 4430,
+            rabbitmq_address: str | None = None, redis_address: str | None = None,
+    ):
         self._host = host
         self._port = port
 
@@ -103,46 +103,32 @@ class PiltoverApp:
         self._private_key = privkey.read_text()
         self._public_key = pubkey.read_text()
 
-        self._server = Server(
+        self._gateway = Gateway(
             host=host,
             port=port,
             server_keys=Keys(
                 private_key=self._private_key,
                 public_key=self._public_key,
-            )
+            ),
+            rabbitmq_address=rabbitmq_address,
+            redis_address=redis_address,
         )
 
-        self._server.register_handler_low(system.handler)
-        self._server.register_handler(help_.handler)
-        self._server.register_handler(auth.handler)
-        self._server.register_handler(updates.handler)
-        self._server.register_handler(users.handler)
-        self._server.register_handler(stories.handler)
-        self._server.register_handler(account.handler)
-        self._server.register_handler(messages.handler)
-        self._server.register_handler(photos.handler)
-        self._server.register_handler(contacts.handler)
-        self._server.register_handler(langpack.handler)
-        self._server.register_handler(channels.handler)
-        self._server.register_handler(upload.handler)
-        self._server.register_handler(internal.handler)
-
-        self._server.on_auth_key_set(self._auth_key_set)
-        self._server.on_auth_key_get(self._auth_key_get)
-
-    @staticmethod
-    async def _auth_key_set(auth_key_id: int, auth_key_bytes: bytes, expires_in: int | None) -> None:
-        if expires_in:
-            await TempAuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes, expires_at=int(time() + expires_in))
-        else:
-            await AuthKey.create(id=str(auth_key_id), auth_key=auth_key_bytes)
-        logger.debug(f"Set auth key: {auth_key_id}")
-
-    @staticmethod
-    async def _auth_key_get(auth_key_id: int) -> tuple[int, bytes, bool] | None:
-        logger.debug(f"Requested auth key: {auth_key_id}")
-        if key := await AuthKey.get_or_temp(auth_key_id):
-            return auth_key_id, key.auth_key, isinstance(key, TempAuthKey)
+        if self._gateway.worker is not None:
+            worker = self._gateway.worker
+            worker.register_handler(help_.handler)
+            worker.register_handler(auth.handler)
+            worker.register_handler(updates.handler)
+            worker.register_handler(users.handler)
+            worker.register_handler(stories.handler)
+            worker.register_handler(account.handler)
+            worker.register_handler(messages.handler)
+            worker.register_handler(photos.handler)
+            worker.register_handler(contacts.handler)
+            worker.register_handler(langpack.handler)
+            worker.register_handler(channels.handler)
+            worker.register_handler(upload.handler)
+            worker.register_handler(internal.handler)
 
     async def run(self, host: str | None = None, port: int | None = None):
         self._host = host or self._host
@@ -162,8 +148,8 @@ class PiltoverApp:
             modules={"models": ["piltover.db.models"]},
         )
 
-        logger.success("Running on {host}:{port}", host=self._host, port=self._port)
-        await self._server.serve()
+        logger.success(f"Running on {self._host}:{self._port}")
+        await self._gateway.serve()
 
     @asynccontextmanager
     async def run_test(self) -> int:
@@ -177,18 +163,19 @@ class PiltoverApp:
 
         from piltover.app import testing
         try:
-            self._server.register_handler(testing.handler)
+            self._gateway.worker.register_handler(testing.handler)
         except RuntimeError:
             ...
 
-        server = await asyncio.start_server(self._server.accept_client, "127.0.0.1", 0)
+        server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
         async with server:
-            self._server.host, self._server.port = server.sockets[0].getsockname()
-            yield self._server
+            self._gateway.host, self._gateway.port = server.sockets[0].getsockname()
+            yield self._gateway
 
         await connections.close_all(True)
 
 
+# TODO: add host and port to arguments
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--create-system-user", action="store_true", help="Create system user with id 777000")
@@ -199,6 +186,12 @@ if __name__ == "__main__":
     parser.add_argument("--pubkey-file", type=Path,
                         help="Path to public key file (will be created if does not exist)",
                         default=secrets / "pubkey.asc")
+    parser.add_argument("--rabbitmq-address", type=str, required=False,
+                        help="Address of rabbitmq server in \"amqp://user:password@host:port\" format",
+                        default=None)
+    parser.add_argument("--redis-address", type=str, required=False,
+                        help="Address of redis server in \"redis://host:port\" format",
+                        default=None)
     args = parser.parse_args()
 else:
     args = SimpleNamespace(
@@ -206,10 +199,17 @@ else:
         create_auth_countries=True,
         privkey_file=secrets / "privkey.asc",
         pubkey_file=secrets / "pubkey.asc",
+        rabbitmq_address=None,
+        redis_address=None,
     )
 
 
-app = PiltoverApp(args.privkey_file, args.pubkey_file)
+app = PiltoverApp(
+    privkey=args.privkey_file,
+    pubkey=args.pubkey_file,
+    rabbitmq_address=args.rabbitmq_address,
+    redis_address=args.redis_address,
+)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from piltover.db.enums import PeerType
 from piltover.db.models import User, Dialog, Peer
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
-from piltover.high_level import MessageHandler, Client
+from piltover.worker import MessageHandler
 from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer, InputPeerChat, DialogPeer
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
@@ -92,21 +92,21 @@ async def get_dialogs(request: GetDialogs, user: User):
 
 
 @handler.on_request(GetPeerDialogs)
-async def get_peer_dialogs(client: Client, request: GetPeerDialogs, user: User):
+async def get_peer_dialogs(request: GetPeerDialogs, user: User):
     return PeerDialogs(
         **(await get_dialogs_internal(request.peers, user)),
-        state=await get_state_internal(client, user)
+        state=await get_state_internal(user)
     )
 
 
 @handler.on_request(GetPinnedDialogs)
-async def get_pinned_dialogs(client: Client, user: User):
+async def get_pinned_dialogs(user: User):
     dialogs = await Dialog.filter(peer__owner=user, pinned_index__not_isnull=True)\
         .select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
 
     return PeerDialogs(
         **(await format_dialogs(user, dialogs)),
-        state=await get_state_internal(client, user)
+        state=await get_state_internal(user)
     )
 
 
