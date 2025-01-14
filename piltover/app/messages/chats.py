@@ -2,11 +2,12 @@ from piltover.app.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType
-from piltover.db.models import User, Peer, Chat, File, UploadingFile
+from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant
 from piltover.exceptions import ErrorRpc
 from piltover.high_level import MessageHandler
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
-    ChatParticipantCreator, ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty
+    ChatParticipantCreator, ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
+    InputUserEmpty, InputUserSelf
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
@@ -18,11 +19,34 @@ handler = MessageHandler("messages.chats")
 @handler.on_request(CreateChat)
 async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     chat = await Chat.create(name=request.title, creator=user)
-    peer_chat = await Peer.create(owner=user, chat=chat, type=PeerType.CHAT)
+    chat_peers = {user.id: await Peer.create(owner=user, chat=chat, type=PeerType.CHAT)}
 
-    updates = await UpdatesManager.create_chat(user, chat, [peer_chat])
+    participants_to_create = [ChatParticipant(user=user, chat=chat)]
+
+    missing = []
+    #for invited_user in request.users:
+    #    if not isinstance(invited_user, (InputUser, InputUserFromMessage)):
+    #        continue
+    #    if invited_user.user_id in chat_peers:
+    #        continue
+
+    #    try:
+    #        invited_peer = await Peer.from_input_peer(user, invited_user)
+    #    except ErrorRpc:
+    #        continue
+    #    if invited_peer is None:
+    #        if isinstance(invited_user, (InputUser, InputUserFromMessage)):
+    #            missing.append(MissingInvitee(user_id=invited_user.user_id))
+    #        continue
+
+    #    chat_peers[invited_peer.user.id] = await Peer.create(owner=invited_peer.user, chat=chat, type=PeerType.CHAT)
+    #    participants_to_create.append(ChatParticipant(user=invited_peer.user, chat=chat))
+
+    await ChatParticipant.bulk_create(participants_to_create)
+
+    updates = await UpdatesManager.create_chat(user, chat, list(chat_peers.values()))
     updates_msg = await send_message_internal(
-        user, peer_chat, None, None, False,
+        user, chat_peers[user.id], None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_CREATE, message=request.title,
     )
 
@@ -31,11 +55,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 
     return InvitedUsers(
         updates=updates,
-        missing_invitees=[
-            MissingInvitee(user_id=input_user.user_id)
-            for input_user in request.users
-            if isinstance(input_user, (InputUser, InputUserFromMessage)) and input_user.user_id != user.id
-        ]
+        missing_invitees=missing,
     )
 
 
@@ -70,9 +90,9 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             participants=ChatParticipants(
                 chat_id=chat.id,
                 participants=[
-                    ChatParticipantCreator(user_id=user.id)
+                    ChatParticipantCreator(user_id=user.id),
                 ],
-                version=1,
+                version=chat.version,
             ),
             notify_settings=PeerNotifySettings(),
             chat_photo=photo,

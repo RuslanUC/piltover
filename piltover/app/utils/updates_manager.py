@@ -6,13 +6,14 @@ from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import UpdateType, PeerType
-from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence
+from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence, \
+    ChatParticipant
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
     UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
-    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox
+    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, ChatParticipant as TLChatParticipant
 from piltover.tl.functions.messages import SendMessage
 
 
@@ -326,6 +327,12 @@ class UpdatesManager:
         updates_to_create = []
         result_update = None
 
+        participants = [
+            await participant.to_tl()
+            for participant in await ChatParticipant.filter(chat=chat).select_related("chat")
+        ]
+        #participant_ids = [participant.user_id for participant in participants]
+
         for peer in peers:
             pts = await State.add_pts(peer.owner, 1)
 
@@ -335,6 +342,7 @@ class UpdatesManager:
                     update_type=UpdateType.CHAT_CREATE,
                     pts=pts,
                     related_id=chat.id,
+                    #related_ids=participant_ids,
                 )
             )
 
@@ -343,9 +351,7 @@ class UpdatesManager:
                     UpdateChatParticipants(
                         participants=ChatParticipants(
                             chat_id=chat.id,
-                            participants=[
-                                ChatParticipantCreator(user_id=user.id)
-                            ],
+                            participants=participants,
                             version=1,
                         ),
                     ),

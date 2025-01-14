@@ -26,3 +26,4 @@ from .presence import Presence
 from .contact import Contact
 from .auth_country import AuthCountry
 from .auth_country_code import AuthCountryCode
+from .chat_participant import ChatParticipant

@@ -58,6 +58,8 @@ async def get_file(request: GetFile, user: User):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     if request.limit < 0 or request.limit > 1024 * 1024:
         raise ErrorRpc(error_code=400, error_message="LIMIT_INVALID")
+    if request.offset < 0:
+        raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
 
     if isinstance(request.location, InputPeerPhotoFileLocation):
         if (peer := await Peer.from_input_peer(user, request.location.peer)) is None:
@@ -83,7 +85,6 @@ async def get_file(request: GetFile, user: User):
 
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")
-        #raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
 
     f_name = str(file.physical_id)
     if isinstance(request.location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):

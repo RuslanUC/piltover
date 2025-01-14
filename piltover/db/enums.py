@@ -1,4 +1,4 @@
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 
 
 class ChatType(IntEnum):
@@ -93,3 +93,26 @@ class UserStatus(IntEnum):
     # Idk why
     OFFLINE = 0
     ONLINE = 1
+
+
+class ChatBannedRights(IntFlag):
+    VIEW_MESSAGES = 1 << 0
+    SEND_MESSAGES = 1 << 1
+    SEND_MEDIA = 1 << 2
+    SEND_STICKERS = 1 << 3
+    SEND_GIFS = 1 << 4
+    SEND_GAMES = 1 << 5
+    SEND_INLINE = 1 << 6
+    EMBED_LINKS = 1 << 7
+    SEND_POLLS = 1 << 8
+    CHANGE_INFO = 1 << 9
+    INVITE_USERS = 1 << 10
+    PIN_MESSAGES = 1 << 11
+    MANAGE_TOPICS = 1 << 12
+    SEND_PHOTOS = 1 << 13
+    SEND_VIDEOS = 1 << 14
+    SEND_ROUND_VIDEOS = 1 << 15
+    SEND_AUDIOS = 1 << 16
+    SEND_VOICES = 1 << 17
+    SEND_DOCS = 1 << 18
+    SEND_PLAIN = 1 << 19

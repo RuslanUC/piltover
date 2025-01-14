@@ -8,7 +8,7 @@ from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
-    User as TLUser, Chat as TLChat
+    User as TLUser, Chat as TLChat, InputUserEmpty, InputPeerEmpty
 
 
 def gen_access_hash() -> int:
@@ -52,6 +52,9 @@ class Peer(Model):
 
     @classmethod
     async def from_input_peer(cls, user: models.User, input_peer: InputPeers) -> Peer | None:
+        if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty)):
+            return
+
         if isinstance(input_peer, InputUserSelf):
             input_peer = InputPeerSelf()
         elif isinstance(input_peer, InputUser):
