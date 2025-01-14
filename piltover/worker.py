@@ -7,7 +7,8 @@ from typing import Awaitable, Callable, Any
 from loguru import logger
 from taskiq import InMemoryBroker
 
-from piltover.tl_rpc import RpcResponse, CallRpc
+from piltover.tl.functions.internal import CallRpc
+from piltover.tl.types.internal import RpcResponse
 
 try:
     from taskiq_aio_pika import AioPikaBroker

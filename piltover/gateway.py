@@ -32,7 +32,8 @@ from piltover.tl import TLObject, SerializationUtils, NewSessionCreated, BadServ
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
-from piltover.tl_rpc import RpcResponse, CallRpc
+from piltover.tl.functions.internal import CallRpc
+from piltover.tl.types.internal import RpcResponse
 
 
 class Gateway:
@@ -415,7 +416,6 @@ class Client:
 
     async def propagate(self, request: Message, session: Session) -> RpcResult | None:
         if request.obj.tlid() in SYSTEM_HANDLERS:
-            # TODO: maybe process result like Worker._handle_tl_rpc ?
             return await SYSTEM_HANDLERS[request.obj.tlid()](self, request, session)
 
         task = await self._kiq(request.obj, session, request.message_id)
@@ -429,6 +429,13 @@ class Client:
 
         # RpcResponse.read(BytesIO(bytes.fromhex(task_result.return_value)), True)
         result = task_result.return_value
+        if not isinstance(result, RpcResponse):
+            logger.error(f"Got response from worker that is not a RpcResponse object: {result}")
+            return RpcResult(
+                req_msg_id=request.message_id,
+                result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR"),
+            )
+
         if result.transport_error is not None:
             raise Disconnection(result.transport_error or None)
 

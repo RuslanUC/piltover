@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from time import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
 
@@ -23,17 +23,17 @@ async def msgs_ack(client: Client, request: Message[MsgsAck], session: Session) 
 
 
 # noinspection PyUnusedLocal
-async def ping(client: Client, request: Message[Ping], session: Session):
+async def ping(client: Client, request: Message[Ping], session: Session) -> Pong:
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 
 
 # noinspection PyUnusedLocal
-async def ping_delay_disconnect(client: Client, request: Message[PingDelayDisconnect], session: Session):
+async def ping_delay_disconnect(client: Client, request: Message[PingDelayDisconnect], session: Session) -> Pong:
     # TODO: disconnect after request.disconnect_delay
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 
 
-async def _invoke_inner_query(client: Client, request: Message, session: Session):
+async def _invoke_inner_query(client: Client, request: Message, session: Session) -> RpcResult:
     return await client.propagate(
         Message(
             obj=request.obj.query,
@@ -44,21 +44,21 @@ async def _invoke_inner_query(client: Client, request: Message, session: Session
     )
 
 
-async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], session: Session):
+async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], session: Session) -> RpcResult:
     client.layer = request.obj.layer
     return await _invoke_inner_query(client, request, session)
 
 
-async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], session: Session):
+async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], session: Session) -> RpcResult:
     return await _invoke_inner_query(client, request, session)
 
 
-async def invoke_without_updates(client: Client, request: Message[InvokeWithoutUpdates], session: Session):
+async def invoke_without_updates(client: Client, request: Message[InvokeWithoutUpdates], session: Session) -> RpcResult:
     client.no_updates = True
     return await _invoke_inner_query(client, request, session)
 
 
-async def init_connection(client: Client, request: Message[InitConnection], session: Session):
+async def init_connection(client: Client, request: Message[InitConnection], session: Session) -> RpcResult:
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
     authorization = await UserAuthorization.get_or_none(key__id=str(await client.auth_data.get_perm_id()))
@@ -79,17 +79,17 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
 
 
 # noinspection PyUnusedLocal
-async def destroy_session(client: Client, request: Message[DestroySession], session: Session):
+async def destroy_session(client: Client, request: Message[DestroySession], session: Session) -> RpcResult:
     return RpcResult(req_msg_id=request.message_id, result=DestroySessionOk(session_id=request.obj.session_id))
 
 
 # noinspection PyUnusedLocal
-async def rpc_drop_answer(client: Client, request: Message[RpcDropAnswer], session: Session):
+async def rpc_drop_answer(client: Client, request: Message[RpcDropAnswer], session: Session) -> RpcResult:
     return RpcResult(req_msg_id=request.message_id, result=RpcAnswerUnknown())
 
 
 # noinspection PyUnusedLocal
-async def get_future_salts(client: Client, request: Message[GetFutureSalts], session: Session):
+async def get_future_salts(client: Client, request: Message[GetFutureSalts], session: Session) -> RpcResult:
     limit = max(min(request.obj.num, 1), 64)
     base_id = int(time() // (60 * 60))
 
@@ -113,7 +113,7 @@ async def get_future_salts(client: Client, request: Message[GetFutureSalts], ses
     )
 
 
-SYSTEM_HANDLERS = {
+SYSTEM_HANDLERS: dict[int, Callable[[Client, Message, Session], Awaitable[RpcResult | Pong | None]]] = {
     MsgsAck.tlid(): msgs_ack,
     Ping.tlid(): ping,
     PingDelayDisconnect.tlid(): ping_delay_disconnect,
