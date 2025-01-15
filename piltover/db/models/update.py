@@ -10,7 +10,7 @@ from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogP
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
-    UpdateReadHistoryOutbox
+    UpdateReadHistoryOutbox, ChatParticipant
 from piltover.tl.types import User as TLUser, Chat as TLChat
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -158,12 +158,24 @@ class UpdateV2(Model):
                 users[peer.chat.creator.id] = peer.chat.creator
             await peer.tl_users_chats(current_user, users, chats)
 
+            user_ids = set(self.related_ids)
+            participants = []
+            participant: models.ChatParticipant
+
+            async for participant in models.ChatParticipant.filter(chat=peer.chat, user__id__in=self.related_ids).select_related("chat"):
+                participants.append(await participant.to_tl())
+                user_ids.remove(participant.user_id)
+
+            for missing_id in user_ids:
+                if missing_id == peer.chat.creator.id:
+                    participants.append(ChatParticipantCreator(user_id=missing_id))
+                else:
+                    participants.append(ChatParticipant(user_id=missing_id, inviter_id=peer.chat.creator.id, date=0))
+
             return UpdateChatParticipants(
                 participants=ChatParticipants(
                     chat_id=peer.chat.creator.id,
-                    participants=[
-                        ChatParticipantCreator(user_id=peer.chat.creator.id)
-                    ],
+                    participants=participants,
                     version=1,
                 ),
             )

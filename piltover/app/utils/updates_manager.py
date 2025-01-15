@@ -4,24 +4,21 @@ from typing import cast
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
-from piltover.context import request_ctx, RequestContext
 from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant
 from piltover.session_manager import SessionManager
-from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, ChatParticipantCreator, \
-    UpdateReadHistoryInbox, UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
+from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
+    UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
-    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, ChatParticipant as TLChatParticipant
-from piltover.tl.functions.messages import SendMessage
+    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox
 
 
+# TODO: move UpdatesManager to separate worker
 class UpdatesManager:
     @staticmethod
     async def send_message(user: User, messages: dict[Peer, Message]) -> Updates | UpdateShortSentMessage:
-        ctx: RequestContext[SendMessage] = request_ctx.get()
-
         users = {upd_peer.user for upd_peer in messages.keys() if isinstance(upd_peer.user, User)}
         result = None
         chat = None
@@ -330,7 +327,7 @@ class UpdatesManager:
             await participant.to_tl()
             for participant in await ChatParticipant.filter(chat=chat).select_related("chat")
         ]
-        #participant_ids = [participant.user_id for participant in participants]
+        participant_ids = [participant.user_id for participant in participants]
 
         for peer in peers:
             pts = await State.add_pts(peer.owner, 1)
@@ -341,7 +338,7 @@ class UpdatesManager:
                     update_type=UpdateType.CHAT_CREATE,
                     pts=pts,
                     related_id=chat.id,
-                    #related_ids=participant_ids,
+                    related_ids=participant_ids,
                 )
             )
 

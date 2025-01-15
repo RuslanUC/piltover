@@ -38,6 +38,7 @@ class Dialog(Model):
                 out_read_max_id = await models.Message.filter(
                     peer=self.peer, id__lte=out_read_state.last_message_id
                 ).order_by("-id").first().values_list("id", flat=True)
+                out_read_max_id = out_read_max_id or 0
 
         defaults = {
             "view_forum_as_messages": False,
@@ -58,6 +59,6 @@ class Dialog(Model):
             top_message=cast(int, top_message),
             draft=draft,
             read_inbox_max_id=in_read_state.last_message_id,
-            read_outbox_max_id=out_read_max_id,
+            read_outbox_max_id=out_read_max_id or 0,
             unread_count=unread_count,
         )

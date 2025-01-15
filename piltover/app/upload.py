@@ -45,6 +45,7 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
 
     part = await UploadingFilePart.create(file=file, part_id=request.file_part, size=size)
 
+    # TODO: upload to s3 or something similar
     async with aiofiles.open(files_dir / "parts" / f"{part.physical_id}_{request.file_part}", "wb") as f:
         await f.write(request.bytes_)
 
@@ -99,6 +100,7 @@ async def get_file(request: GetFile, user: User):
             size = min(available, key=lambda x: abs(x - size))
         f_name += f"_{size}"
 
+    # TODO: upload to s3 or something similar
     async with aiofiles.open(files_dir / f_name, "rb") as f:
         await f.seek(request.offset)
         data = await f.read(request.limit)

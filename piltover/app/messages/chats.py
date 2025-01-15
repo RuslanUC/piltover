@@ -1,3 +1,5 @@
+from loguru import logger
+
 from piltover.app.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
@@ -7,7 +9,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.worker import MessageHandler
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipantCreator, ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
-    InputUserEmpty, InputUserSelf
+    InputUserEmpty, InputUserSelf, InputPeerUser
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
@@ -24,23 +26,23 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     participants_to_create = [ChatParticipant(user=user, chat=chat)]
 
     missing = []
-    #for invited_user in request.users:
-    #    if not isinstance(invited_user, (InputUser, InputUserFromMessage)):
-    #        continue
-    #    if invited_user.user_id in chat_peers:
-    #        continue
+    for invited_user in request.users:
+        if not isinstance(invited_user, (InputUser, InputUserFromMessage, InputPeerUser)):
+            continue
+        if invited_user.user_id in chat_peers:
+            continue
 
-    #    try:
-    #        invited_peer = await Peer.from_input_peer(user, invited_user)
-    #    except ErrorRpc:
-    #        continue
-    #    if invited_peer is None:
-    #        if isinstance(invited_user, (InputUser, InputUserFromMessage)):
-    #            missing.append(MissingInvitee(user_id=invited_user.user_id))
-    #        continue
+        try:
+            invited_peer = await Peer.from_input_peer(user, invited_user)
+        except ErrorRpc:
+            continue
+        if invited_peer is None:
+            if isinstance(invited_user, (InputUser, InputUserFromMessage)):
+                missing.append(MissingInvitee(user_id=invited_user.user_id))
+            continue
 
-    #    chat_peers[invited_peer.user.id] = await Peer.create(owner=invited_peer.user, chat=chat, type=PeerType.CHAT)
-    #    participants_to_create.append(ChatParticipant(user=invited_peer.user, chat=chat))
+        chat_peers[invited_peer.user.id] = await Peer.create(owner=invited_peer.user, chat=chat, type=PeerType.CHAT)
+        participants_to_create.append(ChatParticipant(user=invited_peer.user, chat=chat))
 
     await ChatParticipant.bulk_create(participants_to_create)
 

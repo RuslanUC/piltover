@@ -105,23 +105,23 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
     # TODO: set server salt to server_nonce
 
     logger.info("Generating safe prime...")
-    auth_data.dh_prime, g = gen_safe_prime(2048)
+    dh_prime, g = gen_safe_prime(2048)
 
     logger.info("Prime successfully generated")
 
     auth_data.a = int.from_bytes(secrets.token_bytes(256), "big")
-    g_a = pow(g, auth_data.a, auth_data.dh_prime)
+    g_a = pow(g, auth_data.a, dh_prime)
 
-    if g <= 1 or g >= auth_data.dh_prime - 1 \
-            or g_a <= 1 or g_a >= auth_data.dh_prime - 1 \
-            or g_a <= 2 ** (2048 - 64) or g_a >= auth_data.dh_prime - 2 ** (2048 - 64):
+    if g <= 1 or g >= dh_prime - 1 \
+            or g_a <= 1 or g_a >= dh_prime - 1 \
+            or g_a <= 2 ** (2048 - 64) or g_a >= dh_prime - 2 ** (2048 - 64):
         raise Disconnection(404)
 
     answer = ServerDHInnerData(
         nonce=p_q_inner_data.nonce,
         server_nonce=auth_data.server_nonce,
         g=g,
-        dh_prime=auth_data.dh_prime.to_bytes(2048 // 8, "big", signed=False),
+        dh_prime=dh_prime.to_bytes(2048 // 8, "big", signed=False),
         g_a=g_a.to_bytes(256, "big"),
         server_time=int(time()),
     ).write()
@@ -175,10 +175,12 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
     if auth_data.server_nonce != client_DH_inner_data.server_nonce:
         raise Disconnection(404)
 
+    dh_prime, _ = gen_safe_prime(2048)
+
     auth_data.auth_key = auth_key = pow(
         int.from_bytes(client_DH_inner_data.g_b, "big"),
         auth_data.a,
-        auth_data.dh_prime,
+        dh_prime,
     ).to_bytes(256, "big")
 
     auth_key_digest = hashlib.sha1(auth_key).digest()

@@ -50,3 +50,23 @@ async def test_change_chat_photo() -> None:
         downloaded_photo_file.seek(0)
         downloaded_photo = Image.open(downloaded_photo_file)
         assert color_is_near(PHOTO_COLOR, cast(tuple[int, int, int], downloaded_photo.getpixel((0, 0))))
+
+
+@pytest.mark.asyncio
+async def test_create_group_chat_with_another_user() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        await client1.set_username("test1_username")
+        await client2.set_username("test2_username")
+        user1 = await client2.get_users("test1_username")
+        user2 = await client1.get_users("test2_username")
+
+        assert len([dialog async for dialog in client1.get_dialogs()]) == 0
+        assert len([dialog async for dialog in client2.get_dialogs()]) == 0
+
+        group = await client1.create_group("idk 1", [])
+        assert len([dialog async for dialog in client1.get_dialogs()]) == 1
+        assert len([dialog async for dialog in client2.get_dialogs()]) == 0
+
+        group2 = await client1.create_group("idk 2", [user2.id])
+        assert len([dialog async for dialog in client1.get_dialogs()]) == 2
+        assert len([dialog async for dialog in client2.get_dialogs()]) == 1
