@@ -73,7 +73,7 @@ class UpdatesManager:
                 await UpdateV2.filter(**read_history_inbox_args).delete()
                 await UpdateV2.create(**read_history_inbox_args, pts=read_history_pts, related_ids=[message.id, 0])
 
-            await SessionManager.send(updates, user.id, exclude=[ctx.session_id])
+            await SessionManager.send(updates, user.id)
 
         return result
 

@@ -42,6 +42,8 @@ taskiq-redis = "^1.0.2"
 websockets = "^12.0"
 tqdm = "^4.66.5"
 aiomonitor = "^0.7.0"
+yappi = "^1.6.10"
+py-spy = "^0.4.0"
 
 
 [tool.poetry.group.test.dependencies]

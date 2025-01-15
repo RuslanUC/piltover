@@ -21,6 +21,11 @@ internal.available_servers#58d5526f servers:Vector<internal.AvailableServer> = i
 
 internal.rpc_response#1c05a4e9 = flags:# transport_error:flags.0?int obj:flags.1?Object = internal.RpcResponse;
 
+// Message exchange between gateway and brokers
+
+// TODO: remove `sessions` if not used
+internal.message#998b6f69 = flags:# users:flags.0?Vector<long> sessions:flags.1?Vector<long> key_ids:flags.2?Vector<long> obj:flags.3?Object = internal.Message;
+
 ---functions---
 
 // For my.telegram.org alternative page

@@ -149,9 +149,8 @@ async def sign_up(request: SignUp | SignUp_136):
 
 @handler.on_request(CheckPassword, ReqHandlerFlags.ALLOW_MFA_PENDING)
 async def check_password(request: CheckPassword, user: User):
-    # TODO: add auth_id to ctx (in Worker._handle_tl_rpc)
-    key = await get_perm_key(request_ctx.get().auth_key_id)
-    auth = await UserAuthorization.get_or_none(key=key)
+    ctx = request_ctx.get()
+    auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
     if not auth.mfa_pending:  # ??
         return Authorization(user=await user.to_tl(current_user=user))
 

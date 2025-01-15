@@ -6,11 +6,13 @@ from loguru import logger
 from mtproto import Connection, ConnectionRole
 from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
     ErrorPacket, QuickAckPacket, BasePacket
-from taskiq import AsyncTaskiqTask, TaskiqResult
+from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqEvents
 from taskiq.kicker import AsyncKicker
 
 from piltover._keygen_handlers import KEYGEN_HANDLERS
 from piltover._system_handlers import SYSTEM_HANDLERS
+from piltover.message_brokers.base_broker import BrokerType
+from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 
 try:
     from taskiq_aio_pika import AioPikaBroker
@@ -68,10 +70,21 @@ class Gateway:
             from piltover.worker import Worker
             self.worker = Worker(self.server_keys, None, None)
             self.broker = self.worker.broker
+            self.message_broker = self.worker.message_broker
         else:
             logger.debug("Using AioPikaBroker + RedisAsyncResultBackend")
             self.worker = None
             self.broker = AioPikaBroker(rabbitmq_address).with_result_backend(RedisAsyncResultBackend(redis_address))
+            self.message_broker = RabbitMqMessageBroker(BrokerType.READ, rabbitmq_address)
+            self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
+            self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_shutdown)
+
+    async def _broker_startup(self, _) -> None:
+        await self.message_broker.startup()
+        SessionManager.set_broker(self.message_broker)
+
+    async def _broker_shutdown(self, _) -> None:
+        await self.message_broker.shutdown()
 
     @logger.catch
     async def accept_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -127,11 +140,11 @@ class Client:
         if self.session is not None:
             if self.session.session_id == session_id:
                 return self.session, False
-            self.session.cleanup()
+            self.session.destroy()
 
         self.session, created = SessionManager.get_or_create(self, session_id)
         if not created and self.session.online:
-            self.session.cleanup()
+            self.session.destroy()
             return self._get_session(session_id)
 
         return self.session, created
@@ -212,7 +225,7 @@ class Client:
 
                 self.authorization = (auth, time())
                 if auth is not None and session.user_id is None:
-                    SessionManager.set_user(session, auth.user)
+                    session.set_user(auth.user)
 
             auth_id = auth.id if auth is not None else None
             user_id = auth.user.id if auth is not None else None
@@ -412,7 +425,7 @@ class Client:
 
         if self.session is not None:
             logger.info(f"Session {self.session.session_id} removed")
-            self.session.cleanup()
+            self.session.destroy()
 
     async def propagate(self, request: Message, session: Session) -> RpcResult | None:
         if request.obj.tlid() in SYSTEM_HANDLERS:

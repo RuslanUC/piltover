@@ -167,11 +167,13 @@ class PiltoverApp:
         except RuntimeError:
             ...
 
+        await self._gateway.broker.startup()
         server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
         async with server:
             self._gateway.host, self._gateway.port = server.sockets[0].getsockname()
             yield self._gateway
 
+        await self._gateway.broker.shutdown()
         await connections.close_all(True)
 
 

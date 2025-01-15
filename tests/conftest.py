@@ -1,10 +1,13 @@
 import builtins
+from time import time
 
 import pytest_asyncio
 from pyrogram import Client
 from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
 from pyrogram.session.internals import DataCenter
+from pyrogram.storage import Storage
+from pyrogram.storage.sqlite_storage import get_input_peer
 
 from piltover.app.app import app
 from piltover.gateway import Gateway
@@ -78,6 +81,136 @@ def _input(prompt: str = "") -> str:
 builtins.input = _input
 
 
+class SimpleStorage(Storage):
+    VERSION = 3
+    USERNAME_TTL = 8 * 60 * 60
+
+    def __init__(self, name: str):
+        super().__init__(name)
+
+        self._version = self.VERSION
+
+        self._dc_id = None
+        self._api_id = None
+        self._test_mode = None
+        self._auth_key = None
+        self._date = None
+        self._user_id = None
+        self._is_bot = None
+
+        self._peers_by_id = {}
+        self._peers_by_username = {}
+        self._peers_by_phone = {}
+
+    def create(self):
+        ...
+
+    async def open(self):
+        ...
+
+    async def save(self):
+        await self.date(int(time()))
+
+    async def close(self):
+       ...
+
+    async def delete(self):
+        self._version = self.VERSION
+
+        self._dc_id = None
+        self._api_id = None
+        self._test_mode = None
+        self._auth_key = None
+        self._date = None
+        self._user_id = None
+        self._is_bot = None
+
+        self._peers_by_id = {}
+        self._peers_by_username = {}
+        self._peers_by_phone = {}
+
+    async def update_peers(self, peers: list[tuple[int, int, str, str, str]]):
+        for peer in peers:
+            peer_id, peer_hash, peer_type, username, phone_number = peer
+            self._peers_by_id[peer_id] = (*peer, int(time()))
+            if username:
+                self._peers_by_username[username] = (*peer, int(time()))
+            if phone_number:
+                self._peers_by_phone[phone_number] = (*peer, int(time()))
+
+    async def get_peer_by_id(self, peer_id: int):
+        if peer_id not in self._peers_by_id:
+            raise KeyError(f"ID not found: {peer_id}")
+
+        peer_id, access_hash, peer_type, _, _, _ = self._peers_by_id[peer_id]
+        return get_input_peer(peer_id, access_hash, peer_type)
+
+    async def get_peer_by_username(self, username: str):
+        if username not in self._peers_by_username:
+            raise KeyError(f"Username not found: {username}")
+
+        peer_id, access_hash, peer_type, _, _, updated_at = self._peers_by_username[username]
+        if abs(time() - updated_at) > self.USERNAME_TTL:
+            raise KeyError(f"Username expired: {username}")
+
+        return get_input_peer(peer_id, access_hash, peer_type)
+
+    async def get_peer_by_phone_number(self, phone_number: str):
+        if phone_number not in self._peers_by_phone:
+            raise KeyError(f"Phone number not found: {phone_number}")
+
+        peer_id, access_hash, peer_type, _, _, _ = self._peers_by_phone[phone_number]
+        return get_input_peer(peer_id, access_hash, peer_type)
+
+    async def dc_id(self, value: int = object):
+        if value == object:
+            return self._dc_id
+        else:
+            self._dc_id = value
+
+    async def api_id(self, value: int = object):
+        if value == object:
+            return self._api_id
+        else:
+            self._api_id = value
+
+    async def test_mode(self, value: bool = object):
+        if value == object:
+            return self._test_mode
+        else:
+            self._test_mode = value
+
+    async def auth_key(self, value: bytes = object):
+        if value == object:
+            return self._auth_key
+        else:
+            self._auth_key = value
+
+    async def date(self, value: int = object):
+        if value == object:
+            return self._date
+        else:
+            self._date = value
+
+    async def user_id(self, value: int = object):
+        if value == object:
+            return self._user_id
+        else:
+            self._user_id = value
+
+    async def is_bot(self, value: bool = object):
+        if value == object:
+            return self._is_bot
+        else:
+            self._is_bot = value
+
+    def version(self, value: int = object):
+        if value == object:
+            return self._version
+        else:
+            self._version = value
+
+
 class TestClient(Client):
     def __init__(
             self,
@@ -118,6 +251,8 @@ class TestClient(Client):
             workers=workers,
             no_updates = no_updates,
         )
+
+        self.storage = SimpleStorage(self.name)
 
 
 def color_is_near(expected: tuple[int, int, int], actual: tuple[int, int, int], error: float = 0.05) -> bool:

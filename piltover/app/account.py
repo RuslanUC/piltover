@@ -89,10 +89,10 @@ async def register_device(request: RegisterDevice, user: User) -> bool:
         return False
     sess_id = int(request.token)
     key_id = request_ctx.get().auth_key_id
+    # TODO: rewrite this since function is being executed in worker, this session probably does not exist
     if (session := SessionManager.sessions.get(sess_id, {}).get(key_id, None)) is None:
         return False
-
-    SessionManager.set_user(session, user)
+    session.set_user(user)
     return True
 
 

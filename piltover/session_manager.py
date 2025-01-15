@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import warnings
-from collections import defaultdict
 from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING
@@ -13,10 +11,12 @@ from piltover.db.models import User, UserAuthorization, AuthKey
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
+from piltover.tl.types.internal import Message as MessageInternal
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
     from piltover.gateway import Client
+    from piltover.message_brokers.base_broker import BaseMessageBroker
 
 
 @dataclass(slots=True)
@@ -27,11 +27,13 @@ class KeyInfo:
 
 @dataclass
 class Session:
+    # TODO: store sessions in redis or something (with non-acked messages) to be able to restore session after reconnect
+
     client: Client | None
     session_id: int
     auth_key: KeyInfo | None = None
     user_id: int | None = None
-    user: User | None = None
+    user: User | None = None  # TODO: remove if not used
     min_msg_id: int = 0
     online: bool = False
 
@@ -101,15 +103,42 @@ class Session:
     def __hash__(self) -> int:
         return self.session_id
 
-    def cleanup(self) -> None:
+    def set_user(self, user: User) -> None:
+        self.user_id = user.id
+        self.online = True
+        self.user = user
+
+        SessionManager.broker.subscribe(self)
+
+    def destroy(self) -> None:
         self.online = False
+        SessionManager.broker.unsubscribe(self)
         SessionManager.cleanup(self)
+
+    async def send(self, obj: TLObject) -> None:
+        if not self.online:
+            return
+
+        if isinstance(obj, Updates):
+            key = await AuthKey.get_or_temp(self.auth_key.auth_key_id)
+            auth = await UserAuthorization.get(key__id=str(key.id if isinstance(key, AuthKey) else key.perm_key.id))
+            auth.upd_seq += 1
+            await auth.save(update_fields=["upd_seq"])
+            obj.seq = auth.upd_seq
+
+        try:
+            await self.client.send(obj, self)
+        except Exception as e:
+            logger.opt(exception=e).warning(f"Failed to send {obj} to {self.client}")
 
 
 class SessionManager:
     sessions: dict[int, dict[int, Session]] = {}
-    by_key_id: dict[int, set[Session]] = defaultdict(set)
-    by_user_id: dict[int, set[Session]] = defaultdict(set)
+    broker: BaseMessageBroker | None = None
+
+    @classmethod
+    def set_broker(cls, broker: BaseMessageBroker) -> None:
+        cls.broker = broker
 
     @classmethod
     def get_or_create(cls, client: Client, session_id: int) -> tuple[Session, bool]:
@@ -127,7 +156,6 @@ class SessionManager:
             ),
         )
         cls.sessions[session_id][client.auth_data.auth_key_id] = session
-        cls.by_key_id[session.auth_key.auth_key_id].add(session)
         return session, True
 
     @classmethod
@@ -136,54 +164,13 @@ class SessionManager:
         if session.session_id in cls.sessions and key_id in cls.sessions[session.session_id]:
             del cls.sessions[session.session_id][key_id]
 
-        if key_id in cls.by_key_id:
-            cls.by_key_id[key_id].remove(session)
-
-        if session.user_id in cls.by_key_id:
-            cls.by_user_id[session.user_id].remove(session)
-
     @classmethod
-    def set_user_id(cls, session: Session, user_id: int) -> None:
-        cls.by_user_id[user_id].add(session)
-        session.user_id = user_id
-        session.online = True
-
-    @classmethod
-    def set_user(cls, session: Session, user: User) -> None:
-        cls.set_user_id(session, user.id)
-        session.user = user.id
-
-    @classmethod
-    async def send(
-            cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None, *,
-            exclude: list[int] | None = None
-    ) -> None:
-        # TODO: send SessionManager messages via rabbitmq
-        warnings.warn(
-            "DO NOT call SessionManager.send directly!"
-            "It may work for now, but it wont work with RabbitMq + Redis!"
-        )
-        if user_id is None and key_id is None:
+    async def send(cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None) -> None:
+        if not user_id and not key_id:
             return
 
-        sessions = set()
-
-        if user_id is not None:
-            sessions.update(cls.by_user_id[user_id])
-        if key_id is not None:
-            sessions.update(cls.by_key_id[key_id])
-
-        for session in sessions:
-            if exclude is not None and session.session_id in exclude or not session.online:
-                continue
-            if isinstance(obj, Updates):
-                key = await AuthKey.get_or_temp(session.auth_key.auth_key_id)
-                auth = await UserAuthorization.get(key__id=str(key.id if isinstance(key, AuthKey) else key.perm_key.id))
-                auth.upd_seq += 1
-                await auth.save(update_fields=["upd_seq"])
-                obj.seq = auth.upd_seq
-
-            try:
-                await session.client.send(obj, session)
-            except Exception as e:
-                logger.opt(exception=e).warning(f"Failed to send {obj} to {session.client}")
+        await cls.broker.send(MessageInternal(
+            users=[user_id] if user_id else None,
+            key_ids=[key_id] if key_id else None,
+            obj=obj,
+        ))

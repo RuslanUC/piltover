@@ -5,8 +5,12 @@ from io import BytesIO
 from typing import Awaitable, Callable, Any
 
 from loguru import logger
-from taskiq import InMemoryBroker
+from taskiq import InMemoryBroker, TaskiqEvents
 
+from piltover.message_brokers.base_broker import BrokerType
+from piltover.message_brokers.in_memory_broker import InMemoryMessageBroker
+from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
+from piltover.session_manager import SessionManager
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
 
@@ -101,11 +105,22 @@ class Worker(MessageHandler):
         if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
             logger.info("Worker is initializing with InMemoryBroker")
             self.broker = InMemoryBroker()
+            self.message_broker = InMemoryMessageBroker()
         else:
             logger.info("Worker is initializing with AioPikaBroker + RedisAsyncResultBackend")
-            self.broker = AioPikaBroker(rabbitmq_address).with_result_backend(RedisAsyncResultBackend(redis_address))
+            self.broker = AioPikaBroker(rabbitmq_address, result_backend=RedisAsyncResultBackend(redis_address))
+            self.message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
 
         self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
+        self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
+        self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
+
+    async def _broker_startup(self, _) -> None:
+        await self.message_broker.startup()
+        SessionManager.set_broker(self.message_broker)
+
+    async def _broker_shutdown(self, _) -> None:
+        await self.message_broker.shutdown()
 
     @classmethod
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False) -> User | None:
@@ -128,7 +143,9 @@ class Worker(MessageHandler):
                 result=RpcError(error_code=500, error_message="Not implemented"),
             ))
 
-        request_ctx.set(RequestContext(call.auth_key_id, call.message_id, call.session_id, call.obj))
+        request_ctx.set(RequestContext(
+            call.auth_key_id, call.message_id, call.session_id, call.obj, call.auth_id, call.user_id,
+        ))
 
         user = None
         if handler.auth_required():
