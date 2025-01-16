@@ -1,39 +1,19 @@
 # piltover 🐳
 
-An experimental Telegram server written from scratch in Python. Development
-chat: linked group to [@ChameleonGram](https://t.me/ChameleonGram).
+An experimental Telegram server written from scratch in Python. Development chat (of original [piltover](https://github.com/DavideGalilei/piltover) project): linked group to [@ChameleonGram](https://t.me/ChameleonGram).
 
 ## TODO
 
 - [ ] WebK gets stuck on `sendCode()`. (note to self: inspect the MTProto workers in `chrome://inspect/#workers`)
-- [x] Multiple sessions handling for: ~~Give correct `msg_id`/`seq_no` according to the
-      [Telegram specification](https://core.telegram.org/mtproto/description#message-identifier-msg-id)~~
-- [x] ~~A Websocket proxy for Telegram Web (WebZ / WebK). A work in progress
-      temporary implementation is in `tools/websocket_proxy.js`~~
-- [x] Updates handling: `pts`, `qts`, etc.
-- [x] Refactor the TL de/serialization module since the code is messy (e.g. make
-      custom boxed types for list/int/str/bytes).
-- [x] ~~Support multiple server keys to automatically switch to
-      [RSA_PAD](https://core.telegram.org/mtproto/auth_key#presenting-proof-of-work-server-authentication)
-      for official clients, whilst keeping clients like Pyrogram/Telethon
-      working with the old method. Currently handled manually in `server.py`:
-      `old = False`~~
-- [x] Support TL from multiple layers, and layer-based handlers. Add fallbacks
-      eventually.
-- [x] Add a `tests/` directory with patched assertions from client libraries.
-- [x] Use custom exceptions instead of Python assertions: `assert` statements
-      are disabled with `python -O`, leading to missing important checks.
-- [x] Add missing security checks, e.g., checking of `g_a`/`g_b`.
-- [x] ~~Refactor `piltover/__main__.py`, and use a database for auth
-      keys/messages/users/updates (probably with SQLAlchemy and alembic due to
-      reliable database migrations).~~
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
 - [ ] Switch to hypercorn for the tcp server maybe?
 - [ ] Improve the README.
 - [ ] Proper read states updates (updateReadHistoryInbox, updateReadHistoryOutbox)
 - [ ] Reactions
-- [ ] Stickers ?
+- [ ] Stickers
+
+There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
 ## Purpose
 
@@ -49,81 +29,37 @@ media messages, media, search.
 This can be really useful for bots developers that would like to have a testing
 sandbox that doesn't ratelimit their bots.
 
-The server is meant to be used as a library, providing 100% control of every
-answer
+Right now, project **may** (although not recommended) be used for basic features like messages/media sending.
+More complex features such as group chats, profile photos, etc. may work with errors.
+**Keep in mind that privacy settings almost don't exist so any user can be texted by anyone, added to any group by anyone, etc.**
 
-## Example
+## Setup
 
-An example quick-start (incomplete) code would look like this:
+Requirements:
 
-```python
-import asyncio
-from piltover.server import Server, Client
-from piltover.utils import gen_keys
-from piltover.tl.core_types import Message
-from piltover.tl import Ping, Pong
+- Python 3.11+
+- Poetry
 
-async def main():
-    pilt = Server(server_keys=gen_keys())
-    auth_keys: dict[int, bytes] = {}
-    # Running on localhost
-    # Port: 4430
-    
-    @pilt.on_auth_key_set
-    async def auth_key_set(auth_key_id: int, auth_key_bytes: bytes) -> None:
-        auth_keys[auth_key_id] = auth_key_bytes
-    
-    @pilt.on_auth_key_get
-    async def auth_key_get(auth_key_id: int) -> tuple[int, bytes] | None:
-        if (auth_key := auth_keys.get(auth_key_id, None)) is not None:
-            return auth_key_id, auth_key
+Setup:
 
-    @pilt.on_message(Ping)
-    async def pong(client: Client, request: Message[Ping], session_id: int):
-        print("Received ping:", request.obj)
-
-        return Pong(
-          msg_id=request.message_id,
-          ping_id=request.obj.ping_id
-        )
-
-    await pilt.serve()
-
-asyncio.run(main())
-```
-
-```shell
-$ poetry install --no-root
-$ poetry run python -m piltover.app
-# Server running on 127.0.0.1:4430...
-```
-
-Of course, this minimal setup is far from complete, and will only work for auth
-key generation and pings.
-
-## Development setup
-
-### **General steps**
-
-#### **1. Clone the repo:**
-
-```shell
-$ git clone https://github.com/DavideGalilei/piltover
-$ cd piltover
-```
-
-#### **2. Install poetry**
-
-Follow instructions at: https://python-poetry.org/docs/#installation
-
-#### **3. Initial setup**
-
-```shell
-$ poetry install --no-root
-$ poetry run python tools/gen_tl.py update
-$ poetry run python -m piltover.app
-```
-
+1. Clone repository:
+   ```shell
+   git clone https://github.com/RuslanUC/piltover
+   ```
+2. Install dependencies:
+    ```shell
+    poetry install
+    ```
+3. Generate tl classes:
+    ```shell
+   poetry shell python tools/tl_gen.py
+    ```
+4. (Optional) Install mariadb.
+5. Run:
+    ```shell
+    poetry run python -m piltover.app.app
+    ```
+   
 Now wait until it loads correctly and fire a Ctrl-C to stop the process.
 
 > **You should see a line looking like this at the beginning**
@@ -161,6 +97,9 @@ An example output would look like this:
 
 **Note the exponent (`010001`) and the prime number: (`C3AE94...B575D1`). Save
 those values for later.**
+
+Also, gateway and rpc workers **may** (although such setup is not tested) be used separately (for this you need rabbitmq and redis running):
+run both `piltover.app.app` and `piltover.app.worker` with `--rabbitmq-address` and `--redis-address`.
 
 ### **Pyrogram**
 
@@ -282,20 +221,6 @@ $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
 
 #### _Make a pull request if you want to add instructions for your own client._
 
-- **Sign in / sign up process**
-  - Client sends `invokeWithLayer(initConnection(getConfig(...)))`
-  - Client signs in with number / sms
-  - Run the server and see the logs to find out more...
-
-## Why
-
-One day, my Telegram account stopped working properly due to an internal server
-error originating from a supposedly corrupted message I forwarded. Every time
-the client tried to fetch new messages from private chats, it would face a
-`[500 STORE_INVALID_OBJECT_TYPE]` error. Hopefully, the bug was fixed in ~1/2
-days after being reported, but the fact that it happened at all motivated me
-enough to try building my own server. In several days, I managed to make it
-_kinda_ work :)
 
 ## Miscellaneous
 
