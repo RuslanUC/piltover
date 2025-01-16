@@ -307,7 +307,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
 
     peers = [to_peer]
     peers.extend(await to_peer.get_opposite())
-    result: dict[Peer, Message] = {}
+    result: dict[Peer, Message] = {} # TODO: verify, whether only one messages is sent via UpdatesManager or all of them
 
     for message in messages:
         fwd_header = None
@@ -353,3 +353,5 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
 
     return upd
 
+
+# TODO: DeleteHistory

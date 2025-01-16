@@ -12,14 +12,12 @@ class InMemoryMessageBroker(BaseMessageBroker):
         self._listen_task: Task | None = None
 
     async def startup(self) -> None:
-        print("startup")
         self._messages = Queue()
         self._listen_task = get_running_loop().create_task(self._listen())
 
     async def shutdown(self) -> None:
         await self._messages.put(None)
         self._messages = None
-        print("shutdown")
 
     async def send(self, message: Message) -> None:
         await self._messages.put(message)

@@ -1,18 +1,16 @@
-from loguru import logger
-
 from piltover.app.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType
-from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant
+from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipantCreator, ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
-    InputUserEmpty, InputUserSelf, InputPeerUser
+    InputPeerUser
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
-    EditChatAbout, EditChatPhoto
+    EditChatAbout, EditChatPhoto, AddChatUser
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.chats")
 
@@ -42,7 +40,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
             continue
 
         chat_peers[invited_peer.user.id] = await Peer.create(owner=invited_peer.user, chat=chat, type=PeerType.CHAT)
-        participants_to_create.append(ChatParticipant(user=invited_peer.user, chat=chat))
+        participants_to_create.append(ChatParticipant(user=invited_peer.user, chat=chat, inviter_id=user.id))
 
     await ChatParticipant.bulk_create(participants_to_create)
 
@@ -190,3 +188,64 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO, message=str(chat.photo.id if chat.photo else 0),
     )
+
+
+@handler.on_request(AddChatUser)
+async def add_chat_user(request: AddChatUser, user: User):
+    if (chat_peer := await Peer.from_chat_id(user, request.chat_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    if (user_peer := await Peer.from_input_peer(user, request.user_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    # TODO: check if admin / has chat permissions to add users / has permission to add this specific user
+
+    chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
+    if chat_peer.owner.id not in chat_peers:
+        chat_peers[chat_peer.owner.id] = chat_peer
+    invited_user = user_peer.peer_user(user)
+    if user_peer.peer_user(user).id not in chat_peers:
+        chat_peers[invited_user.id] = await Peer.create(owner=invited_user, chat=chat_peer.chat, type=PeerType.CHAT)
+        await ChatParticipant.create(user=invited_user, chat=chat_peer.chat, inviter_id=user.id)
+
+    # TODO: do nothing if user is already in chat ?
+
+    updates = await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+
+    if request.fwd_limit > 0:
+        limit = min(request.fwd_limit, 100)
+        messages_to_forward = await Message.filter(
+            peer=chat_peer, type=MessageType.REGULAR
+        ).order_by("-id").limit(limit).select_related("author", "media", "reply_to", "fwd_header")
+        messages = []
+        for message in messages_to_forward:
+            messages.append(await Message.create(
+                peer=chat_peers[invited_user.id],
+                author=message.author,
+                media=message.media,
+                #reply_to=message.reply_to,  # TODO: replies
+                fwd_header=message.fwd_header,
+
+                internal_id=message.internal_id,
+                message=message.message,
+                pinned=message.pinned,
+                date=message.date,
+                edit_date=message.edit_date,
+            ))
+
+        await UpdatesManager.send_messages({chat_peers[invited_user.id]: messages})
+
+    updates_msg = await send_message_internal(
+        user, chat_peers[user.id], None, None, False,
+        author=user, type=MessageType.SERVICE_CHAT_USER_ADD, message=str(invited_user.id),
+    )
+
+    if isinstance(updates_msg, Updates):
+        updates.updates.extend(updates_msg.updates)
+
+    return InvitedUsers(
+        updates=updates,
+        missing_invitees=[],
+    )
+
+
+# TODO: DeleteChatUser

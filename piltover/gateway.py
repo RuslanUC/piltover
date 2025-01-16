@@ -13,6 +13,7 @@ from piltover._keygen_handlers import KEYGEN_HANDLERS
 from piltover._system_handlers import SYSTEM_HANDLERS
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
+from piltover.utils.utils import run_coro_with_additional_return
 
 try:
     from taskiq_aio_pika import AioPikaBroker
@@ -117,7 +118,7 @@ class Gateway:
 class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "auth_data", "empty_session", "session", "no_updates",
-        "layer", "authorization",
+        "layer", "authorization", "disconnect_timeout",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -135,6 +136,8 @@ class Client:
 
         self.no_updates = False
         self.layer = 177
+
+        self.disconnect_timeout: asyncio.Timeout | None = None
 
     def _get_session(self, session_id: int) -> tuple[Session, bool]:
         if self.session is not None:
@@ -218,7 +221,7 @@ class Client:
         if auth_key_id is not None:
             auth, loaded_at = self.authorization
             if auth is None or (time() - loaded_at) > 60:
-                query_key = "key__temp_auth_keys__id" if is_temp else "key__id"
+                query_key = "key__tempauthkeys__id" if is_temp else "key__id"
                 query = {query_key: str(auth_key_id)}
 
                 auth = await UserAuthorization.get_or_none(**query).select_related("user")
@@ -257,26 +260,15 @@ class Client:
         #if result.obj is not None:
         #    await self.send_unencrypted(result.obj)
 
-    async def handle_encrypted_message(self, req_message: Message, session_id: int):
-        sess, created = self._get_session(session_id)
-        sess.update_incoming_content_related_msgs(req_message.obj, req_message.seq_no)
-
-        if created:
-            logger.info(f"({self.peername}) Created session {session_id}")
-            await self.send(
-                NewSessionCreated(
-                    first_msg_id=req_message.message_id,
-                    unique_id=sess.session_id,
-                    server_salt=Long.read_bytes(await self.server.get_current_salt()),
-                ),
-                sess,
-            )
-
+    async def handle_encrypted_message(self, req_message: Message, session: Session):
         if isinstance(req_message.obj, MsgContainer):
             results = []
-            # TODO: run in parallel
-            for msg in req_message.obj.messages:
-                result = await self.propagate(msg, sess)
+            tasks = [
+                run_coro_with_additional_return(self.propagate(msg, session), msg)
+                for msg in req_message.obj.messages
+            ]
+            for task_result in asyncio.as_completed(tasks):
+                result, msg = await task_result
                 if result is None:
                     continue
                 results.append((result, msg))
@@ -285,12 +277,12 @@ class Client:
                 logger.warning("Empty msg_container, returning...")
                 return
 
-            return await self.send_container(results, sess)
+            return await self.send_container(results, session)
 
-        if (result := await self.propagate(req_message, sess)) is None:
+        if (result := await self.propagate(req_message, session)) is None:
             return
 
-        await self.send(result, sess, originating_request=req_message)
+        await self.send(result, session, originating_request=req_message)
 
     # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
     async def _is_message_bad(self, packet: DecryptedMessagePacket, check_salt: bool) -> bool:
@@ -364,8 +356,21 @@ class Client:
                 obj=TLObject.read(BytesIO(decrypted.data)),
             )
 
+            session, created = self._get_session(decrypted.session_id)
+            session.update_incoming_content_related_msgs(message.obj, message.seq_no)
+            if created:
+                logger.info(f"({self.peername}) Created session {session.session_id}")
+                await self.send(
+                    NewSessionCreated(
+                        first_msg_id=message.message_id,
+                        unique_id=session.session_id,
+                        server_salt=Long.read_bytes(await self.server.get_current_salt()),
+                    ),
+                    session,
+                )
+
             logger.debug(f"Received from {self.session.session_id if self.session else 0}: {message}")
-            await self.handle_encrypted_message(message, decrypted.session_id)
+            asyncio.create_task(self.handle_encrypted_message(message, session))
         elif isinstance(packet, UnencryptedMessagePacket):
             decoded = SerializationUtils.read(BytesIO(packet.message_data), TLObject)
             logger.debug(decoded)
@@ -413,19 +418,22 @@ class Client:
         logger.debug(f"Client connected: {self.peername}")
 
         try:
-            await self._worker_loop()
+            async with asyncio.timeout(None) as self.disconnect_timeout:
+                await self._worker_loop()
         except Disconnection as err:
             if err.transport_error is not None:
                 await self._write(ErrorPacket(err.transport_error))
+        except TimeoutError:
+            logger.debug("Client disconnected because of expired timeout")
+        finally:
+            logger.info("Client disconnected")
 
             self.writer.close()
             await self.writer.wait_closed()
 
-            logger.info("Client disconnected")
-
-        if self.session is not None:
-            logger.info(f"Session {self.session.session_id} removed")
-            self.session.destroy()
+            if self.session is not None:
+                logger.info(f"Session {self.session.session_id} removed")
+                self.session.destroy()
 
     async def propagate(self, request: Message, session: Session) -> RpcResult | None:
         if request.obj.tlid() in SYSTEM_HANDLERS:

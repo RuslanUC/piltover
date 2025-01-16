@@ -139,4 +139,4 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
 
 async def get_perm_key(unk_key_id: int) -> AuthKey | None:
     key = await AuthKey.get_or_temp(unk_key_id)
-    return key.auth_key if isinstance(key, TempAuthKey) else key
+    return key.perm_key if isinstance(key, TempAuthKey) else key

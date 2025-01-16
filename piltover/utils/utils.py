@@ -1,8 +1,8 @@
 import asyncio
-from typing import TypeVar, Coroutine, Callable
-
+from typing import TypeVar, Coroutine, Callable, Awaitable
 
 T = TypeVar("T")
+TAdd = TypeVar("TAdd")
 
 
 def background(coro: Coroutine[None, None, T]) -> asyncio.Task[T]:
@@ -38,3 +38,7 @@ def xor(a: bytes, b: bytes) -> bytes:
 def sec_check(cond: ..., exc: type[Exception] = Exception, msg: str | None = None) -> None:
     if not cond:
         raise exc(msg) if msg else exc
+
+
+async def run_coro_with_additional_return(coro: Awaitable[T], additional_obj: TAdd) -> tuple[T, TAdd]:
+    return await coro, additional_obj

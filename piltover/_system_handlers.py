@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from asyncio import get_running_loop
 from datetime import datetime
 from time import time
 from typing import TYPE_CHECKING, Awaitable, Callable
@@ -17,19 +18,18 @@ if TYPE_CHECKING:
     from piltover.gateway import Client
 
 
-# noinspection PyUnusedLocal
-async def msgs_ack(client: Client, request: Message[MsgsAck], session: Session) -> None:
+async def msgs_ack(_1: Client, _2: Message[MsgsAck], _3: Session) -> None:
     return
 
 
-# noinspection PyUnusedLocal
-async def ping(client: Client, request: Message[Ping], session: Session) -> Pong:
+async def ping(_1: Client, request: Message[Ping], _2: Session) -> Pong:
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 
 
-# noinspection PyUnusedLocal
-async def ping_delay_disconnect(client: Client, request: Message[PingDelayDisconnect], session: Session) -> Pong:
-    # TODO: disconnect after request.disconnect_delay
+async def ping_delay_disconnect(client: Client, request: Message[PingDelayDisconnect], _: Session) -> Pong:
+    if client.disconnect_timeout is not None and request.obj.disconnect_delay > 0:
+        client.disconnect_timeout.reschedule(get_running_loop().time() + request.obj.disconnect_delay)
+
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 
 

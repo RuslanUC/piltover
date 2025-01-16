@@ -70,9 +70,44 @@ class UpdatesManager:
                 await UpdateV2.filter(**read_history_inbox_args).delete()
                 await UpdateV2.create(**read_history_inbox_args, pts=read_history_pts, related_ids=[message.id, 0])
 
-            await SessionManager.send(updates, user.id)
+            await SessionManager.send(updates, peer.owner.id)
 
         return result
+
+    @staticmethod
+    async def send_messages(messages: dict[Peer, list[Message]]) -> None:
+        for peer, messages in messages.items():
+            peer.owner = await peer.owner
+            chats = {}
+            users = {}
+            updates = []
+
+            for message in messages:
+                if message.author_id not in users:
+                    message.author = await message.author
+                    users[message.author.id] = await message.author.to_tl(peer.owner)
+                if peer.type is PeerType.USER and peer.user_id not in users:
+                    peer.user = await peer.user
+                    users[peer.user.id] = await peer.user.to_tl(peer.owner)
+                if peer.type is PeerType.CHAT and peer.chat_id not in chats:
+                    peer.chat = await peer.chat
+                    chats[peer.chat.id] = await peer.chat.to_tl(peer.owner)
+
+                updates.append(UpdateNewMessage(
+                    message=await message.to_tl(peer.owner),
+                    pts=await State.add_pts(peer.owner, 1),
+                    pts_count=1,
+                ))
+
+            updates = Updates(
+                updates=updates,
+                users=list(users.values()),
+                chats=list(chats.values()),
+                date=int(time()),
+                seq=0,
+            )
+
+            await SessionManager.send(updates, peer.owner.id)
 
     @staticmethod
     async def delete_messages(user: User, messages: dict[User, list[int]]) -> int:
