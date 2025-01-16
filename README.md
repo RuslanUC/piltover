@@ -12,6 +12,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] Proper read states updates (updateReadHistoryInbox, updateReadHistoryOutbox)
 - [ ] Reactions
 - [ ] Stickers
+- [ ] Move UpdatesManager to separate worker
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
