@@ -7,7 +7,6 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] WebK gets stuck on `sendCode()`. (note to self: inspect the MTProto workers in `chrome://inspect/#workers`)
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
-- [ ] Switch to hypercorn for the tcp server maybe?
 - [ ] Improve the README.
 - [ ] Proper read states updates (updateReadHistoryInbox, updateReadHistoryOutbox)
 - [ ] Reactions
@@ -74,7 +73,7 @@ In this case, the unsigned fingerprint is `9400d6d30b7c8fdb`, but only for this
 example. Do not reuse this key fingerprint, as it will be different in your
 setup.
 
-#### **4. Extract public key number and exponent**
+#### **Extract public key number and exponent**
 
 At this point, two files should have been generated in your directory. Namely,
 `data/secrets/privkey.asc` and `data/secrets/pubkey.asc`. Keep in mind that some

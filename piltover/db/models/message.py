@@ -7,11 +7,12 @@ from typing import Callable, Awaitable
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import MediaType, MessageType
+from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
     MessageService, PhotoEmpty
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
     MessageActionChatEditTitle, MessageActionChatEditPhoto
+from piltover.utils.snowflake import Snowflake
 
 
 async def _service_pin_message(_: Message, _u: models.User) -> MessageActionPinMessage:
@@ -157,4 +158,62 @@ class Message(Model):
             from_id=from_id,
             **base_defaults,
             **regular_defaults,
+        )
+
+    async def clone_for_peer(
+            self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,
+            random_id: int | None = None, fwd: bool = False, fwd_drop_header: bool = False,
+            reply_to_internal_id: int | None = None,
+    ) -> models.Message:
+        if new_author is None and self.author is not None:
+            self.author = new_author = await self.author
+
+        if self.media is not None:
+            self.media = await self.media
+
+        reply_to = None
+        if reply_to_internal_id:
+            reply_to = await Message.get_or_none(peer=peer, internal_id=reply_to_internal_id)
+        else:
+            if self.reply_to is not None:
+                self.reply_to = await self.reply_to
+            if self.reply_to is not None:
+                reply_to = await Message.get_or_none(peer=peer, internal_id=self.reply_to.internal_id)
+
+        if self.fwd_header is not None:
+            self.fwd_header = await self.fwd_header
+        fwd_header = self.fwd_header
+        if fwd and not fwd_drop_header:
+            self.author = await self.author
+            if peer.type == PeerType.SELF and self.peer is not None:
+                self.peer = await self.peer
+
+            if self.fwd_header is not None:
+                self.fwd_header.from_user = await self.fwd_header.from_user
+
+            fwd_header = await models.MessageFwdHeader.create(
+                from_user=self.fwd_header.from_user if self.fwd_header else self.author,
+                from_name=self.fwd_header.from_name if self.fwd_header else self.author.first_name,
+                date=self.fwd_header.date if self.fwd_header else self.date,
+
+                saved_peer=self.peer if peer.type == PeerType.SELF else None,
+                saved_id=self.id if peer.type == PeerType.SELF else None,
+                saved_from=self.author if peer.type == PeerType.SELF else None,
+                saved_name=self.author.first_name if peer.type == PeerType.SELF else None,
+                saved_date=self.date if peer.type == PeerType.SELF else None,
+            )
+
+        return await Message.create(
+            internal_id=internal_id or Snowflake.make_id(),
+            message=self.message,
+            pinned=self.pinned,
+            date=self.date,
+            edit_date=self.edit_date,
+            type=self.type,
+            author=new_author,
+            peer=peer,
+            media=self.media,
+            reply_to=reply_to,
+            fwd_header=fwd_header if not fwd_drop_header else None,
+            random_id=str(random_id) if random_id else None
         )

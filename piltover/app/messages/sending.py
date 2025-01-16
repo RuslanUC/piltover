@@ -303,52 +303,40 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     random_ids = dict(zip(request.id[:100], request.random_id[:100]))
     messages = await Message.filter(
         peer=from_peer, id__in=request.id[:100], type=MessageType.REGULAR
-    ).select_related("author", "media")
+    ).order_by("id").select_related("author", "media")
+    reply_ids = {}
 
     peers = [to_peer]
     peers.extend(await to_peer.get_opposite())
-    result: dict[Peer, Message] = {} # TODO: verify, whether only one messages is sent via UpdatesManager or all of them
+    result: dict[Peer, list[Message]] = {}
 
     for message in messages:
-        fwd_header = None
-        if not request.drop_author:
-            if message.fwd_header is not None:
-                message.fwd_header = await message.fwd_header
-                if message.fwd_header is not None and message.fwd_header.from_user is not None:
-                    message.fwd_header.from_user = await message.fwd_header.from_user
-
-            fwd_header = await MessageFwdHeader.create(
-                from_user=message.fwd_header.from_user if message.fwd_header else message.author,
-                from_name=message.fwd_header.from_name if message.fwd_header else message.author.first_name,
-                date=message.fwd_header.date if message.fwd_header else message.date,
-
-                saved_peer=from_peer if to_peer.type == PeerType.SELF else None,
-                saved_id=message.id if to_peer.type == PeerType.SELF else None,
-                saved_from=message.author if to_peer.type == PeerType.SELF else None,
-                saved_name=message.author.first_name if to_peer.type == PeerType.SELF else None,
-                saved_date=message.date if to_peer.type == PeerType.SELF else None,
-            )
-
         internal_id = Snowflake.make_id()
+        reply_ids[message.id] = internal_id
+
         for opp_peer in peers:
-            # TODO: replies
+            if opp_peer not in result:
+                result[opp_peer] = []
+
             # TODO: drop_media_captions
 
             await Dialog.get_or_create(peer=opp_peer)
-            result[opp_peer] = await Message.create(
-                message=message.message,
-                media=message.media,
-                internal_id=internal_id,
-                peer=opp_peer,
-                author=user,
-                fwd_header=fwd_header,
-                random_id=str(random_ids.get(message.id)) if opp_peer == to_peer and message.id in random_ids else None,
+            result[opp_peer].append(
+                await message.clone_for_peer(
+                    peer=opp_peer,
+                    new_author=user,
+                    internal_id=internal_id,
+                    fwd=True,
+                    fwd_drop_header=request.drop_author,
+                    random_id=random_ids.get(message.id) if opp_peer == to_peer and message.id in random_ids else None,
+                    reply_to_internal_id=reply_ids.get(message.id),
+                )
             )
 
     presence = await Presence.update_to_now(user)
     await UpdatesManager.update_status(user, presence, peers[1:])
 
-    if (upd := await UpdatesManager.send_message(user, result)) is None:
+    if (upd := await UpdatesManager.send_messages(result, user)) is None:
         assert False, "unknown chat type ?"
 
     return upd

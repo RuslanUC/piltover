@@ -217,20 +217,8 @@ async def add_chat_user(request: AddChatUser, user: User):
             peer=chat_peer, type=MessageType.REGULAR
         ).order_by("-id").limit(limit).select_related("author", "media", "reply_to", "fwd_header")
         messages = []
-        for message in messages_to_forward:
-            messages.append(await Message.create(
-                peer=chat_peers[invited_user.id],
-                author=message.author,
-                media=message.media,
-                #reply_to=message.reply_to,  # TODO: replies
-                fwd_header=message.fwd_header,
-
-                internal_id=message.internal_id,
-                message=message.message,
-                pinned=message.pinned,
-                date=message.date,
-                edit_date=message.edit_date,
-            ))
+        for message in reversed(messages_to_forward):
+            messages.append(await message.clone_for_peer(chat_peers[invited_user.id], internal_id=message.internal_id))
 
         await UpdatesManager.send_messages({chat_peers[invited_user.id]: messages})
 

@@ -75,7 +75,9 @@ class UpdatesManager:
         return result
 
     @staticmethod
-    async def send_messages(messages: dict[Peer, list[Message]]) -> None:
+    async def send_messages(messages: dict[Peer, list[Message]], user: User | None = None) -> Updates | None:
+        result_update = None
+
         for peer, messages in messages.items():
             peer.owner = await peer.owner
             chats = {}
@@ -108,6 +110,10 @@ class UpdatesManager:
             )
 
             await SessionManager.send(updates, peer.owner.id)
+            if peer.owner == user:
+                result_update = updates
+
+        return result_update
 
     @staticmethod
     async def delete_messages(user: User, messages: dict[User, list[int]]) -> int:
