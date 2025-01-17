@@ -1,4 +1,4 @@
-from piltover.app.messages.sending import send_message_internal
+from piltover.app.messages.sending import send_message_internal, create_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType
@@ -8,7 +8,7 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
     ChatParticipantCreator, ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
     InputPeerUser
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
-    EditChatAbout, EditChatPhoto, AddChatUser
+    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 from piltover.worker import MessageHandler
 
@@ -61,7 +61,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 
 @handler.on_request(GetChats)
 async def get_chats(request: GetChats, user: User) -> Chats:
-    peers = await Peer.filter(owner=user, chat__id__in=[request.id]).select_related("chat")
+    peers = await Peer.filter(owner=user, chat__id__in=request.id).select_related("chat")
     return Chats(
         chats=[
             await peer.chat.to_tl(user)
@@ -190,12 +190,16 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
     )
 
 
+@handler.on_request(AddChatUser_136)
 @handler.on_request(AddChatUser)
 async def add_chat_user(request: AddChatUser, user: User):
     if (chat_peer := await Peer.from_chat_id(user, request.chat_id)) is None:
         raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
     if (user_peer := await Peer.from_input_peer(user, request.user_id)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
+        raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
 
     # TODO: check if admin / has chat permissions to add users / has permission to add this specific user
 
@@ -206,8 +210,6 @@ async def add_chat_user(request: AddChatUser, user: User):
     if user_peer.peer_user(user).id not in chat_peers:
         chat_peers[invited_user.id] = await Peer.create(owner=invited_user, chat=chat_peer.chat, type=PeerType.CHAT)
         await ChatParticipant.create(user=invited_user, chat=chat_peer.chat, inviter_id=user.id)
-
-    # TODO: do nothing if user is already in chat ?
 
     updates = await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
 
@@ -236,4 +238,31 @@ async def add_chat_user(request: AddChatUser, user: User):
     )
 
 
-# TODO: DeleteChatUser
+@handler.on_request(DeleteChatUser)
+async def delete_chat_user(request: DeleteChatUser, user: User):
+    if (chat_peer := await Peer.from_chat_id(user, request.chat_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    if (user_peer := await Peer.from_input_peer(user, request.user_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    target_chat_peer = await Peer.get_or_none(owner=user_peer.user, chat=chat_peer.chat)
+    if target_chat_peer is None:
+        raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
+
+    # TODO: check if admin
+
+    messages = await create_message_internal(
+        user, chat_peer, None, None, False,
+        author=user, type=MessageType.SERVICE_CHAT_USER_DEL, message=str(user_peer.peer_user(user).id),
+    )
+    await target_chat_peer.delete()
+    await ChatParticipant.filter(chat=chat_peer.chat, user=user_peer.user).delete()
+
+    chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
+
+    updates_msg = await UpdatesManager.send_message(user, messages)
+    updates = await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+    if isinstance(updates_msg, Updates):
+        updates.updates.extend(updates_msg.updates)
+
+    return updates

@@ -21,10 +21,10 @@ handler = MessageHandler("messages.sending")
 InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument
 
 
-async def send_message_internal(
+async def create_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         **message_kwargs
-) -> Updates:
+) -> dict[Peer, Message]:
     if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
@@ -57,11 +57,21 @@ async def send_message_internal(
         await draft.delete()
         await UpdatesManager.update_draft(user, peer, None)
 
-    if (upd := await UpdatesManager.send_message(user, messages)) is None:
-        assert False, "unknown chat type ?"
-
     presence = await Presence.update_to_now(user)
     await UpdatesManager.update_status(user, presence, peers[1:])
+
+    return messages
+
+
+async def send_message_internal(
+        user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
+        **message_kwargs
+) -> Updates:
+    messages = await create_message_internal(
+        user, peer, random_id, reply_to_message_id, clear_draft, author, **message_kwargs,
+    )
+    if (upd := await UpdatesManager.send_message(user, messages)) is None:
+        assert False, "unknown chat type ?"
 
     return upd
 

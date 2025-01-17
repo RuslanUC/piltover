@@ -11,7 +11,7 @@ from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
     MessageService, PhotoEmpty
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
-    MessageActionChatEditTitle, MessageActionChatEditPhoto
+    MessageActionChatEditTitle, MessageActionChatEditPhoto, MessageActionChatAddUser, MessageActionChatDeleteUser
 from piltover.utils.snowflake import Snowflake
 
 
@@ -48,11 +48,29 @@ async def _service_edit_chat_photo(message: Message, user: models.User) -> Messa
     return MessageActionChatEditPhoto(photo=PhotoEmpty(id=photo_id))
 
 
+async def _service_chat_add_user(message: Message, _: models.User) -> MessageActionChatAddUser:
+    try:
+        user_id = int(message.message)
+    except ValueError:
+        return MessageActionChatAddUser(users=[])
+    return MessageActionChatAddUser(users=[user_id])
+
+
+async def _service_chat_del_user(message: Message, _: models.User) -> MessageActionChatDeleteUser:
+    try:
+        user_id = int(message.message)
+    except ValueError:
+        return MessageActionChatDeleteUser(user_id=0)
+    return MessageActionChatDeleteUser(user_id=user_id)
+
+
 MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User], Awaitable[...]]] = {
     MessageType.SERVICE_PIN_MESSAGE: _service_pin_message,
     MessageType.SERVICE_CHAT_CREATE: _service_create_chat,
     MessageType.SERVICE_CHAT_EDIT_TITLE: _service_edit_chat_title,
     MessageType.SERVICE_CHAT_EDIT_PHOTO: _service_edit_chat_photo,
+    MessageType.SERVICE_CHAT_USER_ADD: _service_chat_add_user,
+    MessageType.SERVICE_CHAT_USER_DEL: _service_chat_del_user,
 }
 
 

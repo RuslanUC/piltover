@@ -4,7 +4,7 @@ from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.tl import ChatPhoto
+from piltover.tl import ChatPhoto, ChatForbidden
 from piltover.tl.types import Chat as TLChat, ChatPhotoEmpty, ChatBannedRights
 
 DEFAULT_BANNED_RIGHTS = ChatBannedRights(
@@ -43,7 +43,10 @@ class Chat(Model):
     creator_id: int
     photo_id: int
 
-    async def to_tl(self, user: models.User) -> TLChat:
+    async def to_tl(self, user: models.User) -> TLChat | ChatForbidden:
+        if not await models.ChatParticipant.filter(user=user, chat=self).exists():
+            return ChatForbidden(id=self.id, title=self.name)
+
         photo = ChatPhotoEmpty()
         if self.photo_id:
             self.photo = await self.photo

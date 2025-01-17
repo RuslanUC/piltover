@@ -359,6 +359,7 @@ class UpdatesManager:
 
         await UpdateV2.bulk_create(updates_to_create)
 
+    # TODO: rename to something like "update_chat_participants"
     @staticmethod
     async def create_chat(user: User, chat: Chat, peers: list[Peer]) -> Updates:
         updates_to_create = []

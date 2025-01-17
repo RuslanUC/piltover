@@ -3,6 +3,7 @@ from typing import cast
 
 import pytest
 from PIL import Image
+from pyrogram.errors import PeerIdInvalid
 
 from tests.conftest import TestClient, color_is_near
 
@@ -70,3 +71,34 @@ async def test_create_group_chat_with_another_user() -> None:
         group2 = await client1.create_group("idk 2", [user2.id])
         assert len([dialog async for dialog in client1.get_dialogs()]) == 2
         assert len([dialog async for dialog in client2.get_dialogs()]) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_delete_user_in_group_chat() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        await client1.set_username("test1_username")
+        await client2.set_username("test2_username")
+        user1 = await client2.get_users("test1_username")
+        user2 = await client1.get_users("test2_username")
+
+        assert len([dialog async for dialog in client1.get_dialogs()]) == 0
+        assert len([dialog async for dialog in client2.get_dialogs()]) == 0
+
+        group = await client1.create_group("idk 1", [])
+        assert len([dialog async for dialog in client1.get_dialogs()]) == 1
+        assert len([dialog async for dialog in client2.get_dialogs()]) == 0
+        assert await client1.get_chat_members_count(group.id) == 1
+        with pytest.raises(PeerIdInvalid):
+            await client2.send_message(group.id, "test1")
+
+        await client1.add_chat_members(group.id, [user2.id])
+        assert len([dialog async for dialog in client1.get_dialogs()]) == 1
+        assert len([dialog async for dialog in client2.get_dialogs()]) == 1
+        assert await client1.get_chat_members_count(group.id) == 2
+        await client2.send_message(group.id, "test2")
+
+        await client1.ban_chat_member(group.id, user2.id)
+        assert len([dialog async for dialog in client1.get_dialogs()]) == 1
+        assert len([dialog async for dialog in client2.get_dialogs()]) == 1
+        assert await client1.get_chat_members_count(group.id) == 1
+        await client2.send_message(group.id, "test3")
