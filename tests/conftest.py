@@ -1,26 +1,48 @@
 import builtins
+import hashlib
+from os import urandom
 from time import time
 
+import pytest
 import pytest_asyncio
 from pyrogram import Client
 from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
+from pyrogram.session import Auth
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
 
 from piltover.app.app import app
+from piltover.db.models import AuthKey
 from piltover.gateway import Gateway
+from piltover.tl import Int
 from piltover.utils import get_public_key_fingerprint
 
 
+async def _custom_auth_create(_) -> bytes:
+    key = urandom(256)
+    key_id = Int.read_bytes(hashlib.sha1(key).digest()[-8:])
+    await AuthKey.create(id=str(key_id), auth_key=key)
+    return key
+
+
+_real_auth_create = Auth.create
+
+
 @pytest_asyncio.fixture(autouse=True)
-async def app_server() -> Gateway:
+async def app_server(request: pytest.FixtureRequest) -> Gateway:
     async with app.run_test() as test_server:
+        if request.node.name != "test_key_generation":
+            Auth.create = _custom_auth_create
+
         print(f"Running on {test_server.port}")
         _setup_test_dc(test_server)
 
         yield test_server
+
+        if request.node.name != "test_key_generation":
+            Auth.create = _real_auth_create
 
 
 class TestDataCenter(DataCenter):

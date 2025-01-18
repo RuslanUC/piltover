@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from tortoise import fields, Model
 
 from piltover.db import models

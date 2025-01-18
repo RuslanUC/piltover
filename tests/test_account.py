@@ -1,4 +1,9 @@
+import select
+from cProfile import Profile
+from time import time
+
 import pytest
+import yappi
 from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified
 
 from tests.conftest import TestClient
