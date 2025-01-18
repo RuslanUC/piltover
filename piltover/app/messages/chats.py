@@ -107,7 +107,10 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
     if (peer := await Peer.from_chat_id(user, request.chat_id)) is None:
         raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
 
-    # TODO: check if admin
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.owner == user):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
     chat = peer.chat
 
     new_title = request.title.strip()
@@ -132,7 +135,10 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
     if peer.type is not PeerType.CHAT:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    # TODO: check if admin
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.owner == user):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
     chat = peer.chat
 
     new_desc = request.about.strip()
@@ -155,7 +161,10 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
     if (peer := await Peer.from_chat_id(user, request.chat_id)) is None:
         raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
 
-    # TODO: check if admin
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.owner == user):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
     chat = peer.chat
     before = chat.photo
 
@@ -245,11 +254,13 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     if (user_peer := await Peer.from_input_peer(user, request.user_id)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
+    participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user=user)
+    if participant is None or not (participant.is_admin or chat_peer.owner == user):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
     target_chat_peer = await Peer.get_or_none(owner=user_peer.user, chat=chat_peer.chat)
     if target_chat_peer is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
-
-    # TODO: check if admin
 
     messages = await create_message_internal(
         user, chat_peer, None, None, False,
@@ -264,5 +275,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     updates = await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
     if isinstance(updates_msg, Updates):
         updates.updates.extend(updates_msg.updates)
+        updates.users.extend(updates_msg.users)
+        updates.chats.extend(updates_msg.chats)
 
     return updates

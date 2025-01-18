@@ -9,7 +9,7 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
-    MessageService, PhotoEmpty
+    MessageService, PhotoEmpty, User as TLUser, Chat as TLChat
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
     MessageActionChatEditTitle, MessageActionChatEditPhoto, MessageActionChatAddUser, MessageActionChatDeleteUser
 from piltover.utils.snowflake import Snowflake
@@ -233,5 +233,28 @@ class Message(Model):
             media=self.media,
             reply_to=reply_to,
             fwd_header=fwd_header if not fwd_drop_header else None,
-            random_id=str(random_id) if random_id else None
+            random_id=str(random_id) if random_id else None,
         )
+
+    async def collect_users_chats(
+            self, current_user: models.User, users: dict[int, TLUser] | None = None,
+            chats: dict[int, TLChat] | None = None
+    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
+        if users is not None and self.author is not None and self.author_id not in users:
+            self.author = await self.author
+            users[self.author.id] = await self.author.to_tl(current_user)
+
+        if (users is not None or chats is not None) and self.peer is not None:
+            self.peer = await self.peer
+            await self.peer.collect_users_chats(current_user, users, chats)
+
+        if users is not None and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL):
+            try:
+                user_id = int(self.message)
+            except ValueError:
+                pass
+            else:
+                if user_id not in users and (participant := await models.User.get_or_none(id=user_id)) is not None:
+                    users[participant.id] = await participant.to_tl(current_user)
+
+        return users, chats

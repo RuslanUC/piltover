@@ -79,8 +79,8 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
 
 
 # noinspection PyUnusedLocal
-async def destroy_session(client: Client, request: Message[DestroySession], session: Session) -> RpcResult:
-    return RpcResult(req_msg_id=request.message_id, result=DestroySessionOk(session_id=request.obj.session_id))
+async def destroy_session(client: Client, request: Message[DestroySession], session: Session) -> DestroySessionOk:
+    return DestroySessionOk(session_id=request.obj.session_id)
 
 
 # noinspection PyUnusedLocal
@@ -88,8 +88,7 @@ async def rpc_drop_answer(client: Client, request: Message[RpcDropAnswer], sessi
     return RpcResult(req_msg_id=request.message_id, result=RpcAnswerUnknown())
 
 
-# noinspection PyUnusedLocal
-async def get_future_salts(client: Client, request: Message[GetFutureSalts], session: Session) -> RpcResult:
+async def get_future_salts(_1: Client, request: Message[GetFutureSalts], _2: Session) -> FutureSalts:
     limit = max(min(request.obj.num, 1), 64)
     base_id = int(time() // (60 * 60))
 
@@ -103,13 +102,10 @@ async def get_future_salts(client: Client, request: Message[GetFutureSalts], ses
 
     salts = await ServerSalt.filter(id__gt=base_id).limit(limit)
 
-    return RpcResult(
+    return FutureSalts(
         req_msg_id=request.message_id,
-        result=FutureSalts(
-            req_msg_id=request.message_id,
-            now=int(time()),
-            salts=[salt.to_tl() for salt in salts]
-        ),
+        now=int(time()),
+        salts=[salt.to_tl() for salt in salts]
     )
 
 

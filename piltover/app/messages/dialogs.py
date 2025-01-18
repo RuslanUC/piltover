@@ -8,11 +8,11 @@ from piltover.db.enums import PeerType
 from piltover.db.models import User, Dialog, Peer
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer, InputPeerChat, DialogPeer
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
 from piltover.tl.types.messages import PeerDialogs, Dialogs
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.dialogs")
 
@@ -34,6 +34,8 @@ async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
         if dialog.peer.type is PeerType.CHAT and dialog.peer.chat_id not in chats:
             #await dialog.peer.fetch_related("chat")
             chats[dialog.peer.chat.id] = await dialog.peer.chat.to_tl(user)
+            for chat_user in await User.filter(chatparticipants__chat=dialog.peer.chat, id__not_in=list(users.keys())):
+                users[chat_user.id] = await chat_user.to_tl(user)
 
     return {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
@@ -45,13 +47,22 @@ async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
 
 # noinspection PyUnusedLocal
 async def get_dialogs_internal(
-        peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100
+        peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
+        offset_peer: InputPeerUser | InputPeerChat | None = None
 ) -> dict:
     query = Q(peer__owner=user)
     if offset_id:
         query &= Q(peer__messages__id__lt=offset_id)
     if offset_date:
         query &= Q(peer__messages__date__lt=datetime.fromtimestamp(offset_date, UTC))
+    if offset_peer is not None:
+        try:
+            offset_peer = await Peer.from_input_peer(user, offset_peer)
+            peer_message_id = await Message.filter(peer=offset_peer).order_by("-id").first().values_list("id", flat=True)
+            if peer_message_id is not None:
+                query &= Q(peer__messages__id__lt=peer_message_id)
+        except ErrorRpc:
+            pass
 
     if peers is None:
         peers = []
@@ -86,9 +97,9 @@ async def get_dialogs_internal(
 
 @handler.on_request(GetDialogs)
 async def get_dialogs(request: GetDialogs, user: User):
-    return Dialogs(**(
-        await get_dialogs_internal(None, user, request.offset_id, request.offset_date, request.limit)
-    ))
+    return Dialogs(**(await get_dialogs_internal(
+        None, user, request.offset_id, request.offset_date, request.limit, request.offset_peer
+    )))
 
 
 @handler.on_request(GetPeerDialogs)

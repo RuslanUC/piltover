@@ -19,22 +19,13 @@ from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, Updat
 class UpdatesManager:
     @staticmethod
     async def send_message(user: User, messages: dict[Peer, Message]) -> Updates | UpdateShortSentMessage:
-        users = {upd_peer.user for upd_peer in messages.keys() if isinstance(upd_peer.user, User)}
         result = None
-        chat = None
-        if messages:
-            first_message = messages[next(iter(messages))]
-            if isinstance(first_message.author, User):
-                users.add(first_message.author)
-            if first_message.peer.type is PeerType.CHAT:
-                await first_message.peer.fetch_related("chat")
-                chat = first_message.peer.chat
 
         for peer, message in messages.items():
             if isinstance(peer.owner, QuerySet):
                 await peer.fetch_related("owner")
 
-            chats = [] if chat is None else [await chat.to_tl(peer.owner)]
+            users, chats = await message.collect_users_chats(peer.owner, {}, {})
 
             # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
 
@@ -46,8 +37,8 @@ class UpdatesManager:
                         pts_count=1,
                     ),
                 ],
-                users=[await upd_user.to_tl(peer.owner) for upd_user in users],
-                chats=chats,
+                users=list(users.values()),
+                chats=list(chats.values()),
                 date=int(time()),
                 seq=0,
             )
@@ -85,15 +76,7 @@ class UpdatesManager:
             updates = []
 
             for message in messages:
-                if message.author_id not in users:
-                    message.author = await message.author
-                    users[message.author.id] = await message.author.to_tl(peer.owner)
-                if peer.type is PeerType.USER and peer.user_id not in users:
-                    peer.user = await peer.user
-                    users[peer.user.id] = await peer.user.to_tl(peer.owner)
-                if peer.type is PeerType.CHAT and peer.chat_id not in chats:
-                    peer.chat = await peer.chat
-                    chats[peer.chat.id] = await peer.chat.to_tl(peer.owner)
+                users, chats = await message.collect_users_chats(peer.owner, {}, {})
 
                 updates.append(UpdateNewMessage(
                     message=await message.to_tl(peer.owner),
