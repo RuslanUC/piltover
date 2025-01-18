@@ -10,7 +10,6 @@ from piltover.db.models.privacy_rule import PrivacyRule, TL_KEY_TO_PRIVACY_ENUM
 from piltover.db.models.user_password import UserPassword
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow
@@ -23,6 +22,7 @@ from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, Pr
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("account")
 username_regex = re.compile(r'^[a-z0-9_]{5,32}$')

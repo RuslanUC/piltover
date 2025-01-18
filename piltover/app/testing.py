@@ -1,9 +1,9 @@
 from piltover.app.auth import send_code
 from piltover.db.models.sentcode import SentCode
 from piltover.enums import ReqHandlerFlags
-from piltover.worker import MessageHandler
 from piltover.tl.functions.auth import SendCode
 from piltover.tl.types.auth import SentCode as TLSentCode
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("testing")
 

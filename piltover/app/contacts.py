@@ -5,11 +5,11 @@ from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Contact
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_136, Unblock_136
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, BlockedSlice
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("contacts")
 
@@ -133,7 +133,8 @@ async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
 
 @handler.on_request(AddContact)
 async def add_contact(request: AddContact, user: User) -> Updates:
-    if (peer := await Peer.from_input_peer(user, request.id)) is None or peer.type is not PeerType.USER:
+    peer = await Peer.from_input_peer_raise(user, request.id)
+    if peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     contact, created = await Contact.get_or_create(owner=user, target=peer.user, defaults={
@@ -155,10 +156,10 @@ async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
     peers = {}
     for peer_id in request.id:
         try:
-            peer = await Peer.from_input_peer(user, peer_id)
+            peer = await Peer.from_input_peer_raise(user, peer_id)
         except ErrorRpc:
             continue
-        if peer is None or peer.type is not PeerType.USER:
+        if peer.type is not PeerType.USER:
             continue
 
         peers[peer.user.id] = peer
@@ -178,7 +179,8 @@ async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
 @handler.on_request(Block_136)
 @handler.on_request(Block)
 async def block_unblock(request: Block, user: User) -> bool:
-    if (peer := await Peer.from_input_peer(user, request.id)) is None or peer.type is not PeerType.USER:
+    peer = await Peer.from_input_peer_raise(user, request.id)
+    if peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     to_block = isinstance(request, (Block, Block_136))

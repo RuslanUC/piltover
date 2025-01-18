@@ -5,13 +5,12 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
-from piltover.worker import MessageHandler
 from piltover.gateway import Client
 from piltover.tl import Long
 from piltover.tl.functions.internal import SendCode, SignIn, GetUserApp, EditUserApp, GetAvailableServers
-from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers, AvailableServer, \
-    PublicKey
+from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers
 from piltover.utils.snowflake import Snowflake
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("internal")
 

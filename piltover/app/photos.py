@@ -2,18 +2,17 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.models import User, UserPhoto, Peer, UploadingFile
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import InputPhoto, Long, Vector, InputPhotoEmpty, PhotoEmpty
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("photos")
 
 
 @handler.on_request(GetUserPhotos)
 async def get_user_photos(request: GetUserPhotos, user: User):
-    if (peer := await Peer.from_input_peer(user, request.user_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.user_id)
 
     peer_user = peer.peer_user(user)
     photos = await UserPhoto.filter(user=peer_user).select_related("file").order_by("-id")

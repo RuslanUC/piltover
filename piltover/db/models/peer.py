@@ -51,6 +51,12 @@ class Peer(Model):
         return await Peer.get_or_none(owner=user, chat__id=chat_id, type=PeerType.CHAT).select_related("owner", "chat")
 
     @classmethod
+    async def from_chat_id_raise(cls, user: models.User, chat_id: int, message: str = "CHAT_ID_INVALID") -> Peer:
+        if (peer := await Peer.from_chat_id(user, chat_id)) is not None:
+            return peer
+        raise ErrorRpc(error_code=400, error_message=message)
+
+    @classmethod
     async def from_input_peer(cls, user: models.User, input_peer: InputPeers) -> Peer | None:
         if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty)):
             return
@@ -72,6 +78,12 @@ class Peer(Model):
             return await Peer.get_or_none(owner=user, chat__id=input_peer.chat_id).select_related("owner", "chat")
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
+
+    @classmethod
+    async def from_input_peer_raise(cls, user: models.User, peer: InputPeers, message: str = "PEER_ID_INVALID") -> Peer:
+        if (peer_ := await Peer.from_input_peer(user, peer)) is not None:
+            return peer_
+        raise ErrorRpc(error_code=400, error_message=message)
 
     async def get_opposite(self) -> list[Peer]:
         if self.type is PeerType.USER:

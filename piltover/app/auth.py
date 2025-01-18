@@ -16,7 +16,6 @@ from piltover.db.models.sentcode import SentCode
 from piltover.db.models.user import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import BindAuthKeyInner
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_136, LogOut
@@ -24,6 +23,7 @@ from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Auth
     AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut
 from piltover.utils.snowflake import Snowflake
 from piltover.utils.utils import sec_check
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("auth")
 

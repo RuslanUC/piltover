@@ -3,20 +3,17 @@ from time import time
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence
-from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateUserTyping
 from piltover.tl.functions.messages import SetTyping
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.other")
 
 
 @handler.on_request(SetTyping)
 async def set_typing(request: SetTyping, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-
+    peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type == PeerType.SELF:
         return True
 

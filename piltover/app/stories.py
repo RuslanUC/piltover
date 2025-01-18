@@ -1,10 +1,10 @@
 from time import time
 
 from piltover.enums import ReqHandlerFlags
-from piltover.worker import MessageHandler
 from piltover.tl import StoriesStealthMode, Updates, Int, Vector
 from piltover.tl.functions.stories import GetAllStories, GetAllReadPeerStories, GetPeerMaxIDs
 from piltover.tl.types.stories import AllStories
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("stories")
 

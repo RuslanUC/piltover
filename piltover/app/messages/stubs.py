@@ -2,7 +2,6 @@ from time import time
 
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, EmojiKeywordsDifference, \
     DocumentEmpty, PeerSettings, InputStickerSetAnimatedEmoji, StickerSet
 from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, GetPeerSettings, \
@@ -14,6 +13,7 @@ from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactio
 from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, Reactions, \
     Stickers, SearchResultsPositions, AllStickers, FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, \
     StickerSet as messages_StickerSet, QuickReplies, SavedDialogs, SavedReactionTags
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
 

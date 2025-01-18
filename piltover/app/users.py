@@ -1,20 +1,18 @@
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import PeerSettings, TLObject, UserEmpty, PeerNotifySettings
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser
 from piltover.tl.types.users import UserFull
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("users")
 
 
 @handler.on_request(GetFullUser)
 async def get_full_user(request: GetFullUser, user: User):
-    if (peer := await Peer.from_input_peer(user, request.id)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-
+    peer = await Peer.from_input_peer_raise(user, request.id)
     target_user = peer.peer_user(user)
 
     return UserFull(

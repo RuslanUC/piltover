@@ -5,16 +5,16 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File, \
-    MessageFwdHeader, Presence, UploadingFile
+    Presence, UploadingFile
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148
 from piltover.tl.types.messages import AffectedMessages
 from piltover.utils.snowflake import Snowflake
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.sending")
 
@@ -86,8 +86,7 @@ def _resolve_reply_id(request: SendMessage_148 | SendMessage | SendMedia_148 | S
 @handler.on_request(SendMessage_148)
 @handler.on_request(SendMessage)
 async def send_message(request: SendMessage, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -106,8 +105,7 @@ async def send_message(request: SendMessage, user: User):
 
 @handler.on_request(UpdatePinnedMessage)
 async def update_pinned_message(request: UpdatePinnedMessage, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     if (message := await Message.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
@@ -167,8 +165,7 @@ async def delete_messages(request: DeleteMessages, user: User):
 @handler.on_request(EditMessage_136)
 @handler.on_request(EditMessage)
 async def edit_message(request: EditMessage | EditMessage_136, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -252,8 +249,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 @handler.on_request(SendMedia_148)
 @handler.on_request(SendMedia)
 async def send_media(request: SendMedia | SendMedia_148, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -272,8 +268,7 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
 
 @handler.on_request(SaveDraft)
 async def save_draft(request: SaveDraft, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     dialog = await Dialog.get_or_create(peer=peer)
     draft, _ = await MessageDraft.get_or_create(

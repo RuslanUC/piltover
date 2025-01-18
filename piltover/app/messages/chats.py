@@ -66,14 +66,13 @@ async def get_chats(request: GetChats, user: User) -> Chats:
         chats=[
             await peer.chat.to_tl(user)
             for peer in peers
-        ]
+        ],
     )
 
 
 @handler.on_request(GetFullChat)
 async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
-    if (peer := await Peer.from_chat_id(user, request.chat_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    peer = await Peer.from_chat_id_raise(user, request.chat_id)
 
     chat = peer.chat
     photo = PhotoEmpty(id=0)
@@ -104,8 +103,7 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
 
 @handler.on_request(EditChatTitle)
 async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
-    if (peer := await Peer.from_chat_id(user, request.chat_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    peer = await Peer.from_chat_id_raise(user, request.chat_id)
 
     participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
     if participant is None or not (participant.is_admin or peer.owner == user):
@@ -130,8 +128,7 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
 
 @handler.on_request(EditChatAbout)
 async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is not PeerType.CHAT:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -158,8 +155,7 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
 
 @handler.on_request(EditChatPhoto)
 async def edit_chat_photo(request: EditChatPhoto, user: User):
-    if (peer := await Peer.from_chat_id(user, request.chat_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    peer = await Peer.from_chat_id_raise(user, request.chat_id)
 
     participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
     if participant is None or not (participant.is_admin or peer.owner == user):
@@ -202,10 +198,8 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
 @handler.on_request(AddChatUser_136)
 @handler.on_request(AddChatUser)
 async def add_chat_user(request: AddChatUser, user: User):
-    if (chat_peer := await Peer.from_chat_id(user, request.chat_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
-    if (user_peer := await Peer.from_input_peer(user, request.user_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    user_peer = await Peer.from_input_peer_raise(user, request.user_id)
 
     if await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
@@ -249,10 +243,8 @@ async def add_chat_user(request: AddChatUser, user: User):
 
 @handler.on_request(DeleteChatUser)
 async def delete_chat_user(request: DeleteChatUser, user: User):
-    if (chat_peer := await Peer.from_chat_id(user, request.chat_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
-    if (user_peer := await Peer.from_input_peer(user, request.user_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    user_peer = await Peer.from_input_peer_raise(user, request.user_id)
 
     participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user=user)
     if participant is None or not (participant.is_admin or chat_peer.owner == user):

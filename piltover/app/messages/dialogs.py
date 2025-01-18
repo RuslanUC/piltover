@@ -57,7 +57,7 @@ async def get_dialogs_internal(
         query &= Q(peer__messages__date__lt=datetime.fromtimestamp(offset_date, UTC))
     if offset_peer is not None:
         try:
-            offset_peer = await Peer.from_input_peer(user, offset_peer)
+            offset_peer = await Peer.from_input_peer_raise(user, offset_peer)
             peer_message_id = await Message.filter(peer=offset_peer).order_by("-id").first().values_list("id", flat=True)
             if peer_message_id is not None:
                 query &= Q(peer__messages__id__lt=peer_message_id)
@@ -178,8 +178,8 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
 
 @handler.on_request(MarkDialogUnread)
 async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
-    if (peer := await Peer.from_input_peer(user, request.peer.peer)) is None \
-            or (dialog := await Dialog.get_or_none(peer=peer).select_related("peer")) is None:
+    peer = await Peer.from_input_peer_raise(user, request.peer.peer)
+    if (dialog := await Dialog.get_or_none(peer=peer).select_related("peer")) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     if dialog.unread_mark == request.unread:

@@ -8,10 +8,10 @@ from piltover.app.utils.utils import get_perm_key
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models import User, Message, UserAuthorization, State, UpdateV2
-from piltover.worker import MessageHandler
 from piltover.tl import UpdateNewMessage, UpdateShortMessage
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136
 from piltover.tl.types.updates import State as TLState, Difference
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("auth")
 IGNORED_UPD = [UpdateNewMessage.tlid(), UpdateShortMessage.tlid()]

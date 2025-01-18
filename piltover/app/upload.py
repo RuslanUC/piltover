@@ -7,11 +7,11 @@ from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.enums import PeerType
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer
 from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation
 from piltover.tl.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
 from piltover.tl.types.storage import FileUnknown, FilePartial, FileJpeg
 from piltover.tl.types.upload import File as TLFile
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("upload")
 
@@ -63,8 +63,7 @@ async def get_file(request: GetFile, user: User):
         raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
 
     if isinstance(request.location, InputPeerPhotoFileLocation):
-        if (peer := await Peer.from_input_peer(user, request.location.peer)) is None:
-            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+        peer = await Peer.from_input_peer_raise(user, request.location.peer)
         if peer.type in (PeerType.SELF, PeerType.USER):
             q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user": peer.peer_user(user)}
         elif peer.type is PeerType.CHAT:

@@ -1,7 +1,7 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.worker import MessageHandler
 from piltover.tl import LangPackLanguage, LangPackString, LangPackDifference, LangPackLanguage_72
 from piltover.tl.functions.langpack import GetLanguages, GetStrings, GetLangPack, GetLanguages_72
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("langpack")
 

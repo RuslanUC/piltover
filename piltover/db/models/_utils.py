@@ -3,7 +3,6 @@ from typing import Any, TypeVar
 
 import tortoise
 
-
 IntFlagT = TypeVar("IntFlagT", bound=IntFlag)
 
 

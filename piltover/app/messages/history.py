@@ -11,8 +11,6 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import MessageType, MediaType, PeerType, FileType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, Dialog
 from piltover.db.models.message import Message
-from piltover.exceptions import ErrorRpc
-from piltover.worker import MessageHandler
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, Chat as TLChat, InputMessagesFilterVideo, \
@@ -20,6 +18,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter
+from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.history")
 
@@ -118,8 +117,7 @@ async def _format_messages(
 
 @handler.on_request(GetHistory)
 async def get_history(request: GetHistory, user: User) -> Messages:
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset
@@ -148,8 +146,7 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
 @handler.on_request(ReadHistory)
 async def read_history(request: ReadHistory, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     state, _ = await State.get_or_create(user=user)
 
@@ -203,8 +200,7 @@ async def read_history(request: ReadHistory, user: User):
 
 @handler.on_request(Search)
 async def messages_search(request: Search, user: User) -> Messages:
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     from_user_id = None
     if isinstance(request.from_id, InputPeerUser):
@@ -222,8 +218,7 @@ async def messages_search(request: Search, user: User) -> Messages:
 
 @handler.on_request(GetSearchCounters)
 async def get_search_counters(request: GetSearchCounters, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer)
 
     return [
         SearchCounter(
