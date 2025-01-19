@@ -6,8 +6,9 @@ from types import SimpleNamespace
 from taskiq import TaskiqEvents, AsyncBroker
 from tortoise import Tortoise
 
-from piltover.app import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
-    langpack, channels, upload, root_dir, internal
+from piltover.app import root_dir
+from piltover.app.handlers import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
+    langpack, channels, upload, internal
 from piltover.utils import gen_keys, Keys
 from piltover.worker import Worker
 

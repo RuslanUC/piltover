@@ -1,4 +1,4 @@
-from piltover.app.auth import send_code
+from piltover.app.handlers.auth import send_code
 from piltover.db.models.sentcode import SentCode
 from piltover.enums import ReqHandlerFlags
 from piltover.tl.functions.auth import SendCode

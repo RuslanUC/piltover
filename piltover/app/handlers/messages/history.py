@@ -6,7 +6,7 @@ from loguru import logger
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
-from piltover.app.account import username_regex_no_len
+from piltover.app.handlers.account import username_regex_no_len
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import MessageType, MediaType, PeerType, FileType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, Dialog

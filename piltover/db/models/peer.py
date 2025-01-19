@@ -112,7 +112,6 @@ class Peer(Model):
 
         assert False, "unknown peer type"
 
-    # TODO: replace with collect_users_chats ?
     async def tl_users_chats(
             self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None
     ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
@@ -134,23 +133,10 @@ class Peer(Model):
             self.chat = await self.chat
             chats[self.chat.id] = await self.chat.to_tl(user)
 
-        return ret
-
-    async def collect_users_chats(
-            self, current_user: models.User, users: dict[int, TLUser] | None = None,
-            chats: dict[int, TLChat] | None = None
-    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
-        if users is not None \
-                and self.type is PeerType.CHAT \
-                and self.chat is not None \
-                and self.chat_id is not None \
-                and chats is not None \
-                and self.chat_id not in chats:
             participants = await models.User.filter(
                 chatparticipants__chat__id=self.chat_id, id__not_in=list(users.keys())
             )
             for participant in participants:
-                users[participant.id] = await participant.to_tl(current_user)
+                users[participant.id] = await participant.to_tl(user)
 
-
-        return await self.tl_users_chats(current_user, users, chats)
+        return ret

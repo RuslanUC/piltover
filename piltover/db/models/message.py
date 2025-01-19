@@ -236,17 +236,16 @@ class Message(Model):
             random_id=str(random_id) if random_id else None,
         )
 
-    async def collect_users_chats(
-            self, current_user: models.User, users: dict[int, TLUser] | None = None,
-            chats: dict[int, TLChat] | None = None
+    async def tl_users_chats(
+            self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
     ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
         if users is not None and self.author is not None and self.author_id not in users:
             self.author = await self.author
-            users[self.author.id] = await self.author.to_tl(current_user)
+            users[self.author.id] = await self.author.to_tl(user)
 
         if (users is not None or chats is not None) and self.peer is not None:
             self.peer = await self.peer
-            await self.peer.collect_users_chats(current_user, users, chats)
+            await self.peer.tl_users_chats(user, users, chats)
 
         if users is not None and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL):
             try:
@@ -255,6 +254,6 @@ class Message(Model):
                 pass
             else:
                 if user_id not in users and (participant := await models.User.get_or_none(id=user_id)) is not None:
-                    users[participant.id] = await participant.to_tl(current_user)
+                    users[participant.id] = await participant.to_tl(user)
 
         return users, chats

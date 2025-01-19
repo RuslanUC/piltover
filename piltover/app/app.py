@@ -10,8 +10,9 @@ from aerich import Command, Migrate
 from loguru import logger
 from tortoise import Tortoise, connections
 
-from piltover.app import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
-    langpack, channels, upload, root_dir, internal
+from piltover.app import root_dir
+from piltover.app.handlers import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
+    langpack, channels, upload, internal
 from piltover.gateway import Gateway
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 
@@ -161,7 +162,7 @@ class PiltoverApp:
         await Tortoise.generate_schemas()
         await _create_system_data()
 
-        from piltover.app import testing
+        from piltover.app.handlers import testing
         try:
             self._gateway.worker.register_handler(testing.handler)
         except RuntimeError:

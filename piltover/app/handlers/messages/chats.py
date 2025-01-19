@@ -1,4 +1,4 @@
-from piltover.app.messages.sending import send_message_internal, create_message_internal
+from piltover.app.handlers.messages.sending import send_message_internal, create_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType

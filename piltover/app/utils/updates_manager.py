@@ -25,7 +25,7 @@ class UpdatesManager:
             if isinstance(peer.owner, QuerySet):
                 await peer.fetch_related("owner")
 
-            users, chats = await message.collect_users_chats(peer.owner, {}, {})
+            users, chats = await message.tl_users_chats(peer.owner, {}, {})
 
             # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
 
@@ -76,7 +76,7 @@ class UpdatesManager:
             updates = []
 
             for message in messages:
-                users, chats = await message.collect_users_chats(peer.owner, {}, {})
+                users, chats = await message.tl_users_chats(peer.owner, {}, {})
 
                 updates.append(UpdateNewMessage(
                     message=await message.to_tl(peer.owner),

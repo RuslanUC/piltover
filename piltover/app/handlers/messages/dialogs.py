@@ -2,7 +2,7 @@ from datetime import datetime, UTC
 
 from tortoise.expressions import Q
 
-from piltover.app.updates import get_state_internal
+from piltover.app.handlers.updates import get_state_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Dialog, Peer

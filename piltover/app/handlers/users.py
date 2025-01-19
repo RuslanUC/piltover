@@ -25,7 +25,7 @@ async def get_full_user(request: GetFullUser, user: User):
             profile_photo=await target_user.get_photo(user),
             notify_settings=PeerNotifySettings(show_previews=True),
             common_chats_count=0,
-            birthday=target_user.to_tl_birthday()
+            birthday=target_user.to_tl_birthday(),
         ),
         chats=[],
         users=[await target_user.to_tl(current_user=user)],
