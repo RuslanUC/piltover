@@ -3,7 +3,8 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import PeerIdInvalid
+from pyrogram.errors import PeerIdInvalid, ChatAdminRequired
+from pyrogram.raw.functions.messages import EditChatAdmin
 
 from tests.conftest import TestClient, color_is_near
 
@@ -103,3 +104,33 @@ async def test_add_delete_user_in_group_chat() -> None:
         assert await client1.get_chat_members_count(group.id) == 1
         with pytest.raises(PeerIdInvalid):
             await client2.send_message(group.id, "test3")
+
+
+@pytest.mark.asyncio
+async def test_promote_user_to_admin() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        await client1.set_username("test1_username")
+        await client2.set_username("test2_username")
+        user1 = await client2.get_users("test1_username")
+        user2 = await client1.get_users("test2_username")
+
+        group = await client1.create_group("idk", [user2.id])
+        with pytest.raises(ChatAdminRequired):
+            await client2.set_chat_title(group.id, "test 123")
+
+        assert await client1.invoke(EditChatAdmin(
+            chat_id=abs(group.id),
+            user_id=await client1.resolve_peer(user2.id),
+            is_admin=True,
+        ))
+
+        assert await client2.set_chat_title(group.id, "test 123")
+
+        assert await client1.invoke(EditChatAdmin(
+            chat_id=abs(group.id),
+            user_id=await client1.resolve_peer(user2.id),
+            is_admin=False,
+        ))
+
+        with pytest.raises(ChatAdminRequired):
+            await client2.set_chat_title(group.id, "test 123")

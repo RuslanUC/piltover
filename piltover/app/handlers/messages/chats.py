@@ -5,10 +5,10 @@ from piltover.db.enums import PeerType, MessageType
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
-    ChatParticipantCreator, ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
+    ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
     InputPeerUser
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
-    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136
+    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136, EditChatAdmin
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 from piltover.worker import MessageHandler
 
@@ -89,7 +89,8 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             participants=ChatParticipants(
                 chat_id=chat.id,
                 participants=[
-                    ChatParticipantCreator(user_id=user.id),
+                    await participant.to_tl()
+                    for participant in await ChatParticipant.filter(chat=chat).select_related("chat")
                 ],
                 version=chat.version,
             ),
@@ -106,7 +107,7 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
     peer = await Peer.from_chat_id_raise(user, request.chat_id)
 
     participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
-    if participant is None or not (participant.is_admin or peer.owner == user):
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat = peer.chat
@@ -118,7 +119,8 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
         raise ErrorRpc(error_code=400, error_message="CHAT_TITLE_EMPTY")
 
     chat.name = new_title
-    await chat.save(update_fields=["name"])
+    chat.version += 1
+    await chat.save(update_fields=["name", "version"])
 
     return await send_message_internal(
         user, peer, None, None, False,
@@ -133,7 +135,7 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
-    if participant is None or not (participant.is_admin or peer.owner == user):
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat = peer.chat
@@ -158,7 +160,7 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
     peer = await Peer.from_chat_id_raise(user, request.chat_id)
 
     participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
-    if participant is None or not (participant.is_admin or peer.owner == user):
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat = peer.chat
@@ -187,6 +189,7 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
     if chat.photo == before:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
+    chat.version += 1
     await chat.save()
 
     return await send_message_internal(
@@ -247,7 +250,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     user_peer = await Peer.from_input_peer_raise(user, request.user_id)
 
     participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user=user)
-    if participant is None or not (participant.is_admin or chat_peer.owner == user):
+    if participant is None or not (participant.is_admin or chat_peer.chat.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     target_chat_peer = await Peer.get_or_none(owner=user_peer.user, chat=chat_peer.chat)
@@ -271,3 +274,28 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
         updates.chats.extend(updates_msg.chats)
 
     return updates
+
+
+@handler.on_request(EditChatAdmin)
+async def edit_chat_admin(request: EditChatAdmin, user: User):
+    chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    user_peer = await Peer.from_input_peer_raise(user, request.user_id)
+
+    if not await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
+        raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
+    if chat_peer.chat.creator_id != user.id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user=user_peer.user)
+    if participant.is_admin == request.is_admin:
+        return True
+
+    participant.is_admin = request.is_admin
+    await participant.save(update_fields=["is_admin"])
+    chat_peer.chat.version += 1
+    await chat_peer.chat.save(update_fields=["version"])
+
+    chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
+    await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+
+    return True
