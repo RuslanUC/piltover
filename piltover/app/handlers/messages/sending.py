@@ -5,7 +5,7 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File, \
-    Presence, UploadingFile
+    Presence, UploadingFile, SavedDialog
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
@@ -311,6 +311,9 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     ).order_by("id").select_related("author", "media")
     reply_ids = {}
 
+    if not messages:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
+
     peers = [to_peer]
     peers.extend(await to_peer.get_opposite())
     result: dict[Peer, list[Message]] = {}
@@ -337,6 +340,9 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
                     reply_to_internal_id=reply_ids.get(message.id),
                 )
             )
+
+    if to_peer.type is PeerType.SELF:
+        await SavedDialog.get_or_create(peer=from_peer)
 
     presence = await Presence.update_to_now(user)
     await UpdatesManager.update_status(user, presence, peers[1:])

@@ -5,7 +5,7 @@ from tortoise.expressions import Q
 from piltover.app.handlers.updates import get_state_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Dialog, Peer
+from piltover.db.models import User, Dialog, Peer, SavedDialog
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer, InputPeerChat, DialogPeer
@@ -17,7 +17,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.dialogs")
 
 
-async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
+async def format_dialogs(user: User, dialogs: list[Dialog] | list[SavedDialog]) -> dict[str, list]:
     messages = []
     users = {}
     chats = {}
@@ -45,12 +45,12 @@ async def format_dialogs(user: User, dialogs: list[Dialog]) -> dict[str, list]:
     }
 
 
-# noinspection PyUnusedLocal
-async def get_dialogs_internal(
-        peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
-        offset_peer: InputPeerUser | InputPeerChat | None = None
-) -> dict:
+async def get_dialogs_query(
+    peers: list[InputDialogPeer] | None, user: User, offset_id: int, offset_date: int,
+    offset_peer: InputPeerUser | InputPeerChat | None
+) -> Q:
     query = Q(peer__owner=user)
+
     if offset_id:
         query &= Q(peer__messages__id__lt=offset_id)
     if offset_date:
@@ -83,6 +83,15 @@ async def get_dialogs_internal(
 
     if peers_query is not None:
         query &= peers_query
+
+    return query
+
+
+async def get_dialogs_internal(
+        peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
+        offset_peer: InputPeerUser | InputPeerChat | None = None
+) -> dict:
+    query = await get_dialogs_query(peers, user, offset_id, offset_date, offset_peer)
 
     if limit > 100 or limit < 1:
         limit = 100

@@ -26,7 +26,7 @@ handler = MessageHandler("messages.history")
 def _get_messages_query(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
-        filter_: TLObject | None = None
+        filter_: TLObject | None = None, saved_peer: Peer | None = None,
 ) -> QuerySet[Message]:
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
     # TODO: probably dont add this to query if user requested messages with InputMessageReplyTo or something
@@ -50,6 +50,9 @@ def _get_messages_query(
 
     if offset_id:
         query &= Q(id__lt=offset_id)
+
+    if isinstance(peer, Peer) and peer.type is PeerType.SELF and saved_peer is not None:
+        query &= Q(fwd_header__saved_peer=saved_peer)
 
     if isinstance(filter_, InputMessagesFilterPinned):
         query &= Q(pinned=True)
@@ -79,14 +82,14 @@ def _get_messages_query(
 async def get_messages_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
-        filter_: TLObject | None = None
+        filter_: TLObject | None = None, saved_peer: Peer | None = None,
 ) -> list[Message]:
     return await _get_messages_query(
-        peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_,
+        peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_, saved_peer,
     )
 
 
-async def _format_messages(
+async def format_messages_internal(
         user: User, messages: list[Message], users: dict[int, TLUser] | None = None,
         chats: dict[int, TLChat] | None = None,
 ) -> Messages:
@@ -125,7 +128,7 @@ async def get_history(request: GetHistory, user: User) -> Messages:
     if not messages:
         return Messages(messages=[], chats=[], users=[])
 
-    return await _format_messages(user, messages)
+    return await format_messages_internal(user, messages)
 
 
 @handler.on_request(GetMessages)
@@ -141,7 +144,7 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
     query &= Q(peer__owner=user)
 
-    return await _format_messages(user, await Message.filter(query))
+    return await format_messages_internal(user, await Message.filter(query))
 
 
 @handler.on_request(ReadHistory)
@@ -213,7 +216,7 @@ async def messages_search(request: Search, user: User) -> Messages:
         request.min_date, request.max_date, request.q, request.filter
     )
 
-    return await _format_messages(user, messages)
+    return await format_messages_internal(user, messages)
 
 
 @handler.on_request(GetSearchCounters)
@@ -269,4 +272,4 @@ async def search_global(request: SearchGlobal, user: User):
         request.min_date, request.max_date, request.q, request.filter
     )
 
-    return await _format_messages(user, messages, users)
+    return await format_messages_internal(user, messages, users)

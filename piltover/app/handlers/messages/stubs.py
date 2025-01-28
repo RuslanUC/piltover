@@ -4,15 +4,15 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, EmojiKeywordsDifference, \
     DocumentEmpty, PeerSettings, InputStickerSetAnimatedEmoji, StickerSet
-from piltover.tl.functions.messages import GetDialogFilters, GetAvailableReactions, GetPeerSettings, \
-    GetScheduledHistory, GetEmojiKeywordsLanguages, GetWebPage, GetStickerSet, GetRecentReactions, GetTopReactions, \
+from piltover.tl.functions.messages import GetDialogFilters, GetPeerSettings, GetScheduledHistory, \
+    GetEmojiKeywordsLanguages, GetWebPage, GetStickerSet, GetRecentReactions, GetTopReactions, GetSavedHistory, \
     GetAttachMenuBots, GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, \
     GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetMessageEditData, GetQuickReplies, \
-    GetDefaultTagReactions, GetSavedDialogs, GetSavedReactionTags, GetSavedHistory, GetEmojiKeywordsDifference
-from piltover.tl.types.messages import AvailableReactions, PeerSettings as MessagesPeerSettings, Messages, Reactions, \
+    GetDefaultTagReactions, GetSavedDialogs, GetSavedReactionTags, GetEmojiKeywordsDifference
+from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Messages, Reactions, SavedReactionTags, \
     Stickers, SearchResultsPositions, AllStickers, FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, \
-    StickerSet as messages_StickerSet, QuickReplies, SavedDialogs, SavedReactionTags
+    StickerSet as messages_StickerSet, QuickReplies, SavedDialogs
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
@@ -20,11 +20,6 @@ handler = MessageHandler("messages.stubs")
 @handler.on_request(GetDialogFilters, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_dialog_filters():
     return []
-
-
-@handler.on_request(GetAvailableReactions, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_available_reactions():
-    return AvailableReactions(hash=0, reactions=[])
 
 
 @handler.on_request(GetPeerSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)

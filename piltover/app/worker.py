@@ -9,6 +9,7 @@ from tortoise import Tortoise
 from piltover.app import root_dir
 from piltover.app.handlers import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels, upload, internal
+from piltover.app.handlers.messages import saved_dialogs
 from piltover.utils import gen_keys, Keys
 from piltover.worker import Worker
 
@@ -58,6 +59,7 @@ class PiltoverWorker:
         self._worker.register_handler(langpack.handler)
         self._worker.register_handler(channels.handler)
         self._worker.register_handler(upload.handler)
+        self._worker.register_handler(saved_dialogs.handler)
         self._worker.register_handler(internal.handler)
 
         self._worker.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._run)
