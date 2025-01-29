@@ -204,6 +204,9 @@ async def read_history(request: ReadHistory, user: User):
 @handler.on_request(Search)
 async def messages_search(request: Search, user: User) -> Messages:
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    saved_peer = None
+    if peer.type is PeerType.SELF and request.saved_peer_id:
+        saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
 
     from_user_id = None
     if isinstance(request.from_id, InputPeerUser):
@@ -213,7 +216,7 @@ async def messages_search(request: Search, user: User) -> Messages:
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, from_user_id,
-        request.min_date, request.max_date, request.q, request.filter
+        request.min_date, request.max_date, request.q, request.filter, saved_peer,
     )
 
     return await format_messages_internal(user, messages)
@@ -222,11 +225,14 @@ async def messages_search(request: Search, user: User) -> Messages:
 @handler.on_request(GetSearchCounters)
 async def get_search_counters(request: GetSearchCounters, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    saved_peer = None
+    if peer.type is PeerType.SELF and request.saved_peer_id:
+        saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
 
     return [
         SearchCounter(
             filter=filt,
-            count=await _get_messages_query(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt).count(),
+            count=await _get_messages_query(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer).count(),
         ) for filt in request.filters
     ]
 
