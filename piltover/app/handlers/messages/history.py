@@ -6,7 +6,7 @@ from loguru import logger
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
-from piltover.app.handlers.account import username_regex_no_len
+from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import MessageType, MediaType, PeerType, FileType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, Dialog
@@ -264,7 +264,7 @@ async def search_global(request: SearchGlobal, user: User):
     q = user_q = request.q
     if q.startswith("@"):
         user_q = q[1:]
-    if username_regex_no_len.match(user_q):
+    if USERNAME_REGEX_NO_LEN.match(user_q):
         users = {
             oth_user.id: await oth_user.to_tl(user)
             for oth_user in await User.filter(username__istartswith=user_q).limit(10)

@@ -1,3 +1,4 @@
+import re
 from asyncio import get_event_loop, gather
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -7,11 +8,18 @@ from PIL.Image import Image, open as img_open
 from piltover.app import files_dir
 from piltover.db.models import UserPassword, SrpSession, AuthKey, TempAuthKey
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputCheckPasswordEmpty, InputCheckPasswordSRP
+from piltover.tl import InputCheckPasswordEmpty, InputCheckPasswordSRP, MessageEntityHashtag, MessageEntityMention, \
+    MessageEntityUnknown, MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
+    MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
+    MessageEntityPhone, MessageEntityCashtag, MessageEntityUnderline, MessageEntityStrike, MessageEntitySpoiler, \
+    MessageEntityBankCard, MessageEntityBlockquote
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
 from piltover.utils.utils import xor
+
+USERNAME_REGEX = re.compile(r'^[a-z0-9_]{5,32}$')
+USERNAME_REGEX_NO_LEN = re.compile(r'[a-z0-9_]{1,32}')
 
 MIME_TO_TL = {
     "image/jpeg": FileJpeg(),
@@ -140,3 +148,60 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
 async def get_perm_key(unk_key_id: int) -> AuthKey | None:
     key = await AuthKey.get_or_temp(unk_key_id)
     return key.perm_key if isinstance(key, TempAuthKey) else key
+
+
+MessageEntity = MessageEntityUnknown | MessageEntityMention | MessageEntityHashtag | MessageEntityBotCommand \
+                | MessageEntityUrl | MessageEntityEmail | MessageEntityBold | MessageEntityItalic | MessageEntityCode \
+                | MessageEntityPre | MessageEntityTextUrl | MessageEntityMentionName | MessageEntityPhone \
+                | MessageEntityCashtag | MessageEntityUnderline | MessageEntityStrike | MessageEntityBankCard \
+                | MessageEntitySpoiler | MessageEntityBlockquote
+
+VALID_ENTITIES = (
+    MessageEntityBold, MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl,
+    MessageEntityUnderline, MessageEntityStrike, MessageEntityBankCard, MessageEntitySpoiler, MessageEntityBlockquote
+)
+
+
+def validate_message_entities(text: str, entities: list[MessageEntity]) -> list[dict] | None:
+    if not entities:
+        return None
+    # TODO: check what limit telegram has
+    if len(entities) > 16:
+        raise ErrorRpc(error_code=400, error_message="ENTITIES_TOO_LONG")
+
+    result = []
+    for entity in entities:
+        if entity.offset < 0 or entity.offset > len(text) or (entity.offset + entity.length) > len(text):
+            raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+        if isinstance(entity, MessageEntityMention):
+            if text[entity.offset] != "@":
+                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+            if not USERNAME_REGEX.match(text[entity.offset+1:entity.offset+entity.length]):
+                raise ErrorRpc(error_code=400, error_message="ENTITY_MENTION_USER_INVALID")
+        elif isinstance(entity, MessageEntityHashtag):
+            if text[entity.offset] != "#":
+                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+        elif isinstance(entity, MessageEntityBotCommand):
+            if text[entity.offset] != "/":
+                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+        elif isinstance(entity, MessageEntityUrl):
+            if not text[entity.offset:].startswith("http"):
+                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+        elif isinstance(entity, MessageEntityEmail):
+            email = text[entity.offset+1:entity.offset+entity.length]
+            if "@" not in email:
+                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+        elif isinstance(entity, MessageEntityPhone):
+            if text[entity.offset] != "+":
+                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+        elif isinstance(entity, MessageEntityCashtag):
+            if text[entity.offset] != "$":
+                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+        elif not isinstance(entity, VALID_ENTITIES):
+            continue
+
+        result.append(entity.to_dict() | {"_": entity.tlid()})
+
+    return result or None
+
+

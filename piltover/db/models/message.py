@@ -9,7 +9,7 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
-    MessageService, PhotoEmpty, User as TLUser, Chat as TLChat
+    MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
     MessageActionChatEditTitle, MessageActionChatEditPhoto, MessageActionChatAddUser, MessageActionChatDeleteUser
 from piltover.utils.snowflake import Snowflake
@@ -83,6 +83,7 @@ class Message(Model):
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
     random_id: str = fields.CharField(max_length=24, null=True, default=None)
+    entities: list[dict] | None = fields.JSONField(null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -139,7 +140,6 @@ class Message(Model):
             "from_scheduled": False,
             "edit_hide": False,
             "noforwards": False,
-            "entities": [],
             "restriction_reason": []
         }
 
@@ -162,6 +162,11 @@ class Message(Model):
         if self.fwd_header is not None:
             self.fwd_header = await self.fwd_header
 
+        entities = []
+        for entity in (self.entities or []):
+            tl_id = entity.pop("_")
+            entities.append(objects[tl_id](**entity))
+
         return TLMessage(
             id=self.id,
             message=self.message,
@@ -174,6 +179,7 @@ class Message(Model):
             reply_to=reply_to,
             fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
             from_id=from_id,
+            entities=entities,
             **base_defaults,
             **regular_defaults,
         )
@@ -234,6 +240,7 @@ class Message(Model):
             reply_to=reply_to,
             fwd_header=fwd_header if not fwd_drop_header else None,
             random_id=str(random_id) if random_id else None,
+            entities=self.entities,
         )
 
     async def tl_users_chats(

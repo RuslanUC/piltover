@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime, UTC
 
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import resize_photo, generate_stripped
+from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File, \
     Presence, UploadingFile, SavedDialog
@@ -99,7 +99,7 @@ async def send_message(request: SendMessage, user: User):
     reply_to_message_id = _resolve_reply_id(request)
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
-        author=user, message=request.message,
+        author=user, message=request.message, entities=validate_message_entities(request.message, request.entities),
     )
 
 
@@ -263,6 +263,7 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, media=media,
+        entities=validate_message_entities(request.message, request.entities),
     )
 
 

@@ -1,8 +1,7 @@
-import re
 from datetime import date
 
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import check_password_internal, get_perm_key
+from piltover.app.utils.utils import check_password_internal, get_perm_key, USERNAME_REGEX
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus
 from piltover.db.models import User, UserAuthorization, Peer, Presence
@@ -25,12 +24,10 @@ from piltover.utils.srp import btoi
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("account")
-username_regex = re.compile(r'^[a-z0-9_]{5,32}$')
-username_regex_no_len = re.compile(r'[a-z0-9_]{1,32}')
 
 
 def validate_username(username: str) -> None:
-    if len(username) not in range(5, 32) or not username_regex.match(username):
+    if len(username) not in range(5, 32) or not USERNAME_REGEX.match(username):
         raise ErrorRpc(error_code=400, error_message="USERNAME_INVALID")
 
 
