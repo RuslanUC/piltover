@@ -33,10 +33,14 @@ class FileAccess(Model):
         return self.expires.replace(tzinfo=UTC) < datetime.now().replace(tzinfo=UTC)
 
     @classmethod
-    async def get_or_renew(cls, user: models.User, file: models.File) -> FileAccess:
+    async def get_or_renew(cls, user: models.User, file: models.File, real_renew: bool = False) -> FileAccess:
         access, _ = await models.FileAccess.get_or_create(file=file, user=user)
         if access.is_expired():
-            await access.delete()
-            access = await models.FileAccess.create(file=file, user=user)
+            if real_renew:
+                access.expires = gen_expires()
+                await access.save(update_fields=["expires"])
+            else:
+                await access.delete()
+                access = await models.FileAccess.create(file=file, user=user)
 
         return access

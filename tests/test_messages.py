@@ -2,6 +2,7 @@ from io import BytesIO
 
 import pytest
 
+from piltover.db.models import Message
 from tests.conftest import TestClient
 
 
@@ -165,3 +166,37 @@ async def test_get_dialogs() -> None:
         assert len([dialog async for dialog in client1.get_dialogs()]) == 2
 
         assert len([dialog async for dialog in client2.get_dialogs()]) == 1
+
+
+@pytest.mark.asyncio
+async def test_internal_message_cache() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 0
+
+        message = await client.send_message("me", text="test 123")
+        assert message.text == "test 123"
+
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 1
+
+        assert messages[0].id == message.id
+        assert messages[0].text == message.text
+
+        await Message.filter(id=message.id).update(message="some another text 123456789")
+
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 1
+
+        assert messages[0].id == message.id
+        # Text should be same because message is already cached and cache is based on "version" field
+        assert messages[0].text == message.text
+
+        await Message.filter(id=message.id).update(version=100)
+
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 1
+
+        assert messages[0].id == message.id
+        assert messages[0].text != message.text
+        assert messages[0].text == "some another text 123456789"

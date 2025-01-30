@@ -2,6 +2,7 @@ import argparse
 from os import getenv
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Literal
 
 from taskiq import TaskiqEvents, AsyncBroker
 from tortoise import Tortoise
@@ -10,6 +11,7 @@ from piltover.app import root_dir
 from piltover.app.handlers import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels, upload, internal
 from piltover.app.handlers.messages import saved_dialogs
+from piltover.cache import Cache
 from piltover.utils import gen_keys, Keys
 from piltover.worker import Worker
 
@@ -20,6 +22,16 @@ secrets = data / "secrets"
 secrets.mkdir(parents=True, exist_ok=True)
 
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
+
+
+class ArgsNamespace(SimpleNamespace):
+    privkey_file: Path
+    pubkey_file: Path
+    rabbitmq_address: str | None
+    redis_address: str | None
+    cache_backend: Literal["memory", "redis", "memcached"]
+    cache_endpoint: str | None
+    cache_port: int | None
 
 
 class PiltoverWorker:
@@ -89,15 +101,19 @@ if __name__ == "__main__":
     parser.add_argument("--redis-address", type=str, required=False,
                         help="Address of redis server in \"redis://host:port\" format",
                         default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(namespace=ArgsNamespace())
 else:
-    args = SimpleNamespace(
+    args = ArgsNamespace(
         privkey_file=secrets / "privkey.asc",
         pubkey_file=secrets / "pubkey.asc",
         rabbitmq_address=None,
         redis_address=None,
+        cache_backend="memory",
+        cache_endpoint=None,
+        cache_port=None,
     )
 
 
+Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)
 worker = PiltoverWorker(args.privkey_file, args.pubkey_file, args.rabbitmq_address, args.redis_address)
 broker = worker.get_broker()

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from os import getenv
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Literal
 
 import uvloop
 from aerich import Command, Migrate
@@ -14,6 +15,7 @@ from piltover.app import root_dir
 from piltover.app.handlers import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
     langpack, channels, upload, internal
 from piltover.app.handlers.messages import saved_dialogs
+from piltover.cache import Cache
 from piltover.gateway import Gateway
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 
@@ -24,6 +26,19 @@ secrets = data / "secrets"
 secrets.mkdir(parents=True, exist_ok=True)
 
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
+
+
+class ArgsNamespace(SimpleNamespace):
+    create_system_user: bool
+    create_auth_countries: bool
+    privkey_file: Path
+    pubkey_file: Path
+    rabbitmq_address: str | None
+    redis_address: str | None
+    cache_backend: Literal["memory", "redis", "memcached"]
+    cache_endpoint: str | None
+    cache_port: int | None
+
 
 
 class MigrateNoDowngrade(Migrate):
@@ -165,10 +180,8 @@ class PiltoverApp:
         await _create_system_data()
 
         from piltover.app.handlers import testing
-        try:
+        if not testing.handler.registered:
             self._gateway.worker.register_handler(testing.handler)
-        except RuntimeError:
-            ...
 
         await self._gateway.broker.startup()
         server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
@@ -178,6 +191,7 @@ class PiltoverApp:
 
         await self._gateway.broker.shutdown()
         await connections.close_all(True)
+        await Cache.obj.clear()
 
 
 # TODO: add host and port to arguments
@@ -197,18 +211,31 @@ if __name__ == "__main__":
     parser.add_argument("--redis-address", type=str, required=False,
                         help="Address of redis server in \"redis://host:port\" format",
                         default=None)
-    args = parser.parse_args()
+    parser.add_argument("--cache-backend", type=str, required=False,
+                        help="Cache backend", choices=["memory", "redis", "memcached"],
+                        default="memory")
+    parser.add_argument("--cache-endpoint", type=str, required=False,
+                        help="Address of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
+                        default=None)
+    parser.add_argument("--cache-port", type=int, required=False,
+                        help="Port of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
+                        default=None)
+    args = parser.parse_args(namespace=ArgsNamespace())
 else:
-    args = SimpleNamespace(
+    args = ArgsNamespace(
         create_system_user=True,
         create_auth_countries=True,
         privkey_file=secrets / "privkey.asc",
         pubkey_file=secrets / "pubkey.asc",
         rabbitmq_address=None,
         redis_address=None,
+        cache_backend="memory",
+        cache_endpoint=None,
+        cache_port=None,
     )
 
 
+Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)
 app = PiltoverApp(
     privkey=args.privkey_file,
     pubkey=args.pubkey_file,

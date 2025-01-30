@@ -4,6 +4,7 @@ from datetime import date
 
 from tortoise import fields, Model
 
+from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday

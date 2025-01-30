@@ -4,8 +4,10 @@ from datetime import datetime
 from types import NoneType
 from typing import Callable, Awaitable
 
+from loguru import logger
 from tortoise import fields, Model
 
+from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
@@ -84,7 +86,9 @@ class Message(Model):
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
     random_id: str = fields.CharField(max_length=24, null=True, default=None)
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
+    # TODO: use that for service messages instead of "message" field
     extra_info: bytes | None = fields.BinaryField(null=True, default=None)
+    version: int = fields.IntField(default=0)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -112,7 +116,9 @@ class Message(Model):
         return MessageReplyHeader(reply_to_msg_id=self.reply_to.id) if self.reply_to is not None else None
 
     async def to_tl(self, current_user: models.User) -> TLMessage | MessageService:
-        # TODO: add some "version" field and save tl message in some cache with key f"{self.id}:{current_user.id}:{version}"
+        if (cached := await Cache.obj.get(f"message:{self.id}:{self.version}")) is not None:
+            # TODO: renew FileAccess
+            return cached
 
         base_defaults = {
             "mentioned": False,
@@ -168,7 +174,7 @@ class Message(Model):
             tl_id = entity.pop("_")
             entities.append(objects[tl_id](**entity))
 
-        return TLMessage(
+        message = TLMessage(
             id=self.id,
             message=self.message,
             pinned=self.pinned,
@@ -184,6 +190,9 @@ class Message(Model):
             **base_defaults,
             **regular_defaults,
         )
+
+        await Cache.obj.set(f"message:{self.id}:{self.version}", message)
+        return message
 
     async def clone_for_peer(
             self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,

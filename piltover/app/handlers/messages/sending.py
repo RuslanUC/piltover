@@ -192,9 +192,10 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
         if message is not None:
             message.message = request.message
             message.edit_date = edit_date
+            message.version += 1
             messages[to_peer] = message
 
-    await Message.bulk_update(messages.values(), ["message", "edit_date"])
+    await Message.bulk_update(messages.values(), ["message", "edit_date", "version"])
     presence = await Presence.update_to_now(user)
     await UpdatesManager.update_status(user, presence, peers[1:])
 
