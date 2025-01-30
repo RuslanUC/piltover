@@ -44,18 +44,20 @@ class SerializationUtils:
         elif isinstance(value, str):
             return SerializationUtils.write(value.encode("utf8"))
         elif isinstance(value, TLObject):
-            return int.to_bytes(value.__tl_id__, 4, 'little') + value.serialize()
+            return primitives.Int.write(value.__tl_id__) + value.serialize()
         elif isinstance(value, list):
-            result = VECTOR + len(value).to_bytes(4, 'little')
+            result = VECTOR + primitives.Int.write(len(value))
             if isinstance(value, primitives.Vector):
                 int_type = value.value_type if issubclass(value.value_type, int) and not isinstance(value, bool) \
                     else int_type
             for v in value:
                 result += SerializationUtils.write(v, int_type)
             return result
+        else:
+            raise TypeError(f"Unknown type: {type(value)}")
 
     @staticmethod
-    def read(stream: BytesIO, type_: type[T], subtype: type=None) -> T:
+    def read(stream: BytesIO, type_: type[T], subtype: type = None) -> T:
         from . import TLObject, all
 
         if issubclass(type_, primitives.Int):
@@ -95,3 +97,5 @@ class SerializationUtils:
                 result.append(SerializationUtils.read(stream, subtype))
 
             return result
+        else:
+            raise TypeError(f"Unknown type: {type(value)}")

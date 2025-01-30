@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 from piltover.utils.utils import classinstancemethod
 
 
@@ -12,7 +14,7 @@ class Int(int):
         return int.from_bytes(data, "little")
 
     @classmethod
-    def read(cls, stream) -> int:
+    def read(cls, stream: BytesIO) -> int:
         return cls.read_bytes(stream.read(cls.SIZE))
 
     # noinspection PyMethodParameters

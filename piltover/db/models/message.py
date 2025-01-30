@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
+from io import BytesIO
 from types import NoneType
 from typing import Callable, Awaitable
 
-from loguru import logger
 from tortoise import fields, Model
 
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
-    MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects
+    MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, SerializationUtils, Long
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
     MessageActionChatEditTitle, MessageActionChatEditPhoto, MessageActionChatAddUser, MessageActionChatDeleteUser
 from piltover.utils.snowflake import Snowflake
@@ -22,27 +22,29 @@ async def _service_pin_message(_: Message, _u: models.User) -> MessageActionPinM
 
 
 async def _service_create_chat(message: Message, _: models.User) -> MessageActionChatCreate:
-    await message.peer.fetch_related("chat")
-    return MessageActionChatCreate(
-        title=message.message if message.message is not None else message.peer.chat.name,
-        users=[message.peer.chat.creator_id],
-    )
+    if not message.extra_info:
+        return MessageActionChatCreate(title="", users=[])
+
+    stream = BytesIO(message.extra_info)
+    title = SerializationUtils.read(stream, str)
+    user_ids = SerializationUtils.read(stream, list, Long)
+    return MessageActionChatCreate(title=title, users=user_ids)
 
 
 async def _service_edit_chat_title(message: Message, _: models.User) -> MessageActionChatEditTitle:
-    await message.peer.fetch_related("chat")
+    if not message.extra_info:
+        return MessageActionChatEditTitle(title="")
+
     return MessageActionChatEditTitle(
-        title=message.message if message.message is not None else message.peer.chat.name,
+        title=SerializationUtils.read(BytesIO(message.extra_info), str),
     )
 
 
 async def _service_edit_chat_photo(message: Message, user: models.User) -> MessageActionChatEditPhoto:
-    try:
-        photo_id = int(message.message)
-    except ValueError:
+    if not message.extra_info:
         return MessageActionChatEditPhoto(photo=PhotoEmpty(id=0))
 
-    await message.peer.fetch_related("chat")
+    photo_id = Long.read_bytes(message.extra_info)
 
     if photo_id > 0 and (file := await models.File.get_or_none(id=photo_id)) is not None:
         return MessageActionChatEditPhoto(photo=await file.to_tl_photo(user))
@@ -51,19 +53,18 @@ async def _service_edit_chat_photo(message: Message, user: models.User) -> Messa
 
 
 async def _service_chat_add_user(message: Message, _: models.User) -> MessageActionChatAddUser:
-    try:
-        user_id = int(message.message)
-    except ValueError:
+    if not message.extra_info:
         return MessageActionChatAddUser(users=[])
-    return MessageActionChatAddUser(users=[user_id])
+
+    user_ids = SerializationUtils.read(BytesIO(message.extra_info), list, Long)
+    return MessageActionChatAddUser(users=user_ids)
 
 
 async def _service_chat_del_user(message: Message, _: models.User) -> MessageActionChatDeleteUser:
-    try:
-        user_id = int(message.message)
-    except ValueError:
+    if not message.extra_info:
         return MessageActionChatDeleteUser(user_id=0)
-    return MessageActionChatDeleteUser(user_id=user_id)
+
+    return MessageActionChatDeleteUser(user_id=Long.read_bytes(message.extra_info))
 
 
 MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User], Awaitable[...]]] = {
@@ -86,7 +87,6 @@ class Message(Model):
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
     random_id: str = fields.CharField(max_length=24, null=True, default=None)
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
-    # TODO: use that for service messages instead of "message" field
     extra_info: bytes | None = fields.BinaryField(null=True, default=None)
     version: int = fields.IntField(default=0)
 
@@ -265,12 +265,14 @@ class Message(Model):
             self.peer = await self.peer
             await self.peer.tl_users_chats(user, users, chats)
 
-        if users is not None and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL):
-            try:
-                user_id = int(self.message)
-            except ValueError:
-                pass
+        if users is not None \
+                and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL) \
+                and self.extra_info:
+            if self.type is MessageType.SERVICE_CHAT_USER_ADD:
+                user_ids = SerializationUtils.read(BytesIO(self.extra_info), list, Long)
             else:
+                user_ids = [Long.read_bytes(self.extra_info)]
+            for user_id in user_ids:
                 if user_id not in users and (participant := await models.User.get_or_none(id=user_id)) is not None:
                     users[participant.id] = await participant.to_tl(user)
 
