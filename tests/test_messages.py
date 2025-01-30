@@ -1,6 +1,7 @@
 from io import BytesIO
 
 import pytest
+from pyrogram.enums import MessageEntityType
 
 from piltover.db.models import Message
 from tests.conftest import TestClient
@@ -200,3 +201,25 @@ async def test_internal_message_cache() -> None:
         assert messages[0].id == message.id
         assert messages[0].text != message.text
         assert messages[0].text == "some another text 123456789"
+
+
+@pytest.mark.asyncio
+async def test_some_entities() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 0
+
+        message = await client.send_message("me", text="test **123**")
+        assert message.text == "test 123"
+        assert len(message.entities) == 1
+        assert message.entities[0].type == MessageEntityType.BOLD
+        assert message.entities[0].length == 3
+
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 1
+
+        assert messages[0].id == message.id
+        assert messages[0].text == message.text
+        assert len(messages[0].entities) == 1
+        assert messages[0].entities[0].type == MessageEntityType.BOLD
+        assert messages[0].entities[0].length == 3
