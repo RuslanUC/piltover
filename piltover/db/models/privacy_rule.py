@@ -3,7 +3,7 @@ from __future__ import annotations
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import PrivacyRuleKeyType, PrivacyRuleValueType
+from piltover.db.enums import PrivacyRuleKeyType, PrivacyRuleValueType, PeerType
 from piltover.tl import PrivacyValueAllowContacts, PrivacyValueAllowAll, PrivacyValueAllowUsers, \
     PrivacyValueDisallowContacts, PrivacyValueDisallowAll, PrivacyValueDisallowUsers, InputPrivacyKeyStatusTimestamp, \
     InputPrivacyKeyChatInvite, InputPrivacyKeyPhoneCall, InputPrivacyKeyPhoneP2P, InputPrivacyKeyForwards, \
@@ -77,9 +77,9 @@ class PrivacyRule(Model):
 
         for key, rule in new_rules.items():
             if (key in {PrivacyRuleValueType.ALLOW_USERS, PrivacyRuleValueType.DISALLOW_USERS} or
-                    key == PrivacyRuleValueType.ALLOW_CONTACTS and PrivacyRuleValueType.ALLOW_ALL in new_rules or
-                    key == PrivacyRuleValueType.DISALLOW_CONTACTS and PrivacyRuleValueType.DISALLOW_ALL in new_rules or
-                    key == PrivacyRuleValueType.ALLOW_ALL and PrivacyRuleValueType.DISALLOW_ALL in new_rules):
+                    (key == PrivacyRuleValueType.ALLOW_CONTACTS and PrivacyRuleValueType.ALLOW_ALL in new_rules) or
+                    (key == PrivacyRuleValueType.DISALLOW_CONTACTS and PrivacyRuleValueType.DISALLOW_ALL in new_rules) or
+                    (key == PrivacyRuleValueType.ALLOW_ALL and PrivacyRuleValueType.DISALLOW_ALL in new_rules)):
                 #if key in existing_rules:
                 #    await existing_rules[key].delete()
                 continue
@@ -87,7 +87,7 @@ class PrivacyRule(Model):
 
         async def _fill_users_rule(val: PrivacyRuleValueType, users: set[int]) -> None:
             rule_ = await PrivacyRule.create(user=user, key=rule_key, value=val)
-            await rule_.users.add(*await models.User.from_ids(users))
+            await rule_.users.add(*await models.User.filter(id__in=users))
 
         disallow = set()
         if PrivacyRuleValueType.DISALLOW_USERS in new_rules:
@@ -104,3 +104,25 @@ class PrivacyRule(Model):
             return tl_cls(users=user_ids)
 
         return tl_cls()
+
+    @classmethod
+    async def has_access_to(cls, current_user: models.User, target_user: models.User, key: PrivacyRuleKeyType) -> bool:
+        if current_user == target_user:
+            return True
+        if await models.Peer.filter(owner=target_user, user=current_user, type=PeerType.USER, blocked=True).exists():
+            return False
+
+        rules = {rule.value: rule for rule in await cls.filter(user=target_user, key=key)}
+        if PrivacyRuleValueType.ALLOW_ALL in rules and PrivacyRuleValueType.DISALLOW_USERS not in rules:
+            return True
+        if PrivacyRuleValueType.DISALLOW_ALL in rules and PrivacyRuleValueType.ALLOW_USERS not in rules:
+            return False
+
+        if PrivacyRuleValueType.ALLOW_ALL in rules and PrivacyRuleValueType.DISALLOW_USERS in rules:
+            return not await rules[PrivacyRuleValueType.DISALLOW_USERS].users.filter(id=current_user.id).exists()
+        if PrivacyRuleValueType.DISALLOW_ALL in rules and PrivacyRuleValueType.ALLOW_USERS in rules:
+            return await rules[PrivacyRuleValueType.DISALLOW_USERS].users.filter(id=current_user.id).exists()
+
+        # handle PrivacyRuleValueType.ALLOW_CONTACTS and PrivacyRuleValueType.DISALLOW_CONTACTS
+
+        return True

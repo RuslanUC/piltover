@@ -1,5 +1,5 @@
-from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer
+from piltover.db.enums import PeerType, PrivacyRuleKeyType
+from piltover.db.models import User, Peer, PrivacyRule
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, TLObject, UserEmpty, PeerNotifySettings
 from piltover.tl.functions.users import GetFullUser, GetUsers
@@ -15,17 +15,21 @@ async def get_full_user(request: GetFullUser, user: User):
     peer = await Peer.from_input_peer_raise(user, request.id)
     target_user = peer.peer_user(user)
 
+    about = ""
+    if await PrivacyRule.has_access_to(user, target_user, PrivacyRuleKeyType.ABOUT):
+        about = target_user.about
+
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
             voice_messages_forbidden=True,
             id=target_user.id,
-            about=target_user.about,
+            about=about,
             settings=PeerSettings(),
             profile_photo=await target_user.get_photo(user),
             notify_settings=PeerNotifySettings(show_previews=True),
             common_chats_count=0,
-            birthday=target_user.to_tl_birthday(),
+            birthday=await target_user.to_tl_birthday(user),
         ),
         chats=[],
         users=[await target_user.to_tl(current_user=user)],

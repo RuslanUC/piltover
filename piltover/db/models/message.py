@@ -84,6 +84,7 @@ class Message(Model):
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
     random_id: str = fields.CharField(max_length=24, null=True, default=None)
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
+    extra_info: bytes | None = fields.BinaryField(null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -215,6 +216,7 @@ class Message(Model):
             if self.fwd_header is not None:
                 self.fwd_header.from_user = await self.fwd_header.from_user
 
+            # TODO: check privacy rules
             fwd_header = await models.MessageFwdHeader.create(
                 from_user=self.fwd_header.from_user if self.fwd_header else self.author,
                 from_name=self.fwd_header.from_name if self.fwd_header else self.author.first_name,

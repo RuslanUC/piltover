@@ -1,6 +1,7 @@
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
-from piltover.db.models import User, UserPhoto, Peer, UploadingFile
+from piltover.db.enums import PrivacyRuleKeyType
+from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPhoto, Long, Vector, InputPhotoEmpty, PhotoEmpty
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
@@ -13,8 +14,11 @@ handler = MessageHandler("photos")
 @handler.on_request(GetUserPhotos)
 async def get_user_photos(request: GetUserPhotos, user: User):
     peer = await Peer.from_input_peer_raise(user, request.user_id)
-
     peer_user = peer.peer_user(user)
+
+    if not await PrivacyRule.has_access_to(user, peer_user, PrivacyRuleKeyType.PROFILE_PHOTO):
+        return Photos(photos=[], users=[])
+
     photos = await UserPhoto.filter(user=peer_user).select_related("file").order_by("-id")
 
     return Photos(

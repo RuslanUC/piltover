@@ -173,6 +173,7 @@ async def get_privacy(request: GetPrivacy, user: User):
 async def set_privacy(request: SetPrivacy, user: User):
     key = TL_KEY_TO_PRIVACY_ENUM[type(request.key)]
     await PrivacyRule.update_from_tl(user, key, request.rules)
+    await UpdatesManager.update_user(user)
     return await get_privacy_internal(key, user)
 
 

@@ -114,12 +114,17 @@ async def get_birthdays(user: User) -> ContactBirthdays:
         owner=user, user__birthday__gte=yesterday, user__birthday__lte=tomorrow
     ).select_related("user")
 
+    users = []
+    birthdays = []
+    for peer in birthday_peers:
+        if (birthday := await peer.user.to_tl_birthday(user)) is None:
+            continue
+        birthdays.append(ContactBirthday(contact_id=peer.user.id, birthday=birthday))
+        users.append(await peer.user.to_tl(user))
+
     return ContactBirthdays(
-        contacts=[
-            ContactBirthday(contact_id=peer.user.id, birthday=peer.user.to_tl_birthday())
-            for peer in birthday_peers
-        ],
-        users=[await peer.user.to_tl(user) for peer in birthday_peers],
+        contacts=birthdays,
+        users=users,
     )
 
 

@@ -1,8 +1,8 @@
 from piltover.app.handlers.messages.sending import send_message_internal, create_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
-from piltover.db.enums import PeerType, MessageType
-from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message
+from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType
+from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
@@ -207,7 +207,8 @@ async def add_chat_user(request: AddChatUser, user: User):
     if await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
 
-    # TODO: check if admin / has chat permissions to add users / has permission to add this specific user
+    if not await PrivacyRule.has_access_to(user, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):
+        raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
     if chat_peer.owner.id not in chat_peers:

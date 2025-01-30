@@ -5,7 +5,7 @@ from datetime import date
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import PeerType
+from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday
 from piltover.tl.types import User as TLUser
 
@@ -23,16 +23,20 @@ class User(Model):
 
     async def get_photo(self, current_user: models.User, profile_photo: bool = False):
         photo = UserProfilePhotoEmpty() if profile_photo else PhotoEmpty(id=0)
-        if await models.UserPhoto.filter(user=self).exists():
-            photo = (await models.UserPhoto.get_or_none(user=self, current=True).select_related("file") or
-                     await models.UserPhoto.filter(user=self).select_related("file").order_by("-id").first())
+        if not await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PROFILE_PHOTO):
+            return photo
+        if not await models.UserPhoto.filter(user=self).exists():
+            return photo
 
-            if profile_photo:
-                photo = UserProfilePhoto(
-                    has_video=False, photo_id=photo.id, dc_id=2, stripped_thumb=photo.file.photo_stripped,
-                )
-            else:
-                photo = await photo.to_tl(current_user)
+        photo = (await models.UserPhoto.get_or_none(user=self, current=True).select_related("file") or
+                 await models.UserPhoto.filter(user=self).select_related("file").order_by("-id").first())
+
+        if profile_photo:
+            photo = UserProfilePhoto(
+                has_video=False, photo_id=photo.id, dc_id=2, stripped_thumb=photo.file.photo_stripped,
+            )
+        else:
+            photo = await photo.to_tl(current_user)
 
         return photo
 
@@ -59,13 +63,17 @@ class User(Model):
         peer = await models.Peer.get_or_none(owner=current_user, user__id=self.id, type=PeerType.USER)
         contact = await models.Contact.get_or_none(owner=current_user, target=self)
 
+        phone_number = None
+        if await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PHONE_NUMBER):
+            phone_number = self.phone_number
+
         return TLUser(
             **defaults,
             id=self.id,
             first_name=self.first_name if contact is None or not contact.first_name else contact.first_name,
             last_name=self.last_name if contact is None or not contact.last_name else contact.last_name,
             username=self.username,
-            phone=self.phone_number,
+            phone=phone_number,
             lang_code=self.lang_code,
             is_self=self == current_user,
             photo=await self.get_photo(current_user, True),
@@ -74,16 +82,8 @@ class User(Model):
             contact=contact is not None,
         )
 
-    @classmethod
-    async def from_ids(cls, ids: list[int] | set[int]) -> list[models.User]:
-        result = []
-        for uid in ids:
-            if (user := await User.get_or_none(id=uid)) is not None:
-                result.append(user)
-        return result
-
-    def to_tl_birthday(self) -> Birthday | None:
-        if self.birthday is None:
+    async def to_tl_birthday(self, user: User) -> Birthday | None:
+        if self.birthday is None or not await models.PrivacyRule.has_access_to(user, self, PrivacyRuleKeyType.BIRTHDAY):
             return
 
         return Birthday(

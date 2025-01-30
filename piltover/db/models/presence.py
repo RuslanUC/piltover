@@ -6,7 +6,7 @@ from time import time
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import UserStatus
+from piltover.db.enums import UserStatus, PrivacyRuleKeyType
 from piltover.tl import UserStatusEmpty, UserStatusOffline, UserStatusOnline, UserStatusRecently, UserStatusLastWeek, \
     UserStatusLastMonth
 
@@ -30,8 +30,10 @@ class Presence(Model):
         if delta < timedelta(seconds=30):
             return UserStatusOnline(expires=int(time() + 30))
 
-        # TODO: return UserStatusOffline(was_online=...) if user is allowed to see self.user's last online time
-        if delta < timedelta(days=3):
+        if await models.PrivacyRule.has_access_to(user, await self.user, PrivacyRuleKeyType.STATUS_TIMESTAMP):
+            return UserStatusOffline(was_online=int(self.last_seen.timestamp()))
+
+        if delta <= timedelta(days=3):
             return RECENTLY
         if delta <= timedelta(days=7):
             return LAST_WEEK
