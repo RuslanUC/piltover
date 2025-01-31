@@ -9,7 +9,7 @@ from tortoise import fields, Model
 
 from piltover.cache import Cache
 from piltover.db import models
-from piltover.db.enums import MediaType, MessageType, PeerType
+from piltover.db.enums import MediaType, MessageType, PeerType, PrivacyRuleKeyType
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
     MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, SerializationUtils, Long
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
@@ -220,22 +220,35 @@ class Message(Model):
 
         if self.fwd_header is not None:
             self.fwd_header = await self.fwd_header
-        fwd_header = self.fwd_header
+        fwd_header = None
         if fwd and not fwd_drop_header:
+            fwd_header = self.fwd_header
             self.author = await self.author
             if peer.type == PeerType.SELF and self.peer is not None:
                 self.peer = await self.peer
 
-            if self.fwd_header is not None:
-                self.fwd_header.from_user = await self.fwd_header.from_user
+            if fwd_header is not None:
+                fwd_header.from_user = await fwd_header.from_user
 
-            # TODO: check privacy rules
+            from_user = fwd_header.from_user if fwd_header else None
+            if from_user is None:
+                await self.peer.fetch_related("owner")
+                if await models.PrivacyRule.has_access_to(self.peer.owner, self.author, PrivacyRuleKeyType.FORWARDS):
+                    from_user = self.author
+
+            saved_peer = self.peer if peer.type == PeerType.SELF else None
+            if saved_peer is not None and peer.type is PeerType.USER:
+                await self.peer.fetch_related("owner", "user")
+                peer_ = self.peer
+                if not await models.PrivacyRule.has_access_to(peer_.owner, peer_.user, PrivacyRuleKeyType.FORWARDS):
+                    saved_peer = None
+
             fwd_header = await models.MessageFwdHeader.create(
-                from_user=self.fwd_header.from_user if self.fwd_header else self.author,
-                from_name=self.fwd_header.from_name if self.fwd_header else self.author.first_name,
-                date=self.fwd_header.date if self.fwd_header else self.date,
+                from_user=from_user,
+                from_name=fwd_header.from_name if fwd_header else self.author.first_name,
+                date=fwd_header.date if fwd_header else self.date,
 
-                saved_peer=self.peer if peer.type == PeerType.SELF else None,
+                saved_peer=saved_peer,
                 saved_id=self.id if peer.type == PeerType.SELF else None,
                 saved_from=self.author if peer.type == PeerType.SELF else None,
                 saved_name=self.author.first_name if peer.type == PeerType.SELF else None,
