@@ -97,6 +97,7 @@ class Message(Model):
     fwd_header: models.MessageFwdHeader = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
 
     author_id: int
+    media_id: int | None
 
     class Meta:
         unique_together = (
@@ -117,7 +118,10 @@ class Message(Model):
 
     async def to_tl(self, current_user: models.User) -> TLMessage | MessageService:
         if (cached := await Cache.obj.get(f"message:{self.id}:{self.version}")) is not None:
-            # TODO: renew FileAccess
+            if self.media_id is not None:
+                file = await models.File.get_or_none(messagemedias__messages__id=self.id)
+                if file is not None:
+                    await models.FileAccess.get_or_renew(current_user, file, True)
             return cached
 
         base_defaults = {

@@ -1,9 +1,10 @@
+from datetime import timedelta
 from io import BytesIO
 
 import pytest
 from pyrogram.enums import MessageEntityType
 
-from piltover.db.models import Message
+from piltover.db.models import Message, FileAccess
 from tests.conftest import TestClient
 
 
@@ -223,3 +224,34 @@ async def test_some_entities() -> None:
         assert len(messages[0].entities) == 1
         assert messages[0].entities[0].type == MessageEntityType.BOLD
         assert messages[0].entities[0].length == 3
+
+
+@pytest.mark.asyncio
+async def test_internal_message_cache_media_renew() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 0
+
+        file = BytesIO(b"test document")
+        setattr(file, "name", "test.txt")
+        message = await client.send_document("me", document=file)
+        assert message.document is not None
+        file_access = await FileAccess.get_or_none(file__messagemedias__messages__id=message.id)
+        assert file_access is not None
+        file_access.expires -= timedelta(days=14)
+        await file_access.save(update_fields=["expires"])
+        access_expires_at = file_access.expires
+
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 1
+
+        assert messages[0].id == message.id
+        await file_access.refresh_from_db()
+        assert access_expires_at != file_access.expires
+        access_expires_at = file_access.expires
+
+        messages = [msg async for msg in client.get_chat_history("me")]
+        assert len(messages) == 1
+        assert messages[0].id == message.id
+        await file_access.refresh_from_db()
+        assert access_expires_at == file_access.expires

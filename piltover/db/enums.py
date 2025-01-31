@@ -49,7 +49,6 @@ class FileType(IntEnum):
 class MediaType(IntEnum):
     DOCUMENT = 0
     PHOTO = 1
-    GIF = 1
 
 
 class UpdateType(IntEnum):
