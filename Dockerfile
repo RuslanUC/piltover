@@ -14,5 +14,4 @@ RUN venv/bin/poetry install --no-dev
 
 COPY piltover piltover
 
-ENV DISABLE_HR=1
 CMD ["venv/bin/python", "-m", "piltover"]

@@ -1,0 +1,42 @@
+name: Pytest
+on:
+  pull_request:
+    types: [opened]
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "poetry"
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --all-extras
+
+      - name: Run tests
+        run: |
+          poetry run pytest -s --disable-warnings --cov-append --cov-report=xml --cov=piltover/app --cov=piltover/db --cov=piltover/layer_converter --cov=piltover/utils --cov=piltover/*.py tests
+
+      - name: Print coverage report
+        run: |
+          poetry run coverage report
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

@@ -1,0 +1,6 @@
+coverage:
+  status:
+    patch: false
+
+  round: down
+  precision: 2
