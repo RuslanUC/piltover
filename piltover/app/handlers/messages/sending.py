@@ -315,7 +315,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
         peer=from_peer, id__in=request.id[:100], type=MessageType.REGULAR
     ).order_by("id").select_related("author", "media")
     reply_ids = {}
-    # TODO: preserve media groups
+    media_group_ids = {}
 
     if not messages:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
@@ -327,6 +327,12 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     for message in messages:
         internal_id = Snowflake.make_id()
         reply_ids[message.id] = internal_id
+
+        media_group_id = None
+        if message.media_group_id is not None:
+            if message.media_group_id not in media_group_ids:
+                media_group_ids[message.media_group_id] = Snowflake.make_id()
+            media_group_id = media_group_ids[message.media_group_id]
 
         for opp_peer in peers:
             if opp_peer not in result:
@@ -343,6 +349,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
                     fwd_drop_captions=request.drop_media_captions,
                     random_id=random_ids.get(message.id) if opp_peer == to_peer and message.id in random_ids else None,
                     reply_to_internal_id=reply_ids.get(message.id),
+                    media_group_id=media_group_id,
                 )
             )
 

@@ -193,7 +193,7 @@ class Message(Model):
     async def clone_for_peer(
             self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,
             random_id: int | None = None, fwd: bool = False, fwd_drop_header: bool = False,
-            reply_to_internal_id: int | None = None, fwd_drop_captions: bool = False,
+            reply_to_internal_id: int | None = None, fwd_drop_captions: bool = False, media_group_id: int | None = None,
     ) -> models.Message:
         if new_author is None and self.author is not None:
             self.author = new_author = await self.author
@@ -261,6 +261,7 @@ class Message(Model):
             fwd_header=fwd_header if not fwd_drop_header else None,
             random_id=str(random_id) if random_id else None,
             entities=self.entities,
+            media_group_id=media_group_id,
         )
 
     async def tl_users_chats(

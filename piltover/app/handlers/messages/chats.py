@@ -229,7 +229,9 @@ async def add_chat_user(request: AddChatUser, user: User):
         ).order_by("-id").limit(limit).select_related("author", "media", "reply_to", "fwd_header")
         messages = []
         for message in reversed(messages_to_forward):
-            messages.append(await message.clone_for_peer(chat_peers[invited_user.id], internal_id=message.internal_id))
+            messages.append(await message.clone_for_peer(
+                chat_peers[invited_user.id], internal_id=message.internal_id, media_group_id=message.media_group_id,
+            ))
 
         await UpdatesManager.send_messages({chat_peers[invited_user.id]: messages})
 
