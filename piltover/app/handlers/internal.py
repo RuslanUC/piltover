@@ -5,10 +5,11 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
-from piltover.gateway import Client
+from piltover.worker import Worker
 from piltover.tl import Long
 from piltover.tl.functions.internal import SendCode, SignIn, GetUserApp, EditUserApp, GetAvailableServers
-from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers
+from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers, AvailableServer, \
+    PublicKey
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
 
@@ -140,25 +141,24 @@ async def edit_user_app(request: EditUserApp, user: User) -> bool:
 
 
 @handler.on_request(GetAvailableServers)
-async def get_available_servers(client: Client, user: User) -> AvailableServers:
+async def get_available_servers(worker: Worker, user: User) -> AvailableServers:
     if user.id != 777000:
         raise InvalidConstructorException(GetAvailableServers.tlid())
 
-    # TODO: set keys from worker and somehow set address and port
-    #server = client.server
     return AvailableServers(
         servers=[
-            #AvailableServer(
-            #    address=server.host,
-            #    port=server.port,
-            #    dc_id=2,
-            #    name="Production",
-            #    public_keys=[
-            #        PublicKey(
-            #            key=server.server_keys.public_key,
-            #            fingerprint=server.fingerprint
-            #        )
-            #    ],
-            #)
+            AvailableServer(
+                # TODO: get address and port from gateway or some config file
+                address="127.0.0.1",
+                port=4430,
+                dc_id=2,
+                name="Production",
+                public_keys=[
+                    PublicKey(
+                        key=worker.server_keys.public_key,
+                        fingerprint=worker.fingerprint,
+                    )
+                ],
+            )
         ]
     )

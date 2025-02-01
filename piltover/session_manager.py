@@ -33,7 +33,6 @@ class Session:
     session_id: int
     auth_key: KeyInfo | None = None
     user_id: int | None = None
-    user: User | None = None  # TODO: remove if not used
     min_msg_id: int = 0
     online: bool = False
 
@@ -106,7 +105,6 @@ class Session:
     def set_user(self, user: User) -> None:
         self.user_id = user.id
         self.online = True
-        self.user = user
 
         SessionManager.broker.subscribe(self)
 

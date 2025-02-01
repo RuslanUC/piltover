@@ -328,8 +328,6 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
             if opp_peer not in result:
                 result[opp_peer] = []
 
-            # TODO: drop_media_captions
-
             await Dialog.get_or_create(peer=opp_peer)
             result[opp_peer].append(
                 await message.clone_for_peer(
@@ -338,6 +336,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
                     internal_id=internal_id,
                     fwd=True,
                     fwd_drop_header=request.drop_author,
+                    fwd_drop_captions=request.drop_media_captions,
                     random_id=random_ids.get(message.id) if opp_peer == to_peer and message.id in random_ids else None,
                     reply_to_internal_id=reply_ids.get(message.id),
                 )
@@ -356,3 +355,4 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
 
 
 # TODO: DeleteHistory
+# TODO: SendMultiMedia

@@ -201,12 +201,12 @@ class Message(Model):
     async def clone_for_peer(
             self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,
             random_id: int | None = None, fwd: bool = False, fwd_drop_header: bool = False,
-            reply_to_internal_id: int | None = None,
+            reply_to_internal_id: int | None = None, fwd_drop_captions: bool = False,
     ) -> models.Message:
         if new_author is None and self.author is not None:
             self.author = new_author = await self.author
 
-        if self.media is not None:
+        if self.media_id is not None:
             self.media = await self.media
 
         reply_to = None
@@ -257,7 +257,7 @@ class Message(Model):
 
         return await Message.create(
             internal_id=internal_id or Snowflake.make_id(),
-            message=self.message,
+            message=self.message if self.media is None or not fwd_drop_captions else None,
             pinned=self.pinned,
             date=self.date,
             edit_date=self.edit_date,

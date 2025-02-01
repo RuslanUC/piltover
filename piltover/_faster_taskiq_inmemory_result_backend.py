@@ -1,5 +1,6 @@
 import asyncio
 from asyncio import Event
+from collections import OrderedDict
 
 from taskiq import TaskiqResult
 from taskiq.brokers.inmemory_broker import InmemoryResultBackend
@@ -8,7 +9,7 @@ from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 class FasterInmemoryResultBackend(InmemoryResultBackend):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._events: dict[str, Event] = {}
+        self._events: OrderedDict[str, Event] = OrderedDict()
 
     async def set_result(self, task_id: str, result: TaskiqResult) -> None:
         await super().set_result(task_id, result)
@@ -27,7 +28,8 @@ class FasterInmemoryResultBackend(InmemoryResultBackend):
             return True
 
         if task_id not in self._events:
-            # TODO: remove old Event objects from self._events?
+            while self.max_stored_results != -1 and len(self._events) >= self.max_stored_results:
+                self._events.popitem(last=False)
             self._events[task_id] = Event()
 
         try:

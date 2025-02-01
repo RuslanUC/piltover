@@ -32,7 +32,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import TLObject, RpcError
 from piltover.tl.core_types import RpcResult
-from piltover.utils import Keys
+from piltover.utils import Keys, get_public_key_fingerprint
 
 HandlerResult = Awaitable[TLObject | None]
 HandlerFunc = (Callable[[], HandlerResult] |
@@ -42,13 +42,13 @@ HandlerFunc = (Callable[[], HandlerResult] |
 
 
 class RequestHandler:
-    __slots__ = ("func", "flags", "has_client_arg", "has_request_arg", "has_user_arg",)
+    __slots__ = ("func", "flags", "has_worker_arg", "has_request_arg", "has_user_arg",)
 
     def __init__(self, func: HandlerFunc, flags: int):
         self.func = func
         self.flags = flags
         func_args = set(getfullargspec(func).args)
-        self.has_client_arg = "client" in func_args
+        self.has_worker_arg = "worker" in func_args
         self.has_request_arg = "request" in func_args
         self.has_user_arg = "user" in func_args
 
@@ -60,6 +60,7 @@ class RequestHandler:
 
     async def __call__(self, request: TLObject, user: User | None) -> Any:
         kwargs = {}
+        if self.has_worker_arg: kwargs["worker"] = request
         if self.has_request_arg: kwargs["request"] = request
         if self.has_user_arg: kwargs["user"] = user
 
@@ -104,6 +105,8 @@ class Worker(MessageHandler):
         super().__init__()
 
         self.server_keys = server_keys
+        self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
+
         if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
             logger.info("Worker is initializing with InMemoryBroker")
             self.broker = InMemoryBroker().with_result_backend(FasterInmemoryResultBackend())
@@ -113,7 +116,7 @@ class Worker(MessageHandler):
             self.broker = AioPikaBroker(rabbitmq_address, result_backend=RedisAsyncResultBackend(redis_address))
             self.message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
 
-        self.broker.register_task(self._handle_tl_rpc_measure_time, "handle_tl_rpc")
+        self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
         self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
         self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
 

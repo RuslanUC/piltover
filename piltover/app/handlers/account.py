@@ -287,7 +287,7 @@ async def get_auto_download_settings():
 @handler.on_request(SaveAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def save_auto_download_settings() -> bool:
     """
-    TODO: Seems like this function is doing nothing on official Telegram server??
+    It seems like this function is doing nothing on official Telegram server??
     Code used to test it:
 
     settings_before = app.invoke(GetAutoDownloadSettings())

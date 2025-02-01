@@ -30,7 +30,7 @@ class Dialog(Model):
                 dialog__peer__owner__id=self.peer.user_id, dialog__peer__user__id=self.peer.owner_id
             )
             out_read_max_id = out_read_state.last_message_id if out_read_state is not None else 0
-        elif self.peer.type is PeerType.CHAT:  # TODO: test this
+        elif self.peer.type is PeerType.CHAT:
             out_read_state = await models.ReadState.filter(
                 dialog__peer__chat__id=self.peer.chat_id, dialog__id__not=self.id
             ).order_by("-last_message_id").first()
