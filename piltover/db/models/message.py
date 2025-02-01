@@ -89,6 +89,7 @@ class Message(Model):
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
     extra_info: bytes | None = fields.BinaryField(null=True, default=None)
     version: int = fields.IntField(default=0)
+    media_group_id: int = fields.BigIntField(null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -158,17 +159,7 @@ class Message(Model):
         if not isinstance(self.media, (models.MessageMedia, NoneType)):
             await self.fetch_related("media", "media__file")
         if self.media is not None:
-            tl_media = MessageMediaUnsupported()
-            if self.media.type == MediaType.DOCUMENT:
-                tl_media = MessageMediaDocument(
-                    spoiler=self.media.spoiler,
-                    document=await self.media.file.to_tl_document(current_user),
-                )
-            elif self.media.type == MediaType.PHOTO:
-                tl_media = MessageMediaPhoto(
-                    spoiler=self.media.spoiler,
-                    photo=await self.media.file.to_tl_photo(current_user),
-                )
+            tl_media = await self.media.to_tl(current_user)
 
         if self.fwd_header is not None:
             self.fwd_header = await self.fwd_header
@@ -191,6 +182,7 @@ class Message(Model):
             fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
             from_id=from_id,
             entities=entities,
+            grouped_id=self.media_group_id,
             **base_defaults,
             **regular_defaults,
         )

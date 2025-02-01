@@ -11,7 +11,8 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
-    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148
+    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
+    UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148
 from piltover.tl.types.messages import AffectedMessages
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -76,10 +77,12 @@ async def send_message_internal(
     return upd
 
 
-def _resolve_reply_id(request: SendMessage_148 | SendMessage | SendMedia_148 | SendMedia) -> int | None:
-    if isinstance(request, (SendMessage, SendMedia)) and request.reply_to is not None:
+def _resolve_reply_id(
+        request: SendMessage_148 | SendMessage | SendMedia_148 | SendMedia | SendMultiMedia_148 | SendMultiMedia,
+) -> int | None:
+    if isinstance(request, (SendMessage, SendMedia, SendMultiMedia)) and request.reply_to is not None:
         return request.reply_to.reply_to_msg_id
-    elif isinstance(request, (SendMessage_148, SendMedia_148)) and request.reply_to_msg_id is not None:
+    elif isinstance(request, (SendMessage_148, SendMedia_148, SendMultiMedia_148)) and request.reply_to_msg_id is not None:
         return request.reply_to_msg_id
 
 
@@ -312,6 +315,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
         peer=from_peer, id__in=request.id[:100], type=MessageType.REGULAR
     ).order_by("id").select_related("author", "media")
     reply_ids = {}
+    # TODO: preserve media groups
 
     if not messages:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
@@ -354,5 +358,75 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     return upd
 
 
+@handler.on_request(UploadMedia_136)
+@handler.on_request(UploadMedia)
+async def send_media(request: UploadMedia | UploadMedia_136, user: User):
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+
+    if peer.blocked:
+        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+
+    media = await _process_media(user, request.media)
+    return await media.to_tl(user)
+
+
+@handler.on_request(SendMultiMedia_148)
+@handler.on_request(SendMultiMedia)
+async def send_media(request: SendMultiMedia | SendMultiMedia_148, user: User):
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+
+    if peer.blocked:
+        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+    if not request.multi_media:
+        raise ErrorRpc(error_code=400, error_message="MEDIA_EMPTY")
+    if len(request.multi_media) > 10:
+        raise ErrorRpc(error_code=400, error_message="MULTI_MEDIA_TOO_LONG")
+
+    reply_to_message_id = _resolve_reply_id(request)
+    if reply_to_message_id and not await Message.filter(id=reply_to_message_id, peer=peer).exists():
+        raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
+
+    messages: list[tuple[str, int, MessageMedia, list[dict] | None]] = []
+    for single_media in request.multi_media:
+        if len(single_media.message) > 2000:
+            raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
+        if not single_media.random_id:
+            raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
+
+        if not isinstance(single_media.media, (InputMediaPhoto, InputMediaDocument)):
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+
+        media_id = single_media.media.id
+        media = await MessageMedia.get_or_none(
+            file__id=media_id.id, file__fileaccesss__user=user, file__fileaccesss__access_hash=media_id.access_hash,
+            file__fileaccesss__file_reference=media_id.file_reference, file__fileaccesss__expires__gt=datetime.now(UTC),
+        )
+
+        messages.append((
+            single_media.message,
+            single_media.random_id,
+            media,
+            validate_message_entities(single_media.message, single_media.entities),
+        ))
+
+    if await Message.filter(peer=peer, random_id__in=[str(random_id) for _, random_id, _, _ in messages]).exists():
+        raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
+
+    group_id = Snowflake.make_id()
+
+    updates = None
+    for message, random_id, media, entities in messages:
+        new_updates = await send_message_internal(
+            user, peer, random_id, reply_to_message_id, request.clear_draft,
+            author=user, message=message, media=media, entities=entities, media_group_id=group_id,
+        )
+        if updates is None:
+            updates = new_updates
+            continue
+
+        updates.updates.extend(new_updates.updates)
+
+    return updates
+
+
 # TODO: DeleteHistory
-# TODO: SendMultiMedia

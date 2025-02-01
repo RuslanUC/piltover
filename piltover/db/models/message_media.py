@@ -7,6 +7,7 @@ from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import MediaType
+from piltover.tl import MessageMediaUnsupported, MessageMediaPhoto, MessageMediaDocument
 
 
 def gen_access_hash() -> int:
@@ -26,3 +27,19 @@ class MessageMedia(Model):
     spoiler: bool = fields.BooleanField(default=False)
     type: MediaType = fields.IntEnumField(MediaType, default=MediaType.DOCUMENT)
     file: models.File = fields.ForeignKeyField("models.File", on_delete=fields.CASCADE)
+
+    async def to_tl(self, user: models.User) -> MessageMediaUnsupported | MessageMediaPhoto | MessageMediaDocument:
+        self.file = await self.file
+
+        if self.type == MediaType.DOCUMENT:
+            return MessageMediaDocument(
+                spoiler=self.spoiler,
+                document=await self.file.to_tl_document(user),
+            )
+        elif self.type == MediaType.PHOTO:
+            return MessageMediaPhoto(
+                spoiler=self.spoiler,
+                photo=await self.file.to_tl_photo(user),
+            )
+
+        return MessageMediaUnsupported()

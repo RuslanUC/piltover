@@ -3,6 +3,7 @@ from io import BytesIO
 
 import pytest
 from pyrogram.enums import MessageEntityType
+from pyrogram.types import InputMediaDocument
 
 from piltover.db.models import Message, FileAccess
 from tests.conftest import TestClient
@@ -255,3 +256,27 @@ async def test_internal_message_cache_media_renew() -> None:
         assert messages[0].id == message.id
         await file_access.refresh_from_db()
         assert access_expires_at == file_access.expires
+
+
+@pytest.mark.asyncio
+async def test_send_media_group_to_self() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        media: list[InputMediaDocument] = []
+        for i in range(3):
+            file = BytesIO(f"test document {i}".encode("utf8"))
+            setattr(file, "name", f"test{i}.txt")
+            media.append(InputMediaDocument(file))
+
+        media[2].caption = "some caption"
+        messages = await client.send_media_group("me", media)
+
+        assert len(messages) == 3
+
+        group_id = messages[0].media_group_id
+        assert group_id
+
+        for i, message in enumerate(messages):
+            downloaded = await message.download(in_memory=True)
+            assert downloaded.getvalue() == f"test document {i}".encode("utf8")
+            assert message.caption == ("some caption" if i == 2 else None)
+            assert message.media_group_id == group_id
