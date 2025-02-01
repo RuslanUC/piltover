@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction --all-extras
 
+      - name: Generate tl
+        run: poetry run python tools/tl_gen.py
+
       - name: Run tests
         run: |
           poetry run pytest -s --disable-warnings --cov-append --cov-report=xml --cov=piltover/app --cov=piltover/db --cov=piltover/layer_converter --cov=piltover/utils --cov=piltover/*.py tests
