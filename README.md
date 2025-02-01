@@ -15,7 +15,8 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] Add caching of some tl objects (e.g. piltover.tl.types.User, piltover.tl.types.Chat, piltover.tl.types.Message, etc.) based on versions (i think maybe add `version` field to db models and cache to_tl method results to key `[current_user_id]:[to_tl_user_id]:[version]` or something like that)
 - [x] Add proper privacy rules handling
 - [ ] Channels
-- [ ] Figure out why testing with pyrogram is so slow (maybe because real sockets are used?)
+- [ ] Refactor messages sending and processing (so channels can be added easily)
+- [ ] Scheduled messages
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
@@ -35,7 +36,7 @@ sandbox that doesn't ratelimit their bots.
 
 Right now, project **may** (although not recommended) be used for basic features like messages/media sending.
 More complex features such as group chats, profile photos, etc. may work with errors.
-**Keep in mind that privacy settings almost don't exist so any user can be texted by anyone, added to any group by anyone, etc.**
+**Keep in mind that privacy settings may work incorrectly so any user can be texted by anyone, added to any group by anyone, etc.**
 
 ## Setup
 
