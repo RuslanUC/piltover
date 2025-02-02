@@ -4,8 +4,8 @@ from datetime import datetime, UTC
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
 from piltover.db.enums import MediaType, MessageType, PeerType
-from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, FileAccess, File, \
-    Presence, UploadingFile, SavedDialog
+from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
+    SavedDialog
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
@@ -230,16 +230,15 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
         file = await uploaded_file.finalize_upload(mime, attributes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument)):
-        file_access = await FileAccess.get_or_none(
-            user=user, file__id=media.id.id, access_hash=media.id.access_hash, file_reference=media.id.file_reference,
-            expires__gt=datetime.now(UTC)
-        ).select_related("file")
-        if file_access is None \
-                or (not file_access.file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \
-                or (file_access.file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
+        file = await File.get_or_none(
+            id=media.id.id, fileaccesss__user=user, fileaccesss__access_hash=media.id.access_hash,
+            fileaccesss__file_reference=media.id.file_reference, fileaccesss__expires__gt=datetime.now(UTC),
+        )
+        if file is None \
+                or (not file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \
+                or (file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
-        file = file_access.file
         media_type = MediaType.PHOTO if isinstance(media, InputMediaPhoto) else MediaType.DOCUMENT
 
     if isinstance(media, InputMediaUploadedPhoto):
