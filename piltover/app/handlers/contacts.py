@@ -83,7 +83,7 @@ async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice
 
 
 @handler.on_request(Search, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def contacts_search():
+async def contacts_search():  # pragma: no cover
     return Found(
         my_results=[],
         results=[],
@@ -93,7 +93,7 @@ async def contacts_search():
 
 
 @handler.on_request(GetTopPeers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_top_peers():
+async def get_top_peers():  # pragma: no cover
     return TopPeers(
         categories=[],
         chats=[],
@@ -102,7 +102,7 @@ async def get_top_peers():
 
 
 @handler.on_request(GetStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_statuses():
+async def get_statuses():  # pragma: no cover
     return []
 
 

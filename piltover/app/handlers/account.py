@@ -94,7 +94,7 @@ async def register_device(request: RegisterDevice, user: User) -> bool:
 
 
 @handler.on_request(GetContactSignUpNotification)
-async def get_contact_sign_up_notification() -> bool:
+async def get_contact_sign_up_notification() -> bool:  # pragma: no cover
     return True
 
 
@@ -178,17 +178,17 @@ async def set_privacy(request: SetPrivacy, user: User):
 
 
 @handler.on_request(GetThemes, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_themes():
+async def get_themes():  # pragma: no cover
     return Themes(hash=0, themes=[])
 
 
 @handler.on_request(GetGlobalPrivacySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_global_privacy_settings():
+async def get_global_privacy_settings():  # pragma: no cover
     return GlobalPrivacySettings(archive_and_mute_new_noncontact_peers=True)
 
 
 @handler.on_request(GetContentSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_content_settings():
+async def get_content_settings():  # pragma: no cover
     return ContentSettings(
         sensitive_enabled=True,
         sensitive_can_change=True,
@@ -228,7 +228,7 @@ async def update_profile(request: UpdateProfile, user: User):
 
 
 @handler.on_request(GetNotifySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_notify_settings():
+async def get_notify_settings():  # pragma: no cover
     return PeerNotifySettings(
         show_previews=True,
         silent=False,
@@ -236,17 +236,17 @@ async def get_notify_settings():
 
 
 @handler.on_request(GetDefaultEmojiStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_default_emoji_statuses():
+async def get_default_emoji_statuses():  # pragma: no cover
     return EmojiStatuses(hash=0, statuses=[])
 
 
 @handler.on_request(GetSavedRingtones, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_saved_ringtones(request: GetSavedRingtones):
+async def get_saved_ringtones(request: GetSavedRingtones):  # pragma: no cover
     return SavedRingtones(hash=request.hash, ringtones=[])
 
 
 @handler.on_request(GetAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_auto_download_settings():
+async def get_auto_download_settings():  # pragma: no cover
     return AccAutoDownloadSettings(
         low=AutoDownloadSettings(
             disabled=False,
@@ -285,7 +285,7 @@ async def get_auto_download_settings():
 
 
 @handler.on_request(SaveAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def save_auto_download_settings() -> bool:
+async def save_auto_download_settings() -> bool:  # pragma: no cover
     """
     It seems like this function is doing nothing on official Telegram server??
     Code used to test it:
@@ -311,12 +311,12 @@ async def save_auto_download_settings() -> bool:
 
 
 @handler.on_request(GetDefaultProfilePhotoEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_default_profile_photo_emojis(request: GetDefaultProfilePhotoEmojis) -> EmojiList:
+async def get_default_profile_photo_emojis(request: GetDefaultProfilePhotoEmojis) -> EmojiList:  # pragma: no cover
     return EmojiList(hash=request.hash, document_id=[])
 
 
 @handler.on_request(GetWebAuthorizations)
-async def get_web_authorizations(user: User) -> WebAuthorizations:
+async def get_web_authorizations(user: User) -> WebAuthorizations:  # pragma: no cover
     return WebAuthorizations(authorizations=[], users=[await user.to_tl(user)])
 
 

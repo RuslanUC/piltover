@@ -10,7 +10,7 @@ handler = MessageHandler("stories")
 
 
 @handler.on_request(GetAllStories, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_all_stories():
+async def get_all_stories():  # pragma: no cover
     return AllStories(
         has_more=False,
         count=0,
@@ -26,10 +26,10 @@ async def get_all_stories():
 
 
 @handler.on_request(GetAllReadPeerStories, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_all_read_peer_stories():
+async def get_all_read_peer_stories():  # pragma: no cover
     return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
 
 
 @handler.on_request(GetPeerMaxIDs, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_peer_max_ids() -> list[int]:
-    return Vector(value_type=Int)
+async def get_peer_max_ids() -> list[int]:  # pragma: no cover
+    return []

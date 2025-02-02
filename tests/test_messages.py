@@ -115,16 +115,16 @@ async def test_send_text_message_in_group() -> None:
 
 @pytest.mark.asyncio
 async def test_send_text_message_in_pm() -> None:
-    async with TestClient(phone_number="123456789") as client, TestClient(phone_number="1234567890") as client2:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
         await client2.set_username("client2_username")
 
-        messages = [msg async for msg in client.get_chat_history("client2_username")]
+        messages = [msg async for msg in client1.get_chat_history("client2_username")]
         assert len(messages) == 0
 
-        message = await client.send_message("client2_username", text="test 123456")
+        message = await client1.send_message("client2_username", text="test 123456")
         assert message.text == "test 123456"
 
-        messages = [msg async for msg in client.get_chat_history("client2_username")]
+        messages = [msg async for msg in client1.get_chat_history("client2_username")]
         assert len(messages) == 1
 
         assert messages[0].id == message.id
@@ -280,3 +280,14 @@ async def test_send_media_group_to_self() -> None:
             assert downloaded.getvalue() == f"test document {i}".encode("utf8")
             assert message.caption == ("some caption" if i == 2 else None)
             assert message.media_group_id == group_id
+
+
+@pytest.mark.asyncio
+async def test_reply_to_message_in_chat_with_self() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        message = await client.send_message("me", text="test 123")
+        assert message.text == "test 123"
+        rep_message = await message.reply("test reply", quote=True)
+        assert rep_message is not None
+        assert rep_message.text == "test reply"
+        assert rep_message.reply_to_message_id == message.id

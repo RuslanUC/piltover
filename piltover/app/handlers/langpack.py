@@ -7,7 +7,7 @@ handler = MessageHandler("langpack")
 
 
 @handler.on_request(GetLanguages, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_languages():
+async def get_languages():  # pragma: no cover
     return [LangPackLanguage(
         name="Gramz",
         native_name="Le Gramz",
@@ -20,12 +20,12 @@ async def get_languages():
 
 
 @handler.on_request(GetLanguages_72, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_languages_72():
+async def get_languages_72():  # pragma: no cover
     return [LangPackLanguage_72(name="Gramz", native_name="Le Gramz", lang_code="grz")]
 
 
 @handler.on_request(GetLangPack, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_lang_pack():
+async def get_lang_pack():  # pragma: no cover
     return LangPackDifference(
         lang_code="US",
         from_version=1,
@@ -35,7 +35,7 @@ async def get_lang_pack():
 
 
 @handler.on_request(GetStrings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_strings(request: GetStrings):
+async def get_strings(request: GetStrings):  # pragma: no cover
     return [
         LangPackString(key=key, value=key.upper()) for key in request.keys
     ]

@@ -56,7 +56,7 @@ async def get_config():
 
 
 @handler.on_request(GetNearestDc, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_nearest_dc():
+async def get_nearest_dc():  # pragma: no cover
     return NearestDc(
         country="US",
         this_dc=2,
@@ -65,7 +65,7 @@ async def get_nearest_dc():
 
 
 @handler.on_request(GetAppConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_app_config():
+async def get_app_config():  # pragma: no cover
     return AppConfig(hash=1, config=JsonObject(value=[]))
 
 
@@ -96,17 +96,17 @@ async def get_countries_list(request: GetCountriesList) -> CountriesList | Count
 
 
 @handler.on_request(GetTermsOfServiceUpdate, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_terms_of_service_update():
+async def get_terms_of_service_update():  # pragma: no cover
     return TermsOfServiceUpdateEmpty(expires=int(time() + 9000))
 
 
 @handler.on_request(GetPromoData, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_promo_data():
+async def get_promo_data():  # pragma: no cover
     return PromoDataEmpty(expires=int(time() + 9000))
 
 
 @handler.on_request(GetPremiumPromo, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_premium_promo():
+async def get_premium_promo():  # pragma: no cover
     return PremiumPromo(
         status_text="Premium Lol",
         status_entities=[],
@@ -125,18 +125,18 @@ async def get_premium_promo():
 
 
 @handler.on_request(SaveAppLog, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def save_app_log():
+async def save_app_log():  # pragma: no cover
     return True
 
 
 @handler.on_request(GetInviteText, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_invite_text():
+async def get_invite_text():  # pragma: no cover
     return InviteText(message="🐳")
 
 
 @handler.on_request(GetPeerColors, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 @handler.on_request(GetPeerProfileColors, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_peer_colors():
+async def get_peer_colors():  # pragma: no cover
     return PeerColors(
         hash=1,
         colors=[

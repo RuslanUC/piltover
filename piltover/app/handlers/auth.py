@@ -203,7 +203,7 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
 
 
 @handler.on_request(ExportLoginToken, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def export_login_token():
+async def export_login_token():  # pragma: no cover
     return LoginToken(expires=1000, token=b"levlam")
 
 

@@ -19,7 +19,7 @@ async def get_state_internal(user: User) -> TLState:
     ctx = request_ctx.get()
     state = await State.get_or_none(user=user)
     auth = await UserAuthorization.get_or_none(key=await get_perm_key(ctx.auth_key_id))
-    if auth is None:
+    if auth is None:  # pragma: no cover
         logger.warning(
             f"Somehow auth is None for key {ctx.auth_key_id}, but it is in get_state_internal, "
             f"where authorization must exist ???"
