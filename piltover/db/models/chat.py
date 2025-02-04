@@ -7,7 +7,7 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.tl import ChatPhoto, ChatForbidden
-from piltover.tl.types import Chat as TLChat, ChatPhotoEmpty, ChatBannedRights
+from piltover.tl.types import Chat as TLChat, ChatPhotoEmpty, ChatBannedRights, ChatAdminRights
 
 DEFAULT_BANNED_RIGHTS = ChatBannedRights(
     view_messages=False,
@@ -32,6 +32,23 @@ DEFAULT_BANNED_RIGHTS = ChatBannedRights(
     send_plain=False,
     until_date=2147483647,
 )
+DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
+    change_info=True,
+    post_messages=True,
+    edit_messages=True,
+    delete_messages=True,
+    ban_users=True,
+    invite_users=True,
+    pin_messages=True,
+    add_admins=True,
+    anonymous=True,
+    manage_call=True,
+    other=False,
+    manage_topics=True,
+    post_stories=True,
+    edit_stories=True,
+    delete_stories=True,
+)
 
 
 class Chat(Model):
@@ -40,7 +57,7 @@ class Chat(Model):
     description: str = fields.CharField(max_length=255, default="")
     version: int = fields.BigIntField(default=1)
     creator: models.User = fields.ForeignKeyField("models.User")
-    photo: models.File = fields.ForeignKeyField("models.File", on_delete=fields.SET_NULL, null=True, default=None)
+    photo: models.File | None = fields.ForeignKeyField("models.File", on_delete=fields.SET_NULL, null=True, default=None)
 
     creator_id: int
     photo_id: int
@@ -70,6 +87,6 @@ class Chat(Model):
             date=int(time()),  # ??
             version=self.version,
             migrated_to=None,
-            admin_rights=None,
+            admin_rights=DEFAULT_ADMIN_RIGHTS,
             default_banned_rights=DEFAULT_BANNED_RIGHTS,
         )

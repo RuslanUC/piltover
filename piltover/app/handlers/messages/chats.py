@@ -1,15 +1,21 @@
+from datetime import datetime, UTC
+
+from tortoise.expressions import Q
+
 from piltover.app.handlers.messages.sending import send_message_internal, create_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule
+from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, ChatInvite
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
-    ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, \
-    InputPeerUser, SerializationUtils, Vector, Long
+    ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
+    SerializationUtils, Vector, Long, InputUserSelf
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
-    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136, EditChatAdmin
-from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
+    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136, EditChatAdmin, GetExportedChatInvites, \
+    GetAdminsWithInvites, GetChatInviteImporters
+from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull, ExportedChatInvites, \
+    ChatAdminsWithInvites, ChatInviteImporters
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.chats")
@@ -305,3 +311,73 @@ async def edit_chat_admin(request: EditChatAdmin, user: User):
     await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
 
     return True
+
+
+@handler.on_request(GetExportedChatInvites)
+async def get_exported_chat_invites(request: GetExportedChatInvites, user: User) -> ExportedChatInvites:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    query = Q(chat=peer.chat)
+    if isinstance(request.admin_id, (InputUser, InputUserSelf)):  # TODO: ??
+        admin_peer = await Peer.from_input_peer_raise(user, request.admin_id, "ADMIN_ID_INVALID")
+        query &= Q(user=admin_peer.peer_user(user))
+
+    if request.offset_date:
+        query &= Q(updated_at__lt=datetime.fromtimestamp(request.offset_date, UTC))
+
+    limit = max(min(100, request.limit), 1)
+    invites = []
+    users = {}
+    for chat_invite in await ChatInvite.filter(query).order_by("revoked", "-updated_at").limit(limit):
+        invites.append(chat_invite.to_tl())
+        await chat_invite.tl_users_chats(user, users)
+
+    return ExportedChatInvites(
+        count=len(invites),
+        invites=invites,
+        users=list(users.values()),
+    )
+
+
+@handler.on_request(GetAdminsWithInvites)
+async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> ChatAdminsWithInvites:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    # TODO: get admins with invites
+
+    return ChatAdminsWithInvites(
+        admins=[],
+        users=[],
+    )
+
+
+@handler.on_request(GetChatInviteImporters)
+async def get_chat_invite_importers(request: GetChatInviteImporters, user: User) -> ChatInviteImporters:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    # TODO: get users who joined chat with provided invite
+
+    return ChatInviteImporters(
+        count=0,
+        importers=[],
+        users=[],
+    )
+

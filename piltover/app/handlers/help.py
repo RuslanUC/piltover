@@ -28,7 +28,7 @@ async def get_config():
         ],
         dc_txt_domain_name="_",
         chat_size_max=10,  # Telegram default is 200
-        megagroup_size_max=200000,  # Telegram default is 200000
+        megagroup_size_max=200_000,  # Telegram default is 200000
         forwarded_count_max=100,  # Telegram default is 100
         online_update_period_ms=30_000,  # Telegram default is 210000
         offline_blur_timeout_ms=30_000,  # Telegram default is 5000
