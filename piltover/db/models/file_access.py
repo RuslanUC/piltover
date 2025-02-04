@@ -29,13 +29,18 @@ class FileAccess(Model):
     file: models.File = fields.ForeignKeyField("models.File", on_delete=fields.CASCADE)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
+    class Meta:
+        unique_together = (
+            ("file", "user",),
+        )
+
     def is_expired(self) -> bool:
         return self.expires.replace(tzinfo=UTC) < datetime.now().replace(tzinfo=UTC)
 
     @classmethod
     async def get_or_renew(cls, user: models.User, file: models.File, real_renew: bool = False) -> FileAccess:
-        access, _ = await models.FileAccess.get_or_create(file=file, user=user)
-        if access.is_expired():
+        access, created = await models.FileAccess.get_or_create(file=file, user=user)
+        if not created and access.is_expired():
             if real_renew:
                 access.expires = gen_expires()
                 await access.save(update_fields=["expires"])

@@ -3,6 +3,9 @@ from io import BytesIO
 
 import pytest
 from pyrogram.enums import MessageEntityType
+from pyrogram.raw.functions.messages import GetHistory
+from pyrogram.raw.types import InputPeerSelf
+from pyrogram.raw.types.messages import Messages
 from pyrogram.types import InputMediaDocument
 
 from piltover.db.models import Message, FileAccess
@@ -291,3 +294,39 @@ async def test_reply_to_message_in_chat_with_self() -> None:
         assert rep_message is not None
         assert rep_message.text == "test reply"
         assert rep_message.reply_to_message_id == message.id
+
+
+@pytest.mark.asyncio
+async def test_gethistory_offsets() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        for i in range(30):
+            message = await client.send_message("me", text=f"test {i}")
+            assert message.id == i + 1
+            
+        request = GetHistory(
+            peer=InputPeerSelf(), offset_date=0, max_id=0, min_id=0, hash=0, limit=100, offset_id=0, add_offset=0,
+        )
+
+        messages: Messages = await client.invoke(request)
+        assert len(messages.messages) == 30
+        assert {message.id for message in messages.messages} == set(range(1, 31))
+
+        request.offset_id = 25
+        request.limit = 10
+        messages: Messages = await client.invoke(request)
+        assert len(messages.messages) == 10
+        assert {message.id for message in messages.messages} == set(range(15, 24 + 1))
+
+        request.offset_id = 25
+        request.limit = 10
+        request.add_offset = 5
+        messages: Messages = await client.invoke(request)
+        assert len(messages.messages) == 10
+        assert {message.id for message in messages.messages} == set(range(10, 19 + 1))
+
+        request.offset_id = 25
+        request.limit = 10
+        request.add_offset = -5
+        messages: Messages = await client.invoke(request)
+        assert len(messages.messages) == 10
+        assert {message.id for message in messages.messages} == set(range(20, 29 + 1))

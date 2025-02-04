@@ -23,7 +23,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.history")
 
 
-def _get_messages_query(
+async def _get_messages_query(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: TLObject | None = None, saved_peer: Peer | None = None,
@@ -47,9 +47,6 @@ def _get_messages_query(
         query &= Q(id__lte=max_id)
     if min_id:
         query &= Q(id__gte=min_id)
-
-    if offset_id:
-        query &= Q(id__lt=offset_id)
 
     if isinstance(peer, Peer) and peer.type is PeerType.SELF and saved_peer is not None:
         query &= Q(fwd_header__saved_peer=saved_peer)
@@ -76,17 +73,75 @@ def _get_messages_query(
         query = Q(id=0)
 
     limit = max(min(100, limit), 1)
-    return Message.filter(query).limit(limit).offset(add_offset).order_by("-date")\
-        .select_related("author", "peer", "peer__user")
+    select_related = "author", "peer", "peer__user"
+
+    # TODO: check whether add_offset can be provided without offset_id?
+    add_offset = int.from_bytes(add_offset.to_bytes(4, "little", signed=False), "little", signed=True)
+    if not offset_id or add_offset >= 0:
+        if offset_id:
+            query &= Q(id__lt=offset_id)
+
+        return Message.filter(query).limit(limit).offset(add_offset).order_by("-date").select_related(*select_related)
+
+    """
+    (based in https://core.telegram.org/api/offsets)
+    Some things like negative offsets, etc. confusing me a little bit, so here's how i understood them: 
+    
+    Messages with following ids are in database:
+    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+    
+    Client has messages 15-30, makes request: GetHistory(offset_id=15, limit=15),
+      then we need to fetch following messages (from newest to oldest, right to left here):
+    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+    ^------------------------------^
+    (to here)            (from here)
+    
+    If client makes request like GetHistory(offset_id=25, limit=10),
+      then we need to fetch like this:
+    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+                                     ^---------------------------^
+                                     (to here)         (from here)
+                      
+    If client makes request like GetHistory(offset_id=25, limit=10, add_offset=5),
+      then we need to fetch like this (since we are ordering by date DESC, we just add add_offset as sql offset):
+    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+                      ^---------------------------^
+                      (to here)         (from here)
+                      
+    If client makes request like GetHistory(offset_id=25, limit=10, add_offset=-5),
+      then we need to fetch like this (we need to fetch 5 (limit - abs(add_offset)?) messages before offset_id 
+      and 5 messages after (and including) offset_id):
+    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+                                                    ^---------------------------^
+                                                    (to here)         (from here)
+    Since sql can't do negative offsets, we need to fetch -add_offset messages after (and including) 
+      offset_id (ordering by date ASC), then fetch (limit - (-[number of messages fetched in first query])) 
+      message before offset_id (date DESC)
+    """
+
+    after_offset_limit = min(abs(add_offset), limit)
+    message_ids_after_offset = await Message.filter(query & Q(id__gte=offset_id)).limit(after_offset_limit).order_by("date").values_list("id", flat=True)
+
+    if len(message_ids_after_offset) >= limit:
+        return Message.filter(id__in=message_ids_after_offset).order_by("-date").select_related(*select_related)
+
+    limit -= len(message_ids_after_offset)
+
+    query &= Q(id__lt=offset_id)
+    message_ids_before_offset = await Message.filter(query).limit(limit).order_by("-date").values_list("id", flat=True)
+
+    final_query = Q(id__in=message_ids_before_offset) | Q(id__in=message_ids_after_offset)
+    return Message.filter(final_query).order_by("-date").select_related(*select_related)
 
 async def get_messages_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: TLObject | None = None, saved_peer: Peer | None = None,
 ) -> list[Message]:
-    return await _get_messages_query(
+    query = await _get_messages_query(
         peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_, saved_peer,
     )
+    return await query
 
 
 async def format_messages_internal(
@@ -232,7 +287,7 @@ async def get_search_counters(request: GetSearchCounters, user: User):
     return [
         SearchCounter(
             filter=filt,
-            count=await _get_messages_query(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer).count(),
+            count=await (await _get_messages_query(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer)).count(),
         ) for filt in request.filters
     ]
 
