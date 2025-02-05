@@ -139,3 +139,21 @@ async def test_delete_revoked_exported_chat_invites() -> None:
         assert await client.get_chat_admin_invite_links_count(group.id, "me", False) == 1
         assert await client.get_chat_admin_invite_links_count(group.id, "me", True) == 0
 
+
+@pytest.mark.asyncio
+async def test_get_chat_importers() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        group = await client1.create_group("idk", [])
+        invite_link = await group.export_invite_link()
+        assert invite_link.startswith("https://t.me/+")
+
+        assert [imp async for imp in client1.get_chat_invite_link_joiners(group.id, invite_link)] == []
+        assert await client1.get_chat_invite_link_joiners_count(group.id, invite_link) == 0
+
+        await client2.join_chat(invite_link)
+
+        importers = [imp async for imp in client1.get_chat_invite_link_joiners(group.id, invite_link)]
+        assert await client1.get_chat_invite_link_joiners_count(group.id, invite_link) == 1
+        assert len(importers) == 1
+        assert importers[0].user.id == client2.me.id
+        assert not importers[0].pending

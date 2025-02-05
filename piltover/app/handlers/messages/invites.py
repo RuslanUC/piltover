@@ -9,7 +9,7 @@ from piltover.db.enums import PeerType, MessageType
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserSelf, Updates, Long, ChatInviteAlready, ChatInvite as TLChatInvite, \
-    ChatInviteExported
+    ChatInviteExported, ChatInviteImporter
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites
 from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters, \
@@ -104,12 +104,42 @@ async def get_chat_invite_importers(request: GetChatInviteImporters, user: User)
     if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    # TODO: get users who joined chat with provided invite
+    if request.requested:
+        # TODO: request.requested
+        return ChatInviteImporters(
+            count=0,
+            importers=[],
+            users=[],
+        )
+
+    query = Q(chat=peer.chat)
+    if request.offset_date:
+        query &= Q(invited_at__lt=datetime.fromtimestamp(request.offset_date, UTC))
+    if request.link:
+        if (invite_hash := _get_invite_hash_from_link(request.link)) is None:
+            raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
+        invite = await ChatInvite.get_or_none(ChatInvite.query_from_link_hash(invite_hash.strip()) & Q(chat=peer.chat))
+        if invite is None:
+            raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
+        query &= Q(invite=invite)
+
+    limit = max(min(100, request.limit), 1)
+
+    importers = []
+    users = []
+    importer: ChatParticipant
+    async for importer in ChatParticipant.filter(query).order_by("-invited_at").limit(limit).select_related("user"):
+        importers.append(ChatInviteImporter(
+            requested=False,
+            user_id=importer.user.id,
+            date=int(importer.invited_at.timestamp()),
+        ))
+        users.append(await importer.user.to_tl(user))
 
     return ChatInviteImporters(
-        count=0,
-        importers=[],
-        users=[],
+        count=await ChatParticipant.filter(query).count(),
+        importers=importers,
+        users=users,
     )
 
 
@@ -144,10 +174,12 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     invite = await _get_invite_with_some_checks(request.hash)
     if await ChatParticipant.filter(user=user, chat=invite.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
+    if invite.request_needed:  # TODO: create actual invite request
+        raise ErrorRpc(error_code=400, error_message="INVITE_REQUEST_SENT")
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=invite.chat).select_related("owner")}
     chat_peers[user.id] = await Peer.create(owner=user, chat=invite.chat, type=PeerType.CHAT)
-    await ChatParticipant.create(user=user, chat=invite.chat, inviter_id=invite.user_id, )
+    await ChatParticipant.create(user=user, chat=invite.chat, inviter_id=invite.user_id, invite=invite)
 
     updates = await UpdatesManager.create_chat(user, invite.chat, list(chat_peers.values()))
 
