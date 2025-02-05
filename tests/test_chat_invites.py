@@ -1,5 +1,5 @@
 import pytest
-from pyrogram.errors import InviteHashInvalid, UserAlreadyParticipant, PeerIdInvalid
+from pyrogram.errors import InviteHashInvalid, UserAlreadyParticipant, PeerIdInvalid, InviteHashExpired
 from pyrogram.types import Chat, ChatPreview
 
 from tests.conftest import TestClient
@@ -77,3 +77,65 @@ async def test_join_chat_invite() -> None:
         chat2 = await client2.join_chat(invite_link)
         assert chat2.id == group.id
         assert await client2.send_message(chat2.id, "test message")
+
+
+@pytest.mark.asyncio
+async def test_get_exported_chat_invite_info() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        group = await client.create_group("idk", [])
+        invite_link = await group.export_invite_link()
+
+        invite_info = await client.get_chat_invite_link(group.id, invite_link)
+        assert invite_info
+        assert not invite_info.is_revoked
+
+        with pytest.raises(InviteHashExpired):
+            await client.get_chat_invite_link(group.id, invite_link + "A")
+        with pytest.raises(InviteHashExpired):
+            await client.get_chat_invite_link(group.id, "invalid link")
+
+
+@pytest.mark.asyncio
+async def test_get_exported_chat_invites() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        group = await client.create_group("idk", [])
+        await group.export_invite_link()
+
+        active_links = [link async for link in client.get_chat_admin_invite_links(group.id, "me", False)]
+        revoked_links = [link async for link in client.get_chat_admin_invite_links(group.id, "me", True)]
+        assert len(active_links) == 1
+        assert len(revoked_links) == 0
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", False) == 1
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", True) == 0
+
+        await group.export_invite_link()
+        await group.export_invite_link()
+
+        active_links = [link async for link in client.get_chat_admin_invite_links(group.id, "me", False)]
+        revoked_links = [link async for link in client.get_chat_admin_invite_links(group.id, "me", True)]
+        assert len(active_links) == 1
+        assert len(revoked_links) == 2
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", False) == 1
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", True) == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_revoked_exported_chat_invites() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        group = await client.create_group("idk", [])
+        await group.export_invite_link()
+
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", False) == 1
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", True) == 0
+
+        await group.export_invite_link()
+        await group.export_invite_link()
+
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", False) == 1
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", True) == 2
+
+        await client.delete_chat_admin_invite_links(group.id, "me")
+
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", False) == 1
+        assert await client.get_chat_admin_invite_links_count(group.id, "me", True) == 0
+

@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from urllib.parse import urlparse
 
 from tortoise.expressions import Q
 
@@ -10,8 +11,9 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserSelf, Updates, Long, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
-    ImportChatInvite, CheckChatInvite, ExportChatInvite
-from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters
+    ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites
+from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters, \
+    ExportedChatInvite
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.invites")
@@ -43,7 +45,7 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user: User)
         await chat_invite.tl_users_chats(user, users)
 
     return ExportedChatInvites(
-        count=len(invites),
+        count=await ChatInvite.filter(query).count(),
         invites=invites,
         users=list(users.values()),
     )
@@ -68,7 +70,7 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
         request_needed=request.request_needed,
         usage_limit=request.usage_limit if not request.request_needed else None,
         title=request.title,
-        # TODO: request.expire_date
+        expires_at=None if request.expire_date is None else datetime.fromtimestamp(request.expire_date, UTC),
     )
 
     return invite.to_tl()
@@ -120,10 +122,21 @@ async def _get_invite_with_some_checks(invite_hash: str) -> ChatInvite:
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_INVALID")
     if invite.usage_limit is not None and invite.usage > invite.usage_limit:
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
-    if False:  # TODO: add invites expiration
+    if invite.expires_at is not None and datetime.now(UTC) > invite.expires_at:
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
 
     return invite
+
+
+def _get_invite_hash_from_link(invite_link: str) -> str | None:
+    if "t.me/+" in invite_link:
+        return invite_link.rpartition("t.me/+")[2] or None
+    if "t.me/joinchat/" in invite_link:
+        return invite_link.rpartition("t.me/joinchat/")[2] or None
+    if invite_link.startswith("tg://"):
+        url = urlparse(invite_link)
+        query = dict(kv.split("=", maxsplit=1) for kv in url.query.split("&"))
+        return query.get("invite") or None
 
 
 @handler.on_request(ImportChatInvite)
@@ -163,3 +176,52 @@ async def check_chat_invite(request: CheckChatInvite, user: User) -> TLChatInvit
         participants_count=1,  # TODO: fetch members count
         color=1,
     )
+
+
+@handler.on_request(GetExportedChatInvite)
+async def get_exported_chat_invite(request: GetExportedChatInvite, user: User) -> ExportedChatInvite:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    if (invite_hash := _get_invite_hash_from_link(request.link)) is None:
+        raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
+
+    query = (
+            ChatInvite.query_from_link_hash(invite_hash)
+            & Q(chat=peer.chat)
+            & (Q(expires_at__isnull=True) | Q(expires_at__isnull=False, expires_at__gt=datetime.now(UTC)))
+    )
+    invite = await ChatInvite.get_or_none(query)
+    if invite is None:
+        raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
+
+    users, _ = await invite.tl_users_chats(user, {})
+
+    return ExportedChatInvite(
+        invite=invite.to_tl(),
+        users=list(users.values()),
+    )
+
+
+@handler.on_request(DeleteRevokedExportedChatInvites)
+async def delete_revoked_exported_chat_invites(request: DeleteRevokedExportedChatInvites, user: User) -> bool:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    query = Q(chat=peer.chat, revoked=True)
+    if isinstance(request.admin_id, (InputUser, InputUserSelf)):
+        admin_peer = await Peer.from_input_peer_raise(user, request.admin_id, "ADMIN_ID_INVALID")
+        query &= Q(user=admin_peer.peer_user(user))
+
+    await ChatInvite.filter(query).delete()
+    return True

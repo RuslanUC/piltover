@@ -14,7 +14,7 @@ from piltover.tl import ChatInviteExported, Long, User as TLUser, Chat as TLChat
 class ChatInvite(Model):
     id: int = fields.BigIntField(pk=True)
     revoked: bool = fields.BooleanField(default=False)
-    permanent: bool = fields.BooleanField(default=True)  # TODO: replace with nullable datetime `expires_at` field?
+    expires_at: datetime | None = fields.DatetimeField(null=True, default=None)
     request_needed: bool = fields.BooleanField(default=False)
     nonce: str = fields.CharField(max_length=16, default=lambda: urandom(8).hex())
     user: models.User | None = fields.ForeignKeyField("models.User", null=True)
@@ -38,7 +38,7 @@ class ChatInvite(Model):
         except ValueError:
             return Q(id=0)
 
-        if len(link_nonce) < 16:
+        if len(link_nonce) != 16:
             return Q(id=0)
 
         invite_id = Long.read_bytes(link_nonce[:8])
@@ -49,13 +49,13 @@ class ChatInvite(Model):
     def to_tl(self) -> ChatInviteExported:
         return ChatInviteExported(
             revoked=self.revoked,
-            permanent=self.permanent,
+            permanent=self.expires_at is None,
             request_needed=False,
             link=f"https://t.me/+{self.to_link_hash()}",
             admin_id=self.user_id or 0,
             date=int(self.created_at.timestamp()),
             start_date=int(self.updated_at.timestamp()),
-            expire_date=None,
+            expire_date=None if self.expires_at is None else int(self.expires_at.timestamp()),
             usage_limit=self.usage_limit,
             usage=self.usage,
             requested=0,  # TODO: fetch from `InviteRequest` model when it will be added
