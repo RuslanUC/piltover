@@ -353,6 +353,7 @@ class UpdatesManager:
             for participant in await ChatParticipant.filter(chat=chat).select_related("chat")
         ]
         participant_ids = [participant.user_id for participant in participants]
+        users = await User.filter(id__in=participant_ids)
 
         for peer in peers:
             pts = await State.add_pts(peer.owner, 1)
@@ -377,7 +378,7 @@ class UpdatesManager:
                         ),
                     ),
                 ],
-                users=[await user.to_tl(peer.owner)],
+                users=[await user_.to_tl(peer.owner) for user_ in users],
                 chats=[await chat.to_tl(peer.owner)],
                 date=int(time()),
                 seq=0,

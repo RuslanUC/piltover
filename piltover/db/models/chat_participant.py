@@ -19,6 +19,7 @@ class ChatParticipant(Model):
     is_admin: bool = fields.BooleanField(default=False)
     banned_until: datetime = fields.DatetimeField(null=True, default=None)
     banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=0)
+    invite: models.ChatInvite | None = fields.ForeignKeyField("models.ChatInvite", null=True, default=None, on_delete=fields.SET_NULL)
 
     user_id: int
     chat_id: int

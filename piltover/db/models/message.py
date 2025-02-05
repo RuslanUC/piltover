@@ -13,7 +13,8 @@ from piltover.db.enums import MediaType, MessageType, PeerType, PrivacyRuleKeyTy
 from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
     MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, SerializationUtils, Long
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
-    MessageActionChatEditTitle, MessageActionChatEditPhoto, MessageActionChatAddUser, MessageActionChatDeleteUser
+    MessageActionChatEditTitle, MessageActionChatEditPhoto, MessageActionChatAddUser, MessageActionChatDeleteUser, \
+    MessageActionChatJoinedByLink
 from piltover.utils.snowflake import Snowflake
 
 
@@ -67,6 +68,13 @@ async def _service_chat_del_user(message: Message, _: models.User) -> MessageAct
     return MessageActionChatDeleteUser(user_id=Long.read_bytes(message.extra_info))
 
 
+async def _service_chat_user_join_invite(message: Message, _: models.User) -> MessageActionChatJoinedByLink:
+    if not message.extra_info:
+        return MessageActionChatJoinedByLink(inviter_id=0)
+
+    return MessageActionChatJoinedByLink(inviter_id=Long.read_bytes(message.extra_info))
+
+
 MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User], Awaitable[...]]] = {
     MessageType.SERVICE_PIN_MESSAGE: _service_pin_message,
     MessageType.SERVICE_CHAT_CREATE: _service_create_chat,
@@ -74,6 +82,7 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
     MessageType.SERVICE_CHAT_EDIT_PHOTO: _service_edit_chat_photo,
     MessageType.SERVICE_CHAT_USER_ADD: _service_chat_add_user,
     MessageType.SERVICE_CHAT_USER_DEL: _service_chat_del_user,
+    MessageType.SERVICE_CHAT_USER_INVITE_JOIN: _service_chat_user_join_invite,
 }
 
 

@@ -88,6 +88,7 @@ class MessageType(IntEnum):
     SERVICE_CHAT_EDIT_PHOTO = 4
     SERVICE_CHAT_USER_ADD = 5
     SERVICE_CHAT_USER_DEL = 6
+    SERVICE_CHAT_USER_INVITE_JOIN = 7
 
 
 class UserStatus(IntEnum):

@@ -23,18 +23,18 @@ class ChatInvite(Model):
     updated_at: datetime = fields.DatetimeField(auto_now_add=True)
     usage_limit: int | None = fields.IntField(null=True, default=None)
     usage: int = fields.IntField(default=0)
-    title: str | None = fields.CharField(max_length=128)
+    title: str | None = fields.CharField(max_length=128, null=True)
 
     user_id: int | None
     chat_id: int | None
 
-    def to_link_nonce(self) -> str:
-        return urlsafe_b64encode(Long.write(self.id) + bytes.fromhex(self.nonce)).decode("utf8")
+    def to_link_hash(self) -> str:
+        return urlsafe_b64encode(Long.write(self.id) + bytes.fromhex(self.nonce)).decode("utf8").strip("=")
 
     @classmethod
-    def query_from_link_nonce(cls, link_nonce: str) -> Q:
+    def query_from_link_hash(cls, link_nonce: str) -> Q:
         try:
-            link_nonce = urlsafe_b64decode(link_nonce)
+            link_nonce = urlsafe_b64decode(link_nonce + "=" * (-len(link_nonce) % 4))
         except ValueError:
             return Q(id=0)
 
@@ -51,7 +51,7 @@ class ChatInvite(Model):
             revoked=self.revoked,
             permanent=self.permanent,
             request_needed=False,
-            link=f"https://127.0.0.1/+{self.to_link_nonce()}",
+            link=f"https://t.me/+{self.to_link_hash()}",
             admin_id=self.user_id or 0,
             date=int(self.created_at.timestamp()),
             start_date=int(self.updated_at.timestamp()),
