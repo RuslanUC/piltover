@@ -35,7 +35,7 @@ jobs:
         run: |
           poetry run pytest --disable-warnings --cov-append --cov-report=xml --cov=piltover/app --cov=piltover/db --cov=piltover/layer_converter --cov=piltover/utils --cov=piltover/*.py tests
         env:
-          LOGURU_LEVEL=WARNING
+          LOGURU_LEVEL: WARNING
 
       - name: Print coverage report
         run: |
