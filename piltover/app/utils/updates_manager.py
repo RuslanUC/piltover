@@ -18,7 +18,7 @@ from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, Updat
 # TODO: move UpdatesManager to separate worker
 class UpdatesManager:
     @staticmethod
-    async def send_message(user: User, messages: dict[Peer, Message]) -> Updates | UpdateShortSentMessage:
+    async def send_message(user: User, messages: dict[Peer, Message]) -> Updates:
         result = None
 
         for peer, message in messages.items():
@@ -496,8 +496,9 @@ class UpdatesManager:
         ), user.id)
 
     @staticmethod
-    async def update_chat(chat: Chat) -> None:
+    async def update_chat(chat: Chat, user: User | None = None) -> Updates | None:
         updates_to_create = []
+        update_to_return = None
 
         peer: Peer
         async for peer in Peer.filter(chat=chat).select_related("owner"):
@@ -506,15 +507,21 @@ class UpdatesManager:
                 user=peer.owner, update_type=UpdateType.UPDATE_CHAT, pts=pts, related_id=chat.id,
             ))
 
-            await SessionManager.send(Updates(
+            updates = Updates(
                 updates=[UpdateChat(chat_id=chat.id)],
                 users=[],
                 chats=[await chat.to_tl(peer.owner)],
                 date=int(time()),
                 seq=0,
-            ), peer.owner.id)
+            )
+            if user == peer.owner:
+                update_to_return = updates
+
+            await SessionManager.send(updates, peer.owner.id)
 
         await UpdateV2.bulk_create(updates_to_create)
+
+        return update_to_return
 
     @staticmethod
     async def update_dialog_unread_mark(user: User, dialog: Dialog) -> None:

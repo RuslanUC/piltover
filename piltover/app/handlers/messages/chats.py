@@ -8,7 +8,7 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
     SerializationUtils, Vector, Long
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
-    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136, EditChatAdmin
+    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136, EditChatAdmin, ToggleNoForwards
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 from piltover.worker import MessageHandler
 
@@ -283,7 +283,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
 
 
 @handler.on_request(EditChatAdmin)
-async def edit_chat_admin(request: EditChatAdmin, user: User):
+async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
     chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
     user_peer = await Peer.from_input_peer_raise(user, request.user_id)
 
@@ -305,3 +305,24 @@ async def edit_chat_admin(request: EditChatAdmin, user: User):
     await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
 
     return True
+
+
+@handler.on_request(ToggleNoForwards)
+async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    chat = peer.chat
+    if request.enabled == chat.no_forwards:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+    chat.no_forwards = request.enabled
+    chat.version += 1
+    await chat.save(update_fields=["no_forwards", "version"])
+
+    return await UpdatesManager.update_chat(chat)

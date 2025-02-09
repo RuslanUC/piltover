@@ -1,7 +1,7 @@
 from datetime import date
 
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import check_password_internal, get_perm_key, USERNAME_REGEX
+from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus
 from piltover.db.models import User, UserAuthorization, Peer, Presence
@@ -26,15 +26,11 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("account")
 
 
-def validate_username(username: str) -> None:
-    if len(username) not in range(5, 32) or not USERNAME_REGEX.match(username):
-        raise ErrorRpc(error_code=400, error_message="USERNAME_INVALID")
-
-
 @handler.on_request(CheckUsername)
 async def check_username(request: CheckUsername):
     request.username = request.username.lower()
     validate_username(request.username)
+    # TODO: check if username is taken by chat/channel (when chat usernames will be added)
     if await User.filter(username=request.username).exists():
         raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
     return True
@@ -44,6 +40,7 @@ async def check_username(request: CheckUsername):
 async def update_username(request: UpdateUsername, user: User):
     request.username = request.username.lower()
     validate_username(request.username)
+    # TODO: check if username is taken by chat/channel (when chat usernames will be added)
     if (target := await User.get_or_none(username__iexact=request.username)) is not None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
 

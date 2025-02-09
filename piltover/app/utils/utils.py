@@ -205,3 +205,6 @@ def validate_message_entities(text: str, entities: list[MessageEntity]) -> list[
     return result or None
 
 
+def validate_username(username: str) -> None:
+    if len(username) not in range(5, 32) or not USERNAME_REGEX.match(username):
+        raise ErrorRpc(error_code=400, error_message="USERNAME_INVALID")

@@ -58,6 +58,7 @@ class Chat(Model):
     version: int = fields.BigIntField(default=1)
     creator: models.User = fields.ForeignKeyField("models.User")
     photo: models.File | None = fields.ForeignKeyField("models.File", on_delete=fields.SET_NULL, null=True, default=None)
+    no_forwards: bool = fields.BooleanField(default=False)
 
     creator_id: int
     photo_id: int
@@ -86,7 +87,7 @@ class Chat(Model):
             deactivated=False,
             call_active=False,
             call_not_empty=False,
-            noforwards=False,
+            noforwards=self.no_forwards,
             id=self.id,
             title=self.name,
             photo=await self.to_tl_chat_photo(),

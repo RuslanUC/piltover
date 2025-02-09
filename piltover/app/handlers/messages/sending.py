@@ -295,10 +295,13 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
             raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
         from_peer = first_msg.peer
 
-    if (from_peer is None and (from_peer := await Peer.from_input_peer(user, request.from_peer)) is None) \
-            or (to_peer := await Peer.from_input_peer(user, request.to_peer)) is None:
+    if from_peer is None and (from_peer := await Peer.from_input_peer(user, request.from_peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    if from_peer.type is PeerType.CHAT and from_peer.chat.no_forwards:
+        raise ErrorRpc(error_code=406, error_message="CHAT_FORWARDS_RESTRICTED")
 
+    if (to_peer := await Peer.from_input_peer(user, request.to_peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
     if to_peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
 
