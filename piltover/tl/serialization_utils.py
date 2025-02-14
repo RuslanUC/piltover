@@ -44,7 +44,7 @@ class SerializationUtils:
         elif isinstance(value, str):
             return SerializationUtils.write(value.encode("utf8"))
         elif isinstance(value, TLObject):
-            return primitives.Int.write(value.__tl_id__) + value.serialize()
+            return value.write()
         elif isinstance(value, list):
             result = VECTOR + primitives.Int.write(len(value))
             if isinstance(value, primitives.Vector):
@@ -83,7 +83,7 @@ class SerializationUtils:
         elif issubclass(type_, str):
             return SerializationUtils.read(stream, bytes).decode("utf8")
         elif issubclass(type_, TLObject):
-            constructor = int.from_bytes(stream.read(4), "little")
+            constructor = primitives.Int.read(stream, False)
             if constructor not in all.objects:
                 raise InvalidConstructorException(constructor, False, stream.read())
             return all.objects[constructor].deserialize(stream)
@@ -98,4 +98,4 @@ class SerializationUtils:
 
             return result
         else:
-            raise TypeError(f"Unknown type: {type(value)}")
+            raise TypeError(f"Unknown type: {type_}")

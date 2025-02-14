@@ -76,7 +76,6 @@ async def _get_messages_query(
     select_related = "author", "peer", "peer__user"
 
     # TODO: check whether add_offset can be provided without offset_id?
-    add_offset = int.from_bytes(add_offset.to_bytes(4, "little", signed=False), "little", signed=True)
     if not offset_id or add_offset >= 0:
         if offset_id:
             query &= Q(id__lt=offset_id)

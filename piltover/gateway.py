@@ -1,5 +1,6 @@
 import asyncio
 from io import BytesIO
+from os import environ
 from time import time
 
 from loguru import logger
@@ -44,6 +45,7 @@ class Gateway:
     PORT = 4430
     RMQ_HOST = "amqp://guest:guest@127.0.0.1:5672"
     REDIS_HOST = "redis://127.0.0.1"
+    TL_CHECK_RESPONSES = environ.get("TL_DEBUG_CHECK_RESPONSES", "").lower() in ("1", "true",)
 
     def __init__(
             self, host: str = HOST, port: int = PORT, server_keys: Keys | None = None,
@@ -178,6 +180,19 @@ class Client:
             raise Disconnection(404)
 
         logger.debug(f"Sending to {self.session.session_id if self.session else 0}: {message}")
+
+        if self.server.TL_CHECK_RESPONSES:
+            try:
+                obj_cls = type(message.obj)
+                obj_write = message.obj.write()
+                obj_read = obj_cls.read(BytesIO(obj_write), True)
+                message.obj.eq_raise(obj_read)
+            except Exception as e:
+                logger.opt(exception=e).warning(
+                    "Failed response check! "
+                    "(It may fail on correct data when reading Bool because it is not in all.object "
+                    "or Vector because when serialized, it doesn't have any type information)"
+                )
 
         encrypted = DecryptedMessagePacket(
             salt=await self.server.get_current_salt(),
@@ -347,7 +362,7 @@ class Client:
                 await self._write(self._create_quick_ack(decrypted))
 
             # For some reason some clients cant process BadServerSalt response to BindTempAuthKey request
-            if await self._is_message_bad(decrypted, decrypted.data[:4] != Int.write(BindTempAuthKey.tlid())):
+            if await self._is_message_bad(decrypted, decrypted.data[:4] != Int.write(BindTempAuthKey.tlid(), False)):
                 return
 
             message = Message(
@@ -448,7 +463,6 @@ class Client:
                 result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR"),
             )
 
-        # RpcResponse.read(BytesIO(bytes.fromhex(task_result.return_value)), True)
         result = task_result.return_value
         if not isinstance(result, RpcResponse):
             logger.error(f"Got response from worker that is not a RpcResponse object: {result}")

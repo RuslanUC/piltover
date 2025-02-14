@@ -31,7 +31,7 @@ loguru = "^0.7.3"
 tortoise-orm = {extras = ["asyncmy"], version = "^0.23.0"}
 aerich = "^0.8.1"
 pillow = "^11.0.0"
-mtproto = "^0.1.0b11"
+mtproto = "^0.1.0b12"
 aiofiles = "^24.1.0"
 taskiq = "^0.11.10"
 taskiq-aio-pika = "^0.4.1"

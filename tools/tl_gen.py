@@ -23,7 +23,7 @@ import shutil
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
-from typing import NamedTuple, List, Tuple
+from typing import NamedTuple
 from zipfile import ZipFile
 
 from tqdm import tqdm
@@ -70,7 +70,7 @@ class Combinator(NamedTuple):
     name: str
     id: str
     has_flags: bool
-    args: List[Tuple[str, str]]
+    args: list[tuple[str, str]]
     qualtype: str
     typespace: str
     type: str
