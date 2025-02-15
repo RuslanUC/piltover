@@ -13,7 +13,8 @@ from piltover.auth_data import GenAuthData
 from piltover.db.models import TempAuthKey, AuthKey
 from piltover.exceptions import Disconnection
 from piltover.tl import MsgsAck, ReqPqMulti, ReqPq, ReqDHParams, SetClientDHParams, ResPQ, PQInnerData, PQInnerDataDc, \
-    PQInnerDataTemp, PQInnerDataTempDc, ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, DhGenOk, Int
+    PQInnerDataTemp, PQInnerDataTempDc, ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, DhGenOk, Int, Int256, \
+    Int128
 from piltover.utils import generate_large_prime, gen_safe_prime
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 
@@ -100,7 +101,7 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
     auth_data.expires_in = max(cast(PQInnerDataTempDc, p_q_inner_data).expires_in, 86400) \
         if auth_data.is_temp else 0
 
-    new_nonce = p_q_inner_data.new_nonce.to_bytes(256 // 8, "little", signed=False)
+    new_nonce = Int256.write(p_q_inner_data.new_nonce)
     auth_data.new_nonce = new_nonce
     # TODO: set server salt to server_nonce
 
@@ -190,8 +191,8 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
     await client.send_unencrypted(DhGenOk(
         nonce=client_DH_inner_data.nonce,
         server_nonce=auth_data.server_nonce,
-        new_nonce_hash1=int.from_bytes(
-            hashlib.sha1(auth_data.new_nonce + bytes([1]) + auth_key_aux_hash).digest()[-16:], "little"
+        new_nonce_hash1=Int128.read_bytes(
+            hashlib.sha1(auth_data.new_nonce + bytes([1]) + auth_key_aux_hash).digest()[-16:]
         )
     ))
 

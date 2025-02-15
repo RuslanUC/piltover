@@ -2,7 +2,8 @@ from piltover.app.handlers.messages.sending import send_message_internal, create
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule
+from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
+    ChatInviteRequest
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
@@ -219,6 +220,7 @@ async def add_chat_user(request: AddChatUser, user: User):
     if user_peer.peer_user(user).id not in chat_peers:
         chat_peers[invited_user.id] = await Peer.create(owner=invited_user, chat=chat_peer.chat, type=PeerType.CHAT)
         await ChatParticipant.create(user=invited_user, chat=chat_peer.chat, inviter_id=user.id)
+        await ChatInviteRequest.filter(user=invited_user, invite__chat=chat_peer.chat).delete()
 
     updates = await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
 

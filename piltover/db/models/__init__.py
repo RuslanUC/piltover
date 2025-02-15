@@ -29,3 +29,4 @@ from .user_photo import UserPhoto
 from .web_authorization import WebAuthorization
 from .saved_dialog import SavedDialog
 from .chat_invite import ChatInvite
+from .chat_invite_request import ChatInviteRequest
