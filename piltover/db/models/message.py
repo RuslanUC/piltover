@@ -90,6 +90,8 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
     MessageType.SERVICE_CHAT_USER_REQUEST_JOIN: _service_chat_user_join_request,
 }
 
+_FWD_HEADER_MISSING = object()
+
 
 class Message(Model):
     id: int = fields.BigIntField(pk=True)
@@ -118,9 +120,6 @@ class Message(Model):
         unique_together = (
             ("peer", "random_id"),
         )
-
-    def utime(self) -> int:
-        return int(self.date.timestamp())
 
     @classmethod
     async def get_(cls, id_: int, peer: models.Peer) -> models.Message | None:
@@ -154,9 +153,9 @@ class Message(Model):
             return MessageService(
                 id=self.id,
                 peer_id=self.peer.to_tl(),
-                date=self.utime(),
+                date=int(self.date.timestamp()),
                 action=await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, current_user),
-                out=current_user == self.author,
+                out=current_user.id == self.author_id,
                 reply_to=reply_to,
                 from_id=from_id,
                 **base_defaults,
@@ -169,11 +168,10 @@ class Message(Model):
             "restriction_reason": []
         }
 
-        tl_media = None
-        if not isinstance(self.media, (models.MessageMedia, NoneType)):
-            await self.fetch_related("media", "media__file")
+        media = None
         if self.media is not None:
-            tl_media = await self.media.to_tl(current_user)
+            self.media = await self.media
+            media = await self.media.to_tl(current_user) if self.media is not None else None
 
         if self.fwd_header is not None:
             self.fwd_header = await self.fwd_header
@@ -188,9 +186,9 @@ class Message(Model):
             message=self.message,
             pinned=self.pinned,
             peer_id=self.peer.to_tl(),
-            date=self.utime(),
-            out=current_user == self.author,
-            media=tl_media,
+            date=int(self.date.timestamp()),
+            out=current_user.id == self.author_id,
+            media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
             reply_to=reply_to,
             fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
@@ -206,8 +204,8 @@ class Message(Model):
 
     async def clone_for_peer(
             self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,
-            random_id: int | None = None, fwd: bool = False, fwd_drop_header: bool = False,
-            reply_to_internal_id: int | None = None, fwd_drop_captions: bool = False, media_group_id: int | None = None,
+            random_id: int | None = None, fwd_header: models.MessageFwdHeader | None | object = _FWD_HEADER_MISSING,
+            reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
     ) -> models.Message:
         if new_author is None and self.author is not None:
             self.author = new_author = await self.author
@@ -224,46 +222,12 @@ class Message(Model):
             if self.reply_to is not None:
                 reply_to = await Message.get_or_none(peer=peer, internal_id=self.reply_to.internal_id)
 
-        if self.fwd_header is not None:
-            self.fwd_header = await self.fwd_header
-        fwd_header = None
-        if fwd and not fwd_drop_header:
-            fwd_header = self.fwd_header
-            self.author = await self.author
-            if peer.type == PeerType.SELF and self.peer is not None:
-                self.peer = await self.peer
-
-            if fwd_header is not None:
-                fwd_header.from_user = await fwd_header.from_user
-
-            from_user = fwd_header.from_user if fwd_header else None
-            if from_user is None:
-                await self.peer.fetch_related("owner")
-                if await models.PrivacyRule.has_access_to(self.peer.owner, self.author, PrivacyRuleKeyType.FORWARDS):
-                    from_user = self.author
-
-            saved_peer = self.peer if peer.type == PeerType.SELF else None
-            if saved_peer is not None and peer.type is PeerType.USER:
-                await self.peer.fetch_related("owner", "user")
-                peer_ = self.peer
-                if not await models.PrivacyRule.has_access_to(peer_.owner, peer_.user, PrivacyRuleKeyType.FORWARDS):
-                    saved_peer = None
-
-            fwd_header = await models.MessageFwdHeader.create(
-                from_user=from_user,
-                from_name=fwd_header.from_name if fwd_header else self.author.first_name,
-                date=fwd_header.date if fwd_header else self.date,
-
-                saved_peer=saved_peer,
-                saved_id=self.id if peer.type == PeerType.SELF else None,
-                saved_from=self.author if peer.type == PeerType.SELF else None,
-                saved_name=self.author.first_name if peer.type == PeerType.SELF else None,
-                saved_date=self.date if peer.type == PeerType.SELF else None,
-            )
+        if fwd_header is _FWD_HEADER_MISSING:
+            fwd_header = await self.fwd_header
 
         return await Message.create(
             internal_id=internal_id or Snowflake.make_id(),
-            message=self.message if self.media is None or not fwd_drop_captions else None,
+            message=self.message if self.media is None or not drop_captions else None,
             pinned=self.pinned,
             date=self.date,
             edit_date=self.edit_date,
@@ -272,10 +236,45 @@ class Message(Model):
             peer=peer,
             media=self.media,
             reply_to=reply_to,
-            fwd_header=fwd_header if not fwd_drop_header else None,
+            fwd_header=fwd_header,
             random_id=str(random_id) if random_id else None,
             entities=self.entities,
             media_group_id=media_group_id,
+        )
+
+    async def create_fwd_header(self, peer: models.Peer) -> models.MessageFwdHeader | None:
+        if self.fwd_header is not None:
+            self.fwd_header = await self.fwd_header
+
+        fwd_header = self.fwd_header
+        self.author = await self.author
+        if peer.type == PeerType.SELF and self.peer is not None:
+            self.peer = await self.peer
+
+        if fwd_header is not None:
+            fwd_header.from_user = await fwd_header.from_user
+
+        from_user = fwd_header.from_user if fwd_header else None
+        if from_user is None:
+            if await models.PrivacyRule.has_access_to(self.peer.owner_id, self.author, PrivacyRuleKeyType.FORWARDS):
+                from_user = self.author
+
+        saved_peer = self.peer if peer.type == PeerType.SELF else None
+        if saved_peer is not None and peer.type is PeerType.USER:
+            peer_ = self.peer
+            if not await models.PrivacyRule.has_access_to(peer_.owner_id, peer_.user_id, PrivacyRuleKeyType.FORWARDS):
+                saved_peer = None
+
+        return await models.MessageFwdHeader.create(
+            from_user=from_user,
+            from_name=fwd_header.from_name if fwd_header else self.author.first_name,
+            date=fwd_header.date if fwd_header else self.date,
+
+            saved_peer=saved_peer,
+            saved_id=self.id if peer.type == PeerType.SELF else None,
+            saved_from=self.author if peer.type == PeerType.SELF else None,
+            saved_name=self.author.first_name if peer.type == PeerType.SELF else None,
+            saved_date=self.date if peer.type == PeerType.SELF else None,
         )
 
     async def tl_users_chats(

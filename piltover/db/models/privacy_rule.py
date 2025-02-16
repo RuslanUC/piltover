@@ -106,22 +106,27 @@ class PrivacyRule(Model):
         return tl_cls()
 
     @classmethod
-    async def has_access_to(cls, current_user: models.User, target_user: models.User, key: PrivacyRuleKeyType) -> bool:
-        if current_user == target_user:
+    async def has_access_to(
+            cls, current_user: models.User | int, target_user: models.User | int, key: PrivacyRuleKeyType,
+    ) -> bool:
+        current_id = current_user.id if isinstance(current_user, models.User) else current_user
+        target_id = target_user.id if isinstance(target_user, models.User) else target_user
+
+        if current_id == target_id:
             return True
-        if await models.Peer.filter(owner=target_user, user=current_user, type=PeerType.USER, blocked=True).exists():
+        if await models.Peer.filter(owner__id=target_id, user__id=current_id, type=PeerType.USER, blocked=True).exists():
             return False
 
-        rules = {rule.value: rule for rule in await cls.filter(user=target_user, key=key)}
+        rules = {rule.value: rule for rule in await cls.filter(user__id=target_id, key=key)}
         if PrivacyRuleValueType.ALLOW_ALL in rules and PrivacyRuleValueType.DISALLOW_USERS not in rules:
             return True
         if PrivacyRuleValueType.DISALLOW_ALL in rules and PrivacyRuleValueType.ALLOW_USERS not in rules:
             return False
 
         if PrivacyRuleValueType.ALLOW_ALL in rules and PrivacyRuleValueType.DISALLOW_USERS in rules:
-            return not await rules[PrivacyRuleValueType.DISALLOW_USERS].users.filter(id=current_user.id).exists()
+            return not await rules[PrivacyRuleValueType.DISALLOW_USERS].users.filter(id=current_id).exists()
         if PrivacyRuleValueType.DISALLOW_ALL in rules and PrivacyRuleValueType.ALLOW_USERS in rules:
-            return await rules[PrivacyRuleValueType.DISALLOW_USERS].users.filter(id=current_user.id).exists()
+            return await rules[PrivacyRuleValueType.DISALLOW_USERS].users.filter(id=current_id).exists()
 
         # handle PrivacyRuleValueType.ALLOW_CONTACTS and PrivacyRuleValueType.DISALLOW_CONTACTS
 
