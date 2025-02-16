@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from time import time
 from urllib.parse import urlparse
 
 from tortoise.expressions import Q
@@ -6,13 +7,13 @@ from tortoise.expressions import Q
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType, MessageType
-from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest
+from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserSelf, Updates, Long, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported, ChatInviteImporter
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
-    HideChatJoinRequest
+    HideChatJoinRequest, HideAllChatJoinRequests
 from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters, \
     ExportedChatInvite
 from piltover.worker import MessageHandler
@@ -285,6 +286,43 @@ async def delete_revoked_exported_chat_invites(request: DeleteRevokedExportedCha
     return True
 
 
+async def add_requested_users_to_chat(user: User, chat: Chat, requests: list[ChatInviteRequest]) -> Updates:
+    if not requests:
+        return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+
+
+    chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat).select_related("owner")}
+    participants = []
+    for request in requests:
+        if request.user.id not in chat_peers:
+            chat_peers[request.user.id] = await Peer.create(
+                owner=request.user, chat=chat, type=PeerType.CHAT
+            )
+        participants.append(ChatParticipant(
+            user=request.user, chat=chat, inviter_id=request.invite.user_id, invite=request.invite,
+        ))
+
+    await ChatParticipant.bulk_create(participants)
+    await ChatInviteRequest.filter(user__id__in=list(chat_peers.keys()), invite__chat=chat).delete()
+
+    updates = await UpdatesManager.create_chat(user, chat, list(chat_peers.values()))
+
+    for request in requests:
+        updates_msg = await send_message_internal(
+            user, chat_peers[user.id], None, None, False,
+            author=request.user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
+            extra_info=Long.write(request.invite.user_id),
+        )
+        await send_message_internal(
+            request.user, chat_peers[request.user.id], None, None, False,
+            opposite=False, author=request.user, type=MessageType.SERVICE_CHAT_USER_REQUEST_JOIN,
+        )
+
+        updates.updates.extend(updates_msg.updates)
+
+    return updates
+
+
 @handler.on_request(HideChatJoinRequest)
 async def hide_chat_join_request(request: HideChatJoinRequest, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
@@ -295,9 +333,47 @@ async def hide_chat_join_request(request: HideChatJoinRequest, user: User) -> Up
     if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    requested_peer = await Peer.from_input_peer_raise(user, request.user_id, "ADMIN_ID_INVALID")
-    invite_request = await ChatInviteRequest.filter(invite__chat=peer.chat, user=requested_peer.user)
+    requested_peer = await Peer.from_input_peer_raise(user, request.user_id, "USER_ID_INVALID")
+    invite_request = await ChatInviteRequest.filter(invite__chat=peer.chat, user=requested_peer.user)\
+        .select_related("user", "invite").first()
     if invite_request is None:
         raise ErrorRpc(error_code=400, error_message="HIDE_REQUESTER_MISSING")
 
-    # TODO: add user, create and send updates
+    if not request.approved:
+        await ChatInviteRequest.filter(user=requested_peer.user, invite__chat=peer.chat).delete()
+        # TODO: what should be in updates.updates?
+        return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+
+    return await add_requested_users_to_chat(user, peer.chat, [invite_request])
+
+
+@handler.on_request(HideAllChatJoinRequests)
+async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    query = Q(invite__chat=peer.chat)
+
+    if request.link:
+        if (invite_hash := _get_invite_hash_from_link(request.link)) is None:
+            raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
+        invite = await ChatInvite.get_or_none(ChatInvite.query_from_link_hash(invite_hash.strip()) & Q(chat=peer.chat))
+        if invite is None:
+            raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
+        query &= Q(invite=invite)
+
+    requests = await ChatInviteRequest.filter(query)
+    if not requests:
+        raise ErrorRpc(error_code=400, error_message="HIDE_REQUESTER_MISSING")
+
+    if not request.approved:
+        await ChatInviteRequest.filter(query).delete()
+        # TODO: what should be in updates.updates?
+        return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+
+    return await add_requested_users_to_chat(user, peer.chat, requests)

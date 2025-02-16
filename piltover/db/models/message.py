@@ -14,7 +14,7 @@ from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMe
     MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, SerializationUtils, Long
 from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
     MessageActionChatEditTitle, MessageActionChatEditPhoto, MessageActionChatAddUser, MessageActionChatDeleteUser, \
-    MessageActionChatJoinedByLink
+    MessageActionChatJoinedByLink, MessageActionChatJoinedByRequest
 from piltover.utils.snowflake import Snowflake
 
 
@@ -75,6 +75,10 @@ async def _service_chat_user_join_invite(message: Message, _: models.User) -> Me
     return MessageActionChatJoinedByLink(inviter_id=Long.read_bytes(message.extra_info))
 
 
+async def _service_chat_user_join_request(_1: Message, _2: models.User) -> MessageActionChatJoinedByRequest:
+    return MessageActionChatJoinedByRequest()
+
+
 MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User], Awaitable[...]]] = {
     MessageType.SERVICE_PIN_MESSAGE: _service_pin_message,
     MessageType.SERVICE_CHAT_CREATE: _service_create_chat,
@@ -83,6 +87,7 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
     MessageType.SERVICE_CHAT_USER_ADD: _service_chat_add_user,
     MessageType.SERVICE_CHAT_USER_DEL: _service_chat_del_user,
     MessageType.SERVICE_CHAT_USER_INVITE_JOIN: _service_chat_user_join_invite,
+    MessageType.SERVICE_CHAT_USER_REQUEST_JOIN: _service_chat_user_join_request,
 }
 
 

@@ -24,7 +24,7 @@ InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPh
 
 async def create_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
-        **message_kwargs
+        opposite: bool = True, **message_kwargs
 ) -> dict[Peer, Message]:
     if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
@@ -36,7 +36,8 @@ async def create_message_internal(
             raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
 
     peers = [peer]
-    peers.extend(await peer.get_opposite())
+    if opposite:
+        peers.extend(await peer.get_opposite())
     messages: dict[Peer, Message] = {}
 
     internal_id = Snowflake.make_id()
@@ -66,10 +67,10 @@ async def create_message_internal(
 
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
-        **message_kwargs
+        opposite: bool = True, **message_kwargs
 ) -> Updates:
     messages = await create_message_internal(
-        user, peer, random_id, reply_to_message_id, clear_draft, author, **message_kwargs,
+        user, peer, random_id, reply_to_message_id, clear_draft, author, opposite, **message_kwargs,
     )
     if (upd := await UpdatesManager.send_message(user, messages)) is None:
         assert False, "unknown chat type ?"
