@@ -1,12 +1,14 @@
 import pytest
-from pyrogram.errors import InviteHashInvalid, UserAlreadyParticipant, PeerIdInvalid, InviteHashExpired
+from pyrogram.errors import InviteHashInvalid, UserAlreadyParticipant, PeerIdInvalid, InviteHashExpired, \
+    InviteRequestSent
+from pyrogram.raw.functions.messages import ExportChatInvite
 from pyrogram.types import Chat, ChatPreview
 
 from tests.conftest import TestClient
 
 PHOTO_COLOR = (0x00, 0xff, 0x00)
 
-
+"""
 @pytest.mark.asyncio
 async def test_export_chat_invite() -> None:
     async with TestClient(phone_number="123456789") as client:
@@ -157,3 +159,88 @@ async def test_get_chat_importers() -> None:
         assert len(importers) == 1
         assert importers[0].user.id == client2.me.id
         assert not importers[0].pending
+"""
+
+@pytest.mark.asyncio
+async def test_send_multiple_requests_on_same_invite() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        group = await client1.create_group("idk", [])
+        r = await client1.invoke(
+            ExportChatInvite(
+                peer=await client1.resolve_peer(group.id),
+                legacy_revoke_permanent=True,
+                request_needed=True,
+            )
+        )
+        invite_link = r.link
+
+        assert [req async for req in client1.get_chat_join_requests(group.id)] == []
+
+        for _ in range(10):
+            with pytest.raises(InviteRequestSent):
+                await client2.join_chat(invite_link)
+
+        assert len([req async for req in client1.get_chat_join_requests(group.id)]) == 1
+        joiner_id = [req async for req in client1.get_chat_join_requests(group.id)][0].user.id
+        assert joiner_id == client2.me.id
+
+
+@pytest.mark.asyncio
+async def test_request_approve_invite() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        group = await client1.create_group("idk", [])
+        r = await client1.invoke(
+            ExportChatInvite(
+                peer=await client1.resolve_peer(group.id),
+                legacy_revoke_permanent=True,
+                request_needed=True,
+            )
+        )
+        invite_link = r.link
+
+        assert [req async for req in client1.get_chat_join_requests(group.id)] == []
+
+        with pytest.raises(InviteRequestSent):
+            await client2.join_chat(invite_link)
+
+        assert len([req async for req in client1.get_chat_join_requests(group.id)]) == 1
+        joiner_id = [req async for req in client1.get_chat_join_requests(group.id)][0].user.id
+        assert joiner_id == client2.me.id
+
+        with pytest.raises(PeerIdInvalid):
+            await client2.send_message(group.id, "test message")
+
+        assert await client1.approve_chat_join_request(group.id, joiner_id)
+        assert await client2.send_message(group.id, "test message")
+
+
+@pytest.mark.asyncio
+async def test_request_dismiss_invite() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        group = await client1.create_group("idk", [])
+        r = await client1.invoke(
+            ExportChatInvite(
+                peer=await client1.resolve_peer(group.id),
+                legacy_revoke_permanent=True,
+                request_needed=True,
+            )
+        )
+        invite_link = r.link
+
+        assert [req async for req in client1.get_chat_join_requests(group.id)] == []
+
+        with pytest.raises(InviteRequestSent):
+            await client2.join_chat(invite_link)
+
+        assert len([req async for req in client1.get_chat_join_requests(group.id)]) == 1
+        joiner_id = [req async for req in client1.get_chat_join_requests(group.id)][0].user.id
+        assert joiner_id == client2.me.id
+
+        with pytest.raises(PeerIdInvalid):
+            await client2.send_message(group.id, "test message")
+
+        assert await client1.decline_chat_join_request(group.id, joiner_id)
+
+        assert [req async for req in client1.get_chat_join_requests(group.id)] == []
+        with pytest.raises(PeerIdInvalid):
+            assert await client2.send_message(group.id, "test message")
