@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, UTC
+from typing import cast
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
@@ -9,7 +10,7 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
-    InputMediaDocument, InputPeerEmpty
+    InputMediaDocument, InputPeerEmpty, MessageActionPinMessage
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148
@@ -131,7 +132,8 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
     if not request.silent and not request.pm_oneside:
         updates = await send_message_internal(
-            user, peer, None, message.id, False, author=user, type=MessageType.SERVICE_PIN_MESSAGE
+            user, peer, None, message.id, False, author=user, type=MessageType.SERVICE_PIN_MESSAGE,
+            extra_info=MessageActionPinMessage().write(),
         )
         result.updates.extend(updates.updates)
 
@@ -360,7 +362,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     if (upd := await UpdatesManager.send_messages(result, user)) is None:
         assert False, "unknown chat type ?"
 
-    return upd
+    return cast(Updates, upd)
 
 
 @handler.on_request(UploadMedia_136)

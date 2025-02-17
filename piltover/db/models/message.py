@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
-from types import NoneType
 from typing import Callable, Awaitable
 
+from loguru import logger
 from tortoise import fields, Model
 
 from piltover.cache import Cache
 from piltover.db import models
-from piltover.db.enums import MediaType, MessageType, PeerType, PrivacyRuleKeyType
-from piltover.tl import MessageMediaDocument, MessageMediaUnsupported, MessageMediaPhoto, MessageReplyHeader, \
-    MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, SerializationUtils, Long
-from piltover.tl.types import Message as TLMessage, MessageActionPinMessage, PeerUser, MessageActionChatCreate, \
-    MessageActionChatEditTitle, MessageActionChatEditPhoto, MessageActionChatAddUser, MessageActionChatDeleteUser, \
-    MessageActionChatJoinedByLink, MessageActionChatJoinedByRequest
+from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
+from piltover.exceptions import Error
+from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, Long, \
+    SerializationUtils, TLObject
+from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
+    MessageActionChatDeleteUser, MessageActionChatJoinedByRequest, MessageActionChatJoinedByLink, \
+    MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage
 from piltover.utils.snowflake import Snowflake
 
 
@@ -91,6 +92,19 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
 }
 
 _FWD_HEADER_MISSING = object()
+_BASE_DEFAULTS = {
+    "mentioned": False,
+    "media_unread": False,
+    "silent": False,
+    "post": False,
+    "legacy": False,
+}
+_REGULAR_DEFAULTS = {
+    "from_scheduled": False,
+    "edit_hide": False,
+    "noforwards": False,
+    "restriction_reason": []
+}
 
 
 class Message(Model):
@@ -130,6 +144,33 @@ class Message(Model):
             self.reply_to = await self.reply_to
         return MessageReplyHeader(reply_to_msg_id=self.reply_to.id) if self.reply_to is not None else None
 
+    async def _to_tl_service(self, user: models.User) -> MessageService:
+        if self.type in (MessageType.SERVICE_CHAT_EDIT_PHOTO,):
+            action = await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, user)
+        else:
+            try:
+                # TODO: ensure type is one of message action types
+                action = TLObject.read(BytesIO(self.extra_info))
+            except Error:
+                logger.debug(
+                    f"Message {self.id} contains non-TL-encoded extra_info service message action, "
+                    f"trying to migrate it..."
+                )
+                action = await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, user)
+                self.extra_info = action.write()
+                await self.save(update_fields=["extra_info"])
+
+        return MessageService(
+            id=self.id,
+            peer_id=self.peer.to_tl(),
+            date=int(self.date.timestamp()),
+            action=action,  # type: ignore
+            out=user.id == self.author_id,
+            reply_to=await self._make_reply_to_header(),
+            from_id=PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0),
+            **_BASE_DEFAULTS,
+        )
+
     async def to_tl(self, current_user: models.User) -> TLMessage | MessageService:
         if (cached := await Cache.obj.get(f"message:{self.id}:{self.version}")) is not None:
             if self.media_id is not None:
@@ -138,35 +179,8 @@ class Message(Model):
                     await models.FileAccess.get_or_renew(current_user, file, True)
             return cached
 
-        base_defaults = {
-            "mentioned": False,
-            "media_unread": False,
-            "silent": False,
-            "post": False,
-            "legacy": False,
-        }
-
-        from_id = PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0)
-        reply_to = await self._make_reply_to_header()
-
         if self.type is not MessageType.REGULAR:
-            return MessageService(
-                id=self.id,
-                peer_id=self.peer.to_tl(),
-                date=int(self.date.timestamp()),
-                action=await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, current_user),
-                out=current_user.id == self.author_id,
-                reply_to=reply_to,
-                from_id=from_id,
-                **base_defaults,
-            )
-
-        regular_defaults = {
-            "from_scheduled": False,
-            "edit_hide": False,
-            "noforwards": False,
-            "restriction_reason": []
-        }
+            return await self._to_tl_service(current_user)
 
         media = None
         if self.media is not None:
@@ -190,13 +204,13 @@ class Message(Model):
             out=current_user.id == self.author_id,
             media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
-            reply_to=reply_to,
+            reply_to=await self._make_reply_to_header(),
             fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
-            from_id=from_id,
+            from_id=PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0),
             entities=entities,
             grouped_id=self.media_group_id,
-            **base_defaults,
-            **regular_defaults,
+            **_BASE_DEFAULTS,
+            **_REGULAR_DEFAULTS,
         )
 
         await Cache.obj.set(f"message:{self.id}:{self.version}", message)
@@ -291,10 +305,13 @@ class Message(Model):
         if users is not None \
                 and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL) \
                 and self.extra_info:
-            if self.type is MessageType.SERVICE_CHAT_USER_ADD:
-                user_ids = SerializationUtils.read(BytesIO(self.extra_info), list, Long)
-            else:
-                user_ids = [Long.read_bytes(self.extra_info)]
+            try:
+                if self.type is MessageType.SERVICE_CHAT_USER_ADD:
+                    user_ids = MessageActionChatAddUser.read(BytesIO(self.extra_info), True).users
+                else:
+                    user_ids = [MessageActionChatDeleteUser.read(BytesIO(self.extra_info), True).user_id]
+            except Error:
+                return users, chats
             for user_id in user_ids:
                 if user_id not in users and (participant := await models.User.get_or_none(id=user_id)) is not None:
                     users[participant.id] = await participant.to_tl(user)

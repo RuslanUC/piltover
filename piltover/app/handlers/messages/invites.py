@@ -9,8 +9,9 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType, MessageType
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputUser, InputUserSelf, Updates, Long, ChatInviteAlready, ChatInvite as TLChatInvite, \
-    ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage
+from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
+    ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage, MessageActionChatJoinedByLink, \
+    MessageActionChatJoinedByRequest
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
     HideChatJoinRequest, HideAllChatJoinRequests
@@ -213,7 +214,7 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     updates_msg = await send_message_internal(
         user, chat_peers[user.id], None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
-        extra_info=Long.write(invite.user_id),
+        extra_info=MessageActionChatJoinedByLink(inviter_id=invite.user_id).write(),
     )
 
     updates.updates.extend(updates_msg.updates)
@@ -312,11 +313,12 @@ async def add_requested_users_to_chat(user: User, chat: Chat, requests: list[Cha
         updates_msg = await send_message_internal(
             user, chat_peers[user.id], None, None, False,
             author=request.user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
-            extra_info=Long.write(request.invite.user_id),
+            extra_info=MessageActionChatJoinedByLink(inviter_id=request.invite.user_id).write(),
         )
         await send_message_internal(
             request.user, chat_peers[request.user.id], None, None, False,
             opposite=False, author=request.user, type=MessageType.SERVICE_CHAT_USER_REQUEST_JOIN,
+            extra_info=MessageActionChatJoinedByRequest().write()
         )
 
         updates.updates.extend(updates_msg.updates)

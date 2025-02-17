@@ -9,7 +9,8 @@ from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatPartic
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
-    SerializationUtils, Vector, Long
+    Long, MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
+    MessageActionChatDeleteUser
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136, EditChatAdmin, ToggleNoForwards
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
@@ -48,10 +49,10 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     await ChatParticipant.bulk_create(participants_to_create)
 
     updates = await UpdatesManager.create_chat(user, chat, list(chat_peers.values()))
-    extra_info = (SerializationUtils.write(request.title) + Vector(chat_peers.keys(), value_type=Long).write())
     updates_msg = await send_message_internal(
         user, chat_peers[user.id], None, None, False,
-        author=user, type=MessageType.SERVICE_CHAT_CREATE, extra_info=extra_info,
+        author=user, type=MessageType.SERVICE_CHAT_CREATE,
+        extra_info=MessageActionChatCreate(title=request.title, users=list(chat_peers.keys())).write(),
     )
 
     if isinstance(updates_msg, Updates):
@@ -128,7 +129,8 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
 
     return await send_message_internal(
         user, peer, None, None, False,
-        author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE, extra_info=SerializationUtils.write(request.title),
+        author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE,
+        extra_info=MessageActionChatEditTitle(title=request.title).write(),
     )
 
 
@@ -244,7 +246,7 @@ async def add_chat_user(request: AddChatUser, user: User):
     updates_msg = await send_message_internal(
         user, chat_peers[user.id], None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_USER_ADD,
-        extra_info=Vector([invited_user.id], value_type=Long).write(),
+        extra_info=MessageActionChatAddUser(users=[invited_user.id]).write(),
     )
 
     if isinstance(updates_msg, Updates):
@@ -271,7 +273,8 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
 
     messages = await create_message_internal(
         user, chat_peer, None, None, False,
-        author=user, type=MessageType.SERVICE_CHAT_USER_DEL, extra_info=Long.write(user_peer.peer_user(user).id),
+        author=user, type=MessageType.SERVICE_CHAT_USER_DEL,
+        extra_info=MessageActionChatDeleteUser(user_id=user_peer.peer_user(user).id).write(),
     )
     await target_chat_peer.delete()
     await ChatParticipant.filter(chat=chat_peer.chat, user=user_peer.user).delete()
