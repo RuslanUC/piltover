@@ -78,6 +78,7 @@ class PeerType(IntEnum):
     SELF = 0
     USER = 1
     CHAT = 2
+    CHANNEL = 3
 
 
 class MessageType(IntEnum):
@@ -90,6 +91,7 @@ class MessageType(IntEnum):
     SERVICE_CHAT_USER_DEL = 6
     SERVICE_CHAT_USER_INVITE_JOIN = 7
     SERVICE_CHAT_USER_REQUEST_JOIN = 8
+    SERVICE_CHANNEL_CREATE = 9
 
 
 class UserStatus(IntEnum):

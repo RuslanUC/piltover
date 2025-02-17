@@ -1,6 +1,9 @@
 from collections import defaultdict
 from datetime import datetime, UTC
+from time import time
 from typing import cast
+
+from loguru import logger
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
@@ -27,9 +30,15 @@ async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         opposite: bool = True, **message_kwargs
 ) -> Updates:
-    messages = await Message.create_message_for_peer(
+    messages = await Message.create_for_peer(
         user, peer, random_id, reply_to_message_id, clear_draft, author, opposite, **message_kwargs,
     )
+    if peer.type is PeerType.CHANNEL:
+        if len(messages) != 1:
+            logger.warning(f"Got {len(messages)} messages after creating message with channel peer!")
+            return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+        return await UpdatesManager.send_message_channel(user, list(messages.values())[0])
+
     if (upd := await UpdatesManager.send_message(user, messages)) is None:
         assert False, "unknown chat type ?"
 

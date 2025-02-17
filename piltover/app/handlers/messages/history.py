@@ -8,7 +8,7 @@ from tortoise.queryset import QuerySet
 
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.db.enums import MessageType, MediaType, PeerType, FileType
+from piltover.db.enums import MediaType, PeerType, FileType, MessageType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, Dialog
 from piltover.db.models.message import Message
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
@@ -29,7 +29,11 @@ async def _get_messages_query(
         filter_: TLObject | None = None, saved_peer: Peer | None = None,
 ) -> QuerySet[Message]:
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
+    if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
+        query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
+
     # TODO: probably dont add this to query if user requested messages with InputMessageReplyTo or something
+    # TODO: why did i even add this in the first place???
     query &= Q(type=MessageType.REGULAR)
 
     if q:
@@ -156,13 +160,18 @@ async def format_messages_internal(
     for message in messages:
         messages_tl.append(await message.to_tl(user))
 
+        # TODO: replace with message.tl_users_chats
+
         if message.author.id not in users:
             users[message.author.id] = await message.author.to_tl(user)
         if message.peer.user is not None and message.peer.user.id not in users:
             users[message.peer.user.id] = await message.peer.user.to_tl(user)
-        if message.peer.type is PeerType.CHAT and message.peer.chat_id is not None:
-            chat = await message.peer.chat
+        if message.peer.type is PeerType.CHAT and message.peer.chat_id is not None and message.peer.chat_id not in chats:
+            message.peer.chat = chat = await message.peer.chat
             chats[chat.id] = await chat.to_tl(user)
+        if message.peer.type is PeerType.CHANNEL and message.peer.channel_id is not None and message.peer.channel_id not in chats:
+            message.peer.channel = channel = await message.peer.channel
+            chats[channel.id] = await channel.to_tl(user)
 
     # TODO: MessagesSlice
     return Messages(

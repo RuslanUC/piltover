@@ -1,4 +1,5 @@
 from .base import BaseDowngrader, BaseUpgrader
+from .channel_downgrader import *
 from .chat_invite_downgrade import *
 from .invited_users_downgrade import *
 from .message_downgrade import *
@@ -57,3 +58,10 @@ LayerConverter.register_for_downgrade(InvitedUsersDontDowngrade)
 
 LayerConverter.register_for_downgrade(ChatInviteDowngradeTo136)
 LayerConverter.register_for_downgrade(ChatInviteDontDowngrade)
+
+LayerConverter.register_for_downgrade(ChannelDowngradeTo136)
+LayerConverter.register_for_downgrade(ChannelDowngradeTo148)
+LayerConverter.register_for_downgrade(ChannelDowngradeTo164)
+LayerConverter.register_for_downgrade(ChannelDowngradeTo166)
+LayerConverter.register_for_downgrade(ChannelDowngradeTo167)
+LayerConverter.register_for_downgrade(ChannelDontDowngrade)

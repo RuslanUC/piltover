@@ -12,7 +12,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
-    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox
+    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage
 
 
 # TODO: move UpdatesManager to separate worker
@@ -62,6 +62,37 @@ class UpdatesManager:
                 await UpdateV2.create(**read_history_inbox_args, pts=read_history_pts, related_ids=[message.id, 0])
 
             await SessionManager.send(updates, peer.owner.id)
+
+        return result
+
+    @staticmethod
+    async def send_message_channel(user: User, message: Message) -> Updates:
+        result = None
+
+        for to_user in await User.filter(chatparticipants__channel__id=message.peer.channel_id):
+            users, chats = await message.tl_users_chats(to_user, {}, {})
+
+            updates = Updates(
+                updates=[
+                    UpdateNewChannelMessage(
+                        message=await message.to_tl(to_user),
+                        pts=0,  # TODO: channel pts
+                        pts_count=1,
+                    ),
+                ],
+                users=list(users.values()),
+                chats=list(chats.values()),
+                date=int(time()),
+                seq=0,
+            )
+
+            if user == to_user and message.random_id:
+                updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
+
+            if user == to_user:
+                result = updates
+
+            await SessionManager.send(updates, to_user.id)
 
         return result
 

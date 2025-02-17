@@ -135,6 +135,9 @@ class Message(Model):
             ("peer", "random_id"),
         )
 
+    def _cache_key(self, user: models.User) -> str:
+        return f"message:{user.id}:{self.id}:{self.version}"
+
     @classmethod
     async def get_(cls, id_: int, peer: models.Peer) -> models.Message | None:
         return await Message.get_or_none(id=id_, peer=peer, type=MessageType.REGULAR).select_related("peer", "author")
@@ -172,7 +175,7 @@ class Message(Model):
         )
 
     async def to_tl(self, current_user: models.User) -> TLMessage | MessageService:
-        if (cached := await Cache.obj.get(f"message:{self.id}:{self.version}")) is not None:
+        if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None:
             if self.media_id is not None:
                 file = await models.File.get_or_none(messagemedias__messages__id=self.id)
                 if file is not None:
@@ -213,7 +216,7 @@ class Message(Model):
             **_REGULAR_DEFAULTS,
         )
 
-        await Cache.obj.set(f"message:{self.id}:{self.version}", message)
+        await Cache.obj.set(self._cache_key(current_user), message)
         return message
 
     async def clone_for_peer(
@@ -292,12 +295,12 @@ class Message(Model):
         )
 
     @classmethod
-    async def create_message_for_peer(
+    async def create_for_peer(
             cls, user: models.User, peer: models.Peer, random_id: int | None, reply_to_message_id: int | None,
             clear_draft: bool, author: models.User, opposite: bool = True, **message_kwargs
     ) -> dict[models.Peer, Message]:
         from piltover.app.utils.updates_manager import UpdatesManager
-        
+
         if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
             raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
@@ -308,8 +311,10 @@ class Message(Model):
                 raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
 
         peers = [peer]
-        if opposite:
+        if opposite and peer.type is not PeerType.CHANNEL:
             peers.extend(await peer.get_opposite())
+        elif opposite and peer.type is PeerType.CHANNEL:
+            peers = [await models.Peer.get_or_none(owner=None, channel=peer.channel, type=PeerType.CHANNEL)]
         messages: dict[models.Peer, Message] = {}
 
         internal_id = Snowflake.make_id()

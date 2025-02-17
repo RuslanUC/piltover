@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
 
@@ -82,7 +83,10 @@ class ChatBase(Model):
     def or_channel(chat_or_channel: ChatBase) -> dict:
         if isinstance(chat_or_channel, models.Chat):
             return {"chat": chat_or_channel}
-        # TODO: add channel when model will be added
+        if isinstance(chat_or_channel, models.Channel):
+            return {"channel": chat_or_channel}
+
+        raise NotImplementedError
 
     or_chat = or_channel
 
@@ -90,8 +94,12 @@ class ChatBase(Model):
     def query(chat_or_channel: models.ChatBase, prefix_field: str | None = None) -> Q:
         if isinstance(chat_or_channel, models.Chat):
             key = f"{prefix_field}__chat" if prefix_field else "chat"
-            return Q(**{key: chat_or_channel})  # TODO: add channel__isnull=True
-        # TODO: add query for channel when its model will be added
+            return Q(**{key: chat_or_channel})
+        if isinstance(chat_or_channel, models.Channel):
+            key = f"{prefix_field}__channel" if prefix_field else "channel"
+            return Q(**{key: chat_or_channel})
+
+        raise NotImplementedError
 
     async def to_tl(self, user: models.User) -> Chat | ChatForbidden | Channel | ChannelForbidden:
         raise NotImplemented

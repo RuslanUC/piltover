@@ -1,8 +1,8 @@
 from datetime import datetime, UTC
 from time import time
+from typing import cast
 from urllib.parse import urlparse
 
-from loguru import logger
 from tortoise.expressions import Q, Subquery
 
 from piltover.app.handlers.messages.sending import send_message_internal
@@ -224,7 +224,7 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     )).delete()
 
     if isinstance(invite.chat_or_channel, Chat):
-        updates = await UpdatesManager.create_chat(user, invite.chat_or_channel, list(chat_peers.values()))
+        updates = await UpdatesManager.create_chat(user, cast(Chat, invite.chat_or_channel), list(chat_peers.values()))
     else:
         raise NotImplementedError("TODO: send updates when user is added to channel")
 

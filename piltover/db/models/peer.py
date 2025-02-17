@@ -8,14 +8,16 @@ from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
-    User as TLUser, Chat as TLChat, InputUserEmpty, InputPeerEmpty
+    User as TLUser, Chat as TLChat, InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, \
+    PeerChannel, Channel as TLChannel
 
 
 def gen_access_hash() -> int:
     return int.from_bytes(urandom(8)) >> 2
 
 
-InputPeers = InputPeerSelf | InputPeerUser | InputUserSelf | InputUser | InputPeerChat
+InputPeers = InputPeerSelf | InputPeerUser | InputUserSelf | InputUser | InputPeerChat | InputChannel \
+             | InputChannelEmpty | InputPeerChannel
 
 
 class Peer(Model):
@@ -27,15 +29,17 @@ class Peer(Model):
 
     user: models.User | None = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)
+    channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
 
     class Meta:
         unique_together = (
-            ("owner", "type", "user"),
+            ("owner", "type", "user", "chat", "channel",),
         )
 
     owner_id: int
     user_id: int
     chat_id: int
+    channel_id: int
 
     def peer_user(self, user: models.User | None = None) -> models.User | None:
         return (user or self.owner) if self.type is PeerType.SELF else self.user
@@ -58,13 +62,15 @@ class Peer(Model):
 
     @classmethod
     async def from_input_peer(cls, user: models.User, input_peer: InputPeers) -> Peer | None:
-        if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty)):
+        if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
             return
 
         if isinstance(input_peer, InputUserSelf):
             input_peer = InputPeerSelf()
         elif isinstance(input_peer, InputUser):
             input_peer = InputPeerUser(user_id=input_peer.user_id, access_hash=input_peer.access_hash)
+        elif isinstance(input_peer, InputChannel):
+            input_peer = InputPeerChannel(channel_id=input_peer.channel_id, access_hash=input_peer.access_hash)
 
         if isinstance(input_peer, InputPeerSelf) \
                 or (isinstance(input_peer, InputPeerUser) and input_peer.user_id == user.id):
@@ -76,6 +82,10 @@ class Peer(Model):
             ).select_related("owner", "user")
         elif isinstance(input_peer, InputPeerChat):
             return await Peer.get_or_none(owner=user, chat__id=input_peer.chat_id).select_related("owner", "chat")
+        elif isinstance(input_peer, InputPeerChannel):
+            return await Peer.get_or_none(
+                owner=user, channel__id=input_peer.channel_id, access_hash=input_peer.access_hash,
+            ).select_related("owner", "channel")
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
@@ -102,19 +112,22 @@ class Peer(Model):
 
         return []
 
-    def to_tl(self) -> PeerUser | PeerChat:
+    def to_tl(self) -> PeerUser | PeerChat | PeerChannel:
         if self.type is PeerType.SELF:
             return PeerUser(user_id=self.owner_id)
         if self.type is PeerType.USER:
             return PeerUser(user_id=self.user_id)
         if self.type == PeerType.CHAT:
             return PeerChat(chat_id=self.chat_id)
+        if self.type == PeerType.CHANNEL:
+            return PeerChannel(channel_id=self.channel_id)
 
         assert False, "unknown peer type"
 
     async def tl_users_chats(
-            self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None
-    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
+            self, user: models.User, users: dict[int, TLUser] | None = None,
+            chats: dict[int, TLChat | TLChannel] | None = None,
+    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat | TLChannel] | None]:
         ret = users, chats
 
         if self.type is PeerType.SELF:
@@ -138,6 +151,11 @@ class Peer(Model):
             )
             for participant in participants:
                 users[participant.id] = await participant.to_tl(user)
+        elif self.type is PeerType.CHANNEL:
+            if chats is None or self.channel_id in chats:
+                return ret
+            self.channel = await self.channel
+            chats[self.channel.id] = await self.channel.to_tl(user)
 
         return ret
 
@@ -145,4 +163,7 @@ class Peer(Model):
     def chat_or_channel(self) -> models.ChatBase:
         if self.type is PeerType.CHAT:
             return self.chat
-        # TODO: return channel field when will be added
+        elif self.type is PeerType.CHANNEL:
+            return self.channel
+
+        raise RuntimeError(f".chat_or_channel called on peer with type {self.type}")

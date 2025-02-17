@@ -13,7 +13,8 @@ from piltover.tl import ChatParticipant as TLChatParticipant, ChatParticipantCre
 class ChatParticipant(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.ForeignKeyField("models.User")
-    chat: models.Chat = fields.ForeignKeyField("models.Chat")
+    chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)
+    channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
     inviter_id: int = fields.BigIntField(default=0)
     invited_at: datetime = fields.DatetimeField(auto_now_add=True)
     is_admin: bool = fields.BooleanField(default=False)
@@ -23,10 +24,12 @@ class ChatParticipant(Model):
 
     user_id: int
     chat_id: int
+    channel_id: int
 
     class Meta:
         unique_together = (
             ("user", "chat",),
+            ("user", "channel",),
         )
 
     async def to_tl(self) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:

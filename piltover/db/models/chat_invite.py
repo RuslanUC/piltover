@@ -19,6 +19,7 @@ class ChatInvite(Model):
     nonce: str = fields.CharField(max_length=16, default=lambda: urandom(8).hex())
     user: models.User | None = fields.ForeignKeyField("models.User", null=True)
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True)
+    channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     updated_at: datetime = fields.DatetimeField(auto_now_add=True)
     usage_limit: int | None = fields.IntField(null=True, default=None)
@@ -27,6 +28,7 @@ class ChatInvite(Model):
 
     user_id: int | None
     chat_id: int | None
+    channel_id: int | None
 
     def to_link_hash(self) -> str:
         return urlsafe_b64encode(Long.write(self.id) + bytes.fromhex(self.nonce)).decode("utf8").strip("=")
@@ -77,6 +79,9 @@ class ChatInvite(Model):
 
     @property
     def chat_or_channel(self) -> models.ChatBase:
-        if self.chat is not None:  # TODO: add "and self.channel is None"
+        if self.chat_id is not None:
             return self.chat
-        # TODO: return channel field when will be added
+        if self.channel_id is not None:
+            return self.channel
+
+        raise NotImplementedError

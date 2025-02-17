@@ -330,3 +330,18 @@ async def test_gethistory_offsets() -> None:
         messages: Messages = await client.invoke(request)
         assert len(messages.messages) == 10
         assert {message.id for message in messages.messages} == set(range(20, 29 + 1))
+
+
+@pytest.mark.asyncio
+async def test_send_message_in_channel() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        channel = await client.create_channel("idk")
+
+        message = await client.send_message(channel.id, "test message 123")
+        assert message.text == "test message 123"
+
+        messages = [msg async for msg in client.get_chat_history(channel.id)]
+        assert len(messages) == 1
+
+        assert messages[0].id == message.id
+        assert messages[0].text == message.text
