@@ -23,60 +23,17 @@ handler = MessageHandler("messages.sending")
 InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument
 
 
-async def create_message_internal(
-        user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
-        opposite: bool = True, **message_kwargs
-) -> dict[Peer, Message]:
-    if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
-        raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
-
-    reply = None
-    if reply_to_message_id:
-        reply = await Message.get_or_none(id=reply_to_message_id, peer=peer)
-        if reply is None:
-            raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
-
-    peers = [peer]
-    if opposite:
-        peers.extend(await peer.get_opposite())
-    messages: dict[Peer, Message] = {}
-
-    internal_id = Snowflake.make_id()
-    for to_peer in peers:
-        await to_peer.fetch_related("owner", "user")
-        await Dialog.get_or_create(peer=to_peer)
-        if to_peer == peer and random_id is not None:
-            message_kwargs["random_id"] = str(random_id)
-        messages[to_peer] = await Message.create(
-            internal_id=internal_id,
-            peer=to_peer,
-            reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
-            author=author,
-            **message_kwargs
-        )
-        message_kwargs.pop("random_id", None)
-
-    if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
-        await draft.delete()
-        await UpdatesManager.update_draft(user, peer, None)
-
-    presence = await Presence.update_to_now(user)
-    await UpdatesManager.update_status(user, presence, peers[1:])
-
-    return messages
-
-
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         opposite: bool = True, **message_kwargs
 ) -> Updates:
-    messages = await create_message_internal(
+    messages = await Message.create_message_for_peer(
         user, peer, random_id, reply_to_message_id, clear_draft, author, opposite, **message_kwargs,
     )
     if (upd := await UpdatesManager.send_message(user, messages)) is None:
         assert False, "unknown chat type ?"
 
-    return upd
+    return cast(Updates, upd)
 
 
 def _resolve_reply_id(

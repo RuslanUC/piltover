@@ -8,7 +8,7 @@ from tests.conftest import TestClient
 
 PHOTO_COLOR = (0x00, 0xff, 0x00)
 
-"""
+
 @pytest.mark.asyncio
 async def test_export_chat_invite() -> None:
     async with TestClient(phone_number="123456789") as client:
@@ -159,7 +159,7 @@ async def test_get_chat_importers() -> None:
         assert len(importers) == 1
         assert importers[0].user.id == client2.me.id
         assert not importers[0].pending
-"""
+
 
 @pytest.mark.asyncio
 async def test_send_multiple_requests_on_same_invite() -> None:

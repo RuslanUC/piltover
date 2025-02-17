@@ -140,3 +140,9 @@ class Peer(Model):
                 users[participant.id] = await participant.to_tl(user)
 
         return ret
+
+    @property
+    def chat_or_channel(self) -> models.ChatBase:
+        if self.type is PeerType.CHAT:
+            return self.chat
+        # TODO: return channel field when will be added

@@ -2,6 +2,7 @@ from .api_application import ApiApplication
 from .auth_country import AuthCountry
 from .auth_country_code import AuthCountryCode
 from .authkey import AuthKey, TempAuthKey
+from .chat_base import ChatBase
 from .chat import Chat
 from .chat_participant import ChatParticipant
 from .contact import Contact

@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from time import time
 
-from tortoise import fields, Model
-
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.tl import ChatPhoto, ChatForbidden
-from piltover.tl.types import Chat as TLChat, ChatPhotoEmpty, ChatBannedRights, ChatAdminRights, Photo, PhotoEmpty
+from piltover.db.models.chat_base import ChatBase
+from piltover.tl import ChatForbidden
+from piltover.tl.types import Chat as TLChat, ChatBannedRights, ChatAdminRights
 
 DEFAULT_BANNED_RIGHTS = ChatBannedRights(
     view_messages=False,
@@ -51,32 +50,7 @@ DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
 )
 
 
-class Chat(Model):
-    id: int = fields.BigIntField(pk=True)
-    name: str = fields.CharField(max_length=64)
-    description: str = fields.CharField(max_length=255, default="")
-    version: int = fields.BigIntField(default=1)
-    creator: models.User = fields.ForeignKeyField("models.User")
-    photo: models.File | None = fields.ForeignKeyField("models.File", on_delete=fields.SET_NULL, null=True, default=None)
-    no_forwards: bool = fields.BooleanField(default=False)
-
-    creator_id: int
-    photo_id: int
-
-    async def to_tl_photo(self, user: models.User) -> Photo | PhotoEmpty:
-        if not self.photo_id:
-            return PhotoEmpty(id=0)
-        self.photo = await self.photo
-        return await self.photo.to_tl_photo(user)
-
-    async def to_tl_chat_photo(self) -> ChatPhoto | ChatPhotoEmpty:
-        if not self.photo_id:
-            return ChatPhotoEmpty()
-        self.photo = await self.photo
-        return ChatPhoto(
-            has_video=False, photo_id=self.photo.id, dc_id=2, stripped_thumb=self.photo.photo_stripped,
-        )
-
+class Chat(ChatBase):
     async def to_tl(self, user: models.User) -> TLChat | ChatForbidden:
         if not await models.ChatParticipant.filter(user=user, chat=self).exists():
             return ChatForbidden(id=self.id, title=self.name)

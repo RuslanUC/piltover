@@ -1,6 +1,6 @@
 from tortoise.expressions import Subquery
 
-from piltover.app.handlers.messages.sending import send_message_internal, create_message_internal
+from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType
@@ -115,18 +115,7 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
     if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    chat = peer.chat
-
-    new_title = request.title.strip()
-    if new_title == chat.name:
-        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-    if not new_title:
-        raise ErrorRpc(error_code=400, error_message="CHAT_TITLE_EMPTY")
-
-    chat.name = new_title
-    chat.version += 1
-    await chat.save(update_fields=["name", "version"])
-
+    await peer.chat.update(title=request.title)
     return await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE,
@@ -145,17 +134,7 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat = peer.chat
-
-    new_desc = request.about.strip()
-    if new_desc == chat.name:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ABOUT_NOT_MODIFIED")
-    if len(new_desc) > 255:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ABOUT_TOO_LONG")
-
-    chat.description = new_desc
-    chat.version += 1
-    await chat.save(update_fields=["description", "version"])
-
+    await chat.update(description=request.about)
     await UpdatesManager.update_chat(chat)
 
     return True
@@ -170,14 +149,14 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat = peer.chat
-    before = chat.photo
+    new_photo = chat.photo
 
     if isinstance(request.photo, InputChatPhotoEmpty):
-        chat.photo = None
+        new_photo = None
     elif isinstance(request.photo, InputChatPhoto):
         if not await Peer.filter(owner=user, chat__photo__id=request.photo.id).exists():
             raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
-        chat.photo = await File.get_or_none(id=request.photo.id)
+        new_photo = await File.get_or_none(id=request.photo.id)
     elif isinstance(request.photo, InputChatUploadedPhoto):
         if request.photo.file is None:
             raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
@@ -190,13 +169,9 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
         file.photo_stripped = await generate_stripped(str(file.physical_id))
         await file.save(update_fields=["photo_sizes", "photo_stripped"])
 
-        chat.photo = file
+        new_photo = file
 
-    if chat.photo == before:
-        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-
-    chat.version += 1
-    await chat.save()
+    await chat.update(photo=new_photo)
 
     return await send_message_internal(
         user, peer, None, None, False,
@@ -271,7 +246,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     if target_chat_peer is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
-    messages = await create_message_internal(
+    messages = await Message.create_message_for_peer(
         user, chat_peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_USER_DEL,
         extra_info=MessageActionChatDeleteUser(user_id=user_peer.peer_user(user).id).write(),

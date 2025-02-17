@@ -10,7 +10,7 @@ from tortoise import fields, Model
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
-from piltover.exceptions import Error
+from piltover.exceptions import Error, ErrorRpc
 from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, Long, \
     SerializationUtils, TLObject
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
@@ -290,6 +290,51 @@ class Message(Model):
             saved_name=self.author.first_name if peer.type == PeerType.SELF else None,
             saved_date=self.date if peer.type == PeerType.SELF else None,
         )
+
+    @classmethod
+    async def create_message_for_peer(
+            cls, user: models.User, peer: models.Peer, random_id: int | None, reply_to_message_id: int | None,
+            clear_draft: bool, author: models.User, opposite: bool = True, **message_kwargs
+    ) -> dict[models.Peer, Message]:
+        from piltover.app.utils.updates_manager import UpdatesManager
+        
+        if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
+            raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
+
+        reply = None
+        if reply_to_message_id:
+            reply = await Message.get_or_none(id=reply_to_message_id, peer=peer)
+            if reply is None:
+                raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
+
+        peers = [peer]
+        if opposite:
+            peers.extend(await peer.get_opposite())
+        messages: dict[models.Peer, Message] = {}
+
+        internal_id = Snowflake.make_id()
+        for to_peer in peers:
+            await to_peer.fetch_related("owner", "user")
+            await models.Dialog.get_or_create(peer=to_peer)
+            if to_peer == peer and random_id is not None:
+                message_kwargs["random_id"] = str(random_id)
+            messages[to_peer] = await Message.create(
+                internal_id=internal_id,
+                peer=to_peer,
+                reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
+                author=author,
+                **message_kwargs
+            )
+            message_kwargs.pop("random_id", None)
+
+        if clear_draft and (draft := await models.MessageDraft.get_or_none(dialog__peer=peer)) is not None:
+            await draft.delete()
+            await UpdatesManager.update_draft(user, peer, None)
+
+        presence = await models.Presence.update_to_now(user)
+        await UpdatesManager.update_status(user, presence, peers[1:])
+
+        return messages
 
     async def tl_users_chats(
             self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,

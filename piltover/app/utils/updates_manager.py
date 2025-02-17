@@ -8,7 +8,7 @@ from piltover.db.enums import UpdateType, PeerType
 from piltover.db.models import User, Message, State, UpdateV2, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant
 from piltover.session_manager import SessionManager
-from piltover.tl import Updates, UpdateShortSentMessage, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
+from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \

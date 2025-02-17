@@ -37,7 +37,7 @@ async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
 
     pq = client.auth_data.p * client.auth_data.q
 
-    client.auth_data.server_nonce = int.from_bytes(secrets.token_bytes(128 // 8), byteorder="big")
+    client.auth_data.server_nonce = Int128.read_bytes(secrets.token_bytes(128 // 8))
 
     await client.send_unencrypted(ResPQ(
         nonce=req_pq_multi.nonce,

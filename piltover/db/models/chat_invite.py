@@ -74,3 +74,9 @@ class ChatInvite(Model):
             chats[self.chat.id] = await self.chat.to_tl(user)
 
         return users, chats
+
+    @property
+    def chat_or_channel(self) -> models.ChatBase:
+        if self.chat is not None:  # TODO: add "and self.channel is None"
+            return self.chat
+        # TODO: return channel field when will be added
