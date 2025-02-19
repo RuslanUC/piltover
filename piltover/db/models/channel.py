@@ -3,7 +3,6 @@ from __future__ import annotations
 from time import time
 from typing import cast
 
-from loguru import logger
 from tortoise import fields
 
 from piltover.db import models
@@ -16,6 +15,7 @@ from piltover.tl.types import ChatAdminRights
 class Channel(ChatBase):
     channel: bool = fields.BooleanField(default=False)
     supergroup: bool = fields.BooleanField(default=False)
+    pts: int = fields.BigIntField(default=1)
 
     async def to_tl(self, user: models.User) -> TLChannel | ChannelForbidden:
         peer: models.Peer | None = await models.Peer.get_or_none(owner=user, channel=self, type=PeerType.CHANNEL)

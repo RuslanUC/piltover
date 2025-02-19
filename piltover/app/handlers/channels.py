@@ -4,7 +4,7 @@ from piltover.db.enums import MessageType, PeerType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import MessageActionChannelCreate, UpdateChannel
+from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel
 from piltover.tl.types.messages import Chats
@@ -34,7 +34,7 @@ async def check_username(request: CheckUsername):
 
 
 @handler.on_request(CreateChannel)
-async def create_channel(request: CreateChannel, user: User) -> ...:
+async def create_channel(request: CreateChannel, user: User) -> Updates:
     if not request.broadcast and not request.megagroup:
         raise ErrorRpc(error_code=400, error_message="CHANNELS_TOO_MUCH")
 

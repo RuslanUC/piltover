@@ -21,7 +21,7 @@ from .sentcode import SentCode
 from .server_salt import ServerSalt
 from .srp_session import SrpSession
 from .state import State
-from .update import UpdateV2
+from .update import Update
 from .uploading_file import UploadingFile, UploadingFilePart
 from .user import User
 from .user_authorization import UserAuthorization
@@ -32,3 +32,4 @@ from .saved_dialog import SavedDialog
 from .chat_invite import ChatInvite
 from .chat_invite_request import ChatInviteRequest
 from .channel import Channel
+from .channel_update import ChannelUpdate

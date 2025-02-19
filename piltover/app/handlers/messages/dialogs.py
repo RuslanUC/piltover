@@ -21,6 +21,7 @@ async def format_dialogs(user: User, dialogs: list[Dialog] | list[SavedDialog]) 
     messages = []
     users = {}
     chats = {}
+    channels = {}
 
     for dialog in dialogs:
         message = await Message.filter(peer=dialog.peer).select_related("author", "peer").order_by("-id").first()
@@ -29,18 +30,12 @@ async def format_dialogs(user: User, dialogs: list[Dialog] | list[SavedDialog]) 
             if message.author.id not in users:
                 users[message.author.id] = await message.author.to_tl(user)
 
-        if dialog.peer.peer_user(user) is not None and dialog.peer.peer_user(user).id not in users:
-            users[dialog.peer.user.id] = await dialog.peer.peer_user(user).to_tl(user)
-        if dialog.peer.type is PeerType.CHAT and dialog.peer.chat_id not in chats:
-            #await dialog.peer.fetch_related("chat")
-            chats[dialog.peer.chat.id] = await dialog.peer.chat.to_tl(user)
-            for chat_user in await User.filter(chatparticipants__chat=dialog.peer.chat, id__not_in=list(users.keys())):
-                users[chat_user.id] = await chat_user.to_tl(user)
+        await dialog.peer.tl_users_chats(user, users, chats, channels)
 
     return {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
         "messages": messages,
-        "chats": list(chats.values()),
+        "chats": [*chats.values(), *channels.values()],
         "users": list(users.values()),
     }
 

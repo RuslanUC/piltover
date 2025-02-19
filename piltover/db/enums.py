@@ -121,3 +121,9 @@ class ChatBannedRights(IntFlag):
     SEND_VOICES = 1 << 17
     SEND_DOCS = 1 << 18
     SEND_PLAIN = 1 << 19
+
+
+class ChannelUpdateType(IntEnum):
+    UPDATE_CHANNEL = 0
+    NEW_MESSAGE = 1
+    EDIT_MESSAGE = 2

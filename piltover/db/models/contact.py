@@ -3,7 +3,7 @@ from __future__ import annotations
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.tl import User as TLUser, Chat as TLChat
+from piltover.tl import User as TLUser
 
 
 class Contact(Model):
@@ -23,15 +23,13 @@ class Contact(Model):
         )
 
     async def tl_users_chats(
-            self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None
-    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
-        ret = users, chats
-
+            self, user: models.User, users: dict[int, TLUser] | None = None
+    ) -> dict[int, TLUser] | None:
         if users is not None and self.target is not None and self.target_id not in users:
             self.target = await self.target
             if self.target is None:
-                return ret
+                return users
             users[self.target.id] = await self.target.to_tl(user)
 
-        return ret
+        return users
 

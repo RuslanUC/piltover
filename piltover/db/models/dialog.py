@@ -12,7 +12,7 @@ from piltover.tl.types import Dialog as TLDialog
 
 class Dialog(Model):
     id: int = fields.BigIntField(pk=True)
-    pinned_index: int = fields.SmallIntField(null=True, default=None)
+    pinned_index: int | None = fields.SmallIntField(null=True, default=None)
     unread_mark: bool = fields.BooleanField(default=False)
 
     peer: models.Peer = fields.ForeignKeyField("models.Peer", unique=True)

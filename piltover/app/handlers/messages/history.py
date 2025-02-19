@@ -155,28 +155,17 @@ async def format_messages_internal(
         users = {}
     if chats is None:
         chats = {}
+    channels = {}
 
     messages_tl = []
     for message in messages:
         messages_tl.append(await message.to_tl(user))
-
-        # TODO: replace with message.tl_users_chats
-
-        if message.author.id not in users:
-            users[message.author.id] = await message.author.to_tl(user)
-        if message.peer.user is not None and message.peer.user.id not in users:
-            users[message.peer.user.id] = await message.peer.user.to_tl(user)
-        if message.peer.type is PeerType.CHAT and message.peer.chat_id is not None and message.peer.chat_id not in chats:
-            message.peer.chat = chat = await message.peer.chat
-            chats[chat.id] = await chat.to_tl(user)
-        if message.peer.type is PeerType.CHANNEL and message.peer.channel_id is not None and message.peer.channel_id not in chats:
-            message.peer.channel = channel = await message.peer.channel
-            chats[channel.id] = await channel.to_tl(user)
+        await message.tl_users_chats(user, users, chats, channels)
 
     # TODO: MessagesSlice
     return Messages(
         messages=messages_tl,
-        chats=list(chats.values()),
+        chats=[*chats.values(), *channels.values()],
         users=list(users.values()),
     )
 
@@ -303,18 +292,19 @@ async def get_search_counters(request: GetSearchCounters, user: User):
 @handler.on_request(GetAllDrafts)
 async def get_all_drafts(user: User):
     users = {}
+    chats = {}
+    channels = {}
     updates = []
     drafts = await MessageDraft.filter(dialog__peer__owner=user).select_related("dialog", "dialog__peer", "dialog__peer__user")
     for draft in drafts:
         peer = draft.dialog.peer
         updates.append(UpdateDraftMessage(peer=peer.to_tl(), draft=draft.to_tl()))
-        if peer.user.id not in users:
-            users[peer.user.id] = await peer.user.to_tl(user)
+        await peer.tl_users_chats(user, users, chats, channels)
 
     return Updates(
         updates=updates,
         users=list(users.values()),
-        chats=[],
+        chats=[*chats.values(), *channels.values()],
         date=int(time()),
         seq=0,
     )

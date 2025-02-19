@@ -126,9 +126,9 @@ class Peer(Model):
 
     async def tl_users_chats(
             self, user: models.User, users: dict[int, TLUser] | None = None,
-            chats: dict[int, TLChat | TLChannel] | None = None,
-    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat | TLChannel] | None]:
-        ret = users, chats
+            chats: dict[int, TLChat | TLChannel] | None = None, channels: dict[int, TLChannel] | None = None,
+    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None, dict[int, TLChannel] | None]:
+        ret = users, chats, channels
 
         if self.type is PeerType.SELF:
             if users is None or self.owner_id in users:
@@ -152,10 +152,10 @@ class Peer(Model):
             for participant in participants:
                 users[participant.id] = await participant.to_tl(user)
         elif self.type is PeerType.CHANNEL:
-            if chats is None or self.channel_id in chats:
+            if channels is None or self.channel_id in channels:
                 return ret
             self.channel = await self.channel
-            chats[self.channel.id] = await self.channel.to_tl(user)
+            channels[self.channel.id] = await self.channel.to_tl(user)
 
         return ret
 

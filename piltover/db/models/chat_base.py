@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
 

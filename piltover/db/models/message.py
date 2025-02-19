@@ -12,7 +12,7 @@ from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.exceptions import Error, ErrorRpc
 from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, Long, \
-    SerializationUtils, TLObject
+    SerializationUtils, TLObject, Channel as TLChannel
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatJoinedByRequest, MessageActionChatJoinedByLink, \
     MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage
@@ -343,14 +343,15 @@ class Message(Model):
 
     async def tl_users_chats(
             self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
-    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
+            channels: dict[int, TLChannel] | None = None,
+    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None, dict[int, TLChannel] | None]:
         if users is not None and self.author is not None and self.author_id not in users:
             self.author = await self.author
             users[self.author.id] = await self.author.to_tl(user)
 
-        if (users is not None or chats is not None) and self.peer is not None:
+        if (users is not None or chats is not None or channels is not None) and self.peer is not None:
             self.peer = await self.peer
-            await self.peer.tl_users_chats(user, users, chats)
+            await self.peer.tl_users_chats(user, users, chats, channels)
 
         if users is not None \
                 and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL) \
@@ -361,9 +362,9 @@ class Message(Model):
                 else:
                     user_ids = [MessageActionChatDeleteUser.read(BytesIO(self.extra_info), True).user_id]
             except Error:
-                return users, chats
+                return users, chats, channels
             for user_id in user_ids:
                 if user_id not in users and (participant := await models.User.get_or_none(id=user_id)) is not None:
                     users[participant.id] = await participant.to_tl(user)
 
-        return users, chats
+        return users, chats, channels

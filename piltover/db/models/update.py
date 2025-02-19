@@ -12,7 +12,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant
-from piltover.tl.types import User as TLUser, Chat as TLChat
+from piltover.tl.types import User as TLUser, Chat as TLChat, Channel as TLChannel
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -20,7 +20,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateReadHistoryOutbox
 
 
-class UpdateV2(Model):
+class Update(Model):
     id: int = fields.BigIntField(pk=True)
     update_type: UpdateType = fields.IntEnumField(UpdateType)
     pts: int = fields.BigIntField()
@@ -36,6 +36,7 @@ class UpdateV2(Model):
 
     async def to_tl(
             self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
+            channels: dict[int, TLChannel] | None = None,
     ) -> UpdateTypes | None:
         match self.update_type:
             case UpdateType.MESSAGE_DELETE:
@@ -48,7 +49,7 @@ class UpdateV2(Model):
                 if (message := await models.Message.get_or_none(id=self.related_id).select_related("peer", "author")) is None:
                     return
 
-                await message.tl_users_chats(user, users, chats)
+                await message.tl_users_chats(user, users, chats, channels)
 
                 return UpdateEditMessage(
                     message=await message.to_tl(user),
@@ -65,7 +66,7 @@ class UpdateV2(Model):
                 if (peer := await models.Peer.get_or_none(query)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 # TODO: fetch read state from db instead of related_ids
                 return UpdateReadHistoryInbox(
@@ -81,7 +82,7 @@ class UpdateV2(Model):
                         or (dialog := await models.Dialog.get_or_none(peer=peer)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 return UpdateDialogPinned(
                     pinned=dialog.pinned_index is not None,
@@ -96,7 +97,7 @@ class UpdateV2(Model):
                 ).select_related("peer", "peer__user")
 
                 for dialog in dialogs:
-                    await dialog.peer.tl_users_chats(user, users, chats)
+                    await dialog.peer.tl_users_chats(user, users, chats, channels)
 
                 return UpdatePinnedDialogs(
                     order=[
@@ -110,7 +111,7 @@ class UpdateV2(Model):
                 if peer is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 draft = await models.MessageDraft.get_or_none(dialog__peer=peer)
                 if isinstance(draft, models.MessageDraft):
@@ -130,7 +131,7 @@ class UpdateV2(Model):
                 if message is None:
                     return
 
-                await message.tl_users_chats(user, users, chats)
+                await message.tl_users_chats(user, users, chats, channels)
 
                 return UpdatePinnedMessages(
                     pinned=message.pinned,
@@ -145,7 +146,7 @@ class UpdateV2(Model):
                         or (peer_user := peer.peer_user(user)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 return UpdateUser(
                     user_id=peer_user.id,
@@ -155,7 +156,7 @@ class UpdateV2(Model):
                 if (peer := await models.Peer.from_chat_id(user, self.related_id)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
                 await peer.chat.fetch_related("creator")
 
                 user_ids = set(self.related_ids)
@@ -184,7 +185,7 @@ class UpdateV2(Model):
                 if (peer := await models.Peer.from_user_id(user, self.related_id)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 peer_user = peer.peer_user(user)
                 username = Username(editable=True, active=True, username=peer_user.username)
@@ -199,7 +200,7 @@ class UpdateV2(Model):
                 if (contact := await models.Contact.get_or_none(owner=user, target__id=self.related_id)) is None:
                     return
 
-                await contact.tl_users_chats(user, users, chats)
+                await contact.tl_users_chats(user, users)
 
                 return UpdatePeerSettings(
                     peer=PeerUser(user_id=contact.target.id),
@@ -210,7 +211,7 @@ class UpdateV2(Model):
                 if (peer := await models.Peer.from_user_id(user, self.related_id)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 return UpdatePeerBlocked(
                     peer_id=peer.to_tl(),
@@ -221,7 +222,7 @@ class UpdateV2(Model):
                 if (peer := await models.Peer.from_chat_id(user, self.related_id)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 return UpdateChat(chat_id=peer.chat.id)
 
@@ -229,7 +230,7 @@ class UpdateV2(Model):
                 if (dialog := await models.Dialog.get_or_none(id=self.related_id).select_related("peer")) is None:
                     return
 
-                await dialog.peer.tl_users_chats(user, users, chats)
+                await dialog.peer.tl_users_chats(user, users, chats, channels)
 
                 return UpdateDialogUnreadMark(
                     peer=DialogPeer(peer=dialog.peer.to_tl()),
@@ -242,7 +243,7 @@ class UpdateV2(Model):
                 if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 return UpdateReadHistoryInbox(
                     peer=peer.to_tl(),
@@ -258,7 +259,7 @@ class UpdateV2(Model):
                 if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
                     return
 
-                await peer.tl_users_chats(user, users, chats)
+                await peer.tl_users_chats(user, users, chats, channels)
 
                 return UpdateReadHistoryOutbox(
                     peer=peer.to_tl(),
