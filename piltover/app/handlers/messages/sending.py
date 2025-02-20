@@ -10,8 +10,7 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
 from piltover.db.enums import MediaType, MessageType, PeerType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog
-from piltover.db.models.message import Message
+    SavedDialog, Message, ChatParticipant
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage
@@ -445,5 +444,13 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
 
     await Message.filter(id__in=all_ids).delete()
     pts = await UpdatesManager.delete_messages(user, messages)
+
+    if not offset_id:
+        # TODO: delete for other users if request.revoke
+        await Dialog.filter(peer=peer).delete()
+        if peer.type == PeerType.CHAT:
+            await ChatParticipant.filter(char=peer.chat, user=user).delete()
+            await peer.delete()
+            await UpdatesManager.update_chat(peer.chat, user)
 
     return AffectedHistory(pts=pts, pts_count=len(messages[user]), offset=offset_id)

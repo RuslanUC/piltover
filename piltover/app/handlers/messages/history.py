@@ -48,9 +48,9 @@ async def _get_messages_query(
         query &= Q(date__lt=datetime.fromtimestamp(max_date, UTC))
 
     if max_id:
-        query &= Q(id__lte=max_id)
+        query &= Q(id__lt=max_id)
     if min_id:
-        query &= Q(id__gte=min_id)
+        query &= Q(id__gt=min_id)
 
     if isinstance(peer, Peer) and peer.type is PeerType.SELF and saved_peer is not None:
         query &= Q(fwd_header__saved_peer=saved_peer)
@@ -79,7 +79,6 @@ async def _get_messages_query(
     limit = max(min(100, limit), 1)
     select_related = "author", "peer", "peer__user"
 
-    # TODO: check whether add_offset can be provided without offset_id?
     if not offset_id or add_offset >= 0:
         if offset_id:
             query &= Q(id__lt=offset_id)
@@ -162,7 +161,34 @@ async def format_messages_internal(
         messages_tl.append(await message.to_tl(user))
         await message.tl_users_chats(user, users, chats, channels)
 
-    # TODO: MessagesSlice
+    # TODO: MessagesSlice based on explanation below
+    """
+    Messages with following ids are in database:
+    1 .. 90
+    
+    If client makes request GetHistory(limit=100),
+      we just return Messages object with all 90 messages.
+    
+    If client makes request GetHistory(limit=50),
+      we return MessagesSlice object with last (order by -id) 50 messages: 40-89.
+      
+    If client makes request like GetHistory(limit=50, offset_id=80),
+      we return MessagesSlice object with messages 20-79 and offset_id_offset=10.
+    
+    If client makes request like GetHistory(limit=50, offset_id=80, add_offset=10),
+      we return MessagesSlice object with messages 20-69 and offset_id_offset=10.
+    
+    If client makes request like GetHistory(limit=50, max_id=80),
+      we return MessagesSlice object with messages 30-79 and offset_id_offset=None.
+    
+    If client makes request like GetHistory(limit=50, offset_id=80, max_id=75),
+      we return MessagesSlice object with messages 25-74 and offset_id_offset=10.
+    
+    In all MessagesSlice responses: inexact=False, count=90.
+    
+    NOTE TO MYSELF: all values are tested with only GetHistory request. Search, GetReplies, etc. were NOT tested.
+    """
+
     return Messages(
         messages=messages_tl,
         chats=[*chats.values(), *channels.values()],
