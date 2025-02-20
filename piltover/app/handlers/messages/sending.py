@@ -4,6 +4,7 @@ from time import time
 from typing import cast
 
 from loguru import logger
+from tortoise.expressions import Q
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
@@ -16,8 +17,8 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
-    UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148
-from piltover.tl.types.messages import AffectedMessages
+    UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148, DeleteHistory
+from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
 
@@ -402,4 +403,47 @@ async def send_media(request: SendMultiMedia | SendMultiMedia_148, user: User):
     return updates
 
 
-# TODO: DeleteHistory
+@handler.on_request(DeleteHistory)
+async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+
+    query = Q(peer=peer)
+    if request.max_id:
+        query &= Q(id__lte=request.max_id)
+    if request.min_date:
+        query &= Q(date__gte=datetime.fromtimestamp(request.min_date, UTC))
+    if request.max_date:
+        query &= Q(date__lte=datetime.fromtimestamp(request.max_date, UTC))
+
+    messages: defaultdict[User, list[int]] = defaultdict(list)
+    offset_id = 0
+
+    message: Message
+    async for message in Message.filter(query).order_by("-id").limit(1001):
+        if len(messages[user]) == 1000:
+            offset_id = message.id
+            break
+
+        messages[user].append(message.id)
+
+        if not request.revoke:
+            continue
+
+        # TODO: delete history for each user separately if request.revoke
+        #  (so messages that current user already deleted without revoke will be deleted too)
+        #  (maybe just call delete_history for each user (opposite_peer)?)
+
+        for opposite_peer in await message.peer.get_opposite():
+            opp_message = await Message.get_or_none(internal_id=message.internal_id, peer=opposite_peer)
+            if opp_message is not None:
+                messages[message.peer.user].append(opp_message.id)
+
+    all_ids = [i for ids in messages.values() for i in ids]
+    if not all_ids:
+        updates_state, _ = await State.get_or_create(user=user)
+        return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
+
+    await Message.filter(id__in=all_ids).delete()
+    pts = await UpdatesManager.delete_messages(user, messages)
+
+    return AffectedHistory(pts=pts, pts_count=len(messages[user]), offset=offset_id)

@@ -3,12 +3,13 @@ from io import BytesIO
 
 import pytest
 from pyrogram.enums import MessageEntityType
-from pyrogram.raw.functions.messages import GetHistory
+from pyrogram.raw.functions.messages import GetHistory, DeleteHistory
 from pyrogram.raw.types import InputPeerSelf
-from pyrogram.raw.types.messages import Messages
+from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument
 
-from piltover.db.models import Message, FileAccess
+from piltover.db.enums import PeerType
+from piltover.db.models import Message, FileAccess, Peer, User
 from tests.conftest import TestClient
 
 
@@ -345,3 +346,36 @@ async def test_send_message_in_channel() -> None:
 
         assert messages[0].id == message.id
         assert messages[0].text == message.text
+
+
+@pytest.mark.asyncio
+async def test_delete_history() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        user = await User.get(id=client.me.id)
+        peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF)
+        await Message.bulk_create([
+            Message(peer=peer, author=user, internal_id=i, message="test")
+            for i in range(1500)
+        ])
+
+        assert len([msg async for msg in client.get_chat_history("me")]) == 1500
+
+        result: AffectedHistory = await client.invoke(DeleteHistory(
+            peer=InputPeerSelf(),
+            max_id=0,
+        ))
+
+        assert result.pts_count == 1000
+        assert result.offset > 0
+
+        assert len([msg async for msg in client.get_chat_history("me")]) == 500
+
+        result: AffectedHistory = await client.invoke(DeleteHistory(
+            peer=InputPeerSelf(),
+            max_id=result.offset,
+        ))
+
+        assert result.pts_count == 500
+        assert result.offset == 0
+
+        assert len([msg async for msg in client.get_chat_history("me")]) == 0

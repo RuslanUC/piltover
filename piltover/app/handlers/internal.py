@@ -85,7 +85,7 @@ async def sign_in(request: SignIn, user: User) -> Authorization:
     webauth.expires_at = int(time() + 60 * 60)
     auth_bytes = urandom(16)
     webauth.random_hash = auth_bytes.hex()
-    await webauth.save()
+    await webauth.save(update_fields=["user_id", "expires_at", "random_hash"])
 
     return Authorization(auth=Long.write(webauth.id) + auth_bytes)
 
