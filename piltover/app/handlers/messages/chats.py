@@ -140,6 +140,32 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
     return True
 
 
+async def resolve_input_chat_photo(
+        user: User, photo: InputChatPhotoEmpty | InputChatPhoto | InputChatUploadedPhoto,
+) -> File | None:
+    if isinstance(photo, InputChatPhotoEmpty):
+        return
+    elif isinstance(photo, InputChatPhoto):
+        if not await Peer.filter(owner=user, chat__photo__id=photo.id).exists():
+            raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
+        return await File.get_or_none(id=photo.id)
+    elif isinstance(photo, InputChatUploadedPhoto):
+        if photo.file is None:
+            raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
+        uploaded_file = await UploadingFile.get_or_none(user=user, file_id=photo.file.id)
+        if uploaded_file is None:
+            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+
+        file = await uploaded_file.finalize_upload("image/png", [])
+        file.photo_sizes = await resize_photo(str(file.physical_id))
+        file.photo_stripped = await generate_stripped(str(file.physical_id))
+        await file.save(update_fields=["photo_sizes", "photo_stripped"])
+
+        return file
+
+    raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+
 @handler.on_request(EditChatPhoto)
 async def edit_chat_photo(request: EditChatPhoto, user: User):
     peer = await Peer.from_chat_id_raise(user, request.chat_id)
@@ -149,29 +175,7 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat = peer.chat
-    new_photo = chat.photo
-
-    if isinstance(request.photo, InputChatPhotoEmpty):
-        new_photo = None
-    elif isinstance(request.photo, InputChatPhoto):
-        if not await Peer.filter(owner=user, chat__photo__id=request.photo.id).exists():
-            raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
-        new_photo = await File.get_or_none(id=request.photo.id)
-    elif isinstance(request.photo, InputChatUploadedPhoto):
-        if request.photo.file is None:
-            raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
-        uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.photo.file.id)
-        if uploaded_file is None:
-            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
-
-        file = await uploaded_file.finalize_upload("image/png", [])
-        file.photo_sizes = await resize_photo(str(file.physical_id))
-        file.photo_stripped = await generate_stripped(str(file.physical_id))
-        await file.save(update_fields=["photo_sizes", "photo_stripped"])
-
-        new_photo = file
-
-    await chat.update(photo=new_photo)
+    await chat.update(photo=await resolve_input_chat_photo(user, request.photo))
 
     return await send_message_internal(
         user, peer, None, None, False,

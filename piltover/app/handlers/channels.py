@@ -1,5 +1,6 @@
 from typing import cast
 
+from piltover.app.handlers.messages.chats import resolve_input_chat_photo
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import validate_username
 from piltover.db.enums import MessageType, PeerType
@@ -7,9 +8,9 @@ from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Mes
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, InputChannelEmpty, ChatEmpty, \
-    InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle
+    InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, Long
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
-    CreateChannel, GetChannels, GetFullChannel, EditTitle
+    CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull
 from piltover.worker import MessageHandler
 
@@ -150,9 +151,33 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
     if participant is None or not (participant.is_admin or peer.channel.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
+    # TODO: send/save UpdateChannel
+
     await peer.channel.update(title=request.title)
     return await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE,
         extra_info=MessageActionChatEditTitle(title=request.title).write(),
+    )
+
+
+@handler.on_request(EditPhoto)
+async def edit_channel_photo(request: EditPhoto, user: User):
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+
+    participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
+    if participant is None or not (participant.is_admin or peer.channel.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    channel = peer.channel
+    await channel.update(photo=await resolve_input_chat_photo(user, request.photo))
+
+    # TODO: send/save UpdateChannel
+
+    return await send_message_internal(
+        user, peer, None, None, False,
+        author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO,
+        extra_info=Long.write(channel.photo.id if channel.photo else 0),
     )

@@ -68,6 +68,8 @@ async def get_file(request: GetFile, user: User):
             q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user": peer.peer_user(user)}
         elif peer.type is PeerType.CHAT:
             q = {"file__chats__photo__id": request.location.photo_id, "file__chats__id": peer.chat_id}
+        elif peer.type is PeerType.CHANNEL:
+            q = {"file__channels__photo__id": request.location.photo_id, "file__channels__id": peer.channel_id}
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     else:
