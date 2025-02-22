@@ -8,6 +8,7 @@ from piltover.tl.types import SavedDialog as TLSavedDialog
 
 class SavedDialog(Model):
     id: int = fields.BigIntField(pk=True)
+    pinned_index: int | None = fields.SmallIntField(null=True, default=None)
     peer: models.Peer = fields.ForeignKeyField("models.Peer", unique=True)
 
     async def to_tl(self) -> TLSavedDialog:

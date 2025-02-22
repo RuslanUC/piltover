@@ -55,6 +55,7 @@ pytest-cov = "^6.0.0"
 pyrogram = "^2.0.106"
 pytest-asyncio = "^0.25.0"
 pytest-xdist = "^3.6.1"
+pytest-repeat = "^0.9.3"
 
 [build-system]
 requires = ["poetry-core"]

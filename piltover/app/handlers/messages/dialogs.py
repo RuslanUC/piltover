@@ -1,6 +1,8 @@
 from datetime import datetime, UTC
 
-from tortoise.expressions import Q
+from loguru import logger
+from tortoise.expressions import Q, Subquery, F
+from tortoise.functions import Max
 
 from piltover.app.handlers.updates import get_state_internal
 from piltover.app.utils.updates_manager import UpdatesManager
@@ -51,31 +53,77 @@ async def format_dialogs(
     return result
 
 
-async def get_dialogs_query(
-    peers: list[InputDialogPeer] | None, user: User, offset_id: int, offset_date: int,
-    offset_peer: InputPeerUser | InputPeerChat | None, folder_id: int | None = None, exclude_pinned: bool = False,
-) -> Q:
-    query = Q(peer__owner=user)
+async def get_dialogs_internal(
+        model: type[Dialog | SavedDialog], user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
+        offset_peer: InputPeerUser | InputPeerChat | None = None, folder_id: int | None = None,
+        exclude_pinned: bool = False, allow_slicing: bool = False,
+) -> dict:
+    if limit > 100 or limit < 1:
+        limit = 100
 
-    if offset_id:
-        query &= Q(peer__messages__id__lt=offset_id)
-    if offset_date:
-        query &= Q(peer__messages__date__lt=datetime.fromtimestamp(offset_date, UTC))
+    prefix = f"{model._meta.db_table}s"
+
+    query = Q(**{f"{prefix}__peer__owner": user})
+
     if offset_peer is not None:
+        input_peer = offset_peer
+        offset_peer = peer_message_id = None
         try:
-            offset_peer = await Peer.from_input_peer_raise(user, offset_peer)
+            offset_peer = await Peer.from_input_peer_raise(user, input_peer)
             peer_message_id = await Message.filter(peer=offset_peer).order_by("-id").first().values_list("id", flat=True)
-            if peer_message_id is not None:
-                query &= Q(peer__messages__id__lt=peer_message_id)
         except ErrorRpc:
             pass
-    if exclude_pinned:
-        query &= Q(pinned_index__isnull=True)
 
-    if peers is None:
-        peers = []
+        if peer_message_id is None:
+            offset_id = 0
+            if offset_peer is not None:
+                query &= Q(id__lt=offset_peer.id)
+        elif offset_id == 0 or offset_id > peer_message_id:
+            offset_id = peer_message_id
+
+    if offset_id:
+        query &= Q(last_message_id__lt=offset_id)
+    if exclude_pinned:
+        query &= Q(**{f"{prefix}__pinned_index__isnull": True})
+    date_annotation = {}
+    if offset_date:
+        date_annotation["last_message_date"] = Max("messages__date")
+        query &= Q(last_message_date__lt=datetime.fromtimestamp(offset_date, UTC))
+
+    # Doing it this way because, as far as i know, in Tortoise you cant reference outer-value from inner query
+    #  and e.g. do something like
+    #  Dialogs.annotate(last_message_id=Subquery(Message.filter(peer=F("peer")).order_by("-id").first().values_list("id", flat=True)))
+    peers_with_dialogs = Peer.annotate(last_message_id=Max("messages__id"), **date_annotation)\
+        .filter(query).limit(limit).order_by("-last_message_id", "-id")\
+        .select_related("owner", "user", "chat", prefix)
+
+    peer_with_dialogs: Peer
+    dialogs: list[Dialog | SavedDialog] = []
+
+    async for peer_with_dialog in peers_with_dialogs:
+        dialog = peer_with_dialog.dialogs
+        dialog.peer = peer_with_dialog
+
+        dialogs.append(dialog)
+
+    return await format_dialogs(user, dialogs, allow_slicing, folder_id)
+
+
+@handler.on_request(GetDialogs)
+async def get_dialogs(request: GetDialogs, user: User):
+    result = await get_dialogs_internal(
+        Dialog, user, request.offset_id, request.offset_date, request.limit, request.offset_peer, request.folder_id,
+        request.exclude_pinned, True
+    )
+    return Dialogs(**result) if "count" not in result else DialogsSlice(**result)
+
+
+@handler.on_request(GetPeerDialogs)
+async def get_peer_dialogs(request: GetPeerDialogs, user: User):
+    query = Q(peer__owner=user)
+
     peers_query = None
-    for peer in peers:
+    for peer in request.peers:
         if isinstance(peer.peer, InputPeerSelf):
             add_to_query = Q(peer__type=PeerType.SELF, peer__user=None)
         elif isinstance(peer.peer, InputPeerUser):
@@ -89,43 +137,15 @@ async def get_dialogs_query(
 
         peers_query = add_to_query if peers_query is None else peers_query | add_to_query
 
-    if peers_query is not None:
-        query &= peers_query
+    if peers_query is None:
+        return PeerDialogs(dialogs=[], messages=[], chats=[], users=[], state=await get_state_internal(user))
 
-    return query
+    query &= peers_query
+    dialogs = await Dialog.filter(query).select_related("peer", "peer__owner", "peer__user", "peer__chat")
 
-
-async def get_dialogs_internal(
-        peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
-        offset_peer: InputPeerUser | InputPeerChat | None = None, folder_id: int | None = None,
-        exclude_pinned: bool = False, allow_slicing: bool = False,
-) -> dict:
-    query = await get_dialogs_query(peers, user, offset_id, offset_date, offset_peer, folder_id, exclude_pinned)
-
-    if limit > 100 or limit < 1:
-        limit = 100
-
-    dialogs = await Dialog.filter(query).select_related(
-        "peer", "peer__owner", "peer__user", "peer__chat"
-    ).order_by("-peer__messages__id").limit(limit).distinct()
-
-    return await format_dialogs(user, dialogs, allow_slicing, folder_id)
-
-
-@handler.on_request(GetDialogs)
-async def get_dialogs(request: GetDialogs, user: User):
-    result = await get_dialogs_internal(
-        None, user, request.offset_id, request.offset_date, request.limit, request.offset_peer, request.folder_id,
-        request.exclude_pinned, True
-    )
-    return Dialogs(**result) if "count" not in result else DialogsSlice(**result)
-
-
-@handler.on_request(GetPeerDialogs)
-async def get_peer_dialogs(request: GetPeerDialogs, user: User):
     return PeerDialogs(
-        **(await get_dialogs_internal(request.peers, user)),
-        state=await get_state_internal(user)
+        **(await format_dialogs(user, dialogs)),
+        state=await get_state_internal(user),
     )
 
 

@@ -3,12 +3,11 @@ from datetime import datetime
 from pytz import UTC
 from tortoise.expressions import Q
 
-from piltover.app.handlers.messages.dialogs import get_dialogs_query, format_dialogs
+from piltover.app.handlers.messages.dialogs import get_dialogs_internal
 from piltover.app.handlers.messages.history import get_messages_internal, format_messages_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import User, SavedDialog, Peer, State, Message
-from piltover.tl import InputPeerUser, InputPeerChat
 from piltover.tl.functions.messages import GetSavedDialogs, GetSavedHistory, DeleteSavedHistory
 from piltover.tl.types.messages import SavedDialogs, Messages, AffectedHistory
 from piltover.worker import MessageHandler
@@ -16,28 +15,11 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.saved_dialogs")
 
 
-async def get_saved_dialogs_internal(
-        user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
-        offset_peer: InputPeerUser | InputPeerChat | None = None
-) -> dict:
-    query = await get_dialogs_query(None, user, offset_id, offset_date, offset_peer)
-
-    if limit > 100 or limit < 1:
-        limit = 100
-
-    dialogs = await SavedDialog.filter(query).select_related(
-        "peer", "peer__owner", "peer__user", "peer__chat"
-    ).order_by("-peer__messages__date").limit(limit)
-
-    # TODO: return SavedDialogsSlice if there is more than 100 dialogs ?
-    return await format_dialogs(user, dialogs)
-
-
 @handler.on_request(GetSavedDialogs)
 async def get_saved_dialogs(request: GetSavedDialogs, user: User) -> SavedDialogs:
     return SavedDialogs(
-        **(await get_saved_dialogs_internal(
-            user, request.offset_id, request.offset_date, request.limit, request.offset_peer
+        **(await get_dialogs_internal(
+            SavedDialog, user, request.offset_id, request.offset_date, request.limit, request.offset_peer
         ))
     )
 
