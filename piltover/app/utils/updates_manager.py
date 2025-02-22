@@ -6,13 +6,13 @@ from tortoise.queryset import QuerySet
 
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
-    ChatParticipant, ChannelUpdate
+    ChatParticipant, ChannelUpdate, Channel
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
-    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage
+    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel
 
 
 # TODO: move UpdatesManager to separate worker
@@ -644,3 +644,34 @@ class UpdatesManager:
             ), peer.owner.id)
 
         await Update.bulk_create(updates_to_create)
+
+    @staticmethod
+    async def update_channel(channel: Channel, user: User | None = None) -> Updates | None:
+        result = None
+
+        channel.pts += 1
+        this_pts = channel.pts
+        await channel.save(update_fields=["pts"])
+        await ChannelUpdate.create(
+            channel=channel,
+            type=ChannelUpdateType.NEW_MESSAGE,
+            related_id=None,
+            pts=this_pts,
+            pts_count=1,
+        )
+
+        for to_user in await User.filter(chatparticipants__channel=channel):
+            updates = Updates(
+                updates=[UpdateChannel(channel_id=1)],
+                users=[],
+                chats=[await channel.to_tl(to_user)],
+                date=int(time()),
+                seq=0,
+            )
+
+            if user == to_user:
+                result = updates
+
+            await SessionManager.send(updates, to_user.id)
+
+        return result

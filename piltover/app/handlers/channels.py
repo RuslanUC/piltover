@@ -2,6 +2,7 @@ from typing import cast
 
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
 from piltover.app.handlers.messages.sending import send_message_internal
+from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import validate_username
 from piltover.db.enums import MessageType, PeerType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message
@@ -151,14 +152,19 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
     if participant is None or not (participant.is_admin or peer.channel.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    # TODO: send/save UpdateChannel
-
     await peer.channel.update(title=request.title)
-    return await send_message_internal(
+
+    updates = await UpdatesManager.update_channel(peer.channel, user)
+    updates_msg = await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE,
         extra_info=MessageActionChatEditTitle(title=request.title).write(),
     )
+    updates.updates.extend(updates_msg.updates)
+    updates.users.extend(updates_msg.users)
+    updates.chats.extend(updates_msg.chats)
+
+    return updates
 
 
 @handler.on_request(EditPhoto)
@@ -174,10 +180,14 @@ async def edit_channel_photo(request: EditPhoto, user: User):
     channel = peer.channel
     await channel.update(photo=await resolve_input_chat_photo(user, request.photo))
 
-    # TODO: send/save UpdateChannel
-
-    return await send_message_internal(
+    updates = await UpdatesManager.update_channel(peer.channel, user)
+    updates_msg = await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO,
         extra_info=Long.write(channel.photo.id if channel.photo else 0),
     )
+    updates.updates.extend(updates_msg.updates)
+    updates.users.extend(updates_msg.users)
+    updates.chats.extend(updates_msg.chats)
+
+    return updates

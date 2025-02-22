@@ -127,9 +127,7 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
         server_time=int(time()),
     ).write()
 
-    auth_data.server_nonce_bytes = server_nonce_bytes = auth_data.server_nonce.to_bytes(
-        128 // 8, "little", signed=False
-    )
+    auth_data.server_nonce_bytes = server_nonce_bytes = Int128.write(auth_data.server_nonce)
 
     answer_with_hash = hashlib.sha1(answer).digest() + answer
     answer_with_hash += secrets.token_bytes(-len(answer_with_hash) % 16)
