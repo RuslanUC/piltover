@@ -255,7 +255,6 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
         author=user, type=MessageType.SERVICE_CHAT_USER_DEL,
         extra_info=MessageActionChatDeleteUser(user_id=user_peer.peer_user(user).id).write(),
     )
-    await target_chat_peer.delete()
     await ChatParticipant.filter(chat=chat_peer.chat, user=user_peer.user).delete()
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}

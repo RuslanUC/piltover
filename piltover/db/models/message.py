@@ -5,6 +5,7 @@ from io import BytesIO
 from typing import Callable, Awaitable
 
 from loguru import logger
+from pytz import UTC
 from tortoise import fields, Model
 
 from piltover.cache import Cache
@@ -112,7 +113,7 @@ class Message(Model):
     internal_id: int = fields.BigIntField()
     message: str = fields.TextField(null=True, default=None)
     pinned: bool = fields.BooleanField(default=False)
-    date: datetime = fields.DatetimeField(default=datetime.now)
+    date: datetime = fields.DatetimeField(default=lambda: datetime.now(UTC))
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
     random_id: str = fields.CharField(max_length=24, null=True, default=None)

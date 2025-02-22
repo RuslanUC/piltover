@@ -100,5 +100,13 @@ class ChatBase(Model):
 
         raise NotImplementedError
 
+    async def get_participant(self, user: models.User) -> models.ChatParticipant | None:
+        return await models.ChatParticipant.get_or_none(**self.or_channel(self), user=user)
+
+    async def get_participant_raise(self, user: models.User) -> models.ChatParticipant:
+        if (participant := await self.get_participant(user)) is not None:
+            return participant
+        raise ErrorRpc(error_code=400, error_message="CHAT_RESTRICTED")
+
     async def to_tl(self, user: models.User) -> Chat | ChatForbidden | Channel | ChannelForbidden:
         raise NotImplemented

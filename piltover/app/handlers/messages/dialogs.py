@@ -11,38 +11,49 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer, InputPeerChat, DialogPeer
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
-from piltover.tl.types.messages import PeerDialogs, Dialogs
+from piltover.tl.types.messages import PeerDialogs, Dialogs, DialogsSlice
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.dialogs")
 
 
-async def format_dialogs(user: User, dialogs: list[Dialog] | list[SavedDialog]) -> dict[str, list]:
+async def format_dialogs(
+        user: User, dialogs: list[Dialog] | list[SavedDialog], allow_slicing: bool = False, folder_id: int | None = None
+) -> dict[str, list]:
     messages = []
     users = {}
     chats = {}
     channels = {}
 
     for dialog in dialogs:
+        await dialog.peer.tl_users_chats(user, users, chats, channels)
+
         message = await Message.filter(peer=dialog.peer).select_related("author", "peer").order_by("-id").first()
         if message is not None:
             messages.append(await message.to_tl(user))
-            if message.author.id not in users:
-                users[message.author.id] = await message.author.to_tl(user)
+            await message.tl_users_chats(user, users, chats, channels)
 
-        await dialog.peer.tl_users_chats(user, users, chats, channels)
-
-    return {
+    result = {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
         "messages": messages,
         "chats": [*chats.values(), *channels.values()],
         "users": list(users.values()),
     }
 
+    if not allow_slicing:
+        return result
+
+    # TODO: use folder_id in folder when archive will be added
+    count = await Dialog.filter(peer__owner=user).count()
+    if count > len(dialogs):
+        result["count"] = count
+
+    return result
+
 
 async def get_dialogs_query(
     peers: list[InputDialogPeer] | None, user: User, offset_id: int, offset_date: int,
-    offset_peer: InputPeerUser | InputPeerChat | None
+    offset_peer: InputPeerUser | InputPeerChat | None, folder_id: int | None = None, exclude_pinned: bool = False,
 ) -> Q:
     query = Q(peer__owner=user)
 
@@ -58,6 +69,8 @@ async def get_dialogs_query(
                 query &= Q(peer__messages__id__lt=peer_message_id)
         except ErrorRpc:
             pass
+    if exclude_pinned:
+        query &= Q(pinned_index__isnull=True)
 
     if peers is None:
         peers = []
@@ -84,26 +97,28 @@ async def get_dialogs_query(
 
 async def get_dialogs_internal(
         peers: list[InputDialogPeer] | None, user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
-        offset_peer: InputPeerUser | InputPeerChat | None = None
+        offset_peer: InputPeerUser | InputPeerChat | None = None, folder_id: int | None = None,
+        exclude_pinned: bool = False, allow_slicing: bool = False,
 ) -> dict:
-    query = await get_dialogs_query(peers, user, offset_id, offset_date, offset_peer)
+    query = await get_dialogs_query(peers, user, offset_id, offset_date, offset_peer, folder_id, exclude_pinned)
 
     if limit > 100 or limit < 1:
         limit = 100
 
     dialogs = await Dialog.filter(query).select_related(
         "peer", "peer__owner", "peer__user", "peer__chat"
-    ).order_by("-peer__messages__date").limit(limit)
+    ).order_by("-peer__messages__id").limit(limit).distinct()
 
-    # TODO: return DialogsSlice if there is more than 100 dialogs ?
-    return await format_dialogs(user, dialogs)
+    return await format_dialogs(user, dialogs, allow_slicing, folder_id)
 
 
 @handler.on_request(GetDialogs)
 async def get_dialogs(request: GetDialogs, user: User):
-    return Dialogs(**(await get_dialogs_internal(
-        None, user, request.offset_id, request.offset_date, request.limit, request.offset_peer
-    )))
+    result = await get_dialogs_internal(
+        None, user, request.offset_id, request.offset_date, request.limit, request.offset_peer, request.folder_id,
+        request.exclude_pinned, True
+    )
+    return Dialogs(**result) if "count" not in result else DialogsSlice(**result)
 
 
 @handler.on_request(GetPeerDialogs)
@@ -115,7 +130,8 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User):
 
 
 @handler.on_request(GetPinnedDialogs)
-async def get_pinned_dialogs(user: User):
+async def get_pinned_dialogs(request: GetPinnedDialogs, user: User):
+    # TODO: get pinned dialogs from request.folder_id
     dialogs = await Dialog.filter(peer__owner=user, pinned_index__not_isnull=True)\
         .select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
 

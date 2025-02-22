@@ -58,6 +58,10 @@ def _resolve_reply_id(
 @handler.on_request(SendMessage)
 async def send_message(request: SendMessage, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await peer.chat_or_channel.get_participant_raise(user)
+
+    # TODO: check if peer is chat or channel and user has permission to send text messages
 
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -77,6 +81,10 @@ async def send_message(request: SendMessage, user: User):
 @handler.on_request(UpdatePinnedMessage)
 async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await peer.chat_or_channel.get_participant_raise(user)
+
+    # TODO: check if peer is chat or channel and user has permission to pin message
 
     if (message := await Message.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
@@ -108,6 +116,9 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
 @handler.on_request(DeleteMessages)
 async def delete_messages(request: DeleteMessages, user: User):
+    # TODO: check if message peer is chat and user has permission to revoke messages (if request.revoke is True)
+    #  or message peer is channel and user has permission to delete messages
+
     ids = request.id[:100]
     messages = defaultdict(list)
     for message in await Message.filter(id__in=ids, peer__owner=user).select_related("peer", "peer__user", "peer__owner"):
@@ -138,6 +149,10 @@ async def delete_messages(request: DeleteMessages, user: User):
 @handler.on_request(EditMessage)
 async def edit_message(request: EditMessage | EditMessage_136, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await peer.chat_or_channel.get_participant_raise(user)
+
+    # TODO: check if peer is chat or channel and user has permission to edit messages
 
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -222,6 +237,10 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 @handler.on_request(SendMedia)
 async def send_media(request: SendMedia | SendMedia_148, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await peer.chat_or_channel.get_participant_raise(user)
+
+    # TODO: check if peer is chat or channel and user has permission to send media
 
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -242,6 +261,8 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
 @handler.on_request(SaveDraft)
 async def save_draft(request: SaveDraft, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await peer.chat_or_channel.get_participant_raise(user)
 
     dialog = await Dialog.get_or_create(peer=peer)
     draft, _ = await MessageDraft.get_or_create(
@@ -266,13 +287,21 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
 
     if from_peer is None and (from_peer := await Peer.from_input_peer(user, request.from_peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    if from_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await from_peer.chat_or_channel.get_participant_raise(user)
     if from_peer.type is PeerType.CHAT and from_peer.chat.no_forwards:
         raise ErrorRpc(error_code=406, error_message="CHAT_FORWARDS_RESTRICTED")
+
+    # TODO: check if from_peer is channel and user has access to messages
 
     if (to_peer := await Peer.from_input_peer(user, request.to_peer)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
     if to_peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+    if to_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await to_peer.chat_or_channel.get_participant_raise(user)
+
+    # TODO: check if peer is chat or channel and user has permission to send text messages
 
     if not request.id:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
@@ -328,13 +357,17 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     if (upd := await UpdatesManager.send_messages(result, user)) is None:
         assert False, "unknown chat type ?"
 
-    return cast(Updates, upd)
+    return upd
 
 
 @handler.on_request(UploadMedia_136)
 @handler.on_request(UploadMedia)
-async def send_media(request: UploadMedia | UploadMedia_136, user: User):
+async def upload_media(request: UploadMedia | UploadMedia_136, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await peer.chat_or_channel.get_participant_raise(user)
+
+    # TODO: check if peer is chat or channel and user has permission to send media messages
 
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -347,6 +380,10 @@ async def send_media(request: UploadMedia | UploadMedia_136, user: User):
 @handler.on_request(SendMultiMedia)
 async def send_media(request: SendMultiMedia | SendMultiMedia_148, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        await peer.chat_or_channel.get_participant_raise(user)
+
+    # TODO: check if peer is chat or channel and user has permission to send media messages
 
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
