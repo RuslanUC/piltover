@@ -8,7 +8,7 @@ from tortoise import Model, fields
 from tortoise.expressions import Q
 
 from piltover.db import models
-from piltover.tl import ChatInviteExported, Long, User as TLUser, Chat as TLChat
+from piltover.tl import ChatInviteExported, Long
 
 
 class ChatInvite(Model):
@@ -64,18 +64,17 @@ class ChatInvite(Model):
             title=self.title,
         )
 
-    async def tl_users_chats(
-            self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None
-    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None]:
-        if users is not None and self.user_id is not None and self.user_id not in users:
-            self.user = await self.user
-            users[self.user.id] = await self.user.to_tl(user)
+    def query_users_chats(
+            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
+    ) -> tuple[Q | None, Q | None, Q | None]:
+        if users is not None and self.user_id is not None:
+            users |= Q(id=self.user_id)
+        if chats is not None and self.chat_id is not None:
+            chats |= Q(id=self.chat_id)
+        if chats is not None and self.channel_id is not None:
+            channels |= Q(id=self.channel_id)
 
-        if chats is not None and self.chat_id is not None and self.chat_id not in chats:
-            self.chat = await self.chat
-            chats[self.chat.id] = await self.chat.to_tl(user)
-
-        return users, chats
+        return users, chats, channels
 
     @property
     def chat_or_channel(self) -> models.ChatBase:

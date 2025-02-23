@@ -7,10 +7,12 @@ from typing import Callable, Awaitable
 from loguru import logger
 from pytz import UTC
 from tortoise import fields, Model
+from tortoise.expressions import Q
 
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
+from piltover.db.models._utils import fetch_users_chats
 from piltover.exceptions import Error, ErrorRpc
 from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, Long, \
     SerializationUtils, TLObject, Channel as TLChannel
@@ -128,6 +130,7 @@ class Message(Model):
     reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
     fwd_header: models.MessageFwdHeader = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
 
+    peer_id: int
     author_id: int
     media_id: int | None
 
@@ -342,18 +345,13 @@ class Message(Model):
 
         return messages
 
-    async def tl_users_chats(
-            self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
-            channels: dict[int, TLChannel] | None = None,
-    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None, dict[int, TLChannel] | None]:
-        if users is not None and self.author is not None and self.author_id not in users:
-            self.author = await self.author
-            users[self.author.id] = await self.author.to_tl(user)
-
-        if (users is not None or chats is not None or channels is not None) and self.peer is not None:
-            self.peer = await self.peer
-            await self.peer.tl_users_chats(user, users, chats, channels)
-
+    def query_users_chats(
+            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
+    ) -> tuple[Q | None, Q | None, Q | None]:
+        if users is not None and self.author_id is not None:
+            users |= Q(id=self.author_id)
+        if (users is not None or chats is not None or channels is not None) and self.peer_id is not None:
+            users, chats, channels = models.Peer.query_users_chats_cls(self.peer_id, users, chats, channels)
         if users is not None \
                 and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL) \
                 and self.extra_info:
@@ -364,8 +362,6 @@ class Message(Model):
                     user_ids = [MessageActionChatDeleteUser.read(BytesIO(self.extra_info), True).user_id]
             except Error:
                 return users, chats, channels
-            for user_id in user_ids:
-                if user_id not in users and (participant := await models.User.get_or_none(id=user_id)) is not None:
-                    users[participant.id] = await participant.to_tl(user)
+            users |= Q(id__in=user_ids)
 
         return users, chats, channels

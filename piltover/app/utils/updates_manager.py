@@ -7,6 +7,7 @@ from tortoise.queryset import QuerySet
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel
+from piltover.db.models._utils import resolve_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
@@ -25,7 +26,9 @@ class UpdatesManager:
             if isinstance(peer.owner, QuerySet):
                 await peer.fetch_related("owner")
 
-            users, chats, channels = await message.tl_users_chats(peer.owner, {}, {}, {})
+            users, chats, channels = await resolve_users_chats(
+                peer.owner, *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
+            )
 
             # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
 
@@ -82,7 +85,9 @@ class UpdatesManager:
         )
 
         for to_user in await User.filter(chatparticipants__channel__id=message.peer.channel_id):
-            users, chats, channels = await message.tl_users_chats(to_user, {}, {}, {})
+            users, chats, channels = await resolve_users_chats(
+                to_user, *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
+            )
 
             updates = Updates(
                 updates=[
@@ -114,19 +119,21 @@ class UpdatesManager:
 
         for peer, messages in messages.items():
             peer.owner = await peer.owner
-            chats = {}
-            users = {}
-            channels = {}
+            chats_q = Q()
+            users_q = Q()
+            channels_q = Q()
             updates = []
 
             for message in messages:
-                await message.tl_users_chats(peer.owner, users, chats, channels)
+                users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
 
                 updates.append(UpdateNewMessage(
                     message=await message.to_tl(peer.owner),
                     pts=await State.add_pts(peer.owner, 1),
                     pts_count=1,
                 ))
+
+            users, chats, channels = await resolve_users_chats(peer.owner, users_q, chats_q, channels_q, {}, {}, {})
 
             updates = Updates(
                 updates=updates,
@@ -164,7 +171,7 @@ class UpdatesManager:
 
             await SessionManager.send(
                 Updates(
-                    updates=[await update.to_tl(update_user)],
+                    updates=[(await update.to_tl(update_user))[0]],
                     users=[],
                     chats=[],
                     date=int(time()),
@@ -187,7 +194,7 @@ class UpdatesManager:
         await Update.filter(related_id__in=all_ids).delete()
         await Update.bulk_create(updates_to_create)
 
-        updates = Updates(updates=[await update.to_tl(user)], users=[], chats=[], date=int(time()), seq=0)
+        updates = Updates(updates=[(await update.to_tl(user))[0]], users=[], chats=[], date=int(time()), seq=0)
         await SessionManager.send(updates, user.id)
 
         return new_pts
@@ -249,8 +256,11 @@ class UpdatesManager:
             related_id=peer.id,
         )
 
-        users = {user.id: user}
-        tl_update = await update.to_tl(user, users)
+        tl_update, users_q, *_ = await update.to_tl(user, Q())
+        users_q &= Q(id__not=user.id)
+
+        users, *_ = await resolve_users_chats(user, users_q, None, None, {}, None, None)
+        users[user.id] = user
 
         updates = Updates(
             updates=[cast(UpdateDialogPinned, tl_update)],
@@ -574,7 +584,8 @@ class UpdatesManager:
             user=user, update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK, pts=pts, related_id=dialog.id,
         )
 
-        users, chats, channels = await dialog.peer.tl_users_chats(user, {}, {}, {})
+        users_q, chats_q, channels_q = Peer.query_users_chats_cls(dialog.peer_id, Q(), Q(), Q())
+        users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
         await SessionManager.send(Updates(
             updates=[
@@ -597,7 +608,8 @@ class UpdatesManager:
             additional_data=[max_id, unread_count],
         )
 
-        users, chats, channels = await peer.tl_users_chats(peer.owner, {}, {}, {})
+        users_q, chats_q, channels_q = peer.query_users_chats(Q(), Q(), Q())
+        users, chats, channels = await resolve_users_chats(peer.owner, users_q, chats_q, channels_q, {}, {}, {})
 
         await SessionManager.send(Updates(
             updates=[
@@ -626,7 +638,8 @@ class UpdatesManager:
                 additional_data=[max_id],
             ))
 
-            users, chats, channels = await peer.tl_users_chats(peer.owner, {}, {}, {})
+            users_q, chats_q, channels_q = peer.query_users_chats(Q(), Q(), Q())
+            users, chats, channels = await resolve_users_chats(peer.owner, users_q, chats_q, channels_q, {}, {}, {})
 
             await SessionManager.send(Updates(
                 updates=[

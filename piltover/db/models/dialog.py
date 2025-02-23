@@ -18,6 +18,8 @@ class Dialog(Model):
     peer: models.Peer = fields.ForeignKeyField("models.Peer", unique=True)
     draft: fields.ReverseRelation[models.MessageDraft]
 
+    peer_id: int
+
     async def to_tl(self) -> TLDialog:
         in_read_state, _ = await models.ReadState.get_or_create(dialog=self, defaults={"last_message_id": 0})
         unread_count = await models.Message.filter(peer=self.peer, id__gt=in_read_state.last_message_id).count()

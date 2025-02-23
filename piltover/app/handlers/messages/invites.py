@@ -9,6 +9,7 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType, MessageType
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase
+from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage, MessageActionChatJoinedByLink, \
@@ -43,10 +44,12 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user: User)
 
     limit = max(min(100, request.limit), 1)
     invites = []
-    users = {}
+    users_q = Q()
     for chat_invite in await ChatInvite.filter(query).order_by("-updated_at").limit(limit):
         invites.append(chat_invite.to_tl())
-        await chat_invite.tl_users_chats(user, users)
+        users_q, *_ = chat_invite.query_users_chats(users_q)
+
+    users, *_ = await resolve_users_chats(user, users_q, None, None, {}, None, None)
 
     return ExportedChatInvites(
         count=await ChatInvite.filter(query).count(),
@@ -277,7 +280,7 @@ async def get_exported_chat_invite(request: GetExportedChatInvite, user: User) -
     if invite is None:
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
 
-    users, _ = await invite.tl_users_chats(user, {})
+    users, *_ = await resolve_users_chats(user, *invite.query_users_chats(Q()), {}, None, None)
 
     return ExportedChatInvite(
         invite=invite.to_tl(),

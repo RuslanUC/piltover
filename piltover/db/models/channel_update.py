@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from tortoise import fields, Model
+from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
@@ -26,15 +27,16 @@ class ChannelUpdate(Model):
     channel_id: int
 
     async def to_tl(
-            self, user: models.User, users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
-            channels: dict[int, TLChannel] | None = None,
-    ) -> UpdateTypes | None:
-        if channels is not None and self.channel_id not in channels:
-            self.channel = await self.channel
-            channels[self.channel.id] = await self.channel.to_tl(user)
+            self, user: models.User, users_q: Q | None = None, chats_q: Q | None = None, channels_q: Q | None = None,
+    ) -> tuple[UpdateTypes | None, Q | None, Q | None, Q | None]:
+        none_ret = None, users_q, chats_q, channels_q
+
+        channels_q |= Q(id=self.channel_id)
 
         match self.type:
             case ChannelUpdateType.UPDATE_CHANNEL:
-                return UpdateChannel(channel_id=self.channel_id)
+                return UpdateChannel(channel_id=self.channel_id), users_q, chats_q, channels_q
             case ChannelUpdateType.NEW_MESSAGE:
-                return
+                return none_ret
+
+        return none_ret

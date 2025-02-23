@@ -10,6 +10,7 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, Dialog
+from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.message import Message
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
@@ -147,19 +148,21 @@ async def get_messages_internal(
 
 
 async def format_messages_internal(
-        user: User, messages: list[Message], users: dict[int, TLUser] | None = None,
-        chats: dict[int, TLChat] | None = None,
+        user: User, messages: list[Message], add_users: dict[int, TLUser] | None = None,
 ) -> Messages:
-    if users is None:
-        users = {}
-    if chats is None:
-        chats = {}
-    channels = {}
+    users_q = Q()
+    chats_q = Q()
+    channels_q = Q()
 
     messages_tl = []
     for message in messages:
         messages_tl.append(await message.to_tl(user))
-        await message.tl_users_chats(user, users, chats, channels)
+        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+
+    if add_users:
+        users_q &= Q(id__not_in=list(add_users.keys()))
+
+    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
     # TODO: MessagesSlice based on explanation below
     """
@@ -317,15 +320,18 @@ async def get_search_counters(request: GetSearchCounters, user: User):
 
 @handler.on_request(GetAllDrafts)
 async def get_all_drafts(user: User):
-    users = {}
-    chats = {}
-    channels = {}
+    users_q = Q()
+    chats_q = Q()
+    channels_q = Q()
+
     updates = []
     drafts = await MessageDraft.filter(dialog__peer__owner=user).select_related("dialog", "dialog__peer", "dialog__peer__user")
     for draft in drafts:
         peer = draft.dialog.peer
         updates.append(UpdateDraftMessage(peer=peer.to_tl(), draft=draft.to_tl()))
-        await peer.tl_users_chats(user, users, chats, channels)
+        users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+
+    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
     return Updates(
         updates=updates,

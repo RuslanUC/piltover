@@ -3,9 +3,11 @@ from __future__ import annotations
 from os import urandom
 
 from tortoise import fields, Model
+from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType
+from piltover.db.models._utils import fetch_users_chats
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
     User as TLUser, Chat as TLChat, InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, \
@@ -124,40 +126,58 @@ class Peer(Model):
 
         assert False, "unknown peer type"
 
-    async def tl_users_chats(
-            self, user: models.User, users: dict[int, TLUser] | None = None,
-            chats: dict[int, TLChat | TLChannel] | None = None, channels: dict[int, TLChannel] | None = None,
-    ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None, dict[int, TLChannel] | None]:
+    @classmethod
+    def query_users_chats_cls(
+            cls, peer_id: int, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
+            peer_type: PeerType | None = None
+    ) -> tuple[Q | None, Q | None, Q | None]:
         ret = users, chats, channels
 
-        if self.type is PeerType.SELF:
-            if users is None or self.owner_id in users:
-                return ret
-            self.owner = await self.owner
-            users[self.owner.id] = await self.owner.to_tl(user)
-        elif self.type is PeerType.USER:
-            if users is None or self.user_id in users:
-                return ret
-            self.user = await self.user
-            users[self.user.id] = await self.user.to_tl(user)
-        elif self.type is PeerType.CHAT:
-            if chats is None or self.chat_id in chats:
-                return ret
-            self.chat = await self.chat
-            chats[self.chat.id] = await self.chat.to_tl(user)
+        if (peer_type is PeerType.SELF and users is None) \
+                or (peer_type is PeerType.USER and users is None) \
+                or (peer_type is PeerType.CHAT and chats is None) \
+                or (peer_type is PeerType.CHANNEL and channels is None):
+            return ret
 
-            participants = await models.User.filter(
-                chatparticipants__chat__id=self.chat_id, id__not_in=list(users.keys())
-            )
-            for participant in participants:
-                users[participant.id] = await participant.to_tl(user)
-        elif self.type is PeerType.CHANNEL:
-            if channels is None or self.channel_id in channels:
-                return ret
-            self.channel = await self.channel
-            channels[self.channel.id] = await self.channel.to_tl(user)
+        if users is not None and (peer_type is None or peer_type is PeerType.SELF):
+            users |= Q(owner__id=peer_id, owner__type=PeerType.SELF)
+        if users is not None and (peer_type is None or peer_type is PeerType.USER):
+            users |= Q(user__id=peer_id, user__type=PeerType.USER)
+        if chats is not None and (peer_type is None or peer_type is PeerType.CHAT):
+            chats |= Q(peers__id=peer_id, peers__type=PeerType.CHAT)
+            if users is not None:
+                users |= Q(chatparticipants__chat__peers__id=peer_id, chatparticipants__chat__peers__type=PeerType.CHAT)
+        if channels is not None and (peer_type is None or peer_type is PeerType.CHANNEL):
+            channels |= Q(peers__id=peer_id, peers__type=PeerType.CHANNEL)
 
-        return ret
+        return users, chats, channels
+
+    def query_users_chats(
+            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
+    ) -> tuple[Q | None, Q | None, Q | None]:
+        return Peer.query_users_chats_cls(self.id, users, chats, channels, self.type)
+        #ret = users, chats, channels
+
+        #if self.type is PeerType.SELF:
+        #    if users is None:
+        #        return ret
+        #    users |= Q(owner__id=self.id)
+        #elif self.type is PeerType.USER:
+        #    if users is None:
+        #        return ret
+        #    users |= Q(user__id=self.id)
+        #elif self.type is PeerType.CHAT:
+        #    if chats is None:
+        #        return ret
+
+        #    chats |= Q(peers__id=self.id)
+        #    users |= Q(chatparticipants__chat__peers__id=self.id)
+        #elif self.type is PeerType.CHANNEL:
+        #    if channels is None:
+        #        return ret
+        #    channels |= Q(peers__id=self.id)
+
+        #return users, chats, channels
 
     @property
     def chat_or_channel(self) -> models.ChatBase:

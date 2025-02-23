@@ -9,6 +9,7 @@ from piltover.app.utils.utils import get_perm_key
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer
+from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.channel_update import ChannelUpdate
 from piltover.exceptions import ErrorRpc
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136, GetChannelDifference
@@ -68,23 +69,24 @@ async def get_difference(request: GetDifference | GetDifference_136, user: User)
 
     new_messages = {}
     other_updates = []
-    users = {}
-    chats = {}
-    channels = {}
+    users_q = Q()
+    chats_q = Q()
+    channels_q = Q()
 
     for message in new:
         new_messages[message.id] = await message.to_tl(user)
-        await message.tl_users_chats(user, users, chats, channels)
+        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
 
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
             continue
 
-        if (update_tl := await update.to_tl(user, users, chats, channels)) is not None:
+        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, users_q, chats_q, channels_q)
+        if update_tl is not None:
             other_updates.append(update_tl)
 
-    if user.id not in users:
-        users[user.id] = await user.to_tl(user)
+    users_q |= Q(id=user.id)
+    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
     return Difference(
         new_messages=list(new_messages.values()),
@@ -124,20 +126,23 @@ async def get_difference(request: GetChannelDifference, user: User):
 
     new_messages = {}
     other_updates = []
-    users = {}
-    chats = {}
-    channels = {}
+    users_q = Q()
+    chats_q = Q()
+    channels_q = Q()
 
     for message in new:
         new_messages[message.id] = await message.to_tl(user)
-        await message.tl_users_chats(user, users, chats, channels)
+        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
 
     for update in new_updates:
         if update.type is ChannelUpdateType.EDIT_MESSAGE and update.related_id in new_messages:
             continue
 
-        if (update_tl := await update.to_tl(user, users, chats, channels)) is not None:
+        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, users_q, chats_q, channels_q)
+        if update_tl is not None:
             other_updates.append(update_tl)
+
+    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
     return ChannelDifference(
         final=not has_more,

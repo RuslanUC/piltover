@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from tortoise import fields, Model
+from tortoise.expressions import Q
 
 from piltover.db import models
-from piltover.tl import User as TLUser
+from piltover.db.models._utils import fetch_users_chats
+from piltover.tl import User as TLUser, Chat as TLChat, Channel as TLChannel
 
 
 class Contact(Model):
@@ -22,14 +24,11 @@ class Contact(Model):
             ("owner", "phone_number"),
         )
 
-    async def tl_users_chats(
-            self, user: models.User, users: dict[int, TLUser] | None = None
-    ) -> dict[int, TLUser] | None:
-        if users is not None and self.target is not None and self.target_id not in users:
-            self.target = await self.target
-            if self.target is None:
-                return users
-            users[self.target.id] = await self.target.to_tl(user)
+    def query_users_chats(
+            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
+    ) -> tuple[Q | None, Q | None, Q | None]:
+        if users is not None and self.target_id is not None:
+            users |= Q(id=self.target_id)
 
-        return users
+        return users, chats, channels
 

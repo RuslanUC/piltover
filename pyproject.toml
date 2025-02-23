@@ -24,11 +24,11 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.11"
-cryptography = "^44.0.0"
+cryptography = "^44.0.1"
 tgcrypto = "^1.2.5"
 uvloop = "^0.21.0"
 loguru = "^0.7.3"
-tortoise-orm = {extras = ["asyncmy"], version = "^0.23.0"}
+tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", branch = "allow-joining-same-table-twice", extras = ["asyncmy"]}
 aerich = "^0.8.1"
 pillow = "^11.0.0"
 mtproto = "^0.1.0b12"

@@ -1,16 +1,17 @@
 from datetime import datetime, UTC
+from typing import cast
 
-from loguru import logger
-from tortoise.expressions import Q, Subquery, F
+from tortoise.expressions import Q
 from tortoise.functions import Max
 
 from piltover.app.handlers.updates import get_state_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Dialog, Peer, SavedDialog
+from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputPeerUser, InputPeerSelf, InputDialogPeer, InputPeerChat, DialogPeer
+from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
 from piltover.tl.types.messages import PeerDialogs, Dialogs, DialogsSlice
@@ -23,17 +24,20 @@ async def format_dialogs(
         user: User, dialogs: list[Dialog] | list[SavedDialog], allow_slicing: bool = False, folder_id: int | None = None
 ) -> dict[str, list]:
     messages = []
-    users = {}
-    chats = {}
-    channels = {}
+
+    users_q = Q()
+    chats_q = Q()
+    channels_q = Q()
 
     for dialog in dialogs:
-        await dialog.peer.tl_users_chats(user, users, chats, channels)
-
         message = await Message.filter(peer=dialog.peer).select_related("author", "peer").order_by("-id").first()
         if message is not None:
             messages.append(await message.to_tl(user))
-            await message.tl_users_chats(user, users, chats, channels)
+            users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+        else:
+            users_q, chats_q, channels_q = Peer.query_users_chats_cls(dialog.peer_id, users_q, chats_q, channels_q)
+
+    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
     result = {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
@@ -51,6 +55,13 @@ async def format_dialogs(
         result["count"] = count
 
     return result
+
+
+class PeerWithDialogs(Peer):
+    dialogs: Dialog | SavedDialog
+
+    class Meta:
+        abstract = True
 
 
 async def get_dialogs_internal(
@@ -74,6 +85,7 @@ async def get_dialogs_internal(
         except ErrorRpc:
             pass
 
+        peer_message_id = cast(int | None, peer_message_id)
         if peer_message_id is None:
             offset_id = 0
             if offset_peer is not None:
@@ -97,7 +109,7 @@ async def get_dialogs_internal(
         .filter(query).limit(limit).order_by("-last_message_id", "-id")\
         .select_related("owner", "user", "chat", prefix)
 
-    peer_with_dialogs: Peer
+    peer_with_dialog: PeerWithDialogs
     dialogs: list[Dialog | SavedDialog] = []
 
     async for peer_with_dialog in peers_with_dialogs:
