@@ -11,7 +11,6 @@ from piltover.db.models import ChatBase
 from piltover.tl import ChannelForbidden, Channel as TLChannel
 from piltover.tl.types import ChatAdminRights
 
-
 ADMIN_RIGHTS = ChatAdminRights(
     change_info=True,
     post_messages=True,

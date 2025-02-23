@@ -1,9 +1,5 @@
 import pytest
 from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified
-from pyrogram.raw.functions.account import GetAutoDownloadSettings, GetWebAuthorizations, GetDefaultEmojiStatuses, \
-    GetSavedRingtones, GetDefaultProfilePhotoEmojis, SaveAutoDownloadSettings, GetContentSettings, GetNotifySettings, \
-    GetGlobalPrivacySettings
-from pyrogram.raw.types import AutoDownloadSettings, InputPeerSelf, InputNotifyPeer
 
 from tests.conftest import TestClient
 

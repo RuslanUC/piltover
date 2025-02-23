@@ -14,7 +14,7 @@ from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.message import Message
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
-    InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, Chat as TLChat, InputMessagesFilterVideo, \
+    InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages

@@ -3,7 +3,6 @@ from __future__ import annotations
 from time import time
 
 from piltover.db import models
-from piltover.db.enums import PeerType
 from piltover.db.models.chat_base import ChatBase
 from piltover.tl import ChatForbidden
 from piltover.tl.types import Chat as TLChat, ChatBannedRights, ChatAdminRights

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from enum import IntFlag
 from typing import Any, TypeVar, Protocol
 
 import tortoise
-from loguru import logger
 from tortoise.expressions import Q
 
 from piltover.db import models
@@ -76,18 +74,3 @@ async def resolve_users_chats(
             channels[rel_channel.id] = await rel_channel.to_tl(user)
 
     return users, chats, channels
-
-
-async def fetch_users_chats(
-        obj: ModelWithQueryUsersChats, user: models.User, users: dict[int, TLUser] | None = None,
-        chats: dict[int, TLChat] | None = None, channels: dict[int, TLChannel] | None = None,
-) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None, dict[int, TLChannel] | None]:
-    logger.warning("tl_users_chats() should not be used!")
-    q_empty = Q()
-    users_q = q_empty if users is not None else None
-    chats_q = q_empty if chats is not None else None
-    channels_q = q_empty if channels is not None else None
-
-    users_q, chats_q, channels_q = obj.query_users_chats(users_q, chats_q, channels_q)
-
-    return await resolve_users_chats(user, users_q, chats_q, channels_q, users, chats, channels)

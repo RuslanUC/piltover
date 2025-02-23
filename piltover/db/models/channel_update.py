@@ -7,9 +7,7 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
-from piltover.tl import UpdateChannel, \
-    UpdateDeleteChannelMessages
-from piltover.tl.types import User as TLUser, Chat as TLChat, Channel as TLChannel
+from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages
 
 UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages
 

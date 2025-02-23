@@ -1,6 +1,6 @@
 import pytest
-from pyrogram.raw.types.help import CountriesList, CountriesListNotModified
 from pyrogram.raw.functions.help import GetCountriesList
+from pyrogram.raw.types.help import CountriesList, CountriesListNotModified
 
 from tests.conftest import TestClient
 

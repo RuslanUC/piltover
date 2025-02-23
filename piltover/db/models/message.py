@@ -12,10 +12,8 @@ from tortoise.expressions import Q
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
-from piltover.db.models._utils import fetch_users_chats
 from piltover.exceptions import Error, ErrorRpc
-from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, User as TLUser, Chat as TLChat, objects, Long, \
-    SerializationUtils, TLObject, Channel as TLChannel
+from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, SerializationUtils, TLObject
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatJoinedByRequest, MessageActionChatJoinedByLink, \
     MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage

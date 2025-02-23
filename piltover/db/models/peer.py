@@ -7,11 +7,9 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.db.models._utils import fetch_users_chats
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
-    User as TLUser, Chat as TLChat, InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, \
-    PeerChannel, Channel as TLChannel
+    InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, PeerChannel
 
 
 def gen_access_hash() -> int:

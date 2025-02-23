@@ -4,8 +4,6 @@ from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.db import models
-from piltover.db.models._utils import fetch_users_chats
-from piltover.tl import User as TLUser, Chat as TLChat, Channel as TLChannel
 
 
 class Contact(Model):

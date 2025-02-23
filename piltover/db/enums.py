@@ -1,13 +1,6 @@
 from enum import IntEnum, IntFlag
 
 
-class ChatType(IntEnum):
-    PRIVATE = 0
-    SAVED = 1
-    #GROUP = 2
-    #CHANNEL = 3
-
-
 class PrivacyRuleKeyType(IntEnum):
     STATUS_TIMESTAMP = 0
     CHAT_INVITE = 1
