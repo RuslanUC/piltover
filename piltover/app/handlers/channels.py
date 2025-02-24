@@ -1,6 +1,10 @@
 from typing import cast
 
+from loguru import logger
+from tortoise.expressions import Q, Subquery
+
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
+from piltover.app.handlers.messages.history import format_messages_internal
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import validate_username
@@ -9,10 +13,11 @@ from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Mes
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, InputChannelEmpty, ChatEmpty, \
-    InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, Long
+    InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
+    Long, InputMessageID, InputMessageReplyTo
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
-    CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto
-from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull
+    CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages
+from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("channels")
@@ -191,3 +196,27 @@ async def edit_channel_photo(request: EditPhoto, user: User):
     updates.chats.extend(updates_msg.chats)
 
     return updates
+
+
+@handler.on_request(GetMessages)
+async def get_messages(request: GetMessages, user: User) -> Messages:
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    await peer.channel.get_participant_raise(user)
+
+    query = Q()
+
+    for message_query in request.id:
+        if isinstance(message_query, InputMessageID):
+            query |= Q(id=message_query.id)
+        elif isinstance(message_query, InputMessageReplyTo):
+            query |= Q(id=Subquery(
+                Message.filter(
+                    peer__channel=peer.channel, id=message_query.id
+                ).first().values_list("reply_to__id", flat=True)
+            ))
+
+    query &= Q(peer__channel=peer.channel)
+
+    return await format_messages_internal(user, await Message.filter(query))

@@ -4,7 +4,8 @@ from io import BytesIO
 import pytest
 from pyrogram.enums import MessageEntityType
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages
-from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo
+from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
+from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel
 from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument
 
@@ -412,3 +413,41 @@ async def test_getmessages() -> None:
         messages: Messages = await client.invoke(GetMessages(id=[InputMessageReplyTo(id=message_2.id)]))
         assert len(messages.messages) == 1
         assert messages.messages[0].id == message_1.id
+
+
+@pytest.mark.asyncio
+async def test_getmessages_in_channel() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        channel = await client.create_channel("idk")
+        assert channel
+
+        message_1 = await client.send_message(channel.id, text="1")
+        assert message_1
+        message_2 = await client.send_message(channel.id, text="2", reply_to_message_id=message_1.id)
+        assert message_2
+        assert message_2.reply_to_message_id == message_1.id
+
+        channel_peer = await client.resolve_peer(channel.id)
+        input_channel = InputChannel(channel_id=channel_peer.channel_id, access_hash=channel_peer.access_hash)
+
+        messages: Messages = await client.invoke(GetMessagesChannel(
+            channel=input_channel,
+            id=[InputMessageID(id=message_2.id)],
+        ))
+        assert len(messages.messages) == 1
+        assert messages.messages[0].id == message_2.id
+
+        messages: Messages = await client.invoke(GetMessagesChannel(
+            channel=input_channel,
+            id=[InputMessageReplyTo(id=message_2.id)],
+        ))
+        assert len(messages.messages) == 1
+        assert messages.messages[0].id == message_1.id
+
+        message_3 = await client.send_message("me", text="3")
+        assert message_3
+        messages: Messages = await client.invoke(GetMessagesChannel(
+            channel=input_channel,
+            id=[InputMessageID(id=message_3.id)],
+        ))
+        assert len(messages.messages) == 0

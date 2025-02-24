@@ -225,7 +225,6 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
                     peer__owner=user, id=message_query.id
                 ).first().values_list("reply_to__id", flat=True)
             ))
-        # TODO: InputMessagePinned ?
 
     query &= Q(peer__owner=user)
 

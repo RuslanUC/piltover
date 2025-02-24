@@ -308,7 +308,8 @@ class Message(Model):
 
         reply = None
         if reply_to_message_id:
-            reply = await Message.get_or_none(id=reply_to_message_id, peer=peer)
+            peer_filter = {"peer__channel": peer.channel} if peer.type is PeerType.CHANNEL else {"peer": peer}
+            reply = await Message.get_or_none(id=reply_to_message_id, **peer_filter)
             if reply is None:
                 raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
 
