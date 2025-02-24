@@ -8,9 +8,7 @@ from taskiq import TaskiqEvents, AsyncBroker
 from tortoise import Tortoise
 
 from piltover.app import root_dir
-from piltover.app.handlers import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
-    langpack, channels, upload, internal
-from piltover.app.handlers.messages import saved_dialogs
+from piltover.app.handlers import register_handlers
 from piltover.cache import Cache
 from piltover.utils import gen_keys, Keys
 from piltover.worker import Worker
@@ -59,20 +57,7 @@ class PiltoverWorker:
             redis_address = redis_address,
         )
 
-        self._worker.register_handler(help_.handler)
-        self._worker.register_handler(auth.handler)
-        self._worker.register_handler(updates.handler)
-        self._worker.register_handler(users.handler)
-        self._worker.register_handler(stories.handler)
-        self._worker.register_handler(account.handler)
-        self._worker.register_handler(messages.handler)
-        self._worker.register_handler(photos.handler)
-        self._worker.register_handler(contacts.handler)
-        self._worker.register_handler(langpack.handler)
-        self._worker.register_handler(channels.handler)
-        self._worker.register_handler(upload.handler)
-        self._worker.register_handler(saved_dialogs.handler)
-        self._worker.register_handler(internal.handler)
+        register_handlers(self._worker)
 
         self._worker.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._run)
 

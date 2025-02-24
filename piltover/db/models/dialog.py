@@ -5,7 +5,7 @@ from typing import cast
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import PeerType
+from piltover.db.enums import PeerType, DialogFolderId
 from piltover.tl import PeerNotifySettings
 from piltover.tl.types import Dialog as TLDialog
 
@@ -14,6 +14,7 @@ class Dialog(Model):
     id: int = fields.BigIntField(pk=True)
     pinned_index: int | None = fields.SmallIntField(null=True, default=None)
     unread_mark: bool = fields.BooleanField(default=False)
+    folder_id: DialogFolderId = fields.IntEnumField(DialogFolderId, default=DialogFolderId.ALL)
 
     peer: models.Peer = fields.ForeignKeyField("models.Peer", unique=True)
     draft: fields.ReverseRelation[models.MessageDraft]
@@ -63,4 +64,5 @@ class Dialog(Model):
             read_inbox_max_id=in_read_state.last_message_id,
             read_outbox_max_id=out_read_max_id or 0,
             unread_count=unread_count,
+            folder_id=self.folder_id.value,
         )

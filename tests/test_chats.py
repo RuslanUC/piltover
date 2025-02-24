@@ -4,8 +4,10 @@ from typing import cast
 import pytest
 from PIL import Image
 from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatRestricted
-from pyrogram.raw.functions.messages import EditChatAdmin
+from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs
+from pyrogram.raw.types.messages import Dialogs
 
+from piltover.tl import InputPeerEmpty
 from tests.conftest import TestClient, color_is_near
 
 PHOTO_COLOR = (0x00, 0xff, 0x00)
@@ -134,3 +136,43 @@ async def test_promote_user_to_admin() -> None:
 
         with pytest.raises(ChatAdminRequired):
             await client2.set_chat_title(group.id, "test 123")
+
+
+@pytest.mark.asyncio
+async def test_archive_unarchive_dialog() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        group = await client.create_group("idk", [])
+        assert group.photo is None
+
+        dialogs: Dialogs = await client.invoke(
+            GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=0),
+        )
+        assert len(dialogs.dialogs) == 1
+        dialogs: Dialogs = await client.invoke(
+            GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=1),
+        )
+        assert len(dialogs.dialogs) == 0
+
+        await group.archive()
+
+        # TODO: fix folder_id is being serialized to None when its actually 0 and uncomment this
+        #  (in GetDialogs.serialize it is checked as "if self.folder_id: ..." instead of "if self.folder_id is not None:")
+        #dialogs: Dialogs = await client.invoke(
+        #    GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=0),
+        #)
+        assert len(dialogs.dialogs) == 0
+        dialogs: Dialogs = await client.invoke(
+            GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=1),
+        )
+        assert len(dialogs.dialogs) == 1
+
+        await group.unarchive()
+
+        dialogs: Dialogs = await client.invoke(
+            GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=0),
+        )
+        assert len(dialogs.dialogs) == 1
+        dialogs: Dialogs = await client.invoke(
+            GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=1),
+        )
+        assert len(dialogs.dialogs) == 0

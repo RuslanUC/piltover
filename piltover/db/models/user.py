@@ -84,7 +84,7 @@ class User(Model):
 
     async def to_tl_birthday(self, user: User) -> Birthday | None:
         if self.birthday is None or not await models.PrivacyRule.has_access_to(user, self, PrivacyRuleKeyType.BIRTHDAY):
-            return
+            return None
 
         return Birthday(
             day=self.birthday.day,

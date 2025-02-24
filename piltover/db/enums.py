@@ -65,6 +65,7 @@ class UpdateType(IntEnum):
     UPDATE_DIALOG_UNREAD_MARK = 13
     READ_INBOX = 14
     READ_OUTBOX = 15
+    FOLDER_PEERS = 16
 
 
 class PeerType(IntEnum):
@@ -121,3 +122,8 @@ class ChannelUpdateType(IntEnum):
     NEW_MESSAGE = 1
     EDIT_MESSAGE = 2
     DELETE_MESSAGES = 3
+
+
+class DialogFolderId(IntEnum):
+    ALL = 0
+    ARCHIVE = 1

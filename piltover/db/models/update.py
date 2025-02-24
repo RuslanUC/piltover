@@ -11,12 +11,12 @@ from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogP
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
-    UpdateReadHistoryOutbox, ChatParticipant
+    UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
-              | UpdateReadHistoryOutbox
+              | UpdateReadHistoryOutbox | UpdateFolderPeers
 
 
 class Update(Model):
@@ -265,6 +265,21 @@ class Update(Model):
                 return UpdateReadHistoryOutbox(
                     peer=peer.to_tl(),
                     max_id=self.additional_data[0],
+                    pts=self.pts,
+                    pts_count=self.pts_count,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.FOLDER_PEERS:
+                folder_peers = []
+                users_q, chats_q, channels_q = Q(), Q(), Q()
+
+                dialog: models.Dialog
+                async for dialog in models.Dialog.filter(peer__id__in=self.related_ids).select_related("peer"):
+                    folder_peers.append(FolderPeer(peer=dialog.peer.to_tl(), folder_id=dialog.folder_id.value))
+                    users_q, chats_q, channels_q = dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+
+                return UpdateFolderPeers(
+                    folder_peers=folder_peers,
                     pts=self.pts,
                     pts_count=self.pts_count,
                 ), users_q, chats_q, channels_q

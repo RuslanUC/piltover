@@ -144,7 +144,7 @@ async def resolve_input_chat_photo(
         user: User, photo: InputChatPhotoEmpty | InputChatPhoto | InputChatUploadedPhoto,
 ) -> File | None:
     if isinstance(photo, InputChatPhotoEmpty):
-        return
+        return None
     elif isinstance(photo, InputChatPhoto):
         if not await Peer.filter(owner=user, chat__photo__id=photo.id).exists():
             raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")

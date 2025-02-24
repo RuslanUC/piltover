@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from enum import IntFlag
-from typing import Any, TypeVar, Protocol
+from typing import Any, TypeVar, Protocol, Iterable
 
 import tortoise
+from tortoise.exceptions import ValidationError
 from tortoise.expressions import Q
+from tortoise.validators import Validator
 
 from piltover.db import models
 from piltover.tl import User as TLUser, Chat as TLChat, Channel as TLChannel
@@ -100,3 +102,17 @@ async def resolve_users_chats(
             channels[rel_channel.id] = await rel_channel.to_tl(user)
 
     return users, chats, channels
+
+
+def and_Q_to_kwargs(q: Q, _result: dict[str, Any] | None = None) -> dict[str, Any]:
+    _result = _result if _result is not None else {}
+
+    if q.join_type == Q.OR:
+        return _result
+
+    _result.update(q.filters)
+
+    for child_q in q.children:
+        and_Q_to_kwargs(child_q, _result)
+
+    return _result

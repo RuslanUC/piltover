@@ -21,7 +21,7 @@ class TLSerializer(BaseSerializer):
 
     def loads(self, value: bytes | None) -> TLObject | int | str | bytes | bool | list | float | None:
         if value is None or len(value) < 5 or value[0] < 0 or value[0] > len(self._TYPES):
-            return
+            return None
 
         stream = BytesIO(value)
 
@@ -29,7 +29,7 @@ class TLSerializer(BaseSerializer):
         subtyp = None
         if typ is list:
             if value[1] < 0 or value[1] > len(self._TYPES):
-                return
+                return None
             subtyp = self._TYPES[stream.read(1)[0]]
 
         return SerializationUtils.read(stream, typ, subtyp)

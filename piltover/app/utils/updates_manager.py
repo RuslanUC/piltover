@@ -14,7 +14,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
-    UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages
+    UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer
 
 
 # TODO: move UpdatesManager to separate worker
@@ -779,3 +779,43 @@ class UpdatesManager:
             await SessionManager.send(updates, to_user.id)
 
         return result
+
+    @staticmethod
+    async def update_folder_peers(user: User, dialogs: list[Dialog]) -> Updates:
+        new_pts = await State.add_pts(user, len(dialogs))
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.FOLDER_PEERS,
+            pts=new_pts,
+            pts_count=len(dialogs),
+            related_id=None,
+            related_ids=[dialog.peer_id for dialog in dialogs],
+        )
+
+        folder_peers = []
+        users_q, chats_q, channels_q = Q(), Q(), Q()
+
+        for dialog in dialogs:
+            folder_peers.append(FolderPeer(peer=dialog.peer.to_tl(), folder_id=dialog.folder_id.value))
+            users_q, chats_q, channels_q = dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+
+        users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
+
+        updates = Updates(
+            updates=[
+                UpdateFolderPeers(
+                    folder_peers=folder_peers,
+                    pts=new_pts,
+                    pts_count=len(dialogs),
+                )
+            ],
+            users=list(users.values()),
+            chats=[*chats.values(), *channels.values()],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+
+        return updates

@@ -45,7 +45,7 @@ async def send_message_internal(
         return await UpdatesManager.send_message_channel(user, list(messages.values())[0])
 
     if (upd := await UpdatesManager.send_message(user, messages)) is None:
-        assert False, "unknown chat type ?"
+        raise NotImplementedError("unknown chat type ?")
 
     return cast(Updates, upd)
 
@@ -178,7 +178,7 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
     if peer.type is PeerType.CHANNEL:
-        message.message = request.message
+        message.message = cast(str, request.message)
         message.edit_date = datetime.now(UTC)
         message.version += 1
         await message.save(update_fields=["message", "edit_date", "version"])
@@ -376,7 +376,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     await UpdatesManager.update_status(user, presence, peers[1:])
 
     if (upd := await UpdatesManager.send_messages(result, user)) is None:
-        assert False, "unknown chat type ?"
+        raise NotImplementedError("unknown chat type ?")
 
     return upd
 

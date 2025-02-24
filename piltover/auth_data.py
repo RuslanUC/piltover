@@ -16,7 +16,7 @@ class AuthData:
 
     async def get_perm_id(self) -> int | None:
         if self.auth_key_id is None:
-            return
+            return None
         if not self.is_temp:
             return self.auth_key_id
 

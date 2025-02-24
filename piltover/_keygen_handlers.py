@@ -207,7 +207,7 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
     logger.info("Auth key generation successfully completed!")
 
 
-async def msgs_ack(client: Client, obj: MsgsAck):
+async def msgs_ack(_1: Client, _2: MsgsAck):
     return
 
 

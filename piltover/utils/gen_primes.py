@@ -85,6 +85,7 @@ CURRENT_DH_PRIME = int(
 )
 
 
+# noinspection PyUnusedLocal
 def gen_safe_prime(size: int = 2048) -> tuple[int, int]:
     """
     parameters = dh.generate_parameters(generator=2, key_size=size)

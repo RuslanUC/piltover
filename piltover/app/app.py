@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from os import getenv
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal
+from typing import Literal, AsyncIterator
 
 import uvloop
 from aerich import Command, Migrate
@@ -12,9 +12,7 @@ from loguru import logger
 from tortoise import Tortoise, connections
 
 from piltover.app import root_dir
-from piltover.app.handlers import help as help_, auth, updates, users, stories, account, messages, contacts, photos, \
-    langpack, channels, upload, internal
-from piltover.app.handlers.messages import saved_dialogs
+from piltover.app.handlers import register_handlers
 from piltover.cache import Cache
 from piltover.gateway import Gateway
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
@@ -132,21 +130,7 @@ class PiltoverApp:
         )
 
         if self._gateway.worker is not None:
-            worker = self._gateway.worker
-            worker.register_handler(help_.handler)
-            worker.register_handler(auth.handler)
-            worker.register_handler(updates.handler)
-            worker.register_handler(users.handler)
-            worker.register_handler(stories.handler)
-            worker.register_handler(account.handler)
-            worker.register_handler(messages.handler)
-            worker.register_handler(photos.handler)
-            worker.register_handler(contacts.handler)
-            worker.register_handler(langpack.handler)
-            worker.register_handler(channels.handler)
-            worker.register_handler(upload.handler)
-            worker.register_handler(saved_dialogs.handler)
-            worker.register_handler(internal.handler)
+            register_handlers(self._gateway.worker)
 
     async def run(self, host: str | None = None, port: int | None = None):
         self._host = host or self._host
@@ -170,7 +154,7 @@ class PiltoverApp:
         await self._gateway.serve()
 
     @asynccontextmanager
-    async def run_test(self) -> int:
+    async def run_test(self) -> AsyncIterator[Gateway]:
         await Tortoise.init(
             db_url="sqlite://:memory:",
             modules={"models": ["piltover.db.models"]},

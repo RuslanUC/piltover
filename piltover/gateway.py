@@ -165,7 +165,7 @@ class Client:
 
         packet = self.conn.receive(recv)
         if not isinstance(packet, MessagePacket):
-            return
+            return None
 
         return packet
 

@@ -2,6 +2,7 @@ import builtins
 import hashlib
 from os import urandom
 from time import time
+from typing import AsyncIterator
 
 import pytest
 import pytest_asyncio
@@ -31,7 +32,7 @@ _real_auth_create = Auth.create
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def app_server(request: pytest.FixtureRequest) -> Gateway:
+async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
     async with app.run_test() as test_server:
         if request.node.name != "test_key_generation":
             Auth.create = _custom_auth_create

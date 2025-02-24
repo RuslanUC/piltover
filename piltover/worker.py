@@ -130,7 +130,7 @@ class Worker(MessageHandler):
     @classmethod
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False) -> User | None:
         if call.user_id is None or call.auth_id is None:
-            return
+            return None
 
         auth = await UserAuthorization.get_or_none(user__id=call.user_id, id=call.auth_id).select_related("user")
         if auth is not None and not allow_mfa_pending and auth.mfa_pending:
