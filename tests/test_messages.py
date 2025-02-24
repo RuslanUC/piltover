@@ -3,8 +3,8 @@ from io import BytesIO
 
 import pytest
 from pyrogram.enums import MessageEntityType
-from pyrogram.raw.functions.messages import GetHistory, DeleteHistory
-from pyrogram.raw.types import InputPeerSelf
+from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages
+from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo
 from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument
 
@@ -394,3 +394,21 @@ async def test_edit_text_message_in_channel() -> None:
 
         assert new_message.id == message.id
         assert new_message.text == "test edited"
+
+
+@pytest.mark.asyncio
+async def test_getmessages() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        message_1 = await client.send_message("me", text="1")
+        assert message_1
+        message_2 = await client.send_message("me", text="2", reply_to_message_id=message_1.id)
+        assert message_2
+        assert message_2.reply_to_message_id == message_1.id
+
+        messages: Messages = await client.invoke(GetMessages(id=[InputMessageID(id=message_2.id)]))
+        assert len(messages.messages) == 1
+        assert messages.messages[0].id == message_2.id
+
+        messages: Messages = await client.invoke(GetMessages(id=[InputMessageReplyTo(id=message_2.id)]))
+        assert len(messages.messages) == 1
+        assert messages.messages[0].id == message_1.id

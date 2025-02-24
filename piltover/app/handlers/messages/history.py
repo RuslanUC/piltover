@@ -3,7 +3,7 @@ from time import time
 from typing import cast
 
 from loguru import logger
-from tortoise.expressions import Q
+from tortoise.expressions import Q, Subquery
 from tortoise.queryset import QuerySet
 
 from piltover.app.utils.updates_manager import UpdatesManager
@@ -220,7 +220,11 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
         if isinstance(message_query, InputMessageID):
             query |= Q(id=message_query.id)
         elif isinstance(message_query, InputMessageReplyTo):
-            query |= Q(reply_to__id=message_query.id)
+            query |= Q(id=Subquery(
+                Message.filter(
+                    peer__owner=user, id=message_query.id
+                ).first().values_list("reply_to__id", flat=True)
+            ))
         # TODO: InputMessagePinned ?
 
     query &= Q(peer__owner=user)
