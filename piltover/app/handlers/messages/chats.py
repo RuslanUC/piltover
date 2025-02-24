@@ -251,7 +251,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     messages = await Message.create_for_peer(
-        user, chat_peer, None, None, False,
+        user, chat_peer, None, None,
         author=user, type=MessageType.SERVICE_CHAT_USER_DEL,
         extra_info=MessageActionChatDeleteUser(user_id=user_peer.peer_user(user).id).write(),
     )

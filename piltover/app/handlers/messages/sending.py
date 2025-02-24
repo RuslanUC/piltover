@@ -31,8 +31,13 @@ async def send_message_internal(
         opposite: bool = True, **message_kwargs
 ) -> Updates:
     messages = await Message.create_for_peer(
-        user, peer, random_id, reply_to_message_id, clear_draft, author, opposite, **message_kwargs,
+        user, peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
     )
+
+    if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
+        await draft.delete()
+        await UpdatesManager.update_draft(user, peer, None)
+
     if peer.type is PeerType.CHANNEL:
         if len(messages) != 1:
             logger.warning(f"Got {len(messages)} messages after creating message with channel peer!")
@@ -117,7 +122,6 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 @handler.on_request(DeleteMessages)
 async def delete_messages(request: DeleteMessages, user: User):
     # TODO: check if message peer is chat and user has permission to revoke messages (if request.revoke is True)
-    #  or message peer is channel and user has permission to delete messages
 
     ids = request.id[:100]
     messages = defaultdict(list)

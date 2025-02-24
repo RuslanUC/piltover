@@ -120,3 +120,4 @@ class ChannelUpdateType(IntEnum):
     UPDATE_CHANNEL = 0
     NEW_MESSAGE = 1
     EDIT_MESSAGE = 2
+    DELETE_MESSAGES = 3

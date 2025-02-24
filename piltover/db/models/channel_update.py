@@ -8,7 +8,7 @@ from tortoise.expressions import Q
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
 from piltover.db.models import Message
-from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage
+from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage, Long
 
 UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMessage
 
@@ -43,6 +43,15 @@ class ChannelUpdate(Model):
 
                 return UpdateEditChannelMessage(
                     message=await message.to_tl(user),
+                    pts=self.pts,
+                    pts_count=1,
+                ), users_q, chats_q, channels_q
+            case ChannelUpdateType.DELETE_MESSAGES:
+                message_ids = [Long.read_bytes(self.extra_data[i * 8:(i + 1) * 8]) for i in range(self.pts_count)]
+
+                return UpdateDeleteChannelMessages(
+                    channel_id=self.channel_id,
+                    messages=message_ids,
                     pts=self.pts,
                     pts_count=1,
                 ), users_q, chats_q, channels_q

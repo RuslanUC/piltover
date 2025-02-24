@@ -14,7 +14,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
-    UpdateEditChannelMessage
+    UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages
 
 
 # TODO: move UpdatesManager to separate worker
@@ -201,6 +201,45 @@ class UpdatesManager:
 
         updates = Updates(updates=[(await update.to_tl(user))[0]], users=[], chats=[], date=int(time()), seq=0)
         await SessionManager.send(updates, user.id)
+
+        return new_pts
+
+    @staticmethod
+    async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
+        channel.pts += len(messages)
+        new_pts = channel.pts
+        await channel.save(update_fields=["pts"])
+        await ChannelUpdate.create(
+            channel=channel,
+            type=ChannelUpdateType.DELETE_MESSAGES,
+            related_id=None,
+            extra_data=b"".join([Long.write(message_id) for message_id in messages]),
+            pts=new_pts,
+            pts_count=len(messages),
+        )
+
+        await ChannelUpdate.filter(
+            channel=channel, related_id__in=messages,
+            type__in=(ChannelUpdateType.NEW_MESSAGE, ChannelUpdateType.EDIT_MESSAGE)
+        ).delete()
+
+        for to_user in await User.filter(chatparticipants__channel__id=channel.id):
+            updates = Updates(
+                updates=[
+                    UpdateDeleteChannelMessages(
+                        channel_id=channel.id,
+                        messages=messages,
+                        pts=channel.pts,
+                        pts_count=1,
+                    ),
+                ],
+                users=[],
+                chats=[await channel.to_tl(to_user)],
+                date=int(time()),
+                seq=0,
+            )
+
+            await SessionManager.send(updates, to_user.id)
 
         return new_pts
 

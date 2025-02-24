@@ -451,3 +451,31 @@ async def test_getmessages_in_channel() -> None:
             id=[InputMessageID(id=message_3.id)],
         ))
         assert len(messages.messages) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_message_in_channel() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        channel = await client.create_channel("idk")
+        assert channel
+
+        message = await client.send_message(channel.id, text="1")
+        assert message
+
+        channel_peer = await client.resolve_peer(channel.id)
+        input_channel = InputChannel(channel_id=channel_peer.channel_id, access_hash=channel_peer.access_hash)
+
+        messages: Messages = await client.invoke(GetMessagesChannel(
+            channel=input_channel,
+            id=[InputMessageID(id=message.id)],
+        ))
+        assert len(messages.messages) == 1
+        assert messages.messages[0].id == message.id
+
+        await message.delete()
+
+        messages: Messages = await client.invoke(GetMessagesChannel(
+            channel=input_channel,
+            id=[InputMessageID(id=message.id)],
+        ))
+        assert len(messages.messages) == 0

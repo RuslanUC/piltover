@@ -1,6 +1,5 @@
 from typing import cast
 
-from loguru import logger
 from tortoise.expressions import Q, Subquery
 
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
@@ -16,8 +15,8 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
     Long, InputMessageID, InputMessageReplyTo
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
-    CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages
-from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages
+    CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages
+from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("channels")
@@ -220,3 +219,26 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     query &= Q(peer__channel=peer.channel)
 
     return await format_messages_internal(user, await Message.filter(query))
+
+
+@handler.on_request(DeleteMessages)
+async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessages:
+    # TODO: check if user has permission to delete messages
+
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    await peer.channel.get_participant_raise(user)
+
+    ids = request.id[:100]
+    message_ids: list[int] = await Message.filter(
+        Q(id__in=ids, peer__channel=peer.channel) & (Q(peer__owner=user) | Q(peer__owner=None))
+    ).values_list("id", flat=True)
+
+    if not message_ids:
+        return AffectedMessages(pts=peer.channel.pts, pts_count=0)
+
+    await Message.filter(id__in=message_ids).delete()
+    pts = await UpdatesManager.delete_messages_channel(peer.channel, message_ids)
+
+    return AffectedMessages(pts=pts, pts_count=len(message_ids))
