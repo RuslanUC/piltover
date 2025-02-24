@@ -157,7 +157,13 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
 
-    if (message := await Message.get_(request.id, peer)) is None:
+    if peer.type is PeerType.CHANNEL:
+        message = await Message.get_or_none(
+            id=request.id, peer__owner=None, peer__channel=peer.channel, type=MessageType.REGULAR
+        ).select_related("peer", "author")
+    else:
+        message = await Message.get_(request.id, peer)
+    if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if not request.message:
@@ -166,6 +172,14 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
         raise ErrorRpc(error_code=403, error_message="MESSAGE_AUTHOR_REQUIRED")
     if message.message == request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
+
+    if peer.type is PeerType.CHANNEL:
+        message.message = request.message
+        message.edit_date = datetime.now(UTC)
+        message.version += 1
+        await message.save(update_fields=["message", "edit_date", "version"])
+        message.peer.channel = peer.channel
+        return await UpdatesManager.edit_message_channel(user, message)
 
     peers = [peer]
     peers.extend(await peer.get_opposite())
@@ -300,6 +314,9 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
     if to_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         await to_peer.chat_or_channel.get_participant_raise(user)
+
+    if to_peer is PeerType.CHANNEL:  # TODO
+        raise NotImplementedError("forwarding messages to channels is not supported yet")
 
     # TODO: check if peer is chat or channel and user has permission to send text messages
 

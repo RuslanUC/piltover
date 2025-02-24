@@ -361,7 +361,7 @@ async def test_delete_history() -> None:
         assert len([msg async for msg in client.get_chat_history("me")]) == 1500
 
         result: AffectedHistory = await client.invoke(DeleteHistory(
-            peer=InputPeerSelf(),
+            peer=await client.resolve_peer("me"),
             max_id=0,
         ))
 
@@ -371,7 +371,7 @@ async def test_delete_history() -> None:
         assert len([msg async for msg in client.get_chat_history("me")]) == 500
 
         result: AffectedHistory = await client.invoke(DeleteHistory(
-            peer=InputPeerSelf(),
+            peer=await client.resolve_peer("me"),
             max_id=result.offset,
         ))
 
@@ -379,3 +379,18 @@ async def test_delete_history() -> None:
         assert result.offset == 0
 
         assert len([msg async for msg in client.get_chat_history("me")]) == 0
+
+
+@pytest.mark.asyncio
+async def test_edit_text_message_in_channel() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        channel = await client.create_channel("idk")
+        assert channel
+
+        message = await client.send_message(channel.id, text="test 123")
+        assert message.text == "test 123"
+
+        new_message = await message.edit("test edited")
+
+        assert new_message.id == message.id
+        assert new_message.text == "test edited"

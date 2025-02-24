@@ -7,13 +7,14 @@ from tortoise.queryset import QuerySet
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel
-from piltover.db.models._utils import resolve_users_chats
+from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
-    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel
+    UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
+    UpdateEditChannelMessage
 
 
 # TODO: move UpdatesManager to separate worker
@@ -84,10 +85,14 @@ class UpdatesManager:
             pts_count=1,
         )
 
+        rel_users, rel_chats, rel_channels = await fetch_users_chats(
+            *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
+        )
+
         for to_user in await User.filter(chatparticipants__channel__id=message.peer.channel_id):
-            users, chats, channels = await resolve_users_chats(
-                to_user, *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
-            )
+            users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
+            chats = [await rel_chat.to_tl(to_user) for rel_chat in rel_chats.values()]
+            channels = [await rel_channel.to_tl(to_user) for rel_channel in rel_channels.values()]
 
             updates = Updates(
                 updates=[
@@ -97,8 +102,8 @@ class UpdatesManager:
                         pts_count=1,
                     ),
                 ],
-                users=list(users.values()),
-                chats=[*chats.values(), *channels.values()],
+                users=users,
+                chats=[*chats, *channels],
                 date=int(time()),
                 seq=0,
             )
@@ -245,6 +250,53 @@ class UpdatesManager:
 
         await Update.bulk_create(updates_to_create)
         return result_update
+
+    @staticmethod
+    async def edit_message_channel(user: User, message: Message) -> Updates:
+        result = None
+
+        message.peer.channel = channel = await message.peer.channel
+        channel.pts += 1
+        this_pts = channel.pts
+        await channel.save(update_fields=["pts"])
+        await ChannelUpdate.create(
+            channel=channel,
+            type=ChannelUpdateType.EDIT_MESSAGE,
+            related_id=message.id,
+            pts=this_pts,
+            pts_count=1,
+        )
+
+        rel_users, rel_chats, rel_channels = await fetch_users_chats(
+            *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
+        )
+
+        to_user: User
+        async for to_user in User.filter(chatparticipants__channel__id=message.peer.channel_id):
+            users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
+            chats = [await rel_chat.to_tl(to_user) for rel_chat in rel_chats.values()]
+            channels = [await rel_channel.to_tl(to_user) for rel_channel in rel_channels.values()]
+
+            updates = Updates(
+                updates=[
+                    UpdateEditChannelMessage(
+                        message=await message.to_tl(to_user),
+                        pts=channel.pts,
+                        pts_count=1,
+                    ),
+                ],
+                users=users,
+                chats=[*chats, *channels],
+                date=int(time()),
+                seq=0,
+            )
+
+            if user == to_user:
+                result = updates
+
+            await SessionManager.send(updates, to_user.id)
+
+        return result
 
     @staticmethod
     async def pin_dialog(user: User, peer: Peer) -> None:

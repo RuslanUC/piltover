@@ -50,27 +50,53 @@ class ModelWithQueryUsersChats(Protocol):
         ...
 
 
+Q_EMPTY = Q()
+
+
+async def fetch_users_chats(
+        users_q: Q | None = None, chats_q: Q | None = None, channels_q: Q | None = None,
+        users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
+        channels: dict[int, TLChannel] | None = None,
+) -> tuple[dict[int, models.User] | None, dict[int, models.Chat] | None, dict[int, models.Channel] | None]:
+    users_out = None
+    chats_out = None
+    channels_out = None
+
+    user: models.User
+    chat: models.Chat
+    channel: models.Channel
+
+    if users_q is not None and users_q != Q_EMPTY:
+        if users:
+            users_q &= Q(id__not_in=list(users.keys()))
+        users_out = {user.id: user async for user in models.User.filter(users_q)}
+    if chats_q is not None and chats_q != Q_EMPTY:
+        if chats:
+            chats_q &= Q(id__not_in=list(chats.keys()))
+        chats_out = {chat.id: chat async for chat in models.Chat.filter(chats_q)}
+    if channels_q is not None and channels_q != Q_EMPTY:
+        if channels:
+            channels_q &= Q(id__not_in=list(channels.keys()))
+        channels_out = {channel.id: channel async for channel in models.Channel.filter(channels_q)}
+
+    return users_out, chats_out, channels_out
+
+
 async def resolve_users_chats(
         user: models.User, users_q: Q | None = None, chats_q: Q | None = None, channels_q: Q | None = None,
         users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
         channels: dict[int, TLChannel] | None = None,
 ) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None, dict[int, TLChannel] | None]:
-    q_empty = Q()
+    users_f, chats_f, channels_f = await fetch_users_chats(users_q, chats_q, channels_q, users, chats, channels)
 
-    if users_q is not None and users_q != q_empty:
-        users_q &= Q(id__not_in=list(users.keys()))
-        rel_user: models.User
-        async for rel_user in models.User.filter(users_q):
+    if users_f is not None:
+        for rel_user in users_f.values():
             users[rel_user.id] = await rel_user.to_tl(user)
-    if chats_q is not None and chats_q != q_empty:
-        chats_q &= Q(id__not_in=list(chats.keys()))
-        rel_chat: models.Chat
-        async for rel_chat in models.Chat.filter(chats_q):
+    if chats_f is not None:
+        for rel_chat in chats_f.values():
             chats[rel_chat.id] = await rel_chat.to_tl(user)
-    if channels_q is not None and channels_q != q_empty:
-        channels_q &= Q(id__not_in=list(channels.keys()))
-        rel_channel: models.Channel
-        async for rel_channel in models.Channel.filter(channels_q):
+    if channels_f is not None:
+        for rel_channel in channels_f.values():
             channels[rel_channel.id] = await rel_channel.to_tl(user)
 
     return users, chats, channels

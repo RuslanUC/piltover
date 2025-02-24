@@ -7,9 +7,10 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
-from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages
+from piltover.db.models import Message
+from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage
 
-UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages
+UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMessage
 
 
 class ChannelUpdate(Model):
@@ -36,5 +37,14 @@ class ChannelUpdate(Model):
                 return UpdateChannel(channel_id=self.channel_id), users_q, chats_q, channels_q
             case ChannelUpdateType.NEW_MESSAGE:
                 return none_ret
+            case ChannelUpdateType.EDIT_MESSAGE:
+                message = await Message.get(id=self.related_id, peer__channel__id=self.channel_id)
+                users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+
+                return UpdateEditChannelMessage(
+                    message=await message.to_tl(user),
+                    pts=self.pts,
+                    pts_count=1,
+                ), users_q, chats_q, channels_q
 
         return none_ret
