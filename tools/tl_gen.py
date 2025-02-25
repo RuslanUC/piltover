@@ -436,7 +436,8 @@ def start():
                 for ffield in fields:
                     if not ffield.opt() or ffield.flag_num != field.flag_num:
                         continue
-                    serialize_body.append(f"if self.{ffield.name}: {flag_var} |= (1 << {ffield.flag_bit})")
+                    empty_condition = "" if ffield.type().lower().startswith("vector") or not ffield.write else " is not None"
+                    serialize_body.append(f"if self.{ffield.name}{empty_condition}: {flag_var} |= (1 << {ffield.flag_bit})")
                 serialize_body.append(f"result += SerializationUtils.write({flag_var}, Int)")
 
                 deserialize_body.append(f"{flag_var} = SerializationUtils.read(stream, Int)")
@@ -448,7 +449,7 @@ def start():
                     fields_with_this_flag = len([
                         1 for f in fields if f.flag_num == field.flag_num and f.flag_bit == field.flag_bit
                     ])
-                    if fields_with_this_flag > 1:
+                    if fields_with_this_flag > 1 or not field.type().lower().startswith("vector"):
                         empty_condition = " is not None"
 
                     serialize_body.append(f"if self.{field.name}{empty_condition}:")
@@ -483,8 +484,8 @@ def start():
             f"",
             f"    __slots__ = ({', '.join(slots)})",
             f"",
-            f"    def __init__(self, {', '.join(init_args)}):",
-            f"        ...",
+            f"    def __init__(self{', ' if init_args else ''}{', '.join(init_args)}):",
+            f"        ..." if not init_args else f"",
             *[
                 f"        self.{field.name} = {field.name}"
                 for field in fields if not field.is_flag

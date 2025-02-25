@@ -155,11 +155,9 @@ async def test_archive_unarchive_dialog() -> None:
 
         await group.archive()
 
-        # TODO: fix folder_id is being serialized to None when its actually 0 and uncomment this
-        #  (in GetDialogs.serialize it is checked as "if self.folder_id: ..." instead of "if self.folder_id is not None:")
-        #dialogs: Dialogs = await client.invoke(
-        #    GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=0),
-        #)
+        dialogs: Dialogs = await client.invoke(
+            GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=0),
+        )
         assert len(dialogs.dialogs) == 0
         dialogs: Dialogs = await client.invoke(
             GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=1),
