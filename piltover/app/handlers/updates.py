@@ -4,6 +4,7 @@ from time import time
 from loguru import logger
 from pytz import UTC
 from tortoise.expressions import Q
+from tortoise.functions import Min
 
 from piltover.app.utils.utils import get_perm_key
 from piltover.context import request_ctx
@@ -12,6 +13,7 @@ from piltover.db.models import User, Message, UserAuthorization, State, Update, 
 from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.channel_update import ChannelUpdate
 from piltover.exceptions import ErrorRpc
+from piltover.tl import UpdateChannelTooLong
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136, GetChannelDifference
 from piltover.tl.types.updates import State as TLState, Difference, ChannelDifferenceEmpty, DifferenceEmpty, \
     ChannelDifference
@@ -22,15 +24,16 @@ handler = MessageHandler("auth")
 
 async def get_seq() -> int:
     ctx = request_ctx.get()
-    # TODO: get only "upd_seq" field instead of whole model
-    auth = await UserAuthorization.get_or_none(key=await get_perm_key(ctx.auth_key_id))
-    if auth is None:  # pragma: no cover
+    seq = await UserAuthorization.filter(
+        key=await get_perm_key(ctx.auth_key_id),
+    ).first().values_list("upd_seq", flat=True)
+    if seq is None:  # pragma: no cover
         logger.warning(
             f"Somehow auth is None for key {ctx.auth_key_id}, but it is in get_state_internal, "
             f"where authorization must exist ???"
         )
 
-    return auth.upd_seq if auth is not None else 0
+    return seq or 0
 
 
 async def get_state_internal(user: User) -> TLState:
@@ -85,6 +88,13 @@ async def get_difference(request: GetDifference | GetDifference_136, user: User)
         if update_tl is not None:
             other_updates.append(update_tl)
 
+    channel_states = await ChannelUpdate.annotate(min_pts=Min("pts")).filter(
+        channel__peers__owner=user, date__gt=date,
+    ).group_by("channel__id").values_list("channel__id", "min_pts")
+    for channel_id, channel_pts in channel_states:
+        other_updates.append(UpdateChannelTooLong(channel_id=channel_id, pts=channel_pts))
+        channels_q |= Q(id=channel_id)
+
     users_q |= Q(id=user.id)
     users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
@@ -104,8 +114,6 @@ async def get_difference(request: GetChannelDifference, user: User):
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
-    messages_from_channel_query = Q(peer__owner=user, peer_channel=peer.channel) \
-                                  | Q(peer__owner=None, peer__channel=peer.channel)
     new_updates = await ChannelUpdate.filter(
         channel=peer.channel, pts__gt=request.pts
     ).order_by("pts").limit(request.limit)
@@ -119,6 +127,8 @@ async def get_difference(request: GetChannelDifference, user: User):
 
     has_more = await ChannelUpdate.filter(channel=peer.channel, pts__gt=new_updates[-1].pts).exists()
 
+    messages_from_channel_query = Q(peer__owner=user, peer_channel=peer.channel) \
+                                  | Q(peer__owner=None, peer__channel=peer.channel)
     new_messages_ids = [update.related_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE]
     new = await Message.filter(
         messages_from_channel_query & Q(id__in=new_messages_ids)
