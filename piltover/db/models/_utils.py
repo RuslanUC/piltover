@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from enum import IntFlag
-from typing import Any, TypeVar, Protocol, Iterable
+from typing import Any, TypeVar, Protocol
 
 import tortoise
-from tortoise.exceptions import ValidationError
 from tortoise.expressions import Q
-from tortoise.validators import Validator
 
 from piltover.db import models
 from piltover.tl import User as TLUser, Chat as TLChat, Channel as TLChannel

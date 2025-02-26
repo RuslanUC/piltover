@@ -48,7 +48,7 @@ class Channel(ChatBase):
             id=self.id,
             title=self.name,
             photo=await self.to_tl_chat_photo(),
-            date=int(time()),
+            date=int((participant.invited_at if participant else self.created_at).timestamp()),
             creator=self.creator == user,
             left=False,
             broadcast=self.channel,
@@ -76,4 +76,6 @@ class Channel(ChatBase):
             restriction_reason=None,
             admin_rights=ADMIN_RIGHTS if participant.is_admin or self.creator_id == user.id else None,
             usernames=[],
+            default_banned_rights=self.banned_rights.to_tl(),
+            banned_rights=participant.banned_rights.to_tl()
         )

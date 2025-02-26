@@ -1,35 +1,10 @@
 from __future__ import annotations
 
-from time import time
-
 from piltover.db import models
 from piltover.db.models.chat_base import ChatBase
 from piltover.tl import ChatForbidden
-from piltover.tl.types import Chat as TLChat, ChatBannedRights, ChatAdminRights
+from piltover.tl.types import Chat as TLChat, ChatAdminRights
 
-DEFAULT_BANNED_RIGHTS = ChatBannedRights(
-    view_messages=False,
-    send_messages=False,
-    send_media=False,
-    send_stickers=False,
-    send_gifs=False,
-    send_games=False,
-    send_inline=False,
-    embed_links=False,
-    send_polls=False,
-    change_info=False,
-    invite_users=False,
-    pin_messages=False,
-    manage_topics=False,
-    send_photos=False,
-    send_videos=False,
-    send_roundvideos=False,
-    send_audios=False,
-    send_voices=False,
-    send_docs=False,
-    send_plain=False,
-    until_date=2147483647,
-)
 DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
     change_info=True,
     post_messages=True,
@@ -66,9 +41,9 @@ class Chat(ChatBase):
             title=self.name,
             photo=await self.to_tl_chat_photo(),
             participants_count=await models.ChatParticipant.filter(chat=self).count(),
-            date=int(time()),  # ??
+            date=int(self.created_at.timestamp()),
             version=self.version,
             migrated_to=None,
             admin_rights=DEFAULT_ADMIN_RIGHTS if participant.is_admin or self.creator_id == user.id else None,
-            default_banned_rights=DEFAULT_BANNED_RIGHTS,
+            default_banned_rights=self.banned_rights.to_tl(),
         )

@@ -497,7 +497,7 @@ def start():
             f"        return result",
             f"",
             f"    @classmethod",
-            f"    def deserialize(cls, stream) -> TLObject:",
+            f"    def deserialize(cls, stream) -> {c.name}:",
             *indent(deserialize_body, 8),
             f"        return cls({', '.join(deserialize_cls_args)})",
             f"",

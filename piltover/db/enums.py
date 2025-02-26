@@ -1,4 +1,8 @@
+from __future__ import annotations
 from enum import IntEnum, IntFlag
+from io import BytesIO
+
+from piltover.tl import ChatBannedRights as TLChatBannedRights, Int
 
 
 class PrivacyRuleKeyType(IntEnum):
@@ -66,6 +70,7 @@ class UpdateType(IntEnum):
     READ_INBOX = 14
     READ_OUTBOX = 15
     FOLDER_PEERS = 16
+    UPDATE_CHAT_BANNED_RIGHTS = 17
 
 
 class PeerType(IntEnum):
@@ -104,17 +109,27 @@ class ChatBannedRights(IntFlag):
     SEND_INLINE = 1 << 6
     EMBED_LINKS = 1 << 7
     SEND_POLLS = 1 << 8
-    CHANGE_INFO = 1 << 9
-    INVITE_USERS = 1 << 10
-    PIN_MESSAGES = 1 << 11
-    MANAGE_TOPICS = 1 << 12
-    SEND_PHOTOS = 1 << 13
-    SEND_VIDEOS = 1 << 14
-    SEND_ROUND_VIDEOS = 1 << 15
-    SEND_AUDIOS = 1 << 16
-    SEND_VOICES = 1 << 17
-    SEND_DOCS = 1 << 18
-    SEND_PLAIN = 1 << 19
+    CHANGE_INFO = 1 << 10
+    INVITE_USERS = 1 << 15
+    PIN_MESSAGES = 1 << 17
+    MANAGE_TOPICS = 1 << 18
+    SEND_PHOTOS = 1 << 19
+    SEND_VIDEOS = 1 << 20
+    SEND_ROUNDVIDEOS = 1 << 21
+    SEND_AUDIOS = 1 << 22
+    SEND_VOICES = 1 << 23
+    SEND_DOCS = 1 << 24
+    SEND_PLAIN = 1 << 25
+
+    @classmethod
+    def from_tl(cls, banned_rights: TLChatBannedRights) -> ChatBannedRights:
+        flags = Int.read_bytes(banned_rights.serialize())
+        return ChatBannedRights(flags)
+
+    def to_tl(self) -> TLChatBannedRights:
+        flags = Int.write(self.value)
+        # TODO: until_date
+        return TLChatBannedRights.deserialize(BytesIO(flags + Int.write(2 ** 31 - 1)))
 
 
 class ChannelUpdateType(IntEnum):

@@ -14,7 +14,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
-    UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer
+    UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
+    UpdateChatDefaultBannedRights
 
 
 # TODO: move UpdatesManager to separate worker
@@ -819,3 +820,39 @@ class UpdatesManager:
         await SessionManager.send(updates, user.id)
 
         return updates
+
+    @staticmethod
+    async def update_chat_default_banned_rights(chat: Chat, user: User | None = None) -> Updates | None:
+        updates_to_create = []
+        update_to_return = None
+
+        banned_rights = chat.banned_rights.to_tl()
+
+        peer: Peer
+        async for peer in Peer.filter(chat=chat).select_related("owner"):
+            pts = await State.add_pts(peer.owner, 1)
+            updates_to_create.append(Update(
+                user=peer.owner, update_type=UpdateType.UPDATE_CHAT_BANNED_RIGHTS, pts=pts, related_id=chat.id,
+            ))
+
+            updates = Updates(
+                updates=[
+                    UpdateChatDefaultBannedRights(
+                        peer=peer.to_tl(),
+                        default_banned_rights=banned_rights,
+                        version=chat.version,
+                    )
+                ],
+                users=[],
+                chats=[await chat.to_tl(peer.owner)],
+                date=int(time()),
+                seq=0,
+            )
+            if user == peer.owner:
+                update_to_return = updates
+
+            await SessionManager.send(updates, peer.owner.id)
+
+        await Update.bulk_create(updates_to_create)
+
+        return update_to_return

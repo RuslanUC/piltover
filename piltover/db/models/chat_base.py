@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.db import models
+from piltover.db.enums import ChatBannedRights
+from piltover.db.models._utils import IntFlagField
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Chat, ChatForbidden, ChannelForbidden, Channel, Photo, PhotoEmpty, ChatPhoto, ChatPhotoEmpty
 
@@ -18,6 +22,8 @@ class ChatBase(Model):
     creator: models.User = fields.ForeignKeyField("models.User")
     photo: models.File | None = fields.ForeignKeyField("models.File", on_delete=fields.SET_NULL, null=True, default=None)
     no_forwards: bool = fields.BooleanField(default=False)
+    banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights(0))
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
 
     creator_id: int
     photo_id: int
@@ -107,6 +113,17 @@ class ChatBase(Model):
         if (participant := await self.get_participant(user)) is not None:
             return participant
         raise ErrorRpc(error_code=400, error_message="CHAT_RESTRICTED")
+
+    def user_has_permission(self, participant: models.ChatParticipant, permission: ChatBannedRights) -> bool:
+        if isinstance(self, models.Channel) \
+                and self.channel \
+                and not participant.is_admin \
+                and self.creator_id != participant.user_id:
+            return False
+
+        return participant.is_admin or \
+            self.creator_id == participant.user_id \
+            or not (participant.banned_rights & permission or self.banned_rights & permission)
 
     async def to_tl(self, user: models.User) -> Chat | ChatForbidden | Channel | ChannelForbidden:
         raise NotImplemented

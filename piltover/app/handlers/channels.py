@@ -242,3 +242,6 @@ async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessag
     pts = await UpdatesManager.delete_messages_channel(peer.channel, message_ids)
 
     return AffectedMessages(pts=pts, pts_count=len(message_ids))
+
+
+# TODO: channels.editBanned
