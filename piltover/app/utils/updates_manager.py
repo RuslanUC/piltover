@@ -156,6 +156,63 @@ class UpdatesManager:
         return result_update
 
     @staticmethod
+    async def send_messages_channel(
+            messages: list[Message], channel: Channel, user: User | None = None,
+    ) -> Updates | None:
+        result = None
+
+        update_messages = []
+        updates_to_create = []
+        chats_q = Q()
+        users_q = Q()
+        channels_q = Q()
+
+        for message in messages:
+            channel.pts += 1
+            update_messages.append((message, channel.pts))
+            users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+
+            updates_to_create.append(ChannelUpdate(
+                channel=channel,
+                type=ChannelUpdateType.NEW_MESSAGE,
+                related_id=message.id,
+                pts=channel.pts,
+                pts_count=1,
+            ))
+
+        await channel.save(update_fields=["pts"])
+        await ChannelUpdate.bulk_create(updates_to_create)
+
+        rel_users, rel_chats, rel_channels = await fetch_users_chats(users_q, chats_q, channels_q, {}, {}, {})
+
+        for to_user in await User.filter(chatparticipants__channel__id=channel.id):
+            users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
+            chats = [await rel_chat.to_tl(to_user) for rel_chat in rel_chats.values()]
+            channels = [await rel_channel.to_tl(to_user) for rel_channel in rel_channels.values()]
+
+            updates = Updates(
+                updates=[
+                    UpdateNewChannelMessage(
+                        message=await message.to_tl(to_user),
+                        pts=pts,
+                        pts_count=len(update_messages),
+                    )
+                    for message, pts in update_messages
+                ],
+                users=users,
+                chats=[*chats, *channels],
+                date=int(time()),
+                seq=0,
+            )
+
+            if user == to_user:
+                result = updates
+
+            await SessionManager.send(updates, to_user.id)
+
+        return result
+
+    @staticmethod
     async def delete_messages(user: User, messages: dict[User, list[int]]) -> int:
         updates_to_create = []
 

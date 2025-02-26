@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import IntFlag
-from typing import Any, TypeVar, Protocol
+from typing import Any, TypeVar, cast
 
 import tortoise
 from tortoise.expressions import Q
@@ -16,12 +16,12 @@ class IntFlagFieldInstance(tortoise.fields.BigIntField):
     def __init__(self, enum_type: type[IntFlag], **kwargs: Any) -> None:
         for item in enum_type:
             try:
-                int(item.value)
+                int(cast(int | str, item.value))
             except ValueError:
                 raise tortoise.ConfigurationError("IntFlagField only supports integer enums!")
 
         if "description" not in kwargs:
-            kwargs["description"] = "\n".join([f"{e.name}: {int(e.value)}" for e in enum_type])[:2048]
+            kwargs["description"] = "\n".join([f"{e.name}: {e.value}" for e in enum_type])[:2048]
 
         super().__init__(**kwargs)
         self.enum_type = enum_type
@@ -41,13 +41,6 @@ class IntFlagFieldInstance(tortoise.fields.BigIntField):
 
 def IntFlagField(enum_type: type[IntFlagT], **kwargs: Any) -> IntFlagT:
     return IntFlagFieldInstance(enum_type, **kwargs)  # type: ignore
-
-
-class ModelWithQueryUsersChats(Protocol):
-    def query_users_chats(
-            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
-    ) -> tuple[Q | None, Q | None, Q | None]:
-        ...
 
 
 Q_EMPTY = Q()
@@ -100,17 +93,3 @@ async def resolve_users_chats(
             channels[rel_channel.id] = await rel_channel.to_tl(user)
 
     return users, chats, channels
-
-
-def and_Q_to_kwargs(q: Q, _result: dict[str, Any] | None = None) -> dict[str, Any]:
-    _result = _result if _result is not None else {}
-
-    if q.join_type == Q.OR:
-        return _result
-
-    _result.update(q.filters)
-
-    for child_q in q.children:
-        and_Q_to_kwargs(child_q, _result)
-
-    return _result

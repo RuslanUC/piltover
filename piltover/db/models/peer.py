@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from os import urandom
-from typing import cast
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.db.models._utils import and_Q_to_kwargs
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
     InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, PeerChannel
@@ -65,48 +63,24 @@ class Peer(Model):
     @classmethod
     async def from_input_peer(cls, user: models.User, input_peer: InputPeers) -> Peer | None:
         if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
-            return
+            return None
 
-        if isinstance(input_peer, InputUserSelf):
-            input_peer = InputPeerSelf()
-        elif isinstance(input_peer, InputUser):
-            input_peer = InputPeerUser(user_id=input_peer.user_id, access_hash=input_peer.access_hash)
-        elif isinstance(input_peer, InputChannel):
-            input_peer = InputPeerChannel(channel_id=input_peer.channel_id, access_hash=input_peer.access_hash)
-
-        if isinstance(input_peer, InputPeerSelf) \
-                or (isinstance(input_peer, InputPeerUser) and input_peer.user_id == user.id):
+        if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
+                or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user.id):
             peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF, user=None)
             return peer
-        elif isinstance(input_peer, InputPeerUser):
+        elif isinstance(input_peer, (InputPeerUser, InputUser)):
             return await Peer.get_or_none(
                 owner=user, user__id=input_peer.user_id, access_hash=input_peer.access_hash,
             ).select_related("owner", "user")
         elif isinstance(input_peer, InputPeerChat):
             return await Peer.get_or_none(owner=user, chat__id=input_peer.chat_id).select_related("owner", "chat")
-        elif isinstance(input_peer, InputPeerChannel):
+        elif isinstance(input_peer, (InputPeerChannel, InputChannel)):
             return await Peer.get_or_none(
                 owner=user, channel__id=input_peer.channel_id, access_hash=input_peer.access_hash,
             ).select_related("owner", "channel")
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
-
-    """
-    @classmethod
-    async def from_input_peer(cls, user: models.User, input_peer: InputPeers) -> Peer | None:
-        query, or_create, related = cls.query_peer(user, input_peer)
-        if query is None:
-            return None
-
-        query &= Q(owner=user)
-
-        peer = await Peer.get_or_none(query).select_related("owner", *related)
-        if peer is not None or not or_create:
-            return peer
-
-        peer, _ = await Peer.get_or_create(**and_Q_to_kwargs(query))
-        return peer
-    """
 
     @classmethod
     async def from_input_peer_raise(cls, user: models.User, peer: InputPeers, message: str = "PEER_ID_INVALID") -> Peer:
@@ -182,41 +156,3 @@ class Peer(Model):
             return self.channel
 
         raise RuntimeError(f".chat_or_channel called on peer with type {self.type}")
-
-    """
-    @staticmethod
-    def query_peer(
-            user: models.User, input_peer: InputPeers, prefix: str | None = None,
-    ) -> tuple[Q | None, bool, tuple[str, ...]]:
-        if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
-            return None, False, ()
-
-        prefix = prefix or ""
-
-        if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
-                or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user.id):
-            return Q(**{
-                f"{prefix}type": PeerType.SELF,
-                f"{prefix}user": None,
-            }), True, ()
-        elif isinstance(input_peer, (InputPeerUser, InputUser)):
-            return Q(**{
-                f"{prefix}type": PeerType.USER,
-                f"{prefix}user__id": input_peer.user_id,
-                f"{prefix}access_hash": input_peer.access_hash,
-            }), False, ("user",)
-        elif isinstance(input_peer, InputPeerChat):
-            return Q(**{
-                f"{prefix}type": PeerType.CHAT,
-                f"{prefix}chat__id": input_peer.chat_id,
-            }), False, ("chat",)
-        elif isinstance(input_peer, (InputPeerChannel, InputChannel)):
-            return Q(**{
-                f"{prefix}type": PeerType.CHANNEL,
-                f"{prefix}channel__id": input_peer.channel_id,
-                f"{prefix}access_hash": input_peer.access_hash,
-            }), False, ("channel",)
-
-
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
-    """

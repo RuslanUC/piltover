@@ -3,11 +3,12 @@ from io import BytesIO
 
 import pytest
 from pyrogram.enums import MessageEntityType
+from pyrogram.errors import ChatWriteForbidden
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel
 from pyrogram.raw.types.messages import Messages, AffectedHistory
-from pyrogram.types import InputMediaDocument
+from pyrogram.types import InputMediaDocument, ChatPermissions
 
 from piltover.db.enums import PeerType
 from piltover.db.models import Message, FileAccess, Peer, User
@@ -479,3 +480,28 @@ async def test_delete_message_in_channel() -> None:
             id=[InputMessageID(id=message.id)],
         ))
         assert len(messages.messages) == 0
+
+
+@pytest.mark.asyncio
+async def test_send_message_banned_rights() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        await client1.set_username("test1_username")
+        await client2.set_username("test2_username")
+        user1 = await client2.get_users("test1_username")
+        user2 = await client1.get_users("test2_username")
+
+        group = await client1.create_group("idk", [user2.id])
+
+        assert await client2.send_message(group.id, "test 1")
+
+        await client1.set_chat_permissions(group.id, ChatPermissions())
+
+        assert await client1.send_message(group.id, "test 2.5")
+        with pytest.raises(ChatWriteForbidden):
+            await client2.send_message(group.id, "test 2")
+
+        await client1.set_chat_permissions(group.id, ChatPermissions(
+            can_send_messages=True,
+        ))
+
+        assert await client2.send_message(group.id, "test 3")

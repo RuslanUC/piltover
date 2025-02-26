@@ -131,6 +131,7 @@ class Message(Model):
     peer_id: int
     author_id: int
     media_id: int | None
+    reply_to_id: int | None
 
     class Meta:
         unique_together = (

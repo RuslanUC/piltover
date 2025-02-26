@@ -315,7 +315,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
     if from_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         await from_peer.chat_or_channel.get_participant_raise(user)
-    if from_peer.type is PeerType.CHAT and from_peer.chat.no_forwards:
+    if from_peer.type in (PeerType.CHAT, PeerType.CHANNEL) and from_peer.chat_or_channel.no_forwards:
         raise ErrorRpc(error_code=406, error_message="CHAT_FORWARDS_RESTRICTED")
 
     # TODO: check if from_peer is channel and user has access to messages
@@ -324,12 +324,6 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
     if to_peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
-    if to_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
-        await to_peer.chat_or_channel.get_participant_raise(user)
-
-    if to_peer is PeerType.CHANNEL:  # TODO
-        raise NotImplementedError("forwarding messages to channels is not supported yet")
-
     if to_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = to_peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
@@ -354,19 +348,19 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     if not messages:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
 
-    peers = [to_peer]
-    peers.extend(await to_peer.get_opposite())
-    result: dict[Peer, list[Message]] = {}
+    if to_peer.type is PeerType.CHANNEL:
+        peers = [await Peer.get_or_none(owner=None, channel=to_peer.channel)]
+    else:
+        peers = [to_peer, *(await to_peer.get_opposite())]
+    result: defaultdict[Peer, list[Message]] = defaultdict(list)
 
     for message in messages:
         internal_id = Snowflake.make_id()
         reply_ids[message.id] = internal_id
 
         for opp_peer in peers:
-            if opp_peer not in result:
-                result[opp_peer] = []
-
-            await Dialog.get_or_create(peer=opp_peer)
+            if opp_peer.owner_id is not None:
+                await Dialog.get_or_create(peer=opp_peer)
             result[opp_peer].append(
                 await message.clone_for_peer(
                     peer=opp_peer,
@@ -374,7 +368,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
                     internal_id=internal_id,
                     drop_captions=request.drop_media_captions,
                     random_id=random_ids.get(message.id) if opp_peer == to_peer else None,
-                    reply_to_internal_id=reply_ids.get(message.id),
+                    reply_to_internal_id=reply_ids.get(message.reply_to_id),
                     media_group_id=media_group_ids[message.media_group_id],
 
                     fwd_header=await message.create_fwd_header(opp_peer) if not request.drop_author else None,
@@ -383,6 +377,11 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
 
     if to_peer.type is PeerType.SELF:
         await SavedDialog.get_or_create(peer=from_peer)
+
+    if to_peer.type is PeerType.CHANNEL:
+        if len(result) != 1:
+            raise RuntimeError("`result` contains multiple peers, but should contain only one - channel peer")
+        return await UpdatesManager.send_messages_channel(next(iter(result.values())), to_peer.channel, user)
 
     presence = await Presence.update_to_now(user)
     await UpdatesManager.update_status(user, presence, peers[1:])
