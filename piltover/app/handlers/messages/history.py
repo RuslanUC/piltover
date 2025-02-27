@@ -18,7 +18,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages
-from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter
+from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.history")
@@ -148,8 +148,9 @@ async def get_messages_internal(
 
 
 async def format_messages_internal(
-        user: User, messages: list[Message], add_users: dict[int, TLUser] | None = None,
-) -> Messages:
+        user: User, messages: list[Message], add_users: dict[int, TLUser] | None = None, allow_slicing: bool = False,
+        peer: Peer | None = None, saved_peer: Peer | None = None, offset_id: int | None = None,
+) -> Messages | MessagesSlice:
     users_q = Q()
     chats_q = Q()
     channels_q = Q()
@@ -192,10 +193,41 @@ async def format_messages_internal(
     NOTE TO MYSELF: all values are tested with only GetHistory request. Search, GetReplies, etc. were NOT tested.
     """
 
-    return Messages(
+    chats_tl = [*chats.values(), *channels.values()]
+    users_tl = list(users.values())
+
+    if not allow_slicing or not peer:
+        return Messages(
+            messages=messages_tl,
+            chats=chats_tl,
+            users=users_tl,
+        )
+
+    query = Q(peer=peer)
+    if saved_peer is not None:
+        query &= Q(fwd_header__saved_peer=saved_peer)
+    messages_count = await Message.filter(query).count()
+
+    if messages_count <= len(messages_tl) and not offset_id:
+        return Messages(
+            messages=messages_tl,
+            chats=chats_tl,
+            users=users_tl,
+        )
+
+    if offset_id:
+        offset_id_offset = await Message.filter(query & Q(id__gte=offset_id)).count()
+    else:
+        offset_id_offset = 0
+
+    return MessagesSlice(
+        inexact=False,
+        count=messages_count,
+        next_rate=None,
+        offset_id_offset=offset_id_offset,
         messages=messages_tl,
-        chats=[*chats.values(), *channels.values()],
-        users=list(users.values()),
+        chats=chats_tl,
+        users=users_tl,
     )
 
 
@@ -209,7 +241,7 @@ async def get_history(request: GetHistory, user: User) -> Messages:
     if not messages:
         return Messages(messages=[], chats=[], users=[])
 
-    return await format_messages_internal(user, messages)
+    return await format_messages_internal(user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id)
 
 
 @handler.on_request(GetMessages)

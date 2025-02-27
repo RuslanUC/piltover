@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from time import time
 from typing import cast
 
 from tortoise import fields
@@ -11,7 +10,7 @@ from piltover.db.models import ChatBase
 from piltover.tl import ChannelForbidden, Channel as TLChannel
 from piltover.tl.types import ChatAdminRights
 
-ADMIN_RIGHTS = ChatAdminRights(
+CREATOR_RIGHTS = ChatAdminRights(
     change_info=True,
     post_messages=True,
     edit_messages=True,
@@ -44,6 +43,12 @@ class Channel(ChatBase):
                 title=self.name,
             )
 
+        admin_rights = None
+        if self.creator_id == user.id:
+            admin_rights = CREATOR_RIGHTS
+        elif participant.is_admin:
+            admin_rights = participant.admin_rights.to_tl()
+
         return TLChannel(
             id=self.id,
             title=self.name,
@@ -65,7 +70,7 @@ class Channel(ChatBase):
             call_not_empty=False,
             fake=False,
             gigagroup=False,
-            noforwards=False,
+            noforwards=self.no_forwards,
             join_to_send=True,
             join_request=False,
             forum=False,
@@ -74,7 +79,7 @@ class Channel(ChatBase):
             stories_unavailable=True,
             access_hash=peer.access_hash,
             restriction_reason=None,
-            admin_rights=ADMIN_RIGHTS if participant.is_admin or self.creator_id == user.id else None,
+            admin_rights=admin_rights,
             usernames=[],
             default_banned_rights=self.banned_rights.to_tl(),
             banned_rights=participant.banned_rights.to_tl()

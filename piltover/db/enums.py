@@ -2,7 +2,7 @@ from __future__ import annotations
 from enum import IntEnum, IntFlag
 from io import BytesIO
 
-from piltover.tl import ChatBannedRights as TLChatBannedRights, Int
+from piltover.tl import ChatBannedRights as TLChatBannedRights, Int, ChatAdminRights as TLChatAdminRights
 
 
 class PrivacyRuleKeyType(IntEnum):
@@ -142,3 +142,30 @@ class ChannelUpdateType(IntEnum):
 class DialogFolderId(IntEnum):
     ALL = 0
     ARCHIVE = 1
+
+
+class ChatAdminRights(IntFlag):
+    CHANGE_INFO = 1 << 0
+    POST_MESSAGES = 1 << 1
+    EDIT_MESSAGES = 1 << 2
+    DELETE_MESSAGES = 1 << 3
+    BAN_USERS = 1 << 4
+    INVITE_USERS = 1 << 5
+    PIN_MESSAGES = 1 << 7
+    ADD_ADMINS = 1 << 9
+    ANONYMOUS = 1 << 10
+    MANAGE_CALL = 1 << 11
+    OTHER = 1 << 12
+    MANAGE_TOPICS = 1 << 13
+    POST_STORIES = 1 << 14
+    EDIT_STORIES = 1 << 15
+    DELETE_STORIES = 1 << 16
+
+    @classmethod
+    def from_tl(cls, admin_rights: TLChatAdminRights) -> ChatAdminRights:
+        flags = Int.read_bytes(admin_rights.serialize())
+        return ChatAdminRights(flags)
+
+    def to_tl(self) -> TLChatAdminRights:
+        flags = Int.write(self.value)
+        return TLChatAdminRights.deserialize(BytesIO(flags))

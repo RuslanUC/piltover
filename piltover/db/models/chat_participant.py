@@ -5,7 +5,7 @@ from datetime import datetime
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import ChatBannedRights
+from piltover.db.enums import ChatBannedRights, ChatAdminRights
 from piltover.db.models._utils import IntFlagField
 from piltover.tl import ChatParticipant as TLChatParticipant, ChatParticipantCreator, ChatParticipantAdmin
 
@@ -19,7 +19,8 @@ class ChatParticipant(Model):
     invited_at: datetime = fields.DatetimeField(auto_now_add=True)
     is_admin: bool = fields.BooleanField(default=False)
     banned_until: datetime = fields.DatetimeField(null=True, default=None)
-    banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=0)
+    banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights(0))
+    admin_rights: ChatAdminRights = IntFlagField(ChatAdminRights, default=ChatAdminRights(0))
     invite: models.ChatInvite | None = fields.ForeignKeyField("models.ChatInvite", null=True, default=None, on_delete=fields.SET_NULL)
 
     user_id: int

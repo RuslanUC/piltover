@@ -38,7 +38,9 @@ async def get_saved_history(request: GetSavedHistory, user: User) -> Messages:
     if not messages:
         return Messages(messages=[], chats=[], users=[])
 
-    return await format_messages_internal(user, messages)
+    return await format_messages_internal(
+        user, messages, allow_slicing=True, peer=self_peer, saved_peer=peer, offset_id=request.offset_id,
+    )
 
 
 @handler.on_request(DeleteSavedHistory)

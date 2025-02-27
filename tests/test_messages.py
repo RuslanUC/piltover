@@ -360,7 +360,7 @@ async def test_delete_history() -> None:
             for i in range(1500)
         ])
 
-        assert len([msg async for msg in client.get_chat_history("me")]) == 1500
+        assert await client.get_chat_history_count("me") == 1500
 
         result: AffectedHistory = await client.invoke(DeleteHistory(
             peer=await client.resolve_peer("me"),
@@ -370,7 +370,7 @@ async def test_delete_history() -> None:
         assert result.pts_count == 1000
         assert result.offset > 0
 
-        assert len([msg async for msg in client.get_chat_history("me")]) == 500
+        assert await client.get_chat_history_count("me") == 500
 
         result: AffectedHistory = await client.invoke(DeleteHistory(
             peer=await client.resolve_peer("me"),
@@ -380,7 +380,7 @@ async def test_delete_history() -> None:
         assert result.pts_count == 500
         assert result.offset == 0
 
-        assert len([msg async for msg in client.get_chat_history("me")]) == 0
+        assert await client.get_chat_history_count("me") == 0
 
 
 @pytest.mark.asyncio

@@ -1,11 +1,13 @@
 import builtins
 import hashlib
+import logging
 from os import urandom
 from time import time
 from typing import AsyncIterator
 
 import pytest
 import pytest_asyncio
+from loguru import logger
 from pyrogram import Client
 from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
@@ -288,3 +290,27 @@ def color_is_near(expected: tuple[int, int, int], actual: tuple[int, int, int], 
             return False
 
     return True
+
+
+# https://stackoverflow.com/a/72735401
+class InterceptHandler(logging.Handler):
+    @logger.catch(default=True)
+    def emit(self, record):
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        import sys
+        frame, depth = sys._getframe(6), 6
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+
+_LOGURU_INTERCEPT_HANDLER = InterceptHandler()
+pyrogram_logger = logging.getLogger("pyrogram")
+pyrogram_logger.setLevel(logging.INFO)
+pyrogram_logger.addHandler(_LOGURU_INTERCEPT_HANDLER)
