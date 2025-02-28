@@ -66,7 +66,7 @@ class ChatParticipant(Model):
     async def to_tl_channel(self, user: models.User) -> ChannelParticipants:
         self.channel = await self.channel
 
-        if self.user_id == self.chat.creator_id:
+        if self.user_id == self.channel.creator_id:
             return ChannelParticipantCreator(
                 user_id=self.user_id, admin_rights=ChatAdminRights.all().to_tl(), rank=self.admin_rank or None,
             )

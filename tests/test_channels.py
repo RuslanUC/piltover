@@ -3,6 +3,7 @@ from typing import cast
 
 import pytest
 from PIL import Image
+from pyrogram.types import ChatMember
 
 from tests.conftest import TestClient, color_is_near
 
@@ -46,3 +47,14 @@ async def test_change_channel_photo() -> None:
         downloaded_photo_file.seek(0)
         downloaded_photo = Image.open(downloaded_photo_file)
         assert color_is_near(PHOTO_COLOR, cast(tuple[int, int, int], downloaded_photo.getpixel((0, 0))))
+
+
+@pytest.mark.asyncio
+async def test_get_channel_participants_only_owner() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        channel = await client.create_channel("idk")
+        assert channel
+
+        participants: list[ChatMember] = [participant async for participant in client.get_chat_members(channel.id)]
+        assert len(participants) == 1
+        assert participants[0].user.id == client.me.id
