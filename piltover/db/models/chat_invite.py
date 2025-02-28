@@ -48,7 +48,7 @@ class ChatInvite(Model):
 
         return Q(id=invite_id, nonce=nonce)
 
-    def to_tl(self) -> ChatInviteExported:
+    async def to_tl(self) -> ChatInviteExported:
         return ChatInviteExported(
             revoked=self.revoked,
             permanent=self.expires_at is None,
@@ -60,7 +60,7 @@ class ChatInvite(Model):
             expire_date=None if self.expires_at is None else int(self.expires_at.timestamp()),
             usage_limit=self.usage_limit,
             usage=self.usage,
-            requested=0,  # TODO: fetch from `InviteRequest` model when it will be added
+            requested=await models.ChatInviteRequest.filter(invite=self).count(),
             title=self.title,
         )
 

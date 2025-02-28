@@ -71,6 +71,7 @@ class UpdateType(IntEnum):
     READ_OUTBOX = 15
     FOLDER_PEERS = 16
     UPDATE_CHAT_BANNED_RIGHTS = 17
+    UPDATE_CHANNEL = 18
 
 
 class PeerType(IntEnum):
@@ -169,3 +170,10 @@ class ChatAdminRights(IntFlag):
     def to_tl(self) -> TLChatAdminRights:
         flags = Int.write(self.value)
         return TLChatAdminRights.deserialize(BytesIO(flags))
+
+    @classmethod
+    def all(cls) -> ChatAdminRights:
+        all_ = cls.CHANGE_INFO
+        for right in cls:
+            all_ |= right
+        return all_

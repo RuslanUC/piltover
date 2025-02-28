@@ -1,3 +1,4 @@
+from time import time
 from typing import cast
 
 from tortoise.expressions import Q, Subquery
@@ -7,15 +8,18 @@ from piltover.app.handlers.messages.history import format_messages_internal
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import validate_username
-from piltover.db.enums import MessageType, PeerType
+from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, InputChannelEmpty, ChatEmpty, \
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
-    Long, InputMessageID, InputMessageReplyTo
+    Long, InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
+    ChannelParticipantsSearch
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
-    CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages
+    CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
+    EditAdmin, GetParticipants
+from piltover.tl.types.channels import ChannelParticipants
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages
 from piltover.worker import MessageHandler
 
@@ -153,8 +157,8 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
     participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
-    if participant is None or not (participant.is_admin or peer.channel.creator_id == user.id):
-        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+    if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     await peer.channel.update(title=request.title)
 
@@ -178,8 +182,8 @@ async def edit_channel_photo(request: EditPhoto, user: User):
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
     participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
-    if participant is None or not (participant.is_admin or peer.channel.creator_id == user.id):
-        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+    if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     channel = peer.channel
     await channel.update(photo=await resolve_input_chat_photo(user, request.photo))
@@ -223,12 +227,12 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
 @handler.on_request(DeleteMessages)
 async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessages:
-    # TODO: check if user has permission to delete messages
-
     peer = await Peer.from_input_peer_raise(user, request.channel)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
-    await peer.channel.get_participant_raise(user)
+    participant = await peer.channel.get_participant_raise(user)
+    if not peer.channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
+        raise ErrorRpc(error_code=403, error_message="MESSAGE_DELETE_FORBIDDEN")
 
     ids = request.id[:100]
     message_ids: list[int] = await Message.filter(
@@ -244,4 +248,125 @@ async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessag
     return AffectedMessages(pts=pts, pts_count=len(message_ids))
 
 
-# TODO: channels.editBanned
+@handler.on_request(EditBanned)
+async def edit_banned(request: EditBanned, user: User):
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    participant = await peer.channel.get_participant_raise(user)
+    if not peer.channel.admin_has_permission(participant, ChatAdminRights.BAN_USERS):
+        raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
+
+    target_peer = await Peer.from_input_peer_raise(user, request.participant)
+    if target_peer.type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
+    target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=peer.channel)
+    if target_participant is None:
+        raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
+
+    # TODO: check if target_participant is not admin
+
+    new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
+    if target_participant.banned_rights == new_banned_rights:
+        return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+
+    target_participant.banned_rights = new_banned_rights
+    await target_participant.save(update_fields=["banned_rights"])
+
+    await UpdatesManager.update_channel_for_user(peer.channel, target_peer.user)
+    return Updates(
+        updates=[UpdateChannel(channel_id=peer.channel.id)],
+        users=[],
+        chats=[await peer.channel.to_tl(user)],
+        date=int(time()),
+        seq=0,
+    )
+
+
+@handler.on_request(EditAdmin)
+async def edit_admin(request: EditAdmin, user: User):
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    participant = await peer.channel.get_participant_raise(user)
+    if not peer.channel.admin_has_permission(participant, ChatAdminRights.ADD_ADMINS):
+        raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
+
+    target_peer = await Peer.from_input_peer_raise(user, request.user_id)
+    if target_peer.type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
+    if target_peer.user_id == peer.chat.creator_id and target_peer.user != user:
+        raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
+    target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=peer.channel)
+    if target_participant is None:
+        raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
+
+    new_admin_rights = ChatAdminRights.from_tl(request.admin_rights)
+
+    if user.id != peer.chat.creator_id:
+        for new_right in new_admin_rights:
+            if not (participant.admin_rights & new_right):
+                raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
+
+    if target_participant.admin_rights == new_admin_rights and target_participant.admin_rank == request.rank:
+        return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+
+    update_fields = []
+    if request.rank != target_participant.admin_rank:
+        target_participant.admin_rank = request.rank
+        update_fields.append("admin_rank")
+    if request.rank != target_participant.admin_rank:
+        target_participant.admin_rights = new_admin_rights
+        update_fields.append("admin_rights")
+    if not target_participant.promoted_by_id:
+        target_participant.promoted_by_id = user.id
+        update_fields.append("promoted_by_id")
+
+    await target_participant.save(update_fields=update_fields)
+
+    await UpdatesManager.update_channel_for_user(peer.channel, target_peer.user)
+    return Updates(
+        updates=[UpdateChannel(channel_id=peer.channel.id)],
+        users=[],
+        chats=[await peer.channel.to_tl(user)],
+        date=int(time()),
+        seq=0,
+    )
+
+
+@handler.on_request(GetParticipants)
+async def get_participants(request: GetParticipants, user: User):
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    participant = await peer.channel.get_participant_raise(user)
+    if not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    if isinstance(request.filter, ChannelParticipantsRecent):
+        query = Q(channel=peer.channel)
+    elif isinstance(request.filter, ChannelParticipantsAdmins):
+        query = Q(channel=peer.channel, is_admin=True)
+    elif isinstance(request.filter, ChannelParticipantsSearch):
+        query = Q(channel=peer.channel, user__first_name__icontains=request.filter.q)
+    else:
+        # TODO: ChannelParticipantsContacts, ChannelParticipantsMentions
+        return ChannelParticipants(count=0, participants=[], chats=[], users=[])
+
+    limit = max(min(request.limit, 100), 1)
+    participants = await ChatParticipant.filter(query).select_related("user").limit(limit).offset(request.offset)
+
+    participants_tl = []
+    users_tl = []
+
+    for participant in participants:
+        participant.channel = peer.channel
+        participants_tl.append(await participant.to_tl_channel(user))
+        users_tl.append(await participant.user.to_tl(user))
+
+    return ChannelParticipants(
+        count=await ChatParticipant.filter(query).count(),
+        participants=participants_tl,
+        chats=[await peer.channel.to_tl(user)],
+        users=users_tl,
+    )

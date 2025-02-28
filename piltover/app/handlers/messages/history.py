@@ -165,7 +165,6 @@ async def format_messages_internal(
 
     users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
-    # TODO: MessagesSlice based on explanation below
     """
     Messages with following ids are in database:
     1 .. 90

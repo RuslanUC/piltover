@@ -824,7 +824,7 @@ class UpdatesManager:
 
         for to_user in await User.filter(chatparticipants__channel=channel):
             updates = Updates(
-                updates=[UpdateChannel(channel_id=1)],
+                updates=[UpdateChannel(channel_id=channel.id)],
                 users=[],
                 chats=[await channel.to_tl(to_user)],
                 date=int(time()),
@@ -913,3 +913,21 @@ class UpdatesManager:
         await Update.bulk_create(updates_to_create)
 
         return update_to_return
+
+    @staticmethod
+    async def update_channel_for_user(channel: Channel, user: User) -> Updates:
+        pts = await State.add_pts(user, 1)
+        await Update.create(
+            user=user, update_type=UpdateType.UPDATE_CHANNEL, pts=pts, related_id=channel.id,
+        )
+
+        updates = Updates(
+            updates=[UpdateChannel(channel_id=channel.id)],
+            users=[],
+            chats=[await channel.to_tl(user)],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+        return updates

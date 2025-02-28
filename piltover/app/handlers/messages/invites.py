@@ -46,7 +46,7 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user: User)
     invites = []
     users_q = Q()
     for chat_invite in await ChatInvite.filter(query).order_by("-updated_at").limit(limit):
-        invites.append(chat_invite.to_tl())
+        invites.append(await chat_invite.to_tl())
         users_q, *_ = chat_invite.query_users_chats(users_q)
 
     users, *_ = await resolve_users_chats(user, users_q, None, None, {}, None, None)
@@ -82,7 +82,7 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
         expires_at=None if request.expire_date is None else datetime.fromtimestamp(request.expire_date, UTC),
     )
 
-    return invite.to_tl()
+    return await invite.to_tl()
 
 
 @handler.on_request(GetAdminsWithInvites)
@@ -283,7 +283,7 @@ async def get_exported_chat_invite(request: GetExportedChatInvite, user: User) -
     users, *_ = await resolve_users_chats(user, *invite.query_users_chats(Q()), {}, None, None)
 
     return ExportedChatInvite(
-        invite=invite.to_tl(),
+        invite=await invite.to_tl(),
         users=list(users.values()),
     )
 

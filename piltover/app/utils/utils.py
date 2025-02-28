@@ -166,7 +166,7 @@ def validate_message_entities(text: str, entities: list[MessageEntity]) -> list[
     if not entities:
         return None
     # TODO: check what limit telegram has
-    if len(entities) > 16:
+    if len(entities) > 256:
         raise ErrorRpc(error_code=400, error_message="ENTITIES_TOO_LONG")
 
     result = []

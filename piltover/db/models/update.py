@@ -11,12 +11,12 @@ from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogP
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
-    UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer
+    UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
-              | UpdateReadHistoryOutbox | UpdateFolderPeers
+              | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel
 
 
 class Update(Model):
@@ -282,6 +282,12 @@ class Update(Model):
                     folder_peers=folder_peers,
                     pts=self.pts,
                     pts_count=self.pts_count,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_CHANNEL:
+                channels_q |= Q(id=self.related_id)
+                return UpdateChannel(
+                    channel_id=self.related_id,
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

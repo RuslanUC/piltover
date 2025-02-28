@@ -6,7 +6,7 @@ from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.db import models
-from piltover.db.enums import ChatBannedRights
+from piltover.db.enums import ChatBannedRights, ChatAdminRights
 from piltover.db.models._utils import IntFlagField
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Chat, ChatForbidden, ChannelForbidden, Channel, Photo, PhotoEmpty, ChatPhoto, ChatPhotoEmpty
@@ -124,6 +124,10 @@ class ChatBase(Model):
         return participant.is_admin or \
             self.creator_id == participant.user_id \
             or not (participant.banned_rights & permission or self.banned_rights & permission)
+
+    def admin_has_permission(self, participant: models.ChatParticipant, permission: ChatAdminRights) -> bool:
+        return self.creator_id == participant.user_id \
+            or (participant.is_admin and ((participant.admin_rights & permission) == permission))
 
     async def to_tl(self, user: models.User) -> Chat | ChatForbidden | Channel | ChannelForbidden:
         raise NotImplemented
