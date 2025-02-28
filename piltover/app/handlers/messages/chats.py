@@ -3,7 +3,7 @@ from tortoise.expressions import Subquery
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
-from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights
+from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
     ChatInviteRequest
 from piltover.exceptions import ErrorRpc
@@ -288,8 +288,12 @@ async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
     if participant.is_admin == request.is_admin:
         return True
 
-    participant.is_admin = request.is_admin
-    await participant.save(update_fields=["is_admin"])
+    if request.is_admin:
+        participant.admin_rights = ChatAdminRights.all()
+    else:
+        participant.admin_rights = ChatAdminRights(0)
+
+    await participant.save(update_fields=["admin_rights"])
     chat_peer.chat.version += 1
     await chat_peer.chat.save(update_fields=["version"])
 

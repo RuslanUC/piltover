@@ -8,9 +8,9 @@ from tortoise.expressions import Q
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
-from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights
+from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant
+    SavedDialog, Message, ChatParticipant, Channel
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage
@@ -66,6 +66,9 @@ async def send_message(request: SendMessage, user: User):
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
+        if isinstance(chat_or_channel, Channel) \
+                and not chat_or_channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_PLAIN):

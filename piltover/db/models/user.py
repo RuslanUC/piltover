@@ -40,25 +40,25 @@ class User(Model):
 
         return photo
 
-    async def to_tl(self, current_user: models.User | None = None, **kwargs) -> TLUser:
+    async def to_tl(self, current_user: models.User | None = None) -> TLUser:
         # TODO: min (https://core.telegram.org/api/min)
         # TODO: add some "version" field and save tl user in some cache with key f"{self.id}:{current_user.id}:{version}"
 
         defaults = {
-                       "mutual_contact": False,
-                       "deleted": False,
-                       "bot": False,
-                       "verified": True,
-                       "restricted": False,
-                       "min": False,
-                       "support": False,
-                       "scam": False,
-                       "apply_min_photo": False,
-                       "fake": False,
-                       "bot_attach_menu": False,
-                       "premium": False,
-                       "attach_menu_enabled": False,
-                   } | kwargs
+            "mutual_contact": False,
+            "deleted": False,
+            "bot": False,
+            "verified": True,
+            "restricted": False,
+            "min": False,
+            "support": False,
+            "scam": False,
+            "apply_min_photo": False,
+            "fake": False,
+            "bot_attach_menu": False,
+            "premium": False,
+            "attach_menu_enabled": False,
+        }
 
         peer = await models.Peer.get_or_none(owner=current_user, user__id=self.id, type=PeerType.USER)
         contact = await models.Contact.get_or_none(owner=current_user, target=self)

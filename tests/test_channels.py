@@ -3,7 +3,8 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.types import ChatMember
+from pyrogram.errors import ChatWriteForbidden
+from pyrogram.types import ChatMember, ChatPrivileges
 
 from tests.conftest import TestClient, color_is_near
 
@@ -58,3 +59,27 @@ async def test_get_channel_participants_only_owner() -> None:
         participants: list[ChatMember] = [participant async for participant in client.get_chat_members(channel.id)]
         assert len(participants) == 1
         assert participants[0].user.id == client.me.id
+
+
+@pytest.mark.asyncio
+async def test_channel_promote_user() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        await client1.set_username("test1_username")
+        await client2.set_username("test2_username")
+        user1 = await client2.get_users("test1_username")
+        user2 = await client1.get_users("test2_username")
+
+        channel = await client1.create_channel("idk")
+        assert channel
+
+        invite_link = await channel.export_invite_link()
+        await client2.join_chat(invite_link)
+
+        assert await client1.send_message(channel.id, "test message")
+
+        with pytest.raises(ChatWriteForbidden):
+            assert await client2.send_message(channel.id, "test message 2")
+
+        await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges(can_post_messages=True))
+
+        assert await client2.send_message(channel.id, "test message 2")

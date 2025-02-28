@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import cast
 
 from tortoise import fields, Model
 
@@ -22,7 +23,6 @@ class ChatParticipant(Model):
     channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
     inviter_id: int = fields.BigIntField(default=0)
     invited_at: datetime = fields.DatetimeField(auto_now_add=True)
-    is_admin: bool = fields.BooleanField(default=False)
     banned_until: datetime = fields.DatetimeField(null=True, default=None)
     banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights(0))
     admin_rights: ChatAdminRights = IntFlagField(ChatAdminRights, default=ChatAdminRights(0))
@@ -48,6 +48,10 @@ class ChatParticipant(Model):
             return self.channel
 
         raise RuntimeError("Unreachable")
+
+    @property
+    def is_admin(self) -> bool:
+        return cast(int, self.admin_rights.value) > 0
 
     async def to_tl(self) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:
         self.chat = await self.chat
