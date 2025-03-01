@@ -15,7 +15,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
-    UpdateChatDefaultBannedRights
+    UpdateChatDefaultBannedRights, UpdateReadChannelInbox
 
 
 # TODO: move UpdatesManager to separate worker
@@ -768,6 +768,32 @@ class UpdatesManager:
                     still_unread_count=unread_count,
                     pts=pts,
                     pts_count=read_count,
+                ),
+            ],
+            users=list(users.values()),
+            chats=[*chats.values(), *channels.values()],
+            date=int(time()),
+            seq=0,
+        ), peer.owner.id)
+
+    @staticmethod
+    async def update_read_history_inbox_channel(peer: Peer, max_id: int, unread_count: int) -> None:
+        pts = await State.add_pts(peer.owner, 1)
+        await Update.create(
+            user=peer.owner, update_type=UpdateType.READ_INBOX, pts=pts, pts_count=1, related_id=peer.id,
+            additional_data=[max_id, unread_count],
+        )
+
+        users_q, chats_q, channels_q = peer.query_users_chats(Q(), Q(), Q())
+        users, chats, channels = await resolve_users_chats(peer.owner, users_q, chats_q, channels_q, {}, {}, {})
+
+        await SessionManager.send(Updates(
+            updates=[
+                UpdateReadChannelInbox(
+                    channel_id=peer.channel_id,
+                    max_id=max_id,
+                    still_unread_count=unread_count,
+                    pts=pts,
                 ),
             ],
             users=list(users.values()),

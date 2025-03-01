@@ -268,13 +268,7 @@ async def read_history(request: ReadHistory, user: User):
 
     state, _ = await State.get_or_create(user=user)
 
-    if (dialog := await Dialog.get_or_none(peer=peer)) is None:
-        return AffectedMessages(
-            pts=state.pts,
-            pts_count=0,
-        )
-
-    read_state, created = await ReadState.get_or_create(dialog=dialog, defaults={"last_message_id": 0})
+    read_state, created = await ReadState.get_or_create(peer=peer, defaults={"last_message_id": 0})
     if request.max_id <= read_state.last_message_id:
         return AffectedMessages(
             pts=state.pts,

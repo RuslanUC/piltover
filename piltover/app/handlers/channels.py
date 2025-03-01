@@ -9,7 +9,7 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import validate_username
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights
-from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message
+from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, InputChannelEmpty, ChatEmpty, \
@@ -18,7 +18,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
     ChannelParticipantsSearch
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
-    EditAdmin, GetParticipants, GetParticipant
+    EditAdmin, GetParticipants, GetParticipant, ReadHistory
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages
 from piltover.worker import MessageHandler
@@ -111,6 +111,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     # TODO: full_chat.exported_invite
     # TODO: full_chat.migrated_from_chat_id and full_chat.migrated_from_max_id
     # TODO: full_chat.available_min_id
+    in_read_max_id, out_read_max_id, unread_count = await ReadState.get_in_out_ids_and_unread(peer)
     return MessagesChatFull(
         full_chat=ChannelFull(
             can_view_participants=False,  # TODO: allow viewing participants
@@ -130,10 +131,10 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             id=channel.id,
             about=channel.description,
             participants_count=await ChatParticipant.filter(channel=channel).count(),
-            admins_count=1,  # TODO: fetch admins count
-            read_inbox_max_id=0,  # TODO: read states for channels (inbox)
-            read_outbox_max_id=0,  # TODO: read states for channels (outbox)
-            unread_count=0,  # TODO: read states for channels (unread)
+            admins_count=await ChatParticipant.filter(channel=channel, admin_rights__gt=0).count(),
+            read_inbox_max_id=in_read_max_id,
+            read_outbox_max_id=out_read_max_id,
+            unread_count=unread_count,
             chat_photo=photo,
             notify_settings=PeerNotifySettings(),
             bot_info=[],
@@ -395,3 +396,31 @@ async def get_participant(request: GetParticipant, user: User):
         chats=[await peer.channel.to_tl(user)],
         users=[await target_participant.user.to_tl(user)],
     )
+
+
+@handler.on_request(ReadHistory)
+async def read_channel_history(request: ReadHistory, user: User) -> bool:
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+
+    read_state, created = await ReadState.get_or_create(peer=peer, defaults={"last_message_id": 0})
+    if request.max_id <= read_state.last_message_id:
+        return True
+
+    message_id, internal_id = await Message.filter(
+        id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
+    ).order_by("-id").first().values_list("id", "internal_id")
+    if not message_id:
+        return True
+
+    unread_count = await Message.filter(peer__owner=None, peer__channel=peer.channel, id__gt=message_id).count()
+
+    read_state.last_message_id = message_id
+    await read_state.save(update_fields=["last_message_id"])
+
+    # TODO: create and send outbox read update
+
+    await UpdatesManager.update_read_history_inbox_channel(peer, message_id, unread_count)
+
+    return True

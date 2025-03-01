@@ -11,12 +11,12 @@ from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogP
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
-    UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel
+    UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
-              | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel
+              | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox
 
 
 class Update(Model):
@@ -245,6 +245,14 @@ class Update(Model):
                     return none_ret
 
                 users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+
+                if peer.type is PeerType.CHANNEL:
+                    return UpdateReadChannelInbox(
+                        channel_id=peer.channel_id,
+                        max_id=self.additional_data[0],
+                        still_unread_count=self.additional_data[1],
+                        pts=self.pts,
+                    ), users_q, chats_q, channels_q
 
                 return UpdateReadHistoryInbox(
                     peer=peer.to_tl(),
