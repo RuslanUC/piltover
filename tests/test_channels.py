@@ -62,7 +62,7 @@ async def test_get_channel_participants_only_owner() -> None:
 
 
 @pytest.mark.asyncio
-async def test_channel_promote_user() -> None:
+async def test_channel_invite_and_promote_user() -> None:
     async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
         await client1.set_username("test1_username")
         await client2.set_username("test2_username")
@@ -83,3 +83,21 @@ async def test_channel_promote_user() -> None:
         await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges(can_post_messages=True))
 
         assert await client2.send_message(channel.id, "test message 2")
+
+
+@pytest.mark.asyncio
+async def test_channel_add_user() -> None:
+    async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
+        await client1.set_username("test1_username")
+        await client2.set_username("test2_username")
+
+        channel = await client1.create_channel("idk")
+        assert channel
+
+        assert await client1.get_chat_members_count(channel.id) == 1
+
+        assert await client1.add_chat_members(channel.id, "test2_username")
+        channel2 = await client2.get_chat(channel.id)
+        assert channel2.id == channel.id
+
+        assert await client1.get_chat_members_count(channel.id) == 2

@@ -8,8 +8,9 @@ from piltover.app.handlers.messages.history import format_messages_internal
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import validate_username
-from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights
-from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState
+from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
+from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
+    ChatInviteRequest
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, InputChannelEmpty, ChatEmpty, \
@@ -18,9 +19,9 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
     ChannelParticipantsSearch
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
-    EditAdmin, GetParticipants, GetParticipant, ReadHistory
+    EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_136
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
-from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages
+from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("channels")
@@ -424,3 +425,54 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     await UpdatesManager.update_read_history_inbox_channel(peer, message_id, unread_count)
 
     return True
+
+
+@handler.on_request(InviteToChannel_136)
+@handler.on_request(InviteToChannel)
+async def invite_to_channel(request: InviteToChannel, user: User):
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    participant = await peer.channel.get_participant_raise(user)
+    if not peer.channel.user_has_permission(participant, ChatBannedRights.INVITE_USERS) and \
+            not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    added_users = []
+    peers_to_create = []
+    participants_to_create = []
+
+    for input_user in request.users[:100]:
+        user_peer = await Peer.from_input_peer_raise(user, input_user)
+        if user_peer.type is not PeerType.USER:
+            raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+        if await ChatParticipant.filter(user=user_peer.user, channel=peer.channel).exists():
+            continue
+        if not await PrivacyRule.has_access_to(user, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):
+            raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
+
+        added_users.append(user_peer.user)
+        peers_to_create.append(Peer(owner=user_peer.user, channel=peer.channel, type=PeerType.CHANNEL))
+        participants_to_create.append(ChatParticipant(user=user_peer.user, channel=peer.channel, inviter_id=user.id))
+
+    await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
+    await ChatParticipant.bulk_create(participants_to_create, ignore_conflicts=True)
+    await ChatInviteRequest.filter(id__in=Subquery(
+        ChatInviteRequest.filter(
+            user__id__in=[added_user.id for added_user in added_users], invite__channel=peer.channel,
+        ).values_list("id", flat=True)
+    )).delete()
+
+    for added_user in added_users:
+        await UpdatesManager.update_channel_for_user(peer.channel, added_user)
+
+    return InvitedUsers(
+        updates=Updates(
+            updates=[UpdateChannel(channel_id=peer.channel.id)],
+            chats=[await peer.channel.to_tl(user)],
+            users=[],
+            date=int(time()),
+            seq=0,
+        ),
+        missing_invitees=[],
+    )
