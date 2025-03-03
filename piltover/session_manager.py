@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from mtproto.packets import DecryptedMessagePacket
 
-from piltover.db.models import User, UserAuthorization, AuthKey
+from piltover.db.models import UserAuthorization, AuthKey
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
-from piltover.tl.types.internal import Message as MessageInternal
+from piltover.tl.types.internal import MessageToUsersShort
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -102,8 +102,8 @@ class Session:
     def __hash__(self) -> int:
         return self.session_id
 
-    def set_user(self, user: User) -> None:
-        self.user_id = user.id
+    def set_user_id(self, user_id: int) -> None:
+        self.user_id = user_id
         self.online = True
 
         SessionManager.broker.subscribe(self)
@@ -167,8 +167,8 @@ class SessionManager:
         if not user_id and not key_id:
             return
 
-        await cls.broker.send(MessageInternal(
-            users=[user_id] if user_id else None,
-            key_ids=[key_id] if key_id else None,
+        await cls.broker.send(MessageToUsersShort(
+            user=user_id,
+            key_id=key_id,
             obj=obj,
         ))

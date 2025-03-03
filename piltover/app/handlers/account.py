@@ -19,6 +19,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
+from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
 from piltover.worker import MessageHandler
@@ -83,10 +84,13 @@ async def register_device(request: RegisterDevice, user: User) -> bool:
         return False
     sess_id = int(request.token)
     key_id = request_ctx.get().auth_key_id
-    # TODO: rewrite this since function is being executed in worker, this session probably does not exist
-    if (session := SessionManager.sessions.get(sess_id, {}).get(key_id, None)) is None:
-        return False
-    session.set_user(user)
+
+    await SessionManager.broker.send(SetSessionInternalPush(
+        key_id=key_id,
+        session_id=sess_id,
+        user_id=user.id,
+    ))
+
     return True
 
 

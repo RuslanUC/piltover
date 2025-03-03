@@ -419,7 +419,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     read_state.last_message_id = message_id
     await read_state.save(update_fields=["last_message_id"])
 
-    # TODO: create and send outbox read update
+    # TODO: create and send outbox read update if supergroup
 
     await UpdatesManager.update_read_history_inbox_channel(peer, message_id, unread_count)
 

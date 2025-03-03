@@ -243,7 +243,7 @@ class Client:
 
                 self.authorization = (auth, time())
                 if auth is not None and session.user_id is None:
-                    session.set_user(auth.user)
+                    session.set_user_id(auth.user.id)
 
             auth_id = auth.id if auth is not None else None
             user_id = auth.user.id if auth is not None else None

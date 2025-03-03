@@ -23,8 +23,9 @@ internal.rpc_response#1c05a4e9 = flags:# transport_error:flags.0?int obj:flags.1
 
 // Message exchange between gateway and brokers
 
-// TODO: remove `sessions` if not used
-internal.message#998b6f69 = flags:# users:flags.0?Vector<long> sessions:flags.1?Vector<long> key_ids:flags.2?Vector<long> obj:flags.3?Object = internal.Message;
+internal.message_to_users#6d7d850c = flags:# users:flags.0?Vector<long> channel_ids:flags.1?Vector<long> key_ids:flags.2?Vector<long> obj:flags.3?Object = internal.MessageInternal;
+internal.message_to_users_short#6b91b4d = flags:# user:flags.0?long channel_id:flags.1?long key_id:flags.2?long obj:flags.3?Object = internal.MessageInternal;
+internal.set_session_internal_push#bc109cae = key_id:long session_id:long user_id:long = internal.MessageInternal;
 
 ---functions---
 
