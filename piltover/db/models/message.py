@@ -97,7 +97,6 @@ _BASE_DEFAULTS = {
     "mentioned": False,
     "media_unread": False,
     "silent": False,
-    "post": False,
     "legacy": False,
 }
 _REGULAR_DEFAULTS = {
@@ -121,17 +120,21 @@ class Message(Model):
     extra_info: bytes | None = fields.BinaryField(null=True, default=None)
     version: int = fields.IntField(default=0)
     media_group_id: int = fields.BigIntField(null=True, default=None)
+    channel_post: bool = fields.BooleanField(default=False)
+    post_author: str | None = fields.CharField(max_length=128, null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
-    media: models.MessageMedia = fields.ForeignKeyField("models.MessageMedia", null=True, default=None)
-    reply_to: models.Message = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
-    fwd_header: models.MessageFwdHeader = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
+    media: models.MessageMedia | None = fields.ForeignKeyField("models.MessageMedia", null=True, default=None)
+    reply_to: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
+    fwd_header: models.MessageFwdHeader | None = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
+    post_info: models.ChannelPostInfo | None = fields.ForeignKeyField("models.ChannelPostInfo", null=True, default=None)
 
     peer_id: int
-    author_id: int
+    author_id: int | None
     media_id: int | None
     reply_to_id: int | None
+    post_info_id: int | None
 
     class Meta:
         unique_together = (
@@ -166,6 +169,10 @@ class Message(Model):
                 self.extra_info = action.write()
                 await self.save(update_fields=["extra_info"])
 
+        from_id = None
+        if not self.channel_post:
+            from_id = PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0)
+
         return MessageService(
             id=self.id,
             peer_id=self.peer.to_tl(),
@@ -173,7 +180,7 @@ class Message(Model):
             action=action,  # type: ignore
             out=user.id == self.author_id,
             reply_to=await self._make_reply_to_header(),
-            from_id=PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0),
+            from_id=from_id,
             **_BASE_DEFAULTS,
         )
 
@@ -201,6 +208,14 @@ class Message(Model):
             tl_id = entity.pop("_")
             entities.append(objects[tl_id](**entity))
 
+        from_id = None
+        if not self.channel_post:
+            from_id = PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0)
+
+        post_info = None
+        if self.channel_post and self.post_info_id is not None:
+            self.post_info = post_info = await self.post_info
+
         message = TLMessage(
             id=self.id,
             message=self.message,
@@ -212,9 +227,13 @@ class Message(Model):
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
             reply_to=await self._make_reply_to_header(),
             fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
-            from_id=PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0),
+            from_id=from_id,
             entities=entities,
             grouped_id=self.media_group_id,
+            post=self.channel_post,
+            views=post_info.views if post_info is not None else None,
+            forwards=post_info.forwards if post_info is not None else None,
+            post_author=self.post_author if self.channel_post else None,
             **_BASE_DEFAULTS,
             **_REGULAR_DEFAULTS,
         )
@@ -226,6 +245,7 @@ class Message(Model):
             self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,
             random_id: int | None = None, fwd_header: models.MessageFwdHeader | None | object = _FWD_HEADER_MISSING,
             reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
+            drop_author: bool = False,
     ) -> models.Message:
         if new_author is None and self.author is not None:
             self.author = new_author = await self.author
@@ -243,7 +263,9 @@ class Message(Model):
                 reply_to = await Message.get_or_none(peer=peer, internal_id=self.reply_to.internal_id)
 
         if fwd_header is _FWD_HEADER_MISSING:
-            fwd_header = await self.fwd_header
+            self.fwd_header = fwd_header = await self.fwd_header
+        if not drop_author:
+            self.post_info = await self.post_info
 
         return await Message.create(
             internal_id=internal_id or Snowflake.make_id(),
@@ -260,6 +282,9 @@ class Message(Model):
             random_id=str(random_id) if random_id else None,
             entities=self.entities,
             media_group_id=media_group_id,
+            channel_post=self.channel_post if not drop_author else None,
+            post_author=self.post_author if not drop_author else None,
+            post_info=self.post_info if not drop_author else None,
         )
 
     async def create_fwd_header(self, peer: models.Peer) -> models.MessageFwdHeader | None:

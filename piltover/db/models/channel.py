@@ -33,6 +33,7 @@ class Channel(ChatBase):
     channel: bool = fields.BooleanField(default=False)
     supergroup: bool = fields.BooleanField(default=False)
     pts: int = fields.BigIntField(default=1)
+    signatures: bool = fields.BooleanField(default=False)
 
     async def to_tl(self, user: models.User) -> TLChannel | ChannelForbidden:
         peer: models.Peer | None = await models.Peer.get_or_none(owner=user, channel=self, type=PeerType.CHANNEL)
@@ -60,7 +61,7 @@ class Channel(ChatBase):
             verified=False,
             megagroup=self.supergroup,
             restricted=False,
-            signatures=False,
+            signatures=self.signatures,
             min=False,
             scam=False,
             has_link=False,

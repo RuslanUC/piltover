@@ -10,7 +10,7 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant, Channel
+    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage
@@ -83,9 +83,20 @@ async def send_message(request: SendMessage, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
     reply_to_message_id = _resolve_reply_id(request)
+
+    is_channel_post = False
+    post_info = None
+    post_signature = None
+    if peer.type is PeerType.CHANNEL and peer.channel.channel:
+        is_channel_post = True
+        post_info = await ChannelPostInfo.create()
+        if peer.channel.signatures:
+            post_signature = user.first_name
+
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, entities=validate_message_entities(request.message, request.entities),
+        channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
     )
 
 
@@ -373,6 +384,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
                     random_id=random_ids.get(message.id) if opp_peer == to_peer else None,
                     reply_to_internal_id=reply_ids.get(message.reply_to_id),
                     media_group_id=media_group_ids[message.media_group_id],
+                    drop_author=request.drop_author,
 
                     fwd_header=await message.create_fwd_header(opp_peer) if not request.drop_author else None,
                 )
