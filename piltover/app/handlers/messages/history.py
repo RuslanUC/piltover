@@ -9,16 +9,17 @@ from tortoise.queryset import QuerySet
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType
-from piltover.db.models import User, MessageDraft, ReadState, State, Peer
+from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo
 from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.message import Message
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
-    InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic
+    InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
-    SearchGlobal, GetMessages
-from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice
+    SearchGlobal, GetMessages, GetMessagesViews
+from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
+    MessageViews as MessagesMessageViews
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.history")
@@ -392,3 +393,49 @@ async def search_global(request: SearchGlobal, user: User):
     )
 
     return await format_messages_internal(user, messages, users)
+
+
+@handler.on_request(GetMessagesViews)
+async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesMessageViews:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+
+    request.id = request.id[:100]
+
+    query = Q(id__in=request.id)
+    query &= Q(peer__owner=None, peer__channel=peer.channel) if peer.type is PeerType.CHANNEL else Q(peer=peer)
+
+    message: Message
+    messages = {
+        message.id: message
+        async for message in Message.filter(query).select_related("post_info", "peer", "peer__channel")
+    }
+
+    channels = {}
+    views = []
+    incremented = []
+
+    for message_id in request.id:
+        if message_id not in messages or not messages[message_id].post_info:
+            views.append(MessageViews())
+            continue
+
+        message = messages[message_id]
+        # TODO: count unique views
+        if request.increment:
+            message.post_info.views += 1
+            incremented = message.post_info
+
+        views.append(MessageViews(views=message.post_info.views))
+
+        # TODO: load channel from fwd_header
+        if message.peer.channel_id is not None:
+            channels[message.peer.channel.id] = await message.peer.channel.to_tl(user)
+
+    if incremented:
+        await ChannelPostInfo.bulk_update(incremented, fields=["views"])
+
+    return MessagesMessageViews(
+        views=views,
+        chats=list(channels.values()),
+        users=[],
+    )

@@ -300,7 +300,7 @@ class Message(Model):
             fwd_header.from_user = await fwd_header.from_user
 
         from_user = fwd_header.from_user if fwd_header else None
-        if from_user is None:
+        if from_user is None and not self.channel_post:
             if await models.PrivacyRule.has_access_to(self.peer.owner_id, self.author, PrivacyRuleKeyType.FORWARDS):
                 from_user = self.author
 
@@ -369,7 +369,7 @@ class Message(Model):
     def query_users_chats(
             self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
     ) -> tuple[Q | None, Q | None, Q | None]:
-        if users is not None and self.author_id is not None:
+        if users is not None and self.author_id is not None and not self.channel_post:
             users |= Q(id=self.author_id)
         if (users is not None or chats is not None or channels is not None) and self.peer_id is not None:
             users, chats, channels = models.Peer.query_users_chats_cls(self.peer_id, users, chats, channels)
@@ -384,5 +384,7 @@ class Message(Model):
             except Error:
                 return users, chats, channels
             users |= Q(id__in=user_ids)
+
+        # TODO: add users and chats from fwd_header
 
         return users, chats, channels
