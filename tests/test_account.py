@@ -33,7 +33,7 @@ async def test_change_username() -> None:
 @pytest.mark.asyncio
 async def test_change_username_to_invalid() -> None:
     async with TestClient(phone_number="123456789") as client:
-        for username in ("tes/t_username", "very_long_username"*100, "", "username.with.dots", ".", ":::"):
+        for username in ("tes/t_username", "very_long_username"*100, "username.with.dots", ".", ":::"):
             with pytest.raises(UsernameInvalid):
                 assert await client.set_username(username)
 
@@ -58,6 +58,9 @@ async def test_change_username_to_occupied() -> None:
 @pytest.mark.asyncio
 async def test_change_username_to_same() -> None:
     async with TestClient(phone_number="123456789") as client:
+        with pytest.raises(UsernameNotModified):
+            assert await client.set_username("")
+
         assert await client.set_username("test_username")
         me = await client.get_me()
         assert me.username == "test_username"

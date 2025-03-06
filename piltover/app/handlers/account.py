@@ -4,14 +4,14 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus
-from piltover.db.models import User, UserAuthorization, Peer, Presence
+from piltover.db.models import User, UserAuthorization, Peer, Presence, Username
 from piltover.db.models.privacy_rule import PrivacyRule, TL_KEY_TO_PRIVACY_ENUM
 from piltover.db.models.user_password import UserPassword
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
-    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow
+    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
@@ -28,25 +28,36 @@ handler = MessageHandler("account")
 
 
 @handler.on_request(CheckUsername)
-async def check_username(request: CheckUsername):
+async def check_username(request: CheckUsername) -> bool:
     request.username = request.username.lower()
     validate_username(request.username)
-    # TODO: check if username is taken by chat/channel (when chat usernames will be added)
-    if await User.filter(username=request.username).exists():
+    if await Username.filter(username=request.username).exists():
         raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
     return True
 
 
 @handler.on_request(UpdateUsername)
-async def update_username(request: UpdateUsername, user: User):
-    request.username = request.username.lower()
-    validate_username(request.username)
-    # TODO: check if username is taken by chat/channel (when chat usernames will be added)
-    if (target := await User.get_or_none(username__iexact=request.username)) is not None:
-        raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED" if target == user else "USERNAME_OCCUPIED")
+async def update_username(request: UpdateUsername, user: User) -> TLUser:
+    request.username = request.username.lower().strip()
+    current_username = await user.get_username()
+    if (not request.username and current_username is None) \
+            or (current_username is not None and current_username.username == request.username):
+        raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED")
 
-    user.username = request.username
-    await user.save(update_fields=["username"])
+    if request.username:
+        validate_username(request.username)
+        if await Username.filter(username__iexact=request.username).exists():
+            raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
+
+    if current_username is not None:
+        if not request.username:
+            await current_username.delete()
+            user.cached_username = None
+        else:
+            current_username.username = request.username
+            await current_username.save(update_fields=["username"])
+    else:
+        user.cached_username = await Username.create(user=user, username=request.username)
 
     await UpdatesManager.update_user_name(user)
     return await user.to_tl(user)

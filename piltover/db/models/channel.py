@@ -27,6 +27,7 @@ CREATOR_RIGHTS = ChatAdminRights(
     edit_stories=True,
     delete_stories=True,
 )
+_USERNAME_MISSING = object()
 
 
 class Channel(ChatBase):
@@ -34,6 +35,14 @@ class Channel(ChatBase):
     supergroup: bool = fields.BooleanField(default=False)
     pts: int = fields.BigIntField(default=1)
     signatures: bool = fields.BooleanField(default=False)
+
+    cached_username: models.Username | None | object = _USERNAME_MISSING
+
+    async def get_username(self) -> models.Username | None:
+        if self.cached_username is _USERNAME_MISSING:
+            self.cached_username = await models.Username.get_or_none(channel=self)
+
+        return self.cached_username
 
     async def to_tl(self, user: models.User) -> TLChannel | ChannelForbidden:
         peer: models.Peer | None = await models.Peer.get_or_none(owner=user, channel=self, type=PeerType.CHANNEL)
@@ -49,6 +58,8 @@ class Channel(ChatBase):
             admin_rights = CREATOR_RIGHTS
         elif participant.is_admin:
             admin_rights = participant.admin_rights.to_tl()
+
+        username = await self.get_username()
 
         return TLChannel(
             id=self.id,
@@ -81,6 +92,7 @@ class Channel(ChatBase):
             access_hash=peer.access_hash,
             restriction_reason=None,
             admin_rights=admin_rights,
+            username=username.username if username is not None else None,
             usernames=[],
             default_banned_rights=self.banned_rights.to_tl(),
             banned_rights=participant.banned_rights.to_tl()

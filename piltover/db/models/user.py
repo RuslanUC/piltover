@@ -9,17 +9,25 @@ from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday
 from piltover.tl.types import User as TLUser
 
+_USERNAME_MISSING = object()
 
 class User(Model):
     id: int = fields.BigIntField(pk=True)
     phone_number: str = fields.CharField(unique=True, max_length=20)
     first_name: str = fields.CharField(max_length=128)
     last_name: str | None = fields.CharField(max_length=128, null=True, default=None)
-    username: str | None = fields.CharField(max_length=64, null=True, default=None, index=True)
     lang_code: str = fields.CharField(max_length=8, default="en")
     about: str | None = fields.CharField(max_length=240, null=True, default=None)
     ttl_days: int = fields.IntField(default=365)
     birthday: date | None = fields.DateField(null=True, default=None)
+
+    cached_username: models.Username | None | object = _USERNAME_MISSING
+
+    async def get_username(self) -> models.Username | None:
+        if self.cached_username is _USERNAME_MISSING:
+            self.cached_username = await models.Username.get_or_none(user=self)
+
+        return self.cached_username
 
     async def get_photo(self, current_user: models.User, profile_photo: bool = False):
         photo = UserProfilePhotoEmpty() if profile_photo else PhotoEmpty(id=0)
@@ -67,12 +75,14 @@ class User(Model):
         if await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PHONE_NUMBER):
             phone_number = self.phone_number
 
+        username = await self.get_username()
+
         return TLUser(
             **defaults,
             id=self.id,
             first_name=self.first_name if contact is None or not contact.first_name else contact.first_name,
             last_name=self.last_name if contact is None or not contact.last_name else contact.last_name,
-            username=self.username,
+            username=username.username if username is not None else None,
             phone=phone_number,
             lang_code=self.lang_code,
             is_self=self == current_user,

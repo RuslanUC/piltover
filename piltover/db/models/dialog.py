@@ -5,7 +5,7 @@ from typing import cast
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import PeerType, DialogFolderId
+from piltover.db.enums import DialogFolderId
 from piltover.tl import PeerNotifySettings
 from piltover.tl.types import Dialog as TLDialog
 

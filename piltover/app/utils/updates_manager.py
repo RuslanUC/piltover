@@ -12,10 +12,10 @@ from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
     UpdatePinnedDialogs, DialogPeer, UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, \
-    UpdateUserStatus, UpdateUserName, Username, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
+    UpdateUserStatus, UpdateUserName, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
-    UpdateChatDefaultBannedRights, UpdateReadChannelInbox
+    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername
 
 
 # TODO: move UpdatesManager to separate worker
@@ -617,7 +617,10 @@ class UpdatesManager:
     async def update_user_name(user: User) -> None:
         updates_to_create = []
 
-        usernames = [] if not user.username else [Username(editable=True, active=True, username=user.username)]
+        username = await user.get_username()
+        username = username.username if username is not None else None
+
+        usernames = [] if not username else [TLUsername(editable=True, active=True, username=username)]
         update = UpdateUserName(
             user_id=user.id, first_name=user.first_name, last_name=user.last_name, usernames=usernames,
         )
@@ -842,12 +845,14 @@ class UpdatesManager:
         await channel.save(update_fields=["pts"])
         await ChannelUpdate.create(
             channel=channel,
-            type=ChannelUpdateType.NEW_MESSAGE,
+            type=ChannelUpdateType.UPDATE_CHANNEL,
             related_id=None,
             pts=this_pts,
             pts_count=1,
         )
 
+        # TODO: send with SessionManager.send(updates, channel_id=channel.id) and get channel users in gateway
+        #  or somewhere else, but not there, since here it may delay processing request
         for to_user in await User.filter(chatparticipants__channel=channel):
             updates = Updates(
                 updates=[UpdateChannel(channel_id=channel.id)],

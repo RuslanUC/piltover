@@ -3,7 +3,7 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import ChatWriteForbidden
+from pyrogram.errors import ChatWriteForbidden, UsernameOccupied
 from pyrogram.types import ChatMember, ChatPrivileges
 
 from tests.conftest import TestClient, color_is_near
@@ -101,3 +101,25 @@ async def test_channel_add_user() -> None:
         assert channel2.id == channel.id
 
         assert await client1.get_chat_members_count(channel.id) == 2
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        channel = await client.create_channel("idk")
+        assert channel.username is None
+
+        assert await client.set_chat_username(channel.id, "test_channel")
+        channel = await client.get_chat(channel.id)
+        assert channel.username == "test_channel"
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_occupied_by_user() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        channel = await client.create_channel("idk")
+        assert channel.username is None
+
+        await client.set_username("test_username")
+        with pytest.raises(UsernameOccupied):
+            await client.set_chat_username(channel.id, "test_username")

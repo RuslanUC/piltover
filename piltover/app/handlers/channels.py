@@ -10,7 +10,7 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import validate_username
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
-    ChatInviteRequest
+    ChatInviteRequest, Username
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, InputChannelEmpty, ChatEmpty, \
@@ -19,7 +19,8 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
     ChannelParticipantsSearch
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
-    EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_136, ToggleSignatures
+    EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_136, ToggleSignatures, \
+    UpdateUsername
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers
 from piltover.worker import MessageHandler
@@ -38,12 +39,48 @@ async def get_admined_public_channels():  # pragma: no cover
 
 
 @handler.on_request(CheckUsername)
-async def check_username(request: CheckUsername):
+async def check_username(request: CheckUsername) -> bool:
     request.username = request.username.lower()
     validate_username(request.username)
-    # TODO: check if username is taken by chat/channel (when chat usernames will be added)
-    if await User.filter(username=request.username).exists():
+    if await Username.filter(username=request.username).exists():
         raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
+    return True
+
+
+@handler.on_request(UpdateUsername)
+async def update_username(request: UpdateUsername, user: User) -> bool:
+    peer = await Peer.from_input_peer_raise(user, request.channel)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+
+    channel = peer.channel
+
+    participant = await ChatParticipant.get_or_none(channel=channel, user=user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    request.username = request.username.lower().strip()
+    current_username = await channel.get_username()
+    if (not request.username and current_username is None) \
+            or (current_username is not None and current_username.username == request.username):
+        raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED")
+
+    if request.username:
+        validate_username(request.username)
+        if await Username.filter(username__iexact=request.username).exists():
+            raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
+
+    if current_username is not None:
+        if not request.username:
+            await current_username.delete()
+            channel.cached_username = None
+        else:
+            current_username.username = request.username
+            await current_username.save(update_fields=["username"])
+    else:
+        channel.cached_username = await Username.create(channel=channel, username=request.username)
+
+    await UpdatesManager.update_channel(peer.channel)
     return True
 
 
@@ -65,7 +102,9 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
         creator=user, name=title, description=description, channel=request.broadcast, supergroup=request.megagroup,
     )
     peer_for_user = await Peer.create(owner=user, channel=channel, type=PeerType.CHANNEL)
-    await ChatParticipant.create(channel=channel, user=user)
+    await ChatParticipant.create(
+        channel=channel, user=user, admin_rights=ChatAdminRights.all() & ~ChatAdminRights.ANONYMOUS,
+    )
     await Dialog.get_or_create(peer=peer_for_user)
     peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL, access_hash=0)
 

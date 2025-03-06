@@ -34,3 +34,4 @@ from .chat_invite_request import ChatInviteRequest
 from .channel import Channel
 from .channel_update import ChannelUpdate
 from .channel_post_info import ChannelPostInfo
+from .username import Username

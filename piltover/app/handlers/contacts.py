@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Contact
+from piltover.db.models import User, Peer, Contact, Username
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked
@@ -35,25 +35,30 @@ async def get_contacts(user: User):
     )
 
 
-async def _format_resolved_peer(user: User, resolved: User) -> ResolvedPeer:
-    if resolved == user:
+async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
+    if resolved.user == user:
         peer, _ = await Peer.get_or_create(owner=user, user=None, type=PeerType.SELF)
-    else:
-        peer, _ = await Peer.get_or_create(owner=user, user=resolved, type=PeerType.USER)
+    elif resolved.user is not None:
+        peer, _ = await Peer.get_or_create(owner=user, user=resolved.user, type=PeerType.USER)
+    elif resolved.channel is not None:
+        peer, _ = await Peer.get_or_create(owner=user, channel=resolved.channel, type=PeerType.CHANNEL)
+    else:  # pragma: no cover
+        raise RuntimeError("Unreachable")
 
     return ResolvedPeer(
         peer=peer.to_tl(),
-        chats=[],
-        users=[await resolved.to_tl(user)],
+        chats=[await resolved.channel.to_tl(user)] if resolved.channel is not None else [],
+        users=[await resolved.user.to_tl(user)] if resolved.user is not None else [],
     )
 
 
 @handler.on_request(ResolveUsername)
-async def resolve_username(request: ResolveUsername, user: User):
-    if (resolved := await User.get_or_none(username=request.username)) is None:
+async def resolve_username(request: ResolveUsername, user: User) -> ResolvedPeer:
+    resolved_username = await Username.get_or_none(username=request.username).select_related("user", "channel")
+    if resolved_username is None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")
 
-    return await _format_resolved_peer(user, resolved)
+    return await _format_resolved_peer(user, resolved_username)
 
 
 @handler.on_request(GetBlocked)
