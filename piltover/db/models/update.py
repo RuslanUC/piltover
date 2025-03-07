@@ -11,12 +11,13 @@ from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogP
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
-    UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox
+    UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
+    UpdateMessagePoll
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
-              | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox
+              | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox | UpdateMessagePoll
 
 
 class Update(Model):
@@ -189,12 +190,14 @@ class Update(Model):
                 users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
 
                 peer_user = peer.peer_user(user)
-                username = Username(editable=True, active=True, username=peer_user.username)
+                user_username = await peer_user.get_username()
                 return UpdateUserName(
                     user_id=peer_user.id,
                     first_name=peer_user.first_name,
                     last_name=peer_user.last_name,
-                    usernames=[username] if peer_user.username else [],
+                    usernames=[
+                        Username(editable=True, active=True, username=user_username.username)
+                    ] if user_username else [],
                 ), users_q, chats_q, channels_q
 
             case UpdateType.UPDATE_CONTACT:
@@ -296,6 +299,16 @@ class Update(Model):
                 channels_q |= Q(id=self.related_id)
                 return UpdateChannel(
                     channel_id=self.related_id,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_POLL:
+                if (poll := await models.Poll.get_or_none(id=self.related_id)) is None:
+                    return none_ret
+
+                return UpdateMessagePoll(
+                    poll_id=poll.id,
+                    poll=await poll.to_tl(),
+                    results=await poll.to_tl_results(user),
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

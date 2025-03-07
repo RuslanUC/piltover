@@ -388,3 +388,6 @@ class Message(Model):
         # TODO: add users and chats from fwd_header
 
         return users, chats, channels
+
+    async def remove_from_cache(self, user: models.User) -> None:
+        await Cache.obj.delete(self._cache_key(user))

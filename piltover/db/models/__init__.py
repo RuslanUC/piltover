@@ -35,3 +35,6 @@ from .channel import Channel
 from .channel_update import ChannelUpdate
 from .channel_post_info import ChannelPostInfo
 from .username import Username
+from .poll import Poll
+from .poll_answer import PollAnswer
+from .poll_vote import PollVote

@@ -1,19 +1,20 @@
 from collections import defaultdict
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from time import time
 from typing import cast
 
 from loguru import logger
 from tortoise.expressions import Q
+from tortoise.transactions import in_transaction
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo
+    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
-    InputMediaDocument, InputPeerEmpty, MessageActionPinMessage
+    InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148, DeleteHistory
@@ -23,7 +24,8 @@ from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.sending")
 
-InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument
+InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument \
+             | InputMediaPoll
 
 
 async def send_message_internal(
@@ -189,6 +191,8 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
+    # TODO: allow editing media
+
     if not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
     if message.author != user:
@@ -228,11 +232,12 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
 
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     if not isinstance(media, (
-            InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, InputMediaDocument
+            InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, InputMediaDocument, InputMediaPoll,
     )):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     file: File | None = None
+    poll: Poll | None = None
     mime: str | None = None
     media_type: MediaType | None = None
     attributes = []
@@ -244,6 +249,8 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     elif isinstance(media, InputMediaUploadedPhoto):
         mime = "image/jpeg"
         media_type = MediaType.PHOTO
+    elif isinstance(media, InputMediaPoll):
+        media_type = MediaType.POLL
 
     if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
@@ -261,13 +268,59 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         media_type = MediaType.PHOTO if isinstance(media, InputMediaPhoto) else MediaType.DOCUMENT
+    elif isinstance(media, InputMediaPoll):
+        if media.poll.quiz and media.poll.multiple_choice:
+            raise ErrorRpc(error_code=400, error_message="QUIZ_MULTIPLE_INVALID")
+        if media.poll.quiz and not media.correct_answers:
+            raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWERS_EMPTY")
+        if media.poll.quiz and len(media.correct_answers) > 1:
+            raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWERS_TOO_MUCH")
+        if not media.poll.question or len(media.poll.question) > 255:
+            raise ErrorRpc(error_code=400, error_message="POLL_QUESTION_INVALID")
+        if len(media.poll.answers) < 2 or len(media.poll.answers) > 10:
+            raise ErrorRpc(error_code=400, error_message="POLL_ANSWERS_INVALID")
+        if media.poll.quiz and media.solution is not None \
+                and (len(media.solution) > 200 or media.solution.count("\n") > 2):
+            raise ErrorRpc(error_code=400, error_message="POLL_ANSWERS_INVALID")
+        answers = set()
+        for answer in media.poll.answers:
+            if answer.option in answers:
+                raise ErrorRpc(error_code=400, error_message="POLL_OPTION_DUPLICATE")
+            if not answer.option or len(answer.option) > 100 or not answer.text or len(answer.text) > 100:
+                raise ErrorRpc(error_code=400, error_message="POLL_ANSWER_INVALID")
+        if media.poll.quiz and media.correct_answers[0] not in answers:
+            raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWER_INVALID")
+
+        correct_option = media.correct_answers[0] if media.poll.quiz else None
+
+        ends_at = None
+        if media.poll.close_period and 5 < media.poll.close_period <= 600:
+            ends_at = datetime.now(UTC) + timedelta(seconds=media.poll.close_period)
+        elif media.poll.close_date:
+            close_datetime = datetime.fromtimestamp(media.poll.close_date, UTC)
+            if 5 < (close_datetime - datetime.now(UTC)).seconds <= 600:
+                ends_at = datetime.fromtimestamp(media.poll.close_date, UTC)
+
+        async with in_transaction():
+            poll = await Poll.create(
+                quiz=media.poll.quiz,
+                public_voters=media.poll.public_voters,
+                multiple_choices=media.poll.multiple_choice,
+                question=media.poll.question,
+                solution=media.solution if media.poll.quiz else None,
+                ends_at=ends_at,
+            )
+            await PollAnswer.bulk_create([
+                PollAnswer(poll=poll, text=answer.text, option=answer.option, correct=answer.option == correct_option)
+                for answer in media.poll.answers
+            ])
 
     if isinstance(media, InputMediaUploadedPhoto):
         file.photo_sizes = await resize_photo(str(file.physical_id))
         file.photo_stripped = await generate_stripped(str(file.physical_id))
         await file.save(update_fields=["photo_sizes", "photo_stripped"])
 
-    return await MessageMedia.create(file=file, spoiler=media.spoiler, type=media_type)
+    return await MessageMedia.create(file=file, spoiler=media.spoiler, type=media_type, poll=poll)
 
 
 @handler.on_request(SendMedia_148)

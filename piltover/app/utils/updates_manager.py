@@ -6,7 +6,7 @@ from tortoise.queryset import QuerySet
 
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
-    ChatParticipant, ChannelUpdate, Channel
+    ChatParticipant, ChannelUpdate, Channel, Poll
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -15,7 +15,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateUserStatus, UpdateUserName, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
-    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername
+    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll
 
 
 # TODO: move UpdatesManager to separate worker
@@ -956,6 +956,30 @@ class UpdatesManager:
             updates=[UpdateChannel(channel_id=channel.id)],
             users=[],
             chats=[await channel.to_tl(user)],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+        return updates
+
+    @staticmethod
+    async def update_message_poll(poll: Poll, user: User) -> Updates:
+        pts = await State.add_pts(user, 1)
+        await Update.create(
+            user=user, update_type=UpdateType.UPDATE_POLL, pts=pts, related_id=poll.id,
+        )
+
+        updates = Updates(
+            updates=[
+                UpdateMessagePoll(
+                    poll_id=poll.id,
+                    poll=await poll.to_tl(),
+                    results=await poll.to_tl_results(user),
+                )
+            ],
+            users=[],
+            chats=[],
             date=int(time()),
             seq=0,
         )

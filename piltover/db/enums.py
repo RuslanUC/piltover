@@ -46,6 +46,7 @@ class FileType(IntEnum):
 class MediaType(IntEnum):
     DOCUMENT = 0
     PHOTO = 1
+    POLL = 2
 
 
 class UpdateType(IntEnum):
@@ -72,6 +73,7 @@ class UpdateType(IntEnum):
     FOLDER_PEERS = 16
     UPDATE_CHAT_BANNED_RIGHTS = 17
     UPDATE_CHANNEL = 18
+    UPDATE_POLL = 19
 
 
 class PeerType(IntEnum):
