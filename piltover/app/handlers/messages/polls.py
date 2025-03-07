@@ -101,21 +101,25 @@ async def send_vote(request: SendVote, user: User) -> Updates:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
     if message.media.poll.is_closed_fr:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_POLL_CLOSED")
-    if not request.options:  # TODO: check if empty options is allowed
-        raise ErrorRpc(error_code=400, error_message="OPTION_INVALID")
+    if not request.options:
+        votes = await PollVote.filter(answer__poll=message.media.poll, user=user)
+        if not votes:
+            raise ErrorRpc(error_code=400, error_message="OPTION_INVALID")
+        await PollVote.filter(id__in=[vote.id for vote in votes]).delete()
+        return await UpdatesManager.update_message_poll(message.media.poll, user)
     if len(request.options) > 1 and not message.media.poll.multiple_choices:
         raise ErrorRpc(error_code=400, error_message="OPTIONS_TOO_MUCH")
 
     answer: PollAnswer
     options = {answer.option: answer async for answer in PollAnswer.filter(poll=message.media.poll)}
 
-    votes_to_create = {}
+    votes_to_create = []
     for option in request.options:
         if option not in options:
             raise ErrorRpc(error_code=400, error_message="OPTION_INVALID")
         if option in votes_to_create:
             continue
-        votes_to_create = PollVote(user=user, answer=options[option], hidden=peer.type is PeerType.CHANNEL)
+        votes_to_create.append(PollVote(user=user, answer=options[option], hidden=peer.type is PeerType.CHANNEL))
 
     await PollVote.bulk_create(votes_to_create)
     await message.remove_from_cache(user)

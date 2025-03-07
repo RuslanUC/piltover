@@ -9,6 +9,7 @@ from .message_reply_header_downgrade import *
 from .messagemediadocument_downgrade import *
 from .peernotifysettings_downgrade import *
 from .peersettings_downgrade import *
+from .poll_results_downgrade import *
 from .user_downgrade import *
 from .userfull_downgrade import *
 
@@ -73,3 +74,6 @@ LayerConverter.register_for_downgrade(ChannelFullDowngradeTo145)
 LayerConverter.register_for_downgrade(ChannelFullDowngradeTo164)
 LayerConverter.register_for_downgrade(ChannelFullDowngradeTo168)
 LayerConverter.register_for_downgrade(ChannelFullDontDowngrade)
+
+LayerConverter.register_for_downgrade(PollResultsDowngradeTo136)
+LayerConverter.register_for_downgrade(PollResultsDontDowngrade)

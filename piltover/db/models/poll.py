@@ -6,7 +6,6 @@ from pytz import UTC
 from tortoise import Model, fields
 
 from piltover.db import models
-from piltover.db.models import PollVote
 from piltover.tl import Poll as TLPoll, PollResults, PollAnswerVoters
 
 
@@ -43,7 +42,7 @@ class Poll(Model):
         )
 
     async def to_tl_results(self, user: models.User) -> PollResults:
-        user_votes = await PollVote.filter(answer__poll=self, user=user).select_related("answer")
+        user_votes = await models.PollVote.filter(answer__poll=self, user=user).select_related("answer")
         if not user_votes:
             return PollResults(min=True)
 
@@ -56,7 +55,7 @@ class Poll(Model):
                 chosen=answer.option in chosen,
                 correct=self.quiz and answer.correct,
                 option=answer.option,
-                voters=await PollVote.filter(answer=answer).count(),
+                voters=await models.PollVote.filter(answer=answer).count(),
             ))
 
         return PollResults(

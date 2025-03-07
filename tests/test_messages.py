@@ -505,3 +505,19 @@ async def test_send_message_banned_rights() -> None:
         ))
 
         assert await client2.send_message(group.id, "test 3")
+
+
+@pytest.mark.asyncio
+async def test_message_poll() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        message = await client.send_poll("me", "test poll", ["answer 1", "answer 2", "answer 3"])
+        poll = await client.vote_poll("me", message.id, 0)
+        assert poll.question == "test poll"
+        assert len(poll.options) == 3
+        assert not poll.allows_multiple_answers
+        assert poll.total_voter_count == 1
+        assert poll.options[0].voter_count == 1
+
+        poll = await client.retract_vote("me", message.id)
+        assert poll.total_voter_count is None
+        assert poll.options[0].voter_count == 0

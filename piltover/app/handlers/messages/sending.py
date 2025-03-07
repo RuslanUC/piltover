@@ -320,7 +320,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         file.photo_stripped = await generate_stripped(str(file.physical_id))
         await file.save(update_fields=["photo_sizes", "photo_stripped"])
 
-    return await MessageMedia.create(file=file, spoiler=media.spoiler, type=media_type, poll=poll)
+    return await MessageMedia.create(file=file, spoiler=getattr(media, "spoiler", False), type=media_type, poll=poll)
 
 
 @handler.on_request(SendMedia_148)
