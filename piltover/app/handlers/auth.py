@@ -8,6 +8,7 @@ from mtproto.packets import EncryptedMessagePacket, MessagePacket
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal, get_perm_key
+from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Dialog, Message
@@ -28,8 +29,8 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("auth")
 
 LOGIN_MESSAGE_FMT = (
-    "Login code: {code}. Do not give this code to anyone, even if they say they are from Piltover!\n\n"
-    "❗️This code can be used to log in to your Piltover account. We never ask it for anything else.\n\n"
+    f"Login code: {{code}}. Do not give this code to anyone, even if they say they are from {AppConfig.NAME}!\n\n"
+    f"❗️This code can be used to log in to your {AppConfig.NAME} account. We never ask it for anything else.\n\n"
     "If you didn't request this code by trying to log in on another device, simply ignore this message."
 )
 

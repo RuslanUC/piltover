@@ -1,6 +1,7 @@
 import ctypes
 from time import time
 
+from piltover.app_config import AppConfig
 from piltover.db.models import AuthCountry
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption
@@ -8,7 +9,7 @@ from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, Ge
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
     GetPeerProfileColors
 from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
-    PeerColors, PeerColorOption, AppConfig, CountriesListNotModified
+    PeerColors, PeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("help")
@@ -21,15 +22,15 @@ async def get_config():
         date=int(time()),
         # This seems to be hardcoded to 1 hour on some clients, and changing it breaks them
         expires=int(time() + 60 * 60),
-        this_dc=2,
+        this_dc=AppConfig.THIS_DC_ID,
         test_mode=False,
         dc_options=[
-            DcOption(this_port_only=True, id=dc_id, ip_address="192.168.0.111", port=4430)
-            for dc_id in range(5)
+            DcOption(this_port_only=True, id=dc["dc_id"], ip_address=address["ip"], port=address["port"])
+            for dc in AppConfig.DCS for address in dc["addresses"]
         ],
         dc_txt_domain_name="_",
-        chat_size_max=10,  # Telegram default is 200
-        megagroup_size_max=200_000,  # Telegram default is 200000
+        chat_size_max=AppConfig.BASIC_GROUP_MEMBER_LIMIT,  # Telegram default is 200
+        megagroup_size_max=AppConfig.SUPER_GROUP_MEMBER_LIMIT,  # Telegram default is 200000
         forwarded_count_max=100,  # Telegram default is 100
         online_update_period_ms=30_000,  # Telegram default is 210000
         offline_blur_timeout_ms=30_000,  # Telegram default is 5000
@@ -39,7 +40,7 @@ async def get_config():
         notify_default_delay_ms=10_000,  # Telegram default is 1500
         push_chat_period_ms=1_000,  # Telegram default is 60000
         push_chat_limit=1,
-        edit_time_limit=48 * 60 * 60,  # Telegram default is 172800
+        edit_time_limit=AppConfig.EDIT_TIME_LIMIT,  # Telegram default is 172800
         revoke_time_limit=int(2 ** 31 - 1),
         revoke_pm_time_limit=int(2 ** 31 - 1),
         rating_e_decay=2,
@@ -50,9 +51,9 @@ async def get_config():
         call_connect_timeout_ms=20_000,
         call_packet_timeout_ms=5_000,
         me_url_prefix="https://127.0.0.1/",
-        caption_length_max=2048,  # Telegram default is 1024
-        message_length_max=4096,
-        webfile_dc_id=2,
+        caption_length_max=AppConfig.MAX_CAPTION_LENGTH,  # Telegram default is 1024
+        message_length_max=AppConfig.MAX_MESSAGE_LENGTH,
+        webfile_dc_id=AppConfig.THIS_DC_ID,
     )
 
 
@@ -60,14 +61,14 @@ async def get_config():
 async def get_nearest_dc():  # pragma: no cover
     return NearestDc(
         country="US",
-        this_dc=2,
-        nearest_dc=2,
+        this_dc=AppConfig.THIS_DC_ID,
+        nearest_dc=AppConfig.THIS_DC_ID,
     )
 
 
 @handler.on_request(GetAppConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_app_config():  # pragma: no cover
-    return AppConfig(hash=1, config=JsonObject(value=[]))
+    return TLAppConfig(hash=1, config=JsonObject(value=[]))
 
 
 @handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED)

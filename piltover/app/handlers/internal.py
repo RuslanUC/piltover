@@ -2,6 +2,7 @@ from os import urandom
 from time import time
 
 from piltover.app.utils.updates_manager import UpdatesManager
+from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
@@ -19,8 +20,8 @@ LOGIN_MESSAGE_FMT = (
     "Web login code. Dear Ruslan, we received a request from your account to log in on my.<todo: domain>. "
     "This is your login code:\n"
     "{code}\n\n"
-    "Do not give this code to anyone, even if they say they're from Piltover! "
-    "This code can be used to delete your Piltover account. We never ask to send it anywhere.\n"
+    f"Do not give this code to anyone, even if they say they're from {AppConfig.NAME}! "
+    f"This code can be used to delete your {AppConfig.NAME} account. We never ask to send it anywhere.\n"
     "If you didn't request this code by trying to log in on my.<todo: domain>, simply ignore this message.\n"
 )
 
@@ -148,11 +149,10 @@ async def get_available_servers(worker: Worker, user: User) -> AvailableServers:
     return AvailableServers(
         servers=[
             AvailableServer(
-                # TODO: get address and port from gateway or some config file
-                address="127.0.0.1",
-                port=4430,
-                dc_id=2,
-                name="Production",
+                address=dc_option["addresses"][0]["ip"],
+                port=dc_option["addresses"][0]["port"],
+                dc_id=dc_option["dc_id"],
+                name="Production" if dc_option["dc_id"] == AppConfig.THIS_DC_ID else "Test",
                 public_keys=[
                     PublicKey(
                         key=worker.server_keys.public_key,
@@ -160,5 +160,6 @@ async def get_available_servers(worker: Worker, user: User) -> AvailableServers:
                     )
                 ],
             )
+            for dc_option in AppConfig.DCS
         ]
     )

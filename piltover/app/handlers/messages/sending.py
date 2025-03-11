@@ -9,6 +9,7 @@ from tortoise.transactions import in_transaction
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
+from piltover.app_config import AppConfig
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer
@@ -81,7 +82,7 @@ async def send_message(request: SendMessage, user: User):
 
     if not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
-    if len(request.message) > 2000:
+    if len(request.message) > AppConfig.MAX_MESSAGE_LENGTH:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
     reply_to_message_id = _resolve_reply_id(request)
@@ -195,6 +196,10 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
 
     if not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
+    if request.message is not None and len(request.message) > AppConfig.MAX_MESSAGE_LENGTH and not message.media_id:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
+    elif request.message is not None and len(request.message) > AppConfig.MAX_CAPTION_LENGTH and message.media_id:
+        raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
     if message.author != user:
         raise ErrorRpc(error_code=403, error_message="MESSAGE_AUTHOR_REQUIRED")
     if message.message == request.message:
@@ -338,7 +343,7 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
     if peer.blocked:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
 
-    if len(request.message) > 2000:
+    if len(request.message) > AppConfig.MAX_CAPTION_LENGTH:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
 
     media = await _process_media(user, request.media)
@@ -481,7 +486,7 @@ async def upload_media(request: UploadMedia | UploadMedia_136, user: User):
 
 @handler.on_request(SendMultiMedia_148)
 @handler.on_request(SendMultiMedia)
-async def send_media(request: SendMultiMedia | SendMultiMedia_148, user: User):
+async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -504,7 +509,7 @@ async def send_media(request: SendMultiMedia | SendMultiMedia_148, user: User):
 
     messages: list[tuple[str, int, MessageMedia, list[dict] | None]] = []
     for single_media in request.multi_media:
-        if len(single_media.message) > 2000:
+        if len(single_media.message) > AppConfig.MAX_CAPTION_LENGTH:
             raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
         if not single_media.random_id:
             raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")

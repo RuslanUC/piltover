@@ -7,6 +7,7 @@ from tortoise.expressions import Q, Subquery
 
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
+from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel
 from piltover.db.models._utils import resolve_users_chats
@@ -218,6 +219,12 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
             await ChatInviteRequest.create(user=user, invite=invite)
         raise ErrorRpc(error_code=400, error_message="INVITE_REQUEST_SENT")
 
+    member_limit = AppConfig.BASIC_GROUP_MEMBER_LIMIT
+    if invite.channel is not None:
+        member_limit = AppConfig.SUPER_GROUP_MEMBER_LIMIT  # TODO: add separate limit for channels
+    if await ChatParticipant.filter(**Chat.or_channel(invite.chat_or_channel)).count() > member_limit:
+        raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
+
     await Peer.create(
         owner=user, type=PeerType.CHAT if isinstance(invite.chat_or_channel, Chat) else PeerType.CHANNEL,
         **Chat.or_channel(invite.chat_or_channel),
@@ -318,6 +325,12 @@ async def delete_revoked_exported_chat_invites(request: DeleteRevokedExportedCha
 async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list[ChatInviteRequest]) -> Updates:
     if not requests:
         return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+
+    member_limit = AppConfig.BASIC_GROUP_MEMBER_LIMIT
+    if isinstance(chat, Channel):
+        member_limit = AppConfig.SUPER_GROUP_MEMBER_LIMIT  # TODO: add separate limit for channels
+    if await ChatParticipant.filter(**Chat.or_channel(chat)).count() + len(requests) > member_limit:
+        raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
     chat_peers = {
         peer.owner.id: peer

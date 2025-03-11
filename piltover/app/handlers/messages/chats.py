@@ -3,6 +3,7 @@ from tortoise.expressions import Subquery
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped
+from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
     ChatInviteRequest
@@ -197,6 +198,9 @@ async def add_chat_user(request: AddChatUser, user: User):
 
     if await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
+
+    if await ChatParticipant.filter(chat=chat_peer.chat).count() > AppConfig.BASIC_GROUP_MEMBER_LIMIT:
+        raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
     if not await PrivacyRule.has_access_to(user, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):
         raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")

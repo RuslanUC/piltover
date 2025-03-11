@@ -13,6 +13,7 @@ from tortoise import Tortoise, connections
 
 from piltover.app import root_dir
 from piltover.app.handlers import register_handlers
+from piltover.app_config import AppConfig
 from piltover.cache import Cache
 from piltover.gateway import Gateway
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
@@ -55,8 +56,8 @@ async def _create_system_data(system_users: bool = True, countries_list: bool = 
         from piltover.db.models import User
         await User.update_or_create(id=777000, defaults={
             "phone_number": "42777",
-            "first_name": "Piltover",
-            "username": "piltover",
+            "first_name": AppConfig.NAME,
+            "username": AppConfig.SYS_USER_USERNAME,
         })
 
     auth_countries_list_file = data / "auth_countries_list.json"

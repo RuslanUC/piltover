@@ -3,7 +3,9 @@ from time import time
 from typing import cast
 
 from loguru import logger
-from tortoise.expressions import Q, Subquery
+from pypika_tortoise.terms import CustomFunction
+from tortoise.expressions import Q, Subquery, Function, F
+from tortoise.functions import Min, Max, Count
 from tortoise.queryset import QuerySet
 
 from piltover.app.utils.updates_manager import UpdatesManager
@@ -12,17 +14,44 @@ from piltover.db.enums import MediaType, PeerType, FileType, MessageType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo
 from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.message import Message
+from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
-    InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews
+    InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
+    InputMessagesFilterMyMentions, SearchResultsCalendarPeriod
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
-    SearchGlobal, GetMessages, GetMessagesViews
+    SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
-    MessageViews as MessagesMessageViews
+    MessageViews as MessagesMessageViews, SearchResultsCalendar
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.history")
+
+
+def message_filter_to_query(filter_: TLObject | None) -> Q | None:
+    if isinstance(filter_, InputMessagesFilterPinned):
+        return Q(pinned=True)
+    elif isinstance(filter_, InputMessagesFilterDocument):
+        return Q(media__type=MediaType.DOCUMENT)
+    elif isinstance(filter_, InputMessagesFilterPhotos):
+        return Q(media__type=MediaType.PHOTO)
+    elif isinstance(filter_, InputMessagesFilterPhotoVideo):
+        return Q(media__type=MediaType.PHOTO) | Q(media__file__type=FileType.DOCUMENT_VIDEO)
+    elif isinstance(filter_, InputMessagesFilterVideo):
+        return Q(media__file__type=FileType.DOCUMENT_VIDEO)
+    elif isinstance(filter_, InputMessagesFilterGif):
+        return Q(media__file__type=FileType.DOCUMENT_GIF)
+    elif isinstance(filter_, InputMessagesFilterVoice):
+        return Q(media__file__type=FileType.DOCUMENT_VOICE) | Q(media__file__type=FileType.DOCUMENT_VIDEO_NOTE)
+    elif isinstance(filter_, InputMessagesFilterMusic):
+        return Q(media__file__type=FileType.DOCUMENT_AUDIO)
+    elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
+        # TODO: InputMessagesFilterUrl
+        logger.warning(f"Unsupported filter: {filter_}")
+        return Q(id=0)
+
+    return None
 
 
 async def _get_messages_query(
@@ -57,26 +86,8 @@ async def _get_messages_query(
     if isinstance(peer, Peer) and peer.type is PeerType.SELF and saved_peer is not None:
         query &= Q(fwd_header__saved_peer=saved_peer)
 
-    if isinstance(filter_, InputMessagesFilterPinned):
-        query &= Q(pinned=True)
-    elif isinstance(filter_, InputMessagesFilterDocument):
-        query &= Q(media__type=MediaType.DOCUMENT)
-    elif isinstance(filter_, InputMessagesFilterPhotos):
-        query &= Q(media__type=MediaType.PHOTO)
-    elif isinstance(filter_, InputMessagesFilterPhotoVideo):
-        query &= (Q(media__type=MediaType.PHOTO) | Q(media__file__type=FileType.DOCUMENT_VIDEO))
-    elif isinstance(filter_, InputMessagesFilterVideo):
-        query &= Q(media__file__type=FileType.DOCUMENT_VIDEO)
-    elif isinstance(filter_, InputMessagesFilterGif):
-        query &= Q(media__file__type=FileType.DOCUMENT_GIF)
-    elif isinstance(filter_, InputMessagesFilterVoice):
-        query &= (Q(media__file__type=FileType.DOCUMENT_VOICE) | Q(media__file__type=FileType.DOCUMENT_VIDEO_NOTE))
-    elif isinstance(filter_, InputMessagesFilterMusic):
-        query &= Q(media__file__type=FileType.DOCUMENT_AUDIO)
-    elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
-        # TODO: InputMessagesFilterUrl
-        logger.warning(f"Unsupported filter: {filter_}")
-        query = Q(id=0)
+    if filter_ is not None and (filter_query := message_filter_to_query(filter_)) is not None:
+        query &= filter_query
 
     limit = max(min(100, limit), 1)
     select_related = "author", "peer", "peer__user"
@@ -423,7 +434,7 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
         # TODO: count unique views
         if request.increment:
             message.post_info.views += 1
-            incremented = message.post_info
+            incremented.append(message.post_info)
 
         views.append(MessageViews(views=message.post_info.views))
 
@@ -438,4 +449,69 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
         views=views,
         chats=list(channels.values()),
         users=[],
+    )
+
+
+class MysqlUnixTimestamp(Function):
+   database_func = CustomFunction("UNIX_TIMESTAMP", ["dt"])
+
+
+@handler.on_request(GetSearchResultsCalendar)
+async def get_search_results_calendar(request: GetSearchResultsCalendar, user: User) -> SearchResultsCalendar:
+    if isinstance(request.filter, (InputMessagesFilterEmpty, InputMessagesFilterMyMentions)):
+        raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
+
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    saved_peer = None
+    if peer.type is PeerType.SELF and request.saved_peer_id:
+        saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
+
+    if (filter_query := message_filter_to_query(request.filter)) is None:
+        raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
+
+    query = Q(peer=peer) & filter_query
+    if saved_peer is not None:
+        query &= Q(fwd_header__saved_peer=saved_peer)
+
+    # TODO: add support for other databases
+    periods = await Message.annotate(
+        fdate=MysqlUnixTimestamp(F("date")) / 86400, min_msg_id=Min("id"), max_msg_id=Max("id"), msg_count=Count("id")
+    ).filter(
+        query & Q(msg_count__gte=1)
+    ).limit(100).order_by("-fdate").group_by("fdate").values_list("fdate", "min_msg_id", "max_msg_id", "msg_count")
+
+    message_ids = []
+    periods_tl = []
+
+    for fdate, min_msg_id, max_msg_id, msg_count in periods:
+        message_ids.append(min_msg_id)
+        if max_msg_id != min_msg_id:
+            message_ids.append(max_msg_id)
+
+        periods_tl.append(SearchResultsCalendarPeriod(
+            date=fdate,
+            min_msg_id=min_msg_id,
+            max_msg_id=max_msg_id,
+            count=msg_count,
+        ))
+
+    messages = await Message.filter(id__in=message_ids)
+    messages_tl = []
+    users_q, chats_q, channels_q = Q(), Q(), Q()
+
+    for message in messages:
+        messages_tl.append(await message.to_tl(user))
+        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+
+    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
+
+    return SearchResultsCalendar(
+        count=0,  # TODO: add count by request.filter
+        min_date=periods[-1][0],
+        min_msg_id=periods[-1][1],
+        offset_id_offset=None,  # TODO: add offset_id support
+        periods=periods_tl,
+        messages=messages_tl,
+        chats=[*chats.values(), *channels.values()],
+        users=list(users.values()),
     )
