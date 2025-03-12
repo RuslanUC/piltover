@@ -2,6 +2,7 @@ from datetime import date
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username
+from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username
@@ -225,7 +226,7 @@ async def update_profile(request: UpdateProfile, user: User):
     if request.last_name is not None:
         updates["last_name"] = request.last_name[:128]
     if request.about is not None:
-        if len(request.about) > 240:
+        if len(request.about) > AppConfig.MAX_USER_ABOUT_LENGTH:
             raise ErrorRpc(error_code=400, error_message="ABOUT_TOO_LONG")
         updates["about"] = request.about
 

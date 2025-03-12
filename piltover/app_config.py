@@ -55,3 +55,11 @@ class AppConfig:
     # TODO: add REVOKE_TIME_LIMIT and default it to 2 ** 31 - 1
     MAX_MESSAGE_LENGTH = int(environ.get("MAX_MESSAGE_LENGTH", 4096))
     MAX_CAPTION_LENGTH = int(environ.get("MAX_CAPTION_LENGTH", 2048))
+    # TODO: check for following limits when creating/joining a channel
+    CHANNELS_PER_USER_LIMIT = int(environ.get("CHANNELS_PER_USER_LIMIT", 100))
+    PUBLIC_CHANNELS_LIMIT = int(environ.get("PUBLIC_OWNED_CHANNELS_LIMIT", 10))
+    # TODO: add dialog filters (folders) limits
+    PINNED_DIALOGS_LIMIT = int(environ.get("PINNED_DIALOGS_LIMIT", 5))
+    FAVED_STICKERS_LIMIT = int(environ.get("FAVED_STICKERS_LIMIT", 15))
+
+    MAX_USER_ABOUT_LENGTH = 100  # Telegram uses 70 for regular users and 140 for premium
