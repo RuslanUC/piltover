@@ -27,6 +27,7 @@ handler = MessageHandler("messages.sending")
 
 InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument \
              | InputMediaPoll
+DocOrPhotoMedia = (InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, InputMediaDocument)
 
 
 async def send_message_internal(
@@ -186,19 +187,34 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if peer.type is PeerType.CHANNEL:
         message = await Message.get_or_none(
             id=request.id, peer__owner=None, peer__channel=peer.channel, type=MessageType.REGULAR
-        ).select_related("peer", "author")
+        ).select_related("peer", "author", "media")
     else:
         message = await Message.get_(request.id, peer)
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    # TODO: allow editing media
-
-    if not request.message:
+    if message.media_id is None and not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
-    if request.message is not None and len(request.message) > AppConfig.MAX_MESSAGE_LENGTH and not message.media_id:
+    elif message.media_id is None and request.media:
+        raise ErrorRpc(error_code=400, error_message="MEDIA_PREV_INVALID")
+    elif message.media_id is not None and request.media and not isinstance(request.media, DocOrPhotoMedia):
+        raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
+    elif message.media_id is not None and request.media \
+            and message.media.type not in (MediaType.DOCUMENT, MediaType.PHOTO):
+        raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
+
+    media = None
+    if request.media is not None:
+        media = await _process_media(user, request.media)
+        if media.id == message.media_id or media.file_id == message.media.file_id:
+            raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
+
+    # For some reason PyCharm keeps complaining about request.message "Expected type 'Sized', got 'Message' instead"
+    message_text = cast(str | None, request.message)
+
+    if request.message is not None and len(message_text) > AppConfig.MAX_MESSAGE_LENGTH and not message.media_id:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
-    elif request.message is not None and len(request.message) > AppConfig.MAX_CAPTION_LENGTH and message.media_id:
+    elif request.message is not None and len(message_text) > AppConfig.MAX_CAPTION_LENGTH and message.media_id:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
     if message.author != user:
         raise ErrorRpc(error_code=403, error_message="MESSAGE_AUTHOR_REQUIRED")
@@ -206,10 +222,13 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
     if peer.type is PeerType.CHANNEL:
-        message.message = cast(str, request.message)
+        if message_text is not None:
+            message.message = message_text
+        if media is not None:
+            message.media = media
         message.edit_date = datetime.now(UTC)
         message.version += 1
-        await message.save(update_fields=["message", "edit_date", "version"])
+        await message.save(update_fields=["message", "edit_date", "version", "media_id"])
         message.peer.channel = peer.channel
         return await UpdatesManager.edit_message_channel(user, message)
 
@@ -223,12 +242,15 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
             internal_id=message.internal_id, peer=to_peer,
         ).select_related("author", "peer")
         if message is not None:
-            message.message = request.message
+            if message_text is not None:
+                message.message = message_text
+            if media is not None:
+                message.media = media
             message.edit_date = edit_date
             message.version += 1
             messages[to_peer] = message
 
-    await Message.bulk_update(messages.values(), ["message", "edit_date", "version"])
+    await Message.bulk_update(messages.values(), ["message", "edit_date", "version", "media_id"])
     presence = await Presence.update_to_now(user)
     await UpdatesManager.update_status(user, presence, peers[1:])
 
@@ -236,9 +258,7 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
 
 
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
-    if not isinstance(media, (
-            InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, InputMediaDocument, InputMediaPoll,
-    )):
+    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll,)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     file: File | None = None

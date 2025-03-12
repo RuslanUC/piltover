@@ -243,6 +243,7 @@ class Client:
 
                 self.authorization = (auth, time())
                 if auth is not None and session.user_id is None:
+                    # TODO: register channels of which user is participant
                     session.set_user_id(auth.user.id)
 
             auth_id = auth.id if auth is not None else None

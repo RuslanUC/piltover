@@ -31,6 +31,9 @@ class MessageMedia(Model):
     file: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None)
     poll: models.Poll | None = fields.ForeignKeyField("models.Poll", null=True, default=None)
 
+    file_id: int | None
+    poll_id: int | None
+
     async def to_tl(self, user: models.User) -> MessageMediaTypes:
         if self.type in (MediaType.DOCUMENT, MediaType.PHOTO):
             self.file = await self.file

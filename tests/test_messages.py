@@ -521,3 +521,34 @@ async def test_message_poll() -> None:
         poll = await client.retract_vote("me", message.id)
         assert poll.total_voter_count is None
         assert poll.options[0].voter_count == 0
+
+
+@pytest.mark.asyncio
+async def test_edit_message_with_document() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        file = BytesIO(b"test document 1")
+        setattr(file, "name", "test.txt")
+        message = await client.send_document("me", document=file, caption="test caption")
+        assert message.document is not None
+        assert message.caption == "test caption"
+        downloaded = await message.download(in_memory=True)
+        assert downloaded.getvalue() == b"test document 1"
+
+        new_file = BytesIO(b"test document 2")
+        setattr(new_file, "name", f"test2.txt")
+        real_guess_mime_type = client.guess_mime_type
+        client.guess_mime_type = lambda _: "text/plain"
+        new_message = await client.edit_message_media(
+            "me", message.id, InputMediaDocument(new_file), file_name="test2.txt",
+        )
+        client.guess_mime_type = real_guess_mime_type
+        assert new_message.document is not None
+        assert new_message.caption is None
+        downloaded = await new_message.download(in_memory=True)
+        assert downloaded.getvalue() == b"test document 2"
+
+        new_message = await client.edit_message_caption("me", message.id, "test caption 2")
+        assert new_message.document is not None
+        assert new_message.caption == "test caption 2"
+        downloaded = await new_message.download(in_memory=True)
+        assert downloaded.getvalue() == b"test document 2"

@@ -4,7 +4,7 @@ from abc import abstractmethod, ABC
 from enum import Flag
 from typing import TYPE_CHECKING
 
-from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetSessionInternalPush
+from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetSessionInternalPush, ChannelSubscribe
 
 if TYPE_CHECKING:
     from piltover.session_manager import Session
@@ -112,3 +112,5 @@ class BaseMessageBroker(ABC):
                 return
             SessionManager.sessions[message.session_id][message.key_id].set_user_id(message.user_id)
             return
+        if isinstance(message, ChannelSubscribe):
+            return  # TODO: handle ChannelSubscribe

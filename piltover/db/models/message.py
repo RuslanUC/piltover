@@ -110,7 +110,7 @@ _REGULAR_DEFAULTS = {
 class Message(Model):
     id: int = fields.BigIntField(pk=True)
     internal_id: int = fields.BigIntField()
-    message: str = fields.TextField(null=True, default=None)
+    message: str | None = fields.TextField(null=True, default=None)
     pinned: bool = fields.BooleanField(default=False)
     date: datetime = fields.DatetimeField(default=lambda: datetime.now(UTC))
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
@@ -146,7 +146,8 @@ class Message(Model):
 
     @classmethod
     async def get_(cls, id_: int, peer: models.Peer) -> models.Message | None:
-        return await Message.get_or_none(id=id_, peer=peer, type=MessageType.REGULAR).select_related("peer", "author")
+        return await Message.get_or_none(id=id_, peer=peer, type=MessageType.REGULAR)\
+            .select_related("peer", "author", "media")
 
     async def _make_reply_to_header(self) -> MessageReplyHeader:
         if self.reply_to is not None:
@@ -218,7 +219,7 @@ class Message(Model):
 
         message = TLMessage(
             id=self.id,
-            message=self.message,
+            message=self.message or "",
             pinned=self.pinned,
             peer_id=self.peer.to_tl(),
             date=int(self.date.timestamp()),

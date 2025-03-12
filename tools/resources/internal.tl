@@ -19,13 +19,15 @@ internal.available_servers#58d5526f servers:Vector<internal.AvailableServer> = i
 
 // Rpc calls between brokers
 
-internal.rpc_response#1c05a4e9 = flags:# transport_error:flags.0?int obj:flags.1?Object = internal.RpcResponse;
+internal.rpc_response#22be0328 flags:# transport_error:flags.0?int obj:flags.1?Object = internal.RpcResponse;
 
 // Message exchange between gateway and brokers
 
-internal.message_to_users#6d7d850c = flags:# users:flags.0?Vector<long> channel_ids:flags.1?Vector<long> key_ids:flags.2?Vector<long> obj:flags.3?Object = internal.MessageInternal;
-internal.message_to_users_short#6b91b4d = flags:# user:flags.0?long channel_id:flags.1?long key_id:flags.2?long obj:flags.3?Object = internal.MessageInternal;
-internal.set_session_internal_push#bc109cae = key_id:long session_id:long user_id:long = internal.MessageInternal;
+internal.message_to_users#28b10372 flags:# users:flags.0?Vector<long> channel_ids:flags.1?Vector<long> key_ids:flags.2?Vector<long> obj:flags.3?Object = internal.MessageInternal;
+internal.message_to_users_short#6faafc7c flags:# user:flags.0?long channel_id:flags.1?long key_id:flags.2?long obj:flags.3?Object = internal.MessageInternal;
+internal.set_session_internal_push#92aeb648 key_id:long session_id:long user_id:long = internal.MessageInternal;
+
+internal.channel_subscribe#ae808cf6 flags:# subscribe:flags.0?true user_ids:Vector<long> channel_ids:Vector<long> = internal.ChannelSubscribe;
 
 ---functions---
 
@@ -41,4 +43,4 @@ internal.get_available_servers#a2ed5af3 auth:bytes = internal.AvailableServers;
 
 // Rpc calls between brokers
 
-internal.call_rpc#a6961f84 = flags:# key_is_temp:flags.0?true auth_key_id:flags.1?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long obj:Object = internal.RpcResponse;
+internal.call_rpc#35fc3df3 flags:# key_is_temp:flags.0?true auth_key_id:flags.1?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long obj:Object = internal.RpcResponse;
