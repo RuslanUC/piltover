@@ -17,7 +17,7 @@ class SerializationUtils:
     def write(value: Any, int_type: type=None) -> bytes:
         from . import TLObject
 
-        if isinstance(value, int) and not isinstance(value, bool):
+        if isinstance(value, int) and not isinstance(value, (bool, primitives.Int)):
             value = int_type(value)
 
         if isinstance(value, primitives.Int):

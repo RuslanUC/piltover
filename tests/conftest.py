@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import builtins
 import hashlib
 import logging
@@ -294,6 +296,8 @@ def color_is_near(expected: tuple[int, int, int], actual: tuple[int, int, int], 
 
 # https://stackoverflow.com/a/72735401
 class InterceptHandler(logging.Handler):
+    _instance: InterceptHandler | None = None
+
     @logger.catch(default=True)
     def emit(self, record):
         try:
@@ -309,8 +313,15 @@ class InterceptHandler(logging.Handler):
 
         logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
+    @classmethod
+    def redirect_to_loguru(cls, logger_name: str, level: int = logging.INFO) -> None:
+        if not isinstance(cls._instance, cls):
+            cls._instance = cls()
 
-_LOGURU_INTERCEPT_HANDLER = InterceptHandler()
-pyrogram_logger = logging.getLogger("pyrogram")
-pyrogram_logger.setLevel(logging.INFO)
-pyrogram_logger.addHandler(_LOGURU_INTERCEPT_HANDLER)
+        std_logger = logging.getLogger(logger_name)
+        std_logger.setLevel(level)
+        std_logger.addHandler(cls._instance)
+
+
+InterceptHandler.redirect_to_loguru("pyrogram")
+InterceptHandler.redirect_to_loguru("aiocache.base", logging.DEBUG)

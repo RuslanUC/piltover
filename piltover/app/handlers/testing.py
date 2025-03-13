@@ -1,5 +1,5 @@
 from piltover.app.handlers.auth import send_code
-from piltover.db.models.sentcode import SentCode
+from piltover.db.models import SentCode
 from piltover.enums import ReqHandlerFlags
 from piltover.tl.functions.auth import SendCode
 from piltover.tl.types.auth import SentCode as TLSentCode

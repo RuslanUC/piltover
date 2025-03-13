@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import time
 from typing import TYPE_CHECKING
 
@@ -11,7 +11,7 @@ from piltover.db.models import UserAuthorization, AuthKey
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
-from piltover.tl.types.internal import MessageToUsersShort
+from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -33,6 +33,7 @@ class Session:
     session_id: int
     auth_key: KeyInfo | None = None
     user_id: int | None = None
+    channel_ids: list[int] = field(default_factory=list)
     min_msg_id: int = 0
     online: bool = False
 
@@ -163,12 +164,25 @@ class SessionManager:
             del cls.sessions[session.session_id][key_id]
 
     @classmethod
-    async def send(cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None) -> None:
+    async def send(
+            cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None, channel_id: int | None = None,
+    ) -> None:
         if not user_id and not key_id:
             return
 
         await cls.broker.send(MessageToUsersShort(
             user=user_id,
             key_id=key_id,
+            channel_id=channel_id,
             obj=obj,
         ))
+
+    @classmethod
+    async def subscribe_to_channel(cls, channel_id: int, user_ids: list[int]) -> None:
+        if user_ids and channel_id:
+            await cls.broker.send(ChannelSubscribe(channel_ids=[channel_id], user_ids=user_ids, subscribe=True))
+
+    @classmethod
+    async def unsubscribe_from_channel(cls, channel_id: int, user_ids: list[int]) -> None:
+        if user_ids and channel_id:
+            await cls.broker.send(ChannelSubscribe(channel_ids=[channel_id], user_ids=user_ids, subscribe=False))

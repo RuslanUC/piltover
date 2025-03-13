@@ -5,9 +5,8 @@ from piltover.app.utils.utils import check_password_internal, get_perm_key, vali
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus
-from piltover.db.models import User, UserAuthorization, Peer, Presence, Username
-from piltover.db.models.privacy_rule import PrivacyRule, TL_KEY_TO_PRIVACY_ENUM
-from piltover.db.models.user_password import UserPassword
+from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule
+from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager

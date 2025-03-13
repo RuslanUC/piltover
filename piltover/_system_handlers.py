@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
 
-from piltover.db.models import UserAuthorization
-from piltover.db.models.server_salt import ServerSalt
+from piltover.db.models import UserAuthorization, ServerSalt
 from piltover.session_manager import Session
 from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
     InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts, FutureSalts

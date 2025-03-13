@@ -12,6 +12,7 @@ from taskiq.kicker import AsyncKicker
 
 from piltover._keygen_handlers import KEYGEN_HANDLERS
 from piltover._system_handlers import SYSTEM_HANDLERS
+from piltover.cache import Cache
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.utils.utils import run_coro_with_additional_return
@@ -27,12 +28,11 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.auth_data import AuthData, GenAuthData
-from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization
-from piltover.db.models.server_salt import ServerSalt
+from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, ServerSalt
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager
 from piltover.tl import TLObject, SerializationUtils, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, \
-    RpcError
+    RpcError, Vector
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
@@ -120,7 +120,7 @@ class Gateway:
 class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "auth_data", "empty_session", "session", "no_updates",
-        "layer", "authorization", "disconnect_timeout",
+        "layer", "authorization", "disconnect_timeout", "channels_loaded_at",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -135,6 +135,7 @@ class Client:
         self.empty_session = Session(self, 0)
         self.session: Session | None = None
         self.authorization: tuple[UserAuthorization | None, int | float] = (None, 0)
+        self.channels_loaded_at = 0.0
 
         self.no_updates = False
         self.layer = 177
@@ -243,11 +244,29 @@ class Client:
 
                 self.authorization = (auth, time())
                 if auth is not None and session.user_id is None:
-                    # TODO: register channels of which user is participant
                     session.set_user_id(auth.user.id)
 
             auth_id = auth.id if auth is not None else None
             user_id = auth.user.id if auth is not None else None
+
+            if auth is not None and (time() - self.channels_loaded_at) > 60 * 5:
+                channel_ids: Vector[Long] | None = await Cache.obj.get(f"channels:{auth.user.id}")
+                if channel_ids is None:
+                    channel_ids: list[Long] = [
+                        Long(channel_id)
+                        async for channel_id in ChatParticipant.filter(
+                            channel_id__not_isnull=True, user=auth.user
+                        ).values_list("channel_id", flat=True)
+                    ]
+                    await Cache.obj.set(f"channels:{auth.user.id}", channel_ids, ttl=60 * 10)
+
+                channel_ids: list[int] = list(map(int, channel_ids))
+                old_channels = set(session.channel_ids)
+                new_channels = set(channel_ids)
+                channels_to_delete = old_channels - new_channels
+                channels_to_add = new_channels - old_channels
+
+                SessionManager.broker.channels_diff_update(session, channels_to_delete, channels_to_add)
 
          # TODO: dont do .write.hex(), RpcResponse somehow dont need encoding it manually, check how exactly
         return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(CallRpc(

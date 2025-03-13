@@ -9,7 +9,7 @@ from piltover.tl import TLObject, SerializationUtils, Int, Long, Int128, Int256
 
 class TLSerializer(BaseSerializer):
     _TYPES = [TLObject, Int, Long, Int128, Int256, float, bool, bytes, str, list]
-    _TYPES_TO_INT = {typ: idx for typ, idx in enumerate(_TYPES)}
+    _TYPES_TO_INT = {typ: idx for idx, typ in enumerate(_TYPES)}
 
     def dumps(self, value: TLObject | int | str | bytes | bool | list | float | None) -> bytes:
         ser_type = bytes([0 if isinstance(value, TLObject) else self._TYPES_TO_INT[type(value)]])

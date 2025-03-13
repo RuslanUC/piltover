@@ -9,9 +9,8 @@ from tortoise.functions import Min
 from piltover.app.utils.utils import get_perm_key
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
-from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer
+from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer, ChannelUpdate
 from piltover.db.models._utils import resolve_users_chats
-from piltover.db.models.channel_update import ChannelUpdate
 from piltover.exceptions import ErrorRpc
 from piltover.tl import UpdateChannelTooLong
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136, GetChannelDifference

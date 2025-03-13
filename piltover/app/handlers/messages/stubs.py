@@ -4,15 +4,15 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, EmojiKeywordsDifference, \
     DocumentEmpty, PeerSettings, InputStickerSetAnimatedEmoji, StickerSet
-from piltover.tl.functions.messages import GetDialogFilters, GetPeerSettings, GetScheduledHistory, \
-    GetEmojiKeywordsLanguages, GetWebPage, GetStickerSet, GetRecentReactions, GetTopReactions, GetSavedHistory, \
-    GetAttachMenuBots, GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, \
+from piltover.tl.functions.messages import GetDialogFilters, GetPeerSettings, GetScheduledHistory, GetQuickReplies, \
+    GetEmojiKeywordsLanguages, GetWebPage, GetStickerSet, GetRecentReactions, GetTopReactions, GetAttachMenuBots, \
+    GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, GetSavedReactionTags, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, \
-    GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetMessageEditData, GetQuickReplies, \
-    GetDefaultTagReactions, GetSavedDialogs, GetSavedReactionTags, GetEmojiKeywordsDifference
+    GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetMessageEditData, \
+    GetDefaultTagReactions, GetEmojiKeywordsDifference
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Messages, Reactions, SavedReactionTags, \
     Stickers, SearchResultsPositions, AllStickers, FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, \
-    StickerSet as messages_StickerSet, QuickReplies, SavedDialogs
+    StickerSet as messages_StickerSet, QuickReplies
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
@@ -162,7 +162,7 @@ async def get_webpage_preview():  # pragma: no cover
 
 @handler.on_request(GetMessageEditData, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_message_edit_data():  # pragma: no cover
-    return MessageEditData()
+    return MessageEditData(caption=True)
 
 
 @handler.on_request(GetQuickReplies, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -183,30 +183,11 @@ async def get_default_tag_reactions() -> Reactions:  # pragma: no cover
     )
 
 
-@handler.on_request(GetSavedDialogs, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_saved_dialogs() -> SavedDialogs:  # pragma: no cover
-    return SavedDialogs(
-        dialogs=[],
-        messages=[],
-        chats=[],
-        users=[],
-    )
-
-
 @handler.on_request(GetSavedReactionTags, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_saved_reaction_tags() -> SavedReactionTags:  # pragma: no cover
     return SavedReactionTags(
         tags=[],
         hash=0,
-    )
-
-
-@handler.on_request(GetSavedHistory, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_saved_history() -> Messages:  # pragma: no cover
-    return Messages(
-        messages=[],
-        chats=[],
-        users=[],
     )
 
 

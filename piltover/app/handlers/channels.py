@@ -13,6 +13,7 @@ from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Mes
     ChatInviteRequest, Username
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
+from piltover.session_manager import SessionManager
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, InputChannelEmpty, ChatEmpty, \
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
     Long, InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
@@ -107,6 +108,7 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
     )
     await Dialog.get_or_create(peer=peer_for_user)
     peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL, access_hash=0)
+    await SessionManager.subscribe_to_channel(channel.id, [user.id])
 
     updates = await send_message_internal(
         user, peer_channel, None, None, False,
@@ -501,6 +503,8 @@ async def invite_to_channel(request: InviteToChannel, user: User):
             user__id__in=[added_user.id for added_user in added_users], invite__channel=peer.channel,
         ).values_list("id", flat=True)
     )).delete()
+
+    await SessionManager.subscribe_to_channel(peer.channel.id, [added_user.id for added_user in added_users])
 
     for added_user in added_users:
         await UpdatesManager.update_channel_for_user(peer.channel, added_user)

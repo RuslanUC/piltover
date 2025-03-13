@@ -7,9 +7,8 @@ from tortoise.functions import Max
 from piltover.app.handlers.updates import get_state_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType, DialogFolderId
-from piltover.db.models import User, Dialog, Peer, SavedDialog
+from piltover.db.models import User, Dialog, Peer, SavedDialog, Message
 from piltover.db.models._utils import resolve_users_chats
-from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates
 from piltover.tl.functions.folders import EditPeerFolders

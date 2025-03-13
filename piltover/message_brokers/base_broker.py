@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 from enum import Flag
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
+from piltover.cache import Cache
 from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetSessionInternalPush, ChannelSubscribe
 
 if TYPE_CHECKING:
@@ -25,6 +26,7 @@ class BaseMessageBroker(ABC):
         self.subscribed_users: dict[int, set[Session]] = {}
         self.subscribed_sessions: dict[int, Session] = {}
         self.subscribed_keys: dict[int, set[Session]] = {}
+        self.subscribed_channels: dict[int, set[Session]] = {}
 
     @abstractmethod
     async def startup(self) -> None: ...
@@ -54,6 +56,8 @@ class BaseMessageBroker(ABC):
 
             self.subscribed_users[session.user_id].add(session)
 
+        self.channels_diff_update(session, [], session.channel_ids)
+
     def unsubscribe(self, session: Session) -> None:
         self.subscribed_sessions.pop(session.session_id, None)
 
@@ -69,6 +73,26 @@ class BaseMessageBroker(ABC):
                 self.subscribed_keys[key_id].remove(session)
             if not self.subscribed_keys[key_id]:
                 del self.subscribed_keys[key_id]
+
+        self.channels_diff_update(session, session.channel_ids, [])
+
+    def channels_diff_update(self, session: Session, to_delete: Iterable[int], to_add: Iterable[int]) -> None:
+        if not to_delete and not to_add:
+            return
+
+        for channel_id in to_delete:
+            if channel_id not in self.subscribed_channels:
+                continue
+            if session in self.subscribed_channels[channel_id]:
+                self.subscribed_channels[channel_id].remove(session)
+            if not self.subscribed_channels[channel_id]:
+                del self.subscribed_channels[channel_id]
+
+        for channel_id in to_add:
+            if channel_id not in self.subscribed_channels:
+                self.subscribed_channels[channel_id] = set()
+
+            self.subscribed_channels[channel_id].add(session)
 
     async def _process_message_to_users(self, message: MessageToUsers | MessageToUsersShort) -> None:
         if isinstance(message, MessageToUsers):
@@ -86,20 +110,39 @@ class BaseMessageBroker(ABC):
             for user_id in users:
                 if user_id not in self.subscribed_users:
                     continue
-                for session in self.subscribed_users[user_id]:
-                    send_to.add(session)
-
-        # TODO: subscribe sessions to channel updates
+                send_to.update(self.subscribed_users[user_id])
 
         if keys:
             for key_id in keys:
                 if key_id not in self.subscribed_keys:
                     continue
-                for session in self.subscribed_keys[key_id]:
-                    send_to.add(session)
+                send_to.update(self.subscribed_keys[key_id])
+
+        if channels:
+            for channel_id in channels:
+                if channel_id not in self.subscribed_channels:
+                    continue
+                send_to.update(self.subscribed_channels[channel_id])
 
         for session in send_to:
             await session.send(message.obj)
+
+    async def _process_channels_subscribe(self, message: ChannelSubscribe) -> None:
+        sessions = set()
+        for user_id in message.user_ids:
+            if user_id not in self.subscribed_users:
+                continue
+            sessions.update(self.subscribed_users[user_id])
+
+        to_add, to_delete = message.channel_ids, []
+        if not message.subscribe:
+            to_add, to_delete = to_delete, to_add
+
+        for user_id in message.user_ids:
+            await Cache.obj.delete(f"channels:{user_id}")
+
+        for session in sessions:
+            self.channels_diff_update(session, to_delete, to_add)
 
     async def process_message(self, message: InternalMessages) -> None:
         if isinstance(message, (MessageToUsers, MessageToUsersShort)):
@@ -113,4 +156,4 @@ class BaseMessageBroker(ABC):
             SessionManager.sessions[message.session_id][message.key_id].set_user_id(message.user_id)
             return
         if isinstance(message, ChannelSubscribe):
-            return  # TODO: handle ChannelSubscribe
+            return await self._process_channels_subscribe(message)

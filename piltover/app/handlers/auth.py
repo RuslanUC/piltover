@@ -11,10 +11,8 @@ from piltover.app.utils.utils import check_password_internal, get_perm_key
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
-from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Dialog, Message
-from piltover.db.models.authkey import TempAuthKey
-from piltover.db.models.sentcode import SentCode
-from piltover.db.models.user import User
+from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Dialog, Message, TempAuthKey, SentCode, \
+    User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import BindAuthKeyInner

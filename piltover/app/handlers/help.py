@@ -10,7 +10,7 @@ from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, Ge
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
     GetPeerProfileColors
 from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
-    PeerColors, PeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified
+    PeerColors, PeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified, AppConfigNotModified
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("help")
@@ -69,6 +69,7 @@ async def get_nearest_dc():  # pragma: no cover
     )
 
 
+APP_CONFIG_HASH = int(time())
 APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="about_length_limit_default", value=JsonNumber(value=float(AppConfig.MAX_USER_ABOUT_LENGTH))),
     JsonObjectValue(key="about_length_limit_premium", value=JsonNumber(value=float(AppConfig.MAX_USER_ABOUT_LENGTH))),
@@ -331,8 +332,10 @@ APP_CONFIG = JsonObject(value=[
 
 
 @handler.on_request(GetAppConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_app_config():  # pragma: no cover
-    return TLAppConfig(hash=1, config=APP_CONFIG)
+async def get_app_config(request: GetAppConfig):  # pragma: no cover
+    if request.hash == APP_CONFIG_HASH:
+        return AppConfigNotModified()
+    return TLAppConfig(hash=APP_CONFIG_HASH, config=APP_CONFIG)
 
 
 @handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED)

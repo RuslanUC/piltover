@@ -11,9 +11,8 @@ from tortoise.queryset import QuerySet
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType
-from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo
+from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message
 from piltover.db.models._utils import resolve_users_chats
-from piltover.db.models.message import Message
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \

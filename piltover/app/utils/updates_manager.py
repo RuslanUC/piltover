@@ -90,6 +90,7 @@ class UpdatesManager:
             *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
         )
 
+        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
         for to_user in await User.filter(chatparticipants__channel__id=message.peer.channel_id):
             users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
             chats = [await rel_chat.to_tl(to_user) for rel_chat in rel_chats.values()]
@@ -185,6 +186,7 @@ class UpdatesManager:
 
         rel_users, rel_chats, rel_channels = await fetch_users_chats(users_q, chats_q, channels_q, {}, {}, {})
 
+        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
         for to_user in await User.filter(chatparticipants__channel__id=channel.id):
             users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
             chats = [await rel_chat.to_tl(to_user) for rel_chat in rel_chats.values()]
@@ -281,6 +283,7 @@ class UpdatesManager:
             type__in=(ChannelUpdateType.NEW_MESSAGE, ChannelUpdateType.EDIT_MESSAGE)
         ).delete()
 
+        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
         for to_user in await User.filter(chatparticipants__channel__id=channel.id):
             updates = Updates(
                 updates=[
@@ -368,6 +371,7 @@ class UpdatesManager:
             *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
         )
 
+        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
         to_user: User
         async for to_user in User.filter(chatparticipants__channel__id=message.peer.channel_id):
             users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
@@ -851,8 +855,7 @@ class UpdatesManager:
             pts_count=1,
         )
 
-        # TODO: send with SessionManager.send(updates, channel_id=channel.id) and get channel users in gateway
-        #  or somewhere else, but not there, since here it may delay processing request
+        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
         for to_user in await User.filter(chatparticipants__channel=channel):
             updates = Updates(
                 updates=[UpdateChannel(channel_id=channel.id)],

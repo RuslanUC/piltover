@@ -12,6 +12,7 @@ from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdmin
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
+from piltover.session_manager import SessionManager
 from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage, MessageActionChatJoinedByLink, \
     MessageActionChatJoinedByRequest
@@ -237,6 +238,8 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     )).delete()
 
     if isinstance(invite.chat_or_channel, Channel):
+        await SessionManager.subscribe_to_channel(invite.channel.id, [user.id])
+
         # TODO: send SERVICE_CHAT_USER_INVITE_JOIN message if channel is a supergroup
         return await UpdatesManager.update_channel_for_user(invite.channel, user)
 
@@ -332,41 +335,48 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
     if await ChatParticipant.filter(**Chat.or_channel(chat)).count() + len(requests) > member_limit:
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
-    chat_peers = {
+    peer_type = PeerType.CHAT if isinstance(chat, Chat) else PeerType.CHANNEL
+    this_peer = await Peer.get_or_none(owner=user, type=peer_type, **Chat.or_channel(chat)).select_related("owner")
+
+    requested_users = [request.user.id for request in requests]
+    new_peers = {
         peer.owner.id: peer
-        for peer in await Peer.filter(Chat.query(chat)).select_related("owner")
+        for peer in await Peer.filter(
+            owner__id__in=requested_users, type=peer_type, **Chat.or_channel(chat)
+        ).select_related("owner")
     }
-    participants = []
+    participants_to_create = []
     for request in requests:
-        if request.user.id not in chat_peers:
-            # TODO: change type= to PeerType.CHANNEL when it will be added and chat type is Channel
-            chat_peers[request.user.id] = await Peer.create(
-                owner=request.user, type=PeerType.CHAT, **Chat.or_channel(chat)
+        if request.user.id not in new_peers:
+            new_peers[request.user.id] = await Peer.create(
+                owner=request.user, type=peer_type, **Chat.or_channel(chat)
             )
-        participants.append(ChatParticipant(
+        participants_to_create.append(ChatParticipant(
             user=request.user, inviter_id=request.invite.user_id, invite=request.invite, **Chat.or_channel(chat)
         ))
 
-    await ChatParticipant.bulk_create(participants)
+    await ChatParticipant.bulk_create(participants_to_create, ignore_conflicts=True)
     await ChatInviteRequest.filter(id__in=Subquery(
         ChatInviteRequest.filter(
-            Chat.query(chat, "invite") & Q(user__id__in=list(chat_peers.keys()))
+            Chat.query(chat, "invite") & Q(user__id__in=requested_users)
         ).values_list("id", flat=True)
     )).delete()
 
     if isinstance(chat, Chat):
-        updates = await UpdatesManager.create_chat(user, chat, list(chat_peers.values()))
+        chat_peers = await Peer.filter(Chat.query(chat)).select_related("owner")
+        updates = await UpdatesManager.create_chat(user, chat, chat_peers)
     else:
+        await SessionManager.subscribe_to_channel(chat.id, requested_users)
         raise NotImplementedError("TODO: send updates when user is added to channel")
 
     for request in requests:
         updates_msg = await send_message_internal(
-            user, chat_peers[user.id], None, None, False,
+            user, this_peer, None, None, False,
             author=request.user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
             extra_info=MessageActionChatJoinedByLink(inviter_id=request.invite.user_id).write(),
         )
         await send_message_internal(
-            request.user, chat_peers[request.user.id], None, None, False,
+            request.user, new_peers[request.user.id], None, None, False,
             opposite=False, author=request.user, type=MessageType.SERVICE_CHAT_USER_REQUEST_JOIN,
             extra_info=MessageActionChatJoinedByRequest().write()
         )
