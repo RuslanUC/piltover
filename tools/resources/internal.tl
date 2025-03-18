@@ -29,6 +29,8 @@ internal.set_session_internal_push#92aeb648 key_id:long session_id:long user_id:
 
 internal.channel_subscribe#ae808cf6 flags:# subscribe:flags.0?true user_ids:Vector<long> channel_ids:Vector<long> = internal.ChannelSubscribe;
 
+internal.channel_to_fetch#8b8451fa channel_id:long = internal.ChannelToFetch;
+
 ---functions---
 
 // For my.telegram.org alternative page

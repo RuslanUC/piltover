@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from mtproto.packets import DecryptedMessagePacket
 
-from piltover.db.models import UserAuthorization, AuthKey
+from piltover.db.models import UserAuthorization, AuthKey, Channel
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
-from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe
+from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ChannelToFetch
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -125,6 +125,11 @@ class Session:
             await auth.save(update_fields=["upd_seq"])
             obj.seq = auth.upd_seq
 
+            for idx, chat_or_channel in enumerate(obj.chats):
+                if isinstance(chat_or_channel, ChannelToFetch):
+                    channel = await Channel.get_or_none(id=chat_or_channel.channel_id)
+                    obj.chats[idx] = await channel.to_tl(self.user_id)
+
         try:
             await self.client.send(obj, self)
         except Exception as e:
@@ -167,7 +172,7 @@ class SessionManager:
     async def send(
             cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None, channel_id: int | None = None,
     ) -> None:
-        if not user_id and not key_id:
+        if not user_id and not key_id and not channel_id:
             return
 
         await cls.broker.send(MessageToUsersShort(

@@ -15,7 +15,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateUserStatus, UpdateUserName, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
-    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll
+    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, ChatEmpty
+from piltover.tl.types.internal import ChannelToFetch
 
 
 # TODO: move UpdatesManager to separate worker
@@ -283,9 +284,8 @@ class UpdatesManager:
             type__in=(ChannelUpdateType.NEW_MESSAGE, ChannelUpdateType.EDIT_MESSAGE)
         ).delete()
 
-        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
-        for to_user in await User.filter(chatparticipants__channel__id=channel.id):
-            updates = Updates(
+        await SessionManager.send(
+            Updates(
                 updates=[
                     UpdateDeleteChannelMessages(
                         channel_id=channel.id,
@@ -295,12 +295,12 @@ class UpdatesManager:
                     ),
                 ],
                 users=[],
-                chats=[await channel.to_tl(to_user)],
+                chats=[cast(ChatEmpty, ChannelToFetch(channel_id=channel.id))],
                 date=int(time()),
                 seq=0,
-            )
-
-            await SessionManager.send(updates, to_user.id)
+            ),
+            channel_id=channel.id
+        )
 
         return new_pts
 
@@ -855,22 +855,18 @@ class UpdatesManager:
             pts_count=1,
         )
 
-        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
-        for to_user in await User.filter(chatparticipants__channel=channel):
-            updates = Updates(
-                updates=[UpdateChannel(channel_id=channel.id)],
-                users=[],
-                chats=[await channel.to_tl(to_user)],
-                date=int(time()),
-                seq=0,
-            )
+        updates = Updates(
+            updates=[UpdateChannel(channel_id=channel.id)],
+            users=[],
+            chats=[cast(ChatEmpty, ChannelToFetch(channel_id=channel.id))],
+            date=int(time()),
+            seq=0,
+        )
 
-            if user == to_user:
-                result = updates
-
-            await SessionManager.send(updates, to_user.id)
-
-        return result
+        await SessionManager.send(updates, channel_id=channel.id)
+        if user is not None:
+            updates.chats = [await channel.to_tl(user)]
+            return updates
 
     @staticmethod
     async def update_folder_peers(user: User, dialogs: list[Dialog]) -> Updates:

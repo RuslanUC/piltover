@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 from tortoise import fields
+from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType
@@ -44,9 +45,11 @@ class Channel(ChatBase):
 
         return self.cached_username
 
-    async def to_tl(self, user: models.User) -> TLChannel | ChannelForbidden:
-        peer: models.Peer | None = await models.Peer.get_or_none(owner=user, channel=self, type=PeerType.CHANNEL)
-        if peer is None or (participant := await models.ChatParticipant.get_or_none(user=user, channel=self)) is None:
+    async def to_tl(self, user: models.User | int) -> TLChannel | ChannelForbidden:
+        user_id = user.id if isinstance(user, models.User) else user
+
+        peer: models.Peer | None = await models.Peer.get_or_none(owner__id=user_id, channel=self, type=PeerType.CHANNEL)
+        if peer is None or (participant := await models.ChatParticipant.get_or_none(user__id=user_id, channel=self)) is None:
             return ChannelForbidden(
                 id=self.id,
                 access_hash=0 if peer is None else cast(models.Peer, peer).access_hash,
@@ -54,7 +57,7 @@ class Channel(ChatBase):
             )
 
         admin_rights = None
-        if self.creator_id == user.id:
+        if self.creator_id == user_id:
             admin_rights = CREATOR_RIGHTS
         elif participant.is_admin:
             admin_rights = participant.admin_rights.to_tl()
@@ -66,7 +69,7 @@ class Channel(ChatBase):
             title=self.name,
             photo=await self.to_tl_chat_photo(),
             date=int((participant.invited_at if participant else self.created_at).timestamp()),
-            creator=self.creator == user,
+            creator=self.creator_id == user_id,
             left=False,
             broadcast=self.channel,
             verified=False,
