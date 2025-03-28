@@ -15,8 +15,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateUserStatus, UpdateUserName, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
-    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, ChatEmpty
-from piltover.tl.types.internal import ChannelToFetch
+    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll
+from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat
 
 
 # TODO: move UpdatesManager to separate worker
@@ -73,8 +73,6 @@ class UpdatesManager:
 
     @staticmethod
     async def send_message_channel(user: User, message: Message) -> Updates:
-        result = None
-
         message.peer.channel = channel = await message.peer.channel
         channel.pts += 1
         this_pts = channel.pts
@@ -91,35 +89,57 @@ class UpdatesManager:
             *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
         )
 
-        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
-        for to_user in await User.filter(chatparticipants__channel__id=message.peer.channel_id):
-            users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
-            chats = [await rel_chat.to_tl(to_user) for rel_chat in rel_chats.values()]
-            channels = [await rel_channel.to_tl(to_user) for rel_channel in rel_channels.values()]
+        lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in rel_users.values()]
+        lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in rel_chats.values()]
+        lazy_channels = [LazyChannel(channel_id=rel_channel.id) for rel_channel in rel_channels.values()]
 
-            updates = Updates(
-                updates=[
-                    UpdateNewChannelMessage(
-                        message=await message.to_tl(to_user),
-                        pts=channel.pts,
-                        pts_count=1,
-                    ),
+        await SessionManager.send(
+            ObjectWithLazyFields(
+                object=Updates(
+                    updates=[
+                        UpdateNewChannelMessage(
+                            message=LazyMessage(message_id=message.id),  # type: ignore
+                            pts=channel.pts,
+                            pts_count=1,
+                        )
+                    ],
+                    users=lazy_users,  # type: ignore
+                    chats=[*lazy_chats, *lazy_channels],  # type: ignore
+                    date=int(time()),
+                    seq=0,
+                ),
+                fields=[
+                    "updates.0.message",
+                    *(f"users.{i}" for i in range(len(lazy_users))),
+                    *(f"chats.{i}" for i in range(len(lazy_chats))),
+                    *(f"chats.{len(lazy_chats) + i}" for i in range(len(lazy_channels)))
                 ],
-                users=users,
-                chats=[*chats, *channels],
-                date=int(time()),
-                seq=0,
-            )
+            ),
+            channel_id=channel.id,
+        )
 
-            if user == to_user and message.random_id:
-                updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
+        users = [await rel_user.to_tl(user) for rel_user in rel_users.values()]
+        chats = [await rel_chat.to_tl(user) for rel_chat in rel_chats.values()]
+        channels = [await rel_channel.to_tl(user) for rel_channel in rel_channels.values()]
 
-            if user == to_user:
-                result = updates
+        updates = [
+            UpdateNewChannelMessage(
+                message=await message.to_tl(user),
+                pts=channel.pts,
+                pts_count=1,
+            ),
+        ]
 
-            await SessionManager.send(updates, to_user.id)
+        if message.random_id:
+            updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
 
-        return result
+        return Updates(
+            updates=updates,
+            users=users,
+            chats=[*chats, *channels],
+            date=int(time()),
+            seq=0,
+        )
 
     @staticmethod
     async def send_messages(messages: dict[Peer, list[Message]], user: User | None = None) -> Updates | None:
@@ -161,8 +181,6 @@ class UpdatesManager:
     async def send_messages_channel(
             messages: list[Message], channel: Channel, user: User | None = None,
     ) -> Updates | None:
-        result = None
-
         update_messages = []
         updates_to_create = []
         chats_q = Q()
@@ -187,33 +205,57 @@ class UpdatesManager:
 
         rel_users, rel_chats, rel_channels = await fetch_users_chats(users_q, chats_q, channels_q, {}, {}, {})
 
-        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
-        for to_user in await User.filter(chatparticipants__channel__id=channel.id):
-            users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
-            chats = [await rel_chat.to_tl(to_user) for rel_chat in rel_chats.values()]
-            channels = [await rel_channel.to_tl(to_user) for rel_channel in rel_channels.values()]
+        lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in rel_users.values()]
+        lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in rel_chats.values()]
+        lazy_channels = [LazyChannel(channel_id=rel_channel.id) for rel_channel in rel_channels.values()]
 
-            updates = Updates(
-                updates=[
-                    UpdateNewChannelMessage(
-                        message=await message.to_tl(to_user),
-                        pts=pts,
-                        pts_count=len(update_messages),
-                    )
-                    for message, pts in update_messages
+        await SessionManager.send(
+            ObjectWithLazyFields(
+                object=Updates(
+                    updates=[
+                        UpdateNewChannelMessage(
+                            message=LazyMessage(message_id=message.id),  # type: ignore
+                            pts=pts,
+                            pts_count=len(update_messages),
+                        )
+                        for message, pts in update_messages
+                    ],
+                    users=lazy_users,  # type: ignore
+                    chats=[*lazy_chats, *lazy_channels],  # type: ignore
+                    date=int(time()),
+                    seq=0,
+                ),
+                fields=[
+                    *(f"updates.{i}.message" for i in range(len(update_messages))),
+                    *(f"users.{i}" for i in range(len(lazy_users))),
+                    *(f"chats.{i}" for i in range(len(lazy_chats))),
+                    *(f"chats.{len(lazy_chats) + i}" for i in range(len(lazy_channels)))
                 ],
-                users=users,
-                chats=[*chats, *channels],
-                date=int(time()),
-                seq=0,
-            )
+            ),
+            channel_id=channel.id,
+        )
 
-            if user == to_user:
-                result = updates
+        if user is None:
+            return None
 
-            await SessionManager.send(updates, to_user.id)
+        users = [await rel_user.to_tl(user) for rel_user in rel_users.values()]
+        chats = [await rel_chat.to_tl(user) for rel_chat in rel_chats.values()]
+        channels = [await rel_channel.to_tl(user) for rel_channel in rel_channels.values()]
 
-        return result
+        return Updates(
+            updates=[
+                UpdateNewChannelMessage(
+                    message=await message.to_tl(user),
+                    pts=pts,
+                    pts_count=len(update_messages),
+                )
+                for message, pts in update_messages
+            ],
+            users=users,
+            chats=[*chats, *channels],
+            date=int(time()),
+            seq=0,
+        )
 
     @staticmethod
     async def delete_messages(user: User, messages: dict[User, list[int]]) -> int:
@@ -285,19 +327,22 @@ class UpdatesManager:
         ).delete()
 
         await SessionManager.send(
-            Updates(
-                updates=[
-                    UpdateDeleteChannelMessages(
-                        channel_id=channel.id,
-                        messages=messages,
-                        pts=channel.pts,
-                        pts_count=1,
-                    ),
-                ],
-                users=[],
-                chats=[cast(ChatEmpty, ChannelToFetch(channel_id=channel.id))],
-                date=int(time()),
-                seq=0,
+            ObjectWithLazyFields(
+                object=Updates(
+                    updates=[
+                        UpdateDeleteChannelMessages(
+                            channel_id=channel.id,
+                            messages=messages,
+                            pts=channel.pts,
+                            pts_count=1,
+                        ),
+                    ],
+                    users=[],
+                    chats=[LazyChannel(channel_id=channel.id)],  # type: ignore
+                    date=int(time()),
+                    seq=0,
+                ),
+                fields=["chats.0"],
             ),
             channel_id=channel.id
         )
@@ -353,8 +398,6 @@ class UpdatesManager:
 
     @staticmethod
     async def edit_message_channel(user: User, message: Message) -> Updates:
-        result = None
-
         message.peer.channel = channel = await message.peer.channel
         channel.pts += 1
         this_pts = channel.pts
@@ -371,33 +414,52 @@ class UpdatesManager:
             *message.query_users_chats(Q(), Q(), Q()), {}, {}, {},
         )
 
-        # TODO: send with SessionManager.send(updates, channel_id=channel.id)
-        to_user: User
-        async for to_user in User.filter(chatparticipants__channel__id=message.peer.channel_id):
-            users = [await rel_user.to_tl(to_user) for rel_user in rel_users.values()]
-            chats = [await rel_chat.to_tl(to_user) for rel_chat in rel_chats.values()]
-            channels = [await rel_channel.to_tl(to_user) for rel_channel in rel_channels.values()]
+        lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in rel_users.values()]
+        lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in rel_chats.values()]
+        lazy_channels = [LazyChannel(channel_id=rel_channel.id) for rel_channel in rel_channels.values()]
 
-            updates = Updates(
-                updates=[
-                    UpdateEditChannelMessage(
-                        message=await message.to_tl(to_user),
-                        pts=channel.pts,
-                        pts_count=1,
-                    ),
+        await SessionManager.send(
+            ObjectWithLazyFields(
+                object=Updates(
+                    updates=[
+                        UpdateEditChannelMessage(
+                            message=LazyMessage(message_id=message.id),  # type: ignore
+                            pts=channel.pts,
+                            pts_count=1,
+                        ),
+                    ],
+                    users=lazy_users,  # type: ignore
+                    chats=[*lazy_chats, *lazy_channels],  # type: ignore
+                    date=int(time()),
+                    seq=0,
+                ),
+                fields=[
+                    "updates.0.message",
+                    *(f"users.{i}" for i in range(len(lazy_users))),
+                    *(f"chats.{i}" for i in range(len(lazy_chats))),
+                    *(f"chats.{len(lazy_chats)+i}" for i in range(len(lazy_channels)))
                 ],
-                users=users,
-                chats=[*chats, *channels],
-                date=int(time()),
-                seq=0,
-            )
+            ),
+            channel_id=channel.id,
+        )
 
-            if user == to_user:
-                result = updates
+        users = [await rel_user.to_tl(user) for rel_user in rel_users.values()]
+        chats = [await rel_chat.to_tl(user) for rel_chat in rel_chats.values()]
+        channels = [await rel_channel.to_tl(user) for rel_channel in rel_channels.values()]
 
-            await SessionManager.send(updates, to_user.id)
-
-        return result
+        return Updates(
+            updates=[
+                UpdateEditChannelMessage(
+                    message=await message.to_tl(user),
+                    pts=channel.pts,
+                    pts_count=1,
+                ),
+            ],
+            users=users,
+            chats=[*chats, *channels],
+            date=int(time()),
+            seq=0,
+        )
 
     @staticmethod
     async def pin_dialog(user: User, peer: Peer) -> None:
@@ -842,8 +904,6 @@ class UpdatesManager:
 
     @staticmethod
     async def update_channel(channel: Channel, user: User | None = None) -> Updates | None:
-        result = None
-
         channel.pts += 1
         this_pts = channel.pts
         await channel.save(update_fields=["pts"])
@@ -855,18 +915,28 @@ class UpdatesManager:
             pts_count=1,
         )
 
-        updates = Updates(
-            updates=[UpdateChannel(channel_id=channel.id)],
-            users=[],
-            chats=[cast(ChatEmpty, ChannelToFetch(channel_id=channel.id))],
-            date=int(time()),
-            seq=0,
+        await SessionManager.send(
+            ObjectWithLazyFields(
+                object=Updates(
+                    updates=[UpdateChannel(channel_id=channel.id)],
+                    users=[],
+                    chats=[LazyChannel(channel_id=channel.id)],  # type: ignore
+                    date=int(time()),
+                    seq=0,
+                ),
+                fields=["chats.0"],
+            ),
+            channel_id=channel.id,
         )
 
-        await SessionManager.send(updates, channel_id=channel.id)
         if user is not None:
-            updates.chats = [await channel.to_tl(user)]
-            return updates
+            return Updates(
+                updates=[UpdateChannel(channel_id=channel.id)],
+                users=[],
+                chats=[await channel.to_tl(user)],
+                date=int(time()),
+                seq=0,
+            )
 
     @staticmethod
     async def update_folder_peers(user: User, dialogs: list[Dialog]) -> Updates:

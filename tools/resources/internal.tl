@@ -29,7 +29,11 @@ internal.set_session_internal_push#92aeb648 key_id:long session_id:long user_id:
 
 internal.channel_subscribe#ae808cf6 flags:# subscribe:flags.0?true user_ids:Vector<long> channel_ids:Vector<long> = internal.ChannelSubscribe;
 
-internal.channel_to_fetch#8b8451fa channel_id:long = internal.ChannelToFetch;
+internal.lazy_user#f6eb7088 user_id:long = internal.LazyField;
+internal.lazy_chat#229eb582 chat_id:long = internal.LazyField;
+internal.lazy_channel#20803892 channel_id:long = internal.LazyField;
+internal.lazy_message#e51fc740 message_id:long = internal.LazyField;
+internal.object_with_lazy_fields#d836c6b8 object:Object fields:Vector<string> = internal.LazyObject;
 
 ---functions---
 

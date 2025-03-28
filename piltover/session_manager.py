@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from mtproto.packets import DecryptedMessagePacket
 
-from piltover.db.models import UserAuthorization, AuthKey, Channel
+from piltover.db.models import UserAuthorization, AuthKey, Channel, User, Message as DbMessage, Chat
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
-from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ChannelToFetch
+from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyChannel, \
+    LazyMessage, LazyUser, LazyChat
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -114,9 +115,56 @@ class Session:
         SessionManager.broker.unsubscribe(self)
         SessionManager.cleanup(self)
 
+    async def _fetch_lazy_field(self, lazy_obj: LazyChannel | LazyMessage | LazyUser | LazyChat) -> TLObject:
+        # TODO: check if just User(id=self.user_id, phone_number=0) will work
+        user = await User.get(id=self.user_id)
+
+        if isinstance(lazy_obj, LazyChannel):
+            channel = await Channel.get_or_none(id=lazy_obj.channel_id)
+            return await channel.to_tl(user)
+        if isinstance(lazy_obj, LazyMessage):
+            message = await DbMessage.get_or_none(id=lazy_obj.message_id).select_related("peer")
+            return await message.to_tl(user)
+        if isinstance(lazy_obj, LazyUser):
+            other_user = await User.get_or_none(id=lazy_obj.user_id)
+            return await other_user.to_tl(user)
+        if isinstance(lazy_obj, LazyChat):
+            chat = await Chat.get_or_none(id=lazy_obj.chat_id)
+            return await chat.to_tl(user)
+
+        raise RuntimeError("Unreachable")
+
+    @staticmethod
+    def _get_attr_or_element(obj: TLObject | list, field_name: str) -> TLObject | list:
+        if isinstance(obj, list):
+            return obj[int(field_name)]
+        else:
+            return getattr(obj, field_name)
+
+    @staticmethod
+    def _set_attr_or_element(obj: TLObject | list, field_name: str, value: TLObject) -> None:
+        if isinstance(obj, list):
+            obj[int(field_name)] = value
+        else:
+            setattr(obj, field_name, value)
+
     async def send(self, obj: TLObject) -> None:
         if not self.online:
             return
+
+        if isinstance(obj, ObjectWithLazyFields):
+            field_paths = obj.fields
+            obj = obj.object
+
+            for field_path in field_paths:
+                field_path = field_path.split(".")
+                current = obj
+                for field_name in field_path[:-1]:
+                    current = self._get_attr_or_element(current, field_name)
+
+                lazy_obj = self._get_attr_or_element(current, field_path[-1])
+                fetched_obj = await self._fetch_lazy_field(lazy_obj)  # type: ignore
+                self._set_attr_or_element(current, field_path[-1], fetched_obj)
 
         if isinstance(obj, Updates):
             key = await AuthKey.get_or_temp(self.auth_key.auth_key_id)
@@ -124,11 +172,6 @@ class Session:
             auth.upd_seq += 1
             await auth.save(update_fields=["upd_seq"])
             obj.seq = auth.upd_seq
-
-            for idx, chat_or_channel in enumerate(obj.chats):
-                if isinstance(chat_or_channel, ChannelToFetch):
-                    channel = await Channel.get_or_none(id=chat_or_channel.channel_id)
-                    obj.chats[idx] = await channel.to_tl(self.user_id)
 
         try:
             await self.client.send(obj, self)

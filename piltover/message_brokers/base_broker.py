@@ -4,6 +4,8 @@ from abc import abstractmethod, ABC
 from enum import Flag
 from typing import TYPE_CHECKING, Iterable
 
+from loguru import logger
+
 from piltover.cache import Cache
 from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetSessionInternalPush, ChannelSubscribe
 
@@ -125,7 +127,10 @@ class BaseMessageBroker(ABC):
                 send_to.update(self.subscribed_channels[channel_id])
 
         for session in send_to:
-            await session.send(message.obj)
+            try:
+                await session.send(message.obj)
+            except Exception as e:
+                logger.opt(exception=e).error("Error occurred while sending message")
 
     async def _process_channels_subscribe(self, message: ChannelSubscribe) -> None:
         sessions = set()
