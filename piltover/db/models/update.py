@@ -7,17 +7,19 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType
-from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer
+from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
+    UpdateDialogFilterOrder
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
-    UpdateMessagePoll
+    UpdateMessagePoll, UpdateDialogFilter
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
-              | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox | UpdateMessagePoll
+              | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
+              | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder
 
 
 class Update(Model):
@@ -310,5 +312,19 @@ class Update(Model):
                     poll=await poll.to_tl(),
                     results=await poll.to_tl_results(user),
                 ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_FOLDER:
+                folder_id_for_user = self.related_ids[0]
+                folder = await models.DialogFolder.get_or_none(
+                    owner=user, id=self.related_id, id_for_user=folder_id_for_user,
+                )
+
+                return UpdateDialogFilter(
+                    id=folder_id_for_user,
+                    filter=await folder.to_tl() if folder is not None else None,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.FOLDERS_ORDER:
+                return UpdateDialogFilterOrder(order=self.related_ids), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

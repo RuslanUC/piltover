@@ -106,8 +106,7 @@ APP_CONFIG = JsonObject(value=[
     # JsonObjectValue(key="default_emoji_statuses_stickerset_id", value=JsonString(value="773947703670341676")),
     JsonObjectValue(key="dialog_filters_chats_limit_default", value=JsonNumber(value=100.0)),
     JsonObjectValue(key="dialog_filters_chats_limit_premium", value=JsonNumber(value=200.0)),
-    # TODO: enable dialog folders here when will be added
-    JsonObjectValue(key="dialog_filters_enabled", value=JsonBool(value=False)),
+    JsonObjectValue(key="dialog_filters_enabled", value=JsonBool(value=True)),
     JsonObjectValue(key="dialog_filters_limit_default", value=JsonNumber(value=10.0)),
     JsonObjectValue(key="dialog_filters_limit_premium", value=JsonNumber(value=30.0)),
     JsonObjectValue(key="dialog_filters_tooltip", value=JsonBool(value=False)),

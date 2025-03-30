@@ -6,7 +6,7 @@ from tortoise.queryset import QuerySet
 
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
-    ChatParticipant, ChannelUpdate, Channel, Poll
+    ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -15,7 +15,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateUserStatus, UpdateUserName, UpdatePeerSettings, PeerSettings, PeerUser, UpdatePeerBlocked, \
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
-    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll
+    UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
+    UpdateDialogFilterOrder, UpdateDialogFilter
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat
 
 
@@ -1054,4 +1055,61 @@ class UpdatesManager:
         )
 
         await SessionManager.send(updates, user.id)
+        return updates
+
+    @staticmethod
+    async def update_folder(user: User, folder_id: int, folder: DialogFolder | None) -> Updates:
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.UPDATE_FOLDER,
+            pts=new_pts,
+            pts_count=1,
+            related_id=folder.id,
+            related_ids=[folder_id],
+        )
+
+        # TODO: fetch users, chats, channels from pinned_peers, include_peers, exclude_peers
+
+        updates = Updates(
+            updates=[
+                UpdateDialogFilter(
+                    id=folder_id,
+                    filter=await folder.to_tl() if folder is not None else None,
+                ),
+            ],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+
+        return updates
+
+    @staticmethod
+    async def update_folders_order(user: User, folder_ids: list[int]) -> Updates:
+        new_pts = await State.add_pts(user, len(folder_ids))
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.FOLDERS_ORDER,
+            pts=new_pts,
+            pts_count=len(folder_ids),
+            related_id=None,
+            related_ids=folder_ids,
+        )
+
+        updates = Updates(
+            updates=[UpdateDialogFilterOrder(order=folder_ids)],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+
         return updates

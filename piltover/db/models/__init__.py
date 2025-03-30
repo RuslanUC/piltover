@@ -38,3 +38,4 @@ from .username import Username
 from .poll import Poll
 from .poll_answer import PollAnswer
 from .poll_vote import PollVote
+from .dialog_folder import DialogFolder

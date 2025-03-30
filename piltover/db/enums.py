@@ -74,6 +74,8 @@ class UpdateType(IntEnum):
     UPDATE_CHAT_BANNED_RIGHTS = 17
     UPDATE_CHANNEL = 18
     UPDATE_POLL = 19
+    UPDATE_FOLDER = 20
+    FOLDERS_ORDER = 21
 
 
 class PeerType(IntEnum):

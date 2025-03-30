@@ -4,22 +4,18 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, EmojiKeywordsDifference, \
     DocumentEmpty, PeerSettings, InputStickerSetAnimatedEmoji, StickerSet
-from piltover.tl.functions.messages import GetDialogFilters, GetPeerSettings, GetScheduledHistory, GetQuickReplies, \
+from piltover.tl.functions.messages import GetPeerSettings, GetScheduledHistory, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetStickerSet, GetRecentReactions, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, GetSavedReactionTags, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, \
-    GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetMessageEditData, \
-    GetDefaultTagReactions, GetEmojiKeywordsDifference
+    GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
+    GetEmojiKeywordsDifference
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Messages, Reactions, SavedReactionTags, \
     Stickers, SearchResultsPositions, AllStickers, FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, \
     StickerSet as messages_StickerSet, QuickReplies
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
-
-@handler.on_request(GetDialogFilters, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_dialog_filters():  # pragma: no cover
-    return []
 
 
 @handler.on_request(GetPeerSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
