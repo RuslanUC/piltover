@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod, ABC
+from copy import deepcopy
 from enum import Flag
 from typing import TYPE_CHECKING, Iterable
 
@@ -128,7 +129,7 @@ class BaseMessageBroker(ABC):
 
         for session in send_to:
             try:
-                await session.send(message.obj)
+                await session.send(deepcopy(message.obj))
             except Exception as e:
                 logger.opt(exception=e).error("Error occurred while sending message")
 

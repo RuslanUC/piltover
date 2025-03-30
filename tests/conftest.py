@@ -3,9 +3,12 @@ from __future__ import annotations
 import builtins
 import hashlib
 import logging
+from asyncio import Event, Lock, timeout
+from collections import defaultdict
+from contextlib import asynccontextmanager
 from os import urandom
 from time import time
-from typing import AsyncIterator
+from typing import AsyncIterator, TypeVar, Self
 
 import pytest
 import pytest_asyncio
@@ -13,7 +16,9 @@ from loguru import logger
 from pyrogram import Client
 from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
-from pyrogram.session import Auth
+from pyrogram.raw.core import TLObject as PyroTLObject
+from pyrogram.raw.types import Updates
+from pyrogram.session import Auth, Session as PyroSession
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
@@ -23,6 +28,8 @@ from piltover.db.models import AuthKey
 from piltover.gateway import Gateway
 from piltover.tl import Int
 from piltover.utils import get_public_key_fingerprint
+
+T = TypeVar("T")
 
 
 async def _custom_auth_create(_) -> bytes:
@@ -280,6 +287,64 @@ class TestClient(Client):
         )
 
         self.storage = SimpleStorage(self.name)
+        self._got_updates: dict[type[T], list[T]] = defaultdict(list)
+        self._updates_event = Event()
+        self._updates_lock = Lock()
+
+    async def __aenter__(self) -> Self:
+        self._got_updates = defaultdict(list)
+        return await super().__aenter__()
+
+    async def __aexit__(self, *args) -> None:
+        unconsumed_updates = []
+        for updates in self._got_updates.values():
+            unconsumed_updates.extend(updates)
+        if unconsumed_updates:
+            logger.warning(f"Unexpected updates:")
+            for update in unconsumed_updates:
+                logger.warning(f"  {update}")
+
+        return await super().__aexit__(*args)
+
+    async def handle_updates(self, updates: PyroTLObject, only_add: bool = False) -> ...:
+        if isinstance(updates, Updates):
+            _updates = updates.updates
+        else:
+            _updates = updates
+
+        async with self._updates_lock:
+            for update in _updates:
+                self._got_updates[type(update)].append(update)
+
+        self._updates_event.set()
+
+        if not only_add:
+            return await super().handle_updates(updates)
+
+    async def invoke(
+            self, query: PyroTLObject, retries: int = PyroSession.MAX_RETRIES,
+            timeout: float = PyroSession.WAIT_TIMEOUT, sleep_threshold: float = None,
+    ) -> PyroTLObject:
+        res = await super().invoke(query, retries, timeout, sleep_threshold)
+        if isinstance(res, Updates):
+            await self.handle_updates(res, True)
+        return res
+
+    async def expect_update(self, update_cls: type[T], timeout_: float = 1) -> T:
+        async with timeout(timeout_):
+            while True:
+                async with self._updates_lock:
+                    if self._got_updates[update_cls]:
+                        return self._got_updates[update_cls].pop()
+
+                await self._updates_event.wait()
+                self._updates_event.clear()
+
+    @asynccontextmanager
+    async def expect_updates_m(self, *update_clss: type[PyroTLObject], timeout_per_update: float = 0.5) -> ...:
+        yield
+        for update_cls in update_clss:
+            await self.expect_update(update_cls, timeout_per_update)
 
 
 def color_is_near(expected: tuple[int, int, int], actual: tuple[int, int, int], error: float = 0.05) -> bool:

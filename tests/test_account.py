@@ -1,5 +1,6 @@
 import pytest
 from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified
+from pyrogram.raw.types import UpdateUserName, UpdateUser
 
 from tests.conftest import TestClient
 
@@ -9,9 +10,10 @@ async def test_change_profile() -> None:
     async with TestClient(phone_number="123456789") as client:
         assert client.me
 
-        assert await client.update_profile(first_name="test 123")
-        assert await client.update_profile(last_name="test asd")
-        assert await client.update_profile(bio="test bio")
+        async with client.expect_updates_m(UpdateUserName, UpdateUserName, UpdateUser):
+            assert await client.update_profile(first_name="test 123")
+            assert await client.update_profile(last_name="test asd")
+            assert await client.update_profile(bio="test bio")
 
         me = await client.get_me()
 
@@ -24,7 +26,8 @@ async def test_change_username() -> None:
     async with TestClient(phone_number="123456789") as client:
         assert client.me
 
-        assert await client.set_username("test_username")
+        async with client.expect_updates_m(UpdateUserName):
+            assert await client.set_username("test_username")
 
         me = await client.get_me()
         assert me.username == "test_username"
@@ -44,7 +47,8 @@ async def test_change_username_to_invalid() -> None:
 @pytest.mark.asyncio
 async def test_change_username_to_occupied() -> None:
     async with TestClient(phone_number="123456789") as client, TestClient(phone_number="1234567890") as client2:
-        assert await client.set_username("test_username")
+        async with client.expect_updates_m(UpdateUserName):
+            assert await client.set_username("test_username")
         me = await client.get_me()
         assert me.username == "test_username"
 
@@ -61,7 +65,8 @@ async def test_change_username_to_same() -> None:
         with pytest.raises(UsernameNotModified):
             assert await client.set_username("")
 
-        assert await client.set_username("test_username")
+        async with client.expect_updates_m(UpdateUserName):
+            assert await client.set_username("test_username")
         me = await client.get_me()
         assert me.username == "test_username"
 
@@ -75,7 +80,8 @@ async def test_change_username_to_same() -> None:
 @pytest.mark.asyncio
 async def test_resolve_username() -> None:
     async with TestClient(phone_number="123456789") as client, TestClient(phone_number="1234567890") as client2:
-        await client2.set_username("test2_username")
+        async with client2.expect_updates_m(UpdateUserName):
+            await client2.set_username("test2_username")
         user2 = await client.get_users("test2_username")
         me2 = await client2.get_me()
 
