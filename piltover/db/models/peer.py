@@ -118,6 +118,18 @@ class Peer(Model):
 
         raise RuntimeError("Unreachable")
 
+    def to_input_peer(self) -> InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel:
+        if self.type is PeerType.SELF:
+            return InputPeerSelf()
+        if self.type is PeerType.USER:
+            return InputPeerUser(user_id=self.user_id, access_hash=self.access_hash)
+        if self.type == PeerType.CHAT:
+            return InputPeerChat(chat_id=self.chat_id)
+        if self.type == PeerType.CHANNEL:
+            return InputPeerChannel(channel_id=self.channel_id, access_hash=self.access_hash)
+
+        raise RuntimeError("Unreachable")
+
     @classmethod
     def query_users_chats_cls(
             cls, peer_id: int, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,

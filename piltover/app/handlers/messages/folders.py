@@ -13,7 +13,7 @@ async def get_dialog_filters(user: User) -> DialogFilters:
     folders: list[DialogFilter | DialogFilterDefault | DialogFilterChatlist]
     folders = [
         await folder.to_tl()
-        for folder in await DialogFolder.filter(owner=user).order_by("position", "id")
+        for folder in await DialogFolder.filter(owner=user, id_for_user__gt=0).order_by("position", "id")
     ]
     if folders:
         folders.insert(0, DialogFilterDefault())
@@ -43,14 +43,14 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
         raise ErrorRpc(error_code=400, error_message="FILTER_TITLE_EMPTY")
 
     if folder is None:
-        folder = DialogFolder(
+        folder = await DialogFolder.create(
             owner=user,
             name="",
-            id_for_user=request.id,
+            id_for_user=-1,
             position=0,
         )
-        # TODO: fill pinned_peers, include_peers, and exclude_peers
-        folder.fill_from_tl(request.filter)
+        folder.id_for_user = request.id
+        await folder.fill_from_tl(request.filter)
         await folder.save()
 
         await UpdatesManager.update_folder(user, request.id, folder)
@@ -60,8 +60,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
     if not updated_fields:
         return True
 
-    # TODO: fill pinned_peers, include_peers, and exclude_peers
-    folder.fill_from_tl(request.filter)
+    await folder.fill_from_tl(request.filter)
     await folder.save(update_fields=updated_fields)
 
     await UpdatesManager.update_folder(user, request.id, folder)
@@ -72,7 +71,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
 async def update_dialog_filters_order(request: UpdateDialogFiltersOrder, user: User) -> bool:
     folders = {
         folder.id_for_user: folder
-        for folder in await DialogFolder.filter(owner=user)
+        for folder in await DialogFolder.filter(owner=user, id_for_user__gt=0)
     }
     new_order = []
 
