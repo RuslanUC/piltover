@@ -6,7 +6,8 @@ from piltover.tl.functions.messages import GetDialogFilters, UpdateDialogFilter,
 from piltover.tl.types.messages import DialogFilters
 from piltover.worker import MessageHandler
 
-handler = MessageHandler("messages.stubs")
+# TODO: add tests
+handler = MessageHandler("messages.folders")
 
 @handler.on_request(GetDialogFilters)
 async def get_dialog_filters(user: User) -> DialogFilters:

@@ -24,9 +24,9 @@ class DialogFolder(Model):
     exclude_read: bool = fields.BooleanField(default=False)
     exclude_archived: bool = fields.BooleanField(default=False)
 
-    pinned_peers: fields.ManyToManyRelation[models.Peer] = fields.ManyToManyField("models.Peer")
-    include_peers: fields.ManyToManyRelation[models.Peer] = fields.ManyToManyField("models.Peer")
-    exclude_peers: fields.ManyToManyRelation[models.Peer] = fields.ManyToManyField("models.Peer")
+    pinned_peers: fields.ManyToManyRelation[models.Peer] = fields.ManyToManyField("models.Peer", related_name="pinned_peers")
+    include_peers: fields.ManyToManyRelation[models.Peer] = fields.ManyToManyField("models.Peer", related_name="include_peers")
+    exclude_peers: fields.ManyToManyRelation[models.Peer] = fields.ManyToManyField("models.Peer", related_name="exclude_peers")
 
     owner_id: int
 
