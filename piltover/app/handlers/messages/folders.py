@@ -2,13 +2,15 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.models import User, DialogFolder
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DialogFilterDefault, DialogFilter, DialogFilterChatlist
-from piltover.tl.functions.messages import GetDialogFilters, UpdateDialogFilter, UpdateDialogFiltersOrder
+from piltover.tl.functions.messages import GetDialogFilters, UpdateDialogFilter, UpdateDialogFiltersOrder, \
+    GetDialogFilters_136
 from piltover.tl.types.messages import DialogFilters
 from piltover.worker import MessageHandler
 
-# TODO: add tests
 handler = MessageHandler("messages.folders")
 
+
+@handler.on_request(GetDialogFilters_136)
 @handler.on_request(GetDialogFilters)
 async def get_dialog_filters(user: User) -> DialogFilters:
     folders: list[DialogFilter | DialogFilterDefault | DialogFilterChatlist]

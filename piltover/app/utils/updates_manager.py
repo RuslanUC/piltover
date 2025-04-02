@@ -1066,11 +1066,11 @@ class UpdatesManager:
             update_type=UpdateType.UPDATE_FOLDER,
             pts=new_pts,
             pts_count=1,
-            related_id=folder.id,
+            related_id=folder.id if folder is not None else None,
             related_ids=[folder_id],
         )
 
-        # TODO: fetch users, chats, channels from pinned_peers, include_peers, exclude_peers
+        # TODO: fetch users, chats, channels from pinned_peers, include_peers, exclude_peers ?
 
         updates = Updates(
             updates=[

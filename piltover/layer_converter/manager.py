@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections import defaultdict
-from typing import Callable, TypeVar
+from typing import Callable, TypeVar, cast
 
 from loguru import logger
 
@@ -66,6 +66,7 @@ class LayerConverter:
         return vec
 
     @classmethod
+    @logger.catch(reraise=True)
     def downgrade(cls, obj: TLObject, to_layer: int) -> TLObject:
         obj_cls = obj.__class__
         if obj_cls in cls._down:
@@ -79,6 +80,12 @@ class LayerConverter:
                 cls._down[obj_cls][to_layer] = cls._down[obj_cls][prev_layer]
 
             obj = cls._down[obj.__class__][to_layer](obj)
+
+        if isinstance(obj, list):
+            return cast(TLObject, cls._try_downgrade_list(obj, to_layer))
+        if not isinstance(obj, TLObject):
+            assert isinstance(obj, (bool, int, float, str, bytes))
+            return cast(TLObject, obj)
 
         for slot in obj.__slots__:
             attr = getattr(obj, slot)

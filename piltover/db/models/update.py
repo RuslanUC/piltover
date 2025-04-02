@@ -315,9 +315,11 @@ class Update(Model):
 
             case UpdateType.UPDATE_FOLDER:
                 folder_id_for_user = self.related_ids[0]
-                folder = await models.DialogFolder.get_or_none(
-                    owner=user, id=self.related_id, id_for_user=folder_id_for_user,
-                )
+                folder = None
+                if self.related_id is not None:
+                    folder = await models.DialogFolder.get_or_none(
+                        owner=user, id=self.related_id, id_for_user=folder_id_for_user,
+                    )
 
                 return UpdateDialogFilter(
                     id=folder_id_for_user,
