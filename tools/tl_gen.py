@@ -336,10 +336,12 @@ def start():
     for filename in glob.iglob(str(DESTINATION_PATH / "converter/*.py"), recursive=True):
         compile_to_zip(out_zip, Path(filename))
 
-    with (open(HOME_PATH / "resources/mtproto.tl") as f1,
-          open(HOME_PATH / "resources/internal.tl") as f2,
-          open(HOME_PATH / "resources/api.tl") as f3):
-        schema = f1.read().splitlines() + f2.read().splitlines() + f3.read().splitlines()
+    schema = []
+    for file_name in os.listdir(HOME_PATH / "resources"):
+        if file_name.startswith("api_") or not file_name.endswith(".tl"):
+            continue
+        with open(HOME_PATH / "resources" / file_name) as f:
+            schema.extend(f.read().splitlines())
 
     combinators, layer = parse_schema(schema)
     combinators.extend(parse_old_objects(combinators))
