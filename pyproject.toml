@@ -24,16 +24,16 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.11"
-cryptography = "^44.0.1"
+cryptography = "^44.0.2"
 tgcrypto = "^1.2.5"
 uvloop = "^0.21.0"
 loguru = "^0.7.3"
 tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", branch = "allow-joining-same-table-twice", extras = ["asyncmy"]}
-aerich = "^0.8.1"
+aerich = "^0.8.2"
 pillow = "^11.0.0"
 mtproto = "^0.1.0b12"
 aiofiles = "^24.1.0"
-taskiq = "^0.11.10"
+taskiq = "0.11.11"
 taskiq-aio-pika = "^0.4.1"
 taskiq-redis = "^1.0.2"
 aiocache = "^0.12.3"
@@ -47,6 +47,7 @@ yappi = "^1.6.10"
 py-spy = "^0.4.0"
 snakeviz = "^2.2.2"
 tuna = "^0.5.11"
+pyrogram = "^2.0.106"
 
 
 [tool.poetry.group.test.dependencies]
@@ -54,8 +55,6 @@ pytest = "^8.3.4"
 pytest-cov = "^6.0.0"
 pyrogram = "^2.0.106"
 pytest-asyncio = "^0.25.0"
-pytest-xdist = "^3.6.1"
-pytest-repeat = "^0.9.3"
 
 [build-system]
 requires = ["poetry-core"]

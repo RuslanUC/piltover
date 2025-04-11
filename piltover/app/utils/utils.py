@@ -80,21 +80,18 @@ def resize_image_internal(file_id: str, img: Image, width: int) -> tuple[int, in
         return f_out.tell(), height
 
 
-async def resize_photo(file_id: str) -> list[dict[str, int | str]]:
-    types = ["a", "b", "c"]
-    sizes = [160, 320, 640]
-
+async def resize_photo(file_id: str, sizes: str = "abc") -> list[dict[str, int | str]]:
     img = img_open(files_dir / f"{file_id}")
     img.load()
     with ThreadPoolExecutor() as pool:
         tasks = [
-            get_event_loop().run_in_executor(pool, resize_image_internal, file_id, img, size)
+            get_event_loop().run_in_executor(pool, resize_image_internal, file_id, img, PHOTOSIZE_TO_INT[size])
             for size in sizes
         ]
         res = await gather(*tasks)
 
     return [
-        {"type_": types[idx], "w": sizes[idx], "h": height, "size": file_size}
+        {"type_": sizes[idx], "w": PHOTOSIZE_TO_INT[sizes[idx]], "h": height, "size": file_size}
         for idx, (file_size, height) in enumerate(res)
     ]
 

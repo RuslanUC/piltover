@@ -4,6 +4,7 @@ import pytest
 from pyrogram.session import Auth
 
 
+@pytest.mark.real_key_gen
 @pytest.mark.asyncio
 async def test_key_generation() -> None:
     client_ = SimpleNamespace()

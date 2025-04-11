@@ -1,22 +1,27 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 from contextlib import asynccontextmanager
 from os import getenv
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal, AsyncIterator
+from typing import Literal, AsyncIterator, TYPE_CHECKING
 
 import uvloop
 from aerich import Command, Migrate
 from loguru import logger
 from tortoise import Tortoise, connections
 
-from piltover.app import root_dir
+from piltover.app import root_dir, files_dir
 from piltover.app.handlers import register_handlers
 from piltover.app_config import AppConfig
 from piltover.cache import Cache
 from piltover.gateway import Gateway
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
+
+if TYPE_CHECKING:
+    from piltover.db.models import File
 
 data = root_dir / "data"
 data.mkdir(parents=True, exist_ok=True)
@@ -30,6 +35,7 @@ DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/pil
 class ArgsNamespace(SimpleNamespace):
     create_system_user: bool
     create_auth_countries: bool
+    create_reactions: bool
     privkey_file: Path
     pubkey_file: Path
     rabbitmq_address: str | None
@@ -49,7 +55,72 @@ class MigrateNoDowngrade(Migrate):
         return super(MigrateNoDowngrade, cls).diff_models(old_models, new_models, True)
 
 
-async def _create_system_data(system_users: bool = True, countries_list: bool = True) -> None:
+async def _upload_reaction_doc(reaction: int, doc: dict) -> File:
+    from datetime import datetime
+    from pytz import UTC
+
+    from piltover.tl.types import DocumentAttributeImageSize, DocumentAttributeSticker, DocumentAttributeFilename
+    from piltover.db.models import File
+    from piltover.db.enums import FileType
+    from piltover.app.utils.utils import PHOTOSIZE_TO_INT
+
+    cls_name_to_cls = {
+        "types.DocumentAttributeImageSize": DocumentAttributeImageSize,
+        "types.DocumentAttributeSticker": DocumentAttributeSticker,
+        "types.DocumentAttributeFilename": DocumentAttributeFilename,
+    }
+
+    ext = doc["mime_type"].split("/")[-1]
+    reactions_files = data / "reactions" / "files"
+
+    photo_path = None
+    for thumb in doc["thumbs"]:
+        if thumb["_"] != "types.PhotoPathSize" or thumb["_"] != "j":
+            continue
+        with open(reactions_files / f"{doc['id']}-{reaction}-thumb-j.bin", "rb") as f:
+            photo_path = f.read()
+        break
+
+    # TODO: dont create new file if it already exists
+    file = File(
+        created_at=datetime.fromtimestamp(doc["date"], UTC),
+        mime_type=doc["mime_type"],
+        size=doc["size"],
+        type=FileType.DOCUMENT_STICKER,
+        photo_path=photo_path,
+        photo_sizes=[],
+    )
+    file.parse_attributes_from_tl([
+        cls_name_to_cls[attr.pop("_")](**attr)
+        for attr in doc["attributes"]
+    ])
+    await file.save()
+
+    with open(reactions_files / f"{doc['id']}-{reaction}.{ext}", "rb") as f_in:
+        with open(files_dir / f"{file.physical_id}", "wb") as f_out:
+            f_out.write(f_in.read())
+
+    for thumb in doc["thumbs"]:
+        if thumb["_"] != "types.PhotoSize":
+            continue
+        width = PHOTOSIZE_TO_INT[thumb["type"]]
+        with open(reactions_files / f"{doc['id']}-{reaction}-thumb-{thumb['type']}.{ext}", "rb") as f_in:
+            with open(files_dir / f"{file.physical_id}_{width}", "wb") as f_out:
+                f_out.write(f_in.read())
+
+        file.photo_sizes.append({
+            "type_": thumb["type"],
+            "w": thumb["w"],
+            "h": thumb["h"],
+            "size": thumb["size"],
+        })
+
+    await file.save(update_fields=["photo_sizes"])
+
+    return file
+
+
+async def _create_system_data(system_users: bool = True, countries_list: bool = True, reactions: bool = True) -> None:
     if system_users:
         logger.info("Creating system user...")
 
@@ -81,6 +152,44 @@ async def _create_system_data(system_users: bool = True, countries_list: bool = 
                     "patterns": code["patterns"],
                 })
 
+    reactions_dir = data / "reactions"
+    reactions_files_dir = reactions_dir / "files"
+    if reactions and reactions_dir.exists() and reactions_files_dir.exists():
+        from os import listdir
+        import json
+
+        from piltover.db.models import Reaction
+
+        logger.info("Creating (or updating) reactions...")
+        for reaction_file in listdir(reactions_dir):
+            if not reaction_file.endswith(".json") or not reaction_file.split(".")[0].isdigit():
+                continue
+
+            try:
+                reaction_index = int(reaction_file.split(".")[0])
+            except ValueError:
+                continue
+
+            with open(reactions_dir / reaction_file) as f:
+                reaction_info = json.load(f)
+
+            defaults = {"title": reaction_info["title"]}
+
+            for doc_name in (
+                "static_icon", "appear_animation", "select_animation", "activate_animation", "effect_animation",
+                "around_animation", "center_icon",
+            ):
+                if doc_name not in reaction_info:
+                    continue
+                defaults[doc_name] = await _upload_reaction_doc(reaction_index, reaction_info[doc_name])
+
+            reaction, created = await Reaction.get_or_create(reaction=reaction_info["reaction"], defaults=defaults)
+            if created:
+                logger.info(f"Created reaction \"{reaction.title}\" (\"{reaction.reaction}\")")
+            else:
+                logger.info(f"Updating reaction \"{reaction.title}\" (\"{reaction.reaction}\")")
+                await reaction.update_from_dict(defaults).save()
+
 
 async def migrate():
     migrations_dir = (data / "migrations").absolute()
@@ -96,7 +205,7 @@ async def migrate():
     else:
         await command.init_db(True)
 
-    await _create_system_data(args.create_system_user, args.create_auth_countries)
+    await _create_system_data(args.create_system_user, args.create_auth_countries, args.create_reactions)
     await Tortoise.close_connections()
 
 
@@ -155,14 +264,16 @@ class PiltoverApp:
         await self._gateway.serve()
 
     @asynccontextmanager
-    async def run_test(self) -> AsyncIterator[Gateway]:
+    async def run_test(
+            self, create_sys_user: bool = True, create_countries: bool = False, create_reactions: bool = False,
+    ) -> AsyncIterator[Gateway]:
         await Tortoise.init(
             db_url="sqlite://:memory:",
             modules={"models": ["piltover.db.models"]},
             _create_db=True,
         )
         await Tortoise.generate_schemas()
-        await _create_system_data()
+        await _create_system_data(create_sys_user, create_countries, create_reactions)
 
         from piltover.app.handlers import testing
         if not testing.handler.registered:
@@ -184,6 +295,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--create-system-user", action="store_true", help="Create system user with id 777000")
     parser.add_argument("--create-auth-countries", action="store_true", help="Insert auth countries to database")
+    parser.add_argument("--create-reactions", action="store_true", help="Insert reactions to database")
     parser.add_argument("--privkey-file", type=Path,
                         help="Path to private key file (will be created if does not exist)",
                         default=secrets / "privkey.asc")
@@ -210,6 +322,7 @@ else:
     args = ArgsNamespace(
         create_system_user=True,
         create_auth_countries=True,
+        create_reactions=True,
         privkey_file=secrets / "privkey.asc",
         pubkey_file=secrets / "pubkey.asc",
         rabbitmq_address=None,

@@ -38,6 +38,7 @@ async def test_enable_disable_cloud_password() -> None:
         assert await client.remove_cloud_password("test_passw0rd_new")
 
 
+@pytest.mark.create_countries
 @pytest.mark.asyncio
 async def test_get_countries_list() -> None:
     async with TestClient(phone_number="123456789") as client:

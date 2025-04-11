@@ -9,7 +9,7 @@ from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
-    PhotoSize
+    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize
 
 
 class File(Model):
@@ -38,6 +38,7 @@ class File(Model):
     # Photo
     photo_sizes: list[dict[str, str | int]] | None = fields.JSONField(null=True, default=None)
     photo_stripped: bytes | None = fields.BinaryField(null=True, default=None)
+    photo_path: bytes | None = fields.BinaryField(null=True, default=None)
 
     def parse_attributes_from_tl(self, attributes: list[TLObject]) -> None:
         for attribute in attributes:
@@ -59,7 +60,10 @@ class File(Model):
                 self.duration = attribute.duration
                 self.title = attribute.title
                 self.performer = attribute.performer
-            if isinstance(attribute, DocumentAttributeFilename):
+            elif isinstance(attribute, DocumentAttributeSticker):
+                self.type = FileType.DOCUMENT_STICKER
+                # TODO: fill alt, stickerset, mask fields
+            elif isinstance(attribute, DocumentAttributeFilename):
                 self.filename = attribute.file_name
 
     def attributes_to_tl(self) -> list:
@@ -79,6 +83,8 @@ class File(Model):
                 nosound=self.nosound,
                 preload_prefix_size=self.preload_prefix_size,
             ))
+        elif self.type is FileType.DOCUMENT_STICKER:
+            result.append(DocumentAttributeSticker(alt="", stickerset=InputStickerSetEmpty()))
         if self.type is FileType.DOCUMENT_GIF:
             result.append(DocumentAttributeAnimated())
         if self.type in (FileType.DOCUMENT_AUDIO, FileType.DOCUMENT_VOICE):
@@ -108,10 +114,12 @@ class File(Model):
     async def to_tl_photo(self, user: models.User) -> TLPhoto:
         access = await models.FileAccess.get_or_renew(user, self)
 
-        sizes: list[PhotoStrippedSize | PhotoSize]
+        sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
         sizes = [PhotoSize(**size) for size in self.photo_sizes]
         if self.photo_stripped:
             sizes.insert(0, PhotoStrippedSize(type_="i", bytes_=self.photo_stripped))
+        if self.photo_path:
+            sizes.insert(0, PhotoPathSize(type_="j", bytes_=self.photo_path))
 
         return TLPhoto(
             id=self.id,
