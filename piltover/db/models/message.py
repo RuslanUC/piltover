@@ -8,6 +8,7 @@ from loguru import logger
 from pytz import UTC
 from tortoise import fields, Model
 from tortoise.expressions import Q
+from tortoise.functions import Count
 
 from piltover.cache import Cache
 from piltover.db import models
@@ -16,7 +17,8 @@ from piltover.exceptions import Error, ErrorRpc
 from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, SerializationUtils, TLObject
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatJoinedByRequest, MessageActionChatJoinedByLink, \
-    MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage
+    MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage, MessageReactions, ReactionCount, \
+    ReactionEmoji
 from piltover.utils.snowflake import Snowflake
 
 
@@ -146,7 +148,10 @@ class Message(Model):
 
     @classmethod
     async def get_(cls, id_: int, peer: models.Peer) -> models.Message | None:
-        return await Message.get_or_none(id=id_, peer=peer, type=MessageType.REGULAR)\
+        peer_query = Q(peer=peer)
+        if peer.type is PeerType.CHANNEL:
+            peer_query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
+        return await Message.get_or_none(peer_query, id=id_, type=MessageType.REGULAR)\
             .select_related("peer", "author", "media")
 
     async def _make_reply_to_header(self) -> MessageReplyHeader:
@@ -191,6 +196,7 @@ class Message(Model):
                 file = await models.File.get_or_none(messagemedias__messages__id=self.id)
                 if file is not None:
                     await models.FileAccess.get_or_renew(current_user, file, True)
+            # TODO: reload reactions
             return cached
 
         if self.type is not MessageType.REGULAR:
@@ -217,6 +223,7 @@ class Message(Model):
         if self.channel_post and self.post_info_id is not None:
             self.post_info = post_info = await self.post_info
 
+        # TODO: reactions
         message = TLMessage(
             id=self.id,
             message=self.message or "",
@@ -392,3 +399,25 @@ class Message(Model):
 
     async def remove_from_cache(self, user: models.User) -> None:
         await Cache.obj.delete(self._cache_key(user))
+
+    async def to_tl_reactions(self, user: models.User) -> MessageReactions:
+        # TODO: send min MessageReactions if current user didn't send reaction to message
+        user_reaction = await models.MessageReaction.get_or_none(user=user, message=self)
+        reactions = await models.MessageReaction\
+            .annotate(msg_count=Count("id"))\
+            .filter(message=self)\
+            .group_by("reaction")\
+            .select_related("reaction")\
+            .values_list("reaction__id", "reaction__reaction", "msg_count")
+
+        return MessageReactions(
+            can_see_list=False,
+            results=[
+                ReactionCount(
+                    chosen_order=1 if reaction_id == user_reaction.reaction_id else None,
+                    reaction=ReactionEmoji(emoticon=reaction_emoji),
+                    count=msg_count,
+                )
+                for reaction_id, reaction_emoji, msg_count in reactions
+            ],
+        )

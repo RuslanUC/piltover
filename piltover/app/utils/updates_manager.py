@@ -16,7 +16,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
-    UpdateDialogFilterOrder, UpdateDialogFilter
+    UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat
 
 
@@ -1104,6 +1104,28 @@ class UpdatesManager:
 
         updates = Updates(
             updates=[UpdateDialogFilterOrder(order=folder_ids)],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+
+        return updates
+
+    @staticmethod
+    async def update_reactions(user: User, message: Message, peer: Peer) -> Updates:
+        # TODO: create update?
+
+        updates = Updates(
+            updates=[
+                UpdateMessageReactions(
+                    peer=peer.to_tl(),
+                    msg_id=message.id,
+                    reactions=await message.to_tl_reactions(user),
+                )
+            ],
             users=[],
             chats=[],
             date=int(time()),
