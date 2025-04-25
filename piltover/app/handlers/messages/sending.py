@@ -7,6 +7,7 @@ from loguru import logger
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
+from piltover.app.bot_handlers import bots
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
 from piltover.app_config import AppConfig
@@ -34,9 +35,16 @@ async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         opposite: bool = True, **message_kwargs
 ) -> Updates:
+    if opposite and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
+        opposite = False
+
     messages = await Message.create_for_peer(
-        user, peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
+        peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
     )
+
+    if opposite and peer.type is not PeerType.CHANNEL:
+        presence = await Presence.update_to_now(user)
+        await UpdatesManager.update_status(user, presence, await peer.get_opposite())
 
     if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
         await draft.delete()
@@ -49,7 +57,16 @@ async def send_message_internal(
         return await UpdatesManager.send_message_channel(user, list(messages.values())[0])
 
     if (upd := await UpdatesManager.send_message(user, messages)) is None:
-        raise NotImplementedError("unknown chat type ?")
+        raise RuntimeError("unreachable ?")
+
+    if peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
+        bot_message = await bots.process_message_to_bot(peer, messages[peer])
+        if bot_message is not None:
+            if (bot_upd := await UpdatesManager.send_message(user, {peer: bot_message})) is None:
+                raise RuntimeError("unreachable ?")
+            upd.users.extend(bot_upd.users)
+            upd.chats.extend(bot_upd.chats)
+            upd.updates.extend(bot_upd.updates)
 
     return cast(Updates, upd)
 

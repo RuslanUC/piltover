@@ -13,13 +13,14 @@ _USERNAME_MISSING = object()
 
 class User(Model):
     id: int = fields.BigIntField(pk=True)
-    phone_number: str = fields.CharField(unique=True, max_length=20)
+    phone_number: str | None = fields.CharField(unique=True, max_length=20, null=True)
     first_name: str = fields.CharField(max_length=128)
     last_name: str | None = fields.CharField(max_length=128, null=True, default=None)
     lang_code: str = fields.CharField(max_length=8, default="en")
     about: str | None = fields.CharField(max_length=240, null=True, default=None)
     ttl_days: int = fields.IntField(default=365)
     birthday: date | None = fields.DateField(null=True, default=None)
+    bot: bool = fields.BooleanField(default=False)
 
     cached_username: models.Username | None | object = _USERNAME_MISSING
 
@@ -28,6 +29,11 @@ class User(Model):
             self.cached_username = await models.Username.get_or_none(user=self)
 
         return self.cached_username
+
+    async def get_raw_username(self) -> str | None:
+        username = await self.get_username()
+        if username is not None:
+            return username.username
 
     async def get_photo(self, current_user: models.User, profile_photo: bool = False):
         photo = UserProfilePhotoEmpty() if profile_photo else PhotoEmpty(id=0)
@@ -55,7 +61,6 @@ class User(Model):
         defaults = {
             "mutual_contact": False,
             "deleted": False,
-            "bot": False,
             "verified": True,
             "restricted": False,
             "min": False,
@@ -90,6 +95,8 @@ class User(Model):
             access_hash=peer.access_hash if peer is not None else 1,
             status=await models.Presence.to_tl_or_empty(self, current_user),
             contact=contact is not None,
+            bot=self.bot,
+            bot_info_version=1 if self.bot else None,
         )
 
     async def to_tl_birthday(self, user: User) -> Birthday | None:

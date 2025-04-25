@@ -332,11 +332,9 @@ class Message(Model):
 
     @classmethod
     async def create_for_peer(
-            cls, user: models.User, peer: models.Peer, random_id: int | None, reply_to_message_id: int | None,
+            cls, peer: models.Peer, random_id: int | None, reply_to_message_id: int | None,
             author: models.User, opposite: bool = True, **message_kwargs
     ) -> dict[models.Peer, Message]:
-        from piltover.app.utils.updates_manager import UpdatesManager
-
         if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
             raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
@@ -368,9 +366,6 @@ class Message(Model):
                 **message_kwargs
             )
             message_kwargs.pop("random_id", None)
-
-        presence = await models.Presence.update_to_now(user)
-        await UpdatesManager.update_status(user, presence, peers[1:])
 
         return messages
 

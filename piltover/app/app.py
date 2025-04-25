@@ -12,6 +12,7 @@ import uvloop
 from aerich import Command, Migrate
 from loguru import logger
 from tortoise import Tortoise, connections
+from tortoise.expressions import Q
 
 from piltover.app import root_dir, files_dir
 from piltover.app.handlers import register_handlers
@@ -124,12 +125,24 @@ async def _create_system_data(system_users: bool = True, countries_list: bool = 
     if system_users:
         logger.info("Creating system user...")
 
-        from piltover.db.models import User
-        await User.update_or_create(id=777000, defaults={
+        from piltover.db.models import User, Username
+        sys_user, _ = await User.update_or_create(id=777000, defaults={
             "phone_number": "42777",
             "first_name": AppConfig.NAME,
-            "username": AppConfig.SYS_USER_USERNAME,
         })
+        await Username.filter(Q(user=sys_user) | Q(username=AppConfig.SYS_USER_USERNAME)).delete()
+        await Username.create(user=sys_user, username=AppConfig.SYS_USER_USERNAME)
+
+        test_bot = await User.get_or_none(usernames__username="test_bot")
+        if test_bot is None:
+            test_bot = await User.create(phone_number=None, first_name="Test Bot", bot=True)
+        else:
+            test_bot.phone_number = None
+            test_bot.first_name = "Test Bot"
+            test_bot.bot = True
+            await test_bot.save(update_fields=["phone_number", "first_name", "bot"])
+        await Username.filter(Q(user=test_bot) | Q(username="test_bot")).delete()
+        await Username.create(user=test_bot, username="test_bot")
 
     auth_countries_list_file = data / "auth_countries_list.json"
     if countries_list and auth_countries_list_file.exists():
