@@ -61,7 +61,7 @@ class User(Model):
         defaults = {
             "mutual_contact": False,
             "deleted": False,
-            "verified": True,
+            "verified": False,
             "restricted": False,
             "min": False,
             "support": False,

@@ -16,7 +16,8 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
     SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
-    InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll
+    InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_136, \
+    InputMediaDocument_136, TextWithEntities
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148, DeleteHistory
@@ -28,14 +29,17 @@ handler = MessageHandler("messages.sending")
 
 InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument \
              | InputMediaPoll
-DocOrPhotoMedia = (InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, InputMediaDocument)
+DocOrPhotoMedia = (
+    InputMediaUploadedDocument, InputMediaUploadedDocument_136, InputMediaUploadedPhoto, InputMediaPhoto,
+    InputMediaDocument, InputMediaDocument_136,
+)
 
 
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         opposite: bool = True, **message_kwargs
 ) -> Updates:
-    if opposite and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
+    if opposite and peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
         opposite = False
 
     messages = await Message.create_for_peer(
@@ -59,7 +63,7 @@ async def send_message_internal(
     if (upd := await UpdatesManager.send_message(user, messages)) is None:
         raise RuntimeError("unreachable ?")
 
-    if peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
+    if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
         bot_message = await bots.process_message_to_bot(peer, messages[peer])
         if bot_message is not None:
             if (bot_upd := await UpdatesManager.send_message(user, {peer: bot_message})) is None:
@@ -284,7 +288,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     media_type: MediaType | None = None
     attributes = []
 
-    if isinstance(media, InputMediaUploadedDocument):
+    if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_136)):
         mime = media.mime_type
         media_type = MediaType.DOCUMENT
         attributes = media.attributes
@@ -294,12 +298,12 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     elif isinstance(media, InputMediaPoll):
         media_type = MediaType.POLL
 
-    if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedPhoto)):
+    if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_136, InputMediaUploadedPhoto)):
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
         file = await uploaded_file.finalize_upload(mime, attributes)
-    elif isinstance(media, (InputMediaPhoto, InputMediaDocument)):
+    elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_136)):
         file = await File.get_or_none(
             id=media.id.id, fileaccesss__user=user, fileaccesss__access_hash=media.id.access_hash,
             fileaccesss__file_reference=media.id.file_reference, fileaccesss__expires__gt=datetime.now(UTC),
@@ -311,13 +315,19 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 
         media_type = MediaType.PHOTO if isinstance(media, InputMediaPhoto) else MediaType.DOCUMENT
     elif isinstance(media, InputMediaPoll):
+        # TODO: support poll question entities
+        if isinstance(media.poll.question, TextWithEntities):
+            poll_question_text = media.poll.question.text
+        else:
+            poll_question_text = media.poll.question
+
         if media.poll.quiz and media.poll.multiple_choice:
             raise ErrorRpc(error_code=400, error_message="QUIZ_MULTIPLE_INVALID")
         if media.poll.quiz and not media.correct_answers:
             raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWERS_EMPTY")
         if media.poll.quiz and len(media.correct_answers) > 1:
             raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWERS_TOO_MUCH")
-        if not media.poll.question or len(media.poll.question) > 255:
+        if not poll_question_text or len(poll_question_text) > 255:
             raise ErrorRpc(error_code=400, error_message="POLL_QUESTION_INVALID")
         if len(media.poll.answers) < 2 or len(media.poll.answers) > 10:
             raise ErrorRpc(error_code=400, error_message="POLL_ANSWERS_INVALID")
@@ -328,7 +338,12 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         for answer in media.poll.answers:
             if answer.option in answers:
                 raise ErrorRpc(error_code=400, error_message="POLL_OPTION_DUPLICATE")
-            if not answer.option or len(answer.option) > 100 or not answer.text or len(answer.text) > 100:
+            # TODO: support poll answers entities
+            if isinstance(answer.text, TextWithEntities):
+                answer_text = answer.text.text
+            else:
+                answer_text = answer.text
+            if not answer.option or len(answer.option) > 100 or not answer_text or len(answer_text) > 100:
                 raise ErrorRpc(error_code=400, error_message="POLL_ANSWER_INVALID")
         if media.poll.quiz and media.correct_answers[0] not in answers:
             raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWER_INVALID")
@@ -551,7 +566,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
         if not single_media.random_id:
             raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
-        if not isinstance(single_media.media, (InputMediaPhoto, InputMediaDocument)):
+        if not isinstance(single_media.media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_136)):
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         media_id = single_media.media.id

@@ -18,7 +18,7 @@ from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, Ch
     MessageActionChatJoinedByRequest
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
-    HideChatJoinRequest, HideAllChatJoinRequests
+    HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_136
 from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters, \
     ExportedChatInvite
 from piltover.worker import MessageHandler
@@ -60,6 +60,7 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user: User)
     )
 
 
+@handler.on_request(ExportChatInvite_136)
 @handler.on_request(ExportChatInvite)
 async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInviteExported:
     peer = await Peer.from_input_peer_raise(user, request.peer)

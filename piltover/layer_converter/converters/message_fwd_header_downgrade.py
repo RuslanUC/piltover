@@ -12,5 +12,5 @@ class MessageFwdHeaderDowngradeTo136(AutoDowngrader):
 class MessageFwdHeaderDontDowngrade(AutoDowngrader):
     BASE_TYPE = MessageFwdHeader
     TARGET_TYPE = MessageFwdHeader
-    TARGET_LAYER = 177
+    TARGET_LAYER = 201
     REMOVE_FIELDS = set()

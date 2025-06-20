@@ -3,7 +3,7 @@ from __future__ import annotations
 from tortoise import Model, fields
 
 from piltover.db import models
-from piltover.tl import PollAnswer as TLPollAnswer
+from piltover.tl import PollAnswer as TLPollAnswer, TextWithEntities
 
 
 class PollAnswer(Model):
@@ -14,4 +14,7 @@ class PollAnswer(Model):
     poll: models.Poll = fields.ForeignKeyField("models.Poll")
 
     def to_tl(self) -> TLPollAnswer:
-        return TLPollAnswer(text=self.text, option=self.option)
+        return TLPollAnswer(
+            text=TextWithEntities(text=self.text, entities=[]),
+            option=self.option,
+        )

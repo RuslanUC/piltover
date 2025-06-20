@@ -6,7 +6,7 @@ from pytz import UTC
 from tortoise import Model, fields
 
 from piltover.db import models
-from piltover.tl import Poll as TLPoll, PollResults, PollAnswerVoters
+from piltover.tl import Poll as TLPoll, PollResults, PollAnswerVoters, TextWithEntities
 
 
 class Poll(Model):
@@ -33,7 +33,7 @@ class Poll(Model):
             public_voters=self.public_voters,
             multiple_choice=self.multiple_choices,
             quiz=self.quiz,
-            question=self.question,
+            question=TextWithEntities(text=self.question, entities=[]),
             answers=[
                 answer.to_tl()
                 async for answer in self.pollanswers.all()

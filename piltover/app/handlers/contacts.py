@@ -7,7 +7,8 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
-    GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_136, Unblock_136
+    GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_136, Unblock_136, \
+    ResolveUsername_136
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, BlockedSlice
 from piltover.worker import MessageHandler
 
@@ -52,6 +53,7 @@ async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
     )
 
 
+@handler.on_request(ResolveUsername_136)
 @handler.on_request(ResolveUsername)
 async def resolve_username(request: ResolveUsername, user: User) -> ResolvedPeer:
     resolved_username = await Username.get_or_none(username=request.username).select_related("user", "channel")

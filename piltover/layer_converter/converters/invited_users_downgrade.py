@@ -15,5 +15,5 @@ class InvitedUsersDowngradeTo136(BaseDowngrader):
 class InvitedUsersDontDowngrade(AutoDowngrader):
     BASE_TYPE = InvitedUsers
     TARGET_TYPE = InvitedUsers
-    TARGET_LAYER = 177
+    TARGET_LAYER = 201
     REMOVE_FIELDS = set()

@@ -22,6 +22,6 @@ class MessageReplyHeaderDowngradeTo166(AutoDowngrader):
 
 class MessageReplyHeaderDontDowngrade(AutoDowngrader):
     BASE_TYPE = MessageReplyHeader
-    TARGET_LAYER = 177
+    TARGET_LAYER = 201
     TARGET_TYPE = MessageReplyHeader
     REMOVE_FIELDS = set()
