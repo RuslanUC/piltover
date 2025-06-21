@@ -114,7 +114,9 @@ class PrivacyRule(Model):
 
         if current_id == target_id:
             return True
-        if await models.Peer.filter(owner__id=target_id, user__id=current_id, type=PeerType.USER, blocked=True).exists():
+        if await models.Peer.filter(
+                owner__id=target_id, user__id=current_id, type=PeerType.USER, blocked_at__not_isnull=True,
+        ).exists():
             return False
 
         rules = {rule.value: rule for rule in await cls.filter(user__id=target_id, key=key)}

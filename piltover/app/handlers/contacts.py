@@ -1,4 +1,6 @@
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+
+from pytz import UTC
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType
@@ -53,6 +55,19 @@ async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
     )
 
 
+async def _format_resolved_peer_by_phone(user: User, resolved: User) -> ResolvedPeer:
+    if resolved == user:
+        peer, _ = await Peer.get_or_create(owner=user, user=None, type=PeerType.SELF)
+    else:
+        peer, _ = await Peer.get_or_create(owner=user, user=resolved, type=PeerType.USER)
+
+    return ResolvedPeer(
+        peer=peer.to_tl(),
+        chats=[],
+        users=[await resolved.to_tl(user)],
+    )
+
+
 @handler.on_request(ResolveUsername_136)
 @handler.on_request(ResolveUsername)
 async def resolve_username(request: ResolveUsername, user: User) -> ResolvedPeer:
@@ -66,12 +81,16 @@ async def resolve_username(request: ResolveUsername, user: User) -> ResolvedPeer
 @handler.on_request(GetBlocked)
 async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice:
     limit = max(min(request.limit, 1), 100)
-    blocked_query = Peer.filter(owner=user, type=PeerType.USER, blocked=True).select_related("user").order_by("-id")
+    blocked_query = Peer.filter(
+        owner=user, type=PeerType.USER, blocked_at__not_isnull=True,
+    ).select_related("user").order_by("-id")
     blocked_peers = await blocked_query.limit(limit).offset(request.offset)
     count = await blocked_query.count()
 
-    # TODO: date?
-    peers_blocked = [PeerBlocked(peer_id=peer.to_tl(), date=0) for peer in blocked_peers]
+    peers_blocked = [
+        PeerBlocked(peer_id=peer.to_tl(), date=int(peer.blocked_at.timestamp()))
+        for peer in blocked_peers
+    ]
     users = [await blocked.user.to_tl(user) for blocked in blocked_peers]
 
     if count > (limit + request.offset):
@@ -137,10 +156,10 @@ async def get_birthdays(user: User) -> ContactBirthdays:
 
 @handler.on_request(ResolvePhone)
 async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
-    if (resolved := await User.get_or_none(phonu_number=request.phone)) is None:
+    if (resolved := await User.get_or_none(phone_number=request.phone)) is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_NOT_OCCUPIED")
 
-    return await _format_resolved_peer(user, resolved)
+    return await _format_resolved_peer_by_phone(user, resolved)
 
 
 @handler.on_request(AddContact)
@@ -196,9 +215,9 @@ async def block_unblock(request: Block, user: User) -> bool:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     to_block = isinstance(request, (Block, Block_136))
-    if peer.blocked != to_block:
-        peer.blocked = to_block
-        await peer.save(update_fields=["blocked"])
+    if bool(peer.blocked_at) != to_block:
+        peer.blocked_at = datetime.now(UTC) if to_block else None
+        await peer.save(update_fields=["blocked_at"])
         await UpdatesManager.block_unblock_user(user, peer)
 
     return True

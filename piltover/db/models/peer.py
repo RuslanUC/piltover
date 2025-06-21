@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from os import urandom
 
 from tortoise import fields, Model
@@ -25,7 +26,7 @@ class Peer(Model):
     owner: models.User = fields.ForeignKeyField("models.User", related_name="owner", null=True)
     type: PeerType = fields.IntEnumField(PeerType)
     access_hash: int = fields.BigIntField(default=gen_access_hash)
-    blocked: bool = fields.BooleanField(default=False)
+    blocked_at: datetime = fields.DatetimeField(null=True, default=None)
 
     user: models.User | None = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)
@@ -94,7 +95,7 @@ class Peer(Model):
             if self.user_id == 777000:
                 return []
             peer, created = await Peer.get_or_create(type=PeerType.USER, owner=self.user, user=self.owner)
-            if peer.blocked:
+            if peer.blocked_at is not None:
                 return []
             if not created:
                 await peer.fetch_related("owner")

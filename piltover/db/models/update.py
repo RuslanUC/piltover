@@ -221,7 +221,7 @@ class Update(Model):
 
                 return UpdatePeerBlocked(
                     peer_id=peer.to_tl(),
-                    blocked=peer.blocked,
+                    blocked=peer.blocked_at is not None,
                 ), users_q, chats_q, channels_q
 
             case UpdateType.UPDATE_CHAT:

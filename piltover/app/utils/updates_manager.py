@@ -759,7 +759,7 @@ class UpdatesManager:
             updates=[
                 UpdatePeerBlocked(
                     peer_id=target.to_tl(),
-                    blocked=target.blocked,
+                    blocked=target.blocked_at is not None,
                 ),
             ],
             users=[await target.user.to_tl(user)],
