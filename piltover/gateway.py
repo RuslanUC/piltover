@@ -30,7 +30,7 @@ except ImportError:
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, ServerSalt
 from piltover.exceptions import Disconnection, InvalidConstructorException
-from piltover.session_manager import Session, SessionManager
+from piltover.session_manager import Session, SessionManager, MsgIdValues
 from piltover.tl import TLObject, SerializationUtils, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, \
     RpcError, Vector
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
@@ -120,7 +120,7 @@ class Gateway:
 class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "auth_data", "empty_session", "session", "no_updates",
-        "layer", "authorization", "disconnect_timeout", "channels_loaded_at",
+        "layer", "authorization", "disconnect_timeout", "channels_loaded_at", "msg_id_values",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -132,8 +132,9 @@ class Client:
         self.peername: tuple[str, int] = writer.get_extra_info("peername")
 
         self.auth_data: AuthData | GenAuthData | None = None
-        self.empty_session = Session(self, 0)
+        self.empty_session = Session(self, 0, MsgIdValues())
         self.session: Session | None = None
+        self.msg_id_values = MsgIdValues()
         self.authorization: tuple[UserAuthorization | None, int | float] = (None, 0)
         self.channels_loaded_at = 0.0
 
@@ -148,7 +149,7 @@ class Client:
                 return self.session, False
             self.session.destroy()
 
-        self.session, created = SessionManager.get_or_create(self, session_id)
+        self.session, created = SessionManager.get_or_create(self, session_id, self.msg_id_values)
         if not created and self.session.online:
             self.session.destroy()
             return self._get_session(session_id)
@@ -347,7 +348,7 @@ class Client:
                     bad_msg_seqno=packet.seq_no,
                     error_code=error_code,
                 ),
-                Session(self, packet.session_id),
+                Session(self, packet.session_id, self.msg_id_values),
                 packet,
             )
             return True
@@ -366,7 +367,7 @@ class Client:
                     error_code=48,
                     new_server_salt=Long.read_bytes(await self.server.get_current_salt()),
                 ),
-                Session(self, packet.session_id),
+                Session(self, packet.session_id, self.msg_id_values),
                 packet,
             )
             return True

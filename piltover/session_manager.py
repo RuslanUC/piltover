@@ -26,20 +26,27 @@ class KeyInfo:
     auth_key_id: int
 
 
+class MsgIdValues:
+    __slots__ = ("last_time", "offset",)
+
+    def __init__(self, last_time: int = 0, offset: int = 0):
+        self.last_time = last_time
+        self.offset = offset
+
+
 @dataclass
 class Session:
     # TODO: store sessions in redis or something (with non-acked messages) to be able to restore session after reconnect
 
     client: Client | None
     session_id: int
+    msg_id_values: MsgIdValues
     auth_key: KeyInfo | None = None
     user_id: int | None = None
     channel_ids: list[int] = field(default_factory=list)
     min_msg_id: int = 0
     online: bool = False
 
-    msg_id_last_time = 0
-    msg_id_offset = 0
     incoming_content_related_msgs = 0
     outgoing_content_related_msgs = 0
 
@@ -49,11 +56,12 @@ class Session:
         # a client message, and 3 otherwise.
 
         now = int(time())
-        self.msg_id_offset = (self.msg_id_offset + 4) if now == self.msg_id_last_time else 0
-        msg_id = (now * 2 ** 32) + self.msg_id_offset + (1 if in_reply else 3)
-        self.msg_id_last_time = now
+        self.msg_id_values.offset = (self.msg_id_values.offset + 4) if now == self.msg_id_values.last_time else 0
+        self.msg_id_values.last_time = now
+        msg_id = (now * 2 ** 32) + self.msg_id_values.offset + (1 if in_reply else 3)
 
         assert msg_id % 4 in [1, 3], f"Invalid server msg_id: {msg_id}"
+        logger.info(f"Got msg id {msg_id} in session ({hex(id(self))})")
         return msg_id
 
     def update_incoming_content_related_msgs(self, obj: TLObject, seq_no: int):
@@ -69,6 +77,20 @@ class Session:
             ret += 1
         return ret
 
+    def _update_time_and_offset_from_message_maybe(self, msg_id: int) -> None:
+        msg_time = msg_id >> 32
+        if msg_time < self.msg_id_values.last_time:
+            return
+
+        if int(time()) >= msg_time:
+            self.msg_id_values.last_time = msg_time
+
+        msg_offset = msg_id & 0xffffffff
+        msg_offset = (msg_offset >> 2) << 2
+
+        if msg_offset > self.msg_id_values.offset:
+            self.msg_id_values.offset = msg_offset
+
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
     def pack_message(
             self, obj: TLObject, originating_request: Message | DecryptedMessagePacket | None = None
@@ -79,6 +101,7 @@ class Session:
             if is_content_related(obj):
                 msg_id = self.msg_id(in_reply=True)
             else:
+                self._update_time_and_offset_from_message_maybe(originating_request.message_id)
                 msg_id = originating_request.message_id + 1
 
         return Message(
@@ -188,11 +211,16 @@ class SessionManager:
         cls.broker = broker
 
     @classmethod
-    def get_or_create(cls, client: Client, session_id: int) -> tuple[Session, bool]:
+    def get_or_create(
+            cls, client: Client, session_id: int, msg_id_values: MsgIdValues | None = None,
+    ) -> tuple[Session, bool]:
         if session_id not in cls.sessions:
             cls.sessions[session_id] = {}
         if client.auth_data.auth_key_id in cls.sessions[session_id]:
             return cls.sessions[session_id][client.auth_data.auth_key_id], False
+
+        if msg_id_values is None:
+            msg_id_values = MsgIdValues()
 
         session = Session(
             client=client,
@@ -201,6 +229,7 @@ class SessionManager:
                 auth_key=client.auth_data.auth_key,
                 auth_key_id=client.auth_data.auth_key_id,
             ),
+            msg_id_values=msg_id_values,
         )
         cls.sessions[session_id][client.auth_data.auth_key_id] = session
         return session, True

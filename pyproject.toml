@@ -33,6 +33,8 @@ aerich = "^0.8.2"
 pillow = "^11.0.0"
 mtproto = "^0.1.0b12"
 aiofiles = "^24.1.0"
+# Taskiq >= 0.11.16 has some problem with __name__ attribute of class methods
+#  https://github.com/taskiq-python/taskiq/issues/436
 taskiq = "0.11.11"
 taskiq-aio-pika = "^0.4.1"
 taskiq-redis = "^1.0.2"
