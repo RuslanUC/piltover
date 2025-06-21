@@ -7,11 +7,12 @@ from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Contact, Username
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked
+from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_136, Unblock_136, \
-    ResolveUsername_136
-from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, BlockedSlice
+    ResolveUsername_136, ImportContacts
+from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, BlockedSlice, \
+    ImportedContacts
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("contacts")
@@ -221,3 +222,70 @@ async def block_unblock(request: Block, user: User) -> bool:
         await UpdatesManager.block_unblock_user(user, peer)
 
     return True
+
+
+@handler.on_request(ImportContacts)
+async def import_contacts(request: ImportContacts, user: User) -> ImportedContacts:
+    to_import = request.contacts[:100]
+    to_retry = [contact.client_id for contact in request.contacts[100:]]
+
+    phone_numbers = {
+        contact.phone.strip("+"): idx
+        for idx, contact in enumerate(to_import)
+        if contact.phone.strip("+").isdigit()
+    }
+
+    # TODO: check target users privacy settings, if they allow to find them by phone number
+    users = {
+        contact.id: contact
+        for contact in await User.filter(id__not=user.id, phone_number__in=list(phone_numbers.keys()))
+    }
+    existing_contacts = {
+        contact.target_id: contact
+        for contact in await Contact.filter(owner=user, id__in=list(users.keys()))
+    }
+
+    imported = []
+
+    to_create = []
+    to_update = []
+    for user_id, contact_user in users.items():
+        if user.phone_number not in phone_numbers:
+            continue  # TODO: or place in to_retry?
+
+        input_contact = to_import[phone_numbers[user.phone_number]]
+
+        # TODO: fill Contact.phone_number from request?
+
+        if user_id in existing_contacts:
+            contact = existing_contacts[user_id]
+            if contact.first_name == input_contact.first_name and contact.last_name == input_contact.last_name:
+                continue
+            contact.first_name = input_contact.first_name
+            contact.last_name = input_contact.last_name
+            to_update.append(contact)
+        else:
+            contact = Contact(
+                owner=user,
+                target=contact_user,
+                first_name=input_contact.first_name,
+                last_name=input_contact.last_name,
+            )
+            to_create.append(contact)
+
+        imported.append(ImportedContact(user_id=user_id, client_id=input_contact.client_id))
+
+    await Contact.bulk_update(to_update, fields=["first_name", "last_name"])
+    await Contact.bulk_create(to_create)
+
+    # TODO: updates
+
+    return ImportedContacts(
+        imported=imported,
+        popular_invites=[],
+        retry_contacts=to_retry,
+        users=[
+            await contact_user.to_tl(user)
+            for contact_user in users.values()
+        ],
+    )
