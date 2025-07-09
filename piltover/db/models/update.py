@@ -8,18 +8,18 @@ from tortoise.expressions import Q
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
-    UpdateDialogFilterOrder
+    UpdateDialogFilterOrder, EncryptedChatDiscarded
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
-    UpdateMessagePoll, UpdateDialogFilter
+    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
-              | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder
+              | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption
 
 
 class Update(Model):
@@ -328,5 +328,25 @@ class Update(Model):
 
             case UpdateType.FOLDERS_ORDER:
                 return UpdateDialogFilterOrder(order=self.related_ids), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_ENCRYPTION:
+                if (chat := await models.EncryptedChat.get_or_none(id=self.related_id)) is None:
+                    return none_ret
+
+                other_user_id = chat.from_user_id if user.id == chat.to_user_id else chat.to_user_id
+                users_q |= Q(id=other_user_id)
+
+                return UpdateEncryption(
+                    chat=await chat.to_tl(user),
+                    date=int(self.date.timestamp()),
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.DISCARD_ENCRYPTION:
+                history_deleted = self.additional_data[0] if self.additional_data else False
+
+                return UpdateEncryption(
+                    chat=EncryptedChatDiscarded(id=self.related_id, history_deleted=history_deleted),
+                    date=int(self.date.timestamp()),
+                ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

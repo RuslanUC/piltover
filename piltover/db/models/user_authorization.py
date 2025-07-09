@@ -6,7 +6,7 @@ from os import urandom
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.tl import Authorization
+from piltover.tl import Authorization, Long
 
 
 def gen_hash():
@@ -20,6 +20,9 @@ class UserAuthorization(Model):
     created_at: datetime = fields.DatetimeField(default=datetime.now)
     active_at: datetime = fields.DatetimeField(default=datetime.now)
     mfa_pending: bool = fields.BooleanField(default=False)
+    allow_encrypted_requests: bool = fields.BooleanField(default=True)
+    allow_call_requests: bool = fields.BooleanField(default=True)
+    # TODO: confirmed
 
     platform: str = fields.CharField(max_length=128, default="Unknown")
     device_model: str = fields.CharField(max_length=128, default="Unknown")
@@ -33,11 +36,9 @@ class UserAuthorization(Model):
     key: models.AuthKey = fields.ForeignKeyField("models.AuthKey", on_delete=fields.CASCADE, unique=True)
 
     def to_tl(self, **kwargs) -> Authorization:
-        kwargs["hash"] = 0 if kwargs.get("current", False) else int(self.hash[:-16], 16)
+        kwargs["hash"] = 0 if kwargs.get("current", False) else Long.read_bytes(bytes.fromhex(self.hash[:-16]))
         defaults = {
             "official_app": True,
-            "encrypted_requests_disabled": True,
-            "call_requests_disabled": True,
             "country": "US",
             "region": "Telegram HQ",
         } | kwargs
@@ -53,5 +54,7 @@ class UserAuthorization(Model):
             system_version=self.system_version,
             app_version=self.app_version,
             password_pending=self.mfa_pending,
+            encrypted_requests_disabled=self.allow_encrypted_requests,
+            call_requests_disabled=self.allow_call_requests,
             **defaults
         )

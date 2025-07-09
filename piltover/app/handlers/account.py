@@ -11,12 +11,13 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
-    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser
+    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
-    SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday
+    SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
+    ChangeAuthorizationSettings
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
 from piltover.tl.types.internal import SetSessionInternalPush
@@ -352,5 +353,23 @@ async def update_birthday(request: UpdateBirthday, user: User) -> bool:
         user.birthday = after
         await user.save(update_fields=["birthday"])
         await UpdatesManager.update_user(user)
+
+    return True
+
+
+@handler.on_request(ChangeAuthorizationSettings)
+async def change_auth_settings(request: ChangeAuthorizationSettings, user: User) -> bool:
+    auth_hash_hex = Long.write(request.hash).hex()
+    auth = await UserAuthorization.get_or_none(user=user, hash__startswith=auth_hash_hex)
+    if auth is None:
+        raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
+
+    if auth.allow_encrypted_requests == (not request.encrypted_requests_disabled) \
+            and auth.allow_call_requests == (not request.call_requests_disabled):
+        return True
+
+    auth.allow_encrypted_requests = not request.encrypted_requests_disabled
+    auth.allow_call_requests = not request.call_requests_disabled
+    await auth.save(update_fields=["allow_encrypted_requests", "allow_call_requests"])
 
     return True

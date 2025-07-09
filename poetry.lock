@@ -690,6 +690,21 @@ typing-extensions = {version = ">=4.6.0", markers = "python_version < \"3.13\""}
 test = ["pytest (>=6)"]
 
 [[package]]
+name = "fastrand"
+version = "3.0.6"
+description = "Fast random number generation in Python"
+optional = false
+python-versions = "*"
+files = []
+develop = false
+
+[package.source]
+type = "git"
+url = "https://github.com/RuslanUC/fastrand.git"
+reference = "feat/add-functions-to-generate-random-bytes"
+resolved_reference = "04a2e8ca53f319a7c3a09c51734c21ab7880e9ed"
+
+[[package]]
 name = "frozenlist"
 version = "1.7.0"
 description = "A list-like structure which implements collections.abc.MutableSequence"
@@ -2382,4 +2397,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "9b0e49b1bf0ea72194d62b15332efd904a36639368a3ce9ad3141c8f5d13fdd5"
+content-hash = "26b739378bba3b5fbf31cca701b4466b83ad047828887e03305f2de792466138"

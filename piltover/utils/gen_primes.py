@@ -83,7 +83,7 @@ CURRENT_DH_PRIME = int(
     "0D8115F635B105EE2E4E15D04B2454BF6F4FADF034B10403119CD8E3B92FCC5B",
     16,
 )
-
+CURRENT_DH_VERSION = 1
 
 # noinspection PyUnusedLocal
 def gen_safe_prime(size: int = 2048) -> tuple[int, int]:

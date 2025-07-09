@@ -6,7 +6,7 @@ from tortoise.queryset import QuerySet
 
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
-    ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder
+    ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -16,7 +16,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
-    UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions
+    UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, EncryptedChatDiscarded
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat
 
 
@@ -1132,6 +1132,75 @@ class UpdatesManager:
             seq=0,
         )
 
+        await SessionManager.send(updates, user.id)
+
+        return updates
+
+    @staticmethod
+    async def encryption_update(user: User, chat: EncryptedChat, sessions: list[UserAuthorization]):
+        # TODO: qts?
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.filter(user=user, update_type=UpdateType.UPDATE_ENCRYPTION, related_id=chat.id).delete()
+        update = await Update.create(
+            user=user,
+            update_type=UpdateType.UPDATE_ENCRYPTION,
+            pts=new_pts,
+            pts_count=1,
+            related_id=chat.id,
+        )
+
+        other_user = chat.from_user if user.id == chat.to_user_id else chat.to_user
+        other_user = await other_user
+
+        chat_tl = await chat.to_tl(user)
+        updates = Updates(
+            updates=[
+                UpdateEncryption(
+                    chat=chat_tl,
+                    date=int(update.date.timestamp()),
+                )
+            ],
+            users=[await other_user.to_tl(user)],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        # TODO: send to `sessions` and not to `user.id`
+        await SessionManager.send(updates, user.id)
+
+        return updates
+
+    @staticmethod
+    async def encryption_discard(user: User, chat_id: int, delete_history: bool, sessions: list[UserAuthorization]):
+        # TODO: qts?
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.filter(user=user, update_type=UpdateType.UPDATE_ENCRYPTION, related_id=chat_id).delete()
+        update = await Update.create(
+            user=user,
+            update_type=UpdateType.DISCARD_ENCRYPTION,
+            pts=new_pts,
+            pts_count=1,
+            related_id=chat_id,
+            additional_data=[delete_history],
+        )
+
+        updates = Updates(
+            updates=[
+                UpdateEncryption(
+                    chat=EncryptedChatDiscarded(id=chat_id, history_deleted=delete_history),
+                    date=int(update.date.timestamp()),
+                )
+            ],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        # TODO: send to `sessions` and not to `user.id`
         await SessionManager.send(updates, user.id)
 
         return updates

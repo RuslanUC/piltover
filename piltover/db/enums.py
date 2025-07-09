@@ -76,6 +76,8 @@ class UpdateType(IntEnum):
     UPDATE_POLL = 19
     UPDATE_FOLDER = 20
     FOLDERS_ORDER = 21
+    UPDATE_ENCRYPTION = 22
+    DISCARD_ENCRYPTION = 23
 
 
 class PeerType(IntEnum):

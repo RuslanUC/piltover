@@ -24,6 +24,8 @@ class State(Model):
 
     @classmethod
     async def add_pts(cls, user: models.User, pts: int, cache_state: bool = True) -> int:
+        # TODO: add pts in transaction?
+
         if hasattr(user, "_cached_updates_state") and cache_state:
             state = getattr(user, "_cached_updates_state")
         else:
