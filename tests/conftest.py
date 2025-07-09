@@ -3,7 +3,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 import logging
-from asyncio import Event, Lock, timeout
+from asyncio import Event, Lock, timeout, Task, DefaultEventLoopPolicy
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from os import urandom
@@ -395,3 +395,25 @@ class InterceptHandler(logging.Handler):
 
 InterceptHandler.redirect_to_loguru("pyrogram")
 InterceptHandler.redirect_to_loguru("aiocache.base", logging.DEBUG)
+
+
+def _async_task_done_callback(task: Task) -> None:
+    if task.exception() is not None:
+        logger.opt(exception=task.exception()).error("Async task raised an exception")
+
+
+class CustomEventLoop(DefaultEventLoopPolicy._loop_factory):
+    def create_task(self, *args, **kwargs) -> Task:
+        task: Task = super().create_task(*args, **kwargs)
+        task.add_done_callback(_async_task_done_callback)
+        return task
+
+
+class CustomEventLoopPolicy(DefaultEventLoopPolicy):
+    _loop_factory = CustomEventLoop
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy(request):
+    return CustomEventLoopPolicy()
+
