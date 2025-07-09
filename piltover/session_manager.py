@@ -139,8 +139,7 @@ class Session:
         SessionManager.cleanup(self)
 
     async def _fetch_lazy_field(self, lazy_obj: LazyChannel | LazyMessage | LazyUser | LazyChat) -> TLObject:
-        # TODO: check if just User(id=self.user_id, phone_number=0) will work
-        user = await User.get(id=self.user_id)
+        user = User(id=self.user_id, phone_number=0)
 
         if isinstance(lazy_obj, LazyChannel):
             channel = await Channel.get_or_none(id=lazy_obj.channel_id)
@@ -191,10 +190,11 @@ class Session:
 
         if isinstance(obj, Updates):
             key = await AuthKey.get_or_temp(self.auth_key.auth_key_id)
-            auth = await UserAuthorization.get(key__id=str(key.id if isinstance(key, AuthKey) else key.perm_key.id))
-            auth.upd_seq += 1
-            await auth.save(update_fields=["upd_seq"])
-            obj.seq = auth.upd_seq
+            if key is not None:
+                auth = await UserAuthorization.get(key__id=str(key.id if isinstance(key, AuthKey) else key.perm_key.id))
+                auth.upd_seq += 1
+                await auth.save(update_fields=["upd_seq"])
+                obj.seq = auth.upd_seq
 
         try:
             await self.client.send(obj, self)
