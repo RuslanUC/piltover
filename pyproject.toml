@@ -51,6 +51,7 @@ py-spy = "^0.4.0"
 snakeviz = "^2.2.2"
 tuna = "^0.5.11"
 pyrogram = "^2.0.106"
+tg-secret = "^0.1.1"
 
 
 [tool.poetry.group.test.dependencies]

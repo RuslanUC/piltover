@@ -1167,8 +1167,7 @@ class UpdatesManager:
             seq=0,
         )
 
-        # TODO: send to `sessions` and not to `user.id`
-        await SessionManager.send(updates, user.id)
+        await SessionManager.send(updates, auth_id=[session.id for session in sessions])
 
         return updates
 
@@ -1200,7 +1199,6 @@ class UpdatesManager:
             seq=0,
         )
 
-        # TODO: send to `sessions` and not to `user.id`
-        await SessionManager.send(updates, user.id)
+        await SessionManager.send(updates, auth_id=[session.id for session in sessions])
 
         return updates

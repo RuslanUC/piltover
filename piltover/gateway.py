@@ -227,7 +227,7 @@ class Client:
         ))
 
     async def _kiq(
-            self, obj: TLObject, session: Session | None = None, message_id: int | None = None
+            self, obj: TLObject, session: Session, message_id: int | None = None
     ) -> AsyncTaskiqTask:
         auth_key_id = (self.auth_data.auth_key_id or None) if self.auth_data else None
         is_temp = self.auth_data.is_temp if self.auth_data and auth_key_id else False
@@ -268,6 +268,12 @@ class Client:
                 channels_to_add = new_channels - old_channels
 
                 SessionManager.broker.channels_diff_update(session, channels_to_delete, channels_to_add)
+
+            old_auth_id = session.auth_id
+            if old_auth_id != auth_id:
+                session.auth_id = auth_id
+                SessionManager.broker.unsubscribe_auth(old_auth_id, session)
+                SessionManager.broker.subscribe_auth(auth_id, session)
 
          # TODO: dont do .write.hex(), RpcResponse somehow dont need encoding it manually, check how exactly
         return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(CallRpc(

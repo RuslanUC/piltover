@@ -29,6 +29,7 @@ class BaseMessageBroker(ABC):
         self.subscribed_users: dict[int, set[Session]] = {}
         self.subscribed_sessions: dict[int, Session] = {}
         self.subscribed_keys: dict[int, set[Session]] = {}
+        self.subscribed_auths: dict[int, set[Session]] = {}
         self.subscribed_channels: dict[int, set[Session]] = {}
 
     @abstractmethod
@@ -43,39 +44,63 @@ class BaseMessageBroker(ABC):
     @abstractmethod
     async def _listen(self) -> None: ...
 
-    def subscribe(self, session: Session) -> None:
-        self.subscribed_sessions[session.session_id] = session
+    def subscribe_user(self, user_id: int, session: Session) -> None:
+        if user_id:
+            if user_id not in self.subscribed_users:
+                self.subscribed_users[user_id] = set()
 
-        if session.auth_key:
-            key_id = session.auth_key.auth_key_id
+            self.subscribed_users[user_id].add(session)
+
+    def subscribe_key(self, key_id: int, session: Session) -> None:
+        if key_id:
             if key_id not in self.subscribed_keys:
                 self.subscribed_keys[key_id] = set()
 
             self.subscribed_keys[key_id].add(session)
 
-        if session.user_id:
-            if session.user_id not in self.subscribed_users:
-                self.subscribed_users[session.user_id] = set()
+    def subscribe_auth(self, auth_id: int, session: Session) -> None:
+        if auth_id:
+            if auth_id not in self.subscribed_auths:
+                self.subscribed_auths[auth_id] = set()
 
-            self.subscribed_users[session.user_id].add(session)
+            self.subscribed_auths[auth_id].add(session)
+
+    def subscribe(self, session: Session) -> None:
+        self.subscribed_sessions[session.session_id] = session
+
+        self.subscribe_user(session.user_id, session)
+        self.subscribe_key(session.auth_key.auth_key_id if session.auth_key else None, session)
+        self.subscribe_auth(session.auth_id, session)
 
         self.channels_diff_update(session, [], session.channel_ids)
 
-    def unsubscribe(self, session: Session) -> None:
-        self.subscribed_sessions.pop(session.session_id, None)
+    def unsubscribe_user(self, user_id: int, session: Session) -> None:
+        if user_id in self.subscribed_users:
+            if session in self.subscribed_users[user_id]:
+                self.subscribed_users[user_id].remove(session)
+            if not self.subscribed_users[user_id]:
+                del self.subscribed_users[user_id]
 
-        if session.user_id in self.subscribed_users:
-            if session in self.subscribed_users[session.user_id]:
-                self.subscribed_users[session.user_id].remove(session)
-            if not self.subscribed_users[session.user_id]:
-                del self.subscribed_users[session.user_id]
-
-        key_id = session.auth_key.auth_key_id if session.auth_key else None
+    def unsubscribe_key(self, key_id: int, session: Session) -> None:
         if key_id in self.subscribed_keys:
             if session in self.subscribed_keys[key_id]:
                 self.subscribed_keys[key_id].remove(session)
             if not self.subscribed_keys[key_id]:
                 del self.subscribed_keys[key_id]
+
+    def unsubscribe_auth(self, auth_id: int, session: Session) -> None:
+        if auth_id in self.subscribed_auths:
+            if session in self.subscribed_auths[auth_id]:
+                self.subscribed_auths[auth_id].remove(session)
+            if not self.subscribed_auths[auth_id]:
+                del self.subscribed_auths[auth_id]
+
+    def unsubscribe(self, session: Session) -> None:
+        self.subscribed_sessions.pop(session.session_id, None)
+
+        self.unsubscribe_user(session.user_id, session)
+        self.unsubscribe_key(session.auth_key.auth_key_id if session.auth_key else None, session)
+        self.unsubscribe_auth(session.auth_id, session)
 
         self.channels_diff_update(session, session.channel_ids, [])
 
@@ -102,10 +127,12 @@ class BaseMessageBroker(ABC):
             users = message.users
             channels = message.channel_ids
             keys = message.key_ids
+            auths = message.auth_ids
         else:
             users = [message.user] if message.user is not None else None
             channels = [message.channel_id] if message.channel_id is not None else None
             keys = [message.key_id] if message.key_id is not None else None
+            auths = [message.auth_id] if message.auth_id is not None else None
 
         send_to = set()
 
@@ -126,6 +153,12 @@ class BaseMessageBroker(ABC):
                 if channel_id not in self.subscribed_channels:
                     continue
                 send_to.update(self.subscribed_channels[channel_id])
+
+        if auths:
+            for auth_id in auths:
+                if auth_id not in self.subscribed_auths:
+                    continue
+                send_to.update(self.subscribed_auths[auth_id])
 
         for session in send_to:
             try:

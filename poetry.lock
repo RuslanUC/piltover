@@ -1844,6 +1844,17 @@ files = [
 ]
 
 [[package]]
+name = "tg-secret"
+version = "0.1.1"
+description = "Secret chats support for Telegram (MTProto) client libraries"
+optional = false
+python-versions = "<4.0,>=3.11"
+files = [
+    {file = "tg_secret-0.1.1-cp311-cp311-manylinux_2_40_x86_64.whl", hash = "sha256:50005c99b3eca90f77253144a51136fcf1d70804177d15810b1e30b66f81e5f5"},
+    {file = "tg_secret-0.1.1.tar.gz", hash = "sha256:a36da66ab69a441ceeeecdffd7b49e2504cd6d1e4af78b9549c2afe6fee81b6a"},
+]
+
+[[package]]
 name = "tgcrypto"
 version = "1.2.5"
 description = "Fast and Portable Cryptography Extension Library for Pyrogram"
@@ -2397,4 +2408,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "26b739378bba3b5fbf31cca701b4466b83ad047828887e03305f2de792466138"
+content-hash = "d15b3cf513aff3007cb7f9a856ca1f2041048b778afb2d6ce0fc4c20159f5e5e"

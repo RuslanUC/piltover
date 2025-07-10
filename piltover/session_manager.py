@@ -12,7 +12,7 @@ from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyChannel, \
-    LazyMessage, LazyUser, LazyChat
+    LazyMessage, LazyUser, LazyChat, MessageToUsers
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -46,6 +46,7 @@ class Session:
     channel_ids: list[int] = field(default_factory=list)
     min_msg_id: int = 0
     online: bool = False
+    auth_id: int | None = None
 
     incoming_content_related_msgs = 0
     outgoing_content_related_msgs = 0
@@ -242,17 +243,44 @@ class SessionManager:
 
     @classmethod
     async def send(
-            cls, obj: TLObject, user_id: int | None = None, key_id: int | None = None, channel_id: int | None = None,
+            cls, obj: TLObject, user_id: int | list[int] | None = None, key_id: int | list[int] | None = None,
+            channel_id: int | list[int] | None = None, auth_id: int | list[int] | None = None,
     ) -> None:
-        if not user_id and not key_id and not channel_id:
+        if not user_id and not key_id and not channel_id and not auth_id:
             return
 
-        await cls.broker.send(MessageToUsersShort(
-            user=user_id,
-            key_id=key_id,
-            channel_id=channel_id,
-            obj=obj,
-        ))
+        if isinstance(user_id, list) and len(user_id) == 1:
+            user_id = user_id[0]
+        if isinstance(key_id, list) and len(key_id) == 1:
+            key_id = key_id[0]
+        if isinstance(channel_id, list) and len(channel_id) == 1:
+            channel_id = channel_id[0]
+        if isinstance(auth_id, list) and len(auth_id) == 1:
+            auth_id = auth_id[0]
+
+        is_short = (user_id is None or isinstance(user_id, int)) \
+                   and (key_id is None or isinstance(key_id, int)) \
+                   and (channel_id is None or isinstance(channel_id, int)) \
+                   and (auth_id is None or isinstance(auth_id, int))
+
+        if is_short:
+            message = MessageToUsersShort(
+                user=user_id,
+                key_id=key_id,
+                channel_id=channel_id,
+                auth_id=auth_id,
+                obj=obj,
+            )
+        else:
+            message = MessageToUsers(
+                users=[user_id] if isinstance(user_id, int) else user_id,
+                key_ids=[key_id] if isinstance(key_id, int) else key_id,
+                channel_ids=[channel_id] if isinstance(channel_id, int) else channel_id,
+                auth_ids=[auth_id] if isinstance(auth_id, int) else auth_id,
+                obj=obj,
+            )
+
+        await cls.broker.send(message)
 
     @classmethod
     async def subscribe_to_channel(cls, channel_id: int, user_ids: list[int]) -> None:
