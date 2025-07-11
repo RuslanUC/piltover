@@ -33,6 +33,7 @@ internal.lazy_user#f6eb7088 user_id:long = internal.LazyField;
 internal.lazy_chat#229eb582 chat_id:long = internal.LazyField;
 internal.lazy_channel#20803892 channel_id:long = internal.LazyField;
 internal.lazy_message#e51fc740 message_id:long = internal.LazyField;
+internal.lazy_encrypted_chat#b6696ef8 chat_id:long = internal.LazyField;
 internal.object_with_lazy_fields#d836c6b8 object:Object fields:Vector<string> = internal.LazyObject;
 
 ---functions---

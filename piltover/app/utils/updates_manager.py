@@ -17,7 +17,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, EncryptedChatDiscarded
-from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat
+from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
+    LazyEncryptedChat
 
 
 # TODO: move UpdatesManager to separate worker
@@ -1137,8 +1138,7 @@ class UpdatesManager:
         return updates
 
     @staticmethod
-    async def encryption_update(user: User, chat: EncryptedChat, sessions: list[UserAuthorization]):
-        # TODO: qts?
+    async def encryption_update(user: User, chat: EncryptedChat) -> None:
         new_pts = await State.add_pts(user, 1)
 
         await Update.filter(user=user, update_type=UpdateType.UPDATE_ENCRYPTION, related_id=chat.id).delete()
@@ -1153,52 +1153,21 @@ class UpdatesManager:
         other_user = chat.from_user if user.id == chat.to_user_id else chat.to_user
         other_user = await other_user
 
-        chat_tl = await chat.to_tl(user)
-        updates = Updates(
-            updates=[
-                UpdateEncryption(
-                    chat=chat_tl,
-                    date=int(update.date.timestamp()),
-                )
-            ],
-            users=[await other_user.to_tl(user)],
-            chats=[],
-            date=int(time()),
-            seq=0,
+        await SessionManager.send(
+            ObjectWithLazyFields(
+                object=Updates(
+                    updates=[
+                        UpdateEncryption(
+                            chat=LazyEncryptedChat(chat_id=chat.id),  # type: ignore
+                            date=int(update.date.timestamp()),
+                        ),
+                    ],
+                    users=[await other_user.to_tl(user)],
+                    chats=[],
+                    date=int(time()),
+                    seq=0,
+                ),
+                fields=["updates.0.chat"],
+            ),
+            user_id=user.id,
         )
-
-        await SessionManager.send(updates, auth_id=[session.id for session in sessions])
-
-        return updates
-
-    @staticmethod
-    async def encryption_discard(user: User, chat_id: int, delete_history: bool, sessions: list[UserAuthorization]):
-        # TODO: qts?
-        new_pts = await State.add_pts(user, 1)
-
-        await Update.filter(user=user, update_type=UpdateType.UPDATE_ENCRYPTION, related_id=chat_id).delete()
-        update = await Update.create(
-            user=user,
-            update_type=UpdateType.DISCARD_ENCRYPTION,
-            pts=new_pts,
-            pts_count=1,
-            related_id=chat_id,
-            additional_data=[delete_history],
-        )
-
-        updates = Updates(
-            updates=[
-                UpdateEncryption(
-                    chat=EncryptedChatDiscarded(id=chat_id, history_deleted=delete_history),
-                    date=int(update.date.timestamp()),
-                )
-            ],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
-        )
-
-        await SessionManager.send(updates, auth_id=[session.id for session in sessions])
-
-        return updates

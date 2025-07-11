@@ -1,5 +1,4 @@
 from loguru import logger
-from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from piltover.app.utils.updates_manager import UpdatesManager
@@ -36,8 +35,7 @@ async def request_encryption(request: RequestEncryption, user: User):
             logger.opt(exception=e).debug(f"Overriding rpc error from {e.error_message} to USER_ID_INVALID")
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
-    peer_sessions = await UserAuthorization.filter(user=peer.user, allow_encrypted_requests=True)
-    if not peer_sessions:
+    if not await UserAuthorization.filter(user=peer.user, allow_encrypted_requests=True).exists():
         return EncryptedChatDiscarded(id=0)
 
     ctx = request_ctx.get()
@@ -51,9 +49,9 @@ async def request_encryption(request: RequestEncryption, user: User):
         g_b=b"",
     )
 
-    await UpdatesManager.encryption_update(peer.user, chat, peer_sessions)
+    await UpdatesManager.encryption_update(peer.user, chat)
 
-    return await chat.to_tl(user)
+    return await chat.to_tl(user, ctx.auth_id)
 
 
 @handler.on_request(AcceptEncryption)
@@ -70,12 +68,14 @@ async def accept_encryption(request: AcceptEncryption, user: User):
     async with in_transaction():
         chat = await EncryptedChat.select_for_update().get_or_none(
             id=request.peer.chat_id, access_hash=request.peer.access_hash, to_user=user,
-        ).select_related("from_user", "from_sess")
+        ).select_related("from_user")
         if chat is None:
             raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
 
         if chat.to_sess_id is not None:
             raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_ACCEPTED")
+        if chat.discarded:
+            raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_DECLINED")
 
         ctx = request_ctx.get()
         current_auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
@@ -86,35 +86,31 @@ async def accept_encryption(request: AcceptEncryption, user: User):
         chat.key_fp = request.key_fingerprint
         await chat.save(update_fields=["g_b", "to_sess_id", "key_fp"])
 
-    discarded_sessions = await UserAuthorization.filter(user=user, allow_encrypted_requests=True, id__not=ctx.auth_id)
-    await UpdatesManager.encryption_discard(chat.from_user, chat.id, True, discarded_sessions)
+    await UpdatesManager.encryption_update(chat.from_user, chat)
+    await UpdatesManager.encryption_update(user, chat)
 
-    await UpdatesManager.encryption_update(chat.from_user, chat, [chat.from_sess])
-    return await chat.to_tl(user)
+    return await chat.to_tl(user, ctx.auth_id)
 
 
 @handler.on_request(DiscardEncryption)
 async def discard_encryption(request: DiscardEncryption, user: User):
     async with in_transaction():
         chat = await EncryptedChat.select_for_update().get_or_none(id=request.chat_id, to_user=user)\
-            .select_related("from_user", "from_sess", "to_user", "to_sess")
+            .select_related("from_user")
         if chat is None:
             raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ID_INVALID")
 
         ctx = request_ctx.get()
         if chat.to_sess_id is not None and chat.to_sess_id != ctx.auth_id:
             raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_ACCEPTED")
+        if chat.discarded:
+            raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_DECLINED")
 
-        other_user = chat.to_user if user == chat.from_user else chat.from_user
-        other_sess = chat.to_sess if user == chat.from_user else chat.from_sess
+        chat.discarded = True
+        chat.history_deleted = request.delete_history
+        await chat.save(update_fields=["discarded", "history_deleted"])
 
-        if chat.to_sess_id is None:
-            discarded_sessions = await UserAuthorization.filter(
-                user=chat.to_user, allow_encrypted_requests=True, id__not=ctx.auth_id,
-            )
-            await UpdatesManager.encryption_discard(chat.from_user, chat.id, True, discarded_sessions)
+    await UpdatesManager.encryption_update(chat.from_user, chat)
+    await UpdatesManager.encryption_update(user, chat)
 
-        await chat.delete()
-
-    await UpdatesManager.encryption_discard(other_user, request.chat_id, request.delete_history, [other_sess])
     return EncryptedChatDiscarded(id=request.chat_id, history_deleted=request.delete_history)

@@ -8,7 +8,7 @@ from tortoise.expressions import Q
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
-    UpdateDialogFilterOrder, EncryptedChatDiscarded
+    UpdateDialogFilterOrder
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
@@ -38,6 +38,7 @@ class Update(Model):
 
     async def to_tl(
             self, user: models.User, users_q: Q | None = None, chats_q: Q | None = None, channels_q: Q | None = None,
+            auth_id: int | None = None,
     ) -> tuple[UpdateTypes | None, Q | None, Q | None, Q | None]:
         none_ret = None, users_q, chats_q, channels_q
 
@@ -330,6 +331,9 @@ class Update(Model):
                 return UpdateDialogFilterOrder(order=self.related_ids), users_q, chats_q, channels_q
 
             case UpdateType.UPDATE_ENCRYPTION:
+                if auth_id is None:
+                    return none_ret
+
                 if (chat := await models.EncryptedChat.get_or_none(id=self.related_id)) is None:
                     return none_ret
 
@@ -337,15 +341,7 @@ class Update(Model):
                 users_q |= Q(id=other_user_id)
 
                 return UpdateEncryption(
-                    chat=await chat.to_tl(user),
-                    date=int(self.date.timestamp()),
-                ), users_q, chats_q, channels_q
-
-            case UpdateType.DISCARD_ENCRYPTION:
-                history_deleted = self.additional_data[0] if self.additional_data else False
-
-                return UpdateEncryption(
-                    chat=EncryptedChatDiscarded(id=self.related_id, history_deleted=history_deleted),
+                    chat=await chat.to_tl(user, auth_id),
                     date=int(self.date.timestamp()),
                 ), users_q, chats_q, channels_q
 

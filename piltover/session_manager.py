@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from mtproto.packets import DecryptedMessagePacket
 
-from piltover.db.models import UserAuthorization, AuthKey, Channel, User, Message as DbMessage, Chat
+from piltover.db.models import UserAuthorization, AuthKey, Channel, User, Message as DbMessage, Chat, EncryptedChat
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyChannel, \
-    LazyMessage, LazyUser, LazyChat, MessageToUsers
+    LazyMessage, LazyUser, LazyChat, MessageToUsers, LazyEncryptedChat
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -154,6 +154,9 @@ class Session:
         if isinstance(lazy_obj, LazyChat):
             chat = await Chat.get_or_none(id=lazy_obj.chat_id)
             return await chat.to_tl(user)
+        if isinstance(lazy_obj, LazyEncryptedChat):
+            chat = await EncryptedChat.get_or_none(id=lazy_obj.chat_id)
+            return await chat.to_tl(user, self.auth_id)
 
         raise RuntimeError("Unreachable")
 

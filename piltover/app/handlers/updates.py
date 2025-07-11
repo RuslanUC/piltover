@@ -79,11 +79,13 @@ async def get_difference(request: GetDifference | GetDifference_136, user: User)
         new_messages[message.id] = await message.to_tl(user)
         users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
 
+    ctx = request_ctx.get()
+
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
             continue
 
-        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, users_q, chats_q, channels_q)
+        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, users_q, chats_q, channels_q, ctx.auth_id)
         if update_tl is not None:
             other_updates.append(update_tl)
 
@@ -108,7 +110,7 @@ async def get_difference(request: GetDifference | GetDifference_136, user: User)
 
 
 @handler.on_request(GetChannelDifference)
-async def get_difference(request: GetChannelDifference, user: User):
+async def get_channel_difference(request: GetChannelDifference, user: User):
     peer = await Peer.from_input_peer(user, request.channel)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
