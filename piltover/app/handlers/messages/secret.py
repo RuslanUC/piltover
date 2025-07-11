@@ -9,9 +9,9 @@ from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, Sec
     FileAccess
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded, EncryptedFileEmpty, \
-    InputEncryptedFileEmpty, InputEncryptedFile, InputEncryptedFileUploaded, InputEncryptedFileBigUploaded
+    InputEncryptedFileEmpty, InputEncryptedFile, InputEncryptedFileUploaded, InputEncryptedFileBigUploaded, Vector, Long
 from piltover.tl.functions.messages import RequestEncryption, AcceptEncryption, DiscardEncryption, SendEncrypted, \
-    SendEncryptedService, SendEncryptedFile
+    SendEncryptedService, SendEncryptedFile, ReceivedQueue
 from piltover.tl.types.messages import SentEncryptedMessage, SentEncryptedFile
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
@@ -29,8 +29,8 @@ async def request_encryption(request: RequestEncryption, user: User):
     g_a = int.from_bytes(request.g_a, "big")
     if g_a >= dh_p:
         raise ErrorRpc(error_code=400, error_message="DH_G_A_INVALID")
-    if (g_a % dh_g) != 0:
-        raise ErrorRpc(error_code=400, error_message="DH_G_A_INVALID")
+    #if (g_a % dh_g) != 0:
+    #    raise ErrorRpc(error_code=400, error_message="DH_G_A_INVALID")
 
     # TODO: other checks like g_a size, etc.
 
@@ -66,8 +66,8 @@ async def accept_encryption(request: AcceptEncryption, user: User):
     g_b = int.from_bytes(request.g_b, "big")
     if g_b >= dh_p:
         raise ErrorRpc(error_code=400, error_message="DH_G_B_INVALID")
-    if (g_b % dh_g) != 0:
-        raise ErrorRpc(error_code=400, error_message="DH_G_B_INVALID")
+    #if (g_b % dh_g) != 0:
+    #    raise ErrorRpc(error_code=400, error_message="DH_G_B_INVALID")
 
     # TODO: other checks like g_b size, etc.
 
@@ -204,3 +204,19 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEnc
         return SentEncryptedFile(date=int(update.date.timestamp()), file=resp_file)
     else:
         return SentEncryptedMessage(date=int(update.date.timestamp()))
+
+
+@handler.on_request(ReceivedQueue)
+async def received_queue(request: ReceivedQueue):
+    ctx = request_ctx.get()
+    current_auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
+
+    if request.max_qts > current_auth.upd_qts or request.max_qts <= 0:
+        raise ErrorRpc(error_code=400, error_message="MAX_QTS_INVALID")
+
+    random_ids = await SecretUpdate.filter(
+        authorization=current_auth, qts__lte=request.max_qts, message_random_id__not=None,
+    ).values_list("message_random_id", flat=True)
+    await SecretUpdate.filter(authorization=current_auth, qts__lte=request.max_qts).delete()
+
+    return Vector(random_ids, value_type=Long)

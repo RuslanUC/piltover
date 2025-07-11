@@ -61,7 +61,7 @@ class EncryptedChat(Model):
                     key_fingerprint=self.key_fp,
                 )
 
-        if user.id == self.to_sess_id:
+        if user.id == self.to_user_id:
             if self.to_sess_id is None:
                 return EncryptedChatRequested(
                     **common_kwargs,
