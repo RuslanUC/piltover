@@ -8,8 +8,8 @@ from tortoise.functions import Min
 
 from piltover.app.utils.utils import get_perm_key
 from piltover.context import request_ctx
-from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
-from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer, ChannelUpdate
+from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType
+from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
 from piltover.tl import UpdateChannelTooLong
@@ -21,27 +21,28 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("auth")
 
 
-async def get_seq() -> int:
+async def get_seq_qts() -> tuple[int, int]:
     ctx = request_ctx.get()
-    seq = await UserAuthorization.filter(
+    seq_qts = await UserAuthorization.filter(
         key=await get_perm_key(ctx.auth_key_id),
-    ).first().values_list("upd_seq", flat=True)
-    if seq is None:  # pragma: no cover
+    ).first().values_list("upd_seq", "upd_qts", flat=True)
+    if seq_qts is None:  # pragma: no cover
         logger.warning(
             f"Somehow auth is None for key {ctx.auth_key_id}, but it is in get_state_internal, "
             f"where authorization must exist ???"
         )
 
-    return seq or 0
+    return seq_qts or (0, 0)
 
 
 async def get_state_internal(user: User) -> TLState:
     state = await State.get_or_none(user=user)
 
+    seq, qts = await get_seq_qts()
     return TLState(
         pts=state.pts if state else 0,
-        qts=0,
-        seq=await get_seq(),
+        qts=qts,
+        seq=seq,
         date=int(time()),
         unread_count=0,
     )
@@ -55,21 +56,31 @@ async def get_state(user: User):
 @handler.on_request(GetDifference_136)
 @handler.on_request(GetDifference)
 async def get_difference(request: GetDifference | GetDifference_136, user: User):
+    # TODO: pts_limit/qts_limit and difference slices
+
     requested_update = await Update.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
     date = requested_update.date if requested_update is not None else datetime.fromtimestamp(request.date, UTC)
+
+    ctx = request_ctx.get()
+
+    last_local_secret_update = await SecretUpdate.filter(authorization__id=ctx.auth_id, qts__lte=request.qts)\
+        .order_by("-qts").first()
+    last_local_secret_id = last_local_secret_update.id if last_local_secret_update is not None else 0
 
     new = await Message.filter(
         peer__owner=user, date__gt=date
     ).select_related("author", "peer", "peer__owner", "peer__user", "peer__chat").order_by("id")
     new_updates = await Update.filter(user=user, pts__gt=request.pts).order_by("pts")
+    new_secret = await SecretUpdate.filter(authorization__id=ctx.auth_id, id__gt=last_local_secret_id)
 
-    if not new and not new_updates:
+    if not new and not new_updates and not new_secret:
         return DifferenceEmpty(
             date=int(time()),
-            seq=await get_seq(),
+            seq=(await get_seq_qts())[0],
         )
 
     new_messages = {}
+    new_secret_messages = []
     other_updates = []
     users_q = Q()
     chats_q = Q()
@@ -79,8 +90,6 @@ async def get_difference(request: GetDifference | GetDifference_136, user: User)
         new_messages[message.id] = await message.to_tl(user)
         users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
 
-    ctx = request_ctx.get()
-
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
             continue
@@ -88,6 +97,15 @@ async def get_difference(request: GetDifference | GetDifference_136, user: User)
         update_tl, users_q, chats_q, channels_q = await update.to_tl(user, users_q, chats_q, channels_q, ctx.auth_id)
         if update_tl is not None:
             other_updates.append(update_tl)
+
+    for secret_update in new_secret:
+        secret_update_tl = await secret_update.to_tl()
+        if secret_update_tl is None:
+            continue
+        if secret_update.type is SecretUpdateType.NEW_MESSAGE:
+            new_secret_messages.append(secret_update_tl.message)
+        else:
+            other_updates.append(secret_update_tl)
 
     channel_states = await ChannelUpdate.annotate(min_pts=Min("pts")).filter(
         channel__peers__owner=user, date__gt=date,

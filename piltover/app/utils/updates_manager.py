@@ -6,7 +6,7 @@ from tortoise.queryset import QuerySet
 
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
-    ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization
+    ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -1170,4 +1170,17 @@ class UpdatesManager:
                 fields=["updates.0.chat"],
             ),
             user_id=user.id,
+        )
+
+    @staticmethod
+    async def send_encrypted(update: SecretUpdate) -> None:
+        await SessionManager.send(
+            Updates(
+                updates=[await update.to_tl()],
+                users=[],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            ),
+            auth_id=update.authorization_id,
         )

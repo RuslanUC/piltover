@@ -30,6 +30,7 @@ class UserAuthorization(Model):
     app_version: str = fields.CharField(max_length=32, default="Unknown")
 
     upd_seq: int = fields.BigIntField(default=0)
+    upd_qts: int = fields.BigIntField(default=0)
 
     #app: models.ApiApplication = fields.ForeignKeyField("models.ApiApplication")
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)

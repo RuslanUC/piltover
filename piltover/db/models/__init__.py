@@ -42,3 +42,4 @@ from .dialog_folder import DialogFolder
 from .reaction import Reaction
 from .message_reaction import MessageReaction
 from .encrypted_chat import EncryptedChat
+from .secret_update import SecretUpdate

@@ -79,6 +79,11 @@ class UpdateType(IntEnum):
     UPDATE_ENCRYPTION = 22
 
 
+class SecretUpdateType(IntEnum):
+    NEW_MESSAGE = 1
+    MESSAGE_READ = 3
+
+
 class PeerType(IntEnum):
     SELF = 0
     USER = 1

@@ -1,12 +1,16 @@
 from loguru import logger
+from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.context import request_ctx
-from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization
+from piltover.db.enums import SecretUpdateType
+from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, SecretUpdate
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded
-from piltover.tl.functions.messages import RequestEncryption, AcceptEncryption, DiscardEncryption
+from piltover.tl.functions.messages import RequestEncryption, AcceptEncryption, DiscardEncryption, SendEncrypted, \
+    SendEncryptedService
+from piltover.tl.types.messages import SentEncryptedMessage
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
 from piltover.worker import MessageHandler
@@ -114,3 +118,44 @@ async def discard_encryption(request: DiscardEncryption, user: User):
     await UpdatesManager.encryption_update(user, chat)
 
     return EncryptedChatDiscarded(id=request.chat_id, history_deleted=request.delete_history)
+
+
+@handler.on_request(SendEncryptedService)
+@handler.on_request(SendEncrypted)
+async def send_encrypted(request: SendEncrypted | SendEncryptedService, user: User):
+    ctx = request_ctx.get()
+
+    chat_query = Q(
+        Q(from_user=user, from_sess=ctx.auth_id) | Q(to_user=user, to_sess=ctx.auth_id),
+        id=request.peer.chat_id, access_hash=request.peer.access_hash,
+    )
+
+    chat = await EncryptedChat.get_or_none(chat_query)
+    if chat is None or chat.to_sess is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    if chat.discarded:
+        raise ErrorRpc(error_code=400, error_message="ENCRYPTION_DECLINED")
+
+    # TODO: check that request.data is valid (size-wise?)
+
+    async with in_transaction():
+        other_auth = await UserAuthorization.select_for_update().get(
+            id=chat.from_sess_id if chat.to_user_id == user.id else chat.to_sess_id
+        )
+
+        other_auth.upd_qts += 1
+        await other_auth.save(update_fields=["upd_qts"])
+
+    update = await SecretUpdate.create(
+        qts=other_auth.upd_qts,
+        type=SecretUpdateType.NEW_MESSAGE,
+        authorization=other_auth,
+        chat=chat,
+        data=request.data,
+        message_random_id=request.random_id,
+        message_is_service=isinstance(request, SendEncryptedService),
+    )
+
+    await UpdatesManager.send_encrypted(update)
+
+    return SentEncryptedMessage(date=int(update.date.timestamp()))
