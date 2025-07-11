@@ -16,7 +16,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
-    UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, EncryptedChatDiscarded
+    UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, EncryptedChatDiscarded, \
+    UpdateEncryptedChatTyping
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat
 
@@ -1173,7 +1174,7 @@ class UpdatesManager:
         )
 
     @staticmethod
-    async def send_encrypted(update: SecretUpdate) -> None:
+    async def send_encrypted_update(update: SecretUpdate) -> None:
         await SessionManager.send(
             Updates(
                 updates=[await update.to_tl()],
@@ -1183,4 +1184,19 @@ class UpdatesManager:
                 seq=0,
             ),
             auth_id=update.authorization_id,
+        )
+
+    @staticmethod
+    async def send_encrypted_typing(chat_id: int, auth_id: int) -> None:
+        await SessionManager.send(
+            Updates(
+                updates=[
+                    UpdateEncryptedChatTyping(chat_id=chat_id)
+                ],
+                users=[],
+                chats=[],
+                date=int(time()),
+                seq=0,
+            ),
+            auth_id=auth_id,
         )

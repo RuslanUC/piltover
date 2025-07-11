@@ -83,7 +83,7 @@ class UpdateType(IntEnum):
 
 class SecretUpdateType(IntEnum):
     NEW_MESSAGE = 1
-    MESSAGE_READ = 3
+    HISTORY_READ = 3
 
 
 class PeerType(IntEnum):

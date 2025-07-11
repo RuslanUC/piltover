@@ -1,3 +1,5 @@
+from time import time
+
 from loguru import logger
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
@@ -9,9 +11,10 @@ from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, Sec
     FileAccess
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded, EncryptedFileEmpty, \
-    InputEncryptedFileEmpty, InputEncryptedFile, InputEncryptedFileUploaded, InputEncryptedFileBigUploaded, Vector, Long
+    InputEncryptedFileEmpty, InputEncryptedFile, InputEncryptedFileUploaded, InputEncryptedFileBigUploaded, Vector, \
+    Long, InputEncryptedChat
 from piltover.tl.functions.messages import RequestEncryption, AcceptEncryption, DiscardEncryption, SendEncrypted, \
-    SendEncryptedService, SendEncryptedFile, ReceivedQueue
+    SendEncryptedService, SendEncryptedFile, ReceivedQueue, SetEncryptedTyping, ReadEncryptedHistory
 from piltover.tl.types.messages import SentEncryptedMessage, SentEncryptedFile
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
@@ -126,6 +129,23 @@ InputEncryptedFileT = (InputEncryptedFileEmpty | InputEncryptedFile | InputEncry
                        | InputEncryptedFileBigUploaded)
 
 
+async def _get_secret_chat(peer: InputEncryptedChat, user: User) -> EncryptedChat:
+    ctx = request_ctx.get()
+
+    chat_query = Q(
+        Q(from_user=user, from_sess=ctx.auth_id) | Q(to_user=user, to_sess=ctx.auth_id),
+        id=peer.chat_id, access_hash=peer.access_hash,
+    )
+
+    chat = await EncryptedChat.get_or_none(chat_query)
+    if chat is None or chat.to_sess is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    if chat.discarded:
+        raise ErrorRpc(error_code=400, error_message="ENCRYPTION_DECLINED")
+
+    return chat
+
+
 async def _resolve_file(input_file: InputEncryptedFileT, user: User) -> EncryptedFile | None:
     if isinstance(input_file, InputEncryptedFileEmpty):
         return None
@@ -152,22 +172,20 @@ async def _resolve_file(input_file: InputEncryptedFileT, user: User) -> Encrypte
     raise RuntimeError("Unreachable")
 
 
+async def _inc_qts(auth_id: int) -> UserAuthorization:
+    async with in_transaction():
+        auth = await UserAuthorization.select_for_update().get(id=auth_id)
+        auth.upd_qts += 1
+        await auth.save(update_fields=["upd_qts"])
+
+    return auth
+
+
 @handler.on_request(SendEncryptedFile)
 @handler.on_request(SendEncryptedService)
 @handler.on_request(SendEncrypted)
 async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEncryptedFile, user: User):
-    ctx = request_ctx.get()
-
-    chat_query = Q(
-        Q(from_user=user, from_sess=ctx.auth_id) | Q(to_user=user, to_sess=ctx.auth_id),
-        id=request.peer.chat_id, access_hash=request.peer.access_hash,
-    )
-
-    chat = await EncryptedChat.get_or_none(chat_query)
-    if chat is None or chat.to_sess is None:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
-    if chat.discarded:
-        raise ErrorRpc(error_code=400, error_message="ENCRYPTION_DECLINED")
+    chat = await _get_secret_chat(request.peer, user)
 
     file = None
     if isinstance(request, SendEncryptedFile):
@@ -175,13 +193,7 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEnc
 
     # TODO: check that request.data is valid (size-wise?)
 
-    async with in_transaction():
-        other_auth = await UserAuthorization.select_for_update().get(
-            id=chat.from_sess_id if chat.to_user_id == user.id else chat.to_sess_id
-        )
-
-        other_auth.upd_qts += 1
-        await other_auth.save(update_fields=["upd_qts"])
+    other_auth = await _inc_qts(chat.from_sess_id if chat.to_user_id == user.id else chat.to_sess_id)
 
     update = await SecretUpdate.create(
         qts=other_auth.upd_qts,
@@ -194,7 +206,7 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEnc
         message_file=file,
     )
 
-    await UpdatesManager.send_encrypted(update)
+    await UpdatesManager.send_encrypted_update(update)
 
     if isinstance(request, SendEncryptedFile):
         if file is None:
@@ -220,3 +232,40 @@ async def received_queue(request: ReceivedQueue):
     await SecretUpdate.filter(authorization=current_auth, qts__lte=request.max_qts).delete()
 
     return Vector(random_ids, value_type=Long)
+
+
+@handler.on_request(SetEncryptedTyping)
+async def set_encrypted_typing(request: SetEncryptedTyping, user: User):
+    chat = await _get_secret_chat(request.peer, user)
+
+    if request.typing:
+        await UpdatesManager.send_encrypted_typing(
+            chat.id,
+            chat.from_sess_id if user.id == chat.to_user_id else chat.to_sess_id,
+        )
+
+    return True
+
+
+@handler.on_request(ReadEncryptedHistory)
+async def read_encrypted_history(request: ReadEncryptedHistory, user: User):
+    chat = await _get_secret_chat(request.peer, user)
+
+    if request.max_date > time():
+        raise ErrorRpc(error_code=400, error_message="MAX_DATE_INVALID")
+
+    other_auth = await _inc_qts(chat.from_sess_id if chat.to_user_id == user.id else chat.to_sess_id)
+
+    update = await SecretUpdate.create(
+        qts=other_auth.upd_qts,
+        type=SecretUpdateType.HISTORY_READ,
+        authorization=other_auth,
+        chat=chat,
+        data=Long.write(request.max_date),
+    )
+
+    await UpdatesManager.send_encrypted_update(update)
+
+    return True
+
+

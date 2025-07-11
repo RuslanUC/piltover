@@ -59,7 +59,7 @@ class SecretUpdate(Model):
                     qts=self.qts,
                 )
 
-            case SecretUpdateType.MESSAGE_READ:
+            case SecretUpdateType.HISTORY_READ:
                 return UpdateEncryptedMessagesRead(
                     chat_id=self.chat_id,
                     max_date=Long.read_bytes(self.data),
