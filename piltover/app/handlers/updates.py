@@ -25,7 +25,7 @@ async def get_seq_qts() -> tuple[int, int]:
     ctx = request_ctx.get()
     seq_qts = await UserAuthorization.filter(
         key=await get_perm_key(ctx.auth_key_id),
-    ).first().values_list("upd_seq", "upd_qts", flat=True)
+    ).first().values_list("upd_seq", "upd_qts")
     if seq_qts is None:  # pragma: no cover
         logger.warning(
             f"Somehow auth is None for key {ctx.auth_key_id}, but it is in get_state_internal, "
