@@ -4,10 +4,11 @@ import aiofiles
 
 from piltover.app import files_dir
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
-from piltover.db.enums import PeerType
+from piltover.db.enums import PeerType, FileType
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation
+from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, \
+    InputEncryptedFileLocation
 from piltover.tl.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
 from piltover.tl.types.storage import FileUnknown, FilePartial, FileJpeg
 from piltover.tl.types.upload import File as TLFile
@@ -52,10 +53,15 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
     return True
 
 
+SUPPORTED_LOCS = (
+    InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, InputEncryptedFileLocation,
+)
+
+
 @handler.on_request(GetFile)
 async def get_file(request: GetFile, user: User):
     # noinspection PyPep8
-    if not isinstance(request.location, (InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation)):
+    if not isinstance(request.location, SUPPORTED_LOCS):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     if request.limit < 0 or request.limit > 1024 * 1024:
         raise ErrorRpc(error_code=400, error_message="LIMIT_INVALID")
@@ -72,8 +78,10 @@ async def get_file(request: GetFile, user: User):
             q = {"file__channels__photo__id": request.location.photo_id, "file__channels__id": peer.channel_id}
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
+    elif isinstance(request.location, InputEncryptedFileLocation):
+        q = {"file__id": request.location.id, "file__type": FileType.ENCRYPTED}
     else:
-        q = {"file__id": request.location.id}
+        q = {"file__id": request.location.id, "file__type__not": FileType.ENCRYPTED}
 
     access = await FileAccess.get_or_none(user=user, **q).select_related("file")
     if not isinstance(request.location, InputPeerPhotoFileLocation) and \

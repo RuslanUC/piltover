@@ -25,7 +25,7 @@ class FileAccess(Model):
     id: int = fields.BigIntField(pk=True)
     access_hash: int = fields.BigIntField(default=gen_access_hash)
     file_reference: bytes = fields.BinaryField(default=gen_file_reference)
-    expires: datetime = fields.DatetimeField(default=gen_expires)
+    expires: datetime | None = fields.DatetimeField(default=gen_expires, null=True)
     file: models.File = fields.ForeignKeyField("models.File", on_delete=fields.CASCADE)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
@@ -35,7 +35,7 @@ class FileAccess(Model):
         )
 
     def is_expired(self) -> bool:
-        return self.expires.replace(tzinfo=UTC) < datetime.now().replace(tzinfo=UTC)
+        return self.expires is not None and self.expires.replace(tzinfo=UTC) < datetime.now().replace(tzinfo=UTC)
 
     @classmethod
     async def get_or_renew(cls, user: models.User, file: models.File, real_renew: bool = False) -> FileAccess:

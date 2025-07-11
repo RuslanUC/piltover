@@ -4,13 +4,15 @@ from tortoise.transactions import in_transaction
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.context import request_ctx
-from piltover.db.enums import SecretUpdateType
-from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, SecretUpdate
+from piltover.db.enums import SecretUpdateType, FileType
+from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, SecretUpdate, EncryptedFile, UploadingFile, \
+    FileAccess
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded
+from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded, EncryptedFileEmpty, \
+    InputEncryptedFileEmpty, InputEncryptedFile, InputEncryptedFileUploaded, InputEncryptedFileBigUploaded
 from piltover.tl.functions.messages import RequestEncryption, AcceptEncryption, DiscardEncryption, SendEncrypted, \
-    SendEncryptedService
-from piltover.tl.types.messages import SentEncryptedMessage
+    SendEncryptedService, SendEncryptedFile
+from piltover.tl.types.messages import SentEncryptedMessage, SentEncryptedFile
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
 from piltover.worker import MessageHandler
@@ -120,9 +122,40 @@ async def discard_encryption(request: DiscardEncryption, user: User):
     return EncryptedChatDiscarded(id=request.chat_id, history_deleted=request.delete_history)
 
 
+InputEncryptedFileT = (InputEncryptedFileEmpty | InputEncryptedFile | InputEncryptedFileUploaded
+                       | InputEncryptedFileBigUploaded)
+
+
+async def _resolve_file(input_file: InputEncryptedFileT, user: User) -> EncryptedFile | None:
+    if isinstance(input_file, InputEncryptedFileEmpty):
+        return None
+
+    if isinstance(input_file, (InputEncryptedFileUploaded, InputEncryptedFileBigUploaded)):
+        uploaded_file = await UploadingFile.get_or_none(user=user, file_id=input_file.id)
+        if uploaded_file is None:
+            raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
+        file = await uploaded_file.finalize_upload("application/vnd.encrypted", [], FileType.ENCRYPTED)
+        return await EncryptedFile.create(file=file, key_fingerprint=input_file.key_fingerprint)
+
+    if isinstance(input_file, InputEncryptedFile):
+        file_access = await FileAccess.get_or_none(
+            user=user, file__id=input_file.id, access_hash=input_file.access_hash, type=FileType.ENCRYPTED,
+        ).select_related("file")
+        if file_access is None:
+            raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
+
+        if (file := await EncryptedFile.get_or_none(file=file_access.file)) is None:
+            raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
+
+        return file
+
+    raise RuntimeError("Unreachable")
+
+
+@handler.on_request(SendEncryptedFile)
 @handler.on_request(SendEncryptedService)
 @handler.on_request(SendEncrypted)
-async def send_encrypted(request: SendEncrypted | SendEncryptedService, user: User):
+async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEncryptedFile, user: User):
     ctx = request_ctx.get()
 
     chat_query = Q(
@@ -135,6 +168,10 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService, user: Us
         raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
     if chat.discarded:
         raise ErrorRpc(error_code=400, error_message="ENCRYPTION_DECLINED")
+
+    file = None
+    if isinstance(request, SendEncryptedFile):
+        file = await _resolve_file(request.file, user)
 
     # TODO: check that request.data is valid (size-wise?)
 
@@ -154,8 +191,16 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService, user: Us
         data=request.data,
         message_random_id=request.random_id,
         message_is_service=isinstance(request, SendEncryptedService),
+        message_file=file,
     )
 
     await UpdatesManager.send_encrypted(update)
 
-    return SentEncryptedMessage(date=int(update.date.timestamp()))
+    if isinstance(request, SendEncryptedFile):
+        if file is None:
+            resp_file = EncryptedFileEmpty()
+        else:
+            resp_file = await file.to_tl(user)
+        return SentEncryptedFile(date=int(update.date.timestamp()), file=resp_file)
+    else:
+        return SentEncryptedMessage(date=int(update.date.timestamp()))

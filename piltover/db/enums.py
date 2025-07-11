@@ -42,6 +42,8 @@ class FileType(IntEnum):
     DOCUMENT_VIDEO_NOTE = 7
     DOCUMENT_STICKER = 8
 
+    ENCRYPTED = 9
+
 
 class MediaType(IntEnum):
     DOCUMENT = 0

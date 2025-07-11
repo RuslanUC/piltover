@@ -19,7 +19,9 @@ class UploadingFile(Model):
     created_at: datetime = fields.DatetimeField(default=datetime.now)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
-    async def finalize_upload(self, mime_type: str, attributes: list) -> models.File:
+    async def finalize_upload(
+            self, mime_type: str, attributes: list, file_type: FileType = FileType.DOCUMENT,
+    ) -> models.File:
         parts = await UploadingFilePart.filter(file=self).order_by("part_id")
         if (self.total_parts > 0 and self.total_parts != len(parts)) or not parts:
             raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID")
@@ -32,7 +34,7 @@ class UploadingFile(Model):
                 raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
             size += part.size
 
-        file = models.File(mime_type=mime_type, size=size, type=FileType.DOCUMENT)
+        file = models.File(mime_type=mime_type, size=size, type=file_type)
         file.parse_attributes_from_tl(attributes)
         await file.save()
 

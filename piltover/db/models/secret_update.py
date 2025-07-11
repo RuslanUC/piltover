@@ -24,9 +24,11 @@ class SecretUpdate(Model):
 
     message_random_id: int | None = fields.BigIntField(null=True, default=None)
     message_is_service: bool | None = fields.BooleanField(null=True, default=None)
+    message_file: models.EncryptedFile = fields.ForeignKeyField("models.EncryptedFile", null=True, default=None)
 
     authorization_id: int
     chat_id: int
+    message_file_id: int | None
 
     async def to_tl(self) -> UpdateTypes | None:
         match self.type:
@@ -39,12 +41,17 @@ class SecretUpdate(Model):
                         bytes_=self.data,
                     )
                 else:
+                    file = EncryptedFileEmpty()
+                    if self.message_file_id is not None:
+                        await self.fetch_related("authorization", "authorization__user", "message_file")
+                        file = await self.message_file.to_tl(self.authorization.user)
+
                     message = EncryptedMessage(
                         random_id=self.message_random_id,
                         chat_id=self.chat_id,
                         date=int(self.date.timestamp()),
                         bytes_=self.data,
-                        file=EncryptedFileEmpty(), # TODO: files support
+                        file=file,
                     )
 
                 return UpdateNewEncryptedMessage(
