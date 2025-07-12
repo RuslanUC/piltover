@@ -2,10 +2,10 @@ import ctypes
 from time import time
 
 from piltover.app_config import AppConfig
-from piltover.db.models import AuthCountry
+from piltover.db.models import AuthCountry, User, Reaction
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, JsonNumber, JsonObjectValue, \
-    JsonBool, JsonArray, JsonString
+    JsonBool, JsonArray, JsonString, ReactionEmoji
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
     GetPeerProfileColors
@@ -17,8 +17,17 @@ handler = MessageHandler("help")
 CACHED_COUNTRIES_LIST: tuple[CountriesList | None, int] = (None, 0)
 
 
-@handler.on_request(GetConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_config():
+@handler.on_request(GetConfig)
+async def get_config(user: User):
+    default_reaction: Reaction | None = None
+    if user.default_reaction_id is None:
+        default_reaction = await Reaction.get_or_none(emoticon="❤")
+        if default_reaction is not None:
+            user.default_reaction = default_reaction
+            await user.save(update_fields=["default_reaction_id"])
+    else:
+        default_reaction = await user.default_reaction
+
     return Config(
         date=int(time()),
         # This seems to be hardcoded to 1 hour on some clients, and changing it breaks them
@@ -57,6 +66,7 @@ async def get_config():
         webfile_dc_id=AppConfig.THIS_DC_ID,
         preload_featured_stickers=False,
         revoke_pm_inbox=True,
+        reactions_default=ReactionEmoji(emoticon=default_reaction.reaction) if default_reaction is not None else None,
     )
 
 

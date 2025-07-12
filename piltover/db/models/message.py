@@ -154,6 +154,14 @@ class Message(Model):
         return await Message.get_or_none(peer_query, id=id_, type=MessageType.REGULAR)\
             .select_related("peer", "author", "media")
 
+    @classmethod
+    async def get_many(cls, ids: list[int], peer: models.Peer) -> list[models.Message]:
+        peer_query = Q(peer=peer)
+        if peer.type is PeerType.CHANNEL:
+            peer_query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
+        return await Message.filter(peer_query, id__in=ids, type=MessageType.REGULAR) \
+            .select_related("peer", "author", "media")
+
     async def _make_reply_to_header(self) -> MessageReplyHeader:
         if self.reply_to is not None:
             self.reply_to = await self.reply_to

@@ -21,8 +21,11 @@ class User(Model):
     ttl_days: int = fields.IntField(default=365)
     birthday: date | None = fields.DateField(null=True, default=None)
     bot: bool = fields.BooleanField(default=False)
+    default_reaction: models.Reaction = fields.ForeignKeyField("models.Reaction", null=True, default=None)
 
     cached_username: models.Username | None | object = _USERNAME_MISSING
+
+    default_reaction_id: int | None
 
     async def get_username(self) -> models.Username | None:
         if self.cached_username is _USERNAME_MISSING:

@@ -2,8 +2,8 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType, ChatBannedRights
 from piltover.db.models import Reaction, User, Message, Peer, MessageReaction
 from piltover.exceptions import ErrorRpc
-from piltover.tl import ReactionEmoji, ReactionCustomEmoji
-from piltover.tl.functions.messages import GetAvailableReactions, SendReaction
+from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
+from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, GetMessagesReactions
 from piltover.tl.types.messages import AvailableReactions
 from piltover.worker import MessageHandler
 
@@ -28,7 +28,7 @@ async def get_available_reactions(user: User) -> AvailableReactions:
 
 @handler.on_request(SendReaction)
 async def send_reaction(request: SendReaction, user: User) -> ...:
-    # TODO: request.add_to_recent
+    # TODO: request.add_to_recent (emits (probably) UpdateRecentReactions)
 
     reaction = None
     if request.reaction:
@@ -41,7 +41,7 @@ async def send_reaction(request: SendReaction, user: User) -> ...:
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
-        # TODO: check if this is correct right
+        # TODO: check if this is correct permission
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
@@ -61,14 +61,58 @@ async def send_reaction(request: SendReaction, user: User) -> ...:
 
     if peer.type is PeerType.CHANNEL:
         await MessageReaction.create(user=user, message=message, reaction=reaction)
-        return await UpdatesManager.update_reactions(user, message, peer)
+        return await UpdatesManager.update_reactions(user, [message], peer)
 
     await MessageReaction.bulk_create([
         MessageReaction(user=user, message=opp_message, reaction=reaction)
         for opp_message in await Message.filter(internal_id=message.internal_id)
     ])
 
-    # TODO: send updates to other users (only to message author?)
+    # TODO: send updates to other users if chat is pm or basic group
+    #  or only to message author if chat is channel(supergroup)
 
-    return await UpdatesManager.update_reactions(user, message, peer)
+    return await UpdatesManager.update_reactions(user, [message], peer)
 
+
+@handler.on_request(SetDefaultReaction)
+async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
+    if not isinstance(request.reaction, ReactionEmoji):
+        raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
+
+    reaction = await Reaction.get_or_none(reaction=request.reaction.emoticon)
+    if reaction is None:
+        raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
+
+    if reaction.id == user.default_reaction_id:
+        return True
+
+    user.default_reaction = reaction
+    await user.save(update_fields=["default_reaction_id"])
+
+    await UpdatesManager.update_config(user)
+
+    return True
+
+
+@handler.on_request(GetMessagesReactions)
+async def get_messages_reactions(request: GetMessagesReactions, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        chat_or_channel = peer.chat_or_channel
+        participant = await chat_or_channel.get_participant_raise(user)
+        # TODO: check if this is correct permission
+        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+
+    if (messages := await Message.get_many(request.id, peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
+
+    return await UpdatesManager.update_reactions(user, messages, peer, False)
+
+
+# TODO: GetUnreadReactions
+# TODO: ReadReactions
+# TODO: SetChatAvailableReactions
+# TODO: GetMessageReactionsList
+# TODO: GetRecentReactions
+# TODO: ClearRecentReactions

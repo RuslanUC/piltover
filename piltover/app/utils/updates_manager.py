@@ -17,7 +17,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, EncryptedChatDiscarded, \
-    UpdateEncryptedChatTyping
+    UpdateEncryptedChatTyping, UpdateConfig
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat
 
@@ -1117,16 +1117,14 @@ class UpdatesManager:
         return updates
 
     @staticmethod
-    async def update_reactions(user: User, message: Message, peer: Peer) -> Updates:
-        # TODO: create update?
-
+    async def update_reactions(user: User, messages: list[Message], peer: Peer, send: bool = True) -> Updates:
         updates = Updates(
             updates=[
                 UpdateMessageReactions(
                     peer=peer.to_tl(),
                     msg_id=message.id,
                     reactions=await message.to_tl_reactions(user),
-                )
+                ) for message in messages
             ],
             users=[],
             chats=[],
@@ -1134,7 +1132,8 @@ class UpdatesManager:
             seq=0,
         )
 
-        await SessionManager.send(updates, user.id)
+        if send:
+            await SessionManager.send(updates, user.id)
 
         return updates
 
@@ -1200,3 +1199,27 @@ class UpdatesManager:
             ),
             auth_id=auth_id,
         )
+
+    @staticmethod
+    async def update_config(user: User) -> Updates:
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.UPDATE_CONFIG,
+            pts=new_pts,
+            pts_count=1,
+            related_id=None,
+        )
+
+        updates = Updates(
+            updates=[UpdateConfig()],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+
+        return updates

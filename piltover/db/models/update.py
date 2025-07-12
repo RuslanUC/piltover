@@ -13,13 +13,13 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
-    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption
+    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
-              | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption
+              | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig
 
 
 class Update(Model):
@@ -344,5 +344,8 @@ class Update(Model):
                     chat=await chat.to_tl(user, auth_id),
                     date=int(self.date.timestamp()),
                 ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_CONFIG:
+                return UpdateConfig(), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q
