@@ -5,7 +5,7 @@ import hashlib
 import logging
 from asyncio import Event, Lock, timeout, Task, DefaultEventLoopPolicy
 from collections import defaultdict
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, AsyncExitStack
 from os import urandom
 from time import time
 from typing import AsyncIterator, TypeVar, Self
@@ -416,4 +416,10 @@ class CustomEventLoopPolicy(DefaultEventLoopPolicy):
 @pytest.fixture(scope="session")
 def event_loop_policy(request):
     return CustomEventLoopPolicy()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def exit_stack(request: pytest.FixtureRequest) -> AsyncIterator[AsyncExitStack]:
+    async with AsyncExitStack() as stack:
+        yield stack
 
