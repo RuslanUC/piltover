@@ -27,7 +27,7 @@ async def get_available_reactions(user: User) -> AvailableReactions:
 
 
 @handler.on_request(SendReaction)
-async def send_reaction(request: SendReaction, user: User) -> ...:
+async def send_reaction(request: SendReaction, user: User) -> Updates:
     # TODO: request.add_to_recent (emits (probably) UpdateRecentReactions)
 
     reaction = None
@@ -60,18 +60,26 @@ async def send_reaction(request: SendReaction, user: User) -> ...:
             await MessageReaction.filter(user=user, message__internal_id=message.internal_id).delete()
 
     if peer.type is PeerType.CHANNEL:
+        # TODO: send update to message author
         await MessageReaction.create(user=user, message=message, reaction=reaction)
         return await UpdatesManager.update_reactions(user, [message], peer)
 
-    await MessageReaction.bulk_create([
-        MessageReaction(user=user, message=opp_message, reaction=reaction)
-        for opp_message in await Message.filter(internal_id=message.internal_id)
-    ])
+    reactions_to_create = []
+    messages: dict[Peer, Message] = {}
+    for opp_message in await Message.filter(internal_id=message.internal_id).select_related("peer", "peer__owner"):
+        messages[opp_message.peer] = opp_message
+        reactions_to_create = MessageReaction(user=user, message=opp_message, reaction=reaction)
 
-    # TODO: send updates to other users if chat is pm or basic group
-    #  or only to message author if chat is channel(supergroup)
+    await MessageReaction.bulk_create(reactions_to_create)
 
-    return await UpdatesManager.update_reactions(user, [message], peer)
+    result = await UpdatesManager.update_reactions(user, [message], peer)
+
+    for opp_peer, opp_message in messages.items():
+        if opp_peer.owner == user:
+            continue
+        await UpdatesManager.update_reactions(opp_peer.owner, [opp_message], opp_peer)
+
+    return result
 
 
 @handler.on_request(SetDefaultReaction)

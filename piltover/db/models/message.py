@@ -111,7 +111,7 @@ _REGULAR_DEFAULTS = {
 
 class Message(Model):
     id: int = fields.BigIntField(pk=True)
-    internal_id: int = fields.BigIntField()
+    internal_id: int = fields.BigIntField(index=True)
     message: str | None = fields.TextField(null=True, default=None)
     pinned: bool = fields.BooleanField(default=False)
     date: datetime = fields.DatetimeField(default=lambda: datetime.now(UTC))

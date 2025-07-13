@@ -22,6 +22,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [x] Secret chats (https://core.telegram.org/api/end-to-end)
 - [ ] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
 - [ ] Mentions read state
+- [ ] Outbox read date (messages.getOutboxReadDate)
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
