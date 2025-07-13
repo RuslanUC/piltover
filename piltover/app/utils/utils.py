@@ -1,3 +1,4 @@
+import asyncio
 import re
 from asyncio import get_event_loop, gather
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +19,7 @@ from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
 from piltover.utils.utils import xor
 
+USERNAME_MENTION_REGEX = re.compile(r'@[a-z0-9_]{5,32}')
 USERNAME_REGEX = re.compile(r'^[a-z0-9_]{5,32}$')
 USERNAME_REGEX_NO_LEN = re.compile(r'[a-z0-9_]{1,32}')
 
@@ -159,15 +161,18 @@ VALID_ENTITIES = (
 )
 
 
-def validate_message_entities(text: str, entities: list[MessageEntity]) -> list[dict] | None:
+async def validate_message_entities(text: str, entities: list[MessageEntity]) -> list[dict] | None:
     if not entities:
         return None
     # TODO: check what limit telegram has
-    if len(entities) > 256:
+    if len(entities) > 1024:
         raise ErrorRpc(error_code=400, error_message="ENTITIES_TOO_LONG")
 
     result = []
-    for entity in entities:
+    for idx, entity in enumerate(entities):
+        if (idx % 64) == 0:
+            await asyncio.sleep(0)
+
         if entity.offset < 0 or entity.offset > len(text) or (entity.offset + entity.length) > len(text):
             raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         if isinstance(entity, MessageEntityMention):
@@ -200,6 +205,27 @@ def validate_message_entities(text: str, entities: list[MessageEntity]) -> list[
         result.append(entity.to_dict() | {"_": entity.tlid()})
 
     return result or None
+
+
+async def process_message_entities(text: str | None, entities: list[MessageEntity]) -> list[dict] | None:
+    if not text:
+        return None
+
+    entities = await validate_message_entities(text, entities)
+
+    for mention in USERNAME_MENTION_REGEX.finditer(text):
+        if entities is None:
+            entities = []
+
+        start, end = mention.span()
+        length = end - start
+        entities.append({
+            "_": MessageEntityMention.tlid(),
+            "offset": start,
+            "length": length,
+        })
+
+    return entities
 
 
 def validate_username(username: str) -> None:

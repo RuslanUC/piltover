@@ -9,7 +9,7 @@ from tortoise.transactions import in_transaction
 
 from piltover.app.bot_handlers import bots
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import resize_photo, generate_stripped, validate_message_entities
+from piltover.app.utils.utils import resize_photo, generate_stripped, process_message_entities
 from piltover.app_config import AppConfig
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
@@ -120,7 +120,8 @@ async def send_message(request: SendMessage, user: User):
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
-        author=user, message=request.message, entities=validate_message_entities(request.message, request.entities),
+        author=user, message=request.message,
+        entities=await process_message_entities(request.message, request.entities),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
     )
 
@@ -243,14 +244,20 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if message.message == request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
+    entities = None
+    if message_text is not None:
+        entities = await process_message_entities(message_text, request.entities)
+
     if peer.type is PeerType.CHANNEL:
         if message_text is not None:
             message.message = message_text
+            if entities is not None:
+                message.entities = entities
         if media is not None:
             message.media = media
         message.edit_date = datetime.now(UTC)
         message.version += 1
-        await message.save(update_fields=["message", "edit_date", "version", "media_id"])
+        await message.save(update_fields=["message", "edit_date", "version", "media_id", "entities"])
         message.peer.channel = peer.channel
         return await UpdatesManager.edit_message_channel(user, message)
 
@@ -266,13 +273,15 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
         if message is not None:
             if message_text is not None:
                 message.message = message_text
+                if entities is not None:
+                    message.entities = entities
             if media is not None:
                 message.media = media
             message.edit_date = edit_date
             message.version += 1
             messages[to_peer] = message
 
-    await Message.bulk_update(messages.values(), ["message", "edit_date", "version", "media_id"])
+    await Message.bulk_update(messages.values(), ["message", "edit_date", "version", "media_id", "entities"])
     presence = await Presence.update_to_now(user)
     await UpdatesManager.update_status(user, presence, peers[1:])
 
@@ -405,7 +414,7 @@ async def send_media(request: SendMedia | SendMedia_148, user: User):
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, media=media,
-        entities=validate_message_entities(request.message, request.entities),
+        entities=await process_message_entities(request.message, request.entities),
     )
 
 
@@ -580,7 +589,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
             single_media.message,
             single_media.random_id,
             media,
-            validate_message_entities(single_media.message, single_media.entities),
+            await process_message_entities(single_media.message, single_media.entities),
         ))
 
     if await Message.filter(peer=peer, random_id__in=[str(random_id) for _, random_id, _, _ in messages]).exists():
