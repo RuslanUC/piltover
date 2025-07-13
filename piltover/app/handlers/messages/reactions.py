@@ -1,10 +1,15 @@
+from tortoise.expressions import Q
+
+from piltover.app.handlers.messages.history import format_messages_internal, \
+    get_messages_query_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType, ChatBannedRights
-from piltover.db.models import Reaction, User, Message, Peer, MessageReaction
+from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
-from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, GetMessagesReactions
-from piltover.tl.types.messages import AvailableReactions
+from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, \
+    GetMessagesReactions, GetUnreadReactions, ReadReactions
+from piltover.tl.types.messages import AvailableReactions, Messages, AffectedHistory
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.reactions")
@@ -118,8 +123,63 @@ async def get_messages_reactions(request: GetMessagesReactions, user: User) -> U
     return await UpdatesManager.update_reactions(user, messages, peer, False)
 
 
-# TODO: GetUnreadReactions
-# TODO: ReadReactions
+@handler.on_request(GetUnreadReactions)
+async def get_unread_reactions(request: GetUnreadReactions, user: User) -> Messages:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    read_state, _ = await ReadState.get_or_create(peer=peer)
+
+    query = await get_messages_query_internal(
+        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, user.id,
+        after_reaction_id=read_state.last_reaction_id,
+    )
+
+    messages = await query
+
+    if not messages:
+        return Messages(messages=[], chats=[], users=[])
+
+    return await format_messages_internal(
+        user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id, query=query,
+    )
+
+
+@handler.on_request(ReadReactions)
+async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    read_state, _ = await ReadState.get_or_create(peer=peer)
+
+    reaction_query = Q(message__author=user) & (
+        Q(message__peer__owner=user, message__peer__channel__id=peer.channel_id)
+        if peer.type is PeerType.CHANNEL
+        else Q(message__peer=peer)
+    )
+    new_last_reaction_id = await MessageReaction.filter(reaction_query).order_by("-id").first().values_list("id", flat=True)
+    new_last_reaction_id = new_last_reaction_id or read_state.last_reaction_id
+
+    if new_last_reaction_id == read_state.last_reaction_id:
+        return AffectedHistory(
+            pts=await State.add_pts(user, 0),
+            pts_count=0,
+            offset=0,
+        )
+
+    read_reactions_count = await MessageReaction.filter(
+        reaction_query & Q(id__gt=read_state.last_reaction_id, id__lte=new_last_reaction_id),
+    ).count()
+
+    await ReadState.filter(id=read_state.id).update(last_reaction_id=new_last_reaction_id)
+
+    # TODO: check what updates should be sent, because afaik AffectedHistory
+    #  implies sending updates to other devices
+    new_pts = await State.add_pts(user, read_reactions_count)
+
+    return AffectedHistory(
+        pts=new_pts,
+        pts_count=read_reactions_count,
+        offset=0,
+    )
+
+
 # TODO: SetChatAvailableReactions
 # TODO: GetMessageReactionsList
 # TODO: GetRecentReactions

@@ -8,12 +8,13 @@ from piltover.db.enums import PeerType
 
 class ReadState(Model):
     id: int = fields.BigIntField(pk=True)
-    last_message_id: int = fields.BigIntField()
+    last_message_id: int = fields.BigIntField(default=0)
+    last_reaction_id: int = fields.BigIntField(default=0)
     peer: models.Peer = fields.ForeignKeyField("models.Peer", on_delete=fields.CASCADE, unique=True)
 
     @classmethod
     async def get_in_out_ids_and_unread(cls, peer: models.Peer) -> tuple[int, int, int]:
-        in_read_state, _ = await models.ReadState.get_or_create(peer=peer, defaults={"last_message_id": 0})
+        in_read_state, _ = await models.ReadState.get_or_create(peer=peer)
         unread_count = await models.Message.filter(peer=peer, id__gt=in_read_state.last_message_id).count()
 
         out_read_max_id = 0

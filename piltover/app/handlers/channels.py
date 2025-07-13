@@ -446,7 +446,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
-    read_state, created = await ReadState.get_or_create(peer=peer, defaults={"last_message_id": 0})
+    read_state, created = await ReadState.get_or_create(peer=peer)
     if request.max_id <= read_state.last_message_id:
         return True
 

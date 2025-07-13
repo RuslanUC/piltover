@@ -53,11 +53,13 @@ def message_filter_to_query(filter_: TLObject | None) -> Q | None:
     return None
 
 
-async def _get_messages_query(
+async def get_messages_query_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
-        filter_: TLObject | None = None, saved_peer: Peer | None = None,
+        filter_: TLObject | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
 ) -> QuerySet[Message]:
+    user_id = peer.owner_id if isinstance(peer, Peer) else peer.id
+
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
     if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
         query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
@@ -87,6 +89,9 @@ async def _get_messages_query(
 
     if filter_ is not None and (filter_query := message_filter_to_query(filter_)) is not None:
         query &= filter_query
+
+    if after_reaction_id is not None:
+        query += Q(messagereactions__id__gt=after_reaction_id, author__id__not=user_id)
 
     limit = max(min(100, limit), 1)
     select_related = "author", "peer", "peer__user"
@@ -150,10 +155,11 @@ async def _get_messages_query(
 async def get_messages_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
-        filter_: TLObject | None = None, saved_peer: Peer | None = None,
+        filter_: TLObject | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
 ) -> list[Message]:
-    query = await _get_messages_query(
+    query = await get_messages_query_internal(
         peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_, saved_peer,
+        after_reaction_id,
     )
     return await query
 
@@ -161,6 +167,7 @@ async def get_messages_internal(
 async def format_messages_internal(
         user: User, messages: list[Message], add_users: dict[int, TLUser] | None = None, allow_slicing: bool = False,
         peer: Peer | None = None, saved_peer: Peer | None = None, offset_id: int | None = None,
+        query: QuerySet[Message] | None = None,
 ) -> Messages | MessagesSlice:
     users_q = Q()
     chats_q = Q()
@@ -213,9 +220,10 @@ async def format_messages_internal(
             users=users_tl,
         )
 
-    query = Q(peer=peer)
-    if saved_peer is not None:
-        query &= Q(fwd_header__saved_peer=saved_peer)
+    if query is None:
+        query = Q(peer=peer)
+        if saved_peer is not None:
+            query &= Q(fwd_header__saved_peer=saved_peer)
     messages_count = await Message.filter(query).count()
 
     if messages_count <= len(messages_tl) and not offset_id:
@@ -279,7 +287,7 @@ async def read_history(request: ReadHistory, user: User):
 
     state, _ = await State.get_or_create(user=user)
 
-    read_state, created = await ReadState.get_or_create(peer=peer, defaults={"last_message_id": 0})
+    read_state, created = await ReadState.get_or_create(peer=peer)
     if request.max_id <= read_state.last_message_id:
         return AffectedMessages(
             pts=state.pts,
@@ -352,7 +360,7 @@ async def get_search_counters(request: GetSearchCounters, user: User):
     return [
         SearchCounter(
             filter=filt,
-            count=await (await _get_messages_query(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer)).count(),
+            count=await (await get_messages_query_internal(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer)).count(),
         ) for filt in request.filters
     ]
 

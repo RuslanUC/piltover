@@ -31,10 +31,11 @@ class State(Model):
         else:
             state, _ = await State.get_or_create(user=user)
 
-        state.pts += pts
-        await state.save(update_fields=["pts"])
-        if cache_state:
-            setattr(user, "_cached_updates_state", state)
+        if pts:
+            state.pts += pts
+            await state.save(update_fields=["pts"])
+            if cache_state:
+                setattr(user, "_cached_updates_state", state)
 
         return state.pts
 
