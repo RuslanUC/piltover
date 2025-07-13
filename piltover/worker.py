@@ -159,7 +159,7 @@ class Worker(MessageHandler):
         ))
 
         user = None
-        if handler.auth_required():
+        if handler.auth_required() or (call.user_id is not None and call.auth_id is not None):
             try:
                 user = await self.get_user(call, handler.allow_mfa_pending())
             except ErrorRpc as e:

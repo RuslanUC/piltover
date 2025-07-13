@@ -17,16 +17,18 @@ handler = MessageHandler("help")
 CACHED_COUNTRIES_LIST: tuple[CountriesList | None, int] = (None, 0)
 
 
-@handler.on_request(GetConfig)
-async def get_config(user: User):
-    default_reaction: Reaction | None = None
-    if user.default_reaction_id is None:
-        default_reaction = await Reaction.get_or_none(emoticon="❤")
-        if default_reaction is not None:
-            user.default_reaction = default_reaction
-            await user.save(update_fields=["default_reaction_id"])
+@handler.on_request(GetConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_config(user: User | None):
+    if user is None:
+        default_reaction = None
     else:
-        default_reaction = await user.default_reaction
+        if user.default_reaction_id is None:
+            default_reaction = await Reaction.get_or_none(reaction="❤")
+            if default_reaction is not None:
+                user.default_reaction = default_reaction
+                await user.save(update_fields=["default_reaction_id"])
+        else:
+            default_reaction = await user.default_reaction
 
     return Config(
         date=int(time()),
