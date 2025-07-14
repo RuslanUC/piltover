@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tortoise import fields, Model
+from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType
@@ -13,9 +14,23 @@ class ReadState(Model):
     peer: models.Peer = fields.ForeignKeyField("models.Peer", on_delete=fields.CASCADE, unique=True)
 
     @classmethod
-    async def get_in_out_ids_and_unread(cls, peer: models.Peer) -> tuple[int, int, int]:
+    async def get_in_out_ids_and_unread(
+            cls, peer: models.Peer, no_reactions: bool = False,
+    ) -> tuple[int, int, int, int]:
         in_read_state, _ = await models.ReadState.get_or_create(peer=peer)
         unread_count = await models.Message.filter(peer=peer, id__gt=in_read_state.last_message_id).count()
+        if no_reactions:
+            unread_reactions_count = 0
+        else:
+            unread_reactions_count = await models.MessageReaction.filter(
+                Q(message__author__id=peer.owner_id, id__gt=in_read_state.last_reaction_id)
+                & (
+                    Q(message__peer__owner__id=peer.owner_id, message__peer__channel__id=peer.channel_id)
+                    if peer.type is PeerType.CHANNEL
+                    else Q(message__peer=peer)
+                )
+                & Q(),
+            ).count()
 
         out_read_max_id = 0
         if peer.type is PeerType.SELF:
@@ -45,5 +60,5 @@ class ReadState(Model):
             #     ).order_by("-id").first().values_list("id", flat=True)
             #     out_read_max_id = out_read_max_id or 0
 
-        return in_read_state.last_message_id, out_read_max_id or 0, unread_count
+        return in_read_state.last_message_id, out_read_max_id or 0, unread_count, unread_reactions_count
 

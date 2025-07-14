@@ -153,7 +153,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     # TODO: full_chat.exported_invite
     # TODO: full_chat.migrated_from_chat_id and full_chat.migrated_from_max_id
     # TODO: full_chat.available_min_id
-    in_read_max_id, out_read_max_id, unread_count = await ReadState.get_in_out_ids_and_unread(peer)
+    in_read_max_id, out_read_max_id, unread_count, _ = await ReadState.get_in_out_ids_and_unread(peer, True)
     return MessagesChatFull(
         full_chat=ChannelFull(
             can_view_participants=False,  # TODO: allow viewing participants

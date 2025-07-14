@@ -22,12 +22,12 @@ class Dialog(Model):
     peer_id: int
 
     async def to_tl(self) -> TLDialog:
-        in_read_max_id, out_read_max_id, unread_count = await models.ReadState.get_in_out_ids_and_unread(self.peer)
+        in_read_max_id, out_read_max_id, unread_count, unread_reactions = \
+            await models.ReadState.get_in_out_ids_and_unread(self.peer)
 
         defaults = {
             "view_forum_as_messages": False,
             "unread_mentions_count": 0,
-            "unread_reactions_count": 0,
             "notify_settings": PeerNotifySettings(),
         }
 
@@ -45,5 +45,6 @@ class Dialog(Model):
             read_inbox_max_id=in_read_max_id,
             read_outbox_max_id=out_read_max_id,
             unread_count=unread_count,
+            unread_reactions_count=unread_reactions,
             folder_id=self.folder_id.value,
         )
