@@ -139,7 +139,7 @@ async def get_unread_reactions(request: GetUnreadReactions, user: User) -> Messa
         return Messages(messages=[], chats=[], users=[])
 
     return await format_messages_internal(
-        user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id, query=query,
+        user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id, query=query, with_reactions=True,
     )
 
 

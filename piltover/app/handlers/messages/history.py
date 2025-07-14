@@ -167,7 +167,7 @@ async def get_messages_internal(
 async def format_messages_internal(
         user: User, messages: list[Message], add_users: dict[int, TLUser] | None = None, allow_slicing: bool = False,
         peer: Peer | None = None, saved_peer: Peer | None = None, offset_id: int | None = None,
-        query: QuerySet[Message] | None = None,
+        query: QuerySet[Message] | None = None, with_reactions: bool = False,
 ) -> Messages | MessagesSlice:
     users_q = Q()
     chats_q = Q()
@@ -175,7 +175,7 @@ async def format_messages_internal(
 
     messages_tl = []
     for message in messages:
-        messages_tl.append(await message.to_tl(user))
+        messages_tl.append(await message.to_tl(user, with_reactions))
         users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
 
     if add_users:

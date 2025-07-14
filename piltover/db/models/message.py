@@ -198,13 +198,12 @@ class Message(Model):
             **_BASE_DEFAULTS,
         )
 
-    async def to_tl(self, current_user: models.User) -> TLMessage | MessageService:
-        if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None:
+    async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessage | MessageService:
+        if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None and not with_reactions:
             if self.media_id is not None:
                 file = await models.File.get_or_none(messagemedias__messages__id=self.id)
                 if file is not None:
                     await models.FileAccess.get_or_renew(current_user, file, True)
-            # TODO: reload reactions
             return cached
 
         if self.type is not MessageType.REGULAR:
@@ -231,7 +230,6 @@ class Message(Model):
         if self.channel_post and self.post_info_id is not None:
             self.post_info = post_info = await self.post_info
 
-        # TODO: reactions
         message = TLMessage(
             id=self.id,
             message=self.message or "",
@@ -250,6 +248,7 @@ class Message(Model):
             views=post_info.views if post_info is not None else None,
             forwards=post_info.forwards if post_info is not None else None,
             post_author=self.post_author if self.channel_post else None,
+            reactions=await self.to_tl_reactions(current_user) if with_reactions else None,
             **_BASE_DEFAULTS,
             **_REGULAR_DEFAULTS,
         )
