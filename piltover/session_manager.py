@@ -141,6 +141,7 @@ class Session:
 
     async def _fetch_lazy_field(self, lazy_obj: LazyChannel | LazyMessage | LazyUser | LazyChat) -> TLObject:
         user = User(id=self.user_id, phone_number=0)
+        user.is_lazy = True
 
         if isinstance(lazy_obj, LazyChannel):
             channel = await Channel.get_or_none(id=lazy_obj.channel_id)

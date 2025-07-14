@@ -19,6 +19,7 @@ from .peersettings_downgrade import *
 from .poll_answer_downgrade import *
 from .poll_downgrade import *
 from .poll_results_downgrade import *
+from .update_peer_blocked_downgrade import *
 from .user_downgrade import *
 from .userfull_downgrade import *
 
@@ -136,3 +137,6 @@ LayerConverter.register_for_downgrade(PollDontDowngrade)
 
 LayerConverter.register_for_downgrade(PollAnswerDowngradeTo136)
 LayerConverter.register_for_downgrade(PollAnswerDontDowngrade)
+
+LayerConverter.register_for_downgrade(UpdatePeerBlockedDowngradeTo136)
+LayerConverter.register_for_downgrade(UpdatePeerBlockedDontDowngrade)

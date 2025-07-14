@@ -39,6 +39,9 @@ class FileAccess(Model):
 
     @classmethod
     async def get_or_renew(cls, user: models.User, file: models.File, real_renew: bool = False) -> FileAccess:
+        if user.is_lazy:
+            user = await models.User.get(id=user.id)
+
         access, created = await models.FileAccess.get_or_create(file=file, user=user)
         if not created and access.is_expired():
             if real_renew:
