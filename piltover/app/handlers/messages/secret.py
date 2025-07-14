@@ -23,19 +23,23 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.secret")
 
 
+def _check_g_a_or_b(g_a_or_b_bytes: bytes) -> bool:
+    dh_p, dh_g = gen_safe_prime()
+    g_a_or_b = int.from_bytes(g_a_or_b_bytes, "big")
+    if not (1 < g_a_or_b < dh_p - 1):
+        return False
+    if not (2 ** (2048 - 64) < g_a_or_b < dh_p - 2 ** (2048 - 64)):
+        return False
+    return True
+
+
 @handler.on_request(RequestEncryption)
 async def request_encryption(request: RequestEncryption, user: User):
     if not isinstance(request.user_id, (InputUser, InputUserFromMessage)):
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
-    dh_p, dh_g = gen_safe_prime()
-    g_a = int.from_bytes(request.g_a, "big")
-    if g_a >= dh_p:
+    if not _check_g_a_or_b(request.g_a):
         raise ErrorRpc(error_code=400, error_message="DH_G_A_INVALID")
-    #if (g_a % dh_g) != 0:
-    #    raise ErrorRpc(error_code=400, error_message="DH_G_A_INVALID")
-
-    # TODO: other checks like g_a size, etc.
 
     try:
         peer = await Peer.from_input_peer(user, request.user_id)
@@ -65,14 +69,8 @@ async def request_encryption(request: RequestEncryption, user: User):
 
 @handler.on_request(AcceptEncryption)
 async def accept_encryption(request: AcceptEncryption, user: User):
-    dh_p, dh_g = gen_safe_prime()
-    g_b = int.from_bytes(request.g_b, "big")
-    if g_b >= dh_p:
+    if not _check_g_a_or_b(request.g_b):
         raise ErrorRpc(error_code=400, error_message="DH_G_B_INVALID")
-    #if (g_b % dh_g) != 0:
-    #    raise ErrorRpc(error_code=400, error_message="DH_G_B_INVALID")
-
-    # TODO: other checks like g_b size, etc.
 
     async with in_transaction():
         chat = await EncryptedChat.select_for_update().get_or_none(
