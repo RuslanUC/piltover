@@ -156,26 +156,23 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
     new_last_reaction_id = await MessageReaction.filter(reaction_query).order_by("-id").first().values_list("id", flat=True)
     new_last_reaction_id = new_last_reaction_id or read_state.last_reaction_id
 
+    pts = await State.add_pts(user, 0)
+
     if new_last_reaction_id == read_state.last_reaction_id:
         return AffectedHistory(
-            pts=await State.add_pts(user, 0),
+            pts=pts,
             pts_count=0,
             offset=0,
         )
-
-    read_reactions_count = await MessageReaction.filter(
-        reaction_query & Q(id__gt=read_state.last_reaction_id, id__lte=new_last_reaction_id),
-    ).count()
 
     await ReadState.filter(id=read_state.id).update(last_reaction_id=new_last_reaction_id)
 
     # TODO: check what updates should be sent, because afaik AffectedHistory
     #  implies sending updates to other devices
-    new_pts = await State.add_pts(user, read_reactions_count)
 
     return AffectedHistory(
-        pts=new_pts,
-        pts_count=read_reactions_count,
+        pts=pts,
+        pts_count=0,
         offset=0,
     )
 
