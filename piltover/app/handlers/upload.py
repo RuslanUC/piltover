@@ -59,7 +59,7 @@ SUPPORTED_LOCS = (
 
 
 @handler.on_request(GetFile)
-async def get_file(request: GetFile, user: User):
+async def get_file(request: GetFile, user: User) -> TLFile:
     # noinspection PyPep8
     if not isinstance(request.location, SUPPORTED_LOCS):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
@@ -68,28 +68,30 @@ async def get_file(request: GetFile, user: User):
     if request.offset < 0:
         raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
 
-    if isinstance(request.location, InputPeerPhotoFileLocation):
-        peer = await Peer.from_input_peer_raise(user, request.location.peer)
+    location = request.location
+
+    if isinstance(location, InputPeerPhotoFileLocation):
+        peer = await Peer.from_input_peer_raise(user, location.peer)
         if peer.type in (PeerType.SELF, PeerType.USER):
-            q = {"file__userphotos__id": request.location.photo_id, "file__userphotos__user": peer.peer_user(user)}
+            q = {"file__userphotos__id": location.photo_id, "file__userphotos__user": peer.peer_user(user)}
         elif peer.type is PeerType.CHAT:
-            q = {"file__chats__photo__id": request.location.photo_id, "file__chats__id": peer.chat_id}
+            q = {"file__chats__photo__id": location.photo_id, "file__chats__id": peer.chat_id}
         elif peer.type is PeerType.CHANNEL:
-            q = {"file__channels__photo__id": request.location.photo_id, "file__channels__id": peer.channel_id}
+            q = {"file__channels__photo__id": location.photo_id, "file__channels__id": peer.channel_id}
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
-    elif isinstance(request.location, InputEncryptedFileLocation):
-        q = {"file__id": request.location.id, "file__type": FileType.ENCRYPTED}
+    elif isinstance(location, InputEncryptedFileLocation):
+        q = {"file__id": location.id, "file__type": FileType.ENCRYPTED, "access_hash": location.access_hash}
     else:
-        q = {"file__id": request.location.id, "file__type__not": FileType.ENCRYPTED}
+        if not FileAccess.is_file_ref_valid(location.file_reference, user.id, location.id):
+            raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
+        q = {"file__id": location.id, "file__type__not": FileType.ENCRYPTED, "access_hash": location.access_hash}
 
     access = await FileAccess.get_or_none(user=user, **q).select_related("file")
-    if not isinstance(request.location, InputPeerPhotoFileLocation) and \
-            (access is None or access.is_expired() or access.access_hash != request.location.access_hash):
+    if not isinstance(location, InputPeerPhotoFileLocation) and access is None:
         raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
-
-    if isinstance(request.location, InputPeerPhotoFileLocation) and access is None:  # ?
-        file = await File.get_or_none(userphotos__id=request.location.photo_id)
+    elif isinstance(location, InputPeerPhotoFileLocation) and access is None:  # ?
+        file = await File.get_or_none(userphotos__id=location.photo_id)
     else:
         file = access.file
 
@@ -97,24 +99,24 @@ async def get_file(request: GetFile, user: User):
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")
 
     f_name = str(file.physical_id)
-    if isinstance(request.location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
+    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         if not file.photo_sizes:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo
-        if isinstance(request.location, InputPhotoFileLocation):
-            size = PHOTOSIZE_TO_INT[request.location.thumb_size]
+        if isinstance(location, InputPhotoFileLocation):
+            size = PHOTOSIZE_TO_INT[location.thumb_size]
         else:
-            size = 640 if request.location.big else 160
+            size = 640 if location.big else 160
         available = [size["w"] for size in file.photo_sizes]
         if size not in available:
             size = min(available, key=lambda x: abs(x - size))
         f_name += f"_{size}"
 
-    # TODO: upload to s3 or something similar
+    # TODO: download from s3 or something similar
     async with aiofiles.open(files_dir / f_name, "rb") as f:
         await f.seek(request.offset)
         data = await f.read(request.limit)
 
-    if isinstance(request.location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
+    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         file_type = FileJpeg()
     elif len(data) != file.size:
         file_type = FilePartial()

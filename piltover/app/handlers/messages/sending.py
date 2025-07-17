@@ -13,7 +13,7 @@ from piltover.app.utils.utils import resize_photo, generate_stripped, process_me
 from piltover.app_config import AppConfig
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer
+    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_136, \
@@ -314,9 +314,10 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
         file = await uploaded_file.finalize_upload(mime, attributes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_136)):
+        if not FileAccess.is_file_ref_valid(media.id.file_reference, user.id, media.id.id):
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
         file = await File.get_or_none(
             id=media.id.id, fileaccesss__user=user, fileaccesss__access_hash=media.id.access_hash,
-            fileaccesss__file_reference=media.id.file_reference, fileaccesss__expires__gt=datetime.now(UTC),
         )
         if file is None \
                 or (not file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \
@@ -580,9 +581,12 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         media_id = single_media.media.id
+
+        if not FileAccess.is_file_ref_valid(media_id.file_reference, user.id, media_id.id):
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+
         media = await MessageMedia.get_or_none(
             file__id=media_id.id, file__fileaccesss__user=user, file__fileaccesss__access_hash=media_id.access_hash,
-            file__fileaccesss__file_reference=media_id.file_reference, file__fileaccesss__expires__gt=datetime.now(UTC),
         )
 
         messages.append((

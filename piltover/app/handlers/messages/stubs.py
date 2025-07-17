@@ -131,11 +131,6 @@ async def get_custom_emoji_documents(request: GetCustomEmojiDocuments):  # pragm
     return [DocumentEmpty(id=doc) for doc in request.document_id]
 
 
-@handler.on_request(GetMessagesReactions, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_messages_reactions():  # pragma: no cover
-    return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
-
-
 @handler.on_request(GetArchivedStickers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_archived_stickers():  # pragma: no cover
     return ArchivedStickers(count=0, sets=[])

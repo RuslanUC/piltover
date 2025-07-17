@@ -18,7 +18,7 @@ from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects,
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatJoinedByRequest, MessageActionChatJoinedByLink, \
     MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage, MessageReactions, ReactionCount, \
-    ReactionEmoji
+    ReactionEmoji, MessageMediaDocument, MessageMediaPhoto
 from piltover.utils.snowflake import Snowflake
 
 
@@ -200,10 +200,26 @@ class Message(Model):
 
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessage | MessageService:
         if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None and not with_reactions:
-            if self.media_id is not None:
+            file_ref_obj = None
+            if isinstance(cached.media, MessageMediaDocument):
+                file_ref_obj = cached.media.document
+            elif isinstance(cached.media, MessageMediaPhoto):
+                file_ref_obj = cached.media.photo
+
+            if self.media_id is not None \
+                    and file_ref_obj is not None \
+                    and not models.FileAccess.is_file_ref_valid(file_ref_obj.file_reference):
                 file = await models.File.get_or_none(messagemedias__messages__id=self.id)
-                if file is not None:
-                    await models.FileAccess.get_or_renew(current_user, file, True)
+                if file is None:
+                    return cached
+
+                await current_user.load_if_lazy()
+
+                access, _ = await models.FileAccess.get_or_create(file=file, user=current_user)
+                file_ref_obj.file_reference = access.create_file_ref()
+
+                await Cache.obj.set(self._cache_key(current_user), cached)
+
             return cached
 
         if self.type is not MessageType.REGULAR:

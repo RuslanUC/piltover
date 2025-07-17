@@ -98,12 +98,13 @@ class File(Model):
         return result
 
     async def to_tl_document(self, user: models.User) -> TLDocument:
-        access = await models.FileAccess.get_or_renew(user, self)
+        await user.load_if_lazy()
+        access, _ = await models.FileAccess.get_or_create(user=user, file=self)
 
         return TLDocument(
             id=self.id,
             access_hash=access.access_hash,
-            file_reference=access.file_reference,
+            file_reference=access.create_file_ref(),
             date=int(self.created_at.timestamp()),
             mime_type=self.mime_type,
             size=self.size,
@@ -112,7 +113,8 @@ class File(Model):
         )
 
     async def to_tl_photo(self, user: models.User) -> TLPhoto:
-        access = await models.FileAccess.get_or_renew(user, self)
+        await user.load_if_lazy()
+        access, _ = await models.FileAccess.get_or_create(user=user, file=self)
 
         sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
         sizes = [PhotoSize(**size) for size in self.photo_sizes]
@@ -124,7 +126,7 @@ class File(Model):
         return TLPhoto(
             id=self.id,
             access_hash=access.access_hash,
-            file_reference=access.file_reference,
+            file_reference=access.create_file_ref(),
             date=int(self.created_at.timestamp()),
             sizes=sizes,
             dc_id=2,

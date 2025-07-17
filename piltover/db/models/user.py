@@ -28,6 +28,17 @@ class User(Model):
     cached_username: models.Username | None | object = _USERNAME_MISSING
     is_lazy: bool = False
 
+    async def load_if_lazy(self) -> None:
+        if not self.is_lazy:
+            return
+
+        obj = await self.get(id=self.id)
+        for field in self._meta.db_fields:
+            setattr(self, field, getattr(obj, field, None))
+
+        self._saved_in_db = True
+        self.is_lazy = False
+
     async def get_username(self) -> models.Username | None:
         if self.cached_username is _USERNAME_MISSING:
             self.cached_username = await models.Username.get_or_none(user=self)
