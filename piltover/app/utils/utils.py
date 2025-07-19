@@ -1,7 +1,7 @@
 import asyncio
 import re
 from asyncio import get_event_loop, gather
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures.thread import ThreadPoolExecutor
 from io import BytesIO
 
 from PIL.Image import Image, open as img_open
@@ -70,6 +70,8 @@ TELEGRAM_QUANTIZATION_TABLES = {
     ]
 }
 
+image_executor = ThreadPoolExecutor(thread_name_prefix="ImageResizeWorker")
+
 
 def resize_image_internal(file_id: str, img: Image, width: int) -> tuple[int, int]:
     original_width, height = img.size
@@ -85,12 +87,12 @@ def resize_image_internal(file_id: str, img: Image, width: int) -> tuple[int, in
 async def resize_photo(file_id: str, sizes: str = "abc") -> list[dict[str, int | str]]:
     img = img_open(files_dir / f"{file_id}")
     img.load()
-    with ThreadPoolExecutor() as pool:
-        tasks = [
-            get_event_loop().run_in_executor(pool, resize_image_internal, file_id, img, PHOTOSIZE_TO_INT[size])
-            for size in sizes
-        ]
-        res = await gather(*tasks)
+
+    tasks = [
+        get_event_loop().run_in_executor(image_executor, resize_image_internal, file_id, img, PHOTOSIZE_TO_INT[size])
+        for size in sizes
+    ]
+    res = await gather(*tasks)
 
     return [
         {"type_": sizes[idx], "w": PHOTOSIZE_TO_INT[sizes[idx]], "h": height, "size": file_size}
@@ -111,8 +113,8 @@ async def generate_stripped(file_id: str, size: int = 8) -> bytes:
         return img_file.read()[header_offset:]
 
     img = img_open(files_dir / f"{file_id}")
-    with ThreadPoolExecutor() as pool:
-        return await get_event_loop().run_in_executor(pool, _gen, img)
+
+    return await get_event_loop().run_in_executor(image_executor, _gen, img)
 
 
 async def check_password_internal(password: UserPassword, check: InputCheckPasswordEmpty | InputCheckPasswordSRP):

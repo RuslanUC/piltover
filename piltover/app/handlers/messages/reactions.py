@@ -1,5 +1,6 @@
 import ctypes
 from datetime import datetime
+from typing import Literal
 
 from pytz import UTC
 from tortoise.expressions import Q
@@ -13,21 +14,39 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
 from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, \
     GetMessagesReactions, GetUnreadReactions, ReadReactions, GetRecentReactions, ClearRecentReactions
-from piltover.tl.types.messages import AvailableReactions, Messages, AffectedHistory, Reactions, ReactionsNotModified
+from piltover.tl.types.messages import AvailableReactions, Messages, AffectedHistory, Reactions, ReactionsNotModified, \
+    AvailableReactionsNotModified
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.reactions")
 
 
+def _reactions_hash(ids: list[int], bits: Literal[32, 64]) -> int:
+    reactions_hash = 0
+    for reaction_id in ids:
+        reactions_hash ^= reactions_hash >> 21
+        reactions_hash ^= reactions_hash << 35
+        reactions_hash ^= reactions_hash >> 4
+        reactions_hash += reaction_id
+
+    return ctypes.c_int64(reactions_hash & ((2 << bits - 1) - 1)).value
+
+
 @handler.on_request(GetAvailableReactions)
-async def get_available_reactions(user: User) -> AvailableReactions:
-    reaction: Reaction
+async def get_available_reactions(
+        request: GetAvailableReactions, user: User,
+) -> AvailableReactions | AvailableReactionsNotModified:
+    ids = await Reaction.all().values_list("id", flat=True)
+
+    reactions_hash = _reactions_hash(ids, 32)
+    if reactions_hash == request.hash:
+        return AvailableReactionsNotModified()
 
     return AvailableReactions(
-        hash=1,
+        hash=reactions_hash,
         reactions=[
             await reaction.to_tl_available_reaction(user)
-            async for reaction in Reaction.all().select_related(
+            for reaction in await Reaction.all().select_related(
                 "static_icon", "appear_animation", "select_animation", "activate_animation", "effect_animation",
                 "around_animation", "center_icon",
             )
@@ -188,14 +207,7 @@ async def get_recent_reactions(request: GetRecentReactions, user: User) -> React
     limit = min(50, max(1, request.limit))
     ids = await RecentReaction.filter(user=user).limit(limit).order_by("-used_at").values_list("id", flat=True)
 
-    reactions_hash = 0
-    for reaction_id in ids:
-        reactions_hash ^= reactions_hash >> 21
-        reactions_hash ^= reactions_hash << 35
-        reactions_hash ^= reactions_hash >> 4
-        reactions_hash += reaction_id
-
-    reactions_hash = ctypes.c_int64(reactions_hash & ((2 << 64 - 1) - 1)).value
+    reactions_hash = _reactions_hash(ids, 64)
 
     if reactions_hash == request.hash:
         return ReactionsNotModified()
