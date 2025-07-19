@@ -62,7 +62,6 @@ class Session:
         msg_id = (now * 2 ** 32) + self.msg_id_values.offset + (1 if in_reply else 3)
 
         assert msg_id % 4 in [1, 3], f"Invalid server msg_id: {msg_id}"
-        logger.info(f"Got msg id {msg_id} in session ({hex(id(self))})")
         return msg_id
 
     def update_incoming_content_related_msgs(self, obj: TLObject, seq_no: int):

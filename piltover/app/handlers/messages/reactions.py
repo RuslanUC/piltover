@@ -37,8 +37,6 @@ async def get_available_reactions(user: User) -> AvailableReactions:
 
 @handler.on_request(SendReaction)
 async def send_reaction(request: SendReaction, user: User) -> Updates:
-    # TODO: request.add_to_recent (emits (probably) UpdateRecentReactions)
-
     reaction = None
     if request.reaction:
         if isinstance(request.reaction[0], ReactionEmoji):
