@@ -4,7 +4,8 @@ from typing import cast
 
 from loguru import logger
 from pypika_tortoise.terms import CustomFunction
-from tortoise.expressions import Q, Subquery, Function, F
+from tortoise import connections
+from tortoise.expressions import Q, Subquery, Function, F, RawSQL
 from tortoise.functions import Min, Max, Count
 from tortoise.queryset import QuerySet
 
@@ -459,8 +460,14 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
     )
 
 
-class MysqlUnixTimestamp(Function):
-   database_func = CustomFunction("UNIX_TIMESTAMP", ["dt"])
+DATE_TO_UNIXDAY_SQL = {
+    "mysql": RawSQL("UNIX_TIMESTAMP(`date`)/86400"),
+    "sqlite": RawSQL("CAST(strftime('%s', `date`) as INT)/86400"),
+    "postgres": None,
+    "postgresql": None,
+    "oracle": None,
+    "mssql": None,
+}
 
 
 @handler.on_request(GetSearchResultsCalendar)
@@ -480,23 +487,28 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     if saved_peer is not None:
         query &= Q(fwd_header__saved_peer=saved_peer)
 
-    # TODO: add support for other databases
-    periods = await Message.annotate(
-        fdate=MysqlUnixTimestamp(F("date")) / 86400, min_msg_id=Min("id"), max_msg_id=Max("id"), msg_count=Count("id")
-    ).filter(
-        query & Q(msg_count__gte=1)
-    ).limit(100).order_by("-fdate").group_by("fdate").values_list("fdate", "min_msg_id", "max_msg_id", "msg_count")
+    dialect = connections.get("default").capabilities.dialect
+    day_sql = DATE_TO_UNIXDAY_SQL.get(dialect, None)
+    if day_sql is None:
+        logger.warning(f"Dialect \"{dialect}\" is not supported in GetSearchResultsCalendar")
+        periods = []
+    else:
+        periods = await Message.annotate(
+            day=day_sql, min_msg_id=Min("id"), max_msg_id=Max("id"), msg_count=Count("id")
+        ).filter(
+            query & Q(msg_count__gte=1)
+        ).limit(100).order_by("-day").group_by("day").values_list("day", "min_msg_id", "max_msg_id", "msg_count")
 
     message_ids = []
     periods_tl = []
 
-    for fdate, min_msg_id, max_msg_id, msg_count in periods:
+    for day, min_msg_id, max_msg_id, msg_count in periods:
         message_ids.append(min_msg_id)
         if max_msg_id != min_msg_id:
             message_ids.append(max_msg_id)
 
         periods_tl.append(SearchResultsCalendarPeriod(
-            date=fdate,
+            date=day * 86400,
             min_msg_id=min_msg_id,
             max_msg_id=max_msg_id,
             count=msg_count,
