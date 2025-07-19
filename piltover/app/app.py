@@ -7,10 +7,13 @@ from os import getenv
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal, AsyncIterator, TYPE_CHECKING
+from uuid import UUID
 
 import uvloop
 from aerich import Command, Migrate
+from fastrand import xorshift128plus_bytes
 from loguru import logger
+from pydantic import UUID1
 from tortoise import Tortoise, connections
 from tortoise.expressions import Q
 
@@ -19,6 +22,7 @@ from piltover.app.handlers import register_handlers
 from piltover.app_config import AppConfig
 from piltover.cache import Cache
 from piltover.gateway import Gateway
+from piltover.tl import Long
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 
 if TYPE_CHECKING:
@@ -90,6 +94,8 @@ async def _upload_reaction_doc(reaction: int, doc: dict) -> File:
         type=FileType.DOCUMENT_STICKER,
         photo_path=photo_path,
         photo_sizes=[],
+        constant_access_hash=Long.read_bytes(xorshift128plus_bytes(8)),
+        constant_file_ref=UUID(bytes=xorshift128plus_bytes(16)),
     )
     file.parse_attributes_from_tl([
         cls_name_to_cls[attr.pop("_")](**attr)

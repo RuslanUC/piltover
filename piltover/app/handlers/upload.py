@@ -69,6 +69,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
         raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
 
     location = request.location
+    ref_const = False
 
     if isinstance(location, InputPeerPhotoFileLocation):
         peer = await Peer.from_input_peer_raise(user, location.peer)
@@ -83,17 +84,29 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     elif isinstance(location, InputEncryptedFileLocation):
         q = {"file__id": location.id, "file__type": FileType.ENCRYPTED, "access_hash": location.access_hash}
     else:
-        if not FileAccess.is_file_ref_valid(location.file_reference, user.id, location.id):
+        valid, const = FileAccess.is_file_ref_valid(location.file_reference, user.id, location.id)
+        if not valid:
             raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
-        q = {"file__id": location.id, "file__type__not": FileType.ENCRYPTED, "access_hash": location.access_hash}
 
-    access = await FileAccess.get_or_none(user=user, **q).select_related("file")
-    if not isinstance(location, InputPeerPhotoFileLocation) and access is None:
-        raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
-    elif isinstance(location, InputPeerPhotoFileLocation) and access is None:  # ?
-        file = await File.get_or_none(userphotos__id=location.photo_id)
+        if const:
+            ref_const = True
+            q = {
+                "id": location.id, "type__not": FileType.ENCRYPTED, "constant_access_hash": location.access_hash,
+                "constant_file_ref": location.file_reference,
+            }
+        else:
+            q = {"file__id": location.id, "file__type__not": FileType.ENCRYPTED, "access_hash": location.access_hash}
+
+    if ref_const:
+        file = await File.get_or_none(**q)
     else:
-        file = access.file
+        access = await FileAccess.get_or_none(user=user, **q).select_related("file")
+        if not isinstance(location, InputPeerPhotoFileLocation) and access is None:
+            raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
+        elif isinstance(location, InputPeerPhotoFileLocation) and access is None:  # ?
+            file = await File.get_or_none(userphotos__id=location.photo_id)
+        else:
+            file = access.file
 
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")

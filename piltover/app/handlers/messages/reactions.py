@@ -29,14 +29,21 @@ def _reactions_hash(ids: list[int], bits: Literal[32, 64]) -> int:
         reactions_hash ^= reactions_hash >> 4
         reactions_hash += reaction_id
 
-    return ctypes.c_int64(reactions_hash & ((2 << bits - 1) - 1)).value
+    reactions_hash &= ((2 << bits - 1) - 1)
+
+    if bits == 32:
+        return ctypes.c_int32(reactions_hash).value
+    elif bits == 64:
+        return ctypes.c_int64(reactions_hash).value
+    else:
+        raise RuntimeError("Unreachable")
 
 
 @handler.on_request(GetAvailableReactions)
 async def get_available_reactions(
         request: GetAvailableReactions, user: User,
 ) -> AvailableReactions | AvailableReactionsNotModified:
-    ids = await Reaction.all().values_list("id", flat=True)
+    ids = await Reaction.all().order_by("id").values_list("id", flat=True)
 
     reactions_hash = _reactions_hash(ids, 32)
     if reactions_hash == request.hash:

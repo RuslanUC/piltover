@@ -314,11 +314,15 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
         file = await uploaded_file.finalize_upload(mime, attributes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_136)):
-        if not FileAccess.is_file_ref_valid(media.id.file_reference, user.id, media.id.id):
+        valid, const = FileAccess.is_file_ref_valid(media.id.file_reference, user.id, media.id.id)
+        if not valid:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
-        file = await File.get_or_none(
-            id=media.id.id, fileaccesss__user=user, fileaccesss__access_hash=media.id.access_hash,
-        )
+        file_q = Q(id=media.id.id)
+        if const:
+            file_q &= Q(constant_access_hash=media.id.access_hash, constant_file_ref=media.id.file_reference[12:])
+        else:
+            file_q &= Q(fileaccesss__user=user, fileaccesss__access_hash=media.id.access_hash)
+        file = await File.get_or_none(file_q)
         if file is None \
                 or (not file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \
                 or (file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
@@ -582,12 +586,17 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
 
         media_id = single_media.media.id
 
-        if not FileAccess.is_file_ref_valid(media_id.file_reference, user.id, media_id.id):
+        valid, const = FileAccess.is_file_ref_valid(media_id.file_reference, user.id, media_id.id)
+        if not valid:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+        media_q = Q(file__id=media_id.id)
+        if const:
+            file_ref = media_id.file_reference[12:]
+            media_q &= Q(file__constant_access_hash=media_id.access_hash, file__constant_file_ref=file_ref)
+        else:
+            media_q &= Q(file__fileaccesss__user=user, file__fileaccesss__access_hash=media_id.access_hash)
 
-        media = await MessageMedia.get_or_none(
-            file__id=media_id.id, file__fileaccesss__user=user, file__fileaccesss__access_hash=media_id.access_hash,
-        )
+        media = await MessageMedia.get_or_none(media_q)
 
         messages.append((
             single_media.message,

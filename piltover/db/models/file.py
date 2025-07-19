@@ -9,7 +9,7 @@ from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
-    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize
+    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long
 
 
 class File(Model):
@@ -19,6 +19,9 @@ class File(Model):
     mime_type: str = fields.CharField(max_length=200)
     size: int = fields.BigIntField()
     type: FileType = fields.IntEnumField(FileType)
+
+    constant_access_hash: int | None = fields.BigIntField(null=True, default=None)
+    constant_file_ref: UUID | None = fields.UUIDField(null=True, default=None)
 
     # DocumentAttributeFilename
     filename: str | None = fields.TextField(null=True, default=None)
@@ -98,13 +101,19 @@ class File(Model):
         return result
 
     async def to_tl_document(self, user: models.User) -> TLDocument:
-        await user.load_if_lazy()
-        access, _ = await models.FileAccess.get_or_create(user=user, file=self)
+        if self.constant_access_hash is None or self.constant_file_ref is None:
+            await user.load_if_lazy()
+            access, _ = await models.FileAccess.get_or_create(user=user, file=self)
+            access_hash = access.access_hash
+            file_ref = access.create_file_ref()
+        else:
+            access_hash = self.constant_access_hash
+            file_ref = models.FileAccess.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
 
         return TLDocument(
             id=self.id,
-            access_hash=access.access_hash,
-            file_reference=access.create_file_ref(),
+            access_hash=access_hash,
+            file_reference=file_ref,
             date=int(self.created_at.timestamp()),
             mime_type=self.mime_type,
             size=self.size,
@@ -113,8 +122,14 @@ class File(Model):
         )
 
     async def to_tl_photo(self, user: models.User) -> TLPhoto:
-        await user.load_if_lazy()
-        access, _ = await models.FileAccess.get_or_create(user=user, file=self)
+        if self.constant_access_hash is None or self.constant_file_ref is None:
+            await user.load_if_lazy()
+            access, _ = await models.FileAccess.get_or_create(user=user, file=self)
+            access_hash = access.access_hash
+            file_ref = access.create_file_ref()
+        else:
+            access_hash = self.constant_access_hash
+            file_ref = models.FileAccess.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
 
         sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
         sizes = [PhotoSize(**size) for size in self.photo_sizes]
@@ -125,8 +140,8 @@ class File(Model):
 
         return TLPhoto(
             id=self.id,
-            access_hash=access.access_hash,
-            file_reference=access.create_file_ref(),
+            access_hash=access_hash,
+            file_reference=file_ref,
             date=int(self.created_at.timestamp()),
             sizes=sizes,
             dc_id=2,

@@ -23,6 +23,10 @@ def gen_expires() -> datetime:
 
 
 class FileAccess(Model):
+    # constantFileReference file_id:long file_ref:bytes = ConstantFileReference
+    CONST_FILE_REF_ID = 0x51a32644
+    CONST_FILE_REF_ID_BYTES = Int.write(CONST_FILE_REF_ID, signed=False)
+
     id: int = fields.BigIntField(pk=True)
     access_hash: int = fields.BigIntField(default=gen_access_hash)
     file: models.File = fields.ForeignKeyField("models.File", on_delete=fields.CASCADE)
@@ -43,21 +47,23 @@ class FileAccess(Model):
         return created_at + hmac.new(AppConfig.FILE_REF_KEY, payload, sha256).digest()
 
     @staticmethod
-    def is_file_ref_valid(file_ref: bytes, user_id: int | None = None, file_id: int | None = None) -> bool:
+    def is_file_ref_valid(file_ref: bytes, user_id: int | None = None, file_id: int | None = None) -> tuple[bool, bool]:
+        if len(file_ref) == (4 + 8 + 16) and file_ref.startswith(FileAccess.CONST_FILE_REF_ID_BYTES):
+            valid = file_ref[4:12] == Long.write(file_id)
+            return valid, valid
+
         if len(file_ref) != (4 + 256 // 8):
-            return False
+            return False, False
 
         now_minutes = time() // 60
         created_at = Int.read_bytes(file_ref[:4])
         if (created_at + AppConfig.FILE_REF_EXPIRE_MINUTES) < now_minutes:
-            logger.error(1)
-            return False
+            return False, False
 
         if user_id is not None and file_id is not None:
             payload = Long.write(user_id) + Long.write(file_id) + file_ref[:4]
 
             if hmac.new(AppConfig.FILE_REF_KEY, payload, sha256).digest() != file_ref[4:]:
-                logger.error(2)
-                return False
+                return False, False
 
-        return True
+        return True, False
