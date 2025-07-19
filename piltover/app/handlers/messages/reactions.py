@@ -5,8 +5,7 @@ from typing import Literal
 from pytz import UTC
 from tortoise.expressions import Q
 
-from piltover.app.handlers.messages.history import format_messages_internal, \
-    get_messages_query_internal
+from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType, ChatBannedRights
 from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State, RecentReaction

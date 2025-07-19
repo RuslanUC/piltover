@@ -20,7 +20,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
-    SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar
+    SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar
 from piltover.worker import MessageHandler
@@ -522,3 +522,10 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
         chats=[*chats.values(), *channels.values()],
         users=list(users.values()),
     )
+
+
+@handler.on_request(GetOutboxReadDate)
+async def get_outbox_read_date():
+    # TODO: implement getting outbox read date
+
+    raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")

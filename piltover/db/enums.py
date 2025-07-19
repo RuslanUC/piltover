@@ -191,3 +191,19 @@ class ChatAdminRights(IntFlag):
         for right in cls:
             all_ |= right
         return all_
+
+
+class PushTokenType(IntEnum):
+    APPLE = 1
+    FIREBASE = 2
+    MICROSOFT = 3
+    SIMPLE_PUSH = 4
+    UBUNTU = 5
+    BLACKBERRY = 6
+    INTERNAL = 7
+    WINDOWS = 8
+    APPLE_VOIP = 9
+    WEB = 10
+    MICROSOFT_VOIP = 11
+    TIZEN = 12
+    HUAWEI = 13

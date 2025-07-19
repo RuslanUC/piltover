@@ -4,7 +4,7 @@ from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus
+from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
@@ -92,7 +92,12 @@ async def set_account_ttl(request: SetAccountTTL, user: User):
 @handler.on_request(RegisterDevice_70)
 @handler.on_request(RegisterDevice)
 async def register_device(request: RegisterDevice, user: User) -> bool:
-    if request.token_type != 7:
+    if request.token_type not in PushTokenType._value2member_map_:
+        return False
+
+    token_type = PushTokenType(request.token_type)
+
+    if token_type is not PushTokenType.INTERNAL:
         return False
     sess_id = int(request.token)
     key_id = request_ctx.get().auth_key_id

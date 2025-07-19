@@ -30,6 +30,7 @@ async def get_full_user(request: GetFullUser, user: User):
             notify_settings=PeerNotifySettings(show_previews=True),
             common_chats_count=0,
             birthday=await target_user.to_tl_birthday(user),
+            read_dates_private=True,
         ),
         chats=[],
         users=[await target_user.to_tl(current_user=user)],
