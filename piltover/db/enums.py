@@ -80,6 +80,7 @@ class UpdateType(IntEnum):
     FOLDERS_ORDER = 21
     UPDATE_ENCRYPTION = 22
     UPDATE_CONFIG = 23
+    UPDATE_RECENT_REACTIONS = 24
 
 
 class SecretUpdateType(IntEnum):

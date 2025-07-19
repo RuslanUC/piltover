@@ -38,5 +38,3 @@ class State(Model):
                 setattr(user, "_cached_updates_state", state)
 
         return state.pts
-
-    upd = add_pts

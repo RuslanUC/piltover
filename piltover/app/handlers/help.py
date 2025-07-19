@@ -366,7 +366,7 @@ async def get_countries_list(request: GetCountriesList) -> CountriesList | Count
             countries.hash ^= countries.hash >> 4
             countries.hash += await country.get_internal_hash()
 
-        countries.hash = ctypes.c_int32(countries.hash & 0xffffffff).value
+        countries.hash = ctypes.c_int32(countries.hash & ((2 << 32 - 1) - 1)).value
         CACHED_COUNTRIES_LIST = countries, time()
 
     if request.hash == countries.hash and countries.hash != 0:

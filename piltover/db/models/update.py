@@ -8,7 +8,7 @@ from tortoise.expressions import Q
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
-    UpdateDialogFilterOrder
+    UpdateDialogFilterOrder, UpdateRecentReactions
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
@@ -19,7 +19,8 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
-              | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig
+              | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
+              | UpdateRecentReactions
 
 
 class Update(Model):
@@ -347,5 +348,8 @@ class Update(Model):
 
             case UpdateType.UPDATE_CONFIG:
                 return UpdateConfig(), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_RECENT_REACTIONS:
+                return UpdateRecentReactions(), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

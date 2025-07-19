@@ -44,3 +44,4 @@ from .message_reaction import MessageReaction
 from .encrypted_chat import EncryptedChat
 from .secret_update import SecretUpdate
 from .encrypted_file import EncryptedFile
+from .recent_reaction import RecentReaction

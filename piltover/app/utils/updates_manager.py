@@ -17,7 +17,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, EncryptedChatDiscarded, \
-    UpdateEncryptedChatTyping, UpdateConfig
+    UpdateEncryptedChatTyping, UpdateConfig, UpdateRecentReactions
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat
 
@@ -1214,6 +1214,30 @@ class UpdatesManager:
 
         updates = Updates(
             updates=[UpdateConfig()],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+
+        return updates
+
+    @staticmethod
+    async def update_recent_reactions(user: User) -> Updates:
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.UPDATE_RECENT_REACTIONS,
+            pts=new_pts,
+            pts_count=1,
+            related_id=None,
+        )
+
+        updates = Updates(
+            updates=[UpdateRecentReactions()],
             users=[],
             chats=[],
             date=int(time()),

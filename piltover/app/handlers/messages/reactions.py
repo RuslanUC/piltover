@@ -1,15 +1,19 @@
+import ctypes
+from datetime import datetime
+
+from pytz import UTC
 from tortoise.expressions import Q
 
 from piltover.app.handlers.messages.history import format_messages_internal, \
     get_messages_query_internal
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.enums import PeerType, ChatBannedRights
-from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State
+from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State, RecentReaction
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
 from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, \
-    GetMessagesReactions, GetUnreadReactions, ReadReactions
-from piltover.tl.types.messages import AvailableReactions, Messages, AffectedHistory
+    GetMessagesReactions, GetUnreadReactions, ReadReactions, GetRecentReactions, ClearRecentReactions
+from piltover.tl.types.messages import AvailableReactions, Messages, AffectedHistory, Reactions, ReactionsNotModified
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.reactions")
@@ -83,6 +87,10 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         if opp_peer.owner == user:
             continue
         await UpdatesManager.update_reactions(opp_peer.owner, [opp_message], opp_peer)
+
+    if reaction is not None and request.add_to_recent:
+        await RecentReaction.update_time_or_create(user, reaction, datetime.now(UTC))
+        await UpdatesManager.update_recent_reactions(user)
 
     return result
 
@@ -177,7 +185,42 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
     )
 
 
+@handler.on_request(GetRecentReactions)
+async def get_recent_reactions(request: GetRecentReactions, user: User) -> Reactions | ReactionsNotModified:
+    limit = min(50, max(1, request.limit))
+    ids = await RecentReaction.filter(user=user).limit(limit).order_by("-used_at").values_list("id", flat=True)
+
+    reactions_hash = 0
+    for reaction_id in ids:
+        reactions_hash ^= reactions_hash >> 21
+        reactions_hash ^= reactions_hash << 35
+        reactions_hash ^= reactions_hash >> 4
+        reactions_hash += reaction_id
+
+    reactions_hash = ctypes.c_int64(reactions_hash & ((2 << 64 - 1) - 1)).value
+
+    if reactions_hash == request.hash:
+        return ReactionsNotModified()
+
+    reactions = await RecentReaction.filter(id__in=ids).select_related("reaction").order_by("-used_at")
+
+    return Reactions(
+        hash=reactions_hash,
+        reactions=[
+            ReactionEmoji(emoticon=reaction.reaction.reaction)
+            for reaction in reactions
+        ]
+    )
+
+
+@handler.on_request(ClearRecentReactions)
+async def clear_recent_reactions(user: User) -> bool:
+    if await RecentReaction.filter(user=user).exists():
+        await RecentReaction.filter(user=user).delete()
+        await UpdatesManager.update_recent_reactions(user)
+
+    return True
+
+
 # TODO: SetChatAvailableReactions
 # TODO: GetMessageReactionsList
-# TODO: GetRecentReactions
-# TODO: ClearRecentReactions
