@@ -75,3 +75,36 @@ class TLObject(ABC):
                 raise ValueError(
                     f"Failed TLObject equality check at {path}.{slot}: {attr_self!r} != {attr_other!r}"
                 )
+
+    def eq_diff(self, other: TLObject, _inv: bool = False) -> str:
+        if not isinstance(other, type(self)):
+            this = self
+            if _inv:
+                this, other = other, this
+            return f"<type mismatch, expected \"{this.__class__.__name__}\", got \"{other.__class__.__name__}\">"
+
+        result = ""
+        for slot in self.__slots__:
+            attr_self = getattr(self, slot)
+            attr_other = getattr(other, slot)
+
+            attr_diff = ""
+            if isinstance(attr_self, TLObject):
+                attr_diff = attr_self.eq_diff(attr_other)
+            elif isinstance(attr_other, TLObject):
+                attr_diff = attr_other.eq_diff(attr_self, _inv=True)
+            elif attr_self != attr_other:
+                attr_diff = f"<expected \"{attr_self}\", got \"{attr_other}\">"
+
+            if attr_diff:
+                if not result:
+                    result += f"{self.__class__.__name__}("
+                else:
+                    result += ", "
+                result += f"{slot} = {attr_diff}"
+
+        if result:
+            result += ")"
+
+        return result
+
