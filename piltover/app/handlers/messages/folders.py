@@ -1,7 +1,7 @@
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.db.models import User, DialogFolder
 from piltover.exceptions import ErrorRpc
-from piltover.tl import DialogFilterDefault, DialogFilter, DialogFilterChatlist
+from piltover.tl import DialogFilterDefault, DialogFilter, DialogFilterChatlist, TextWithEntities
 from piltover.tl.functions.messages import GetDialogFilters, UpdateDialogFilter, UpdateDialogFiltersOrder, \
     GetDialogFilters_136
 from piltover.tl.types.messages import DialogFilters
@@ -42,7 +42,9 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
         await UpdatesManager.update_folder(user, request.id, None)
         return True
 
-    if not request.filter.title or len(request.filter.title) > 12:
+    title = request.filter.title
+    title_text = title.text if isinstance(title, TextWithEntities) else title
+    if not title_text or len(title_text) > 12:
         raise ErrorRpc(error_code=400, error_message="FILTER_TITLE_EMPTY")
 
     if folder is None:

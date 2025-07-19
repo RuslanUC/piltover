@@ -6,8 +6,7 @@ from tortoise.transactions import in_transaction
 
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.tl import DialogFilter, InputPeerSelf, InputPeerUser, InputPeerChat, InputPeerChannel
-
+from piltover.tl import DialogFilter, InputPeerSelf, InputPeerUser, InputPeerChat, InputPeerChannel, TextWithEntities
 
 InputPeer = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel
 
@@ -46,7 +45,7 @@ class DialogFolder(Model):
 
         return DialogFilter(
             id=self.id_for_user,
-            title=self.name,
+            title=TextWithEntities(text=self.name, entities=[]),
             contacts=self.contacts,
             non_contacts=self.non_contacts,
             groups=self.groups,
@@ -128,7 +127,7 @@ class DialogFolder(Model):
             await relation.clear()
 
     async def fill_from_tl(self, tl_filter: DialogFilter) -> None:
-        self.name = tl_filter.title
+        self.name = tl_filter.title.text if isinstance(tl_filter.title, TextWithEntities) else tl_filter.title
         self.contacts = tl_filter.contacts
         self.non_contacts = tl_filter.non_contacts
         self.groups = tl_filter.groups
