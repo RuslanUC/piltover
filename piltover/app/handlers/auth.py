@@ -1,3 +1,4 @@
+from datetime import timedelta, datetime
 from io import BytesIO
 from time import time
 from typing import cast
@@ -5,6 +6,7 @@ from typing import cast
 from loguru import logger
 from mtproto import ConnectionRole
 from mtproto.packets import EncryptedMessagePacket, MessagePacket
+from pytz import UTC
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal, get_perm_key
@@ -15,9 +17,10 @@ from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, D
     User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import BindAuthKeyInner
+from piltover.session_manager import SessionManager
+from piltover.tl import BindAuthKeyInner, UpdatesTooLong
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
-    SignUp_136, LogOut
+    SignUp_136, LogOut, ResetAuthorizations
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
     AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut
 from piltover.utils.snowflake import Snowflake
@@ -221,6 +224,28 @@ async def log_out() -> LoggedOut:
     return LoggedOut()
 
 
+@handler.on_request(ResetAuthorizations)
+async def reset_authorizations(user: User) -> bool:
+    auth_id = request_ctx.get().auth_id
+    this_auth = await UserAuthorization.get_or_none(id=auth_id)
+
+    if (this_auth.created_at + timedelta(days=1)) > datetime.now(UTC):
+        raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")
+
+    auths = await UserAuthorization.filter(user=user, id__not=auth_id).select_related("key")
+
+    keys_s = [auth.key.id for auth in auths]
+    keys = list(map(int, keys_s))
+
+    temp_keys = await TempAuthKey.filter(perm_key__in__in=keys_s).values_list("id", flat=True)
+    keys.extend(map(int, temp_keys))
+
+    await UserAuthorization.filter(id__in=[auth.id for auth in auths]).delete()
+
+    await SessionManager.send(UpdatesTooLong(), key_id=keys)
+
+    return True
+
+
 # TODO: ExportLoginToken
 # TODO: AcceptLoginToken
-# TODO: ResetAuthorizations

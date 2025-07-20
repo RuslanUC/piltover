@@ -1,23 +1,26 @@
-from datetime import date
+from datetime import date, timedelta, datetime
+from typing import cast
+
+from pytz import UTC
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
-from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule
+from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, TempAuthKey
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
-    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long
+    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, UpdatesTooLong
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
-    ChangeAuthorizationSettings
+    ChangeAuthorizationSettings, ResetAuthorization
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
 from piltover.tl.types.internal import SetSessionInternalPush
@@ -395,4 +398,26 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user: User)
     return True
 
 
-# TODO: ResetAuthorization
+@handler.on_request(ResetAuthorization)
+async def reset_authorization(request: ResetAuthorization, user: User) -> bool:
+    auth_id = request_ctx.get().auth_id
+    this_auth = await UserAuthorization.get_or_none(id=auth_id)
+
+    if (this_auth.created_at + timedelta(days=1)) > datetime.now(UTC):
+        raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")
+
+    auth_hash_hex = Long.write(request.hash).hex()
+    auth = await UserAuthorization.get_or_none(user=user, hash__startswith=auth_hash_hex).select_related("key")
+    if auth is None or auth == this_auth:
+        raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
+
+    keys = [int(auth.key.id)]
+
+    if (temp_id := await TempAuthKey.filter(perm_key=auth.key).first().values_list("id", flat=True)) is not None:
+        keys.append(int(cast(str, temp_id)))
+
+    await auth.delete()
+
+    await SessionManager.send(UpdatesTooLong(), key_id=keys)
+
+    return True
