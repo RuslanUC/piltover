@@ -18,7 +18,7 @@ from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, D
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
-from piltover.tl import BindAuthKeyInner, UpdatesTooLong
+from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Long
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_136, LogOut, ResetAuthorizations
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
@@ -78,7 +78,7 @@ async def send_code(request: SendCode):
 
 @handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def sign_in(request: SignIn):
-    if len(request.phone_code_hash) != 24:
+    if len(request.phone_code_hash) != 32:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if request.phone_code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EMPTY")
@@ -90,7 +90,10 @@ async def sign_in(request: SignIn):
         int(request.phone_code)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID")
-    code = await SentCode.get_or_none(phone_number=request.phone_number, hash=request.phone_code_hash[8:], used=False)
+
+    code_id = Long.read_bytes(bytes.fromhex(request.phone_code_hash[:16]))
+    code_hash = request.phone_code_hash[16:]
+    code = await SentCode.get_or_none(id=code_id, hash=code_hash, phone_number=request.phone_number, used=False)
     if code is None or code.code != int(request.phone_code):
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if code.expires_at < time():
@@ -120,13 +123,16 @@ async def sign_in(request: SignIn):
 @handler.on_request(SignUp_136, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 @handler.on_request(SignUp, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def sign_up(request: SignUp | SignUp_136):
-    if len(request.phone_code_hash) != 24:
+    if len(request.phone_code_hash) != 32:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     try:
         int(request.phone_number)
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
-    code = await SentCode.get_or_none(phone_number=request.phone_number, hash=request.phone_code_hash[8:], used=True)
+
+    code_id = Long.read_bytes(bytes.fromhex(request.phone_code_hash[:16]))
+    code_hash = request.phone_code_hash[16:]
+    code = await SentCode.get_or_none(id=code_id, hash=code_hash, phone_number=request.phone_number, used=True)
     if code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if code.expires_at < time():
