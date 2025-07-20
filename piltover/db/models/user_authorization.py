@@ -22,7 +22,7 @@ class UserAuthorization(Model):
     mfa_pending: bool = fields.BooleanField(default=False)
     allow_encrypted_requests: bool = fields.BooleanField(default=True)
     allow_call_requests: bool = fields.BooleanField(default=True)
-    # TODO: confirmed
+    confirmed: bool = fields.BooleanField(default=False)
 
     platform: str = fields.CharField(max_length=128, default="Unknown")
     device_model: str = fields.CharField(max_length=128, default="Unknown")
@@ -36,8 +36,12 @@ class UserAuthorization(Model):
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
     key: models.AuthKey = fields.ForeignKeyField("models.AuthKey", on_delete=fields.CASCADE, unique=True)
 
+    @property
+    def tl_hash(self) -> int:
+        return Long.read_bytes(bytes.fromhex(self.hash[:-16]))
+
     def to_tl(self, **kwargs) -> Authorization:
-        kwargs["hash"] = 0 if kwargs.get("current", False) else Long.read_bytes(bytes.fromhex(self.hash[:-16]))
+        kwargs["hash"] = 0 if kwargs.get("current", False) else self.tl_hash
         defaults = {
             "official_app": True,
             "country": "US",
@@ -57,5 +61,6 @@ class UserAuthorization(Model):
             password_pending=self.mfa_pending,
             encrypted_requests_disabled=self.allow_encrypted_requests,
             call_requests_disabled=self.allow_call_requests,
+            unconfirmed=not self.confirmed,
             **defaults
         )

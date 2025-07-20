@@ -93,6 +93,8 @@ async def get_difference(request: GetDifference | GetDifference_136, user: User)
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
             continue
+        if update.update_type is UpdateType.NEW_AUTHORIZATION and (update.related_id == ctx.auth_id or ctx.layer < 163):
+            continue
 
         update_tl, users_q, chats_q, channels_q = await update.to_tl(user, users_q, chats_q, channels_q, ctx.auth_id)
         if update_tl is not None:

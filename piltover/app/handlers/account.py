@@ -364,17 +364,35 @@ async def update_birthday(request: UpdateBirthday, user: User) -> bool:
 
 @handler.on_request(ChangeAuthorizationSettings)
 async def change_auth_settings(request: ChangeAuthorizationSettings, user: User) -> bool:
+    auth_id = request_ctx.get().auth_id
+    this_auth = await UserAuthorization.get_or_none(id=auth_id)
+
     auth_hash_hex = Long.write(request.hash).hex()
     auth = await UserAuthorization.get_or_none(user=user, hash__startswith=auth_hash_hex)
-    if auth is None:
+    if auth is None or auth == this_auth or this_auth.created_at > auth.created_at:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
-    if auth.allow_encrypted_requests == (not request.encrypted_requests_disabled) \
-            and auth.allow_call_requests == (not request.call_requests_disabled):
+    to_update = []
+    if not auth.confirmed and request.confirmed:
+        auth.confirmed = True
+        to_update.append("confirmed")
+
+    if request.encrypted_requests_disabled is not None \
+            and auth.allow_encrypted_requests != (not request.encrypted_requests_disabled):
+        auth.allow_encrypted_requests = not request.encrypted_requests_disabled
+        to_update.append("allow_encrypted_requests")
+
+    if request.call_requests_disabled is not None \
+            and auth.allow_call_requests != (not request.call_requests_disabled):
+        auth.allow_call_requests = not request.call_requests_disabled
+        to_update.append("allow_call_requests")
+
+    if not to_update:
         return True
 
-    auth.allow_encrypted_requests = not request.encrypted_requests_disabled
-    auth.allow_call_requests = not request.call_requests_disabled
-    await auth.save(update_fields=["allow_encrypted_requests", "allow_call_requests"])
+    await auth.save(update_fields=to_update)
 
     return True
+
+
+# TODO: ResetAuthorization

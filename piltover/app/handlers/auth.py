@@ -104,9 +104,12 @@ async def sign_in(request: SignIn):
 
     key = await get_perm_key(request_ctx.get().auth_key_id)
     await UserAuthorization.filter(key=key).delete()
-    await UserAuthorization.create(ip="127.0.0.1", user=user, key=key, mfa_pending=password.password is not None)
+    auth = await UserAuthorization.create(ip="127.0.0.1", user=user, key=key, mfa_pending=password.password is not None)
     if password.password is not None:
         raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
+
+    if not auth.mfa_pending:
+        await UpdatesManager.new_auth(user, auth)
 
     return Authorization(user=await user.to_tl(current_user=user))
 
@@ -161,6 +164,8 @@ async def check_password(request: CheckPassword, user: User):
     auth.mfa_pending = False
     await auth.save(update_fields=["mfa_pending"])
 
+    await UpdatesManager.new_auth(user, auth)
+
     return Authorization(user=await user.to_tl(current_user=user))
 
 
@@ -214,3 +219,8 @@ async def log_out() -> LoggedOut:
     await UserAuthorization.filter(key=key).delete()
 
     return LoggedOut()
+
+
+# TODO: ExportLoginToken
+# TODO: AcceptLoginToken
+# TODO: ResetAuthorizations

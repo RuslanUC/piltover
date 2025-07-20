@@ -13,14 +13,14 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
-    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig
+    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
-              | UpdateRecentReactions
+              | UpdateRecentReactions | UpdateNewAuthorization
 
 
 class Update(Model):
@@ -351,5 +351,17 @@ class Update(Model):
 
             case UpdateType.UPDATE_RECENT_REACTIONS:
                 return UpdateRecentReactions(), users_q, chats_q, channels_q
+
+            case UpdateType.NEW_AUTHORIZATION:
+                if (auth := await models.UserAuthorization.get_or_none(id=self.related_id)) is None:
+                    return none_ret
+
+                return UpdateNewAuthorization(
+                    unconfirmed=not auth.confirmed,
+                    hash=auth.tl_hash,
+                    date=int(auth.created_at.timestamp()),
+                    device=auth.device_model if auth.device_model != "Unknown" else None,
+                    location=auth.ip,
+                ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

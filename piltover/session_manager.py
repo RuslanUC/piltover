@@ -12,7 +12,7 @@ from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates
 from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyChannel, \
-    LazyMessage, LazyUser, LazyChat, MessageToUsers, LazyEncryptedChat
+    LazyMessage, LazyUser, LazyChat, MessageToUsers, LazyEncryptedChat, ObjectWithLayerRequirement
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -178,7 +178,24 @@ class Session:
         if not self.online:
             return
 
-        if isinstance(obj, ObjectWithLazyFields):
+        if isinstance(obj, ObjectWithLayerRequirement):
+            field_paths = obj.fields
+            obj = obj.object
+
+            for field_path in field_paths:
+                if field_path.min_layer <= self.client.layer <= field_path.max_layer:
+                    continue
+
+                field_path = field_path.field.split(".")
+                parent = obj
+                for field_name in field_path[:-1]:
+                    parent = self._get_attr_or_element(parent, field_name)
+
+                if not isinstance(parent, list):
+                    continue
+
+                del parent[int(field_path[-1])]
+        elif isinstance(obj, ObjectWithLazyFields):
             field_paths = obj.fields
             obj = obj.object
 

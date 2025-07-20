@@ -16,10 +16,10 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChat, UpdateDialogUnreadMark, UpdateReadHistoryOutbox, UpdateNewChannelMessage, UpdateChannel, \
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
-    UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, EncryptedChatDiscarded, \
-    UpdateEncryptedChatTyping, UpdateConfig, UpdateRecentReactions
+    UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
+    UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
-    LazyEncryptedChat
+    LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
 
 # TODO: move UpdatesManager to separate worker
@@ -1245,5 +1245,45 @@ class UpdatesManager:
         )
 
         await SessionManager.send(updates, user.id)
+
+        return updates
+
+    @staticmethod
+    async def new_auth(user: User, auth: UserAuthorization) -> Updates:
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.NEW_AUTHORIZATION,
+            pts=new_pts,
+            pts_count=1,
+            related_id=auth.id,
+        )
+
+        updates = Updates(
+            updates=[
+                UpdateNewAuthorization(
+                    unconfirmed=not auth.confirmed,
+                    hash=auth.tl_hash,
+                    date=int(auth.created_at.timestamp()),
+                    device=auth.device_model if auth.device_model != "Unknown" else None,
+                    location=auth.ip,
+                ),
+            ],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(
+            ObjectWithLayerRequirement(
+                object=updates,
+                fields=[
+                    FieldWithLayerRequirement(field="updates.0", min_layer=163, max_layer=layer),
+                ],
+            ),
+            user.id
+        )
 
         return updates

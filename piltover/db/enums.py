@@ -81,6 +81,7 @@ class UpdateType(IntEnum):
     UPDATE_ENCRYPTION = 22
     UPDATE_CONFIG = 23
     UPDATE_RECENT_REACTIONS = 24
+    NEW_AUTHORIZATION = 25
 
 
 class SecretUpdateType(IntEnum):

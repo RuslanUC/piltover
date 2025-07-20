@@ -139,7 +139,7 @@ class Client:
         self.channels_loaded_at = 0.0
 
         self.no_updates = False
-        self.layer = 177
+        self.layer = 136
 
         self.disconnect_timeout: asyncio.Timeout | None = None
 
@@ -278,6 +278,7 @@ class Client:
          # TODO: dont do .write.hex(), RpcResponse somehow dont need encoding it manually, check how exactly
         return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(CallRpc(
             obj=obj,
+            layer=self.layer,
             key_is_temp=is_temp,
             auth_key_id=auth_key_id,
             session_id=session.session_id if session is not None else None,

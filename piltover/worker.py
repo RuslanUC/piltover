@@ -155,7 +155,7 @@ class Worker(MessageHandler):
             ))
 
         request_ctx.set(RequestContext(
-            call.auth_key_id, call.message_id, call.session_id, call.obj, call.auth_id, call.user_id,
+            call.auth_key_id, call.message_id, call.session_id, call.obj, call.layer, call.auth_id, call.user_id,
         ))
 
         user = None

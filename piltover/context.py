@@ -7,10 +7,11 @@ T = TypeVar("T")
 
 
 class RequestContext(Generic[T]):
-    __slots__ = ("auth_key_id", "message_id", "session_id", "obj", "auth_id", "user_id", "_parent",)
+    __slots__ = ("auth_key_id", "message_id", "session_id", "obj", "auth_id", "user_id", "layer", "_parent",)
 
     def __init__(
-            self, auth_key_id: int, message_id: int, session_id: int, obj: T, auth_id: int | None, user_id: int | None,
+            self, auth_key_id: int, message_id: int, session_id: int, obj: T, layer: int, auth_id: int | None,
+            user_id: int | None,
             *, _parent: RequestContext | None = None
     ):
         self.auth_key_id = auth_key_id
@@ -19,6 +20,7 @@ class RequestContext(Generic[T]):
         self.obj = obj
         self.auth_id = auth_id
         self.user_id = user_id
+        self.layer = layer
 
         self._parent: RequestContext[T] | None = _parent
 

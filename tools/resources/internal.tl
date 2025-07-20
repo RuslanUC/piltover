@@ -36,6 +36,9 @@ internal.lazy_message#e51fc740 message_id:long = internal.LazyField;
 internal.lazy_encrypted_chat#b6696ef8 chat_id:long = internal.LazyField;
 internal.object_with_lazy_fields#d836c6b8 object:Object fields:Vector<string> = internal.LazyObject;
 
+internal.field_with_layer_requirement#d9594f1f field:string min_layer:int max_layer:int = internal.FieldWithLayerRequirement;
+internal.object_with_layer_requirement#7678a3 object:Object fields:Vector<internal.FieldWithLayerRequirement> = internal.ObjectWithLayerRequirement;
+
 ---functions---
 
 // For my.telegram.org alternative page
@@ -50,4 +53,4 @@ internal.get_available_servers#a2ed5af3 auth:bytes = internal.AvailableServers;
 
 // Rpc calls between brokers
 
-internal.call_rpc#35fc3df3 flags:# key_is_temp:flags.0?true auth_key_id:flags.1?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long obj:Object = internal.RpcResponse;
+internal.call_rpc#c43b5f29 flags:# key_is_temp:flags.0?true auth_key_id:flags.1?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long layer:int obj:Object = internal.RpcResponse;
