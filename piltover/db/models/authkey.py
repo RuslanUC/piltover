@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from time import time
+from typing import cast
 
 from tortoise import fields, Model
 
@@ -14,6 +15,13 @@ class AuthKey(Model):
         if (key := await AuthKey.get_or_none(id=str(key_id))) is not None:
             return key
         return await TempAuthKey.get_or_none(id=str(key_id), expires_at__gt=int(time())).select_related("perm_key")
+
+    async def get_ids(self) -> list[int]:
+        ids = [int(self.id)]
+        if (temp_id := await TempAuthKey.filter(perm_key=self).first().values_list("id", flat=True)) is not None:
+            ids.append(int(cast(str, temp_id)))
+
+        return ids
 
 
 class TempAuthKey(Model):

@@ -411,11 +411,7 @@ async def reset_authorization(request: ResetAuthorization, user: User) -> bool:
     if auth is None or auth == this_auth:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
-    keys = [int(auth.key.id)]
-
-    if (temp_id := await TempAuthKey.filter(perm_key=auth.key).first().values_list("id", flat=True)) is not None:
-        keys.append(int(cast(str, temp_id)))
-
+    keys = await auth.key.get_ids()
     await auth.delete()
 
     await SessionManager.send(UpdatesTooLong(), key_id=keys)

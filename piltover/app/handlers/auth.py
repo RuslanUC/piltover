@@ -7,6 +7,7 @@ from loguru import logger
 from mtproto import ConnectionRole
 from mtproto.packets import EncryptedMessagePacket, MessagePacket
 from pytz import UTC
+from tortoise.expressions import Q
 
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import check_password_internal, get_perm_key
@@ -14,15 +15,15 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Dialog, Message, TempAuthKey, SentCode, \
-    User
+    User, QrLogin
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
-from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Long
+from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Long, Authorization, UpdateLoginToken
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
-    SignUp_136, LogOut, ResetAuthorizations
-from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization, LoginToken, \
-    AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut
+    SignUp_136, LogOut, ResetAuthorizations, AcceptLoginToken
+from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
+    LoginToken, AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut, LoginTokenSuccess
 from piltover.utils.snowflake import Snowflake
 from piltover.utils.utils import sec_check
 from piltover.worker import MessageHandler
@@ -117,7 +118,7 @@ async def sign_in(request: SignIn):
     if not auth.mfa_pending:
         await UpdatesManager.new_auth(user, auth)
 
-    return Authorization(user=await user.to_tl(current_user=user))
+    return AuthAuthorization(user=await user.to_tl(current_user=user))
 
 
 @handler.on_request(SignUp_136, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -157,7 +158,7 @@ async def sign_up(request: SignUp | SignUp_136):
 
     # TODO: send notification to all users that have new user's number as contact if no_joined_notifications is False
 
-    return Authorization(user=await user.to_tl(current_user=user))
+    return AuthAuthorization(user=await user.to_tl(current_user=user))
 
 
 @handler.on_request(CheckPassword, ReqHandlerFlags.ALLOW_MFA_PENDING)
@@ -165,7 +166,7 @@ async def check_password(request: CheckPassword, user: User):
     ctx = request_ctx.get()
     auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
     if not auth.mfa_pending:  # ??
-        return Authorization(user=await user.to_tl(current_user=user))
+        return AuthAuthorization(user=await user.to_tl(current_user=user))
 
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
@@ -175,7 +176,7 @@ async def check_password(request: CheckPassword, user: User):
 
     await UpdatesManager.new_auth(user, auth)
 
-    return Authorization(user=await user.to_tl(current_user=user))
+    return AuthAuthorization(user=await user.to_tl(current_user=user))
 
 
 @handler.on_request(BindTempAuthKey, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -218,8 +219,53 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
 
 
 @handler.on_request(ExportLoginToken, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def export_login_token():  # pragma: no cover
-    return LoginToken(expires=1000, token=b"levlam")
+async def export_login_token():  # TODO: test
+    ctx = request_ctx.get()
+    if ctx.auth_id:
+        auth = await UserAuthorization.get_or_none(id=ctx.auth_id).select_related("user")
+        return LoginTokenSuccess(authorization=AuthAuthorization(user=await auth.user.to_tl(current_user=auth.user)))
+
+    key = await AuthKey.get_or_temp(ctx.auth_key_id)
+    if isinstance(key, TempAuthKey):
+        key = key.perm_key
+
+    login_q = Q(key=key) & (
+        Q(created_at__gt=datetime.now(UTC) - timedelta(seconds=QrLogin.EXPIRE_TIME))
+        | Q(auth__not=None)
+    )
+
+    login = await QrLogin.get_or_none(login_q).select_related("auth", "auth__user")
+    if login is None:
+        login = await QrLogin.create(key=key)
+
+    if login.auth is not None:
+        if login.auth.mfa_pending:
+            raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
+        user = login.auth.user
+        return LoginTokenSuccess(authorization=AuthAuthorization(user=await user.to_tl(current_user=user)))
+
+    return LoginToken(expires=int(login.created_at.timestamp()) + QrLogin.EXPIRE_TIME, token=login.to_token())
+
+
+@handler.on_request(AcceptLoginToken)
+async def accept_login_token(request: AcceptLoginToken, user: User) -> Authorization:  # TODO: test
+    login = await QrLogin.from_token(request.token)
+    if login is None:
+        raise ErrorRpc(error_code=400, error_message="AUTH_TOKEN_INVALID")
+    if login.auth_id is not None:
+        raise ErrorRpc(error_code=400, error_message="AUTH_TOKEN_ALREADY_ACCEPTED")
+    if (login.created_at + timedelta(seconds=QrLogin.EXPIRE_TIME)) < datetime.now(UTC):
+        raise ErrorRpc(error_code=400, error_message="AUTH_TOKEN_EXPIRED")
+
+    password, _ = await UserPassword.get_or_create(user=user)
+    auth = await UserAuthorization.create(
+        ip="127.0.0.1", user=user, key=login.key, mfa_pending=password.password is not None,
+    )
+
+    key_ids = await login.key.get_ids()
+    await SessionManager.send(UpdateLoginToken(), key_id=key_ids)
+
+    return auth.to_tl()
 
 
 @handler.on_request(LogOut)
@@ -251,7 +297,3 @@ async def reset_authorizations(user: User) -> bool:
     await SessionManager.send(UpdatesTooLong(), key_id=keys)
 
     return True
-
-
-# TODO: ExportLoginToken
-# TODO: AcceptLoginToken
