@@ -14,13 +14,14 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
     MessageActionChatDeleteUser
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136, EditChatAdmin, ToggleNoForwards, \
-    EditChatDefaultBannedRights
+    EditChatDefaultBannedRights, CreateChat_136
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.chats")
 
 
+@handler.on_request(CreateChat_136)
 @handler.on_request(CreateChat_150)
 @handler.on_request(CreateChat)
 async def create_chat(request: CreateChat, user: User) -> InvitedUsers:

@@ -308,33 +308,10 @@ class Field:
         return self.full_type if "?" not in self.full_type else self.full_type.split("?", 1)[1]
 
 
-def compile_to_zip(zip_file: ZipFile, file: Path) -> None:
-    dir_path = file.parent
-
-    compiled_path = py_compile.compile(str(file), doraise=True, optimize=2, quiet=True)
-    zip_path = f"tl/{dir_path.relative_to(DESTINATION_PATH)}"
-    if zip_path == "tl/.":
-        zip_path = "tl"
-
-    with open_(compiled_path, "rb") as f:
-        zip_file.writestr(f"{zip_path}/{file.name[:-3]}.pyc", f.read())
-
-
 # noinspection PyShadowingBuiltins
 def start():
     shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
     shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
-
-    out_zip = ZipFile(DESTINATION_PATH / ".." / "tl.zip", "w")
-    compile_to_zip(out_zip, DESTINATION_PATH / "__init__.py")
-    compile_to_zip(out_zip, DESTINATION_PATH / "core_types.py")
-    compile_to_zip(out_zip, DESTINATION_PATH / "serialization_utils.py")
-    compile_to_zip(out_zip, DESTINATION_PATH / "tl_object.py")
-    compile_to_zip(out_zip, DESTINATION_PATH / "utils.py")
-    for filename in glob.iglob(str(DESTINATION_PATH / "primitives/*.py"), recursive=True):
-        compile_to_zip(out_zip, Path(filename))
-    for filename in glob.iglob(str(DESTINATION_PATH / "converter/*.py"), recursive=True):
-        compile_to_zip(out_zip, Path(filename))
 
     schema = []
     for file_name in os.listdir(HOME_PATH / "resources"):
@@ -514,7 +491,6 @@ def start():
             with open(out_path, "w") as f:
                 f.write("\n".join(imports))
                 f.write("\n".join(result))
-            compile_to_zip(out_zip, out_path)
         else:
             out_path = dir_path / f"__init__.py"
             if not out_path.exists():
@@ -547,8 +523,6 @@ def start():
             with open(out_path, "a") as f:
                 f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
 
-        compile_to_zip(out_zip, out_path)
-
     for namespace, types in namespaces_to_functions.items():
         out_path = DESTINATION_PATH / "functions" / namespace / "__init__.py"
 
@@ -570,8 +544,6 @@ def start():
             with open(out_path, "a") as f:
                 f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_functions))}\n")
 
-        compile_to_zip(out_zip, out_path)
-
     with open(DESTINATION_PATH / "all.py", "w", encoding="utf-8") as f:
         f.write(WARNING + "\n\n")
         f.write(f"from . import core_types, types, functions\n\n")
@@ -588,8 +560,6 @@ def start():
         f.write(f'\n    0x3072cfa1: core_types.GzipPacked,')
 
         f.write("\n}\n")
-
-    compile_to_zip(out_zip, DESTINATION_PATH / "all.py")
 
 
 if "__main__" == __name__:

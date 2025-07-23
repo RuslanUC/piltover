@@ -17,7 +17,7 @@ from piltover.worker import Worker
 handler = MessageHandler("internal")
 
 LOGIN_MESSAGE_FMT = (
-    "Web login code. Dear Ruslan, we received a request from your account to log in on my.<todo: domain>. "
+    "Web login code. Dear {name}, we received a request from your account to log in on my.<todo: domain>. "
     "This is your login code:\n"
     "{code}\n\n"
     f"Do not give this code to anyone, even if they say they're from {AppConfig.NAME}! "
@@ -51,7 +51,7 @@ async def send_code(request: SendCode, user: User) -> SentCode:
     await Dialog.get_or_create(peer=peer_system)
     message = await Message.create(
         internal_id=Snowflake.make_id(),
-        message=LOGIN_MESSAGE_FMT.format(code=webauth.password),
+        message=LOGIN_MESSAGE_FMT.format(code=webauth.password, name=target_user.first_name),
         author=user,
         peer=peer_system,
     )

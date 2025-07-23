@@ -26,7 +26,7 @@ classifiers = [
 python = "^3.11"
 cryptography = "^44.0.2"
 tgcrypto = "^1.2.5"
-uvloop = "^0.21.0"
+uvloop = { version = "^0.21.0", markers = "sys_platform != 'win32'" }
 loguru = "^0.7.3"
 tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", branch = "allow-joining-same-table-twice", extras = ["asyncmy"]}
 aerich = "^0.8.2"

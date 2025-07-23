@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
 from os import urandom
 from time import time
-from typing import AsyncIterator, TypeVar, Self
+from typing import AsyncIterator, TypeVar, Self, TYPE_CHECKING
 
 import pytest
 import pytest_asyncio
@@ -23,16 +23,17 @@ from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
 
-from piltover.app.app import app
-from piltover.db.models import AuthKey
-from piltover.gateway import Gateway
-from piltover.tl import Int
-from piltover.utils import get_public_key_fingerprint
+if TYPE_CHECKING:
+    from piltover.gateway import Gateway
+
 
 T = TypeVar("T")
 
 
 async def _custom_auth_create(_) -> bytes:
+    from piltover.db.models import AuthKey
+    from piltover.tl import Int
+
     key = urandom(256)
     key_id = Int.read_bytes(hashlib.sha1(key).digest()[-8:])
     await AuthKey.create(id=str(key_id), auth_key=key)
@@ -44,6 +45,8 @@ _real_auth_create = Auth.create
 
 @pytest_asyncio.fixture(autouse=True)
 async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
+    from piltover.app.app import app
+
     marks = {mark.name for mark in request.node.own_markers}
     real_key_gen = "real_key_gen" in marks
     create_countries = "create_countries" in marks
@@ -97,6 +100,8 @@ class TestDataCenter(DataCenter):
 
 
 def _setup_test_dc(server: Gateway) -> None:
+    from piltover.utils import get_public_key_fingerprint
+
     fingerprint = get_public_key_fingerprint(server.server_keys.public_key, signed=True)
     public_key = server.public_key.public_numbers()
     rsa.server_public_keys[fingerprint] = PublicKey(public_key.n, public_key.e)
