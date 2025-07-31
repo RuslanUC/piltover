@@ -35,7 +35,7 @@ class UploadingFile(Model):
             size += part.size
 
         file = models.File(mime_type=mime_type, size=size, type=file_type)
-        file.parse_attributes_from_tl(attributes)
+        await file.parse_attributes_from_tl(attributes)
         await file.save()
 
         async with aiofiles.open(files_dir / f"{file.physical_id}", "wb") as f_out:

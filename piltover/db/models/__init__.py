@@ -46,3 +46,6 @@ from .secret_update import SecretUpdate
 from .encrypted_file import EncryptedFile
 from .recent_reaction import RecentReaction
 from .qr_login import QrLogin
+from .stickerset import Stickerset
+from .installed_stickerset import InstalledStickerset
+from .user_reactions_settings import UserReactionsSettings

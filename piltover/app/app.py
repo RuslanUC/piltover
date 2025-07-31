@@ -97,7 +97,7 @@ async def _upload_reaction_doc(reaction: int, doc: dict) -> File:
         constant_access_hash=Long.read_bytes(xorshift128plus_bytes(8)),
         constant_file_ref=UUID(bytes=xorshift128plus_bytes(16)),
     )
-    file.parse_attributes_from_tl([
+    await file.parse_attributes_from_tl([
         cls_name_to_cls[attr.pop("_")](**attr)
         for attr in doc["attributes"]
     ])

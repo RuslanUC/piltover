@@ -2,7 +2,7 @@ import ctypes
 from time import time
 
 from piltover.app_config import AppConfig
-from piltover.db.models import AuthCountry, User, Reaction
+from piltover.db.models import AuthCountry, User, Reaction, UserReactionsSettings
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, JsonNumber, JsonObjectValue, \
     JsonBool, JsonArray, JsonString, ReactionEmoji
@@ -22,13 +22,17 @@ async def get_config(user: User | None):
     if user is None:
         default_reaction = None
     else:
-        if user.default_reaction_id is None:
+        settings = await UserReactionsSettings.get_or_none(user=user).select_related("default_reaction")
+        if settings is None:
+            default_reaction = await Reaction.get_or_none(reaction="❤")
+            await UserReactionsSettings.create(user=user, default_reaction=default_reaction)
+        elif settings.default_reaction_id is None:
             default_reaction = await Reaction.get_or_none(reaction="❤")
             if default_reaction is not None:
-                user.default_reaction = default_reaction
-                await user.save(update_fields=["default_reaction_id"])
+                settings.default_reaction = default_reaction
+                await settings.save(update_fields=["default_reaction_id"])
         else:
-            default_reaction = await user.default_reaction
+            default_reaction = settings.default_reaction
 
     return Config(
         date=int(time()),
@@ -358,7 +362,7 @@ async def get_countries_list(request: GetCountriesList) -> CountriesList | Count
         countries = CountriesList(countries=[], hash=0)
 
         country: AuthCountry
-        async for country in AuthCountry.filter().order_by("id"):
+        for country in await AuthCountry.filter().order_by("id"):
             countries.countries.append(await country.to_tl())
 
             countries.hash ^= countries.hash >> 21

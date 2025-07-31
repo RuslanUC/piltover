@@ -1,14 +1,14 @@
-import ctypes
 from datetime import datetime
-from typing import Literal
 
 from pytz import UTC
 from tortoise.expressions import Q
 
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.updates_manager import UpdatesManager
+from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import PeerType, ChatBannedRights
-from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State, RecentReaction
+from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State, RecentReaction, \
+    UserReactionsSettings
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
 from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, \
@@ -20,31 +20,13 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.reactions")
 
 
-def _reactions_hash(ids: list[int], bits: Literal[32, 64]) -> int:
-    reactions_hash = 0
-    for reaction_id in ids:
-        reactions_hash ^= reactions_hash >> 21
-        reactions_hash ^= reactions_hash << 35
-        reactions_hash ^= reactions_hash >> 4
-        reactions_hash += reaction_id
-
-    reactions_hash &= ((2 << bits - 1) - 1)
-
-    if bits == 32:
-        return ctypes.c_int32(reactions_hash).value
-    elif bits == 64:
-        return ctypes.c_int64(reactions_hash).value
-    else:
-        raise RuntimeError("Unreachable")
-
-
 @handler.on_request(GetAvailableReactions)
 async def get_available_reactions(
         request: GetAvailableReactions, user: User,
 ) -> AvailableReactions | AvailableReactionsNotModified:
     ids = await Reaction.all().order_by("id").values_list("id", flat=True)
 
-    reactions_hash = _reactions_hash(ids, 32)
+    reactions_hash = telegram_hash(ids, 32)
     if reactions_hash == request.hash:
         return AvailableReactionsNotModified()
 
@@ -127,11 +109,12 @@ async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
     if reaction is None:
         raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
-    if reaction.id == user.default_reaction_id:
+    settings, created = await UserReactionsSettings.get_or_create(user=user)
+    if reaction.id == settings.default_reaction_id:
         return True
 
-    user.default_reaction = reaction
-    await user.save(update_fields=["default_reaction_id"])
+    settings.default_reaction = reaction
+    await settings.save(update_fields=["default_reaction_id"])
 
     await UpdatesManager.update_config(user)
 
@@ -213,7 +196,7 @@ async def get_recent_reactions(request: GetRecentReactions, user: User) -> React
     limit = min(50, max(1, request.limit))
     ids = await RecentReaction.filter(user=user).limit(limit).order_by("-used_at").values_list("id", flat=True)
 
-    reactions_hash = _reactions_hash(ids, 64)
+    reactions_hash = telegram_hash(ids, 64)
 
     if reactions_hash == request.hash:
         return ReactionsNotModified()

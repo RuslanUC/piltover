@@ -9,7 +9,7 @@ from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
-    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long
+    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID
 
 
 class File(Model):
@@ -43,7 +43,12 @@ class File(Model):
     photo_stripped: bytes | None = fields.BinaryField(null=True, default=None)
     photo_path: bytes | None = fields.BinaryField(null=True, default=None)
 
-    def parse_attributes_from_tl(self, attributes: list[TLObject]) -> None:
+    # DocumentAttributeSticker
+    stickerset: models.Stickerset | None = fields.ForeignKeyField("models.Stickerset", null=True, default=None)
+    sticker_pos: int | None = fields.IntField(null=True, default=None)
+    sticker_alt: str | None = fields.CharField(max_length=32, null=True, default=None)
+
+    async def parse_attributes_from_tl(self, attributes: list[TLObject]) -> None:
         for attribute in attributes:
             if isinstance(attribute, DocumentAttributeImageSize):
                 self.width = attribute.w
@@ -65,7 +70,9 @@ class File(Model):
                 self.performer = attribute.performer
             elif isinstance(attribute, DocumentAttributeSticker):
                 self.type = FileType.DOCUMENT_STICKER
-                # TODO: fill alt, stickerset, mask fields
+                self.stickerset = await models.Stickerset.from_input(attribute.stickerset)
+                self.sticker_alt = attribute.alt
+                # TODO: fill mask and mask_coords fields
             elif isinstance(attribute, DocumentAttributeFilename):
                 self.filename = attribute.file_name
 
@@ -87,7 +94,14 @@ class File(Model):
                 preload_prefix_size=self.preload_prefix_size,
             ))
         elif self.type is FileType.DOCUMENT_STICKER:
-            result.append(DocumentAttributeSticker(alt="", stickerset=InputStickerSetEmpty()))
+            stickerset = InputStickerSetEmpty()
+            if self.stickerset is not None:
+                stickerset = InputStickerSetID(id=self.stickerset.id, access_hash=self.stickerset.access_hash)
+            result.append(DocumentAttributeSticker(
+                alt=self.sticker_alt or "",
+                stickerset=stickerset,
+                # TODO: mask, mask_coords
+            ))
         if self.type is FileType.DOCUMENT_GIF:
             result.append(DocumentAttributeAnimated())
         if self.type in (FileType.DOCUMENT_AUDIO, FileType.DOCUMENT_VOICE):
@@ -109,6 +123,10 @@ class File(Model):
         else:
             access_hash = self.constant_access_hash
             file_ref = models.FileAccess.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
+
+        # TODO: fetch when fetching file
+        if self.stickerset is not None:
+            self.stickerset = await self.stickerset
 
         return TLDocument(
             id=self.id,

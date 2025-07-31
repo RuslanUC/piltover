@@ -21,9 +21,6 @@ class User(Model):
     ttl_days: int = fields.IntField(default=365)
     birthday: date | None = fields.DateField(null=True, default=None)
     bot: bool = fields.BooleanField(default=False)
-    default_reaction: models.Reaction = fields.ForeignKeyField("models.Reaction", null=True, default=None)
-
-    default_reaction_id: int | None
 
     cached_username: models.Username | None | object = _USERNAME_MISSING
     is_lazy: bool = False

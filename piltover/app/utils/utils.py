@@ -1,8 +1,10 @@
 import asyncio
+import ctypes
 import re
 from asyncio import get_event_loop, gather
 from concurrent.futures.thread import ThreadPoolExecutor
 from io import BytesIO
+from typing import Iterable, Literal
 
 from PIL.Image import Image, open as img_open
 
@@ -233,3 +235,21 @@ async def process_message_entities(text: str | None, entities: list[MessageEntit
 def validate_username(username: str) -> None:
     if len(username) not in range(5, 32) or not USERNAME_REGEX.match(username):
         raise ErrorRpc(error_code=400, error_message="USERNAME_INVALID")
+
+
+def telegram_hash(ids: Iterable[int], bits: Literal[32, 64]) -> int:
+    reactions_hash = 0
+    for reaction_id in ids:
+        reactions_hash ^= reactions_hash >> 21
+        reactions_hash ^= reactions_hash << 35
+        reactions_hash ^= reactions_hash >> 4
+        reactions_hash += reaction_id
+
+    reactions_hash &= ((2 << bits - 1) - 1)
+
+    if bits == 32:
+        return ctypes.c_int32(reactions_hash).value
+    elif bits == 64:
+        return ctypes.c_int64(reactions_hash).value
+    else:
+        raise RuntimeError("Unreachable")
