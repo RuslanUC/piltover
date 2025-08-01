@@ -44,7 +44,7 @@ class File(Model):
     photo_path: bytes | None = fields.BinaryField(null=True, default=None)
 
     # DocumentAttributeSticker
-    stickerset: models.Stickerset | None = fields.ForeignKeyField("models.Stickerset", null=True, default=None)
+    stickerset: models.Stickerset | None = fields.ForeignKeyField("models.Stickerset", null=True, default=None, on_delete=fields.SET_NULL)
     sticker_pos: int | None = fields.IntField(null=True, default=None)
     sticker_alt: str | None = fields.CharField(max_length=32, null=True, default=None)
 

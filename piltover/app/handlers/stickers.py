@@ -2,14 +2,16 @@ from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
 from loguru import logger
-from tortoise.expressions import Q
+from tortoise.expressions import Q, F
+from tortoise.transactions import in_transaction
 
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import FileType
 from piltover.db.models import User, Stickerset, FileAccess, File
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long
-from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName
+from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
+    DeleteStickerSet
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 from piltover.worker import MessageHandler
 
@@ -86,6 +88,9 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
         if 512 not in dims or any(dim > 512 for dim in dims):
             raise ErrorRpc(error_code=400, error_message="STICKER_PNG_DIMENSIONS")
 
+        if file.size > 512 * 1024:
+            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
     # TODO: thumbs
 
     stickerset = await Stickerset.create(
@@ -124,3 +129,74 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     return await stickerset.to_tl_messages(user)
 
 
+@handler.on_request(ChangeStickerPosition)
+async def change_sticker_position(request: ChangeStickerPosition, user: User) -> MessagesStickerSet:
+    doc = request.sticker
+    valid, const = FileAccess.is_file_ref_valid(doc.file_reference, user.id, doc.id)
+    if not valid or not const:
+        raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
+
+    file = await File.get_or_none(
+        id=request.sticker.id, constant_access_hash=doc.access_hash, constant_file_ref=doc.file_reference,
+        stickerset__owner=user,
+    ).select_related("stickerset")
+
+    if file is None:
+        raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
+
+    min_pos = 0
+    max_pos = await file.stickerset.documents_query().count() - 1
+    new_pos = max(min_pos, min(max_pos, request.position))
+    old_pos = request.position
+
+    if old_pos == new_pos:
+        return await file.stickerset.to_tl_messages(user)
+
+    # if sticker position is, for example, 5, new position is 10 and there is 15 stickers, then we need to:
+    #  1) subtract 1 from stickers with positions 6-10 (current_pos + 1, new_pos)
+    #  2) change sticker position from 5 to 10
+    # if sticker position is, for example, 10, new position is 5 and there is 15 stickers, then we need to:
+    #  1) add 1 to stickers with positions 5-9 (new_pos, current_pos - 1)
+    #  2) change sticker position from 10 to 5
+
+    file.sticker_pos = new_pos
+    if new_pos > old_pos:
+        update_query = File.filter(stickerset=file.stickerset, sticker_pos__gt=old_pos, sticker_pos__lte=new_pos).update(sticker_pos=F("sticker_pos") - 1)
+    else:
+        update_query = File.filter(stickerset=file.stickerset, sticker_pos__gte=new_pos, sticker_pos__lt=old_pos).update(sticker_pos=F("sticker_pos") + 1)
+
+    async with in_transaction():
+        await update_query
+        await file.save(update_fields=["sticker_pos"])
+
+    return await file.stickerset.to_tl_messages(user)
+
+
+@handler.on_request(RenameStickerSet)
+async def rename_stickerset(request: RenameStickerSet, user: User) -> MessagesStickerSet:
+    stickerset = await Stickerset.from_input(request.stickerset)
+    if stickerset is None or stickerset.owner_id != user.id:
+        raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
+
+    if not request.title or len(request.title) > 64:
+        raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
+
+    stickerset.title = request.title
+    await stickerset.save(update_fields=["title"])
+
+    return await stickerset.to_tl_messages(user)
+
+
+@handler.on_request(DeleteStickerSet)
+async def delete_stickerset(request: DeleteStickerSet, user: User) -> bool:
+    stickerset = await Stickerset.from_input(request.stickerset)
+    if stickerset is None or stickerset.owner_id != user.id:
+        raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
+
+    await stickerset.delete()
+
+    return True
+
+
+# TODO: ReplaceSticker
+# TODO: AddStickerToSet
