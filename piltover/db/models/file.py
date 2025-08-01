@@ -48,6 +48,8 @@ class File(Model):
     sticker_pos: int | None = fields.IntField(null=True, default=None)
     sticker_alt: str | None = fields.CharField(max_length=32, null=True, default=None)
 
+    stickerset_id: int | None
+
     async def parse_attributes_from_tl(self, attributes: list[TLObject]) -> None:
         for attribute in attributes:
             if isinstance(attribute, DocumentAttributeImageSize):

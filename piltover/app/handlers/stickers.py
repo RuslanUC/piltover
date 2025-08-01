@@ -9,10 +9,11 @@ from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import FileType
 from piltover.db.models import User, Stickerset, FileAccess, File
 from piltover.exceptions import ErrorRpc
-from piltover.tl import Long
+from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered
+from piltover.tl.functions.messages import GetMyStickers
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet
-from piltover.tl.types.messages import StickerSet as MessagesStickerSet
+from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stickers")
@@ -198,5 +199,31 @@ async def delete_stickerset(request: DeleteStickerSet, user: User) -> bool:
     return True
 
 
+@handler.on_request(GetMyStickers)
+async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
+    limit = max(1, min(50, request.limit))
+    stickersets = await Stickerset.filter(owner=user, id__lt=request.offset_id).order_by("-id").limit(limit)
+    covers = {file.stickerset_id: file for file in await File.filter(stickerset__in=stickersets, sticker_pos=0)}
+
+    result = []
+    for stickerset in stickersets:
+        if stickerset.id in covers:
+            result.append(StickerSetCovered(
+                set=await stickerset.to_tl(user),
+                cover=await covers[stickerset.id].to_tl_document(user),
+            ))
+        else:
+            result.append(StickerSetNoCovered(
+                set=await stickerset.to_tl(user),
+            ))
+
+    return MyStickers(
+        sets=result,
+        count=await Stickerset.filter(owner=user).count(),
+    )
+
+
 # TODO: ReplaceSticker
 # TODO: AddStickerToSet
+# TODO: ChangeSticker
+# TODO: SetStickerSetThumb
