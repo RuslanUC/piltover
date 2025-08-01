@@ -12,7 +12,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered
 from piltover.tl.functions.messages import GetMyStickers
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
-    DeleteStickerSet
+    DeleteStickerSet, ChangeSticker
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers
 from piltover.worker import MessageHandler
 
@@ -124,6 +124,7 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
         raise
 
     stickerset.owner = user
+    # TODO: include sticker emoji in hash
     stickerset.hash = telegram_hash((file.id for file in await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["owner_id"])
 
@@ -169,6 +170,8 @@ async def change_sticker_position(request: ChangeStickerPosition, user: User) ->
     async with in_transaction():
         await update_query
         await file.save(update_fields=["sticker_pos"])
+
+    # TODO: regenerate stickerset hash
 
     return await file.stickerset.to_tl_messages(user)
 
@@ -223,7 +226,32 @@ async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
     )
 
 
+@handler.on_request(ChangeSticker)
+async def change_sticker(request: ChangeSticker, user: User) -> MessagesStickerSet:
+    doc = request.sticker
+    valid, const = FileAccess.is_file_ref_valid(doc.file_reference, user.id, doc.id)
+    if not valid or not const:
+        raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
+
+    file = await File.get_or_none(
+        id=request.sticker.id, constant_access_hash=doc.access_hash, constant_file_ref=doc.file_reference,
+        stickerset__owner=user,
+    ).select_related("stickerset")
+
+    if file is None:
+        raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
+
+    # TODO: mask coords and keywords
+    if request.emoji is None or request.emoji == file.sticker_alt:
+        return await file.stickerset.to_tl_messages(user)
+
+    file.sticker_alt = request.emoji
+    await file.save(update_fields=["sticker_alt"])
+
+    # TODO: regenerate stickerset hash
+    return await file.stickerset.to_tl_messages(user)
+
+
 # TODO: ReplaceSticker
 # TODO: AddStickerToSet
-# TODO: ChangeSticker
 # TODO: SetStickerSetThumb
