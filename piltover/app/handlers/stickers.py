@@ -1,3 +1,5 @@
+import gzip
+import json
 from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
@@ -5,6 +7,7 @@ from loguru import logger
 from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction
 
+from piltover.app.handlers.upload import read_file_content
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import FileType
@@ -47,6 +50,44 @@ async def check_stickerset_short_name(request: CheckShortName, prefix: str = "")
     return True
 
 
+# https://core.telegram.org/stickers
+
+
+async def _validate_png(file: File) -> None:
+    if file.mime_type != "image/png":  # TODO: also allow webp
+        raise ErrorRpc(error_code=400, error_message="STICKER_PNG_NOPNG")
+
+    dims = (file.width, file.height)
+    if 512 not in dims or any(dim > 512 for dim in dims):
+        raise ErrorRpc(error_code=400, error_message="STICKER_PNG_DIMENSIONS")
+
+    if file.size > 512 * 1024:
+        raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
+
+async def _validate_tgs(file: File) -> None:
+    if file.size > 64 * 1024:
+        raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
+    data = await read_file_content(file, 0, 512 * 1024)
+    try:
+        data = gzip.decompress(data)
+        tgs = json.loads(data)
+    except (gzip.BadGzipFile, json.JSONDecodeError):
+        raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
+
+    try:
+        if tgs["tgs"] != "1" or tgs["fr"] != 60 or tgs["w"] != 512 or tgs["h"] != 512 or (tgs["op"] - tgs["ip"]) > 180:
+            raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
+    except (TypeError, ValueError, KeyError):
+        raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
+
+    # https://github.com/TelegramMessenger/bodymovin-extension/commit/2e1dd0517a8d8346afe9fbd88cda235c4afe2c64#diff-dab7e98d55cf2baf67bc546b9d3b17846f2ef57f99eedc32d110f3f620292cbc
+    # TODO: validate "Objects must not leave the canvas."
+    # TODO: validate "All animations must be looped."
+    # TODO: validate "You must not use the following Adobe After Effects functionality when animating your artwork: Auto-bezier keys, Expressions, Masks, Layer Effects, Images, Solids, Texts, 3D Layers, Merge Paths, Star Shapes, Gradient Strokes, Repeaters, Time Stretching, Time Remapping, Auto-Oriented Layers."
+
+
 async def _get_sticker_files(stickers: list[InputStickerSetItem], user: User) -> dict[int, File]:
     files_q = Q()
 
@@ -76,15 +117,7 @@ async def _get_sticker_files(stickers: list[InputStickerSetItem], user: User) ->
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
         # TODO: support video, animated and tgs stickers
-        if file.mime_type != "image/png":
-            raise ErrorRpc(error_code=400, error_message="STICKER_PNG_NOPNG")
-
-        dims = (file.width, file.height)
-        if 512 not in dims or any(dim > 512 for dim in dims):
-            raise ErrorRpc(error_code=400, error_message="STICKER_PNG_DIMENSIONS")
-
-        if file.size > 512 * 1024:
-            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+        await _validate_png(file)
 
     return files
 

@@ -55,16 +55,16 @@ class Stickerset(Model):
             official=self.official,
             creator=user.id == self.owner_id,
             installed_date=int(installed.installed_at.timestamp()) if installed is not None else None,
+            archived=installed is not None and installed.archived,
             count=await self.documents_query().count(),
+            hash=self.hash,
 
             # TODO:
             thumbs=None,
             thumb_dc_id=None,
             thumb_version=None,
             thumb_document_id=None,
-            hash=self.hash,
 
-            archived=False,
             masks=False,
             emojis=False,
             text_color=False,

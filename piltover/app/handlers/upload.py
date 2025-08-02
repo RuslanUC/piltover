@@ -58,6 +58,15 @@ SUPPORTED_LOCS = (
 )
 
 
+async def read_file_content(file: File, offset: int, limit: int, name: str | None = None) -> bytes:
+    # TODO: download from s3 or something similar
+
+    name = name or str(file.physical_id)
+    async with aiofiles.open(files_dir / name, "rb") as f:
+        await f.seek(offset)
+        return await f.read(limit)
+
+
 @handler.on_request(GetFile)
 async def get_file(request: GetFile, user: User) -> TLFile:
     # noinspection PyPep8
@@ -124,10 +133,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
             size = min(available, key=lambda x: abs(x - size))
         f_name += f"_{size}"
 
-    # TODO: download from s3 or something similar
-    async with aiofiles.open(files_dir / f_name, "rb") as f:
-        await f.seek(request.offset)
-        data = await f.read(request.limit)
+    data = await read_file_content(file, request.offset, request.limit, f_name)
 
     if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         file_type = FileJpeg()
