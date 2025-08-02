@@ -42,35 +42,8 @@ async def get_web_page():  # pragma: no cover
     return WebPageEmpty(id=0)
 
 
-@handler.on_request(GetStickerSet, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_sticker_set(request: GetStickerSet):  # pragma: no cover
-    if isinstance(request.stickerset, InputStickerSetAnimatedEmoji):
-        return messages_StickerSet(
-            set=StickerSet(
-                id=1,
-                access_hash=1,
-                title="AnimatedEmoji",
-                short_name="animated_emoji",
-                count=0,
-                hash=1,
-                official=True,
-                emojis=True,
-            ),
-            packs=[],
-            keywords=[],
-            documents=[]
-        )
-
-    raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
-
-
 @handler.on_request(GetTopReactions, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_top_reactions():  # pragma: no cover
-    return Reactions(hash=0, reactions=[])
-
-
-@handler.on_request(GetRecentReactions, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_recent_reactions():  # pragma: no cover
     return Reactions(hash=0, reactions=[])
 
 

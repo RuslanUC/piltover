@@ -10,10 +10,10 @@ from piltover.db.enums import FileType
 from piltover.db.models import User, Stickerset, FileAccess, File
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered
-from piltover.tl.functions.messages import GetMyStickers
+from piltover.tl.functions.messages import GetMyStickers, GetStickerSet
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker
-from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers
+from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stickers")
@@ -124,9 +124,8 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
         raise
 
     stickerset.owner = user
-    # TODO: include sticker emoji in hash
-    stickerset.hash = telegram_hash((file.id for file in await stickerset.documents_query()), 32)
-    await stickerset.save(update_fields=["owner_id"])
+    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+    await stickerset.save(update_fields=["owner_id", "hash"])
 
     return await stickerset.to_tl_messages(user)
 
@@ -146,13 +145,15 @@ async def change_sticker_position(request: ChangeStickerPosition, user: User) ->
     if file is None:
         raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
 
+    stickerset = file.stickerset
+
     min_pos = 0
-    max_pos = await file.stickerset.documents_query().count() - 1
+    max_pos = await stickerset.documents_query().count() - 1
     new_pos = max(min_pos, min(max_pos, request.position))
     old_pos = request.position
 
     if old_pos == new_pos:
-        return await file.stickerset.to_tl_messages(user)
+        return await stickerset.to_tl_messages(user)
 
     # if sticker position is, for example, 5, new position is 10 and there is 15 stickers, then we need to:
     #  1) subtract 1 from stickers with positions 6-10 (current_pos + 1, new_pos)
@@ -163,17 +164,18 @@ async def change_sticker_position(request: ChangeStickerPosition, user: User) ->
 
     file.sticker_pos = new_pos
     if new_pos > old_pos:
-        update_query = File.filter(stickerset=file.stickerset, sticker_pos__gt=old_pos, sticker_pos__lte=new_pos).update(sticker_pos=F("sticker_pos") - 1)
+        update_query = File.filter(stickerset=stickerset, sticker_pos__gt=old_pos, sticker_pos__lte=new_pos).update(sticker_pos=F("sticker_pos") - 1)
     else:
-        update_query = File.filter(stickerset=file.stickerset, sticker_pos__gte=new_pos, sticker_pos__lt=old_pos).update(sticker_pos=F("sticker_pos") + 1)
+        update_query = File.filter(stickerset=stickerset, sticker_pos__gte=new_pos, sticker_pos__lt=old_pos).update(sticker_pos=F("sticker_pos") + 1)
 
     async with in_transaction():
         await update_query
         await file.save(update_fields=["sticker_pos"])
 
-    # TODO: regenerate stickerset hash
+    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+    await stickerset.save(update_fields=["hash"])
 
-    return await file.stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages(user)
 
 
 @handler.on_request(RenameStickerSet)
@@ -186,7 +188,8 @@ async def rename_stickerset(request: RenameStickerSet, user: User) -> MessagesSt
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
     stickerset.title = request.title
-    await stickerset.save(update_fields=["title"])
+    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+    await stickerset.save(update_fields=["title", "hash"])
 
     return await stickerset.to_tl_messages(user)
 
@@ -241,17 +244,53 @@ async def change_sticker(request: ChangeSticker, user: User) -> MessagesStickerS
     if file is None:
         raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
 
+    stickerset = file.stickerset
+
     # TODO: mask coords and keywords
     if request.emoji is None or request.emoji == file.sticker_alt:
-        return await file.stickerset.to_tl_messages(user)
+        return await stickerset.to_tl_messages(user)
 
     file.sticker_alt = request.emoji
     await file.save(update_fields=["sticker_alt"])
 
-    # TODO: regenerate stickerset hash
-    return await file.stickerset.to_tl_messages(user)
+    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+    await stickerset.save(update_fields=["hash"])
+
+    return await stickerset.to_tl_messages(user)
 
 
+@handler.on_request(GetStickerSet)
+async def get_stickerset(request: GetStickerSet, user: User) -> MessagesStickerSet | StickerSetNotModified:
+    stickerset = await Stickerset.from_input(request.stickerset)
+    if stickerset is None:
+        raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
+
+    if request.hash == stickerset.hash:
+        return StickerSetNotModified()
+
+    return await stickerset.to_tl_messages(user)
+
+
+# working with stickersets:
 # TODO: ReplaceSticker
 # TODO: AddStickerToSet
 # TODO: SetStickerSetThumb
+# TODO: RemoveStickerFromSet
+# TODO: GetStickers
+
+# working with recent stickers:
+# TODO: GetRecentStickers
+# TODO: ClearRecentStickers
+# TODO: SaveRecentSticker
+
+# working with installed sets:
+# TODO: GetAllStickers
+# TODO: InstallStickerSet
+# TODO: UninstallStickerSet
+# TODO: ReorderStickerSets
+# TODO: GetArchivedStickers
+# TODO: ToggleStickerSets
+
+# working with faved stickers:
+# TODO: FaveSticker
+# TODO: GetFavedStickers

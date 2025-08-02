@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from os import urandom
+from typing import Generator
 
 from tortoise import Model, fields
 from tortoise.queryset import QuerySet
@@ -72,6 +73,15 @@ class Stickerset(Model):
 
     def documents_query(self) -> QuerySet[models.File]:
         return models.File.filter(stickerset=self).order_by("sticker_pos")
+
+    def gen_for_hash(self, stickers: list[models.File]) -> Generator[str | int, None, None]:
+        yield self.id
+        yield self.title
+
+        for sticker in stickers:
+            yield sticker.id
+            yield sticker.sticker_pos
+            yield sticker.sticker_alt
 
     async def to_tl_messages(self, user: models.User) -> MessagesStickerSet:
         return MessagesStickerSet(

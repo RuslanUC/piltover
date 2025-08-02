@@ -3,6 +3,7 @@ import ctypes
 import re
 from asyncio import get_event_loop, gather
 from concurrent.futures.thread import ThreadPoolExecutor
+from hashlib import md5
 from io import BytesIO
 from typing import Iterable, Literal
 
@@ -15,7 +16,7 @@ from piltover.tl import InputCheckPasswordEmpty, InputCheckPasswordSRP, MessageE
     MessageEntityUnknown, MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
     MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
     MessageEntityPhone, MessageEntityCashtag, MessageEntityUnderline, MessageEntityStrike, MessageEntitySpoiler, \
-    MessageEntityBankCard, MessageEntityBlockquote
+    MessageEntityBankCard, MessageEntityBlockquote, Long
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
@@ -237,19 +238,22 @@ def validate_username(username: str) -> None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_INVALID")
 
 
-def telegram_hash(ids: Iterable[int], bits: Literal[32, 64]) -> int:
-    reactions_hash = 0
-    for reaction_id in ids:
-        reactions_hash ^= reactions_hash >> 21
-        reactions_hash ^= reactions_hash << 35
-        reactions_hash ^= reactions_hash >> 4
-        reactions_hash += reaction_id
+def telegram_hash(ids: Iterable[int | str], bits: Literal[32, 64]) -> int:
+    result_hash = 0
+    for id_to_hash in ids:
+        result_hash ^= result_hash >> 21
+        result_hash ^= result_hash << 35
+        result_hash ^= result_hash >> 4
+        if isinstance(id_to_hash, int):
+            result_hash += id_to_hash
+        elif isinstance(id_to_hash, str):
+            result_hash += Long.read_bytes(md5(id_to_hash.encode("utf8")).digest()[:8])
 
-    reactions_hash &= ((2 << bits - 1) - 1)
+    result_hash &= ((2 << bits - 1) - 1)
 
     if bits == 32:
-        return ctypes.c_int32(reactions_hash).value
+        return ctypes.c_int32(result_hash).value
     elif bits == 64:
-        return ctypes.c_int64(reactions_hash).value
+        return ctypes.c_int64(result_hash).value
     else:
         raise RuntimeError("Unreachable")
