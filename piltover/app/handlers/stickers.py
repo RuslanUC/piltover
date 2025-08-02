@@ -5,6 +5,7 @@ from loguru import logger
 from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction
 
+from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import FileType
 from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset
@@ -376,7 +377,8 @@ async def install_stickerset(request: InstallStickerSet, user: User) -> StickerS
         await installed.save(update_fields=["archived"])
 
     # TODO: archive unused stickersets so maximum number of InstalledStickerset would be 25 (?, what is the telegram's limit)
-    # TODO: send updates
+
+    await UpdatesManager.new_stickerset(user, stickerset)
 
     if installed.archived:
         return StickerSetInstallResultArchive(
@@ -398,7 +400,7 @@ async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool
 
     await installed.delete()
 
-    # TODO: send updates
+    await UpdatesManager.update_stickersets(user)
 
     return True
 
@@ -429,7 +431,7 @@ async def reorder_sticker_sets(request: ReorderStickerSets, user: User) -> bool:
 
     await InstalledStickerset.bulk_update(new_order, fields=["pos"])
 
-    # TODO: send updates
+    await UpdatesManager.update_stickersets_order(user, [installed.set.id for installed in new_order])
 
     return True
 
@@ -491,7 +493,7 @@ async def toggle_sticker_sets(request: ToggleStickerSets, user: User) -> bool:
         await InstalledStickerset.bulk_update(changed_sets, fields=["archived"])
 
     if request.uninstall or changed_sets:
-        ...  # TODO: send updates
+        await UpdatesManager.update_stickersets(user)
 
     return True
 

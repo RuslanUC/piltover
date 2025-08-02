@@ -13,14 +13,16 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
-    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization
+    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, UpdateNewStickerSet, \
+    UpdateStickerSets, UpdateStickerSetsOrder
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
               | UpdateUserName | UpdatePeerSettings | UpdatePeerBlocked | UpdateChat | UpdateDialogUnreadMark \
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
-              | UpdateRecentReactions | UpdateNewAuthorization
+              | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
+              | UpdateStickerSetsOrder
 
 
 class Update(Model):
@@ -362,6 +364,25 @@ class Update(Model):
                     date=int(auth.created_at.timestamp()),
                     device=auth.device_model if auth.device_model != "Unknown" else None,
                     location=auth.ip,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.NEW_STICKERSET:
+                if (stickerset := await models.Stickerset.get_or_none(id=self.related_id)) is None:
+                    return none_ret
+
+                return UpdateNewStickerSet(
+                    stickerset=await stickerset.to_tl_messages(user),
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_STICKERSETS:
+                return UpdateStickerSets(), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_STICKERSETS_ORDER:
+                if not self.related_ids:
+                    return none_ret
+
+                return UpdateStickerSetsOrder(
+                    order=self.related_ids,
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

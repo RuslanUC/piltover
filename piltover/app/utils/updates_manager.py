@@ -6,7 +6,8 @@ from tortoise.queryset import QuerySet
 
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
-    ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate
+    ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
+    Stickerset
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -17,7 +18,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
-    UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer
+    UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
+    UpdateStickerSetsOrder
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1285,5 +1287,86 @@ class UpdatesManager:
             ),
             user.id
         )
+
+        return updates
+
+    @staticmethod
+    async def new_stickerset(user: User, stickerset: Stickerset) -> Updates:
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.NEW_STICKERSET,
+            pts=new_pts,
+            pts_count=1,
+            related_id=stickerset.id,
+        )
+
+        updates = Updates(
+            updates=[
+                UpdateNewStickerSet(
+                    stickerset=await stickerset.to_tl_messages(user),
+                ),
+            ],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+
+        return updates
+
+    @staticmethod
+    async def update_stickersets(user: User) -> Updates:
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.UPDATE_STICKERSETS,
+            pts=new_pts,
+            pts_count=1,
+            related_id=None,
+        )
+
+        updates = Updates(
+            updates=[UpdateStickerSets()],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
+
+        return updates
+
+    @staticmethod
+    async def update_stickersets_order(user: User, new_order: list[int]) -> Updates:
+        new_pts = await State.add_pts(user, 1)
+
+        await Update.create(
+            user=user,
+            update_type=UpdateType.UPDATE_STICKERSETS_ORDER,
+            pts=new_pts,
+            pts_count=1,
+            related_id=None,
+            related_ids=new_order,
+        )
+
+        updates = Updates(
+            updates=[
+                UpdateStickerSetsOrder(
+                    order=new_order,
+                )
+            ],
+            users=[],
+            chats=[],
+            date=int(time()),
+            seq=0,
+        )
+
+        await SessionManager.send(updates, user.id)
 
         return updates

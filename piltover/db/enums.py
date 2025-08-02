@@ -82,6 +82,9 @@ class UpdateType(IntEnum):
     UPDATE_CONFIG = 23
     UPDATE_RECENT_REACTIONS = 24
     NEW_AUTHORIZATION = 25
+    NEW_STICKERSET = 26
+    UPDATE_STICKERSETS = 27
+    UPDATE_STICKERSETS_ORDER = 28
 
 
 class SecretUpdateType(IntEnum):
