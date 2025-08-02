@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 from io import BytesIO
+from typing import Generic, TypeVar
 
 from piltover.exceptions import Error
 from .primitives import Int
@@ -108,3 +109,9 @@ class TLObject(ABC):
 
         return result
 
+
+T =  TypeVar("T")
+
+
+class TLRequest(TLObject, ABC, Generic[T]):
+    ...

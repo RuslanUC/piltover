@@ -3,7 +3,7 @@ from __future__ import annotations
 from inspect import getfullargspec
 from io import BytesIO
 from time import perf_counter
-from typing import Awaitable, Callable, Any
+from typing import Awaitable, Callable, Any, TypeVar
 
 from loguru import logger
 from taskiq import InMemoryBroker, TaskiqEvents
@@ -30,15 +30,16 @@ from piltover.context import RequestContext, request_ctx
 from piltover.db.models import UserAuthorization, User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import TLObject, RpcError
+from piltover.tl import TLObject, RpcError, TLRequest
 from piltover.tl.core_types import RpcResult
 from piltover.utils import Keys, get_public_key_fingerprint
 
-HandlerResult = Awaitable[TLObject | None]
+T = TypeVar("T")
+HandlerResult = Awaitable[T | None]
 HandlerFunc = (Callable[[], HandlerResult] |
-               Callable[[TLObject], HandlerResult] |
+               Callable[[TLRequest[T]], HandlerResult] |
                Callable[[User], HandlerResult] |
-               Callable[[TLObject, User], HandlerResult])
+               Callable[[TLRequest[T], User], HandlerResult[T]])
 
 
 class RequestHandler:
@@ -75,8 +76,8 @@ class MessageHandler:
         self.registered = False
         self.request_handlers: dict[int, RequestHandler] = {}
 
-    def on_request(self, typ: type[TLObject], flags: int = 0):
-        def decorator(func: HandlerFunc):
+    def on_request(self, typ: type[TLRequest[T]], flags: int = 0) -> Callable[[HandlerFunc[T]], HandlerFunc[T]]:
+        def decorator(func: HandlerFunc[T]):
             logger.trace(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
 
             self.request_handlers[typ.tlid()] = RequestHandler(func, flags)

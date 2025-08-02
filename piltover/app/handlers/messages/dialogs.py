@@ -127,7 +127,7 @@ async def get_dialogs_internal(
 
 
 @handler.on_request(GetDialogs)
-async def get_dialogs(request: GetDialogs, user: User):
+async def get_dialogs(request: GetDialogs, user: User) -> Dialogs:
     result = await get_dialogs_internal(
         Dialog, user, request.offset_id, request.offset_date, request.limit, request.offset_peer, request.folder_id,
         request.exclude_pinned, True,

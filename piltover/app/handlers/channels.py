@@ -21,7 +21,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_136, ToggleSignatures, \
-    UpdateUsername
+    UpdateUsername, ToggleSignatures_136
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers
 from piltover.worker import MessageHandler
@@ -521,6 +521,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
     )
 
 
+@handler.on_request(ToggleSignatures_136)
 @handler.on_request(ToggleSignatures)
 async def toggle_signatures(request: ToggleSignatures, user: User):
     peer = await Peer.from_input_peer_raise(user, request.channel)
@@ -532,11 +533,20 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     channel = peer.channel
-    if channel.signatures == request.enabled:
+    if channel.signatures == request.signatures_enabled:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
-    channel.signatures = request.enabled
+    channel.signatures = request.signatures_enabled
     channel.version += 1
     await channel.save(update_fields=["signatures", "version"])
 
     return await UpdatesManager.update_channel(channel, user)
+
+
+@handler.on_request(ToggleSignatures_136)
+async def toggle_signatures_136(request: ToggleSignatures_136, user: User):
+    return await toggle_signatures(ToggleSignatures(
+        signatures_enabled=request.enabled,
+        profiles_enabled=False,
+        channel=request.channel,
+    ), user)

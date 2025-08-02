@@ -59,10 +59,7 @@ def gen_keys() -> Keys:
         encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.PKCS1
     )
 
-    private_key = unencrypted_pem_private_key.decode().strip()
-    public_key = pem_public_key.decode().strip()
-
     return Keys(
-        private_key=private_key,
-        public_key=public_key,
+        private_key=unencrypted_pem_private_key.decode().strip(),
+        public_key=pem_public_key.decode().strip(),
     )

@@ -129,14 +129,13 @@ def get_type_hint(type: str, layer: int, int_is_int: bool = False) -> str:
         type = f"list[{get_type_hint(sub_type, layer, int_is_int)}]"
 
     if is_core:
-        return f"Optional[{type}]" if is_flag and type != "bool" else type
+        return f"{type} | None" if is_flag and type != "bool" else type
     else:
         base_type = f"{type}{layer_suffix(type, layer)}"
         constructors = types_to_constructors[base_type]
-        type = ", ".join([f"types.{constr}" for constr in constructors])
-        type = f"Union[{type}]" if len(constructors) > 1 else type
+        type = " | ".join([f"types.{constr}" for constr in constructors])
 
-        return f"Optional[{type}]" if is_flag else type
+        return f"{type} | None" if is_flag else type
 
 
 def is_tl_object(field_type: str) -> bool:
@@ -262,9 +261,7 @@ def parse_old_schemas(schemaBase: list[Combinator]) -> dict[int, dict[str, Combi
             c = schemas[layer][cname]
             replacements = {
                 "qualname": f"{c.qualname}_{layer}",
-                "qualtype": f"{c.qualtype}_{layer}",
                 "name": f"{c.name}_{layer}",
-                "type": f"{c.type}_{layer}",
             }
             schemas[layer][cname] = c._replace(**replacements)
 
@@ -449,15 +446,24 @@ def start():
 
         imports = [
             f"from __future__ import annotations",
-            f"from typing import Optional, Union",
             f"from {third_dot}..primitives import *",
             f"from {third_dot}.. import types, SerializationUtils",
             f"from {third_dot}..tl_object import TLObject",
         ]
+
+        base_cls = "TLObject"
+        if c.section == "functions":
+            imports.append(f"from {third_dot}..tl_object import TLRequest")
+            if not c.typespace and c.type == "X":
+                result_type = "TLObject"
+            else:
+                result_type = get_type_hint(f"{c.typespace}.{c.type}" if c.typespace else c.type, -1)
+            base_cls = f"TLRequest[{result_type}]"
+
         result = [
             f"",
             f"",
-            f"class {c.name}(TLObject):",
+            f"class {c.name}({base_cls}):",
             f"    __tl_id__ = {c.id}",
             f"    __tl_name__ = \"{c.section}.{c.qualname}\"",
             f"",
