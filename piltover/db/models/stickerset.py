@@ -45,7 +45,7 @@ class Stickerset(Model):
         return None
 
     async def to_tl(self, user: models.User) -> StickerSet:
-        inst_set, _ = await models.InstalledStickerset.get_or_create(set=self, user=user)
+        installed = await models.InstalledStickerset.get_or_none(set=self, user=user)
 
         return StickerSet(
             id=self.id,
@@ -54,7 +54,7 @@ class Stickerset(Model):
             short_name=self.short_name,
             official=self.official,
             creator=user.id == self.owner_id,
-            installed_date=int(inst_set.installed_at.timestamp()) if inst_set.installed_at is not None else None,
+            installed_date=int(installed.installed_at.timestamp()) if installed is not None else None,
             count=await self.documents_query().count(),
 
             # TODO:

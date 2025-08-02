@@ -7,13 +7,15 @@ from tortoise.transactions import in_transaction
 
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import FileType
-from piltover.db.models import User, Stickerset, FileAccess, File
+from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument
-from piltover.tl.functions.messages import GetMyStickers, GetStickerSet
+from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
+    UninstallStickerSet
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet
-from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified
+from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, AllStickers, \
+    AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stickers")
@@ -85,6 +87,27 @@ async def _get_sticker_files(stickers: list[InputStickerSetItem], user: User) ->
     return files
 
 
+async def _make_sticker_from_file(file: File, stickerset: Stickerset, pos: int, alt: str, create: bool = True) -> File:
+    new_file = File(
+            physical_id=file.physical_id,
+            created_at=file.created_at,
+            mime_type=file.mime_type,
+            size=file.size,
+            type=FileType.DOCUMENT_STICKER,
+            constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
+            constant_file_ref=UUID(xorshift128plus_bytes(16)),
+            filename=file.filename,
+            stickerset=stickerset,
+            sticker_pos=pos,
+            sticker_alt=alt,
+        )
+
+    if create:
+        await new_file.save(force_create=True)
+
+    return new_file
+
+
 @handler.on_request(CreateStickerSet)
 async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesStickerSet:
     if not request.title or len(request.title) > 64:
@@ -112,19 +135,7 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
 
     for idx, input_sticker in enumerate(request.stickers):
         file = files[input_sticker.document.id]
-        files_to_create.append(File(
-            physical_id=file.physical_id,
-            created_at=file.created_at,
-            mime_type=file.mime_type,
-            size=file.size,
-            type=FileType.DOCUMENT_STICKER,
-            constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
-            constant_file_ref=UUID(xorshift128plus_bytes(16)),
-            filename=file.filename,
-            stickerset=stickerset,
-            sticker_pos=idx,
-            sticker_alt=input_sticker.emoji,
-        ))
+        files_to_create.append(await _make_sticker_from_file(file, stickerset, idx, input_sticker.emoji, False))
 
     try:
         await File.bulk_create(files_to_create)
@@ -218,14 +229,11 @@ async def delete_stickerset(request: DeleteStickerSet, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetMyStickers)
-async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
-    limit = max(1, min(50, request.limit))
-    stickersets = await Stickerset.filter(owner=user, id__lt=request.offset_id).order_by("-id").limit(limit)
-    covers = {file.stickerset_id: file for file in await File.filter(stickerset__in=stickersets, sticker_pos=0)}
+async def _make_covered_list(sets: list[Stickerset], user: User) -> list[StickerSetCovered | StickerSetNoCovered]:
+    covers = {file.stickerset_id: file for file in await File.filter(stickerset__in=sets, sticker_pos=0)}
 
     result = []
-    for stickerset in stickersets:
+    for stickerset in sets:
         if stickerset.id in covers:
             result.append(StickerSetCovered(
                 set=await stickerset.to_tl(user),
@@ -236,8 +244,16 @@ async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
                 set=await stickerset.to_tl(user),
             ))
 
+    return result
+
+
+@handler.on_request(GetMyStickers)
+async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
+    limit = max(1, min(50, request.limit))
+    stickersets = await Stickerset.filter(owner=user, id__lt=request.offset_id).order_by("-id").limit(limit)
+
     return MyStickers(
-        sets=result,
+        sets=await _make_covered_list(stickersets, user),
         count=await Stickerset.filter(owner=user).count(),
     )
 
@@ -284,19 +300,7 @@ async def add_sticker_to_set(request: AddStickerToSet, user: User) -> MessagesSt
     if count >= 120:
         raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")
 
-    await File.create(
-        physical_id=file.physical_id,
-        created_at=file.created_at,
-        mime_type=file.mime_type,
-        size=file.size,
-        type=FileType.DOCUMENT_STICKER,
-        constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
-        constant_file_ref=UUID(xorshift128plus_bytes(16)),
-        filename=file.filename,
-        stickerset=stickerset,
-        sticker_pos=count,
-        sticker_alt=request.sticker.emoji,
-    )
+    await _make_sticker_from_file(file, stickerset, count, request.sticker.emoji)
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
@@ -315,19 +319,7 @@ async def replace_sticker(request: ReplaceSticker, user: User) -> MessagesSticke
     old_file.sticker_pos = None
     await old_file.save(update_fields=["stickerset_id", "sticker_pos"])
 
-    await File.create(
-        physical_id=file.physical_id,
-        created_at=file.created_at,
-        mime_type=file.mime_type,
-        size=file.size,
-        type=FileType.DOCUMENT_STICKER,
-        constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
-        constant_file_ref=UUID(xorshift128plus_bytes(16)),
-        filename=file.filename,
-        stickerset=stickerset,
-        sticker_pos=old_file.sticker_pos,
-        sticker_alt=request.new_sticker.emoji,
-    )
+    await _make_sticker_from_file(file, stickerset, old_file.sticker_pos, request.new_sticker.emoji)
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
@@ -349,6 +341,64 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> 
     return await stickerset.to_tl_messages(user)
 
 
+@handler.on_request(GetAllStickers)
+async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers | AllStickersNotModified:
+    sets = await InstalledStickerset.filter(user=user, archived=False).order_by("-installed_at").select_related("set")
+    sets_hash = telegram_hash((stickerset.set.id for stickerset in sets), 64)
+
+    if sets_hash == request.hash:
+        return AllStickersNotModified()
+
+    return AllStickers(
+        hash=sets_hash,
+        sets=[
+            await stickerset.set.to_tl(user)
+            for stickerset in sets
+        ]
+    )
+
+
+@handler.on_request(InstallStickerSet)
+async def install_stickerset(request: InstallStickerSet, user: User) -> StickerSetInstallResultSuccess | StickerSetInstallResultArchive:
+    stickerset = await Stickerset.from_input(request.stickerset)
+    if stickerset is None or stickerset.owner_id != user.id:
+        raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
+
+    installed, created = await InstalledStickerset.get_or_create(set=stickerset, user=user, defaults={
+        "archived": request.archived,
+    })
+    if not created and installed.archived != request.archived:
+        installed.archived = request.archived
+        await installed.save(update_fields=["archived"])
+
+    # TODO: archive unused stickersets so maximum number of InstalledStickerset would be 25 (?, what is the telegram's limit)
+    # TODO: send updates
+
+    if installed.archived:
+        return StickerSetInstallResultArchive(
+            sets=await _make_covered_list([stickerset], user),
+        )
+
+    return StickerSetInstallResultSuccess()
+
+
+@handler.on_request(UninstallStickerSet)
+async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool:
+    stickerset = await Stickerset.from_input(request.stickerset)
+    if stickerset is None or stickerset.owner_id != user.id:
+        raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
+
+    installed = await InstalledStickerset.get_or_none(set=stickerset, user=user)
+    if installed is None:
+        return True
+
+    await installed.delete()
+
+    # TODO: send updates
+
+    return True
+
+
 # working with stickersets:
 # TODO: SetStickerSetThumb
 # TODO: GetStickers
@@ -359,9 +409,6 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> 
 # TODO: SaveRecentSticker
 
 # working with installed sets:
-# TODO: GetAllStickers
-# TODO: InstallStickerSet
-# TODO: UninstallStickerSet
 # TODO: ReorderStickerSets
 # TODO: GetArchivedStickers
 # TODO: ToggleStickerSets
