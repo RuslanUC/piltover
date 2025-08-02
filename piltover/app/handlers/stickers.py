@@ -9,10 +9,10 @@ from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import FileType
 from piltover.db.models import User, Stickerset, FileAccess, File
 from piltover.exceptions import ErrorRpc
-from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered
+from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
-    DeleteStickerSet, ChangeSticker
+    DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified
 from piltover.worker import MessageHandler
 
@@ -43,25 +43,16 @@ async def check_stickerset_short_name(request: CheckShortName, prefix: str = "")
     return True
 
 
-@handler.on_request(CreateStickerSet)
-async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesStickerSet:
-    if not request.title or len(request.title) > 64:
-        raise ErrorRpc(error_code=400, error_message="PACK_TITLE_INVALID")
-
-    await check_stickerset_short_name(CheckShortName(short_name=request.short_name), user, "PACK_")
-
-    if not request.stickers:
-        raise ErrorRpc(error_code=400, error_message="STICKERS_EMPTY")
-
-    # TODO: validate emojis
-
+async def _get_sticker_files(stickers: list[InputStickerSetItem], user: User) -> dict[int, File]:
     files_q = Q()
 
-    for input_sticker in request.stickers:
+    for input_sticker in stickers:
         input_doc = input_sticker.document
         valid, const = FileAccess.is_file_ref_valid(input_doc.file_reference, user.id, input_doc.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
+        # TODO: disallow using files that already in another stickerset?
 
         base_q = Q(id=input_doc.id, type=FileType.DOCUMENT_STICKER)
         if const:
@@ -74,9 +65,8 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
             )
 
     files = {file.id: file for file in await File.filter(files_q)}
-    files_to_create = []
 
-    for input_sticker in request.stickers:
+    for input_sticker in stickers:
         file = files.get(input_sticker.document.id)
         if file is None:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
@@ -91,6 +81,26 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
 
         if file.size > 512 * 1024:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
+    return files
+
+
+@handler.on_request(CreateStickerSet)
+async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesStickerSet:
+    if not request.title or len(request.title) > 64:
+        raise ErrorRpc(error_code=400, error_message="PACK_TITLE_INVALID")
+
+    await check_stickerset_short_name(CheckShortName(short_name=request.short_name), user, "PACK_")
+
+    if not request.stickers:
+        raise ErrorRpc(error_code=400, error_message="STICKERS_EMPTY")
+    if len(request.stickers) > 120:
+        raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")  # TODO: check if this is correct error
+
+    # TODO: validate emojis
+
+    files = await _get_sticker_files(request.stickers, user)
+    files_to_create = []
 
     # TODO: thumbs
 
@@ -130,22 +140,25 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     return await stickerset.to_tl_messages(user)
 
 
-@handler.on_request(ChangeStickerPosition)
-async def change_sticker_position(request: ChangeStickerPosition, user: User) -> MessagesStickerSet:
-    doc = request.sticker
-    valid, const = FileAccess.is_file_ref_valid(doc.file_reference, user.id, doc.id)
+async def _get_sticker_with_set(sticker: InputDocument, user: User) -> tuple[File, Stickerset]:
+    valid, const = FileAccess.is_file_ref_valid(sticker.file_reference, user.id, sticker.id)
     if not valid or not const:
         raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
 
     file = await File.get_or_none(
-        id=request.sticker.id, constant_access_hash=doc.access_hash, constant_file_ref=doc.file_reference,
+        id=sticker.id, constant_access_hash=sticker.access_hash, constant_file_ref=sticker.file_reference,
         stickerset__owner=user,
     ).select_related("stickerset")
 
     if file is None:
         raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
 
-    stickerset = file.stickerset
+    return file, file.stickerset
+
+
+@handler.on_request(ChangeStickerPosition)
+async def change_sticker_position(request: ChangeStickerPosition, user: User) -> MessagesStickerSet:
+    file, stickerset = await _get_sticker_with_set(request.sticker, user)
 
     min_pos = 0
     max_pos = await stickerset.documents_query().count() - 1
@@ -231,20 +244,7 @@ async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
 
 @handler.on_request(ChangeSticker)
 async def change_sticker(request: ChangeSticker, user: User) -> MessagesStickerSet:
-    doc = request.sticker
-    valid, const = FileAccess.is_file_ref_valid(doc.file_reference, user.id, doc.id)
-    if not valid or not const:
-        raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
-
-    file = await File.get_or_none(
-        id=request.sticker.id, constant_access_hash=doc.access_hash, constant_file_ref=doc.file_reference,
-        stickerset__owner=user,
-    ).select_related("stickerset")
-
-    if file is None:
-        raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
-
-    stickerset = file.stickerset
+    file, stickerset = await _get_sticker_with_set(request.sticker, user)
 
     # TODO: mask coords and keywords
     if request.emoji is None or request.emoji == file.sticker_alt:
@@ -271,11 +271,86 @@ async def get_stickerset(request: GetStickerSet, user: User) -> MessagesStickerS
     return await stickerset.to_tl_messages(user)
 
 
+@handler.on_request(AddStickerToSet)
+async def add_sticker_to_set(request: AddStickerToSet, user: User) -> MessagesStickerSet:
+    stickerset = await Stickerset.from_input(request.stickerset)
+    if stickerset is None or stickerset.owner_id != user.id:
+        raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
+
+    files = await _get_sticker_files([request.sticker], user)
+    file = files[request.sticker.document.id]
+
+    count = await File.filter(stickerset=stickerset).count()
+    if count >= 120:
+        raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")
+
+    await File.create(
+        physical_id=file.physical_id,
+        created_at=file.created_at,
+        mime_type=file.mime_type,
+        size=file.size,
+        type=FileType.DOCUMENT_STICKER,
+        constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
+        constant_file_ref=UUID(xorshift128plus_bytes(16)),
+        filename=file.filename,
+        stickerset=stickerset,
+        sticker_pos=count,
+        sticker_alt=request.sticker.emoji,
+    )
+
+    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+    await stickerset.save(update_fields=["hash"])
+
+    return await stickerset.to_tl_messages(user)
+
+
+@handler.on_request(ReplaceSticker)
+async def replace_sticker(request: ReplaceSticker, user: User) -> MessagesStickerSet:
+    old_file, stickerset = await _get_sticker_with_set(request.sticker, user)
+
+    files = await _get_sticker_files([request.new_sticker], user)
+    file = files[request.new_sticker.document.id]
+
+    old_file.stickerset = None
+    old_file.sticker_pos = None
+    await old_file.save(update_fields=["stickerset_id", "sticker_pos"])
+
+    await File.create(
+        physical_id=file.physical_id,
+        created_at=file.created_at,
+        mime_type=file.mime_type,
+        size=file.size,
+        type=FileType.DOCUMENT_STICKER,
+        constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
+        constant_file_ref=UUID(xorshift128plus_bytes(16)),
+        filename=file.filename,
+        stickerset=stickerset,
+        sticker_pos=old_file.sticker_pos,
+        sticker_alt=request.new_sticker.emoji,
+    )
+
+    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+    await stickerset.save(update_fields=["hash"])
+
+    return await stickerset.to_tl_messages(user)
+
+
+@handler.on_request(RemoveStickerFromSet)
+async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> MessagesStickerSet:
+    file, stickerset = await _get_sticker_with_set(request.sticker, user)
+
+    async with in_transaction():
+        await file.delete()
+        await File.filter(stickerset=stickerset, sticker_pos__gt=file.sticker_pos).update(sticker_pos=F("sticker_pos") - 1)
+
+    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+    await stickerset.save(update_fields=["hash"])
+
+    return await stickerset.to_tl_messages(user)
+
+
 # working with stickersets:
-# TODO: ReplaceSticker
-# TODO: AddStickerToSet
 # TODO: SetStickerSetThumb
-# TODO: RemoveStickerFromSet
 # TODO: GetStickers
 
 # working with recent stickers:
