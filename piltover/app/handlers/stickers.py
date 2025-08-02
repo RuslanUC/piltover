@@ -9,13 +9,14 @@ from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import FileType
 from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset
 from piltover.exceptions import ErrorRpc
-from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument
+from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
+    InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
-    UninstallStickerSet
+    UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, AllStickers, \
-    AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive
+    AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive, ArchivedStickers
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stickers")
@@ -250,7 +251,8 @@ async def _make_covered_list(sets: list[Stickerset], user: User) -> list[Sticker
 @handler.on_request(GetMyStickers)
 async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
     limit = max(1, min(50, request.limit))
-    stickersets = await Stickerset.filter(owner=user, id__lt=request.offset_id).order_by("-id").limit(limit)
+    id_filter = Q(set__lt=request.offset_id) if request.offset_id else Q()
+    stickersets = await Stickerset.filter(id_filter, owner=user).order_by("-id").limit(limit)
 
     return MyStickers(
         sets=await _make_covered_list(stickersets, user),
@@ -343,7 +345,9 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> 
 
 @handler.on_request(GetAllStickers)
 async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers | AllStickersNotModified:
-    sets = await InstalledStickerset.filter(user=user, archived=False).order_by("-installed_at").select_related("set")
+    sets = await InstalledStickerset.filter(user=user, archived=False)\
+        .order_by("pos", "-installed_at")\
+        .select_related("set")
     sets_hash = telegram_hash((stickerset.set.id for stickerset in sets), 64)
 
     if sets_hash == request.hash:
@@ -399,6 +403,99 @@ async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool
     return True
 
 
+@handler.on_request(ReorderStickerSets)
+async def reorder_sticker_sets(request: ReorderStickerSets, user: User) -> bool:
+    sets: list[InstalledStickerset | None] = await InstalledStickerset.filter(user=user, archived=False) \
+        .order_by("pos", "-installed_at").select_related("set")
+    by_ids = {
+        installed.set.id: (installed, idx)
+        for idx, installed in enumerate(sets)
+    }
+
+    new_order = []
+    for set_id in request.order:
+        if set_id not in by_ids:
+            continue
+        stickerset, idx = by_ids[set_id]
+        sets[idx] = None
+        stickerset.pos = len(new_order)
+        new_order.append(stickerset)
+
+    for left_set in sets:
+        if left_set is None:
+            continue
+        left_set.pos = len(new_order)
+        new_order.append(left_set)
+
+    await InstalledStickerset.bulk_update(new_order, fields=["pos"])
+
+    # TODO: send updates
+
+    return True
+
+
+@handler.on_request(GetArchivedStickers)
+async def get_archived_stickers(request: GetArchivedStickers, user: User) -> ArchivedStickers:
+    limit = max(1, min(50, request.limit))
+    id_filter = Q(set__id__lt=request.offset_id) if request.offset_id else Q()
+    installed_sets = await InstalledStickerset.filter(id_filter, user=user, archived=True)\
+        .select_related("set")\
+        .order_by("-set__id")\
+        .limit(limit)
+
+    return ArchivedStickers(
+        count=await InstalledStickerset.filter(user=user, archived=True).count(),
+        sets=await _make_covered_list([installed.set for installed in installed_sets], user)
+    )
+
+
+@handler.on_request(ToggleStickerSets)
+async def toggle_sticker_sets(request: ToggleStickerSets, user: User) -> bool:
+    if not request.uninstall and not request.archive and not request.unarchive:
+        return True
+    if not request.stickersets:
+        return True
+
+    sets_q = Q()
+
+    for input_set in request.stickersets:
+        if isinstance(input_set, InputStickerSetEmpty):
+            continue
+        elif isinstance(input_set, InputStickerSetID):
+            sets_q |= Q(set__id=input_set.id, set__access_hash=input_set.access_hash)
+        elif isinstance(input_set, InputStickerSetShortName):
+            sets_q |= Q(set__short_name=input_set.short_name)
+
+        # TODO: support other InputStickerSet* constructors
+
+    sets = await InstalledStickerset.filter(sets_q, user=user)
+    if not sets:
+        return True
+
+    changed_sets = []
+
+    if request.uninstall:
+        await InstalledStickerset.filter(id__in=[installed.id for installed in sets]).delete()
+    elif request.archive:
+        for installed in sets:
+            if not installed.archived:
+                installed.archived = True
+                changed_sets.append(installed)
+    elif request.unarchive:
+        for installed in sets:
+            if installed.archived:
+                installed.archived = False
+                changed_sets.append(installed)
+
+    if changed_sets:
+        await InstalledStickerset.bulk_update(changed_sets, fields=["archived"])
+
+    if request.uninstall or changed_sets:
+        ...  # TODO: send updates
+
+    return True
+
+
 # working with stickersets:
 # TODO: SetStickerSetThumb
 # TODO: GetStickers
@@ -407,11 +504,6 @@ async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool
 # TODO: GetRecentStickers
 # TODO: ClearRecentStickers
 # TODO: SaveRecentSticker
-
-# working with installed sets:
-# TODO: ReorderStickerSets
-# TODO: GetArchivedStickers
-# TODO: ToggleStickerSets
 
 # working with faved stickers:
 # TODO: FaveSticker

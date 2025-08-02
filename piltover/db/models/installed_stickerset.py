@@ -13,6 +13,7 @@ class InstalledStickerset(Model):
     user: models.User = fields.ForeignKeyField("models.User")
     installed_at: datetime = fields.DatetimeField(auto_now_add=True)
     archived: bool = fields.BooleanField(default=False)
+    pos: int = fields.IntField(default=0)
 
     set_id: int
     user_id: int
