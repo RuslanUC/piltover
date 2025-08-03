@@ -7,6 +7,7 @@ from tortoise import Model, fields
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
+from piltover.db.enums import StickerSetType
 from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 
@@ -19,6 +20,7 @@ class Stickerset(Model):
     owner: models.User | None = fields.ForeignKeyField("models.User", null=True)
     official: bool = fields.BooleanField(default=False)
     hash: int = fields.IntField(default=0)
+    type: StickerSetType = fields.IntEnumField(StickerSetType)
 
     owner_id: int | None
 
@@ -58,6 +60,8 @@ class Stickerset(Model):
             archived=installed is not None and installed.archived,
             count=await self.documents_query().count(),
             hash=self.hash,
+            masks=self.type is StickerSetType.MASKS,
+            emojis=self.type is StickerSetType.EMOJIS,
 
             # TODO:
             thumbs=None,
@@ -65,8 +69,6 @@ class Stickerset(Model):
             thumb_version=None,
             thumb_document_id=None,
 
-            masks=False,
-            emojis=False,
             text_color=False,
             channel_emoji_status=False,
         )

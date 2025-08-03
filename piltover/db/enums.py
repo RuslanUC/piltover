@@ -211,3 +211,11 @@ class PushTokenType(IntEnum):
     MICROSOFT_VOIP = 11
     TIZEN = 12
     HUAWEI = 13
+
+
+class StickerSetType(IntEnum):
+    STATIC = 0
+    ANIMATED = 1
+    VIDEO = 2
+    EMOJIS = 3
+    MASKS = 4

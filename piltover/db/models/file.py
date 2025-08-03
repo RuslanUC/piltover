@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from base64 import b85encode, b85decode
 from datetime import datetime
+from io import BytesIO
 from uuid import UUID, uuid4
 
 from tortoise import fields, Model
@@ -9,7 +11,7 @@ from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
-    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID
+    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords
 
 
 class File(Model):
@@ -47,8 +49,16 @@ class File(Model):
     stickerset: models.Stickerset | None = fields.ForeignKeyField("models.Stickerset", null=True, default=None, on_delete=fields.SET_NULL)
     sticker_pos: int | None = fields.IntField(null=True, default=None)
     sticker_alt: str | None = fields.CharField(max_length=32, null=True, default=None)
+    sticker_is_mask: bool = fields.BooleanField(default=False)
+    sticker_mask_coords: str | None = fields.CharField(max_length=36, null=True, default=None)
 
     stickerset_id: int | None
+
+    @property
+    def sticker_mask_coords_tl(self) -> MaskCoords | None:
+        if not self.sticker_is_mask or self.sticker_mask_coords is None:
+            return None
+        return MaskCoords.deserialize(BytesIO(b85decode(self.sticker_mask_coords)))
 
     async def parse_attributes_from_tl(self, attributes: list[TLObject]) -> None:
         for attribute in attributes:
@@ -74,7 +84,9 @@ class File(Model):
                 self.type = FileType.DOCUMENT_STICKER
                 self.stickerset = await models.Stickerset.from_input(attribute.stickerset)
                 self.sticker_alt = attribute.alt
-                # TODO: fill mask and mask_coords fields
+                self.sticker_is_mask = attribute.mask
+                if attribute.mask and attribute.mask_coords is not None:
+                    self.sticker_mask_coords = b85encode(attribute.mask_coords.serialize()).decode("utf8")
             elif isinstance(attribute, DocumentAttributeFilename):
                 self.filename = attribute.file_name
 
@@ -102,7 +114,8 @@ class File(Model):
             result.append(DocumentAttributeSticker(
                 alt=self.sticker_alt or "",
                 stickerset=stickerset,
-                # TODO: mask, mask_coords
+                mask=self.sticker_is_mask,
+                mask_coords=self.sticker_mask_coords_tl,
             ))
         if self.type is FileType.DOCUMENT_GIF:
             result.append(DocumentAttributeAnimated())

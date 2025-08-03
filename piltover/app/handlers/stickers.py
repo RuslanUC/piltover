@@ -1,5 +1,6 @@
 import gzip
 import json
+from base64 import b85encode
 from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
@@ -10,11 +11,11 @@ from tortoise.transactions import in_transaction
 from piltover.app.handlers.upload import read_file_content
 from piltover.app.utils.updates_manager import UpdatesManager
 from piltover.app.utils.utils import telegram_hash
-from piltover.db.enums import FileType
+from piltover.db.enums import FileType, StickerSetType
 from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
-    InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName
+    InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
@@ -30,6 +31,14 @@ ord_a = ord("a")
 ord_z = ord("z")
 ord_0 = ord("0")
 ord_9 = ord("9")
+allowed_mimes = ["image/png", "image/webp", "video/webm", "application/x-tgsticker"]
+set_types_to_mimes = {
+    StickerSetType.STATIC: ("image/png", "image/webp"),
+    StickerSetType.ANIMATED: ("application/x-tgsticker",),
+    StickerSetType.VIDEO: ("video/webm",),
+    StickerSetType.EMOJIS: ("image/png", "image/webp", "video/webm", "application/x-tgsticker"),
+    StickerSetType.MASKS: ("image/png", "image/webp", "application/x-tgsticker"),
+}
 
 
 @handler.on_request(CheckShortName)
@@ -53,7 +62,7 @@ async def check_stickerset_short_name(request: CheckShortName, prefix: str = "")
 # https://core.telegram.org/stickers
 
 
-async def _validate_png(file: File) -> None:
+async def _validate_png_webp(file: File) -> None:
     if file.mime_type != "image/png":  # TODO: also allow webp
         raise ErrorRpc(error_code=400, error_message="STICKER_PNG_NOPNG")
 
@@ -88,7 +97,9 @@ async def _validate_tgs(file: File) -> None:
     # TODO: validate "You must not use the following Adobe After Effects functionality when animating your artwork: Auto-bezier keys, Expressions, Masks, Layer Effects, Images, Solids, Texts, 3D Layers, Merge Paths, Star Shapes, Gradient Strokes, Repeaters, Time Stretching, Time Remapping, Auto-Oriented Layers."
 
 
-async def _get_sticker_files(stickers: list[InputStickerSetItem], user: User) -> dict[int, File]:
+async def _get_sticker_files(
+        stickers: list[InputStickerSetItem], user: User, set_type: StickerSetType | None,
+) -> tuple[dict[int, File], StickerSetType]:
     files_q = Q()
 
     for input_sticker in stickers:
@@ -97,9 +108,7 @@ async def _get_sticker_files(stickers: list[InputStickerSetItem], user: User) ->
         if not valid:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-        # TODO: disallow using files that already in another stickerset?
-
-        base_q = Q(id=input_doc.id, type=FileType.DOCUMENT_STICKER)
+        base_q = Q(id=input_doc.id, type=FileType.DOCUMENT_STICKER, mime_type__in=allowed_mimes, stickerset=None)
         if const:
             files_q |= base_q & Q(
                 constant_access_hash=input_doc.access_hash, constant_file_ref=input_doc.file_reference,
@@ -116,26 +125,48 @@ async def _get_sticker_files(stickers: list[InputStickerSetItem], user: User) ->
         if file is None:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-        # TODO: support video, animated and tgs stickers
-        await _validate_png(file)
+        if set_type is None:
+            if file.mime_type in ("image/png", "image/webp"):
+                set_type = StickerSetType.STATIC
+            elif file.mime_type == "video/webp":
+                set_type = StickerSetType.VIDEO
+            elif file.mime_type == "application/x-tgsticker":
+                set_type = StickerSetType.ANIMATED
+            else:
+                raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-    return files
+        if file.mime_type not in set_types_to_mimes[set_type]:
+            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
+        if file.mime_type in ("image/png", "image/webp"):
+            await _validate_png_webp(file)
+        elif file.mime_type == "video/webp":
+            # TODO: support video stickers
+            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+        elif file.mime_type == "application/x-tgsticker":
+            await _validate_tgs(file)
+        else:
+            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
+    return files, set_type
 
 
-async def _make_sticker_from_file(file: File, stickerset: Stickerset, pos: int, alt: str, create: bool = True) -> File:
+async def _make_sticker_from_file(file: File, stickerset: Stickerset, pos: int, alt: str, mask: bool, mask_coords: MaskCoords | None, create: bool = True) -> File:
     new_file = File(
-            physical_id=file.physical_id,
-            created_at=file.created_at,
-            mime_type=file.mime_type,
-            size=file.size,
-            type=FileType.DOCUMENT_STICKER,
-            constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
-            constant_file_ref=UUID(xorshift128plus_bytes(16)),
-            filename=file.filename,
-            stickerset=stickerset,
-            sticker_pos=pos,
-            sticker_alt=alt,
-        )
+        physical_id=file.physical_id,
+        created_at=file.created_at,
+        mime_type=file.mime_type,
+        size=file.size,
+        type=FileType.DOCUMENT_STICKER,
+        constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
+        constant_file_ref=UUID(xorshift128plus_bytes(16)),
+        filename=file.filename,
+        stickerset=stickerset,
+        sticker_pos=pos,
+        sticker_alt=alt,
+        sticker_mask=mask,
+        sticker_mask_coords=b85encode(mask_coords.serialize()).decode("utf8") if mask and mask_coords else None,
+    )
 
     if create:
         await new_file.save(force_create=True)
@@ -155,9 +186,15 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     if len(request.stickers) > 120:
         raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")  # TODO: check if this is correct error
 
+    set_type = None
+    if request.masks:
+        set_type = StickerSetType.MASKS
+    elif request.emojis:
+        set_type = StickerSetType.EMOJIS
+
     # TODO: validate emojis
 
-    files = await _get_sticker_files(request.stickers, user)
+    files, set_type = await _get_sticker_files(request.stickers, user, set_type)
     files_to_create = []
 
     # TODO: thumbs
@@ -165,12 +202,17 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     stickerset = await Stickerset.create(
         title=request.title,
         short_name=request.short_name,
+        type=set_type,
         owner=None,
     )
 
     for idx, input_sticker in enumerate(request.stickers):
         file = files[input_sticker.document.id]
-        files_to_create.append(await _make_sticker_from_file(file, stickerset, idx, input_sticker.emoji, False))
+        files_to_create.append(
+            await _make_sticker_from_file(
+                file, stickerset, idx, input_sticker.emoji, request.masks, input_sticker.mask_coords, False,
+            )
+        )
 
     try:
         await File.bulk_create(files_to_create)
@@ -298,12 +340,23 @@ async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
 async def change_sticker(request: ChangeSticker, user: User) -> MessagesStickerSet:
     file, stickerset = await _get_sticker_with_set(request.sticker, user)
 
-    # TODO: mask coords and keywords
-    if request.emoji is None or request.emoji == file.sticker_alt:
+    update_fields = []
+
+    if request.emoji is not None and request.emoji != file.sticker_alt:
+        file.sticker_alt = request.emoji
+        update_fields.append("sticker_alt")
+
+    if request.mask_coords is not None and request.mask_coords != file.sticker_mask_coords_tl \
+            and stickerset.type is StickerSetType.MASKS and file.sticker_is_mask:
+        file.sticker_mask_coords = b85encode(request.mask_coords.serialize()).decode("utf8")
+        update_fields.append("sticker_mask_coords")
+
+    # TODO: keywords
+
+    if not update_fields:
         return await stickerset.to_tl_messages(user)
 
-    file.sticker_alt = request.emoji
-    await file.save(update_fields=["sticker_alt"])
+    await file.save(update_fields=update_fields)
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
@@ -329,14 +382,17 @@ async def add_sticker_to_set(request: AddStickerToSet, user: User) -> MessagesSt
     if stickerset is None or stickerset.owner_id != user.id:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
-    files = await _get_sticker_files([request.sticker], user)
+    files, _ = await _get_sticker_files([request.sticker], user, stickerset.type)
     file = files[request.sticker.document.id]
 
     count = await File.filter(stickerset=stickerset).count()
     if count >= 120:
         raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")
 
-    await _make_sticker_from_file(file, stickerset, count, request.sticker.emoji)
+    await _make_sticker_from_file(
+        file, stickerset, count, request.sticker.emoji, stickerset.type is StickerSetType.MASKS,
+        request.sticker.mask_coords,
+    )
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
@@ -348,14 +404,17 @@ async def add_sticker_to_set(request: AddStickerToSet, user: User) -> MessagesSt
 async def replace_sticker(request: ReplaceSticker, user: User) -> MessagesStickerSet:
     old_file, stickerset = await _get_sticker_with_set(request.sticker, user)
 
-    files = await _get_sticker_files([request.new_sticker], user)
+    files, _ = await _get_sticker_files([request.new_sticker], user, stickerset.type)
     file = files[request.new_sticker.document.id]
 
     old_file.stickerset = None
     old_file.sticker_pos = None
     await old_file.save(update_fields=["stickerset_id", "sticker_pos"])
 
-    await _make_sticker_from_file(file, stickerset, old_file.sticker_pos, request.new_sticker.emoji)
+    await _make_sticker_from_file(
+        file, stickerset, old_file.sticker_pos, request.new_sticker.emoji, stickerset.type is StickerSetType.MASKS,
+        request.new_sticker.mask_coords
+    )
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
