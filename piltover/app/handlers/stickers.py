@@ -128,7 +128,7 @@ async def _get_sticker_files(
         if set_type is None:
             if file.mime_type in ("image/png", "image/webp"):
                 set_type = StickerSetType.STATIC
-            elif file.mime_type == "video/webp":
+            elif file.mime_type == "video/webm":
                 set_type = StickerSetType.VIDEO
             elif file.mime_type == "application/x-tgsticker":
                 set_type = StickerSetType.ANIMATED
@@ -140,7 +140,7 @@ async def _get_sticker_files(
 
         if file.mime_type in ("image/png", "image/webp"):
             await _validate_png_webp(file)
-        elif file.mime_type == "video/webp":
+        elif file.mime_type == "video/webm":
             # TODO: support video stickers
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
         elif file.mime_type == "application/x-tgsticker":

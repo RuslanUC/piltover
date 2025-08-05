@@ -19,9 +19,23 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
-    UpdateStickerSetsOrder
+    UpdateStickerSetsOrder, base
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
+
+
+class UpdatesWithDefaults(Updates):
+    def __init__(
+            self, *, updates: list[base.Update], users: list[base.User] | None = None,
+            chats: list[base.Chat] | None = None, date: int | None = None, seq: int | None = None,
+    ) -> None:
+        super().__init__(
+            updates=updates,
+            users=users if users is not None else [],
+            chats=chats if chats is not None else [],
+            date=date if date is not None else int(time()),
+            seq=seq if seq is not None else 0,
+        )
 
 
 # TODO: move UpdatesManager to separate worker
@@ -40,7 +54,7 @@ class UpdatesManager:
 
             # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
 
-            updates = Updates(
+            updates = UpdatesWithDefaults(
                 updates=[
                     UpdateNewMessage(
                         message=await message.to_tl(peer.owner),
@@ -50,8 +64,6 @@ class UpdatesManager:
                 ],
                 users=list(users.values()),
                 chats=[*chats.values(), *channels.values()],
-                date=int(time()),
-                seq=0,
             )
 
             if message.random_id:
@@ -100,7 +112,7 @@ class UpdatesManager:
 
         await SessionManager.send(
             ObjectWithLazyFields(
-                object=Updates(
+                object=UpdatesWithDefaults(
                     updates=[
                         UpdateNewChannelMessage(
                             message=LazyMessage(message_id=message.id),  # type: ignore
@@ -110,8 +122,6 @@ class UpdatesManager:
                     ],
                     users=lazy_users,  # type: ignore
                     chats=[*lazy_chats, *lazy_channels],  # type: ignore
-                    date=int(time()),
-                    seq=0,
                 ),
                 fields=[
                     "updates.0.message",
@@ -138,12 +148,10 @@ class UpdatesManager:
         if message.random_id:
             updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
 
-        return Updates(
+        return UpdatesWithDefaults(
             updates=updates,
             users=users,
             chats=[*chats, *channels],
-            date=int(time()),
-            seq=0,
         )
 
     @staticmethod
@@ -168,12 +176,10 @@ class UpdatesManager:
 
             users, chats, channels = await resolve_users_chats(peer.owner, users_q, chats_q, channels_q, {}, {}, {})
 
-            updates = Updates(
+            updates = UpdatesWithDefaults(
                 updates=updates,
                 users=list(users.values()),
                 chats=[*chats.values(), *channels.values()],
-                date=int(time()),
-                seq=0,
             )
 
             await SessionManager.send(updates, peer.owner.id)
@@ -216,7 +222,7 @@ class UpdatesManager:
 
         await SessionManager.send(
             ObjectWithLazyFields(
-                object=Updates(
+                object=UpdatesWithDefaults(
                     updates=[
                         UpdateNewChannelMessage(
                             message=LazyMessage(message_id=message.id),  # type: ignore
@@ -227,8 +233,6 @@ class UpdatesManager:
                     ],
                     users=lazy_users,  # type: ignore
                     chats=[*lazy_chats, *lazy_channels],  # type: ignore
-                    date=int(time()),
-                    seq=0,
                 ),
                 fields=[
                     *(f"updates.{i}.message" for i in range(len(update_messages))),
@@ -247,7 +251,7 @@ class UpdatesManager:
         chats = [await rel_chat.to_tl(user) for rel_chat in rel_chats.values()]
         channels = [await rel_channel.to_tl(user) for rel_channel in rel_channels.values()]
 
-        return Updates(
+        return UpdatesWithDefaults(
             updates=[
                 UpdateNewChannelMessage(
                     message=await message.to_tl(user),
@@ -258,8 +262,6 @@ class UpdatesManager:
             ],
             users=users,
             chats=[*chats, *channels],
-            date=int(time()),
-            seq=0,
         )
 
     @staticmethod
@@ -283,12 +285,8 @@ class UpdatesManager:
             updates_to_create.append(update)
 
             await SessionManager.send(
-                Updates(
+                UpdatesWithDefaults(
                     updates=[(await update.to_tl(update_user))[0]],
-                    users=[],
-                    chats=[],
-                    date=int(time()),
-                    seq=0,
                 ),
                 update_user.id
             )
@@ -333,7 +331,7 @@ class UpdatesManager:
 
         await SessionManager.send(
             ObjectWithLazyFields(
-                object=Updates(
+                object=UpdatesWithDefaults(
                     updates=[
                         UpdateDeleteChannelMessages(
                             channel_id=channel.id,
@@ -342,10 +340,7 @@ class UpdatesManager:
                             pts_count=1,
                         ),
                     ],
-                    users=[],
                     chats=[LazyChannel(channel_id=channel.id)],  # type: ignore
-                    date=int(time()),
-                    seq=0,
                 ),
                 fields=["chats.0"],
             ),
@@ -379,7 +374,7 @@ class UpdatesManager:
                 await message.peer.fetch_related("chat")
                 chats.append(await message.peer.chat.to_tl(peer.owner))
 
-            update = Updates(
+            update = UpdatesWithDefaults(
                 updates=[
                     UpdateEditMessage(
                         message=await message.to_tl(peer.owner),
@@ -389,8 +384,6 @@ class UpdatesManager:
                 ],
                 users=[await message.author.to_tl(peer.owner)],
                 chats=chats,
-                date=int(time()),
-                seq=0,
             )
 
             if user.id == peer.owner.id:
@@ -425,7 +418,7 @@ class UpdatesManager:
 
         await SessionManager.send(
             ObjectWithLazyFields(
-                object=Updates(
+                object=UpdatesWithDefaults(
                     updates=[
                         UpdateEditChannelMessage(
                             message=LazyMessage(message_id=message.id),  # type: ignore
@@ -435,8 +428,6 @@ class UpdatesManager:
                     ],
                     users=lazy_users,  # type: ignore
                     chats=[*lazy_chats, *lazy_channels],  # type: ignore
-                    date=int(time()),
-                    seq=0,
                 ),
                 fields=[
                     "updates.0.message",
@@ -452,7 +443,7 @@ class UpdatesManager:
         chats = [await rel_chat.to_tl(user) for rel_chat in rel_chats.values()]
         channels = [await rel_channel.to_tl(user) for rel_channel in rel_channels.values()]
 
-        return Updates(
+        return UpdatesWithDefaults(
             updates=[
                 UpdateEditChannelMessage(
                     message=await message.to_tl(user),
@@ -462,8 +453,6 @@ class UpdatesManager:
             ],
             users=users,
             chats=[*chats, *channels],
-            date=int(time()),
-            seq=0,
         )
 
     @staticmethod
@@ -482,12 +471,10 @@ class UpdatesManager:
         users, *_ = await resolve_users_chats(user, users_q, None, None, {}, None, None)
         users[user.id] = user
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[cast(UpdateDialogPinned, tl_update)],
             users=[await other.to_tl(user) for other in users.values()],
             chats=[await peer.chat.to_tl(user)] if peer.type is PeerType.CHAT else [],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -507,12 +494,10 @@ class UpdatesManager:
             related_id=peer.id,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[UpdateDraftMessage(peer=peer.to_tl(), draft=draft)],
             users=[await user.to_tl(user)],
             chats=[await peer.chat.to_tl(user)] if peer.type is PeerType.CHAT else [],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -528,7 +513,7 @@ class UpdatesManager:
             related_id=None,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[
                 UpdatePinnedDialogs(
                     order=[
@@ -539,8 +524,6 @@ class UpdatesManager:
             ],
             users=[await user.to_tl(user)],
             chats=[await dialog.peer.chat.to_tl(user) for dialog in dialogs if dialog.peer.type is PeerType.CHAT],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -565,7 +548,7 @@ class UpdatesManager:
                 )
             )
 
-            update = Updates(
+            update = UpdatesWithDefaults(
                 updates=[
                     UpdatePinnedMessages(
                         pinned=message.pinned,
@@ -577,8 +560,6 @@ class UpdatesManager:
                 ],
                 users=[await message.author.to_tl(peer.owner)],
                 chats=[await peer.chat.to_tl(peer.owner)] if peer.type is PeerType.CHAT else [],
-                date=int(time()),
-                seq=0,
             )
 
             if user.id == peer.owner.id:
@@ -606,12 +587,9 @@ class UpdatesManager:
                 )
             )
 
-            await SessionManager.send(Updates(
+            await SessionManager.send(UpdatesWithDefaults(
                 updates=[UpdateUser(user_id=user.id)],
                 users=[await user.to_tl(peer.owner)],
-                chats=[],
-                date=int(time()),
-                seq=0,
             ), peer.owner.id)
 
         await Update.bulk_create(updates_to_create)
@@ -642,7 +620,7 @@ class UpdatesManager:
                 )
             )
 
-            updates = Updates(
+            updates = UpdatesWithDefaults(
                 updates=[
                     UpdateChatParticipants(
                         participants=ChatParticipants(
@@ -654,8 +632,6 @@ class UpdatesManager:
                 ],
                 users=[await user_.to_tl(peer.owner) for user_ in users],
                 chats=[await chat.to_tl(peer.owner)],
-                date=int(time()),
-                seq=0,
             )
 
             await SessionManager.send(updates, peer.owner.id)
@@ -669,7 +645,7 @@ class UpdatesManager:
     async def update_status(user: User, status: Presence, peers: list[Peer | User]) -> None:
         for peer in peers:
             peer_user = peer.owner if isinstance(peer, Peer) else peer
-            updates = Updates(
+            updates = UpdatesWithDefaults(
                 updates=[
                     UpdateUserStatus(
                         user_id=user.id,
@@ -677,9 +653,6 @@ class UpdatesManager:
                     ),
                 ],
                 users=[await user.to_tl(peer_user)],
-                chats=[],
-                date=int(time()),
-                seq=0,
             )
 
             await SessionManager.send(updates, peer_user.id)
@@ -708,12 +681,9 @@ class UpdatesManager:
                 )
             )
 
-            await SessionManager.send(Updates(
+            await SessionManager.send(UpdatesWithDefaults(
                 updates=[update],
                 users=[await user.to_tl(peer.owner)],
-                chats=[],
-                date=int(time()),
-                seq=0,
             ), peer.owner.id)
 
         await Update.bulk_create(updates_to_create)
@@ -739,12 +709,9 @@ class UpdatesManager:
             ))
             users[target.id] = await target.to_tl(user)
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=updates,
             users=list(users.values()),
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await Update.bulk_create(updates_to_create)
@@ -759,7 +726,7 @@ class UpdatesManager:
             user=user, update_type=UpdateType.UPDATE_BLOCK, pts=pts, related_id=target.user.id,
         )
 
-        await SessionManager.send(Updates(
+        await SessionManager.send(UpdatesWithDefaults(
             updates=[
                 UpdatePeerBlocked(
                     peer_id=target.to_tl(),
@@ -767,9 +734,6 @@ class UpdatesManager:
                 ),
             ],
             users=[await target.user.to_tl(user)],
-            chats=[],
-            date=int(time()),
-            seq=0,
         ), user.id)
 
     @staticmethod
@@ -784,12 +748,9 @@ class UpdatesManager:
                 user=peer.owner, update_type=UpdateType.UPDATE_CHAT, pts=pts, related_id=chat.id,
             ))
 
-            updates = Updates(
+            updates = UpdatesWithDefaults(
                 updates=[UpdateChat(chat_id=chat.id)],
-                users=[],
                 chats=[await chat.to_tl(peer.owner)],
-                date=int(time()),
-                seq=0,
             )
             if user == peer.owner:
                 update_to_return = updates
@@ -810,7 +771,7 @@ class UpdatesManager:
         users_q, chats_q, channels_q = Peer.query_users_chats_cls(dialog.peer_id, Q(), Q(), Q())
         users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
-        await SessionManager.send(Updates(
+        await SessionManager.send(UpdatesWithDefaults(
             updates=[
                 UpdateDialogUnreadMark(
                     peer=DialogPeer(peer=dialog.peer.to_tl()),
@@ -819,8 +780,6 @@ class UpdatesManager:
             ],
             users=list(users.values()),
             chats=[*chats.values(), *channels.values()],
-            date=int(time()),
-            seq=0,
         ), user.id)
 
     @staticmethod
@@ -834,7 +793,7 @@ class UpdatesManager:
         users_q, chats_q, channels_q = peer.query_users_chats(Q(), Q(), Q())
         users, chats, channels = await resolve_users_chats(peer.owner, users_q, chats_q, channels_q, {}, {}, {})
 
-        await SessionManager.send(Updates(
+        await SessionManager.send(UpdatesWithDefaults(
             updates=[
                 UpdateReadHistoryInbox(
                     peer=peer.to_tl(),
@@ -846,8 +805,6 @@ class UpdatesManager:
             ],
             users=list(users.values()),
             chats=[*chats.values(), *channels.values()],
-            date=int(time()),
-            seq=0,
         ), peer.owner.id)
 
     @staticmethod
@@ -861,7 +818,7 @@ class UpdatesManager:
         users_q, chats_q, channels_q = peer.query_users_chats(Q(), Q(), Q())
         users, chats, channels = await resolve_users_chats(peer.owner, users_q, chats_q, channels_q, {}, {}, {})
 
-        await SessionManager.send(Updates(
+        await SessionManager.send(UpdatesWithDefaults(
             updates=[
                 UpdateReadChannelInbox(
                     channel_id=peer.channel_id,
@@ -872,8 +829,6 @@ class UpdatesManager:
             ],
             users=list(users.values()),
             chats=[*chats.values(), *channels.values()],
-            date=int(time()),
-            seq=0,
         ), peer.owner.id)
 
     @staticmethod
@@ -890,7 +845,7 @@ class UpdatesManager:
             users_q, chats_q, channels_q = peer.query_users_chats(Q(), Q(), Q())
             users, chats, channels = await resolve_users_chats(peer.owner, users_q, chats_q, channels_q, {}, {}, {})
 
-            await SessionManager.send(Updates(
+            await SessionManager.send(UpdatesWithDefaults(
                 updates=[
                     UpdateReadHistoryOutbox(
                         peer=peer.to_tl(),
@@ -901,8 +856,6 @@ class UpdatesManager:
                 ],
                 users=list(users.values()),
                 chats=[*chats.values(), *channels.values()],
-                date=int(time()),
-                seq=0,
             ), peer.owner.id)
 
         await Update.bulk_create(updates_to_create)
@@ -922,12 +875,9 @@ class UpdatesManager:
 
         await SessionManager.send(
             ObjectWithLazyFields(
-                object=Updates(
+                object=UpdatesWithDefaults(
                     updates=[UpdateChannel(channel_id=channel.id)],
-                    users=[],
                     chats=[LazyChannel(channel_id=channel.id)],  # type: ignore
-                    date=int(time()),
-                    seq=0,
                 ),
                 fields=["chats.0"],
             ),
@@ -935,12 +885,9 @@ class UpdatesManager:
         )
 
         if user is not None:
-            return Updates(
+            return UpdatesWithDefaults(
                 updates=[UpdateChannel(channel_id=channel.id)],
-                users=[],
                 chats=[await channel.to_tl(user)],
-                date=int(time()),
-                seq=0,
             )
 
     @staticmethod
@@ -965,7 +912,7 @@ class UpdatesManager:
 
         users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[
                 UpdateFolderPeers(
                     folder_peers=folder_peers,
@@ -975,8 +922,6 @@ class UpdatesManager:
             ],
             users=list(users.values()),
             chats=[*chats.values(), *channels.values()],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -997,7 +942,7 @@ class UpdatesManager:
                 user=peer.owner, update_type=UpdateType.UPDATE_CHAT_BANNED_RIGHTS, pts=pts, related_id=chat.id,
             ))
 
-            updates = Updates(
+            updates = UpdatesWithDefaults(
                 updates=[
                     UpdateChatDefaultBannedRights(
                         peer=peer.to_tl(),
@@ -1005,10 +950,7 @@ class UpdatesManager:
                         version=chat.version,
                     )
                 ],
-                users=[],
                 chats=[await chat.to_tl(peer.owner)],
-                date=int(time()),
-                seq=0,
             )
             if user == peer.owner:
                 update_to_return = updates
@@ -1026,12 +968,9 @@ class UpdatesManager:
             user=user, update_type=UpdateType.UPDATE_CHANNEL, pts=pts, related_id=channel.id,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[UpdateChannel(channel_id=channel.id)],
-            users=[],
             chats=[await channel.to_tl(user)],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -1044,7 +983,7 @@ class UpdatesManager:
             user=user, update_type=UpdateType.UPDATE_POLL, pts=pts, related_id=poll.id,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[
                 UpdateMessagePoll(
                     poll_id=poll.id,
@@ -1052,10 +991,6 @@ class UpdatesManager:
                     results=await poll.to_tl_results(user),
                 )
             ],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -1076,17 +1011,13 @@ class UpdatesManager:
 
         # TODO: fetch users, chats, channels from pinned_peers, include_peers, exclude_peers ?
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[
                 UpdateDialogFilter(
                     id=folder_id,
                     filter=await folder.to_tl() if folder is not None else None,
                 ),
             ],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -1106,12 +1037,8 @@ class UpdatesManager:
             related_ids=folder_ids,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[UpdateDialogFilterOrder(order=folder_ids)],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -1120,7 +1047,7 @@ class UpdatesManager:
 
     @staticmethod
     async def update_reactions(user: User, messages: list[Message], peer: Peer, send: bool = True) -> Updates:
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[
                 UpdateMessageReactions(
                     peer=peer.to_tl(),
@@ -1128,10 +1055,6 @@ class UpdatesManager:
                     reactions=await message.to_tl_reactions(user),
                 ) for message in messages
             ],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         if send:
@@ -1157,7 +1080,7 @@ class UpdatesManager:
 
         await SessionManager.send(
             ObjectWithLazyFields(
-                object=Updates(
+                object=UpdatesWithDefaults(
                     updates=[
                         UpdateEncryption(
                             chat=LazyEncryptedChat(chat_id=chat.id),  # type: ignore
@@ -1165,9 +1088,6 @@ class UpdatesManager:
                         ),
                     ],
                     users=[await other_user.to_tl(user)],
-                    chats=[],
-                    date=int(time()),
-                    seq=0,
                 ),
                 fields=["updates.0.chat"],
             ),
@@ -1177,12 +1097,8 @@ class UpdatesManager:
     @staticmethod
     async def send_encrypted_update(update: SecretUpdate) -> None:
         await SessionManager.send(
-            Updates(
+            UpdatesWithDefaults(
                 updates=[await update.to_tl()],
-                users=[],
-                chats=[],
-                date=int(time()),
-                seq=0,
             ),
             auth_id=update.authorization_id,
         )
@@ -1190,14 +1106,10 @@ class UpdatesManager:
     @staticmethod
     async def send_encrypted_typing(chat_id: int, auth_id: int) -> None:
         await SessionManager.send(
-            Updates(
+            UpdatesWithDefaults(
                 updates=[
                     UpdateEncryptedChatTyping(chat_id=chat_id)
                 ],
-                users=[],
-                chats=[],
-                date=int(time()),
-                seq=0,
             ),
             auth_id=auth_id,
         )
@@ -1214,12 +1126,8 @@ class UpdatesManager:
             related_id=None,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[UpdateConfig()],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -1238,12 +1146,8 @@ class UpdatesManager:
             related_id=None,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[UpdateRecentReactions()],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -1262,7 +1166,7 @@ class UpdatesManager:
             related_id=auth.id,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[
                 UpdateNewAuthorization(
                     unconfirmed=not auth.confirmed,
@@ -1272,10 +1176,6 @@ class UpdatesManager:
                     location=auth.ip,
                 ),
             ],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(
@@ -1302,16 +1202,12 @@ class UpdatesManager:
             related_id=stickerset.id,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[
                 UpdateNewStickerSet(
                     stickerset=await stickerset.to_tl_messages(user),
                 ),
             ],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -1330,12 +1226,8 @@ class UpdatesManager:
             related_id=None,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[UpdateStickerSets()],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
@@ -1355,16 +1247,12 @@ class UpdatesManager:
             related_ids=new_order,
         )
 
-        updates = Updates(
+        updates = UpdatesWithDefaults(
             updates=[
                 UpdateStickerSetsOrder(
                     order=new_order,
                 )
             ],
-            users=[],
-            chats=[],
-            date=int(time()),
-            seq=0,
         )
 
         await SessionManager.send(updates, user.id)
