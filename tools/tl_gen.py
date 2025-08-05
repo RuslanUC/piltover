@@ -15,20 +15,16 @@
 #
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
-import glob
 import os
-import py_compile
 import re
 import shutil
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
 from typing import NamedTuple
-from zipfile import ZipFile
 
 from tqdm import tqdm
 
-CONSTRUCTORS_IN_SEPARATE_FILES = False
 
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl")
@@ -56,11 +52,11 @@ open_ = open
 open = partial(open, encoding="utf-8")
 
 all_layers = set()
-types_to_constructors = {"future_salt": ["FutureSalt"]}
-types_to_functions = {}
-namespaces_to_types = {}
-namespaces_to_constructors = defaultdict(list)
-namespaces_to_functions = defaultdict(list)
+types_to_constructors: dict[str, list[str]] = defaultdict(list)
+types_to_constructors["future_salt"].append("FutureSalt")
+namespaces_to_constructors: dict[str, list[str]] = defaultdict(list)
+namespaces_to_functions: dict[str, list[str]] = defaultdict(list)
+namespaces_to_types: dict[str, list[str]] = defaultdict(list)
 
 
 class Combinator(NamedTuple):
@@ -132,8 +128,7 @@ def get_type_hint(type: str, layer: int, int_is_int: bool = False) -> str:
         return f"{type} | None" if is_flag and type != "bool" else type
     else:
         base_type = f"{type}{layer_suffix(type, layer)}"
-        constructors = types_to_constructors[base_type]
-        type = " | ".join([f"types.{constr}" for constr in constructors])
+        type = f"base.{base_type}"
 
         return f"{type} | None" if is_flag else type
 
@@ -326,12 +321,10 @@ def start():
         if qualtype.startswith("Vector"):
             qualtype = qualtype.split("<")[1][:-1]
 
-        d = types_to_constructors if c.section == "types" else types_to_functions
-
-        if qualtype not in d:
-            d[qualtype] = []
-
-        d[qualtype].append(c.qualname)
+        if c.section == "types":
+            types_to_constructors[qualtype].append(c.qualname)
+            if c.type not in namespaces_to_types[c.namespace]:
+                namespaces_to_types[c.namespace].append(c.type)
 
     for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
         fields = []
@@ -449,7 +442,21 @@ def start():
             f"from {third_dot}..primitives import *",
             f"from {third_dot}.. import types, SerializationUtils",
             f"from {third_dot}..tl_object import TLObject",
+            f"",
         ]
+
+        if c.section == "types":
+            imports.extend((
+                f"from typing import TYPE_CHECKING",
+                f"if TYPE_CHECKING:",
+                f"    from {third_dot}.. import base",
+                f"",
+            ))
+        else:
+            imports.extend((
+                f"from {third_dot}.. import base",
+                f"",
+            ))
 
         base_cls = "TLObject"
         if c.section == "functions":
@@ -491,19 +498,12 @@ def start():
         dir_path = DESTINATION_PATH / c.section / c.namespace
         dir_path.mkdir(parents=True, exist_ok=True)
 
-        if CONSTRUCTORS_IN_SEPARATE_FILES:
-            module = c.name if c.name != "Updates" else "UpdatesT"
-            out_path = dir_path / f"{snake(module)}.py"
+        out_path = dir_path / f"__init__.py"
+        if not out_path.exists():
             with open(out_path, "w") as f:
                 f.write("\n".join(imports))
-                f.write("\n".join(result))
-        else:
-            out_path = dir_path / f"__init__.py"
-            if not out_path.exists():
-                with open(out_path, "w") as f:
-                    f.write("\n".join(imports))
-            with open(out_path, "a") as f:
-                f.write("\n".join(result))
+        with open(out_path, "a") as f:
+            f.write("\n".join(result))
 
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
         d[c.namespace].append(c.name)
@@ -511,42 +511,42 @@ def start():
     for namespace, types in namespaces_to_constructors.items():
         out_path = DESTINATION_PATH / "types" / namespace / "__init__.py"
 
-        if CONSTRUCTORS_IN_SEPARATE_FILES:
-            with open(out_path, "w") as f:
-                f.write(f"{WARNING}\n\n")
-
-                for t in types:
-                    module = t
-
-                    if module == "Updates":
-                        module = "UpdatesT"
-
-                    f.write(f"from .{snake(module)} import {t}\n")
-
-                if not namespace:
-                    f.write(f"from . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
-        elif not namespace:
+        if not namespace:
             with open(out_path, "a") as f:
                 f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
+
+    for namespace, types in namespaces_to_types.items():
+        base_dir = DESTINATION_PATH / "base" / namespace
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        with open(base_dir / "__init__.py", "w") as f:
+            f.write(f"{WARNING}\n\n")
+            f.write("from piltover import tl\n\n")
+
+            if not namespace:
+                for import_namespace in namespaces_to_types.keys():
+                    if import_namespace:
+                        f.write(f"from . import {import_namespace}\n")
+
+            f.write("\n")
+
+            for t in types:
+                qualtype = f"{namespace}.{t}" if namespace else t
+                constructors = sorted(types_to_constructors[qualtype])
+
+                types_pipe = " | ".join([f"tl.types.{c}" for c in constructors])
+                f.write(f"{t} = {types_pipe}\n")
+
+                # For isinstance() check
+                types_comma = ", ".join([f"tl.types.{c}" for c in constructors])
+                f.write(f"{t}Inst = ({types_comma},)\n")
+
+                f.write("\n")
 
     for namespace, types in namespaces_to_functions.items():
         out_path = DESTINATION_PATH / "functions" / namespace / "__init__.py"
 
-        if CONSTRUCTORS_IN_SEPARATE_FILES:
-            with open(out_path, "w") as f:
-                f.write(f"{WARNING}\n\n")
-
-                for t in types:
-                    module = t
-
-                    if module == "Updates":
-                        module = "UpdatesT"
-
-                    f.write(f"from .{snake(module)} import {t}\n")
-
-                if not namespace:
-                    f.write(f"from . import {', '.join(filter(bool, namespaces_to_functions))}")
-        elif not namespace:
+        if not namespace:
             with open(out_path, "a") as f:
                 f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_functions))}\n")
 
