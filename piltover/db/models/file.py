@@ -54,6 +54,12 @@ class File(Model):
 
     stickerset_id: int | None
 
+    needs_save: bool = False
+
+    def __repr__(self) -> str:
+        self_fields = ", ".join(f"{field}={getattr(self, field)!r}" for field in self._meta.db_fields)
+        return f"{self.__class__.__name__}({self_fields})"
+
     @property
     def sticker_mask_coords_tl(self) -> MaskCoords | None:
         if not self.sticker_is_mask or self.sticker_mask_coords is None:

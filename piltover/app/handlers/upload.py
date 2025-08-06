@@ -1,4 +1,5 @@
 from time import time
+from uuid import UUID
 
 import aiofiles
 
@@ -101,7 +102,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
             ref_const = True
             q = {
                 "id": location.id, "type__not": FileType.ENCRYPTED, "constant_access_hash": location.access_hash,
-                "constant_file_ref": location.file_reference,
+                "constant_file_ref": UUID(bytes=location.file_reference[12:]),
             }
         else:
             q = {"file__id": location.id, "file__type__not": FileType.ENCRYPTED, "access_hash": location.access_hash}
@@ -116,6 +117,9 @@ async def get_file(request: GetFile, user: User) -> TLFile:
             file = await File.get_or_none(userphotos__id=location.photo_id)
         else:
             file = access.file
+
+    if file is None:
+        raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
 
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")

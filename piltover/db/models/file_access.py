@@ -6,7 +6,6 @@ from hashlib import sha256
 from os import urandom
 from time import time
 
-from loguru import logger
 from tortoise import fields, Model
 
 from piltover.app_config import AppConfig

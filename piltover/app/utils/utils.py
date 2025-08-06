@@ -8,6 +8,7 @@ from io import BytesIO
 from typing import Iterable, Literal
 
 from PIL.Image import Image, open as img_open
+from loguru import logger
 
 from piltover.app import files_dir
 from piltover.db.models import UserPassword, SrpSession, AuthKey, TempAuthKey
@@ -76,7 +77,10 @@ TELEGRAM_QUANTIZATION_TABLES = {
 image_executor = ThreadPoolExecutor(thread_name_prefix="ImageResizeWorker")
 
 
-def resize_image_internal(file_id: str, img: Image, width: int) -> tuple[int, int]:
+def resize_image_internal(file_id: str, width: int) -> tuple[int, int]:
+    img = img_open(files_dir / f"{file_id}")
+    img.load()
+
     original_width, height = img.size
     factor = width / original_width
     height *= factor
@@ -88,11 +92,8 @@ def resize_image_internal(file_id: str, img: Image, width: int) -> tuple[int, in
 
 
 async def resize_photo(file_id: str, sizes: str = "abc") -> list[dict[str, int | str]]:
-    img = img_open(files_dir / f"{file_id}")
-    img.load()
-
     tasks = [
-        get_event_loop().run_in_executor(image_executor, resize_image_internal, file_id, img, PHOTOSIZE_TO_INT[size])
+        get_event_loop().run_in_executor(image_executor, resize_image_internal, file_id, PHOTOSIZE_TO_INT[size])
         for size in sizes
     ]
     res = await gather(*tasks)
@@ -101,6 +102,21 @@ async def resize_photo(file_id: str, sizes: str = "abc") -> list[dict[str, int |
         {"type_": sizes[idx], "w": PHOTOSIZE_TO_INT[sizes[idx]], "h": height, "size": file_size}
         for idx, (file_size, height) in enumerate(res)
     ]
+
+
+def _get_image_dims(file_id: str) -> tuple[int, int] | None:
+    try:
+        img = img_open(files_dir / f"{file_id}")
+        img.load()
+    except Exception as e:
+        logger.opt(exception=e).error("Failed to load image!")
+        return None
+
+    return img.size
+
+
+async def get_image_dims(file_id: str) -> tuple[int, int] | None:
+    return await get_event_loop().run_in_executor(image_executor, _get_image_dims, file_id)
 
 
 async def generate_stripped(file_id: str, size: int = 8) -> bytes:

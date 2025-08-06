@@ -14,11 +14,13 @@ from .message_fwd_header_downgrade import *
 from .message_reply_header_downgrade import *
 from .message_service_downgrade import *
 from .messagemediadocument_downgrade import *
+from .messages_stickerset_downgrade import *
 from .peernotifysettings_downgrade import *
 from .peersettings_downgrade import *
 from .poll_answer_downgrade import *
 from .poll_downgrade import *
 from .poll_results_downgrade import *
+from .stickerset_downgrade import *
 from .update_peer_blocked_downgrade import *
 from .user_downgrade import *
 from .userfull_downgrade import *
@@ -140,3 +142,11 @@ LayerConverter.register_for_downgrade(PollAnswerDontDowngrade)
 
 LayerConverter.register_for_downgrade(UpdatePeerBlockedDowngradeTo136)
 LayerConverter.register_for_downgrade(UpdatePeerBlockedDontDowngrade)
+
+LayerConverter.register_for_downgrade(MessagesStickerSetDowngradeTo136)
+LayerConverter.register_for_downgrade(MessagesStickerSetDontDowngrade147)
+LayerConverter.register_for_downgrade(MessagesStickerSetDontDowngrade)
+
+LayerConverter.register_for_downgrade(StickerSetDowngradeTo136)
+LayerConverter.register_for_downgrade(StickerSetDontDowngrade144)
+LayerConverter.register_for_downgrade(StickerSetDontDowngrade)

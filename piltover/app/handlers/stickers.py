@@ -10,7 +10,7 @@ from tortoise.transactions import in_transaction
 
 from piltover.app.handlers.upload import read_file_content
 from piltover.app.utils.updates_manager import UpdatesManager
-from piltover.app.utils.utils import telegram_hash
+from piltover.app.utils.utils import telegram_hash, get_image_dims
 from piltover.db.enums import FileType, StickerSetType
 from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset
 from piltover.exceptions import ErrorRpc
@@ -51,7 +51,7 @@ async def check_stickerset_short_name(request: CheckShortName, prefix: str = "")
     if ord(short_name[0]) < ord_a or ord(short_name[0]) > ord_z:
         raise ErrorRpc(error_code=400, error_message=f"{prefix}SHORT_NAME_INVALID")
 
-    if not all(ord_0 <= ord(char) <= ord_9 or ord_a <= ord(char) <= ord_z for char in short_name) or "__" in short_name:
+    if not all(ord_0 <= ord(char) <= ord_9 or ord_a <= ord(char) <= ord_z or char == "_" for char in short_name) or "__" in short_name:
         raise ErrorRpc(error_code=400, error_message=f"{prefix}SHORT_NAME_INVALID")
 
     if await Stickerset.filter(short_name=request.short_name).exists():
@@ -64,22 +64,27 @@ async def check_stickerset_short_name(request: CheckShortName, prefix: str = "")
 
 
 async def _validate_png_webp(file: File) -> None:
-    if file.mime_type != "image/png":  # TODO: also allow webp
-        raise ErrorRpc(error_code=400, error_message="STICKER_PNG_NOPNG")
+    if file.size > 512 * 1024:
+        raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
+    if file.width is None or file.height is None:
+        dims = await get_image_dims(str(file.physical_id))
+        if dims is None:
+            raise ErrorRpc(error_code=400, error_message="STICKER_PNG_NOPNG")
+        else:
+            file.width, file.height = dims
+            file.needs_save = True
 
     dims = (file.width, file.height)
     if 512 not in dims or any(dim > 512 for dim in dims):
         raise ErrorRpc(error_code=400, error_message="STICKER_PNG_DIMENSIONS")
-
-    if file.size > 512 * 1024:
-        raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
 
 async def _validate_tgs(file: File) -> None:
     if file.size > 64 * 1024:
         raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-    data = await read_file_content(file, 0, 512 * 1024)
+    data = await read_file_content(file, 0, 64 * 1024)
     try:
         data = gzip.decompress(data)
         tgs = json.loads(data)
@@ -113,7 +118,10 @@ async def _get_sticker_files(
         if not valid:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-        base_q = Q(id=input_doc.id, type=FileType.DOCUMENT_STICKER, mime_type__in=allowed_mimes, stickerset=None)
+        base_q = Q(
+            id=input_doc.id, type__in=[FileType.DOCUMENT_STICKER, FileType.DOCUMENT], mime_type__in=allowed_mimes,
+            stickerset=None,
+        )
         if const:
             files_q |= base_q & Q(
                 constant_access_hash=input_doc.access_hash, constant_file_ref=input_doc.file_reference,
@@ -163,9 +171,13 @@ async def _make_sticker_from_file(file: File, stickerset: Stickerset, pos: int, 
         mime_type=file.mime_type,
         size=file.size,
         type=FileType.DOCUMENT_STICKER,
-        constant_access_hash=Long.from_bytes(xorshift128plus_bytes(8)),
-        constant_file_ref=UUID(xorshift128plus_bytes(16)),
+        constant_access_hash=Long.read_bytes(xorshift128plus_bytes(8)),
+        constant_file_ref=UUID(bytes=xorshift128plus_bytes(16)),
         filename=file.filename,
+        width=file.width,
+        height=file.height,
+        duration=file.duration,
+        nosound=file.nosound,
         stickerset=stickerset,
         sticker_pos=pos,
         sticker_alt=alt.strip(),
@@ -184,7 +196,7 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     if not request.title or len(request.title) > 64:
         raise ErrorRpc(error_code=400, error_message="PACK_TITLE_INVALID")
 
-    await check_stickerset_short_name(CheckShortName(short_name=request.short_name), user, "PACK_")
+    await check_stickerset_short_name(CheckShortName(short_name=request.short_name), "PACK_")
 
     if not request.stickers:
         raise ErrorRpc(error_code=400, error_message="STICKERS_EMPTY")
@@ -199,6 +211,10 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
 
     files, set_type = await _get_sticker_files(request.stickers, user, set_type)
     files_to_create = []
+
+    files_to_save = [file for file in files.values() if file.needs_save]
+    if files_to_save:
+        await File.bulk_update(files_to_save, fields=["width", "height"])
 
     # TODO: thumbs
 
@@ -227,6 +243,8 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     stickerset.owner = user
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["owner_id", "hash"])
+
+    # TODO: create InstalledStickerset
 
     return await stickerset.to_tl_messages(user)
 
