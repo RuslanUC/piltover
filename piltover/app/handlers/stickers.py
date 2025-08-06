@@ -1,5 +1,6 @@
 import gzip
 import json
+from asyncio import sleep
 from base64 import b85encode
 from uuid import UUID
 
@@ -80,6 +81,38 @@ async def _validate_png_webp(file: File) -> None:
         raise ErrorRpc(error_code=400, error_message="STICKER_PNG_DIMENSIONS")
 
 
+async def _validate_tgs_layer_items(items: list, shapes: bool = True) -> bool:
+    if not items:
+        return True
+
+    for item in items:
+        await sleep(0)
+        if item.get("ty") in ("rp", "sr", "mm", "gs"):
+            return False
+
+        if shapes and not await _validate_tgs_layer_items(item.get("id"), False):
+            return False
+
+    return True
+
+
+async def _validate_tgs_layers(layers: list) -> bool:
+    if not layers:
+        return True
+
+    for layer in layers:
+        await sleep(0)
+        if bool(layer.get("ddd")) or layer.get("sr") != 1 or layer.get("tm") is not None \
+                or layer.get("ty") in (1, 2, 5) or layer.get("hasMask") or layer.get("maskProperties") is not None \
+                or layer.get("tt") is not None or layer.get("ao") == 1 or layer.get("ef") is not None:
+            return False
+
+        if not await _validate_tgs_layer_items(layer.get("shapes")):
+            return False
+
+    return True
+
+
 async def _validate_tgs(file: File) -> None:
     if file.size > 64 * 1024:
         raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
@@ -92,7 +125,16 @@ async def _validate_tgs(file: File) -> None:
         raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
 
     try:
-        if tgs["tgs"] != "1" or tgs["fr"] != 60 or tgs["w"] != 512 or tgs["h"] != 512 or (tgs["op"] - tgs["ip"]) > 180:
+        if tgs["tgs"] != "1" or tgs["fr"] != 60 or tgs["w"] != 512 or tgs["h"] != 512 or (tgs["op"] - tgs["ip"]) > 180\
+                or bool(tgs.get("ddd")):
+            raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
+
+        assets = tgs.get("assets") or []
+        for asset in assets:
+            if not await _validate_tgs_layers(asset["layers"]):
+                raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
+
+        if not await _validate_tgs_layers(tgs["layers"]):
             raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
     except (TypeError, ValueError, KeyError):
         raise ErrorRpc(error_code=400, error_message="STICKER_TGS_NOTGS")
@@ -100,7 +142,6 @@ async def _validate_tgs(file: File) -> None:
     # https://github.com/TelegramMessenger/bodymovin-extension/commit/2e1dd0517a8d8346afe9fbd88cda235c4afe2c64#diff-dab7e98d55cf2baf67bc546b9d3b17846f2ef57f99eedc32d110f3f620292cbc
     # TODO: validate "Objects must not leave the canvas."
     # TODO: validate "All animations must be looped."
-    # TODO: validate "You must not use the following Adobe After Effects functionality when animating your artwork: Auto-bezier keys, Expressions, Masks, Layer Effects, Images, Solids, Texts, 3D Layers, Merge Paths, Star Shapes, Gradient Strokes, Repeaters, Time Stretching, Time Remapping, Auto-Oriented Layers."
 
 
 async def _get_sticker_files(
@@ -244,7 +285,8 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["owner_id", "hash"])
 
-    # TODO: create InstalledStickerset
+    await InstalledStickerset.create(set=stickerset, user=user)
+    await UpdatesManager.new_stickerset(user, stickerset)
 
     return await stickerset.to_tl_messages(user)
 

@@ -17,3 +17,8 @@ class InstalledStickerset(Model):
 
     set_id: int
     user_id: int
+
+    class Meta:
+        unique_together = (
+            ("set", "user"),
+        )
