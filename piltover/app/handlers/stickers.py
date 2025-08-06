@@ -22,6 +22,7 @@ from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, Cha
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, AllStickers, \
     AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive, ArchivedStickers
+from piltover.utils.emoji import purely_emoji
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stickers")
@@ -103,6 +104,10 @@ async def _get_sticker_files(
     files_q = Q()
 
     for input_sticker in stickers:
+        emoji = input_sticker.emoji.strip()
+        if not emoji or not purely_emoji(emoji):
+            raise ErrorRpc(error_code=400, error_message="STICKER_EMOJI_INVALID")
+
         input_doc = input_sticker.document
         valid, const = FileAccess.is_file_ref_valid(input_doc.file_reference, user.id, input_doc.id)
         if not valid:
@@ -163,7 +168,7 @@ async def _make_sticker_from_file(file: File, stickerset: Stickerset, pos: int, 
         filename=file.filename,
         stickerset=stickerset,
         sticker_pos=pos,
-        sticker_alt=alt,
+        sticker_alt=alt.strip(),
         sticker_mask=mask,
         sticker_mask_coords=b85encode(mask_coords.serialize()).decode("utf8") if mask and mask_coords else None,
     )
@@ -191,8 +196,6 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
         set_type = StickerSetType.MASKS
     elif request.emojis:
         set_type = StickerSetType.EMOJIS
-
-    # TODO: validate emojis
 
     files, set_type = await _get_sticker_files(request.stickers, user, set_type)
     files_to_create = []
