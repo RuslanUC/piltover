@@ -70,6 +70,8 @@ class AppConfig:
     FILE_REF_KEY: bytes = b64decode(environ["FILE_REF_KEY"]) if "FILE_REF_KEY" in environ else urandom(32)
     FILE_REF_EXPIRE_MINUTES = int(environ.get("FILE_REF_EXPIRE_TIME", 60 * 4))
 
+    CONTACT_TOKEN_EXPIRE_SECONDS = 60 * 30
+
 
 if "FILE_REF_KEY" not in environ:
     logger.info(f"Generated key for signing file references: {b64encode(AppConfig.FILE_REF_KEY).decode('utf8')}")

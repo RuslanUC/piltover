@@ -1,16 +1,22 @@
+import hmac
+from base64 import urlsafe_b64encode, urlsafe_b64decode
 from datetime import date, timedelta, datetime
+from hashlib import sha256
+from time import time
 
 from pytz import UTC
 
 from piltover.app.utils.updates_manager import UpdatesManager
+from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Contact, Username
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact
+from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
+    ExportedContactToken, Long, User as TLUser
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_136, Unblock_136, \
-    ResolveUsername_136, ImportContacts
+    ResolveUsername_136, ImportContacts, ExportContactToken, ImportContactToken
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, BlockedSlice, \
     ImportedContacts
 from piltover.worker import MessageHandler
@@ -289,3 +295,50 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
             for contact_user in users.values()
         ],
     )
+
+
+@handler.on_request(ExportContactToken)
+async def export_contact_token(user: User) -> ExportedContactToken:
+    created_at = int(time())
+    payload = Long.write(user.id) + Long.write(created_at)
+
+    # TODO: use different key or rename FILE_REF_KEY to something like HMAC_KEY
+    token_bytes = payload + hmac.new(AppConfig.FILE_REF_KEY, payload, sha256).digest()
+    token = urlsafe_b64encode(token_bytes).decode("utf8")
+
+    return ExportedContactToken(
+        url=f"tg://contact?token={token}",
+        expires=created_at + AppConfig.CONTACT_TOKEN_EXPIRE_SECONDS,
+    )
+
+
+@handler.on_request(ImportContactToken)
+async def import_contact_token(request: ImportContactToken, user: User) -> TLUser:
+    try:
+        token_bytes = urlsafe_b64decode(request.token)
+    except ValueError:
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+
+    if len(token_bytes) != (8 + 8 + 256 // 8):
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+
+    target_user_id = Long.read_bytes(token_bytes[:8])
+    created_at = Long.read_bytes(token_bytes[8:16])
+    payload = token_bytes[:16]
+    signature = token_bytes[16:]
+
+    if (created_at + AppConfig.CONTACT_TOKEN_EXPIRE_SECONDS) > time():
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+
+    if signature != hmac.new(AppConfig.FILE_REF_KEY, payload, sha256).digest():
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+
+    if (target_user := await User.get_or_none(id=target_user_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+
+    if target_user == user:
+        peer, _ = await Peer.get_or_create(owner=user, user=None, type=PeerType.SELF)
+    else:
+        peer, _ = await Peer.get_or_create(owner=user, user=target_user, type=PeerType.USER)
+
+    return await target_user.to_tl(user)
