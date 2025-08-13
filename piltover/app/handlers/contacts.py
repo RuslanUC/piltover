@@ -302,8 +302,7 @@ async def export_contact_token(user: User) -> ExportedContactToken:
     created_at = int(time())
     payload = Long.write(user.id) + Long.write(created_at)
 
-    # TODO: use different key or rename FILE_REF_KEY to something like HMAC_KEY
-    token_bytes = payload + hmac.new(AppConfig.FILE_REF_KEY, payload, sha256).digest()
+    token_bytes = payload + hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest()
     token = urlsafe_b64encode(token_bytes).decode("utf8")
 
     return ExportedContactToken(
@@ -330,7 +329,7 @@ async def import_contact_token(request: ImportContactToken, user: User) -> TLUse
     if (created_at + AppConfig.CONTACT_TOKEN_EXPIRE_SECONDS) > time():
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
 
-    if signature != hmac.new(AppConfig.FILE_REF_KEY, payload, sha256).digest():
+    if signature != hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest():
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
 
     if (target_user := await User.get_or_none(id=target_user_id)) is None:

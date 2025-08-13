@@ -43,7 +43,7 @@ class FileAccess(Model):
         created_at = Int.write(int(time() // 60))
         payload = Long.write(self.user_id) + Long.write(self.file_id) + created_at
 
-        return created_at + hmac.new(AppConfig.FILE_REF_KEY, payload, sha256).digest()
+        return created_at + hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest()
 
     @staticmethod
     def is_file_ref_valid(file_ref: bytes, user_id: int | None = None, file_id: int | None = None) -> tuple[bool, bool]:
@@ -62,7 +62,7 @@ class FileAccess(Model):
         if user_id is not None and file_id is not None:
             payload = Long.write(user_id) + Long.write(file_id) + file_ref[:4]
 
-            if hmac.new(AppConfig.FILE_REF_KEY, payload, sha256).digest() != file_ref[4:]:
+            if hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest() != file_ref[4:]:
                 return False, False
 
         return True, False

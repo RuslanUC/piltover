@@ -67,11 +67,12 @@ class AppConfig:
 
     MAX_USER_ABOUT_LENGTH = 100  # Telegram uses 70 for regular users and 140 for premium
 
-    FILE_REF_KEY: bytes = b64decode(environ["FILE_REF_KEY"]) if "FILE_REF_KEY" in environ else urandom(32)
-    FILE_REF_EXPIRE_MINUTES = int(environ.get("FILE_REF_EXPIRE_TIME", 60 * 4))
+    # Used for signing file references, contact tokens, etc.
+    HMAC_KEY: bytes = b64decode(environ["HMAC_KEY"]) if "HMAC_KEY" in environ else urandom(32)
 
+    FILE_REF_EXPIRE_MINUTES = int(environ.get("FILE_REF_EXPIRE_TIME", 60 * 4))
     CONTACT_TOKEN_EXPIRE_SECONDS = 60 * 30
 
 
-if "FILE_REF_KEY" not in environ:
-    logger.info(f"Generated key for signing file references: {b64encode(AppConfig.FILE_REF_KEY).decode('utf8')}")
+if "HMAC_KEY" not in environ:
+    logger.info(f"Generated key for signing file references: {b64encode(AppConfig.HMAC_KEY).decode('utf8')}")
