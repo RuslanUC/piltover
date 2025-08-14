@@ -2,7 +2,7 @@ import base64
 
 from tortoise.expressions import Q
 
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Message, PollAnswer, PollVote
 from piltover.exceptions import ErrorRpc
@@ -26,7 +26,7 @@ async def get_poll_results(request: GetPollResults, user: User) -> Updates:
     if message is None or message.media is None or message.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    return await UpdatesManager.update_message_poll(message.media.poll, user)
+    return await upd.update_message_poll(message.media.poll, user)
 
 
 @handler.on_request(GetPollVotes)
@@ -106,7 +106,7 @@ async def send_vote(request: SendVote, user: User) -> Updates:
         if not votes:
             raise ErrorRpc(error_code=400, error_message="OPTION_INVALID")
         await PollVote.filter(id__in=[vote.id for vote in votes]).delete()
-        return await UpdatesManager.update_message_poll(message.media.poll, user)
+        return await upd.update_message_poll(message.media.poll, user)
     if len(request.options) > 1 and not message.media.poll.multiple_choices:
         raise ErrorRpc(error_code=400, error_message="OPTIONS_TOO_MUCH")
 
@@ -124,4 +124,4 @@ async def send_vote(request: SendVote, user: User) -> Updates:
     await PollVote.bulk_create(votes_to_create)
     await message.remove_from_cache(user)
 
-    return await UpdatesManager.update_message_poll(message.media.poll, user)
+    return await upd.update_message_poll(message.media.poll, user)

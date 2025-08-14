@@ -10,7 +10,7 @@ from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction
 
 from piltover.app.handlers.upload import read_file_content
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash, get_image_dims
 from piltover.db.enums import FileType, StickerSetType
 from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset
@@ -286,7 +286,7 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     await stickerset.save(update_fields=["owner_id", "hash"])
 
     await InstalledStickerset.create(set=stickerset, user=user)
-    await UpdatesManager.new_stickerset(user, stickerset)
+    await upd.new_stickerset(user, stickerset)
 
     return await stickerset.to_tl_messages(user)
 
@@ -533,7 +533,7 @@ async def install_stickerset(request: InstallStickerSet, user: User) -> StickerS
 
     # TODO: archive unused stickersets so maximum number of InstalledStickerset would be 25 (?, what is the telegram's limit)
 
-    await UpdatesManager.new_stickerset(user, stickerset)
+    await upd.new_stickerset(user, stickerset)
 
     if installed.archived:
         return StickerSetInstallResultArchive(
@@ -555,7 +555,7 @@ async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool
 
     await installed.delete()
 
-    await UpdatesManager.update_stickersets(user)
+    await upd.update_stickersets(user)
 
     return True
 
@@ -586,7 +586,7 @@ async def reorder_sticker_sets(request: ReorderStickerSets, user: User) -> bool:
 
     await InstalledStickerset.bulk_update(new_order, fields=["pos"])
 
-    await UpdatesManager.update_stickersets_order(user, [installed.set.id for installed in new_order])
+    await upd.update_stickersets_order(user, [installed.set.id for installed in new_order])
 
     return True
 
@@ -648,7 +648,7 @@ async def toggle_sticker_sets(request: ToggleStickerSets, user: User) -> bool:
         await InstalledStickerset.bulk_update(changed_sets, fields=["archived"])
 
     if request.uninstall or changed_sets:
-        await UpdatesManager.update_stickersets(user)
+        await upd.update_stickersets(user)
 
     return True
 

@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from tortoise.expressions import Q, Subquery
 
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel
@@ -242,14 +242,14 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
         await SessionManager.subscribe_to_channel(invite.channel.id, [user.id])
 
         # TODO: send SERVICE_CHAT_USER_INVITE_JOIN message if channel is a supergroup
-        return await UpdatesManager.update_channel_for_user(invite.channel, user)
+        return await upd.update_channel_for_user(invite.channel, user)
 
     chat_peers = {
         peer.owner.id: peer
         for peer in await Peer.filter(Chat.query(invite.chat_or_channel)).select_related("owner")
     }
 
-    updates = await UpdatesManager.create_chat(user, cast(Chat, invite.chat_or_channel), list(chat_peers.values()))
+    updates = await upd.create_chat(user, cast(Chat, invite.chat_or_channel), list(chat_peers.values()))
     updates_msg = await send_message_internal(
         user, chat_peers[user.id], None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
@@ -365,7 +365,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
 
     if isinstance(chat, Chat):
         chat_peers = await Peer.filter(Chat.query(chat)).select_related("owner")
-        updates = await UpdatesManager.create_chat(user, chat, chat_peers)
+        updates = await upd.create_chat(user, chat, chat_peers)
     else:
         await SessionManager.subscribe_to_channel(chat.id, requested_users)
         raise NotImplementedError("TODO: send updates when user is added to channel")

@@ -9,7 +9,7 @@ from mtproto.packets import EncryptedMessagePacket, MessagePacket
 from pytz import UTC
 from tortoise.expressions import Q
 
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import check_password_internal, get_perm_key
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
@@ -71,7 +71,7 @@ async def send_code(request: SendCode):
         peer=peer_system,
     )
 
-    await UpdatesManager.send_message(user, {peer_system: message})
+    await upd.send_message(user, {peer_system: message})
 
     resp.type_ = SentCodeTypeApp(length=5)
     return resp
@@ -116,7 +116,7 @@ async def sign_in(request: SignIn):
         raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
 
     if not auth.mfa_pending:
-        await UpdatesManager.new_auth(user, auth)
+        await upd.new_auth(user, auth)
 
     return AuthAuthorization(user=await user.to_tl(current_user=user))
 
@@ -174,7 +174,7 @@ async def check_password(request: CheckPassword, user: User):
     auth.mfa_pending = False
     await auth.save(update_fields=["mfa_pending"])
 
-    await UpdatesManager.new_auth(user, auth)
+    await upd.new_auth(user, auth)
 
     return AuthAuthorization(user=await user.to_tl(current_user=user))
 

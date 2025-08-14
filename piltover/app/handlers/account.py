@@ -1,14 +1,13 @@
 from datetime import date, timedelta, datetime
-from typing import cast
 
 from pytz import UTC
 
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
-from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, TempAuthKey
+from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -63,7 +62,7 @@ async def update_username(request: UpdateUsername, user: User) -> TLUser:
     else:
         user.cached_username = await Username.create(user=user, username=request.username)
 
-    await UpdatesManager.update_user_name(user)
+    await upd.update_user_name(user)
     return await user.to_tl(user)
 
 
@@ -194,7 +193,7 @@ async def get_privacy(request: GetPrivacy, user: User):
 async def set_privacy(request: SetPrivacy, user: User):
     key = TL_KEY_TO_PRIVACY_ENUM[type(request.key)]
     await PrivacyRule.update_from_tl(user, key, request.rules)
-    await UpdatesManager.update_user(user)
+    await upd.update_user(user)
     return await get_privacy_internal(key, user)
 
 
@@ -219,7 +218,7 @@ async def get_content_settings():  # pragma: no cover
 @handler.on_request(UpdateStatus)
 async def update_status(request: UpdateStatus, user: User) -> bool:
     presence = await Presence.update_to_now(user, UserStatus.OFFLINE if request.offline else UserStatus.ONLINE)
-    await UpdatesManager.update_status(user, presence, await Peer.filter(user=user).select_related("owner"))
+    await upd.update_status(user, presence, await Peer.filter(user=user).select_related("owner"))
 
     return True
 
@@ -241,9 +240,9 @@ async def update_profile(request: UpdateProfile, user: User):
     if updates:
         await user.update_from_dict(updates).save(update_fields=updates.keys())
         if "about" in updates:
-            await UpdatesManager.update_user(user)
+            await upd.update_user(user)
         else:
-            await UpdatesManager.update_user_name(user)
+            await upd.update_user_name(user)
 
     return await user.to_tl(user)
 
@@ -360,7 +359,7 @@ async def update_birthday(request: UpdateBirthday, user: User) -> bool:
     if before != after:
         user.birthday = after
         await user.save(update_fields=["birthday"])
-        await UpdatesManager.update_user(user)
+        await upd.update_user(user)
 
     return True
 

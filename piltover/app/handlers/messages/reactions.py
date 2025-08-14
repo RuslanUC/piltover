@@ -4,7 +4,7 @@ from pytz import UTC
 from tortoise.expressions import Q
 
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import PeerType, ChatBannedRights
 from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State, RecentReaction, \
@@ -76,7 +76,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
     if peer.type is PeerType.CHANNEL:
         # TODO: send update to message author
         await MessageReaction.create(user=user, message=message, reaction=reaction)
-        return await UpdatesManager.update_reactions(user, [message], peer)
+        return await upd.update_reactions(user, [message], peer)
 
     reactions_to_create = []
     messages: dict[Peer, Message] = {}
@@ -86,16 +86,16 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
 
     await MessageReaction.bulk_create(reactions_to_create)
 
-    result = await UpdatesManager.update_reactions(user, [message], peer)
+    result = await upd.update_reactions(user, [message], peer)
 
     for opp_peer, opp_message in messages.items():
         if opp_peer.owner == user:
             continue
-        await UpdatesManager.update_reactions(opp_peer.owner, [opp_message], opp_peer)
+        await upd.update_reactions(opp_peer.owner, [opp_message], opp_peer)
 
     if reaction is not None and request.add_to_recent:
         await RecentReaction.update_time_or_create(user, reaction, datetime.now(UTC))
-        await UpdatesManager.update_recent_reactions(user)
+        await upd.update_recent_reactions(user)
 
     return result
 
@@ -116,7 +116,7 @@ async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
     settings.default_reaction = reaction
     await settings.save(update_fields=["default_reaction_id"])
 
-    await UpdatesManager.update_config(user)
+    await upd.update_config(user)
 
     return True
 
@@ -134,7 +134,7 @@ async def get_messages_reactions(request: GetMessagesReactions, user: User) -> U
     if (messages := await Message.get_many(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    return await UpdatesManager.update_reactions(user, messages, peer, False)
+    return await upd.update_reactions(user, messages, peer, False)
 
 
 @handler.on_request(GetUnreadReactions)
@@ -216,7 +216,7 @@ async def get_recent_reactions(request: GetRecentReactions, user: User) -> React
 async def clear_recent_reactions(user: User) -> bool:
     if await RecentReaction.filter(user=user).exists():
         await RecentReaction.filter(user=user).delete()
-        await UpdatesManager.update_recent_reactions(user)
+        await upd.update_recent_reactions(user)
 
     return True
 

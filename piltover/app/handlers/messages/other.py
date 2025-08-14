@@ -2,7 +2,7 @@ from time import time
 
 from fastrand import xorshift128plus_bytes
 
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence
 from piltover.session_manager import SessionManager
@@ -36,7 +36,7 @@ async def set_typing(request: SetTyping, user: User):
         await SessionManager.send(updates, other.id)
 
     presence = await Presence.update_to_now(user)
-    await UpdatesManager.update_status(user, presence, peers)
+    await upd.update_status(user, presence, peers)
 
     return True
 

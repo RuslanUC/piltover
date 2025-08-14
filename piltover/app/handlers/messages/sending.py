@@ -8,7 +8,7 @@ from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from piltover.app.bot_handlers import bots
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import resize_photo, generate_stripped, process_message_entities
 from piltover.app_config import AppConfig
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
@@ -48,31 +48,31 @@ async def send_message_internal(
 
     if opposite and peer.type is not PeerType.CHANNEL:
         presence = await Presence.update_to_now(user)
-        await UpdatesManager.update_status(user, presence, await peer.get_opposite())
+        await upd.update_status(user, presence, await peer.get_opposite())
 
     if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
         await draft.delete()
-        await UpdatesManager.update_draft(user, peer, None)
+        await upd.update_draft(user, peer, None)
 
     if peer.type is PeerType.CHANNEL:
         if len(messages) != 1:
             logger.warning(f"Got {len(messages)} messages after creating message with channel peer!")
             return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
-        return await UpdatesManager.send_message_channel(user, list(messages.values())[0])
+        return await upd.send_message_channel(user, list(messages.values())[0])
 
-    if (upd := await UpdatesManager.send_message(user, messages)) is None:
+    if (update := await upd.send_message(user, messages)) is None:
         raise RuntimeError("unreachable ?")
 
     if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
         bot_message = await bots.process_message_to_bot(peer, messages[peer])
         if bot_message is not None:
-            if (bot_upd := await UpdatesManager.send_message(user, {peer: bot_message})) is None:
+            if (bot_upd := await upd.send_message(user, {peer: bot_message})) is None:
                 raise RuntimeError("unreachable ?")
-            upd.users.extend(bot_upd.users)
-            upd.chats.extend(bot_upd.chats)
-            upd.updates.extend(bot_upd.updates)
+            update.users.extend(bot_upd.users)
+            update.chats.extend(bot_upd.chats)
+            update.updates.extend(bot_upd.updates)
 
-    return cast(Updates, upd)
+    return cast(Updates, update)
 
 
 def _resolve_reply_id(
@@ -152,7 +152,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
     await Message.bulk_update(messages.values(), ["pinned"])
 
-    result = await UpdatesManager.pin_message(user, messages)
+    result = await upd.pin_message(user, messages)
 
     if not request.silent and not request.pm_oneside:
         updates = await send_message_internal(
@@ -186,10 +186,10 @@ async def delete_messages(request: DeleteMessages, user: User):
         return AffectedMessages(pts=updates_state.pts, pts_count=0)
 
     await Message.filter(id__in=all_ids).delete()
-    pts = await UpdatesManager.delete_messages(user, messages)
+    pts = await upd.delete_messages(user, messages)
 
     presence = await Presence.update_to_now(user)
-    await UpdatesManager.update_status(user, presence, list(messages.keys()))
+    await upd.update_status(user, presence, list(messages.keys()))
 
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
@@ -259,7 +259,7 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
         message.version += 1
         await message.save(update_fields=["message", "edit_date", "version", "media_id", "entities"])
         message.peer.channel = peer.channel
-        return await UpdatesManager.edit_message_channel(user, message)
+        return await upd.edit_message_channel(user, message)
 
     peers = [peer]
     peers.extend(await peer.get_opposite())
@@ -283,9 +283,9 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
 
     await Message.bulk_update(messages.values(), ["message", "edit_date", "version", "media_id", "entities"])
     presence = await Presence.update_to_now(user)
-    await UpdatesManager.update_status(user, presence, peers[1:])
+    await upd.update_status(user, presence, peers[1:])
 
-    return await UpdatesManager.edit_message(user, messages)
+    return await upd.edit_message(user, messages)
 
 
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
@@ -435,7 +435,7 @@ async def save_draft(request: SaveDraft, user: User):
         defaults={"message": request.message, "date": datetime.now()}
     )
 
-    await UpdatesManager.update_draft(user, peer, draft)
+    await upd.update_draft(user, peer, draft)
     return True
 
 
@@ -521,15 +521,15 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     if to_peer.type is PeerType.CHANNEL:
         if len(result) != 1:
             raise RuntimeError("`result` contains multiple peers, but should contain only one - channel peer")
-        return await UpdatesManager.send_messages_channel(next(iter(result.values())), to_peer.channel, user)
+        return await upd.send_messages_channel(next(iter(result.values())), to_peer.channel, user)
 
     presence = await Presence.update_to_now(user)
-    await UpdatesManager.update_status(user, presence, peers[1:])
+    await upd.update_status(user, presence, peers[1:])
 
-    if (upd := await UpdatesManager.send_messages(result, user)) is None:
+    if (update := await upd.send_messages(result, user)) is None:
         raise NotImplementedError("unknown chat type ?")
 
-    return upd
+    return update
 
 
 @handler.on_request(UploadMedia_136)
@@ -666,7 +666,7 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
 
     await Message.filter(id__in=all_ids).delete()
-    pts = await UpdatesManager.delete_messages(user, messages)
+    pts = await upd.delete_messages(user, messages)
 
     if not offset_id:
         # TODO: delete for other users if request.revoke
@@ -674,6 +674,6 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
         if peer.type == PeerType.CHAT:
             await ChatParticipant.filter(char=peer.chat, user=user).delete()
             await peer.delete()
-            await UpdatesManager.update_chat(peer.chat, user)
+            await upd.update_chat(peer.chat, user)
 
     return AffectedHistory(pts=pts, pts_count=len(messages[user]), offset=offset_id)

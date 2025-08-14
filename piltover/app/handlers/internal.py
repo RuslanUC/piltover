@@ -1,7 +1,7 @@
 from os import urandom
 from time import time
 
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
@@ -56,7 +56,7 @@ async def send_code(request: SendCode, user: User) -> SentCode:
         peer=peer_system,
     )
 
-    await UpdatesManager.send_message(target_user, {peer_system: message})
+    await upd.send_message(target_user, {peer_system: message})
     return resp
 
 

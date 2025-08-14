@@ -6,7 +6,7 @@ from time import time
 
 from pytz import UTC
 
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Contact, Username
@@ -186,7 +186,7 @@ async def add_contact(request: AddContact, user: User) -> Updates:
         await contact.save(update_fields=["first_name", "last_name"])
 
     # TODO: add_phone_privacy_exception
-    return await UpdatesManager.add_remove_contact(user, [peer.user])
+    return await upd.add_remove_contact(user, [peer.user])
 
 
 @handler.on_request(DeleteContacts)
@@ -209,7 +209,7 @@ async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
     users = [peer.user for user_id, peer in peers.items() if user_id in user_ids]
     await Contact.filter(id__in=contact_ids).delete()
 
-    return await UpdatesManager.add_remove_contact(user, users)
+    return await upd.add_remove_contact(user, users)
 
 
 @handler.on_request(Unblock_136)
@@ -225,7 +225,7 @@ async def block_unblock(request: Block, user: User) -> bool:
     if bool(peer.blocked_at) != to_block:
         peer.blocked_at = datetime.now(UTC) if to_block else None
         await peer.save(update_fields=["blocked_at"])
-        await UpdatesManager.block_unblock_user(user, peer)
+        await upd.block_unblock_user(user, peer)
 
     return True
 

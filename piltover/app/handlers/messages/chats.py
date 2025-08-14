@@ -1,7 +1,7 @@
 from tortoise.expressions import Subquery
 
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights
@@ -51,7 +51,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 
     await ChatParticipant.bulk_create(participants_to_create)
 
-    updates = await UpdatesManager.create_chat(user, chat, list(chat_peers.values()))
+    updates = await upd.create_chat(user, chat, list(chat_peers.values()))
     updates_msg = await send_message_internal(
         user, chat_peers[user.id], None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_CREATE,
@@ -138,7 +138,7 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
 
     chat = peer.chat
     await chat.update(description=request.about)
-    await UpdatesManager.update_chat(chat)
+    await upd.update_chat(chat)
 
     return True
 
@@ -217,7 +217,7 @@ async def add_chat_user(request: AddChatUser, user: User):
             ChatInviteRequest.filter(user=invited_user, invite__chat=chat_peer.chat).values_list("id", flat=True)
         )).delete()
 
-    updates = await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+    updates = await upd.create_chat(user, chat_peer.chat, list(chat_peers.values()))
 
     if request.fwd_limit > 0:
         limit = min(request.fwd_limit, 100)
@@ -230,7 +230,7 @@ async def add_chat_user(request: AddChatUser, user: User):
                 chat_peers[invited_user.id], internal_id=message.internal_id, media_group_id=message.media_group_id,
             ))
 
-        await UpdatesManager.send_messages({chat_peers[invited_user.id]: messages})
+        await upd.send_messages({chat_peers[invited_user.id]: messages})
 
     updates_msg = await send_message_internal(
         user, chat_peers[user.id], None, None, False,
@@ -269,8 +269,8 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
 
-    updates_msg = await UpdatesManager.send_message(user, messages)
-    updates = await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+    updates_msg = await upd.send_message(user, messages)
+    updates = await upd.create_chat(user, chat_peer.chat, list(chat_peers.values()))
     if isinstance(updates_msg, Updates):
         updates.updates.extend(updates_msg.updates)
         updates.users.extend(updates_msg.users)
@@ -303,7 +303,7 @@ async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
     await chat_peer.chat.save(update_fields=["version"])
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
-    await UpdatesManager.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+    await upd.create_chat(user, chat_peer.chat, list(chat_peers.values()))
 
     return True
 
@@ -326,7 +326,7 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
     chat.version += 1
     await chat.save(update_fields=["no_forwards", "version"])
 
-    return await UpdatesManager.update_chat(chat, user)
+    return await upd.update_chat(chat, user)
 
 
 @handler.on_request(EditChatDefaultBannedRights)
@@ -349,4 +349,4 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
     chat.version += 1
     await chat.save(update_fields=["banned_rights", "version"])
 
-    return await UpdatesManager.update_chat_default_banned_rights(chat, user)
+    return await upd.update_chat_default_banned_rights(chat, user)

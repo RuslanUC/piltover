@@ -5,7 +5,7 @@ from tortoise.expressions import Q
 
 from piltover.app.handlers.messages.dialogs import get_dialogs_internal
 from piltover.app.handlers.messages.history import get_messages_internal, format_messages_internal
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, SavedDialog, Peer, State, Message
 from piltover.tl.functions.messages import GetSavedDialogs, GetSavedHistory, DeleteSavedHistory
@@ -65,7 +65,7 @@ async def delete_messages(request: DeleteSavedHistory, user: User):
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
 
     await Message.filter(id__in=ids).delete()
-    pts = await UpdatesManager.delete_messages(user, {user: ids})
+    pts = await upd.delete_messages(user, {user: ids})
 
     return AffectedHistory(pts=pts, pts_count=len(ids), offset=0)
 

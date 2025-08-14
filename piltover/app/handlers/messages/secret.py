@@ -4,7 +4,7 @@ from loguru import logger
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.context import request_ctx
 from piltover.db.enums import SecretUpdateType, FileType
 from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, SecretUpdate, EncryptedFile, UploadingFile, \
@@ -62,7 +62,7 @@ async def request_encryption(request: RequestEncryption, user: User):
         g_b=b"",
     )
 
-    await UpdatesManager.encryption_update(peer.user, chat)
+    await upd.encryption_update(peer.user, chat)
 
     return await chat.to_tl(user, ctx.auth_id)
 
@@ -93,8 +93,8 @@ async def accept_encryption(request: AcceptEncryption, user: User):
         chat.key_fp = request.key_fingerprint
         await chat.save(update_fields=["g_b", "to_sess_id", "key_fp"])
 
-    await UpdatesManager.encryption_update(chat.from_user, chat)
-    await UpdatesManager.encryption_update(user, chat)
+    await upd.encryption_update(chat.from_user, chat)
+    await upd.encryption_update(user, chat)
 
     return await chat.to_tl(user, ctx.auth_id)
 
@@ -117,8 +117,8 @@ async def discard_encryption(request: DiscardEncryption, user: User):
         chat.history_deleted = request.delete_history
         await chat.save(update_fields=["discarded", "history_deleted"])
 
-    await UpdatesManager.encryption_update(chat.from_user, chat)
-    await UpdatesManager.encryption_update(user, chat)
+    await upd.encryption_update(chat.from_user, chat)
+    await upd.encryption_update(user, chat)
 
     return EncryptedChatDiscarded(id=request.chat_id, history_deleted=request.delete_history)
 
@@ -204,7 +204,7 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEnc
         message_file=file,
     )
 
-    await UpdatesManager.send_encrypted_update(update)
+    await upd.send_encrypted_update(update)
 
     if isinstance(request, SendEncryptedFile):
         if file is None:
@@ -237,7 +237,7 @@ async def set_encrypted_typing(request: SetEncryptedTyping, user: User):
     chat = await _get_secret_chat(request.peer, user)
 
     if request.typing:
-        await UpdatesManager.send_encrypted_typing(
+        await upd.send_encrypted_typing(
             chat.id,
             chat.from_sess_id if user.id == chat.to_user_id else chat.to_sess_id,
         )
@@ -262,7 +262,7 @@ async def read_encrypted_history(request: ReadEncryptedHistory, user: User):
         data=Long.write(request.max_date),
     )
 
-    await UpdatesManager.send_encrypted_update(update)
+    await upd.send_encrypted_update(update)
 
     return True
 

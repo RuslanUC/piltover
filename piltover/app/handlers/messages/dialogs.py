@@ -5,7 +5,7 @@ from tortoise.expressions import Q
 from tortoise.functions import Max
 
 from piltover.app.handlers.updates import get_state_internal
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Message
 from piltover.db.models._utils import resolve_users_chats
@@ -194,7 +194,7 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
             raise ErrorRpc(error_code=400, error_message="PINNED_DIALOGS_TOO_MUCH")
 
     await dialog.save(update_fields=["pinned_index"])
-    await UpdatesManager.pin_dialog(user, peer)
+    await upd.pin_dialog(user, peer)
 
     return True
 
@@ -233,7 +233,7 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
 
     if pinned_after:
         await Dialog.bulk_update(pinned_after, fields=["pinned_index"])
-    await UpdatesManager.reorder_pinned_dialogs(user, pinned_after)
+    await upd.reorder_pinned_dialogs(user, pinned_after)
 
     return True
 
@@ -249,7 +249,7 @@ async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
 
     dialog.unread_mark = request.unread
     await dialog.save(update_fields=["unread_mark"])
-    await UpdatesManager.update_dialog_unread_mark(user, dialog)
+    await upd.update_dialog_unread_mark(user, dialog)
 
     return True
 
@@ -284,5 +284,5 @@ async def edit_peer_folders(request: EditPeerFolders, user: User) -> Updates:
         updated_dialogs.append(dialog)
 
     await Dialog.bulk_update(updated_dialogs, ["folder_id"])
-    return await UpdatesManager.update_folder_peers(user, updated_dialogs)
+    return await upd.update_folder_peers(user, updated_dialogs)
 

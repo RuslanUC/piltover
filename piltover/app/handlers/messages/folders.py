@@ -1,4 +1,4 @@
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.db.models import User, DialogFolder
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DialogFilterDefault, DialogFilter, DialogFilterChatlist, TextWithEntities
@@ -39,7 +39,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
     elif request.filter is None and folder is not None:
         await folder.delete()
 
-        await UpdatesManager.update_folder(user, request.id, None)
+        await upd.update_folder(user, request.id, None)
         return True
 
     title = request.filter.title
@@ -58,7 +58,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
         await folder.fill_from_tl(request.filter)
         await folder.save()
 
-        await UpdatesManager.update_folder(user, request.id, folder)
+        await upd.update_folder(user, request.id, folder)
         return True
 
     updated_fields = folder.get_difference(request.filter)
@@ -68,7 +68,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
     await folder.fill_from_tl(request.filter)
     await folder.save(update_fields=updated_fields)
 
-    await UpdatesManager.update_folder(user, request.id, folder)
+    await upd.update_folder(user, request.id, folder)
     return True
 
 
@@ -96,5 +96,5 @@ async def update_dialog_filters_order(request: UpdateDialogFiltersOrder, user: U
     folder_ids = [folder.id_for_user for folder in new_order]
     folder_ids.insert(0, 0)
 
-    await UpdatesManager.update_folders_order(user, folder_ids)
+    await upd.update_folders_order(user, folder_ids)
     return True

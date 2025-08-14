@@ -6,7 +6,7 @@ from tortoise.expressions import Q, Subquery
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
 from piltover.app.handlers.messages.history import format_messages_internal
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import validate_username
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
@@ -81,7 +81,7 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
     else:
         channel.cached_username = await Username.create(channel=channel, username=request.username)
 
-    await UpdatesManager.update_channel(peer.channel)
+    await upd.update_channel(peer.channel)
     return True
 
 
@@ -205,7 +205,7 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
 
     await peer.channel.update(title=request.title)
 
-    updates = await UpdatesManager.update_channel(peer.channel, user)
+    updates = await upd.update_channel(peer.channel, user)
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE,
@@ -231,7 +231,7 @@ async def edit_channel_photo(request: EditPhoto, user: User):
     channel = peer.channel
     await channel.update(photo=await resolve_input_chat_photo(user, request.photo))
 
-    updates = await UpdatesManager.update_channel(peer.channel, user)
+    updates = await upd.update_channel(peer.channel, user)
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO,
@@ -286,7 +286,7 @@ async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessag
         return AffectedMessages(pts=peer.channel.pts, pts_count=0)
 
     await Message.filter(id__in=message_ids).delete()
-    pts = await UpdatesManager.delete_messages_channel(peer.channel, message_ids)
+    pts = await upd.delete_messages_channel(peer.channel, message_ids)
 
     return AffectedMessages(pts=pts, pts_count=len(message_ids))
 
@@ -316,7 +316,7 @@ async def edit_banned(request: EditBanned, user: User):
     target_participant.banned_rights = new_banned_rights
     await target_participant.save(update_fields=["banned_rights"])
 
-    await UpdatesManager.update_channel_for_user(peer.channel, target_peer.user)
+    await upd.update_channel_for_user(peer.channel, target_peer.user)
     return Updates(
         updates=[UpdateChannel(channel_id=peer.channel.id)],
         users=[],
@@ -367,7 +367,7 @@ async def edit_admin(request: EditAdmin, user: User):
 
     await target_participant.save(update_fields=update_fields)
 
-    await UpdatesManager.update_channel_for_user(peer.channel, target_peer.user)
+    await upd.update_channel_for_user(peer.channel, target_peer.user)
     return Updates(
         updates=[UpdateChannel(channel_id=peer.channel.id)],
         users=[],
@@ -463,7 +463,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
 
     # TODO: create and send outbox read update if supergroup
 
-    await UpdatesManager.update_read_history_inbox_channel(peer, message_id, unread_count)
+    await upd.update_read_history_inbox_channel(peer, message_id, unread_count)
 
     return True
 
@@ -507,7 +507,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
     await SessionManager.subscribe_to_channel(peer.channel.id, [added_user.id for added_user in added_users])
 
     for added_user in added_users:
-        await UpdatesManager.update_channel_for_user(peer.channel, added_user)
+        await upd.update_channel_for_user(peer.channel, added_user)
 
     return InvitedUsers(
         updates=Updates(
@@ -540,7 +540,7 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
     channel.version += 1
     await channel.save(update_fields=["signatures", "version"])
 
-    return await UpdatesManager.update_channel(channel, user)
+    return await upd.update_channel(channel, user)
 
 
 @handler.on_request(ToggleSignatures_136)

@@ -3,13 +3,12 @@ from time import time
 from typing import cast
 
 from loguru import logger
-from pypika_tortoise.terms import CustomFunction
 from tortoise import connections
-from tortoise.expressions import Q, Subquery, Function, F, RawSQL
+from tortoise.expressions import Q, Subquery, RawSQL
 from tortoise.functions import Min, Max, Count
 from tortoise.queryset import QuerySet
 
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message
@@ -321,8 +320,8 @@ async def read_history(request: ReadHistory, user: User):
         last_id = await Message.filter(peer=other, internal_id__lte=internal_id).first().values_list("id", flat=True)
         messages_out[other] = (cast(int, last_id), count)
 
-    await UpdatesManager.update_read_history_inbox(peer, message_id, messages_count, unread_count)
-    await UpdatesManager.update_read_history_outbox(messages_out)
+    await upd.update_read_history_inbox(peer, message_id, messages_count, unread_count)
+    await upd.update_read_history_outbox(messages_out)
 
     return AffectedMessages(
         pts=state.pts,

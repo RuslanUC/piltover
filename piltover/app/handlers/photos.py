@@ -1,4 +1,4 @@
-from piltover.app.utils.updates_manager import UpdatesManager
+import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule
@@ -42,7 +42,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     await UserPhoto.filter(user=user).update(current=False)
     photo = await UserPhoto.create(current=True, file=file, user=user)
 
-    await UpdatesManager.update_user(user)
+    await upd.update_user(user)
 
     return PhotosPhoto(
         photo=await photo.to_tl(user),
@@ -64,7 +64,7 @@ async def delete_photos(request: DeletePhotos, user: User):
         deleted.append(photo.id)
 
     if deleted:
-        await UpdatesManager.update_user(user)
+        await upd.update_user(user)
 
     return deleted
 
@@ -79,7 +79,7 @@ async def update_profile_photo(request: UpdateProfilePhoto, user: User):
         photo.current = True
         await photo.save(update_fields=["current"])
 
-    await UpdatesManager.update_user(user)
+    await upd.update_user(user)
 
     return PhotosPhoto(
         photo=await photo.to_tl(user) if photo else PhotoEmpty(id=0),
