@@ -2,14 +2,15 @@ from time import time
 from uuid import UUID
 
 import aiofiles
+from tortoise.expressions import Q
 
 from piltover.app import files_dir
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.db.enums import PeerType, FileType
-from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer
+from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer, Stickerset
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, \
-    InputEncryptedFileLocation
+    InputEncryptedFileLocation, InputStickerSetThumb
 from piltover.tl.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
 from piltover.tl.types.storage import FileUnknown, FilePartial, FileJpeg
 from piltover.tl.types.upload import File as TLFile
@@ -56,6 +57,7 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
 
 SUPPORTED_LOCS = (
     InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, InputEncryptedFileLocation,
+    InputStickerSetThumb,
 )
 
 
@@ -70,7 +72,6 @@ async def read_file_content(file: File, offset: int, limit: int, name: str | Non
 
 @handler.on_request(GetFile)
 async def get_file(request: GetFile, user: User) -> TLFile:
-    # noinspection PyPep8
     if not isinstance(request.location, SUPPORTED_LOCS):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     if request.limit < 0 or request.limit > 1024 * 1024:
@@ -93,6 +94,11 @@ async def get_file(request: GetFile, user: User) -> TLFile:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     elif isinstance(location, InputEncryptedFileLocation):
         q = {"file__id": location.id, "file__type": FileType.ENCRYPTED, "access_hash": location.access_hash}
+    elif isinstance(location, InputStickerSetThumb):
+        set_q = Stickerset.from_input_q(location.stickerset, prefix="stickersetthumbs__set")
+        if set_q is None:
+            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
+        q = Q(stickersetthumbs__id=location.thumb_version) | set_q
     else:
         valid, const = FileAccess.is_file_ref_valid(location.file_reference, user.id, location.id)
         if not valid:
@@ -109,6 +115,10 @@ async def get_file(request: GetFile, user: User) -> TLFile:
 
     if ref_const:
         file = await File.get_or_none(**q)
+    elif isinstance(location, InputStickerSetThumb):
+        file = await File.get_or_none(q)
+        if file is None:
+            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     else:
         access = await FileAccess.get_or_none(user=user, **q).select_related("file")
         if not isinstance(location, InputPeerPhotoFileLocation) and access is None:
@@ -125,21 +135,23 @@ async def get_file(request: GetFile, user: User) -> TLFile:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")
 
     f_name = str(file.physical_id)
-    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
+    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)):
         if not file.photo_sizes:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo or does not have thumbs
         if isinstance(location, InputPhotoFileLocation):
             size = PHOTOSIZE_TO_INT[location.thumb_size]
+        elif isinstance(location, InputStickerSetThumb):
+            size = 100
         else:
             size = 640 if location.big else 160
-        available = [size["w"] for size in file.photo_sizes]
+        available = [size_["w"] for size_ in file.photo_sizes]
         if size not in available:
             size = min(available, key=lambda x: abs(x - size))
         f_name += f"_{size}"
 
     data = await read_file_content(file, request.offset, request.limit, f_name)
 
-    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
+    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)):
         file_type = FileJpeg()
     elif len(data) != file.size:
         file_type = FilePartial()

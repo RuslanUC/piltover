@@ -13,14 +13,14 @@ from piltover.app.handlers.upload import read_file_content
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash, get_image_dims
 from piltover.db.enums import FileType, StickerSetType
-from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset
+from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset, StickersetThumb
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
-    InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords
+    InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
-    DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet
+    DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet, SetStickerSetThumb
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, AllStickers, \
     AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive, ArchivedStickers
 from piltover.utils.emoji import purely_emoji
@@ -205,6 +205,44 @@ async def _get_sticker_files(
     return files, set_type
 
 
+async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: StickerSetType) -> File:
+    file_q = Q()
+
+    valid, const = FileAccess.is_file_ref_valid(input_doc.file_reference, user.id, input_doc.id)
+    if not valid:
+        raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+
+    base_q = Q(
+        id=input_doc.id, type=FileType.DOCUMENT, mime_type__in=allowed_mimes, stickerset=None,
+    )
+    if const:
+        file_q |= base_q & Q(
+            constant_access_hash=input_doc.access_hash, constant_file_ref=input_doc.file_reference,
+        )
+    else:
+        file_q |= base_q & Q(
+            fileaccesss__user=user, fileaccesss__access_hash=input_doc.access_hash,
+        )
+
+    if (file := await File.get_or_none(file_q)) is None:
+        raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
+
+    if file.mime_type not in set_types_to_mimes[set_type]:
+        raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
+
+    if file.mime_type in ("image/png", "image/webp"):
+        await _validate_png_webp(file)
+    elif file.mime_type == "video/webm":
+        # TODO: support video stickers
+        raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
+    elif file.mime_type == "application/x-tgsticker":
+        await _validate_tgs(file)
+    else:
+        raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
+
+    return file
+
+
 async def _make_sticker_from_file(file: File, stickerset: Stickerset, pos: int, alt: str, mask: bool, mask_coords: MaskCoords | None, create: bool = True) -> File:
     new_file = File(
         physical_id=file.physical_id,
@@ -232,6 +270,23 @@ async def _make_sticker_from_file(file: File, stickerset: Stickerset, pos: int, 
     return new_file
 
 
+async def _make_stickerset_thumb_from_file(file: File) -> File:
+    return await File.create(
+        physical_id=file.physical_id,
+        created_at=file.created_at,
+        mime_type=file.mime_type,
+        size=file.size,
+        type=FileType.DOCUMENT,
+        constant_access_hash=Long.read_bytes(xorshift128plus_bytes(8)),
+        constant_file_ref=UUID(bytes=xorshift128plus_bytes(16)),
+        filename=file.filename,
+        width=file.width,
+        height=file.height,
+        duration=file.duration,
+        nosound=file.nosound,
+    )
+
+
 @handler.on_request(CreateStickerSet)
 async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesStickerSet:
     if not request.title or len(request.title) > 64:
@@ -242,7 +297,7 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     if not request.stickers:
         raise ErrorRpc(error_code=400, error_message="STICKERS_EMPTY")
     if len(request.stickers) > 120:
-        raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")  # TODO: check if this is correct error
+        raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")
 
     set_type = None
     if request.masks:
@@ -257,14 +312,22 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     if files_to_save:
         await File.bulk_update(files_to_save, fields=["width", "height"])
 
-    # TODO: thumbs
-
     stickerset = await Stickerset.create(
         title=request.title,
         short_name=request.short_name,
         type=set_type,
         owner=None,
     )
+
+    if isinstance(request.thumb, InputDocument):
+        try:
+            thumb_file = await _get_sticker_thumb(request.thumb, user, set_type)
+        except:
+            await stickerset.delete()
+            raise
+
+        thumb_new_file = await _make_stickerset_thumb_from_file(thumb_file)
+        await StickersetThumb.create(set=stickerset, file=thumb_new_file)
 
     for idx, input_sticker in enumerate(request.stickers):
         file = files[input_sticker.document.id]
@@ -653,8 +716,29 @@ async def toggle_sticker_sets(request: ToggleStickerSets, user: User) -> bool:
     return True
 
 
+@handler.on_request(SetStickerSetThumb)
+async def set_stickerset_thumb(request: SetStickerSetThumb, user: User) -> MessagesStickerSet:
+    stickerset = await Stickerset.from_input(request.stickerset)
+    if stickerset is None or stickerset.owner_id != user.id:
+        raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
+
+    if request.thumb is None:
+        raise ErrorRpc(error_code=406, error_message="STICKER_THUMB_PNG_NOPNG")
+
+    if isinstance(request.thumb, InputDocumentEmpty):
+        await StickersetThumb.filter(set=stickerset).delete()
+    elif isinstance(request.thumb, InputDocument):
+        thumb_file = await _get_sticker_thumb(request.thumb, user, stickerset.type)
+        thumb_new_file = await _make_stickerset_thumb_from_file(thumb_file)
+        thumb = await StickersetThumb.create(set=stickerset, file=thumb_new_file)
+        await StickersetThumb.filter(set=stickerset, id__lt=thumb.id).delete()
+    else:
+        raise RuntimeError("Unreachable")
+
+    return await stickerset.to_tl_messages(user)
+
+
 # working with stickersets:
-# TODO: SetStickerSetThumb
 # TODO: GetStickers
 
 # working with recent stickers:

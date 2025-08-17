@@ -4,11 +4,12 @@ from os import urandom
 from typing import Generator
 
 from tortoise import Model, fields
+from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
 from piltover.db.enums import StickerSetType
-from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long
+from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 
 
@@ -24,16 +25,19 @@ class Stickerset(Model):
 
     owner_id: int | None
 
-    @classmethod
-    async def from_input(
-            cls, input_set: InputStickerSetEmpty | InputStickerSetID | InputStickerSetShortName | None
-    ) -> Stickerset | None:
+    @staticmethod
+    def from_input_q(
+            input_set: InputStickerSetEmpty | InputStickerSetID | InputStickerSetShortName | None,
+            prefix: str | None = None,
+    ) -> Q | None:
+        if prefix is not None:
+            prefix = f"{prefix}__"
         if input_set is None or isinstance(input_set, InputStickerSetEmpty):
             return None
         elif isinstance(input_set, InputStickerSetID):
-            return await Stickerset.get_or_none(id=input_set.id, access_hash=input_set.access_hash)
+            return Q(**{f"{prefix}id": input_set.id, f"{prefix}access_hash": input_set.access_hash})
         elif isinstance(input_set, InputStickerSetShortName):
-            return await Stickerset.get_or_none(short_name=input_set.short_name)
+            return Q(**{f"{prefix}short_name": input_set.short_name})
 
         # TODO: support InputStickerSetAnimatedEmoji
         # TODO: support InputStickerSetDice
@@ -46,8 +50,17 @@ class Stickerset(Model):
 
         return None
 
+    @classmethod
+    async def from_input(
+            cls, input_set: InputStickerSetEmpty | InputStickerSetID | InputStickerSetShortName | None
+    ) -> Stickerset | None:
+        if (q := cls.from_input_q(input_set)) is None:
+            return None
+        return await cls.get_or_none(q)
+
     async def to_tl(self, user: models.User) -> StickerSet:
         installed = await models.InstalledStickerset.get_or_none(set=self, user=user)
+        thumb = await models.StickersetThumb.filter(set=self).select_related("file").order_by("-id").first()
 
         return StickerSet(
             id=self.id,
@@ -63,10 +76,9 @@ class Stickerset(Model):
             masks=self.type is StickerSetType.MASKS,
             emojis=self.type is StickerSetType.EMOJIS,
 
-            # TODO:
-            thumbs=None,
-            thumb_dc_id=None,
-            thumb_version=None,
+            thumbs=[PhotoSize(type_="s", w=100, h=100, size=thumb.file.size)] if thumb is not None else None,
+            thumb_dc_id=2 if thumb is not None else None,
+            thumb_version=thumb.id if thumb is not None else None,
             thumb_document_id=None,
 
             text_color=False,

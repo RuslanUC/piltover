@@ -49,3 +49,4 @@ from .qr_login import QrLogin
 from .stickerset import Stickerset
 from .installed_stickerset import InstalledStickerset
 from .user_reactions_settings import UserReactionsSettings
+from .stickerset_thumb import StickersetThumb
