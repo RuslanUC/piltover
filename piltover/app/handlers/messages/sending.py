@@ -588,7 +588,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
 
         valid, const = FileAccess.is_file_ref_valid(media_id.file_reference, user.id, media_id.id)
         if not valid:
-            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")  # TODO: FILE_REFERENCE_%d_EXPIRED ?
         media_q = Q(file__id=media_id.id)
         if const:
             file_ref = media_id.file_reference[12:]

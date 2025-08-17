@@ -12,6 +12,7 @@ from piltover.db.enums import FileType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords
+from piltover.tl.base import PhotoSizeInst
 
 
 class File(Model):
@@ -40,7 +41,7 @@ class File(Model):
     title: str | None = fields.TextField(null=True, default=None)
     performer: str | None = fields.TextField(null=True, default=None)
 
-    # Photo
+    # Photo or thumbs
     photo_sizes: list[dict[str, str | int]] | None = fields.JSONField(null=True, default=None)
     photo_stripped: bytes | None = fields.BinaryField(null=True, default=None)
     photo_path: bytes | None = fields.BinaryField(null=True, default=None)
@@ -114,12 +115,12 @@ class File(Model):
                 preload_prefix_size=self.preload_prefix_size,
             ))
         elif self.type is FileType.DOCUMENT_STICKER:
-            stickerset = InputStickerSetEmpty()
+            stickerset_ = InputStickerSetEmpty()
             if self.stickerset is not None:
-                stickerset = InputStickerSetID(id=self.stickerset.id, access_hash=self.stickerset.access_hash)
+                stickerset_ = InputStickerSetID(id=self.stickerset.id, access_hash=self.stickerset.access_hash)
             result.append(DocumentAttributeSticker(
                 alt=self.sticker_alt or "",
-                stickerset=stickerset,
+                stickerset=stickerset_,
                 mask=self.sticker_is_mask,
                 mask_coords=self.sticker_mask_coords_tl,
             ))
@@ -134,6 +135,16 @@ class File(Model):
             ))
 
         return result
+
+    def _make_thumbs(self) -> list[PhotoSizeInst]:
+        sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
+        sizes = [PhotoSize(**size) for size in self.photo_sizes] if self.photo_sizes else []
+        if self.photo_stripped:
+            sizes.insert(0, PhotoStrippedSize(type_="i", bytes_=self.photo_stripped))
+        if self.photo_path:
+            sizes.insert(0, PhotoPathSize(type_="j", bytes_=self.photo_path))
+
+        return sizes
 
     async def to_tl_document(self, user: models.User) -> TLDocument:
         if self.constant_access_hash is None or self.constant_file_ref is None:
@@ -158,6 +169,7 @@ class File(Model):
             size=self.size,
             dc_id=2,
             attributes=self.attributes_to_tl(),
+            thumbs=self._make_thumbs(),
         )
 
     async def to_tl_photo(self, user: models.User) -> TLPhoto:
@@ -170,19 +182,12 @@ class File(Model):
             access_hash = self.constant_access_hash
             file_ref = models.FileAccess.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
 
-        sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
-        sizes = [PhotoSize(**size) for size in self.photo_sizes]
-        if self.photo_stripped:
-            sizes.insert(0, PhotoStrippedSize(type_="i", bytes_=self.photo_stripped))
-        if self.photo_path:
-            sizes.insert(0, PhotoPathSize(type_="j", bytes_=self.photo_path))
-
         return TLPhoto(
             id=self.id,
             access_hash=access_hash,
             file_reference=file_ref,
             date=int(self.created_at.timestamp()),
-            sizes=sizes,
+            sizes=self._make_thumbs(),
             dc_id=2,
             video_sizes=[],
         )

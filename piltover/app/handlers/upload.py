@@ -127,7 +127,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     f_name = str(file.physical_id)
     if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation)):
         if not file.photo_sizes:
-            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo
+            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo or does not have thumbs
         if isinstance(location, InputPhotoFileLocation):
             size = PHOTOSIZE_TO_INT[location.thumb_size]
         else:
