@@ -637,28 +637,27 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
     if request.max_date:
         query &= Q(date__lte=datetime.fromtimestamp(request.max_date, UTC))
 
+    internal_ids: list[int] = []
     messages: defaultdict[User, list[int]] = defaultdict(list)
     offset_id = 0
 
     message: Message
-    async for message in Message.filter(query).order_by("-id").limit(1001):
+    for message in await Message.filter(query).order_by("-id").limit(1001):
         if len(messages[user]) == 1000:
             offset_id = message.id
             break
 
         messages[user].append(message.id)
+        internal_ids.append(message.internal_id)
 
-        if not request.revoke:
-            continue
+    if request.revoke:
+        for opposite_peer in await peer.get_opposite():
+            # TODO: delete history for each user separately if request.revoke
+            #  (so messages that current user already deleted without revoke will be deleted too)
+            #  (maybe just call delete_history for each user (opposite_peer)?)
 
-        # TODO: delete history for each user separately if request.revoke
-        #  (so messages that current user already deleted without revoke will be deleted too)
-        #  (maybe just call delete_history for each user (opposite_peer)?)
-
-        for opposite_peer in await message.peer.get_opposite():
-            opp_message = await Message.get_or_none(internal_id=message.internal_id, peer=opposite_peer)
-            if opp_message is not None:
-                messages[message.peer.user].append(opp_message.id)
+            ids = await Message.filter(internal__id__in=internal_ids, peer=opposite_peer).values_list("id", flat=True)
+            messages[opposite_peer.owner] = ids
 
     all_ids = [i for ids in messages.values() for i in ids]
     if not all_ids:
