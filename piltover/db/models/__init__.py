@@ -50,3 +50,4 @@ from .stickerset import Stickerset
 from .installed_stickerset import InstalledStickerset
 from .user_reactions_settings import UserReactionsSettings
 from .stickerset_thumb import StickersetThumb
+from .user_password_reset import UserPasswordReset

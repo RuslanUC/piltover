@@ -7,21 +7,24 @@ from piltover.app.utils.utils import check_password_internal, get_perm_key, vali
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
-from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule
+from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
+    UserPasswordReset
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, UpdatesTooLong
+from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
-    ChangeAuthorizationSettings, ResetAuthorization
+    ChangeAuthorizationSettings, ResetAuthorization, ResetPassword
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
-    SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings
+    SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
+    ResetPasswordOk, ResetPasswordRequestedWait
 from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
@@ -139,6 +142,7 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
         password.salt1 = password.salt1[:8]
         await password.save(update_fields=["password", "hint", "salt1"])
         await UserAuthorization.filter(user=user, mfa_pending=True).delete()
+        await UserPasswordReset.filter(user=user).delete()
         return True
 
     p, _ = gen_safe_prime()
@@ -156,6 +160,7 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
     password.hint = new.hint
     password.salt1 = new.new_algo.salt1
     await password.save(update_fields=["password", "hint", "salt1"])
+    await UserPasswordReset.filter(user=user).delete()
 
     return True
 
@@ -416,3 +421,18 @@ async def reset_authorization(request: ResetAuthorization, user: User) -> bool:
     await SessionManager.send(UpdatesTooLong(), key_id=keys)
 
     return True
+
+
+@handler.on_request(ResetPassword)
+async def reset_password(user: User) -> ResetPasswordResult:
+    if (password := await UserPassword.get_or_none(user=user)) is None:
+        raise ErrorRpc(error_code=400, error_message="PASSWORD_EMPTY")
+
+    reset_request, created = await UserPasswordReset.get_or_create(user=user)
+    reset_date = reset_request.date + timedelta(seconds=AppConfig.SRP_PASSWORD_RESET_WAIT_SECONDS)
+    if datetime.now() > reset_date:
+        await password.delete()
+        await reset_request.delete()
+        return ResetPasswordOk()
+
+    return ResetPasswordRequestedWait(until_date=int(reset_date.timestamp()))
