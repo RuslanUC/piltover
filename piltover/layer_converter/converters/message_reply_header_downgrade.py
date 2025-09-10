@@ -1,11 +1,11 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import MessageReplyHeader, MessageReplyHeader_136, MessageReplyHeader_166
+from piltover.tl import MessageReplyHeader, MessageReplyHeader_133, MessageReplyHeader_166
 
 
-class MessageReplyHeaderDowngradeTo136(AutoDowngrader):
+class MessageReplyHeaderDowngradeTo133(AutoDowngrader):
     BASE_TYPE = MessageReplyHeader
-    TARGET_LAYER = 136
-    TARGET_TYPE = MessageReplyHeader_136
+    TARGET_LAYER = 133
+    TARGET_TYPE = MessageReplyHeader_133
     REMOVE_FIELDS = {
         "forum_topic", "quote", "reply_from", "reply_media", "quote_text", "quote_entities", "quote_offset"
     }

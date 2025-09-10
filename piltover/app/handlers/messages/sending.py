@@ -16,11 +16,11 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
     SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
-    InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_136, \
-    InputMediaDocument_136, TextWithEntities, InputMediaEmpty
+    InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
+    InputMediaDocument_133, TextWithEntities, InputMediaEmpty
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
-    SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
-    UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176
+    SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
+    UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -30,8 +30,8 @@ handler = MessageHandler("messages.sending")
 InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument \
              | InputMediaPoll
 DocOrPhotoMedia = (
-    InputMediaUploadedDocument, InputMediaUploadedDocument_136, InputMediaUploadedPhoto, InputMediaPhoto,
-    InputMediaDocument, InputMediaDocument_136,
+    InputMediaUploadedDocument, InputMediaUploadedDocument_133, InputMediaUploadedPhoto, InputMediaPhoto,
+    InputMediaDocument, InputMediaDocument_133,
 )
 
 
@@ -195,9 +195,9 @@ async def delete_messages(request: DeleteMessages, user: User):
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
 
-@handler.on_request(EditMessage_136)
+@handler.on_request(EditMessage_133)
 @handler.on_request(EditMessage)
-async def edit_message(request: EditMessage | EditMessage_136, user: User):
+async def edit_message(request: EditMessage | EditMessage_133, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -300,7 +300,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     media_type: MediaType | None = None
     attributes = []
 
-    if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_136)):
+    if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_133)):
         mime = media.mime_type
         media_type = MediaType.DOCUMENT
         attributes = media.attributes
@@ -310,12 +310,12 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     elif isinstance(media, InputMediaPoll):
         media_type = MediaType.POLL
 
-    if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_136, InputMediaUploadedPhoto)):
+    if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_133, InputMediaUploadedPhoto)):
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
         file = await uploaded_file.finalize_upload(mime, attributes)
-    elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_136)):
+    elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
         valid, const = FileAccess.is_file_ref_valid(media.id.file_reference, user.id, media.id.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
@@ -535,9 +535,9 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
     return update
 
 
-@handler.on_request(UploadMedia_136)
+@handler.on_request(UploadMedia_133)
 @handler.on_request(UploadMedia)
-async def upload_media(request: UploadMedia | UploadMedia_136, user: User):
+async def upload_media(request: UploadMedia | UploadMedia_133, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -584,7 +584,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
         if not single_media.random_id:
             raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
-        if not isinstance(single_media.media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_136)):
+        if not isinstance(single_media.media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         media_id = single_media.media.id

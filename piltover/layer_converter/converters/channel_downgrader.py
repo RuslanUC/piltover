@@ -1,12 +1,12 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import Channel, Channel_136, Channel_148, Channel_164, Channel_166, Channel_167, Channel_186, \
+from piltover.tl import Channel, Channel_133, Channel_148, Channel_164, Channel_166, Channel_167, Channel_186, \
     Channel_196
 
 
-class ChannelDowngradeTo136(AutoDowngrader):
+class ChannelDowngradeTo133(AutoDowngrader):
     BASE_TYPE = Channel
-    TARGET_LAYER = 136
-    TARGET_TYPE = Channel_136
+    TARGET_LAYER = 133
+    TARGET_TYPE = Channel_133
     REMOVE_FIELDS = {
         "forum", "stories_hidden", "stories_hidden_min", "stories_unavailable", "usernames", "stories_max_id", "color",
         "profile_color", "emoji_status", "level", "bot_verification_icon", "send_paid_messages_stars",

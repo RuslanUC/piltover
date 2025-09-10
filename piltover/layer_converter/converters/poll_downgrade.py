@@ -1,14 +1,14 @@
 from piltover.layer_converter.converters.base import AutoDowngrader, BaseDowngrader
-from piltover.tl import Poll, Poll_136
+from piltover.tl import Poll, Poll_133
 
 
-class PollDowngradeTo136(BaseDowngrader):
+class PollDowngradeTo133(BaseDowngrader):
     BASE_TYPE = Poll
-    TARGET_LAYER = 136
+    TARGET_LAYER = 133
 
     @classmethod
-    def downgrade(cls, from_obj: Poll) -> Poll_136:
-        return Poll_136(
+    def downgrade(cls, from_obj: Poll) -> Poll_133:
+        return Poll_133(
             id=from_obj.id,
             closed=from_obj.closed,
             public_voters=from_obj.public_voters,

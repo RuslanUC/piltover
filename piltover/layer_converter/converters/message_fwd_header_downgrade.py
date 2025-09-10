@@ -1,11 +1,11 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import MessageFwdHeader, MessageFwdHeader_136
+from piltover.tl import MessageFwdHeader, MessageFwdHeader_133
 
 
-class MessageFwdHeaderDowngradeTo136(AutoDowngrader):
+class MessageFwdHeaderDowngradeTo133(AutoDowngrader):
     BASE_TYPE = MessageFwdHeader
-    TARGET_TYPE = MessageFwdHeader_136
-    TARGET_LAYER = 136
+    TARGET_TYPE = MessageFwdHeader_133
+    TARGET_LAYER = 133
     REMOVE_FIELDS = {"saved_out", "saved_from_id", "saved_from_name", "saved_date"}
 
 

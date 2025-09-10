@@ -21,7 +21,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Long, Authorization, UpdateLoginToken
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
-    SignUp_136, LogOut, ResetAuthorizations, AcceptLoginToken
+    SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
     LoginToken, AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut, LoginTokenSuccess
 from piltover.utils.snowflake import Snowflake
@@ -121,9 +121,9 @@ async def sign_in(request: SignIn):
     return AuthAuthorization(user=await user.to_tl(current_user=user))
 
 
-@handler.on_request(SignUp_136, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(SignUp_133, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 @handler.on_request(SignUp, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def sign_up(request: SignUp | SignUp_136):
+async def sign_up(request: SignUp | SignUp_133):
     if len(request.phone_code_hash) != 32:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     try:

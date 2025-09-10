@@ -1,11 +1,11 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import PollResults, PollResults_136
+from piltover.tl import PollResults, PollResults_133
 
 
-class PollResultsDowngradeTo136(AutoDowngrader):
+class PollResultsDowngradeTo133(AutoDowngrader):
     BASE_TYPE = PollResults
-    TARGET_LAYER = 136
-    TARGET_TYPE = PollResults_136
+    TARGET_LAYER = 133
+    TARGET_TYPE = PollResults_133
     REMOVE_FIELDS = set()
 
 

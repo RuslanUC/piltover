@@ -13,7 +13,7 @@ from piltover.db.models import User, Message, UserAuthorization, State, Update, 
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
 from piltover.tl import UpdateChannelTooLong
-from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_136, GetChannelDifference
+from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_133, GetChannelDifference
 from piltover.tl.types.updates import State as TLState, Difference, ChannelDifferenceEmpty, DifferenceEmpty, \
     ChannelDifference
 from piltover.worker import MessageHandler
@@ -53,9 +53,9 @@ async def get_state(user: User):
     return await get_state_internal(user)
 
 
-@handler.on_request(GetDifference_136)
+@handler.on_request(GetDifference_133)
 @handler.on_request(GetDifference)
-async def get_difference(request: GetDifference | GetDifference_136, user: User):
+async def get_difference(request: GetDifference | GetDifference_133, user: User):
     # TODO: pts_limit/qts_limit and difference slices
 
     requested_update = await Update.filter(user=user, pts__lte=request.pts).order_by("-pts").first()

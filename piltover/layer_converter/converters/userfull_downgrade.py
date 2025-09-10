@@ -1,12 +1,15 @@
 from piltover.layer_converter.converters import AutoDowngrader
-from piltover.tl import UserFull, UserFull_136, UserFull_140, UserFull_144, UserFull_151, UserFull_158, UserFull_160, \
-    UserFull_164, UserFull_176, UserFull_177, UserFull_189, UserFull_195, UserFull_196, UserFull_200
+from piltover.tl import UserFull, UserFull_135, UserFull_140, UserFull_144, UserFull_151, UserFull_158,\
+    UserFull_160, UserFull_164, UserFull_176, UserFull_177, UserFull_189, UserFull_195, UserFull_196, UserFull_200
 
 
-class UserFullDowngradeTo136(AutoDowngrader):
+# TODO: add downgrader for UserFull_133. Cant be added right now since UserFull_135+ dont have `user` field
+
+
+class UserFullDowngradeTo135(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 136
-    TARGET_TYPE = UserFull_136
+    TARGET_LAYER = 135
+    TARGET_TYPE = UserFull_135
     REMOVE_FIELDS = {
         "voice_messages_forbidden", "translations_disabled", "stories_pinned_available", "blocked_my_stories_from",
         "wallpaper_overridden", "contact_require_premium", "read_dates_private", "personal_photo", "fallback_photo",

@@ -1,6 +1,17 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import Message_136, Message, Message_170, Message_174, Message_176, Message_177, Message_181, \
+from piltover.tl import Message_136, Message_133, Message, Message_170, Message_174, Message_176, Message_177, Message_181, \
     Message_196
+
+
+class MessageDowngradeTo133(AutoDowngrader):
+    BASE_TYPE = Message
+    TARGET_LAYER = 133
+    TARGET_TYPE = Message_133
+    REMOVE_FIELDS = {
+        "invert_media", "offline", "from_boosts_applied", "saved_peer_id", "via_business_bot_id",
+        "quick_reply_shortcut_id", "video_processing_pending", "effect", "factcheck", "report_delivery_until_date",
+        "paid_message_stars", "reactions",
+    }
 
 
 class MessageDowngradeTo136(AutoDowngrader):

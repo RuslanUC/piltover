@@ -1,11 +1,11 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import ChannelParticipant, ChannelParticipant_136
+from piltover.tl import ChannelParticipant, ChannelParticipant_133
 
 
-class ChannelParticipantDowngradeTo136(AutoDowngrader):
+class ChannelParticipantDowngradeTo133(AutoDowngrader):
     BASE_TYPE = ChannelParticipant
-    TARGET_LAYER = 136
-    TARGET_TYPE = ChannelParticipant_136
+    TARGET_LAYER = 133
+    TARGET_TYPE = ChannelParticipant_133
     REMOVE_FIELDS = {"subscription_until_date"}
 
 

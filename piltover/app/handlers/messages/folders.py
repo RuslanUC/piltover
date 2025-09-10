@@ -3,14 +3,14 @@ from piltover.db.models import User, DialogFolder
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DialogFilterDefault, DialogFilter, DialogFilterChatlist, TextWithEntities
 from piltover.tl.functions.messages import GetDialogFilters, UpdateDialogFilter, UpdateDialogFiltersOrder, \
-    GetDialogFilters_136
+    GetDialogFilters_133
 from piltover.tl.types.messages import DialogFilters
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.folders")
 
 
-@handler.on_request(GetDialogFilters_136)
+@handler.on_request(GetDialogFilters_133)
 @handler.on_request(GetDialogFilters)
 async def get_dialog_filters(user: User) -> DialogFilters:
     folders: list[DialogFilter | DialogFilterDefault | DialogFilterChatlist]

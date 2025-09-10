@@ -20,8 +20,8 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
     ChannelParticipantsSearch
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
-    EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_136, ToggleSignatures, \
-    UpdateUsername, ToggleSignatures_136
+    EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
+    UpdateUsername, ToggleSignatures_133
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers
 from piltover.worker import MessageHandler
@@ -128,6 +128,7 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
         if isinstance(input_channel, InputChannelEmpty):
             channels.append(ChatEmpty(id=0))
         elif isinstance(input_channel, (InputChannel, InputChannelFromMessage)):
+            # TODO: search for channel in list of channels where user is a member if input_channel.access_hash == 0
             channel = await Channel.get_or_none(id=input_channel.channel_id, chatparticipants__user=user)
             if channel is None:
                 channels.append(ChatEmpty(id=0))
@@ -468,7 +469,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     return True
 
 
-@handler.on_request(InviteToChannel_136)
+@handler.on_request(InviteToChannel_133)
 @handler.on_request(InviteToChannel)
 async def invite_to_channel(request: InviteToChannel, user: User):
     peer = await Peer.from_input_peer_raise(user, request.channel)
@@ -521,7 +522,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
     )
 
 
-@handler.on_request(ToggleSignatures_136)
+@handler.on_request(ToggleSignatures_133)
 @handler.on_request(ToggleSignatures)
 async def toggle_signatures(request: ToggleSignatures, user: User):
     peer = await Peer.from_input_peer_raise(user, request.channel)
@@ -543,8 +544,8 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
     return await upd.update_channel(channel, user)
 
 
-@handler.on_request(ToggleSignatures_136)
-async def toggle_signatures_136(request: ToggleSignatures_136, user: User):
+@handler.on_request(ToggleSignatures_133)
+async def toggle_signatures_136(request: ToggleSignatures_133, user: User):
     return await toggle_signatures(ToggleSignatures(
         signatures_enabled=request.enabled,
         profiles_enabled=False,

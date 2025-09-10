@@ -1,15 +1,15 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import DialogFilter, DialogFilter_136, DialogFilter_176
+from piltover.tl import DialogFilter, DialogFilter_133, DialogFilter_176
 
 
-class DialogFilterDowngradeTo136(AutoDowngrader):
+class DialogFilterDowngradeTo133(AutoDowngrader):
     BASE_TYPE = DialogFilter
-    TARGET_TYPE = DialogFilter_136
-    TARGET_LAYER = 136
+    TARGET_TYPE = DialogFilter_133
+    TARGET_LAYER = 133
     REMOVE_FIELDS = {"color", "title_noanimate"}
 
     @classmethod
-    def downgrade(cls, from_obj: DialogFilter) -> DialogFilter_136:
+    def downgrade(cls, from_obj: DialogFilter) -> DialogFilter_133:
         target = super().downgrade(from_obj)
         target.title = from_obj.title.text
         return target

@@ -1,11 +1,11 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl.types import StickerSet, StickerSet_136
+from piltover.tl.types import StickerSet, StickerSet_133
 
 
-class StickerSetDowngradeTo136(AutoDowngrader):
+class StickerSetDowngradeTo133(AutoDowngrader):
     BASE_TYPE = StickerSet
-    TARGET_TYPE = StickerSet_136
-    TARGET_LAYER = 136
+    TARGET_TYPE = StickerSet_133
+    TARGET_LAYER = 133
     REMOVE_FIELDS = {"text_color", "channel_emoji_status", "creator", "thumb_document_id"}
 
 

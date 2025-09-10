@@ -1,11 +1,11 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import UpdatePeerBlocked, UpdatePeerBlocked_136
+from piltover.tl import UpdatePeerBlocked, UpdatePeerBlocked_133
 
 
-class UpdatePeerBlockedDowngradeTo136(AutoDowngrader):
+class UpdatePeerBlockedDowngradeTo133(AutoDowngrader):
     BASE_TYPE = UpdatePeerBlocked
-    TARGET_TYPE = UpdatePeerBlocked_136
-    TARGET_LAYER = 136
+    TARGET_TYPE = UpdatePeerBlocked_133
+    TARGET_LAYER = 133
     REMOVE_FIELDS = {"blocked_my_stories_from"}
 
 

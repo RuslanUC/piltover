@@ -1,6 +1,46 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
 from piltover.tl import ChannelFull_136, ChannelFull, ChannelFull_140, ChannelFull_145, ChannelFull_164, \
-    ChannelFull_168, ChannelFull_174, ChannelFull_179, ChannelFull_196
+    ChannelFull_168, ChannelFull_174, ChannelFull_179, ChannelFull_196, ChannelFull_133, ChannelFull_134, \
+    ChannelFull_135
+
+
+class ChannelFullDowngradeTo133(AutoDowngrader):
+    BASE_TYPE = ChannelFull
+    TARGET_LAYER = 133
+    TARGET_TYPE = ChannelFull_133
+    REMOVE_FIELDS = {
+        "can_delete_channel", "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
+        "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "paid_media_allowed",
+        "can_view_stars_revenue", "paid_reactions_available", "stargifts_available", "paid_messages_available",
+        "requests_pending", "recent_requesters", "default_send_as", "available_reactions", "reactions_limit", "stories",
+        "wallpaper", "boosts_applied", "boosts_unrestrict", "emojiset", "bot_verification", "stargifts_count",
+    }
+
+
+class ChannelFullDowngradeTo134(AutoDowngrader):
+    BASE_TYPE = ChannelFull
+    TARGET_LAYER = 134
+    TARGET_TYPE = ChannelFull_134
+    REMOVE_FIELDS = {
+        "can_delete_channel", "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
+        "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "paid_media_allowed",
+        "can_view_stars_revenue", "paid_reactions_available", "stargifts_available", "paid_messages_available",
+        "default_send_as", "available_reactions", "reactions_limit", "stories", "wallpaper", "boosts_applied",
+        "boosts_unrestrict", "emojiset", "bot_verification", "stargifts_count",
+    }
+
+
+class ChannelFullDowngradeTo135(AutoDowngrader):
+    BASE_TYPE = ChannelFull
+    TARGET_LAYER = 135
+    TARGET_TYPE = ChannelFull_135
+    REMOVE_FIELDS = {
+        "can_delete_channel", "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
+        "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "paid_media_allowed",
+        "can_view_stars_revenue", "paid_reactions_available", "stargifts_available", "paid_messages_available",
+        "available_reactions", "reactions_limit", "stories", "wallpaper", "boosts_applied", "boosts_unrestrict",
+        "emojiset", "bot_verification", "stargifts_count",
+    }
 
 
 class ChannelFullDowngradeTo136(AutoDowngrader):

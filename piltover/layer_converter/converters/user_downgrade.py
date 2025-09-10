@@ -1,11 +1,11 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import User, User_136, User_160, User_148, User_145, User_166, User_167, User_185, User_196
+from piltover.tl import User, User_133, User_160, User_148, User_145, User_166, User_167, User_185, User_196
 
 
-class UserDowngradeTo136(AutoDowngrader):
+class UserDowngradeTo133(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 136
-    TARGET_TYPE = User_136
+    TARGET_LAYER = 133
+    TARGET_TYPE = User_133
     REMOVE_FIELDS = {
         "bot_attach_menu", "premium", "attach_menu_enabled", "bot_can_edit", "close_friend", "stories_hidden",
         "stories_unavailable", "contact_require_premium", "bot_business", "emoji_status", "usernames", "stories_max_id",

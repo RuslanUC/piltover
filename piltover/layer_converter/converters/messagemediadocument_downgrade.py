@@ -1,12 +1,12 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import MessageMediaDocument, MessageMediaDocument_136, MessageMediaDocument_160, \
+from piltover.tl import MessageMediaDocument, MessageMediaDocument_133, MessageMediaDocument_160, \
     MessageMediaDocument_189
 
 
-class MessageMediaDocumentDowngradeTo136(AutoDowngrader):
+class MessageMediaDocumentDowngradeTo133(AutoDowngrader):
     BASE_TYPE = MessageMediaDocument
-    TARGET_LAYER = 136
-    TARGET_TYPE = MessageMediaDocument_136
+    TARGET_LAYER = 133
+    TARGET_TYPE = MessageMediaDocument_133
     REMOVE_FIELDS = {
         "nopremium", "spoiler", "video", "round", "voice", "alt_documents", "video_cover", "video_timestamp",
     }

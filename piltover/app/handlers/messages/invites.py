@@ -18,7 +18,7 @@ from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, Ch
     MessageActionChatJoinedByRequest
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
-    HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_136
+    HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_133, ExportChatInvite_134
 from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters, \
     ExportedChatInvite
 from piltover.worker import MessageHandler
@@ -60,7 +60,8 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user: User)
     )
 
 
-@handler.on_request(ExportChatInvite_136)
+@handler.on_request(ExportChatInvite_133)
+@handler.on_request(ExportChatInvite_134)
 @handler.on_request(ExportChatInvite)
 async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInviteExported:
     peer = await Peer.from_input_peer_raise(user, request.peer)
@@ -80,12 +81,15 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
             Chat.query(peer.chat_or_channel) & Q(user=user, revoked=False)
         ).update(revoked=True)
 
+    request_new = isinstance(request, (ExportChatInvite_134, ExportChatInvite))
+    request_needed = request.request_needed if request_new else True
+
     invite = await ChatInvite.create(
         **Chat.or_channel(peer.chat_or_channel),
         user=user,
-        request_needed=request.request_needed,
-        usage_limit=request.usage_limit if not request.request_needed else None,
-        title=request.title,
+        request_needed=request_needed,
+        usage_limit=request.usage_limit if not request_needed else None,
+        title=request.title if request_new else None,
         expires_at=None if request.expire_date is None else datetime.fromtimestamp(request.expire_date, UTC),
     )
 

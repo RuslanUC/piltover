@@ -15,8 +15,8 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
     ExportedContactToken, Long, User as TLUser
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
-    GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_136, Unblock_136, \
-    ResolveUsername_136, ImportContacts, ExportContactToken, ImportContactToken
+    GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
+    ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, BlockedSlice, \
     ImportedContacts
 from piltover.worker import MessageHandler
@@ -75,7 +75,7 @@ async def _format_resolved_peer_by_phone(user: User, resolved: User) -> Resolved
     )
 
 
-@handler.on_request(ResolveUsername_136)
+@handler.on_request(ResolveUsername_133)
 @handler.on_request(ResolveUsername)
 async def resolve_username(request: ResolveUsername, user: User) -> ResolvedPeer:
     resolved_username = await Username.get_or_none(username=request.username).select_related("user", "channel")
@@ -212,16 +212,16 @@ async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
     return await upd.add_remove_contact(user, users)
 
 
-@handler.on_request(Unblock_136)
+@handler.on_request(Unblock_133)
 @handler.on_request(Unblock)
-@handler.on_request(Block_136)
+@handler.on_request(Block_133)
 @handler.on_request(Block)
 async def block_unblock(request: Block, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.id)
     if peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    to_block = isinstance(request, (Block, Block_136))
+    to_block = isinstance(request, (Block, Block_133))
     if bool(peer.blocked_at) != to_block:
         peer.blocked_at = datetime.now(UTC) if to_block else None
         await peer.save(update_fields=["blocked_at"])

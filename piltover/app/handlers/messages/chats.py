@@ -13,15 +13,15 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
     Long, MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
     MessageActionChatDeleteUser
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
-    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_136, EditChatAdmin, ToggleNoForwards, \
-    EditChatDefaultBannedRights, CreateChat_136
+    EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
+    EditChatDefaultBannedRights, CreateChat_133
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.chats")
 
 
-@handler.on_request(CreateChat_136)
+@handler.on_request(CreateChat_133)
 @handler.on_request(CreateChat_150)
 @handler.on_request(CreateChat)
 async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
@@ -187,7 +187,7 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
     )
 
 
-@handler.on_request(AddChatUser_136)
+@handler.on_request(AddChatUser_133)
 @handler.on_request(AddChatUser)
 async def add_chat_user(request: AddChatUser, user: User):
     chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
