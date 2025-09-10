@@ -17,10 +17,10 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_136, \
-    InputMediaDocument_136, TextWithEntities
+    InputMediaDocument_136, TextWithEntities, InputMediaEmpty
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_136, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
-    UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148, DeleteHistory
+    UploadMedia, UploadMedia_136, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -76,15 +76,16 @@ async def send_message_internal(
 
 
 def _resolve_reply_id(
-        request: SendMessage_148 | SendMessage | SendMedia_148 | SendMedia | SendMultiMedia_148 | SendMultiMedia,
+        request: SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia | SendMultiMedia_148 | SendMultiMedia,
 ) -> int | None:
-    if isinstance(request, (SendMessage, SendMedia, SendMultiMedia)) and request.reply_to is not None:
+    if isinstance(request, (SendMessage, SendMedia, SendMultiMedia, SendMessage_176, SendMedia_176)) and request.reply_to is not None:
         return request.reply_to.reply_to_msg_id
     elif isinstance(request, (SendMessage_148, SendMedia_148, SendMultiMedia_148)) and request.reply_to_msg_id is not None:
         return request.reply_to_msg_id
 
 
 @handler.on_request(SendMessage_148)
+@handler.on_request(SendMessage_176)
 @handler.on_request(SendMessage)
 async def send_message(request: SendMessage, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
@@ -216,18 +217,19 @@ async def edit_message(request: EditMessage | EditMessage_136, user: User):
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
+    new_has_media = request.media is not None and not isinstance(request.media, InputMediaEmpty)
     if message.media_id is None and not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
-    elif message.media_id is None and request.media:
+    elif message.media_id is None and new_has_media:
         raise ErrorRpc(error_code=400, error_message="MEDIA_PREV_INVALID")
-    elif message.media_id is not None and request.media and not isinstance(request.media, DocOrPhotoMedia):
+    elif message.media_id is not None and new_has_media and not isinstance(request.media, DocOrPhotoMedia):
         raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
     elif message.media_id is not None and request.media \
             and message.media.type not in (MediaType.DOCUMENT, MediaType.PHOTO):
         raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
 
     media = None
-    if request.media is not None:
+    if new_has_media:
         media = await _process_media(user, request.media)
         if media.id == message.media_id or media.file_id == message.media.file_id:
             raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
@@ -396,8 +398,9 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 
 
 @handler.on_request(SendMedia_148)
+@handler.on_request(SendMedia_176)
 @handler.on_request(SendMedia)
-async def send_media(request: SendMedia | SendMedia_148, user: User):
+async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel

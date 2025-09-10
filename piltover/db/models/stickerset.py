@@ -30,8 +30,7 @@ class Stickerset(Model):
             input_set: InputStickerSetEmpty | InputStickerSetID | InputStickerSetShortName | None,
             prefix: str | None = None,
     ) -> Q | None:
-        if prefix is not None:
-            prefix = f"{prefix}__"
+        prefix = f"{prefix}__" if prefix is not None else ""
         if input_set is None or isinstance(input_set, InputStickerSetEmpty):
             return None
         elif isinstance(input_set, InputStickerSetID):

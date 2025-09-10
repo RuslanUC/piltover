@@ -19,6 +19,11 @@ class UploadingFile(Model):
     created_at: datetime = fields.DatetimeField(default=datetime.now)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
+    class Meta:
+        unique_together = (
+            ("user", "file_id",),
+        )
+
     async def finalize_upload(
             self, mime_type: str, attributes: list, file_type: FileType = FileType.DOCUMENT,
     ) -> models.File:
@@ -52,3 +57,8 @@ class UploadingFilePart(Model):
     physical_id: UUID = fields.UUIDField(default=uuid4)
     size: int = fields.IntField()
     file: UploadingFile = fields.ForeignKeyField("models.UploadingFile", on_delete=fields.CASCADE)
+
+    class Meta:
+        unique_together = (
+            ("file", "part_id"),
+        )

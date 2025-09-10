@@ -433,7 +433,8 @@ async def delete_stickerset(request: DeleteStickerSet, user: User) -> bool:
 
 
 async def _make_covered_list(sets: list[Stickerset], user: User) -> list[StickerSetCovered | StickerSetNoCovered]:
-    covers = {file.stickerset_id: file for file in await File.filter(stickerset__in=sets, sticker_pos=0)}
+    sets_ids = [sset.id for sset in sets]
+    covers = {file.stickerset_id: file for file in await File.filter(stickerset__id__in=sets_ids, sticker_pos=0)}
 
     result = []
     for stickerset in sets:

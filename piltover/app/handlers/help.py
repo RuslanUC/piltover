@@ -8,7 +8,7 @@ from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscrip
     JsonBool, JsonArray, JsonString, ReactionEmoji
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
-    GetPeerProfileColors
+    GetPeerProfileColors, DismissSuggestion
 from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
     PeerColors, PeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified, AppConfigNotModified
 from piltover.worker import MessageHandler
@@ -146,20 +146,20 @@ APP_CONFIG = JsonObject(value=[
     ])),
     JsonObjectValue(key="emojies_animated_zoom", value=JsonNumber(value=0.625)),
     JsonObjectValue(key="emojies_send_dice", value=JsonArray(value=[
-        JsonString(value="\ud83c\udfb2"),
-        JsonString(value="\ud83c\udfaf"),
-        JsonString(value="\ud83c\udfc0"),
+        JsonString(value="\U0001F3B2"),
+        JsonString(value="\U0001F3AF"),
+        JsonString(value="\U0001F3C0"),
         JsonString(value="\u26bd"),
         JsonString(value="\u26bd\ufe0f"),
-        JsonString(value="\ud83c\udfb0"),
-        JsonString(value="\ud83c\udfb3"),
+        JsonString(value="\U0001F3B0"),
+        JsonString(value="\U0001F3B3"),
     ])),
     JsonObjectValue(key="emojies_send_dice_success", value=JsonObject(value=[
-        JsonObjectValue(key="\ud83c\udfaf", value=JsonObject(value=[
+        JsonObjectValue(key="\U0001F3AF", value=JsonObject(value=[
             JsonObjectValue(key="value", value=JsonNumber(value=6.0)),
             JsonObjectValue(key="frame_start", value=JsonNumber(value=62.0)),
         ])),
-        JsonObjectValue(key="\ud83c\udfc0", value=JsonObject(value=[
+        JsonObjectValue(key="\U0001F3C0", value=JsonObject(value=[
             JsonObjectValue(key="value", value=JsonNumber(value=5.0)),
             JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
         ])),
@@ -171,11 +171,11 @@ APP_CONFIG = JsonObject(value=[
             JsonObjectValue(key="value", value=JsonNumber(value=5.0)),
             JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
         ])),
-        JsonObjectValue(key="\ud83c\udfb0", value=JsonObject(value=[
+        JsonObjectValue(key="\U0001F3B0", value=JsonObject(value=[
             JsonObjectValue(key="value", value=JsonNumber(value=64.0)),
             JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
         ])),
-        JsonObjectValue(key="\ud83c\udfb3", value=JsonObject(value=[
+        JsonObjectValue(key="\U0001F3B3", value=JsonObject(value=[
             JsonObjectValue(key="value", value=JsonNumber(value=6.0)),
             JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
         ])),
@@ -185,16 +185,16 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="fragment_prefixes", value=JsonArray(value=[JsonString(value="888")])),
     JsonObjectValue(key="gif_search_branding", value=JsonString(value="tenor")),
     JsonObjectValue(key="gif_search_emojies", value=JsonArray(value=[
-        JsonString(value="\ud83d\udc4d"),
-        JsonString(value="\ud83d\ude18"),
-        JsonString(value="\ud83d\ude0d"),
-        JsonString(value="\ud83d\ude21"),
-        JsonString(value="\ud83e\udd73"),
-        JsonString(value="\ud83d\ude02"),
-        JsonString(value="\ud83d\ude2e"),
-        JsonString(value="\ud83d\ude44"),
-        JsonString(value="\ud83d\ude0e"),
-        JsonString(value="\ud83d\udc4e")
+        JsonString(value="\U0001F44D"),
+        JsonString(value="\U0001F618"),
+        JsonString(value="\U0001F60D"),
+        JsonString(value="\U0001F621"),
+        JsonString(value="\U0001F973"),
+        JsonString(value="\U0001F602"),
+        JsonString(value="\U0001F62E"),
+        JsonString(value="\U0001F644"),
+        JsonString(value="\U0001F60E"),
+        JsonString(value="\U0001F44E")
     ])),
     JsonObjectValue(key="giveaway_add_peers_max", value=JsonNumber(value=10.0)),
     JsonObjectValue(key="giveaway_boosts_per_premium", value=JsonNumber(value=4.0)),
@@ -428,4 +428,9 @@ async def get_peer_colors():  # pragma: no cover
             for color_id in range(6)
         ],
     )
+
+
+@handler.on_request(DismissSuggestion)
+async def dismiss_suggestion() -> bool:  # pragma: no cover
+    return True
 

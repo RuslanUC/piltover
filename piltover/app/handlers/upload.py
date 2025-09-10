@@ -46,7 +46,11 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
     if size == 0:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
 
-    part = await UploadingFilePart.create(file=file, part_id=request.file_part, size=size)
+    part, created = await UploadingFilePart.get_or_create(file=file, part_id=request.file_part, defaults={"size": size})
+    if not created:
+        if part.size == size:
+            return True
+        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
 
     # TODO: upload to s3 or something similar
     async with aiofiles.open(files_dir / "parts" / f"{part.physical_id}_{request.file_part}", "wb") as f:

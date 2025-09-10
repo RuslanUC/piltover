@@ -20,7 +20,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
-    SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate
+    SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar
 from piltover.worker import MessageHandler
@@ -278,7 +278,15 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
     query &= Q(peer__owner=user)
 
-    return await format_messages_internal(user, await Message.filter(query))
+    return await format_messages_internal(user, await Message.filter(query).select_related("peer"))
+
+
+@handler.on_request(GetMessages_57)
+async def get_messages_57(request: GetMessages_57, user: User) -> Messages:
+    return await format_messages_internal(
+        user,
+        await Message.filter(id__in=request.id[:100], peer__owner=user).select_related("peer"),
+    )
 
 
 @handler.on_request(ReadHistory)

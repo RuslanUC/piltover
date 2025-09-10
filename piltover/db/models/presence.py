@@ -20,7 +20,7 @@ LAST_MONTH = UserStatusLastMonth()
 
 class Presence(Model):
     id: int = fields.BigIntField(pk=True)
-    user: models.User = fields.ForeignKeyField("models.User", unique=True)
+    user: models.User = fields.OneToOneField("models.User")
     status: UserStatus = fields.IntEnumField(UserStatus, default=UserStatus.OFFLINE)
     last_seen: datetime = fields.DatetimeField(default_add=True)
 

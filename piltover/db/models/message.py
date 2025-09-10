@@ -424,7 +424,7 @@ class Message(Model):
         reactions = await models.MessageReaction\
             .annotate(msg_count=Count("id"))\
             .filter(message=self)\
-            .group_by("reaction")\
+            .group_by("reaction__id")\
             .select_related("reaction")\
             .values_list("reaction__id", "reaction__reaction", "msg_count")
 
