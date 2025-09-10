@@ -13,7 +13,6 @@ import uvloop
 from aerich import Command, Migrate
 from fastrand import xorshift128plus_bytes
 from loguru import logger
-from pydantic import UUID1
 from tortoise import Tortoise, connections
 from tortoise.expressions import Q
 
@@ -53,7 +52,7 @@ class ArgsNamespace(SimpleNamespace):
 
 class MigrateNoDowngrade(Migrate):
     @classmethod
-    def diff_models(cls, old_models: dict[str, dict], new_models: dict[str, dict], upgrade=True) -> None:
+    def diff_models(cls, old_models: dict[str, dict], new_models: dict[str, dict], upgrade=True, no_input=True) -> None:
         if not upgrade:
             return
 

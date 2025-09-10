@@ -28,8 +28,8 @@ cryptography = "^44.0.2"
 tgcrypto = "^1.2.5"
 uvloop = { version = "^0.21.0", markers = "sys_platform != 'win32'" }
 loguru = "^0.7.3"
-tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", branch = "allow-joining-same-table-twice", extras = ["asyncmy"]}
-aerich = "^0.8.2"
+tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", branch = "allow-joining-same-table-twice", extras = ["asyncmy"], rev = "1071b2d06da4419219c0b3e33acb298a0936e66c"}
+aerich = "^0.9.1"
 pillow = "^11.0.0"
 mtproto = "^0.1.0b12"
 aiofiles = "^24.1.0"
