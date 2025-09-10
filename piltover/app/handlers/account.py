@@ -21,7 +21,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
-    ChangeAuthorizationSettings, ResetAuthorization, ResetPassword
+    ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait
@@ -436,3 +436,13 @@ async def reset_password(user: User) -> ResetPasswordResult:
         return ResetPasswordOk()
 
     return ResetPasswordRequestedWait(until_date=int(reset_date.timestamp()))
+
+
+@handler.on_request(DeclinePasswordReset)
+async def decline_password_reset(user: User) -> bool:
+    if (reset_request := await UserPasswordReset.get_or_none(user=user)) is None:
+        raise ErrorRpc(error_code=400, error_message="RESET_REQUEST_MISSING")
+
+    await reset_request.delete()
+
+    return True
