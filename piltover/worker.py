@@ -39,7 +39,7 @@ HandlerResult = Awaitable[T | None]
 HandlerFunc = (Callable[[], HandlerResult] |
                Callable[[TLRequest[T]], HandlerResult] |
                Callable[[User], HandlerResult] |
-               Callable[[TLRequest[T], User], HandlerResult[T]])
+               Callable[[TLRequest[T], User], HandlerResult])
 
 
 class RequestHandler:
@@ -71,7 +71,7 @@ class RequestHandler:
 class MessageHandler:
     __slots__ = ("name", "registered", "request_handlers",)
 
-    def __init__(self, name: str = None):
+    def __init__(self, name: str | None = None):
         self.name = name
         self.registered = False
         self.request_handlers: dict[int, RequestHandler] = {}

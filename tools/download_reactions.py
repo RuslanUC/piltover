@@ -4,6 +4,7 @@ import shutil
 from asyncio import get_event_loop
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 from loguru import logger
 from pyrogram import Client
@@ -103,7 +104,7 @@ async def main() -> None:
                 await download_reaction(client, idx, sticker, reactions_dir)
 
             with open(reactions_dir / f"{idx}.json", "w") as f:
-                reaction_json = TLObject.default(reaction)
+                reaction_json = cast(dict[str, Any], TLObject.default(reaction))
                 reaction_json["_index"] = idx
                 json.dump(reaction_json, f, indent=4, default=TLObject.default, ensure_ascii=False)
 

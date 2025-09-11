@@ -4,6 +4,7 @@ import signal
 
 import websockets
 from loguru import logger
+from websockets import ConnectionClosedOK
 from websockets.server import WebSocketServerProtocol, serve
 from websockets.typing import Subprotocol
 
@@ -29,7 +30,7 @@ async def proxy(websocket: WebSocketServerProtocol):
                 await writer.drain()
 
         await asyncio.gather(remote_to_local(), local_to_remote())
-    except websockets.exceptions.ConnectionClosedOK:
+    except ConnectionClosedOK:
         logger.warning(f"{uuid} | Client disconnected: {addr}")
 
 

@@ -157,8 +157,8 @@ def sort_args(args):
 
 def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Combinator], int]:
     combinators = []
-    layer = None
-    section = None
+    layer: int | None = None
+    section: str | None = None
 
     for line in tqdm(schema, desc=f"Parsing schema for layer {layer_ or '?'}", leave=False):
         # Check for section changer lines
@@ -182,9 +182,9 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
             name = camel(name)
             qualname = ".".join([namespace, name]).lstrip(".")
 
-            typespace, type = qualtype.split(".") if "." in qualtype else ("", qualtype)
-            type = camel(type)
-            qualtype = ".".join([typespace, type]).lstrip(".")
+            typespace, type_ = qualtype.split(".") if "." in qualtype else ("", qualtype)
+            type_ = camel(type_)
+            qualtype = ".".join([typespace, type_]).lstrip(".")
 
             # Pingu!
             has_flags = not not FLAGS_RE_3.findall(line)
@@ -200,6 +200,8 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
                 elif item[0] in ("bytes", "str", "type"):
                     args[i] = (f"{item[0]}_", item[1])
 
+            assert section is not None
+
             combinator = Combinator(
                 section=section,
                 qualname=qualname,
@@ -210,18 +212,19 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
                 args=args,
                 qualtype=qualtype,
                 typespace=typespace,
-                type=type
+                type=type_
             )
 
             combinators.append(combinator)
 
-    if layer is not None:
-        all_layers.add(layer)
+    assert layer is not None
+
+    all_layers.add(layer)
     return combinators, layer
 
 
-def parse_old_schemas(schemaBase: list[Combinator]) -> dict[int, dict[str, Combinator]]:
-    schemaBase = {f"{c.qualname}#{c.id}": c for c in schemaBase}
+def parse_old_schemas(combinators_base: list[Combinator]) -> dict[int, dict[str, Combinator]]:
+    schema_base = {f"{c.qualname}#{c.id}": c for c in combinators_base}
 
     layers = sorted([
         int(file[4:-3])
@@ -237,7 +240,7 @@ def parse_old_schemas(schemaBase: list[Combinator]) -> dict[int, dict[str, Combi
         schemas[layer] = {}
         for c in parsed:
             name = f"{c.qualname}#{c.id}"
-            if name in schemaBase:
+            if name in schema_base:
                 continue
             c = c._replace(layer=layer)
             schemas[layer][name] = c
@@ -263,9 +266,9 @@ def parse_old_schemas(schemaBase: list[Combinator]) -> dict[int, dict[str, Combi
     return schemas
 
 
-def parse_old_objects(schemaBase: list[Combinator]) -> list[Combinator]:
+def parse_old_objects(combinators_base: list[Combinator]) -> list[Combinator]:
     result = []
-    for schema in parse_old_schemas(schemaBase).values():
+    for schema in parse_old_schemas(combinators_base).values():
         result.extend(schema.values())
 
     return result
@@ -282,7 +285,7 @@ class Field:
 
     def __init__(
             self, name: str, is_flag: bool = False, flag_bit: int | None = None, flag_num: int | None = None,
-            type_: str = None, write: bool = True,
+            type_: str | None = None, write: bool = True,
     ):
         self.position = self.__class__._COUNTER
         self.__class__._COUNTER += 1
