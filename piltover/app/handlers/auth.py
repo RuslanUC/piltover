@@ -80,7 +80,7 @@ async def send_code(request: SendCode):
 
 @handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def sign_in(request: SignIn):
-    if len(request.phone_code_hash) != 32:
+    if len(request.phone_code_hash) != 48:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if request.phone_code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EMPTY")
@@ -121,7 +121,7 @@ async def sign_in(request: SignIn):
 @handler.on_request(SignUp_133, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 @handler.on_request(SignUp, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def sign_up(request: SignUp | SignUp_133):
-    if len(request.phone_code_hash) != 32:
+    if len(request.phone_code_hash) != 48:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     try:
         int(request.phone_number)

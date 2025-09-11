@@ -4,8 +4,9 @@ from enum import IntEnum
 from os import urandom
 from random import randint
 from time import time
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from loguru import logger
 from tortoise import fields, Model
 
 from piltover.db import models
@@ -36,7 +37,7 @@ class SentCode(Model):
     id: int = fields.BigIntField(pk=True)
     phone_number: str = fields.CharField(max_length=20)
     code: int = fields.IntField(default=gen_phone_code)
-    hash: UUID = fields.UUIDField()
+    hash: UUID = fields.UUIDField(default=uuid4)
     expires_at: int = fields.BigIntField(default=gen_expires_at)
     used: bool = fields.BooleanField(default=False)
     purpose: PhoneCodePurpose = fields.IntEnumField(PhoneCodePurpose)
