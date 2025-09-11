@@ -18,6 +18,7 @@ from piltover.tl import InputCheckPasswordEmpty, InputCheckPasswordSRP, MessageE
     MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
     MessageEntityPhone, MessageEntityCashtag, MessageEntityUnderline, MessageEntityStrike, MessageEntitySpoiler, \
     MessageEntityBankCard, MessageEntityBlockquote, Long
+from piltover.tl.base import InputCheckPasswordSRP as InputCheckPasswordSRPBase
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
@@ -136,7 +137,7 @@ async def generate_stripped(file_id: str, size: int = 8) -> bytes:
     return await get_event_loop().run_in_executor(image_executor, _gen, img)
 
 
-async def check_password_internal(password: UserPassword, check: InputCheckPasswordEmpty | InputCheckPasswordSRP):
+async def check_password_internal(password: UserPassword, check: InputCheckPasswordSRPBase) -> None:
     if password.password is not None and isinstance(check, InputCheckPasswordEmpty):
         raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from os import urandom
 
 from tortoise import fields, Model
@@ -27,6 +28,7 @@ class UserPassword(Model):
     password: bytes | None = fields.BinaryField(null=True, default=None)  # 256 bytes
     hint: str | None = fields.CharField(max_length=120, null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User", unique=True)
+    modified_at: datetime = fields.DatetimeField(auto_now_add=True)
 
     async def to_tl(self) -> TLPassword:
         p, g = gen_safe_prime()

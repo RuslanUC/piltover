@@ -22,7 +22,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
-    SendConfirmPhoneCode, ChangePhone
+    SendConfirmPhoneCode, ChangePhone, DeleteAccount
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait
@@ -500,5 +500,50 @@ async def change_phone(request: ChangePhone, user: User) -> TLUser:
 #@handler.on_request(SendConfirmPhoneCode)
 #async def send_confirm_phone_code(request: SendConfirmPhoneCode, user: User) -> TLSentCode:
 #    return await _create_sent_code(user, request.phone_number, PhoneCodePurpose.DELETE_ACCOUNT)
-# TODO: DeleteAccount
 # TODO: ConfirmPhone
+
+
+async def _delete_account(user: User) -> None:
+    user.deleted = True
+    user.phone_number = None
+    user.first_name = ""
+    user.last_name = None
+    user.about = None
+    user.birthday = None
+    await user.save(update_fields=["deleted", "phone_number", "first_name", "last_name", "about", "birthday"])
+
+    auths = await UserAuthorization.get_or_none(user=user).select_related("key")
+
+    auth_ids = []
+    keys = []
+    for auth in auths:
+        keys.extend(await auth.key.get_ids())
+        auth_ids.append(auth.id)
+
+    await UserAuthorization.filter(id__in=auth_ids).delete()
+
+    await SessionManager.send(UpdatesTooLong(), key_id=keys, auth_id=auth_ids)
+
+    # TODO: send UpdateUser to related peers ?
+
+
+@handler.on_request(DeleteAccount)
+async def delete_account(request: DeleteAccount, user: User) -> bool:
+    password = await UserPassword.get_or_none(user=user)
+    if password is None or password.password is None:
+        await _delete_account(user)
+        return True
+
+    if (datetime.now(UTC) - timedelta(days=7)) > password.modified_at:
+        await _delete_account(user)
+        return True
+    elif request.password is not None:
+        await check_password_internal(password, request.password)
+        await _delete_account(user)
+        return True
+
+    # TODO: schedule deletion and send service message
+    one_week = 86400 * 7
+    raise ErrorRpc(error_code=420, error_message=f"2FA_CONFIRM_WAIT_{one_week}")
+
+

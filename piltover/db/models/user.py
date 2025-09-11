@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from enum import auto, Enum
 
 from tortoise import fields, Model
 
@@ -9,7 +10,11 @@ from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday
 from piltover.tl.types import User as TLUser
 
-_USERNAME_MISSING = object()
+
+class _UsernameMissing(Enum):
+    USERNAME_MISSING = auto()
+
+_USERNAME_MISSING = _UsernameMissing.USERNAME_MISSING
 
 class User(Model):
     id: int = fields.BigIntField(pk=True)
@@ -21,8 +26,9 @@ class User(Model):
     ttl_days: int = fields.IntField(default=365)
     birthday: date | None = fields.DateField(null=True, default=None)
     bot: bool = fields.BooleanField(default=False)
+    deleted: bool = fields.BooleanField(default=False)
 
-    cached_username: models.Username | None | object = _USERNAME_MISSING
+    cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
     is_lazy: bool = False
 
     async def load_if_lazy(self) -> None:
