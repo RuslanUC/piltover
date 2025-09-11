@@ -2,6 +2,7 @@ from datetime import timedelta, datetime
 from io import BytesIO
 from time import time
 from typing import cast
+from uuid import UUID
 
 from loguru import logger
 from mtproto import ConnectionRole
@@ -15,11 +16,11 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Dialog, Message, TempAuthKey, SentCode, \
-    User, QrLogin
+    User, QrLogin, PhoneCodePurpose
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
-from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Long, Authorization, UpdateLoginToken
+from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
@@ -45,7 +46,7 @@ async def send_code(request: SendCode):
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
-    code = await SentCode.create(phone_number=int(request.phone_number))
+    code = await SentCode.create(phone_number=int(request.phone_number), purpose=PhoneCodePurpose.SIGNIN)
     print(f"Code: {code.code}")
 
     resp = TLSentCode(
@@ -92,17 +93,13 @@ async def sign_in(request: SignIn):
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID")
 
-    code_id = Long.read_bytes(bytes.fromhex(request.phone_code_hash[:16]))
-    code_hash = request.phone_code_hash[16:]
-    code = await SentCode.get_or_none(id=code_id, hash=code_hash, phone_number=request.phone_number, used=False)
-    if code is None or code.code != int(request.phone_code):
-        raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
-    if code.expires_at < time():
-        await code.delete()
-        raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EXPIRED")
+    code = await SentCode.get_(request.phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNIN)
+    await SentCode.check_raise_cls(code, request.phone_code)
 
-    code.used = True
-    await code.save(update_fields=["used"])
+    code.used = False
+    code.expires_at = int(time() + 5 * 60)
+    code.purpose = PhoneCodePurpose.SIGNUP
+    await code.save(update_fields=["used", "expires_at", "purpose"])
 
     if (user := await User.get_or_none(phone_number=request.phone_number)) is None:
         return AuthorizationSignUpRequired()
@@ -131,14 +128,11 @@ async def sign_up(request: SignUp | SignUp_133):
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
-    code_id = Long.read_bytes(bytes.fromhex(request.phone_code_hash[:16]))
-    code_hash = request.phone_code_hash[16:]
-    code = await SentCode.get_or_none(id=code_id, hash=code_hash, phone_number=request.phone_number, used=True)
-    if code is None:
-        raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
-    if code.expires_at < time():
-        await code.delete()
-        raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EXPIRED")
+    code = await SentCode.get_(request.phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNUP)
+    await SentCode.check_raise_cls(code, None)
+
+    code.used = True
+    await code.save(update_fields=["used"])
 
     if await User.filter(phone_number=request.phone_number).exists():
         raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")

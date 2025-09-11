@@ -8,7 +8,7 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
-    UserPasswordReset
+    UserPasswordReset, SentCode, PhoneCodePurpose
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -21,10 +21,12 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
-    ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset
+    ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
+    SendConfirmPhoneCode, ChangePhone
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait
+from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms
 from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
@@ -446,3 +448,57 @@ async def decline_password_reset(user: User) -> bool:
     await reset_request.delete()
 
     return True
+
+
+async def _create_sent_code(user: User, phone_number: str, purpose: PhoneCodePurpose) -> TLSentCode:
+    try:
+        if int(phone_number) < 100000:
+            raise ValueError
+    except ValueError:
+        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+
+    if await User.filter(phone_number=phone_number).exists():
+        raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")
+
+    code = await SentCode.create(
+        phone_number=int(phone_number),
+        purpose=purpose,
+        user=user,
+    )
+
+    return TLSentCode(
+        type_=SentCodeTypeSms(length=5),
+        phone_code_hash=code.phone_code_hash(),
+        timeout=30,
+    )
+
+
+@handler.on_request(SendChangePhoneCode)
+async def send_change_phone_code(request: SendChangePhoneCode, user: User) -> TLSentCode:
+    return await _create_sent_code(user, request.phone_number, PhoneCodePurpose.CHANGE_NUMBER)
+
+
+@handler.on_request(ChangePhone)
+async def change_phone(request: ChangePhone, user: User) -> TLUser:
+    code = await SentCode.get_(request.phone_number, request.phone_code_hash, PhoneCodePurpose.CHANGE_NUMBER)
+    await SentCode.check_raise_cls(code, request.phone_code)
+
+    code.used = True
+    await code.save(update_fields=["used"])
+
+    if await User.filter(phone_number=request.phone_number).exists():
+        raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")
+
+    user.phone_number = request.phone_number
+    await user.save(update_fields=["phone_number"])
+
+    # TODO: UpdateUserPhone
+
+    return await user.to_tl(user)
+
+# https://core.telegram.org/api/account-deletion
+#@handler.on_request(SendConfirmPhoneCode)
+#async def send_confirm_phone_code(request: SendConfirmPhoneCode, user: User) -> TLSentCode:
+#    return await _create_sent_code(user, request.phone_number, PhoneCodePurpose.DELETE_ACCOUNT)
+# TODO: DeleteAccount
+# TODO: ConfirmPhone
