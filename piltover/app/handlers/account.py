@@ -161,7 +161,8 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
     password.password = new.new_password_hash
     password.hint = new.hint
     password.salt1 = new.new_algo.salt1
-    await password.save(update_fields=["password", "hint", "salt1"])
+    password.modified_at = datetime.now(UTC)
+    await password.save(update_fields=["password", "hint", "salt1", "modified_at"])
     await UserPasswordReset.filter(user=user).delete()
 
     return True
