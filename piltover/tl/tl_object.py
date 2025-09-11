@@ -13,8 +13,8 @@ class TLObject(ABC):
     __tl_id__: int
     __tl_name__: str
 
-    @abstractmethod
-    def __init__(self, **kwargs) -> None: ...
+    def __init__(self, **_) -> None:
+        ...
 
     @classmethod
     def tlid(cls) -> int:

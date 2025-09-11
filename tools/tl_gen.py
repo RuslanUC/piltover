@@ -415,17 +415,22 @@ def start():
                 deserialize_body.append(f"{flag_var} = SerializationUtils.read(stream, Int)")
                 continue
 
+            is_vec = field.type().lower().startswith("vector")
+
             if field.opt():
                 if field.write:
                     empty_condition = ""
                     fields_with_this_flag = len([
                         1 for f in fields if f.flag_num == field.flag_num and f.flag_bit == field.flag_bit
                     ])
-                    if fields_with_this_flag > 1 or not field.type().lower().startswith("vector"):
+                    if fields_with_this_flag > 1 or not is_vec:
                         empty_condition = " is not None"
 
                     serialize_body.append(f"if self.{field.name}{empty_condition}:")
-                    serialize_body.append(f"    result += SerializationUtils.write(self.{field.name}{int_type_name})")
+                    if int_type_name and not is_vec:
+                        serialize_body.append(f"    result += {int_type_name[2:]}.write(self.{field.name})")
+                    else:
+                        serialize_body.append(f"    result += SerializationUtils.write(self.{field.name})")
                     deserialize_body.append(
                         f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name}) "
                         f"if (flags{field.flag_num} & (1 << {field.flag_bit})) == (1 << {field.flag_bit}) else None"
@@ -437,7 +442,10 @@ def start():
 
                 continue
 
-            serialize_body.append(f"result += SerializationUtils.write(self.{field.name}{int_type_name})")
+            if int_type_name and not is_vec:
+                serialize_body.append(f"result += {int_type_name[2:]}.write(self.{field.name})")
+            else:
+                serialize_body.append(f"result += SerializationUtils.write(self.{field.name}{int_type_name})")
             deserialize_body.append(f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name})")
 
         imports = [
@@ -478,18 +486,28 @@ def start():
             f"    __tl_name__ = \"{c.section}.{c.qualname}\"",
             f"",
             f"    __slots__ = ({', '.join(slots)})",
-            f"",
-            f"    def __init__(self{', ' if init_args else ''}{', '.join(init_args)}):",
-            f"        ..." if not init_args else f"",
-            *[
-                f"        self.{field.name} = {field.name}"
-                for field in fields if not field.is_flag
-            ],
+            *(
+                [
+                    f"",
+                    f"    def __init__(self, {', '.join(init_args)}):",
+                    *[
+                        f"        self.{field.name} = {field.name}"
+                        for field in fields if not field.is_flag
+                    ],
+                ] if init_args else []
+            ),
             f"",
             f"    def serialize(self) -> bytes:",
-            f"        result = b\"\"",
-            *indent(serialize_body, 8),
-            f"        return result",
+            *indent(
+                [
+                    f"result = b\"\"",
+                    *serialize_body,
+                    f"return result",
+                ] if serialize_body else [
+                    "return b\"\""
+                ],
+                8
+            ),
             f"",
             f"    @classmethod",
             f"    def deserialize(cls, stream) -> {c.name}:",
