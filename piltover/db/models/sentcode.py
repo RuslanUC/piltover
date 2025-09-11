@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from os import urandom
 from random import randint
 from time import time
 from uuid import UUID, uuid4
 
-from loguru import logger
 from tortoise import fields, Model
+from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.exceptions import ErrorRpc
@@ -21,19 +20,17 @@ class PhoneCodePurpose(IntEnum):
     DELETE_ACCOUNT = 4
 
 
-def gen_phone_code():
-    return randint(1, 99999)
-
-
-def gen_hash():
-    return urandom(8).hex()
-
-
-def gen_expires_at():
-    return int(time()) + 5 * 60
-
-
 class SentCode(Model):
+    CODE_HASH_SIZE = len(Long.write(0).hex() + uuid4().hex)
+
+    @staticmethod
+    def gen_phone_code():
+        return randint(1, 99999)
+
+    @staticmethod
+    def gen_expires_at():
+        return int(time()) + 5 * 60
+
     id: int = fields.BigIntField(pk=True)
     phone_number: str = fields.CharField(max_length=20)
     code: int = fields.IntField(default=gen_phone_code)
@@ -47,10 +44,15 @@ class SentCode(Model):
         return Long.write(self.id).hex() + self.hash.hex
 
     @classmethod
-    async def get_(cls, number: str, code_hash: str, purpose: PhoneCodePurpose) -> SentCode | None:
+    async def get_(cls, number: str, code_hash: str, purpose: PhoneCodePurpose | None) -> SentCode | None:
         code_id = Long.read_bytes(bytes.fromhex(code_hash[:16]))
         code_hash = UUID(code_hash[16:])
-        return await SentCode.get_or_none(id=code_id, hash=code_hash, phone_number=number, used=False, purpose=purpose)
+
+        query = Q(id=code_id, hash=code_hash, phone_number=number, used=False)
+        if purpose is not None:
+            query &= Q(purpose=purpose)
+
+        return await SentCode.get_or_none(query)
 
     async def check_raise(self, code: str | None) -> None:
         if code is not None and self.code != int(code):

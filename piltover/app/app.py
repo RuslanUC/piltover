@@ -49,7 +49,6 @@ class ArgsNamespace(SimpleNamespace):
     cache_port: int | None
 
 
-
 class MigrateNoDowngrade(Migrate):
     @classmethod
     def diff_models(cls, old_models: dict[str, dict], new_models: dict[str, dict], upgrade=True, no_input=True) -> None:

@@ -1,8 +1,7 @@
 from datetime import timedelta, datetime
 from io import BytesIO
-from time import time
 from typing import cast
-from uuid import UUID
+from uuid import uuid4
 
 from loguru import logger
 from mtproto import ConnectionRole
@@ -22,7 +21,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
-    SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken
+    SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
     LoginToken, AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut, LoginTokenSuccess
 from piltover.utils.snowflake import Snowflake
@@ -38,15 +37,31 @@ LOGIN_MESSAGE_FMT = (
 )
 
 
-@handler.on_request(SendCode, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def send_code(request: SendCode):
+def _validate_phone(phone_number: str) -> None:
     try:
-        if int(request.phone_number) < 100000:
+        if int(phone_number) < 100000:
             raise ValueError
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
-    code = await SentCode.create(phone_number=int(request.phone_number), purpose=PhoneCodePurpose.SIGNIN)
+
+async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSentCode:
+    _validate_phone(phone_number)
+
+    if code_hash is None:
+        code = await SentCode.create(phone_number=phone_number, purpose=PhoneCodePurpose.SIGNIN)
+    else:
+        if len(code_hash) != SentCode.CODE_HASH_SIZE:
+            raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EMPTY")
+
+        code = await SentCode.get_(phone_number, code_hash, None)
+        await SentCode.check_raise_cls(code, None)
+
+        code.code = SentCode.gen_phone_code()
+        code.hash = uuid4()
+        code.expires_at = SentCode.gen_expires_at()
+        await code.save(update_fields=["code", "hash", "expires_at"])
+
     print(f"Code: {code.code}")
 
     resp = TLSentCode(
@@ -55,7 +70,7 @@ async def send_code(request: SendCode):
         timeout=30,
     )
 
-    user = await User.get_or_none(phone_number=request.phone_number)
+    user = await User.get_or_none(phone_number=phone_number)
     if user is None:
         return resp
 
@@ -78,16 +93,18 @@ async def send_code(request: SendCode):
     return resp
 
 
+@handler.on_request(SendCode, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def send_code(request: SendCode):
+    return await _send_or_resend_code(request.phone_number, None)
+
+
 @handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def sign_in(request: SignIn):
-    if len(request.phone_code_hash) != 48:
+    if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if request.phone_code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EMPTY")
-    try:
-        int(request.phone_number)
-    except ValueError:
-        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+    _validate_phone(request.phone_number)
     try:
         int(request.phone_code)
     except ValueError:
@@ -97,7 +114,7 @@ async def sign_in(request: SignIn):
     await SentCode.check_raise_cls(code, request.phone_code)
 
     code.used = False
-    code.expires_at = int(time() + 5 * 60)
+    code.expires_at = SentCode.gen_expires_at()
     code.purpose = PhoneCodePurpose.SIGNUP
     await code.save(update_fields=["used", "expires_at", "purpose"])
 
@@ -121,12 +138,9 @@ async def sign_in(request: SignIn):
 @handler.on_request(SignUp_133, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 @handler.on_request(SignUp, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def sign_up(request: SignUp | SignUp_133):
-    if len(request.phone_code_hash) != 48:
+    if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
-    try:
-        int(request.phone_number)
-    except ValueError:
-        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+    _validate_phone(request.phone_number)
 
     code = await SentCode.get_(request.phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNUP)
     await SentCode.check_raise_cls(code, None)
@@ -289,5 +303,23 @@ async def reset_authorizations(user: User) -> bool:
     await UserAuthorization.filter(id__in=[auth.id for auth in auths]).delete()
 
     await SessionManager.send(UpdatesTooLong(), key_id=keys)
+
+    return True
+
+
+@handler.on_request(ResendCode, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def resend_code(request: ResendCode) -> TLSentCode:
+    return await _send_or_resend_code(request.phone_number, request.phone_code_hash)
+
+
+@handler.on_request(CancelCode, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def cancel_code(request: CancelCode) -> bool:
+    _validate_phone(request.phone_number)
+    if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
+        raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
+
+    code = await SentCode.get_(request.phone_number, request.phone_code_hash, None)
+    await SentCode.check_raise_cls(code, None)
+    await code.delete()
 
     return True
