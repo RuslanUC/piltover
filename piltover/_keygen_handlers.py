@@ -13,7 +13,7 @@ from piltover.auth_data import GenAuthData
 from piltover.db.models import TempAuthKey, AuthKey
 from piltover.exceptions import Disconnection
 from piltover.tl import MsgsAck, ReqPqMulti, ReqPq, ReqDHParams, SetClientDHParams, ResPQ, PQInnerData, PQInnerDataDc, \
-    PQInnerDataTemp, PQInnerDataTempDc, ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, DhGenOk, Int, Int256, \
+    PQInnerDataTemp, PQInnerDataTempDc, ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, DhGenOk, Int256, Long, \
     Int128
 from piltover.utils import generate_large_prime, gen_safe_prime
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
@@ -194,7 +194,7 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
         )
     ))
 
-    auth_data.auth_key_id = Int.read_bytes(auth_key_hash)
+    auth_data.auth_key_id = Long.read_bytes(auth_key_hash)
 
     auth_key_id = auth_data.auth_key_id
     auth_key = auth_data.auth_key

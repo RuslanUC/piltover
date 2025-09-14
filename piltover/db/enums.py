@@ -142,7 +142,7 @@ class ChatBannedRights(IntFlag):
 
     @classmethod
     def from_tl(cls, banned_rights: TLChatBannedRights) -> ChatBannedRights:
-        flags = Int.read_bytes(banned_rights.serialize())
+        flags = Int.read_bytes(banned_rights.serialize()[:4])
         return ChatBannedRights(flags)
 
     def to_tl(self) -> TLChatBannedRights:

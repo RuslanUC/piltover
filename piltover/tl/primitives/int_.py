@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from struct import Struct
 
 from piltover.utils.utils import classinstancemethod
 
@@ -8,10 +9,14 @@ from piltover.utils.utils import classinstancemethod
 class Int(int):
     BIT_SIZE = 32
     SIZE = BIT_SIZE // 8
+    STRUCT_FMT_I = Struct("<i")
+    STRUCT_FMT_U = Struct("<I")
 
     @classmethod
     def read_bytes(cls, data: bytes, signed: bool = True) -> int:
-        return int.from_bytes(data, "little", signed=signed)
+        if signed:
+            return cls.STRUCT_FMT_I.unpack(data)[0]
+        return cls.STRUCT_FMT_U.unpack(data)[0]
 
     @classmethod
     def read(cls, stream: BytesIO, signed: bool = True) -> int:
@@ -26,13 +31,23 @@ class Int(int):
 class Long(Int):
     BIT_SIZE = 64
     SIZE = BIT_SIZE // 8
+    STRUCT_FMT_I = Struct("<q")
+    STRUCT_FMT_U = Struct("<Q")
 
 
-class Int128(Int):
+class _BigInt(Int):
+    @classmethod
+    def read_bytes(cls, data: bytes, signed: bool = True) -> int:
+        return int.from_bytes(data[:cls.SIZE], "little", signed=signed)
+
+
+class Int128(_BigInt):
     BIT_SIZE = 128
     SIZE = BIT_SIZE // 8
+    STRUCT_FMT_I = STRUCT_FMT_U = None
 
 
-class Int256(Int):
+class Int256(_BigInt):
     BIT_SIZE = 256
     SIZE = BIT_SIZE // 8
+    STRUCT_FMT_I = STRUCT_FMT_U = None

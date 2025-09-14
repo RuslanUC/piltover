@@ -31,7 +31,7 @@ DESTINATION_PATH = Path("piltover/tl")
 
 SECTION_RE = re.compile(r"---(\w+)---")
 LAYER_RE = re.compile(r"//\sLAYER\s(\d+)")
-COMBINATOR_RE = re.compile(r"^([\w.]+)#([0-9a-f]+)\s(?:.*)=\s([\w<>.]+);$", re.MULTILINE)
+COMBINATOR_RE = re.compile(r"^([\w.]+)#([0-9a-f]+)\s.*=\s([\w<>.]+);$", re.MULTILINE)
 ARGS_RE = re.compile(r"[^{](\w+):([\w?!.<>#]+)")
 FLAGS_RE = re.compile(r"flags(\d?)\.(\d+)\?")
 FLAGS_RE_3 = re.compile(r"flags(\d?):#")
@@ -48,7 +48,6 @@ WARNING = """
 """.strip()
 
 # noinspection PyShadowingBuiltins
-open_ = open
 open = partial(open, encoding="utf-8")
 
 all_layers = set()
@@ -303,7 +302,6 @@ class Field:
         return self.full_type if "?" not in self.full_type else self.full_type.split("?", 1)[1]
 
 
-# noinspection PyShadowingBuiltins
 def start():
     shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
     shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
@@ -444,9 +442,10 @@ def start():
 
             if int_type_name and not is_vec:
                 serialize_body.append(f"result += {int_type_name[2:]}.write(self.{field.name})")
+                deserialize_body.append(f"{field.name} = {int_type_name[2:]}.read(stream)")
             else:
                 serialize_body.append(f"result += SerializationUtils.write(self.{field.name}{int_type_name})")
-            deserialize_body.append(f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name})")
+                deserialize_body.append(f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name})")
 
         imports = [
             f"from __future__ import annotations",

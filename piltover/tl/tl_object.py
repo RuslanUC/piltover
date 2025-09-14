@@ -13,9 +13,6 @@ class TLObject(ABC):
     __tl_id__: int
     __tl_name__: str
 
-    def __init__(self, **_) -> None:
-        ...
-
     @classmethod
     def tlid(cls) -> int:
         return cls.__tl_id__

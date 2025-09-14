@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING, Iterable
 from loguru import logger
 
 from piltover.cache import Cache
-from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetSessionInternalPush, ChannelSubscribe
+from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetSessionInternalPush, ChannelSubscribe, \
+    ObjectWithLazyFields, ObjectWithLayerRequirement
 
 if TYPE_CHECKING:
     from piltover.session_manager import Session
@@ -162,7 +163,10 @@ class BaseMessageBroker(ABC):
 
         for session in send_to:
             try:
-                await session.send(deepcopy(message.obj))
+                if isinstance(message.obj, (ObjectWithLazyFields, ObjectWithLayerRequirement)):
+                    await session.send(deepcopy(message.obj))
+                else:
+                    await session.send(message.obj)
             except Exception as e:
                 logger.opt(exception=e).error("Error occurred while sending message")
 
