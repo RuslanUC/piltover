@@ -4,9 +4,9 @@ from abc import abstractmethod, ABC
 from io import BytesIO
 from typing import Generic, TypeVar, Self
 
-from piltover.exceptions import Error
+import piltover.tl as tl
+from piltover.exceptions import Error, InvalidConstructorException
 from .primitives import Int
-from .serialization_utils import SerializationUtils
 
 
 class TLObject(ABC):
@@ -30,9 +30,15 @@ class TLObject(ABC):
 
     @classmethod
     def read(cls, stream: BytesIO, strict_type: bool = False) -> Self:
-        obj = SerializationUtils.read(stream, cls)
+        constructor = Int.read(stream, False)
+        if constructor not in tl.all.objects:
+            raise InvalidConstructorException(constructor, False, stream.read())
+
+        obj = tl.all.objects[constructor].deserialize(stream)
+
         if strict_type and not isinstance(obj, cls):
             raise Error(f"Expected object type {cls.__name__}, got {obj.__class__.__name__}")
+
         return obj
 
     def write(self) -> bytes:

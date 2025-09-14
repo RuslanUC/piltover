@@ -14,7 +14,7 @@ from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.exceptions import Error, ErrorRpc
-from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, SerializationUtils, TLObject
+from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, TLObject, String, LongVector
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatJoinedByRequest, MessageActionChatJoinedByLink, \
     MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage, MessageReactions, ReactionCount, \
@@ -31,8 +31,9 @@ async def _service_create_chat(message: Message, _: models.User) -> MessageActio
         return MessageActionChatCreate(title="", users=[])
 
     stream = BytesIO(message.extra_info)
-    title = SerializationUtils.read(stream, str)
-    user_ids = SerializationUtils.read(stream, list, Long)
+    title = String.read(stream)
+    # TODO: check if .tolist() can be safely removed
+    user_ids = LongVector.read(stream).tolist()
     return MessageActionChatCreate(title=title, users=user_ids)
 
 
@@ -41,7 +42,7 @@ async def _service_edit_chat_title(message: Message, _: models.User) -> MessageA
         return MessageActionChatEditTitle(title="")
 
     return MessageActionChatEditTitle(
-        title=SerializationUtils.read(BytesIO(message.extra_info), str),
+        title=String.read(BytesIO(message.extra_info)),
     )
 
 
@@ -61,7 +62,8 @@ async def _service_chat_add_user(message: Message, _: models.User) -> MessageAct
     if not message.extra_info:
         return MessageActionChatAddUser(users=[])
 
-    user_ids = SerializationUtils.read(BytesIO(message.extra_info), list, Long)
+    # TODO: check if .tolist() can be safely removed
+    user_ids = LongVector.read(BytesIO(message.extra_info)).tolist()
     return MessageActionChatAddUser(users=user_ids)
 
 

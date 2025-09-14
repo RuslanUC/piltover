@@ -39,6 +39,18 @@ internal.object_with_lazy_fields#d836c6b8 object:Object fields:Vector<string> = 
 internal.field_with_layer_requirement#d9594f1f field:string min_layer:int max_layer:int = internal.FieldWithLayerRequirement;
 internal.object_with_layer_requirement#7678a3 object:Object fields:Vector<internal.FieldWithLayerRequirement> = internal.ObjectWithLayerRequirement;
 
+// Vectors with concrete types
+
+internal.tagged_int_vector#f12bae38 vec:Vector<int> = internal.TaggedVector;
+internal.tagged_long_vector#d3264171 vec:Vector<long> = internal.TaggedVector;
+internal.tagged_int128_vector#ab8ac0d8 vec:Vector<Int128> = internal.TaggedVector;
+internal.tagged_int256_vector#625ff3a1 vec:Vector<Int256> = internal.TaggedVector;
+internal.tagged_float_vector#457a9f22 vec:Vector<double> = internal.TaggedVector;
+internal.tagged_bool_vector#cb98721a vec:Vector<Bool> = internal.TaggedVector;
+internal.tagged_bytes_vector#8d538c0f vec:Vector<bytes> = internal.TaggedVector;
+internal.tagged_string_vector#492bec2d vec:Vector<string> = internal.TaggedVector;
+internal.tagged_object_vector#b002bb63 vec:Vector<Object> = internal.TaggedVector;
+
 ---functions---
 
 // For my.telegram.org alternative page

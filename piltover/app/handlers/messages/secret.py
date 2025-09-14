@@ -11,8 +11,8 @@ from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, Sec
     FileAccess
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded, EncryptedFileEmpty, \
-    InputEncryptedFileEmpty, InputEncryptedFile, InputEncryptedFileUploaded, InputEncryptedFileBigUploaded, Vector, \
-    Long, InputEncryptedChat
+    InputEncryptedFileEmpty, InputEncryptedFile, InputEncryptedFileUploaded, InputEncryptedFileBigUploaded, \
+    Long, InputEncryptedChat, LongVector
 from piltover.tl.functions.messages import RequestEncryption, AcceptEncryption, DiscardEncryption, SendEncrypted, \
     SendEncryptedService, SendEncryptedFile, ReceivedQueue, SetEncryptedTyping, ReadEncryptedHistory
 from piltover.tl.types.messages import SentEncryptedMessage, SentEncryptedFile
@@ -229,7 +229,7 @@ async def received_queue(request: ReceivedQueue):
     ).values_list("message_random_id", flat=True)
     await SecretUpdate.filter(authorization=current_auth, qts__lte=request.max_qts).delete()
 
-    return Vector(random_ids, value_type=Long)
+    return LongVector(random_ids)
 
 
 @handler.on_request(SetEncryptedTyping)

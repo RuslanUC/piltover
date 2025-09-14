@@ -35,19 +35,23 @@ class Long(Int):
     STRUCT_FMT_U = Struct("<Q")
 
 
-class _BigInt(Int):
+class BigInt(Int):
+    BIT_SIZE = 0
+    SIZE = 0
+    STRUCT_FMT_I = STRUCT_FMT_U = None
+
     @classmethod
     def read_bytes(cls, data: bytes, signed: bool = True) -> int:
         return int.from_bytes(data[:cls.SIZE], "little", signed=signed)
 
 
-class Int128(_BigInt):
+class Int128(BigInt):
     BIT_SIZE = 128
     SIZE = BIT_SIZE // 8
     STRUCT_FMT_I = STRUCT_FMT_U = None
 
 
-class Int256(_BigInt):
+class Int256(BigInt):
     BIT_SIZE = 256
     SIZE = BIT_SIZE // 8
     STRUCT_FMT_I = STRUCT_FMT_U = None

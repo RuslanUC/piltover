@@ -302,6 +302,25 @@ class Field:
         return self.full_type if "?" not in self.full_type else self.full_type.split("?", 1)[1]
 
 
+def get_real_type_from_type_and_subtype(type_name: str, subtype_name: str | None) -> str:
+    if type_name in ("Int", "Long", "Int128", "Int256", "TLObject"):
+        return type_name
+    elif type_name == "bytes":
+        return "Bytes"
+    elif type_name == "str":
+        return "String"
+    elif type_name == "float":
+        return "Float"
+    elif type_name == "bool":
+        return "Bool"
+    elif type_name == "list":
+        if not subtype_name:
+            raise RuntimeError(f"Expected valid subtype name, got {subtype_name!r}")
+        return f"{get_real_type_from_type_and_subtype(subtype_name, '')}Vector"
+    else:
+        raise RuntimeError(f"Got unknown type: {type_name=!r}, {subtype_name=!r}")
+
+
 def start():
     shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
     shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
@@ -374,18 +393,9 @@ def start():
             tmp_ = field.type().split("Vector<")
             is_vec = len(tmp_) > 1
 
-            int_type = CORE_TYPES_D.get(field.type().lower(), None)
-            int_subtype = None
-            if is_vec and int_type is None:
-                int_subtype = CORE_TYPES_D.get(tmp_[1].lower().split(">")[0], None)
-
-            int_type_name = (int_subtype if int_subtype is not None else int_type) or ""
-            if int_type_name:
-                int_type_name = f", {int_type_name}"
-
             subtype_name = None
             if is_vec:
-                type_name = "list"
+                type_name_ = "list"
                 tmp_ = tmp_[1].split(">")[0]
                 if is_tl_object(tmp_):
                     subtype_name = "TLObject"
@@ -394,11 +404,11 @@ def start():
             else:
                 tmp_ = tmp_[0]
                 if is_tl_object(field.type()):
-                    type_name = "TLObject"
+                    type_name_ = "TLObject"
                 else:
-                    type_name = get_type_hint(tmp_, c.layer)
+                    type_name_ = get_type_hint(tmp_, c.layer)
 
-            subtype_name = f", {subtype_name}" if subtype_name is not None else ""
+            type_name = get_real_type_from_type_and_subtype(type_name_, subtype_name)
 
             if field.is_flag:
                 flag_var = f"flags{field.flag_num}"
@@ -408,9 +418,9 @@ def start():
                         continue
                     empty_condition = "" if ffield.type().lower().startswith("vector") or not ffield.write else " is not None"
                     serialize_body.append(f"if self.{ffield.name}{empty_condition}: {flag_var} |= (1 << {ffield.flag_bit})")
-                serialize_body.append(f"result += SerializationUtils.write({flag_var}, Int)")
+                serialize_body.append(f"result += Int.write({flag_var})")
 
-                deserialize_body.append(f"{flag_var} = SerializationUtils.read(stream, Int)")
+                deserialize_body.append(f"{flag_var} = Int.read(stream)")
                 continue
 
             is_vec = field.type().lower().startswith("vector")
@@ -425,12 +435,9 @@ def start():
                         empty_condition = " is not None"
 
                     serialize_body.append(f"if self.{field.name}{empty_condition}:")
-                    if int_type_name and not is_vec:
-                        serialize_body.append(f"    result += {int_type_name[2:]}.write(self.{field.name})")
-                    else:
-                        serialize_body.append(f"    result += SerializationUtils.write(self.{field.name})")
+                    serialize_body.append(f"    result += {type_name}.write(self.{field.name})")
                     deserialize_body.append(
-                        f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name}) "
+                        f"{field.name} = {type_name}.read(stream) "
                         f"if (flags{field.flag_num} & (1 << {field.flag_bit})) == (1 << {field.flag_bit}) else None"
                     )
                 elif field.type() == "true":
@@ -440,17 +447,13 @@ def start():
 
                 continue
 
-            if int_type_name and not is_vec:
-                serialize_body.append(f"result += {int_type_name[2:]}.write(self.{field.name})")
-                deserialize_body.append(f"{field.name} = {int_type_name[2:]}.read(stream)")
-            else:
-                serialize_body.append(f"result += SerializationUtils.write(self.{field.name}{int_type_name})")
-                deserialize_body.append(f"{field.name} = SerializationUtils.read(stream, {type_name}{subtype_name})")
+            serialize_body.append(f"result += {type_name}.write(self.{field.name})")
+            deserialize_body.append(f"{field.name} = {type_name}.read(stream)")
 
         imports = [
             f"from __future__ import annotations",
             f"from {third_dot}..primitives import *",
-            f"from {third_dot}.. import types, SerializationUtils",
+            f"from {third_dot}.. import types",
             f"from {third_dot}..tl_object import TLObject",
             f"",
         ]

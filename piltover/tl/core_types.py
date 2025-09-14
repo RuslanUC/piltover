@@ -4,7 +4,8 @@ from gzip import decompress
 from io import BytesIO
 from typing import TypeVar, Generic
 
-from . import TLObject, Int, Long, SerializationUtils
+from . import TLObject, Int, Long, Bytes, VECTOR
+from .serialization_utils import SerializationUtils
 
 T = TypeVar("T", bound=TLObject)
 
@@ -25,12 +26,12 @@ class Message(TLObject, Generic[T]):
         msg_id = Long.read(stream)
         seq_no = Int.read(stream)
         length = Int.read(stream)
-        body = SerializationUtils.read(BytesIO(stream.read(length)), TLObject)
+        body = TLObject.read(BytesIO(stream.read(length)))
 
         return Message(message_id=msg_id, seq_no=seq_no, obj=body)
 
     def serialize(self) -> bytes:
-        body = SerializationUtils.write(self.obj)
+        body = self.obj.write()
         return Long.write(self.message_id) + Int.write(self.seq_no) + Int.write(len(body)) + body
 
     @classmethod
@@ -52,7 +53,7 @@ class MsgContainer(TLObject):
 
     @classmethod
     def deserialize(cls, stream) -> TLObject:
-        count = SerializationUtils.read(stream, Int)
+        count = Int.read(stream)
         result = []
 
         for _ in range(count):
@@ -79,13 +80,21 @@ class RpcResult(TLObject):
 
     @classmethod
     def deserialize(cls, stream) -> TLObject:
-        req_msg_id = SerializationUtils.read(stream, Long)
-        result = SerializationUtils.read(stream, TLObject)
+        req_msg_id = Long.read(stream)
+        result = TLObject.read(stream)
 
         return RpcResult(req_msg_id=req_msg_id, result=result)
 
     def serialize(self) -> bytes:
-        return SerializationUtils.write(self.req_msg_id, Long) + SerializationUtils.write(self.result)
+        result = Long.write(self.req_msg_id)
+        if isinstance(self.result, list):
+            result += VECTOR
+            result += Int.write(len(self.result))
+            for element in self.result:
+                result += SerializationUtils.write(element)
+        else:
+            result += SerializationUtils.write(self.result)
+        return result
 
 
 class GzipPacked(TLObject):
@@ -99,10 +108,10 @@ class GzipPacked(TLObject):
 
     @classmethod
     def deserialize(cls, stream) -> TLObject:
-        packed_data = SerializationUtils.read(stream, bytes)
+        packed_data = Bytes.read(stream)
         decompressed_stream = BytesIO(decompress(packed_data))
 
-        return SerializationUtils.read(decompressed_stream, TLObject)
+        return TLObject.read(decompressed_stream, )
 
     def serialize(self) -> bytes:
-        return SerializationUtils.write(self.packed_data)
+        return Bytes.write(self.packed_data)

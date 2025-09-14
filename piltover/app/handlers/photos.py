@@ -3,7 +3,7 @@ from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputPhoto, Long, Vector, InputPhotoEmpty, PhotoEmpty
+from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
 from piltover.worker import MessageHandler
@@ -52,7 +52,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
 
 @handler.on_request(DeletePhotos)
 async def delete_photos(request: DeletePhotos, user: User):
-    deleted = Vector(value_type=Long)
+    deleted = LongVector()
 
     for photo in request.id:
         if not isinstance(photo, InputPhoto):

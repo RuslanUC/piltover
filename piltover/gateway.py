@@ -31,13 +31,12 @@ from piltover.auth_data import AuthData, GenAuthData
 from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, ServerSalt
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
-from piltover.tl import TLObject, SerializationUtils, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, \
-    RpcError, Vector
+from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
 from piltover.tl.functions.internal import CallRpc
-from piltover.tl.types.internal import RpcResponse
+from piltover.tl.types.internal import RpcResponse, TaggedLongVector
 
 
 class Gateway:
@@ -251,17 +250,17 @@ class Client:
             user_id = auth.user.id if auth is not None else None
 
             if auth is not None and (time() - self.channels_loaded_at) > 60 * 5:
-                channel_ids: Vector[Long] | None = await Cache.obj.get(f"channels:{auth.user.id}")
+                channel_ids: TaggedLongVector | None = await Cache.obj.get(f"channels:{auth.user.id}")
                 if channel_ids is None:
-                    channel_ids: list[Long] = [
-                        Long(channel_id)
+                    channel_ids = TaggedLongVector(vec=[
+                        channel_id
                         async for channel_id in ChatParticipant.filter(
                             channel_id__not_isnull=True, user=auth.user
                         ).values_list("channel_id", flat=True)
-                    ]
+                    ])
                     await Cache.obj.set(f"channels:{auth.user.id}", channel_ids, ttl=60 * 10)
 
-                channel_ids: list[int] = list(map(int, channel_ids))
+                channel_ids: list[int] = channel_ids.vec
                 old_channels = set(session.channel_ids)
                 new_channels = set(channel_ids)
                 channels_to_delete = old_channels - new_channels
@@ -415,7 +414,7 @@ class Client:
             logger.debug(f"Received from {self.session.session_id if self.session else 0}: {message}")
             asyncio.create_task(self.handle_encrypted_message(message, session))
         elif isinstance(packet, UnencryptedMessagePacket):
-            decoded = SerializationUtils.read(BytesIO(packet.message_data), TLObject)
+            decoded = TLObject.read(BytesIO(packet.message_data))
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 

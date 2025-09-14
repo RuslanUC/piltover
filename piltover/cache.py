@@ -4,35 +4,25 @@ from typing import Literal
 from aiocache import BaseCache
 from aiocache.serializers import BaseSerializer
 
-from piltover.tl import TLObject, SerializationUtils, Int, Long, Int128, Int256
+from piltover.tl import TLObject, Int, Long, Int128, Int256
+from piltover.tl.serialization_utils import SerializationUtils
 
 
 class TLSerializer(BaseSerializer):
-    _TYPES = [TLObject, Int, Long, Int128, Int256, float, bool, bytes, str, list]
+    _TYPES = [TLObject, Int, Long, Int128, Int256, float, bool, bytes, str]
     _TYPES_TO_INT = {typ: idx for idx, typ in enumerate(_TYPES)}
 
-    def dumps(self, value: TLObject | int | str | bytes | bool | list | float | None) -> bytes:
+    def dumps(self, value: TLObject | int | str | bytes | bool | float | None) -> bytes:
         ser_type = bytes([0 if isinstance(value, TLObject) else self._TYPES_TO_INT[type(value)]])
-        vec_type = b""
-        if isinstance(value, list):
-            vec_type = bytes([0 if isinstance(value, TLObject) or not value else self._TYPES_TO_INT[type(value[0])]])
+        return ser_type + SerializationUtils.write(value)
 
-        return ser_type + vec_type + SerializationUtils.write(value)
-
-    def loads(self, value: bytes | None) -> TLObject | int | str | bytes | bool | list | float | None:
+    def loads(self, value: bytes | None) -> TLObject | int | str | bytes | bool | float | None:
         if value is None or len(value) < 5 or value[0] < 0 or value[0] > len(self._TYPES):
             return None
 
         stream = BytesIO(value)
-
         typ = self._TYPES[stream.read(1)[0]]
-        subtyp = None
-        if typ is list:
-            if value[1] < 0 or value[1] > len(self._TYPES):
-                return None
-            subtyp = self._TYPES[stream.read(1)[0]]
-
-        return SerializationUtils.read(stream, typ, subtyp)
+        return SerializationUtils.read(stream, typ)
 
 
 class Cache:
