@@ -4,6 +4,7 @@ import pytest
 from pyrogram.raw.functions.messages import GetAvailableReactions
 from pyrogram.raw.types.messages import AvailableReactions, AvailableReactionsNotModified
 
+from piltover.app.app import data as data_dir
 from tests.conftest import TestClient
 
 
@@ -18,6 +19,14 @@ async def test_get_available_reactions_empty() -> None:
         assert isinstance(reactions, AvailableReactionsNotModified)
 
 
+reactions_dir = data_dir / "reactions"
+reactions_files_dir = reactions_dir / "files"
+
+
+@pytest.mark.skipif(
+    not reactions_dir.exists() or not reactions_files_dir.exists(),
+    reason="No reactions files available"
+)
 @pytest.mark.create_reactions
 @pytest.mark.asyncio
 async def test_get_available_reactions() -> None:
