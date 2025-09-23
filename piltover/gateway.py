@@ -61,6 +61,7 @@ class Gateway:
         self.private_key = load_private_key(self.server_keys.private_key)
 
         self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
+        self.fingerprint_signed: int = get_public_key_fingerprint(self.server_keys.public_key, True)
 
         self.clients: dict[str, Client] = {}
 

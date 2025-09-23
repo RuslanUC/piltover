@@ -43,7 +43,7 @@ async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
         nonce=req_pq_multi.nonce,
         server_nonce=client.auth_data.server_nonce,
         pq=pq.to_bytes(64 // 8, "big"),
-        server_public_key_fingerprints=[client.server.fingerprint]
+        server_public_key_fingerprints=[client.server.fingerprint_signed]
     ))
 
 
