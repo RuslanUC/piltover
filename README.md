@@ -23,6 +23,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
 - [ ] Mentions read state
 - [ ] Outbox read date (messages.getOutboxReadDate)
+- [ ] Make `access_hash`es completely offline (e.g. `hmac(current_user_id + current_session_id + target_user_id)`)
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
