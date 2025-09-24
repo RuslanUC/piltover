@@ -93,7 +93,9 @@ def layer_suffix(type_: str, layer: int) -> str:
 
 
 # noinspection PyShadowingBuiltins, PyShadowingNames
-def get_type_hint(type: str, layer: int, int_is_int: bool = False) -> str:
+def get_type_hint(
+        type: str, layer: int, int_is_int: bool = False, dont_use_base_when_only_one_constructor: bool = False,
+) -> str:
     is_flag = FLAGS_RE.match(type)
     is_core = False
 
@@ -127,7 +129,12 @@ def get_type_hint(type: str, layer: int, int_is_int: bool = False) -> str:
         return f"{type} | None" if is_flag and type != "bool" else type
     else:
         base_type = f"{type}{layer_suffix(type, layer)}"
-        type = f"base.{base_type}"
+        if dont_use_base_when_only_one_constructor \
+                and base_type in types_to_constructors \
+                and len(types_to_constructors[base_type]) == 1:
+            type = f"types.{types_to_constructors[base_type][0]}"
+        else:
+            type = f"base.{base_type}"
 
         return f"{type} | None" if is_flag else type
 
@@ -194,9 +201,8 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
             for i, item in enumerate(args):
                 if item[0] == "self":
                     args[i] = ("is_self", item[1])
-                elif item[0] == "from":
-                    args[i] = ("from_", item[1])
-                elif item[0] in ("bytes", "str", "type"):
+                # TODO: add "hash"?
+                elif item[0] in ("from", "bytes", "str", "type"):
                     args[i] = (f"{item[0]}_", item[1])
 
             assert section is not None
@@ -374,7 +380,7 @@ def start():
         slots.append("")  # For trailing comma
 
         init_args = [
-            f"{field.name}: {get_type_hint(field.full_type, c.layer, True)}"
+            f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True)}"
             + ("" if not field.opt() else (" = False" if field.type() in ("true", "Bool") else " = None"))
             for field in sorted(fields, key=lambda fd: (fd.opt(), fd.position))
             if not field.is_flag
@@ -409,6 +415,8 @@ def start():
                     type_name_ = get_type_hint(tmp_, c.layer)
 
             type_name = get_real_type_from_type_and_subtype(type_name_, subtype_name)
+            if type_name == "TLObject" and len(types_to_constructors[field.type()]) == 1:
+                type_name = f"types.{types_to_constructors[field.type()][0]}"
 
             if field.is_flag:
                 flag_var = f"flags{field.flag_num}"
@@ -477,7 +485,7 @@ def start():
             if not c.typespace and c.type == "X":
                 result_type = "TLObject"
             else:
-                result_type = get_type_hint(f"{c.typespace}.{c.type}" if c.typespace else c.type, -1)
+                result_type = get_type_hint(f"{c.typespace}.{c.type}" if c.typespace else c.type, -1, False, True)
             base_cls = f"TLRequest[{result_type}]"
 
         result = [

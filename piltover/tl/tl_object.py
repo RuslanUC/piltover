@@ -31,6 +31,12 @@ class TLObject(ABC):
     @classmethod
     def read(cls, stream: BytesIO, strict_type: bool = False) -> Self:
         constructor = Int.read(stream, False)
+
+        if cls is not TLObject:
+            if constructor != cls.__tl_id__:
+                raise InvalidConstructorException(constructor, True, stream.read())
+            return cls.deserialize(stream)
+
         if constructor not in tl.all.objects:
             raise InvalidConstructorException(constructor, False, stream.read())
 
