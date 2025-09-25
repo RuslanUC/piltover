@@ -1096,20 +1096,14 @@ async def encryption_update(user: User, chat: EncryptedChat) -> None:
 
 async def send_encrypted_update(update: SecretUpdate) -> None:
     await SessionManager.send(
-        UpdatesWithDefaults(
-            updates=[await update.to_tl()],
-        ),
+        UpdatesWithDefaults(updates=[await update.to_tl()]),
         auth_id=update.authorization_id,
     )
 
 
 async def send_encrypted_typing(chat_id: int, auth_id: int) -> None:
     await SessionManager.send(
-        UpdatesWithDefaults(
-            updates=[
-                UpdateEncryptedChatTyping(chat_id=chat_id)
-            ],
-        ),
+        UpdatesWithDefaults(updates=[UpdateEncryptedChatTyping(chat_id=chat_id)]),
         auth_id=auth_id,
     )
 

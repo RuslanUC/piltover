@@ -287,10 +287,18 @@ class Client:
             user_id=user_id,
         ).write().hex())
 
-    async def handle_unencrypted_message(self, obj: TLObject):
+    async def handle_unencrypted_message(self, obj: TLObject) -> None:
         # TODO: move it to worker (and add db models to save auth key generation state)
-        if obj.tlid() in KEYGEN_HANDLERS:
+        if obj.tlid() not in KEYGEN_HANDLERS:
+            return
+
+        try:
             await KEYGEN_HANDLERS[obj.tlid()](self, obj)
+        except Disconnection as d:
+            logger.opt(exception=d).warning(f"Requested disconnection while processing {obj.tlname()}")
+            raise
+        except Exception as e:
+            logger.opt(exception=e).warning(f"Error while processing {obj.tlname()}")
 
         #if not isinstance(obj, (ReqPqMulti, ReqPq, ReqDHParams, SetClientDHParams, MsgsAck)):
         #    logger.debug(f"Received unexpected unencrypted message: {obj}")

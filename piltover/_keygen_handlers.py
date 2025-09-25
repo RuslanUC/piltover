@@ -14,7 +14,7 @@ from piltover.db.models import TempAuthKey, AuthKey
 from piltover.exceptions import Disconnection
 from piltover.tl import MsgsAck, ReqPqMulti, ReqPq, ReqDHParams, SetClientDHParams, ResPQ, PQInnerData, PQInnerDataDc, \
     PQInnerDataTemp, PQInnerDataTempDc, ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, DhGenOk, Int256, Long, \
-    Int128
+    Int128, TLObject
 from piltover.utils import generate_large_prime, gen_safe_prime
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 
@@ -79,14 +79,14 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
     # TODO: assert key_aes_encrypted < public.n, "key_aes_encrypted greater than RSA modulus, aborting..."
 
     if old:
-        p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted[20:]))
+        p_q_inner_data = TLObject.read(BytesIO(key_aes_encrypted[20:]))
 
         digest = key_aes_encrypted[:20]
         if hashlib.sha1(p_q_inner_data.write()).digest() != digest:
             logger.debug("sha1 of data doesn't match")
             raise Disconnection(404)
     else:
-        p_q_inner_data = PQInnerData.read(BytesIO(key_aes_encrypted))
+        p_q_inner_data = TLObject.read(BytesIO(key_aes_encrypted))
 
     logger.debug(f"p_q_inner_data: {p_q_inner_data}")
 
