@@ -1,5 +1,7 @@
 from datetime import datetime
+from uuid import UUID
 
+from loguru import logger
 from pytz import UTC
 from tortoise.expressions import Q
 
@@ -47,7 +49,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
     reaction = None
     if request.reaction:
         if isinstance(request.reaction[0], ReactionEmoji):
-            reaction = await Reaction.get_or_none(reaction=request.reaction[0].emoticon)
+            reaction = await Reaction.get_or_none(reaction_id=Reaction.q_from_reaction(request.reaction[0].emoticon))
         elif isinstance(request.reaction[0], ReactionCustomEmoji):
             raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
@@ -82,7 +84,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
     messages: dict[Peer, Message] = {}
     for opp_message in await Message.filter(internal_id=message.internal_id).select_related("peer", "peer__owner"):
         messages[opp_message.peer] = opp_message
-        reactions_to_create = MessageReaction(user=user, message=opp_message, reaction=reaction)
+        reactions_to_create.append(MessageReaction(user=user, message=opp_message, reaction=reaction))
 
     await MessageReaction.bulk_create(reactions_to_create)
 
@@ -105,7 +107,7 @@ async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
     if not isinstance(request.reaction, ReactionEmoji):
         raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
-    reaction = await Reaction.get_or_none(reaction=request.reaction.emoticon)
+    reaction = await Reaction.get_or_none(reaction_id=Reaction.q_from_reaction(request.reaction.emoticon))
     if reaction is None:
         raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 

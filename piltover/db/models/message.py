@@ -434,7 +434,7 @@ class Message(Model):
             can_see_list=False,
             results=[
                 ReactionCount(
-                    chosen_order=1 if reaction_id == user_reaction.reaction_id else None,
+                    chosen_order=1 if user_reaction is not None and reaction_id == user_reaction.reaction_id else None,
                     reaction=ReactionEmoji(emoticon=reaction_emoji),
                     count=msg_count,
                 )

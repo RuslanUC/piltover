@@ -190,7 +190,7 @@ async def _create_system_data(system_users: bool = True, countries_list: bool = 
             with open(reactions_dir / reaction_file) as f:
                 reaction_info = json.load(f)
 
-            defaults = {"title": reaction_info["title"]}
+            defaults = {"title": reaction_info["title"], "reaction": reaction_info["reaction"]}
 
             for doc_name in (
                 "static_icon", "appear_animation", "select_animation", "activate_animation", "effect_animation",
@@ -200,11 +200,13 @@ async def _create_system_data(system_users: bool = True, countries_list: bool = 
                     continue
                 defaults[doc_name] = await _upload_reaction_doc(reaction_index, reaction_info[doc_name])
 
-            reaction, created = await Reaction.get_or_create(reaction=reaction_info["reaction"], defaults=defaults)
+            reaction, created = await Reaction.get_or_create(
+                reaction_id=Reaction.reaction_to_uuid(reaction_info["reaction"]), defaults=defaults,
+            )
             if created:
-                logger.info(f"Created reaction \"{reaction.title}\" (\"{reaction.reaction}\")")
+                logger.info(f"Created reaction \"{reaction.title}\" (\"{reaction.reaction}\" / \"{reaction_info['reaction']}\")")
             else:
-                logger.info(f"Updating reaction \"{reaction.title}\" (\"{reaction.reaction}\")")
+                logger.info(f"Updating reaction \"{reaction.title}\" (\"{reaction.reaction}\" / \"{reaction_info['reaction']}\")")
                 await reaction.update_from_dict(defaults).save()
 
 
