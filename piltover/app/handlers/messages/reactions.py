@@ -1,7 +1,5 @@
 from datetime import datetime
-from uuid import UUID
 
-from loguru import logger
 from pytz import UTC
 from tortoise.expressions import Q
 

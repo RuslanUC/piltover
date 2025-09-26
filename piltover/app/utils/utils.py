@@ -5,15 +5,15 @@ from asyncio import get_event_loop, gather
 from concurrent.futures.thread import ThreadPoolExecutor
 from hashlib import md5
 from io import BytesIO
+from pathlib import Path
 from typing import Iterable, Literal
 
 from PIL.Image import Image, open as img_open
 from loguru import logger
 
-from piltover.app import files_dir
 from piltover.db.models import UserPassword, SrpSession, AuthKey, TempAuthKey
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputCheckPasswordEmpty, InputCheckPasswordSRP, MessageEntityHashtag, MessageEntityMention, \
+from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEntityMention, \
     MessageEntityUnknown, MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
     MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
     MessageEntityPhone, MessageEntityCashtag, MessageEntityUnderline, MessageEntityStrike, MessageEntitySpoiler, \
@@ -78,7 +78,7 @@ TELEGRAM_QUANTIZATION_TABLES = {
 image_executor = ThreadPoolExecutor(thread_name_prefix="ImageResizeWorker")
 
 
-def resize_image_internal(file_id: str, width: int) -> tuple[int, int]:
+def resize_image_internal(files_dir: Path, file_id: str, width: int) -> tuple[int, int]:
     img = img_open(files_dir / f"{file_id}")
     img.load()
 
@@ -92,9 +92,12 @@ def resize_image_internal(file_id: str, width: int) -> tuple[int, int]:
         return f_out.tell(), height
 
 
-async def resize_photo(file_id: str, sizes: str = "abc") -> list[dict[str, int | str]]:
+async def resize_photo(files_dir: Path, file_id: str, sizes: str = "abc") -> list[dict[str, int | str]]:
     tasks = [
-        get_event_loop().run_in_executor(image_executor, resize_image_internal, file_id, PHOTOSIZE_TO_INT[size])
+        get_event_loop().run_in_executor(
+            image_executor, resize_image_internal,
+            files_dir, file_id, PHOTOSIZE_TO_INT[size]
+        )
         for size in sizes
     ]
     res = await gather(*tasks)
@@ -105,7 +108,7 @@ async def resize_photo(file_id: str, sizes: str = "abc") -> list[dict[str, int |
     ]
 
 
-def _get_image_dims(file_id: str) -> tuple[int, int] | None:
+def _get_image_dims(files_dir: Path, file_id: str) -> tuple[int, int] | None:
     try:
         img = img_open(files_dir / f"{file_id}")
         img.load()
@@ -116,11 +119,14 @@ def _get_image_dims(file_id: str) -> tuple[int, int] | None:
     return img.size
 
 
-async def get_image_dims(file_id: str) -> tuple[int, int] | None:
-    return await get_event_loop().run_in_executor(image_executor, _get_image_dims, file_id)
+async def get_image_dims(files_dir: Path, file_id: str) -> tuple[int, int] | None:
+    return await get_event_loop().run_in_executor(
+        image_executor, _get_image_dims,
+        files_dir, file_id,
+    )
 
 
-async def generate_stripped(file_id: str, size: int = 8) -> bytes:
+async def generate_stripped(files_dir: Path, file_id: str, size: int = 8) -> bytes:
     def _gen(im: Image) -> bytes:
         img_file = BytesIO()
 

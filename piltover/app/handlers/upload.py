@@ -4,8 +4,8 @@ from uuid import UUID
 import aiofiles
 from tortoise.expressions import Q
 
-from piltover.app import files_dir
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType, FileType
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer, Stickerset
 from piltover.exceptions import ErrorRpc
@@ -53,7 +53,10 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
 
     # TODO: upload to s3 or something similar
-    async with aiofiles.open(files_dir / "parts" / f"{part.physical_id}_{request.file_part}", "wb") as f:
+    files_dir = request_ctx.get().worker.data_dir / "files"
+    parts_dir = files_dir / "parts"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    async with aiofiles.open(parts_dir / f"{part.physical_id}_{request.file_part}", "wb") as f:
         await f.write(request.bytes_)
 
     return True
@@ -69,6 +72,7 @@ async def read_file_content(file: File, offset: int, limit: int, name: str | Non
     # TODO: download from s3 or something similar
 
     name = name or str(file.physical_id)
+    files_dir = request_ctx.get().worker.data_dir / "files"
     async with aiofiles.open(files_dir / name, "rb") as f:
         await f.seek(offset)
         return await f.read(limit)

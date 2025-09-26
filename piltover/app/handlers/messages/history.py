@@ -91,7 +91,7 @@ async def get_messages_query_internal(
         query &= filter_query
 
     if after_reaction_id is not None:
-        query += Q(messagereactions__id__gt=after_reaction_id, author__id__not=user_id)
+        query &= Q(messagereactions__id__gt=after_reaction_id, author__id__not=user_id)
 
     limit = max(min(100, limit), 1)
     select_related = "author", "peer", "peer__user"

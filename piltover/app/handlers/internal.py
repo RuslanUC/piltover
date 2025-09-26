@@ -3,6 +3,7 @@ from time import time
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
@@ -12,7 +13,6 @@ from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, App
     PublicKey
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
-from piltover.worker import Worker
 
 handler = MessageHandler("internal")
 
@@ -142,10 +142,11 @@ async def edit_user_app(request: EditUserApp, user: User) -> bool:
 
 
 @handler.on_request(GetAvailableServers)
-async def get_available_servers(worker: Worker, user: User) -> AvailableServers:
+async def get_available_servers(user: User) -> AvailableServers:
     if user.id != 777000:
         raise InvalidConstructorException(GetAvailableServers.tlid())
 
+    worker = request_ctx.get().worker
     return AvailableServers(
         servers=[
             AvailableServer(

@@ -16,7 +16,6 @@ from loguru import logger
 from tortoise import Tortoise, connections
 from tortoise.expressions import Q
 
-from piltover.app import root_dir, files_dir
 from piltover.app.handlers import register_handlers
 from piltover.app_config import AppConfig
 from piltover.cache import Cache
@@ -27,26 +26,35 @@ from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 if TYPE_CHECKING:
     from piltover.db.models import File
 
-data = root_dir / "data"
-data.mkdir(parents=True, exist_ok=True)
-
-secrets = data / "secrets"
-secrets.mkdir(parents=True, exist_ok=True)
-
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
 
 
 class ArgsNamespace(SimpleNamespace):
+    data_dir: Path
     create_system_user: bool
     create_auth_countries: bool
+    auth_countries_file: Path | None
     create_reactions: bool
-    privkey_file: Path
-    pubkey_file: Path
+    reactions_dir: Path | None
+    privkey_file: Path | None
+    pubkey_file: Path | None
     rabbitmq_address: str | None
     redis_address: str | None
     cache_backend: Literal["memory", "redis", "memcached"]
     cache_endpoint: str | None
     cache_port: int | None
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+
+        if self.privkey_file is None:
+            self.privkey_file = self.data_dir / "secrets" / "privkey.asc"
+        if self.pubkey_file is None:
+            self.pubkey_file = self.data_dir / "secrets" / "pubkey.asc"
+        if self.auth_countries_file is None:
+            self.auth_countries_file = self.data_dir / "auth_countries_list.json"
+        if self.reactions_dir is None:
+            self.reactions_dir = self.data_dir / "reactions"
 
 
 class MigrateNoDowngrade(Migrate):
@@ -55,7 +63,7 @@ class MigrateNoDowngrade(Migrate):
         if not upgrade:
             return
 
-        return super(MigrateNoDowngrade, cls).diff_models(old_models, new_models, True)
+        return super(MigrateNoDowngrade, cls).diff_models(old_models, new_models, True, no_input)
 
 
 async def _upload_reaction_doc(reaction: int, doc: dict) -> File:
@@ -74,7 +82,7 @@ async def _upload_reaction_doc(reaction: int, doc: dict) -> File:
     }
 
     ext = doc["mime_type"].split("/")[-1]
-    reactions_files = data / "reactions" / "files"
+    reactions_files = args.reactions_dir / "files"
 
     photo_path = None
     for thumb in doc["thumbs"]:
@@ -100,6 +108,8 @@ async def _upload_reaction_doc(reaction: int, doc: dict) -> File:
         for attr in doc["attributes"]
     ])
     await file.save()
+
+    files_dir = args.data_dir / "files"
 
     with open(reactions_files / f"{doc['id']}-{reaction}.{ext}", "rb") as f_in:
         with open(files_dir / f"{file.physical_id}", "wb") as f_out:
@@ -148,14 +158,13 @@ async def _create_system_data(system_users: bool = True, countries_list: bool = 
         await Username.filter(Q(user=test_bot) | Q(username="test_bot")).delete()
         await Username.create(user=test_bot, username="test_bot")
 
-    auth_countries_list_file = data / "auth_countries_list.json"
-    if countries_list and auth_countries_list_file.exists():
+    if countries_list and args.auth_countries_file.exists():
         logger.info("Creating auth countries...")
 
         import json
         from piltover.db.models import AuthCountry, AuthCountryCode
 
-        with open(auth_countries_list_file) as f:
+        with open(args.auth_countries_file) as f:
             countries = json.load(f)
 
         for country in countries:
@@ -169,7 +178,7 @@ async def _create_system_data(system_users: bool = True, countries_list: bool = 
                     "patterns": code["patterns"],
                 })
 
-    reactions_dir = data / "reactions"
+    reactions_dir = args.reactions_dir
     reactions_files_dir = reactions_dir / "files"
     if reactions and reactions_dir.exists() and reactions_files_dir.exists():
         from os import listdir
@@ -211,7 +220,7 @@ async def _create_system_data(system_users: bool = True, countries_list: bool = 
 
 
 async def migrate():
-    migrations_dir = (data / "migrations").absolute()
+    migrations_dir = (args.data_dir / "migrations").absolute()
 
     command = Command({
         "connections": {"default": DB_CONNECTION_STRING},
@@ -230,15 +239,17 @@ async def migrate():
 
 class PiltoverApp:
     def __init__(
-            self, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int = 4430,
+            self, data_dir: Path, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int = 4430,
             rabbitmq_address: str | None = None, redis_address: str | None = None,
     ):
         self._host = host
         self._port = port
 
-        privkey = privkey if isinstance(privkey, Path) else Path(privkey)
-        pubkey = pubkey if isinstance(pubkey, Path) else Path(pubkey)
+        privkey = Path(privkey)
+        pubkey = Path(pubkey)
         if not (pubkey.exists() and privkey.exists()):
+            pubkey.parent.mkdir(parents=True, exist_ok=True)
+            privkey.parent.mkdir(parents=True, exist_ok=True)
             with privkey.open("w+") as priv, pubkey.open("w+") as pub:
                 keys = gen_keys()
                 priv.write(keys.private_key)
@@ -248,6 +259,7 @@ class PiltoverApp:
         self._public_key = pubkey.read_text()
 
         self._gateway = Gateway(
+            data_dir=data_dir,
             host=host,
             port=port,
             server_keys=Keys(
@@ -312,15 +324,30 @@ class PiltoverApp:
 # TODO: add host and port to arguments
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--data-dir", type=Path,
+                        help="Path to data directory, where all files, server keys and other server data are stored.",
+                        default=Path("./data"))
     parser.add_argument("--create-system-user", action="store_true", help="Create system user with id 777000")
     parser.add_argument("--create-auth-countries", action="store_true", help="Insert auth countries to database")
+    parser.add_argument("--auth-countries-file", type=Path, default=None, help=(
+        "Path to json file with auth countries (for --create-auth-countries option). "
+        "By default, <data-dir>/auth_countries_list.json will be used."
+    ))
     parser.add_argument("--create-reactions", action="store_true", help="Insert reactions to database")
-    parser.add_argument("--privkey-file", type=Path,
-                        help="Path to private key file (will be created if does not exist)",
-                        default=secrets / "privkey.asc")
-    parser.add_argument("--pubkey-file", type=Path,
-                        help="Path to public key file (will be created if does not exist)",
-                        default=secrets / "pubkey.asc")
+    parser.add_argument("--reactions-dir", type=Path, default=None, help=(
+        "Path to directory containing reactions files (for --create-reactions option). "
+        "By default, <data-dir>/reactions will be used."
+    ))
+    parser.add_argument("--privkey-file", type=Path, default=None, help=(
+        "Path to private key file. "
+        "By default, <data-dir>/secrets/privkey.asc will be used."
+        "Will be created if does not exist."
+    ))
+    parser.add_argument("--pubkey-file", type=Path, default=None, help=(
+        "Path to public key file. "
+        "By default, <data-dir>/secrets/pubkey.asc will be used."
+        "Will be created if does not exist."
+    ))
     parser.add_argument("--rabbitmq-address", type=str, required=False,
                         help="Address of rabbitmq server in \"amqp://user:password@host:port\" format",
                         default=None)
@@ -341,9 +368,12 @@ else:
     args = ArgsNamespace(
         create_system_user=True,
         create_auth_countries=True,
+        auth_countries_file=Path("./data/auth_countries_list.json"),
         create_reactions=True,
-        privkey_file=secrets / "privkey.asc",
-        pubkey_file=secrets / "pubkey.asc",
+        reactions_dir=Path("./data/reactions"),
+        data_dir=Path("./data") / "testing",
+        privkey_file=None,
+        pubkey_file=None,
         rabbitmq_address=None,
         redis_address=None,
         cache_backend="memory",
@@ -354,6 +384,7 @@ else:
 
 Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)
 app = PiltoverApp(
+    data_dir=args.data_dir,
     privkey=args.privkey_file,
     pubkey=args.pubkey_file,
     rabbitmq_address=args.rabbitmq_address,

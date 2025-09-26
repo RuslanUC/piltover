@@ -3,10 +3,10 @@ from typing import cast
 
 from tortoise.expressions import Q, Subquery
 
+import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
 from piltover.app.handlers.messages.history import format_messages_internal
 from piltover.app.handlers.messages.sending import send_message_internal
-import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import validate_username
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \

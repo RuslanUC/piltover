@@ -7,34 +7,37 @@ from typing import Literal
 from taskiq import TaskiqEvents, AsyncBroker
 from tortoise import Tortoise
 
-from piltover.app import root_dir
 from piltover.app.handlers import register_handlers
 from piltover.cache import Cache
 from piltover.utils import gen_keys, Keys
 from piltover.worker import Worker
 
-data = root_dir / "data"
-data.mkdir(parents=True, exist_ok=True)
-
-secrets = data / "secrets"
-secrets.mkdir(parents=True, exist_ok=True)
-
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
 
 
 class ArgsNamespace(SimpleNamespace):
-    privkey_file: Path
-    pubkey_file: Path
+    data_dir: Path
+    privkey_file: Path | None
+    pubkey_file: Path | None
     rabbitmq_address: str | None
     redis_address: str | None
     cache_backend: Literal["memory", "redis", "memcached"]
     cache_endpoint: str | None
     cache_port: int | None
 
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+
+        if self.privkey_file is None:
+            self.privkey_file = self.data_dir / "secrets" / "privkey.asc"
+
+        if self.pubkey_file is None:
+            self.pubkey_file = self.data_dir / "secrets" / "pubkey.asc"
+
 
 class PiltoverWorker:
     def __init__(
-            self, privkey: str | Path, pubkey: str | Path, rabbitmq_address: str | None = None,
+            self, data_dir: Path, privkey: str | Path, pubkey: str | Path, rabbitmq_address: str | None = None,
             redis_address: str | None = None
     ):
         privkey = privkey if isinstance(privkey, Path) else Path(privkey)
@@ -49,6 +52,7 @@ class PiltoverWorker:
         self._public_key = pubkey.read_text()
 
         self._worker = Worker(
+            data_dir=data_dir,
             server_keys=Keys(
                 private_key=self._private_key,
                 public_key=self._public_key,
@@ -74,12 +78,21 @@ class PiltoverWorker:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--privkey-file", type=Path,
-                        help="Path to private key file (will be created if does not exist)",
-                        default=secrets / "privkey.asc")
-    parser.add_argument("--pubkey-file", type=Path,
-                        help="Path to public key file (will be created if does not exist)",
-                        default=secrets / "pubkey.asc")
+    parser.add_argument("--data-dir", type=Path,
+                        help="Path to data directory, where all files, server keys and other server data are stored.",
+                        default=Path("./data"))
+    parser.add_argument("--privkey-file", type=Path, default=None,
+                        help=(
+                            "Path to private key file. "
+                            "By default, <data-dir>/secrets/privkey.asc will be used."
+                            "Will be created if does not exist."
+                        ))
+    parser.add_argument("--pubkey-file", type=Path, default=None,
+                        help=(
+                            "Path to public key file. "
+                            "By default, <data-dir>/secrets/pubkey.asc will be used."
+                            "Will be created if does not exist."
+                        ))
     parser.add_argument("--rabbitmq-address", type=str, required=False,
                         help="Address of rabbitmq server in \"amqp://user:password@host:port\" format",
                         default=None)
@@ -89,8 +102,9 @@ if __name__ == "__main__":
     args = parser.parse_args(namespace=ArgsNamespace())
 else:
     args = ArgsNamespace(
-        privkey_file=secrets / "privkey.asc",
-        pubkey_file=secrets / "pubkey.asc",
+        data_dir=Path("./data") / "testing",
+        privkey_file=None,
+        pubkey_file=None,
         rabbitmq_address=None,
         redis_address=None,
         cache_backend="memory",
@@ -100,5 +114,5 @@ else:
 
 
 Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)
-worker = PiltoverWorker(args.privkey_file, args.pubkey_file, args.rabbitmq_address, args.redis_address)
+worker = PiltoverWorker(args.data_dir, args.privkey_file, args.pubkey_file, args.rabbitmq_address, args.redis_address)
 broker = worker.get_broker()

@@ -1,6 +1,7 @@
 import asyncio
 from io import BytesIO
 from os import environ
+from pathlib import Path
 from time import time
 
 from loguru import logger
@@ -47,9 +48,11 @@ class Gateway:
     TL_CHECK_RESPONSES = environ.get("TL_DEBUG_CHECK_RESPONSES", "").lower() in ("1", "true",)
 
     def __init__(
-            self, host: str = HOST, port: int = PORT, server_keys: Keys | None = None,
+            self, data_dir: Path, host: str = HOST, port: int = PORT, server_keys: Keys | None = None,
             rabbitmq_address: str | None = RMQ_HOST, redis_address: str | None = REDIS_HOST,
     ):
+        self.data_dir = data_dir
+
         self.host = host
         self.port = port
 
@@ -71,7 +74,7 @@ class Gateway:
         if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
             logger.info("rabbitmq_address or redis_address is None, falling back to worker broker")
             from piltover.worker import Worker
-            self.worker = Worker(self.server_keys, None, None)
+            self.worker = Worker(data_dir, self.server_keys, None, None)
             self.broker = self.worker.broker
             self.message_broker = self.worker.message_broker
         else:

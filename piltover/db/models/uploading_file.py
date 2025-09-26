@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import aiofiles
 from tortoise import fields, Model
 
-from piltover.app import files_dir
 from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.exceptions import ErrorRpc
@@ -25,7 +25,7 @@ class UploadingFile(Model):
         )
 
     async def finalize_upload(
-            self, mime_type: str, attributes: list, file_type: FileType = FileType.DOCUMENT,
+            self, files_dir: Path, mime_type: str, attributes: list, file_type: FileType = FileType.DOCUMENT,
     ) -> models.File:
         parts = await UploadingFilePart.filter(file=self).order_by("part_id")
         if (self.total_parts > 0 and self.total_parts != len(parts)) or not parts:

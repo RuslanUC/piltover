@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from inspect import getfullargspec
 from io import BytesIO
+from pathlib import Path
 from time import perf_counter
 from typing import Awaitable, Callable, Any, TypeVar
 
@@ -43,13 +44,12 @@ HandlerFunc = (Callable[[], HandlerResult] |
 
 
 class RequestHandler:
-    __slots__ = ("func", "flags", "has_worker_arg", "has_request_arg", "has_user_arg",)
+    __slots__ = ("func", "flags", "has_request_arg", "has_user_arg",)
 
     def __init__(self, func: HandlerFunc, flags: int):
         self.func = func
         self.flags = flags
         func_args = set(getfullargspec(func).args)
-        self.has_worker_arg = "worker" in func_args
         self.has_request_arg = "request" in func_args
         self.has_user_arg = "user" in func_args
 
@@ -61,7 +61,6 @@ class RequestHandler:
 
     async def __call__(self, request: TLObject, user: User | None) -> Any:
         kwargs = {}
-        if self.has_worker_arg: kwargs["worker"] = request
         if self.has_request_arg: kwargs["request"] = request
         if self.has_user_arg: kwargs["user"] = user
 
@@ -101,10 +100,12 @@ class Worker(MessageHandler):
     REDIS_HOST = "redis://127.0.0.1"
 
     def __init__(
-            self, server_keys: Keys, rabbitmq_address: str | None = RMQ_HOST, redis_address: str | None = REDIS_HOST,
+            self, data_dir: Path, server_keys: Keys,
+            rabbitmq_address: str | None = RMQ_HOST, redis_address: str | None = REDIS_HOST,
     ):
         super().__init__()
 
+        self.data_dir = data_dir
         self.server_keys = server_keys
         self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
 
@@ -156,7 +157,7 @@ class Worker(MessageHandler):
             ))
 
         request_ctx.set(RequestContext(
-            call.auth_key_id, call.message_id, call.session_id, call.obj, call.layer, call.auth_id, call.user_id,
+            call.auth_key_id, call.message_id, call.session_id, call.obj, call.layer, call.auth_id, call.user_id, self,
         ))
 
         user = None

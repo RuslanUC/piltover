@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from piltover.worker import Worker
 
 T = TypeVar("T")
 
 
 class RequestContext(Generic[T]):
-    __slots__ = ("auth_key_id", "message_id", "session_id", "obj", "auth_id", "user_id", "layer", "_parent",)
+    __slots__ = ("auth_key_id", "message_id", "session_id", "obj", "auth_id", "user_id", "layer", "worker", "_parent",)
 
     def __init__(
             self, auth_key_id: int, message_id: int, session_id: int, obj: T, layer: int, auth_id: int | None,
-            user_id: int | None,
+            user_id: int | None, worker: Worker,
             *, _parent: RequestContext | None = None
     ):
         self.auth_key_id = auth_key_id
@@ -21,6 +24,7 @@ class RequestContext(Generic[T]):
         self.auth_id = auth_id
         self.user_id = user_id
         self.layer = layer
+        self.worker = worker
 
         self._parent: RequestContext[T] | None = _parent
 

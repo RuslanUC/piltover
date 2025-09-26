@@ -12,6 +12,7 @@ from tortoise.transactions import in_transaction
 from piltover.app.handlers.upload import read_file_content
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash, get_image_dims
+from piltover.context import request_ctx
 from piltover.db.enums import FileType, StickerSetType
 from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset, StickersetThumb
 from piltover.exceptions import ErrorRpc
@@ -69,7 +70,8 @@ async def _validate_png_webp(file: File) -> None:
         raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
     if file.width is None or file.height is None:
-        dims = await get_image_dims(str(file.physical_id))
+        worker = request_ctx.get().worker
+        dims = await get_image_dims(worker.data_dir / "files", str(file.physical_id))
         if dims is None:
             raise ErrorRpc(error_code=400, error_message="STICKER_PNG_NOPNG")
         else:
