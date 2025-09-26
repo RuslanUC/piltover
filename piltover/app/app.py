@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from os import getenv
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal, AsyncIterator, TYPE_CHECKING
+from typing import Literal, AsyncIterator, TYPE_CHECKING, Any
 from uuid import UUID
 
 import uvloop
@@ -44,9 +44,7 @@ class ArgsNamespace(SimpleNamespace):
     cache_endpoint: str | None
     cache_port: int | None
 
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-
+    def fill_defaults(self) -> None:
         if self.privkey_file is None:
             self.privkey_file = self.data_dir / "secrets" / "privkey.asc"
         if self.pubkey_file is None:
@@ -364,6 +362,7 @@ if __name__ == "__main__":
                         help="Port of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
                         default=None)
     args = parser.parse_args(namespace=ArgsNamespace())
+    args.fill_defaults()
 else:
     args = ArgsNamespace(
         create_system_user=True,

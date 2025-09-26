@@ -25,12 +25,9 @@ class ArgsNamespace(SimpleNamespace):
     cache_endpoint: str | None
     cache_port: int | None
 
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-
+    def fill_defaults(self) -> None:
         if self.privkey_file is None:
             self.privkey_file = self.data_dir / "secrets" / "privkey.asc"
-
         if self.pubkey_file is None:
             self.pubkey_file = self.data_dir / "secrets" / "pubkey.asc"
 
@@ -100,6 +97,7 @@ if __name__ == "__main__":
                         help="Address of redis server in \"redis://host:port\" format",
                         default=None)
     args = parser.parse_args(namespace=ArgsNamespace())
+    args.fill_defaults()
 else:
     args = ArgsNamespace(
         data_dir=Path("./data") / "testing",
