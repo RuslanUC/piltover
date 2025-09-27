@@ -56,7 +56,7 @@ async def send_code(request: SendCode, user: User) -> SentCode:
         peer=peer_system,
     )
 
-    await upd.send_message(target_user, {peer_system: message})
+    await upd.send_message(target_user, {peer_system: message}, False)
     return resp
 
 

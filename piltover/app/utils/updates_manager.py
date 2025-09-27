@@ -1,9 +1,11 @@
 from time import time
 from typing import cast
 
+from loguru import logger
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
+from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
@@ -40,7 +42,7 @@ class UpdatesWithDefaults(Updates):
 
 # TODO: move this module to separate worker
 
-async def send_message(user: User, messages: dict[Peer, Message]) -> Updates:
+async def send_message(user: User, messages: dict[Peer, Message], ignore_current: bool = True) -> Updates:
     result = None
 
     for peer, message in messages.items():
@@ -66,6 +68,7 @@ async def send_message(user: User, messages: dict[Peer, Message]) -> Updates:
         )
 
         if message.random_id:
+            logger.info("random id or something")
             updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
 
         if peer.owner == user:
@@ -83,7 +86,8 @@ async def send_message(user: User, messages: dict[Peer, Message]) -> Updates:
             await Update.filter(**read_history_inbox_args).delete()
             await Update.create(**read_history_inbox_args, pts=read_history_pts, related_ids=[message.id, 0])
 
-        await SessionManager.send(updates, peer.owner.id)
+        ignore_auth_id = request_ctx.get().auth_id if ignore_current and peer.owner == user else None
+        await SessionManager.send(updates, peer.owner.id, ignore_auth_id=ignore_auth_id)
 
     return result
 

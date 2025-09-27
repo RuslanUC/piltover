@@ -22,7 +22,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
-    SendConfirmPhoneCode, ChangePhone, DeleteAccount
+    ChangePhone, DeleteAccount
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait
@@ -433,7 +433,7 @@ async def reset_password(user: User) -> ResetPasswordResult:
 
     reset_request, created = await UserPasswordReset.get_or_create(user=user)
     reset_date = reset_request.date + timedelta(seconds=AppConfig.SRP_PASSWORD_RESET_WAIT_SECONDS)
-    if datetime.now() > reset_date:
+    if datetime.now(UTC) > reset_date:
         await password.delete()
         await reset_request.delete()
         return ResetPasswordOk()
@@ -466,6 +466,8 @@ async def _create_sent_code(user: User, phone_number: str, purpose: PhoneCodePur
         purpose=purpose,
         user=user,
     )
+
+    print(f"Code: {code.code}")
 
     return TLSentCode(
         type_=SentCodeTypeSms(length=5),

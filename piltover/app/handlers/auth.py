@@ -87,7 +87,7 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
         peer=peer_system,
     )
 
-    await upd.send_message(user, {peer_system: message})
+    await upd.send_message(user, {peer_system: message}, False)
 
     resp.type_ = SentCodeTypeApp(length=5)
     return resp

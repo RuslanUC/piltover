@@ -265,6 +265,7 @@ class SessionManager:
     async def send(
             cls, obj: TLObject, user_id: int | list[int] | None = None, key_id: int | list[int] | None = None,
             channel_id: int | list[int] | None = None, auth_id: int | list[int] | None = None,
+            ignore_auth_id: int | list[int] | None = None,
     ) -> None:
         if not user_id and not key_id and not channel_id and not auth_id:
             return
@@ -277,11 +278,14 @@ class SessionManager:
             channel_id = channel_id[0]
         if isinstance(auth_id, list) and len(auth_id) == 1:
             auth_id = auth_id[0]
+        if isinstance(ignore_auth_id, list) and len(ignore_auth_id) == 1:
+            ignore_auth_id = ignore_auth_id[0]
 
         is_short = (user_id is None or isinstance(user_id, int)) \
                    and (key_id is None or isinstance(key_id, int)) \
                    and (channel_id is None or isinstance(channel_id, int)) \
-                   and (auth_id is None or isinstance(auth_id, int))
+                   and (auth_id is None or isinstance(auth_id, int)) \
+                   and (ignore_auth_id is None or isinstance(ignore_auth_id, int))
 
         if is_short:
             message = MessageToUsersShort(
@@ -289,6 +293,7 @@ class SessionManager:
                 key_id=key_id,
                 channel_id=channel_id,
                 auth_id=auth_id,
+                ignore_auth_id=ignore_auth_id,
                 obj=obj,
             )
         else:
@@ -297,6 +302,7 @@ class SessionManager:
                 key_ids=[key_id] if isinstance(key_id, int) else key_id,
                 channel_ids=[channel_id] if isinstance(channel_id, int) else channel_id,
                 auth_ids=[auth_id] if isinstance(auth_id, int) else auth_id,
+                ignore_auth_id=[ignore_auth_id] if isinstance(ignore_auth_id, int) else ignore_auth_id,
                 obj=obj,
             )
 

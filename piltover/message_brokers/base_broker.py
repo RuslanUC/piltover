@@ -129,11 +129,13 @@ class BaseMessageBroker(ABC):
             channels = message.channel_ids
             keys = message.key_ids
             auths = message.auth_ids
+            ignore_auths = set(message.ignore_auth_id)
         else:
             users = [message.user] if message.user is not None else None
             channels = [message.channel_id] if message.channel_id is not None else None
             keys = [message.key_id] if message.key_id is not None else None
             auths = [message.auth_id] if message.auth_id is not None else None
+            ignore_auths = {message.ignore_auth_id} if message.ignore_auth_id is not None else set()
 
         send_to = set()
 
@@ -157,11 +159,13 @@ class BaseMessageBroker(ABC):
 
         if auths:
             for auth_id in auths:
-                if auth_id not in self.subscribed_auths:
+                if auth_id in ignore_auths or auth_id not in self.subscribed_auths:
                     continue
                 send_to.update(self.subscribed_auths[auth_id])
 
         for session in send_to:
+            if session.auth_id in ignore_auths:
+                continue
             try:
                 if isinstance(message.obj, (ObjectWithLazyFields, ObjectWithLayerRequirement)):
                     await session.send(deepcopy(message.obj))

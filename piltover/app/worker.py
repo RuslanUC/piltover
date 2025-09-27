@@ -37,9 +37,11 @@ class PiltoverWorker:
             self, data_dir: Path, privkey: str | Path, pubkey: str | Path, rabbitmq_address: str | None = None,
             redis_address: str | None = None
     ):
-        privkey = privkey if isinstance(privkey, Path) else Path(privkey)
-        pubkey = pubkey if isinstance(pubkey, Path) else Path(pubkey)
+        privkey = Path(privkey)
+        pubkey = Path(pubkey)
         if not (pubkey.exists() and privkey.exists()):
+            pubkey.parent.mkdir(parents=True, exist_ok=True)
+            privkey.parent.mkdir(parents=True, exist_ok=True)
             with privkey.open("w+") as priv, pubkey.open("w+") as pub:
                 keys = gen_keys()
                 priv.write(keys.private_key)
