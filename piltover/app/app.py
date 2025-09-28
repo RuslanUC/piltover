@@ -362,7 +362,6 @@ if __name__ == "__main__":
                         help="Port of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
                         default=None)
     args = parser.parse_args(namespace=ArgsNamespace())
-    args.fill_defaults()
 else:
     args = ArgsNamespace(
         create_system_user=True,
@@ -379,6 +378,8 @@ else:
         cache_endpoint=None,
         cache_port=None,
     )
+
+args.fill_defaults()
 
 
 Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)

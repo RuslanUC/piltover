@@ -70,7 +70,8 @@ class Session:
             self.incoming_content_related_msgs += 1
             expected += 1
 
-    # TODO: this is wrong
+    # TODO: this is wrong (probably)
+    #  https://core.telegram.org/mtproto/description#message-sequence-number-msg-seqno
     def get_outgoing_seq_no(self, obj: TLObject) -> int:
         ret = self.outgoing_content_related_msgs * 2
         if is_content_related(obj):

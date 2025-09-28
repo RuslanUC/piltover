@@ -89,7 +89,7 @@ class _Vector(Vector[T], ABC):
     @classmethod
     def read(cls, stream: BytesIO) -> list[T]:
         count = cls.read_header(stream)
-        return [cls.ELEMENT_TYPE.read(stream) for _ in range(count)]
+        return cls(cls.ELEMENT_TYPE.read(stream) for _ in range(count))
 
     # noinspection PyMethodParameters
     @classinstancemethod
@@ -125,7 +125,7 @@ class TLObjectVector(Vector["TLObject"]):
     def read(cls, stream: BytesIO) -> list[TLObject]:
         from piltover.tl import TLObject
         count = cls.read_header(stream)
-        return [TLObject.read(stream) for _ in range(count)]
+        return cls(TLObject.read(stream) for _ in range(count))
 
     # noinspection PyMethodParameters
     @classinstancemethod

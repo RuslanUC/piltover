@@ -54,7 +54,15 @@ class TLObject(ABC):
         return {slot: getattr(self, slot) for slot in self.__slots__}
 
     def __repr__(self) -> str:
-        slots = ", ".join([f"{slot}={getattr(self, slot)!r}" for slot in self.__slots__])
+        fields = []
+        for slot in self.__slots__:
+            value = getattr(self, slot)
+            value_repr = repr(value)
+            if not isinstance(value, TLObject) and value is not None:
+                value_repr = f"{value.__class__.__name__}({value_repr})"
+            fields.append(f"{slot}={value_repr}")
+
+        slots = ", ".join(fields)
         return f"{self.__class__.__name__}({slots})"
 
     def __eq__(self, other: TLObject) -> bool:

@@ -63,10 +63,11 @@ class LayerConverter:
         if not vec:
             return vec
 
+        vec_cls = vec.__class__
         if isinstance(vec[0], list):
-            return [cls._try_downgrade_list(item, to_layer) for item in vec]
+            return vec_cls(cls._try_downgrade_list(item, to_layer) for item in vec)
         if isinstance(vec[0], TLObject):
-            return [cls.downgrade(item, to_layer) for item in vec]
+            return vec_cls(cls.downgrade(item, to_layer) for item in vec)
 
         return vec
 

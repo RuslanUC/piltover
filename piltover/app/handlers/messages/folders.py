@@ -1,7 +1,7 @@
 import piltover.app.utils.updates_manager as upd
 from piltover.db.models import User, DialogFolder
 from piltover.exceptions import ErrorRpc
-from piltover.tl import DialogFilterDefault, DialogFilter, DialogFilterChatlist, TextWithEntities
+from piltover.tl import DialogFilterDefault, TextWithEntities, TLObjectVector
 from piltover.tl.functions.messages import GetDialogFilters, UpdateDialogFilter, UpdateDialogFiltersOrder, \
     GetDialogFilters_133
 from piltover.tl.types.messages import DialogFilters
@@ -13,11 +13,10 @@ handler = MessageHandler("messages.folders")
 @handler.on_request(GetDialogFilters_133)
 @handler.on_request(GetDialogFilters)
 async def get_dialog_filters(user: User) -> DialogFilters:
-    folders: list[DialogFilter | DialogFilterDefault | DialogFilterChatlist]
-    folders = [
-        await folder.to_tl()
-        for folder in await DialogFolder.filter(owner=user, id_for_user__gt=0).order_by("position", "id")
-    ]
+    folders = TLObjectVector()
+    for folder in await DialogFolder.filter(owner=user, id_for_user__gt=0).order_by("position", "id"):
+        folders.append(await folder.to_tl())
+
     if folders:
         folders.insert(0, DialogFilterDefault())
 

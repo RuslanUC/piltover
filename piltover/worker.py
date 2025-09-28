@@ -143,7 +143,7 @@ class Worker(MessageHandler):
     async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse:
         time_start = perf_counter()
         result = await self._handle_tl_rpc(call_hex)
-        logger.info(f"Rpc call processing took {(perf_counter() - time_start) * 1000:.2f} ms")
+        logger.trace(f"Rpc call processing took {(perf_counter() - time_start) * 1000:.2f} ms")
         return result
 
     async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse:
@@ -189,6 +189,7 @@ class Worker(MessageHandler):
             logger.warning(f"Handler for {call.obj} returned None")
             result = RpcError(error_code=500, error_message="Not implemented")
 
+        logger.trace(f"Returning from worker: {type(result)}, {result}")
         return RpcResponse(obj=RpcResult(
             req_msg_id=call.message_id,
             result=result,

@@ -1,7 +1,7 @@
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, PrivacyRule
 from piltover.exceptions import ErrorRpc
-from piltover.tl import PeerSettings, TLObject, PeerNotifySettings
+from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser
 from piltover.tl.types.users import UserFull
@@ -39,7 +39,7 @@ async def get_full_user(request: GetFullUser, user: User):
 
 @handler.on_request(GetUsers)
 async def get_users(request: GetUsers, user: User):
-    result: list[TLObject] = []
+    result = TLObjectVector()
     for peer in request.id:
         # TODO: search for user in contacts if peer.access_hash == 0
         try:

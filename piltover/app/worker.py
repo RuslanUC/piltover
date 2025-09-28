@@ -99,7 +99,6 @@ if __name__ == "__main__":
                         help="Address of redis server in \"redis://host:port\" format",
                         default=None)
     args = parser.parse_args(namespace=ArgsNamespace())
-    args.fill_defaults()
 else:
     args = ArgsNamespace(
         data_dir=Path("./data") / "testing",
@@ -112,6 +111,7 @@ else:
         cache_port=None,
     )
 
+args.fill_defaults()
 
 Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)
 worker = PiltoverWorker(args.data_dir, args.privkey_file, args.pubkey_file, args.rabbitmq_address, args.redis_address)

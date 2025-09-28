@@ -184,7 +184,7 @@ class Client:
             logger.error("Trying to send encrypted response, but auth_key is empty")
             raise Disconnection(404)
 
-        logger.debug(f"Sending to {self.session.session_id if self.session else 0}: {message}")
+        logger.debug(f"Sending to {self.session.session_id if self.session else 0}: {message!r}")
 
         if self.server.TL_CHECK_RESPONSES:
             try:
@@ -509,6 +509,8 @@ class Client:
                 req_msg_id=request.message_id,
                 result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR"),
             )
+
+        logger.trace(f"Got RpcResponse from worker: {result!r}")
 
         if result.transport_error is not None:
             raise Disconnection(result.transport_error or None)

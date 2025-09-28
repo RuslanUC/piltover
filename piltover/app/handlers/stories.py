@@ -1,7 +1,7 @@
 from time import time
 
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import StoriesStealthMode, Updates
+from piltover.tl import StoriesStealthMode, Updates, IntVector
 from piltover.tl.functions.stories import GetAllStories, GetAllReadPeerStories, GetPeerMaxIDs
 from piltover.tl.types.stories import AllStories
 from piltover.worker import MessageHandler
@@ -32,4 +32,4 @@ async def get_all_read_peer_stories():  # pragma: no cover
 
 @handler.on_request(GetPeerMaxIDs, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_peer_max_ids() -> list[int]:  # pragma: no cover
-    return []
+    return IntVector()

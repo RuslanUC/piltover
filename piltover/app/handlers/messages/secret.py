@@ -99,6 +99,7 @@ async def accept_encryption(request: AcceptEncryption, user: User):
     return await chat.to_tl(user, ctx.auth_id)
 
 
+# TODO: Handle it properly (allow discarding when it was and was not accepted)
 @handler.on_request(DiscardEncryption)
 async def discard_encryption(request: DiscardEncryption, user: User):
     async with in_transaction():

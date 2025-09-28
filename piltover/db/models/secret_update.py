@@ -43,7 +43,9 @@ class SecretUpdate(Model):
                 else:
                     file = EncryptedFileEmpty()
                     if self.message_file_id is not None:
-                        await self.fetch_related("authorization", "authorization__user", "message_file")
+                        await self.fetch_related(
+                            "authorization", "authorization__user", "message_file", "message_file__file",
+                        )
                         file = await self.message_file.to_tl(self.authorization.user)
 
                     message = EncryptedMessage(
