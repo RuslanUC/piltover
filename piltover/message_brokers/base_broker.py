@@ -163,6 +163,8 @@ class BaseMessageBroker(ABC):
                     continue
                 send_to.update(self.subscribed_auths[auth_id])
 
+        logger.trace(f"Got message {message!r} that will be sent to {len(send_to)} sessions")
+
         for session in send_to:
             if session.auth_id in ignore_auths:
                 continue

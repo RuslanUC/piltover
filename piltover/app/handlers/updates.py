@@ -63,15 +63,19 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
     ctx = request_ctx.get()
 
+    logger.trace(f"User {user.id} requested GetDifference with qts {request.qts}")
+
     last_local_secret_update = await SecretUpdate.filter(authorization__id=ctx.auth_id, qts__lte=request.qts)\
         .order_by("-qts").first()
     last_local_secret_id = last_local_secret_update.id if last_local_secret_update is not None else 0
+    logger.trace(f"User's {user.id} last secret id is {last_local_secret_id}")
 
     new = await Message.filter(
         peer__owner=user, date__gt=date
     ).select_related("author", "peer", "peer__owner", "peer__user", "peer__chat").order_by("id")
     new_updates = await Update.filter(user=user, pts__gt=request.pts).order_by("pts")
     new_secret = await SecretUpdate.filter(authorization__id=ctx.auth_id, id__gt=last_local_secret_id)
+    logger.trace(f"User {user.id} has {len(new_secret)} secret updates")
 
     if not new and not new_updates and not new_secret:
         return DifferenceEmpty(
@@ -121,7 +125,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
     return Difference(
         new_messages=list(new_messages.values()),
-        new_encrypted_messages=[],
+        new_encrypted_messages=new_secret_messages,
         other_updates=other_updates,
         chats=[*chats.values(), *channels.values()],
         users=list(users.values()),

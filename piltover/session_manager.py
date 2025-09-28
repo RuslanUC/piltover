@@ -9,7 +9,7 @@ from mtproto.packets import DecryptedMessagePacket
 
 from piltover.db.models import UserAuthorization, AuthKey, Channel, User, Message as DbMessage, Chat, EncryptedChat
 from piltover.layer_converter.manager import LayerConverter
-from piltover.tl import TLObject, Updates
+from piltover.tl import TLObject, Updates, Vector
 from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyChannel, \
     LazyMessage, LazyUser, LazyChat, MessageToUsers, LazyEncryptedChat, ObjectWithLayerRequirement
@@ -70,6 +70,7 @@ class Session:
             self.incoming_content_related_msgs += 1
             expected += 1
 
+    # TODO: this is wrong
     def get_outgoing_seq_no(self, obj: TLObject) -> int:
         ret = self.outgoing_content_related_msgs * 2
         if is_content_related(obj):
@@ -216,11 +217,16 @@ class Session:
                 auth.upd_seq += 1
                 await auth.save(update_fields=["upd_seq"])
                 obj.seq = auth.upd_seq
+                obj.qts = auth.upd_qts
 
         try:
             await self.client.send(obj, self)
         except Exception as e:
             logger.opt(exception=e).warning(f"Failed to send {obj} to {self.client}")
+
+        if isinstance(obj, Updates):
+            obj.seq = 0
+            obj.qts = 0
 
 
 class SessionManager:
@@ -263,7 +269,7 @@ class SessionManager:
 
     @classmethod
     async def send(
-            cls, obj: TLObject, user_id: int | list[int] | None = None, key_id: int | list[int] | None = None,
+            cls, obj: TLObject | Vector, user_id: int | list[int] | None = None, key_id: int | list[int] | None = None,
             channel_id: int | list[int] | None = None, auth_id: int | list[int] | None = None,
             ignore_auth_id: int | list[int] | None = None,
     ) -> None:

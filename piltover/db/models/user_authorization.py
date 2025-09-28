@@ -36,6 +36,8 @@ class UserAuthorization(Model):
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
     key: models.AuthKey = fields.ForeignKeyField("models.AuthKey", on_delete=fields.CASCADE, unique=True)
 
+    user_id: int
+
     @property
     def tl_hash(self) -> int:
         return Long.read_bytes(bytes.fromhex(self.hash[:-16]))

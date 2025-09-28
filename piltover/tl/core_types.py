@@ -4,7 +4,7 @@ from gzip import decompress
 from io import BytesIO
 from typing import TypeVar, Generic
 
-from . import TLObject, Int, Long, Bytes, VECTOR
+from . import TLObject, Int, Long, Bytes
 from .serialization_utils import SerializationUtils
 
 T = TypeVar("T", bound=TLObject)
@@ -86,15 +86,7 @@ class RpcResult(TLObject):
         return RpcResult(req_msg_id=req_msg_id, result=result)
 
     def serialize(self) -> bytes:
-        result = Long.write(self.req_msg_id)
-        if isinstance(self.result, list):
-            result += VECTOR
-            result += Int.write(len(self.result))
-            for element in self.result:
-                result += SerializationUtils.write(element)
-        else:
-            result += SerializationUtils.write(self.result)
-        return result
+        return Long.write(self.req_msg_id) + SerializationUtils.write(self.result)
 
 
 class GzipPacked(TLObject):
@@ -111,7 +103,7 @@ class GzipPacked(TLObject):
         packed_data = Bytes.read(stream)
         decompressed_stream = BytesIO(decompress(packed_data))
 
-        return TLObject.read(decompressed_stream, )
+        return TLObject.read(decompressed_stream)
 
     def serialize(self) -> bytes:
         return Bytes.write(self.packed_data)

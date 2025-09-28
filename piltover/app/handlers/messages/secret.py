@@ -228,8 +228,10 @@ async def received_queue(request: ReceivedQueue):
         raise ErrorRpc(error_code=400, error_message="MAX_QTS_INVALID")
 
     random_ids = await SecretUpdate.filter(
-        authorization=current_auth, qts__lte=request.max_qts, message_random_id__not=None,
+        authorization=current_auth, qts__lte=request.max_qts, message_random_id__not_isnull=True,
     ).values_list("message_random_id", flat=True)
+    logger.info(f"Removing {len(random_ids)}+ secret updates because of ReceivedQueue")
+    logger.info(f"Random ids btw: {random_ids!r}")
     await SecretUpdate.filter(authorization=current_auth, qts__lte=request.max_qts).delete()
 
     return LongVector(random_ids)
