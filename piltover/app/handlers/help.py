@@ -220,8 +220,8 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="new_noncontact_peers_require_premium_without_ownpremium", value=JsonBool(value=False)),
     JsonObjectValue(key="pending_suggestions", value=JsonArray(value=[
         JsonString(value="VALIDATE_PASSWORD"),
-        JsonString(value="VALIDATE_PHONE_NUMBER"),
-        JsonString(value="NEWCOMER_TICKS"),
+        #JsonString(value="VALIDATE_PHONE_NUMBER"),
+        #JsonString(value="NEWCOMER_TICKS"),
         JsonString(value="SETUP_PASSWORD"),
     ])),
     JsonObjectValue(key="pm_read_date_expire_period", value=JsonNumber(value=7 * 24 * 60 * 60.0)),

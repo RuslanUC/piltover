@@ -213,7 +213,7 @@ class Update(Model):
                 users_q, chats_q, channels_q = contact.query_users_chats(users_q, chats_q, channels_q)
 
                 return UpdatePeerSettings(
-                    peer=PeerUser(user_id=contact.target.id),
+                    peer=PeerUser(user_id=contact.target_id),
                     settings=PeerSettings(),
                 ), users_q, chats_q, channels_q
 
