@@ -8,6 +8,7 @@ from .chat_invite_downgrade import *
 from .chat_invite_exported_downgrade import *
 from .dialog_filter_downgrade import *
 from .dialog_filters_downgrade import *
+from .global_privacy_settings_downgrade import *
 from .invited_users_downgrade import *
 from .message_downgrade import *
 from .message_fwd_header_downgrade import *
@@ -165,3 +166,8 @@ LayerConverter.register_for_downgrade(StickerSetDontDowngrade)
 LayerConverter.register_for_downgrade(MessageReactionsDowngradeTo136)
 LayerConverter.register_for_downgrade(MessageReactionsDowngradeTo138)
 LayerConverter.register_for_downgrade(MessageReactionsDontDowngrade)
+
+LayerConverter.register_for_downgrade(GlobalPrivacySettingsDowngradeTo133)
+LayerConverter.register_for_downgrade(GlobalPrivacySettingsDowngradeTo160)
+LayerConverter.register_for_downgrade(GlobalPrivacySettingsDowngradeTo200)
+LayerConverter.register_for_downgrade(GlobalPrivacySettingsDontDowngrade)
