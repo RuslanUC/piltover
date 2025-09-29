@@ -1,11 +1,10 @@
 from datetime import datetime
 
-from loguru import logger
 from pytz import UTC
-from tortoise.expressions import Q
+from tortoise.expressions import Q, Subquery
 
-from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 import piltover.app.utils.updates_manager as upd
+from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import PeerType, ChatBannedRights
 from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State, RecentReaction, \
@@ -68,24 +67,32 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             or (existing_reaction is not None and reaction is not None and existing_reaction.reaction_id == reaction.id):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
+    messages: dict[Peer, Message] = {}
+
+    if peer.type is not PeerType.CHANNEL:
+        for opp_message in await Message.filter(internal_id=message.internal_id).select_related("peer", "peer__owner"):
+            messages[opp_message.peer] = opp_message
+
     if existing_reaction is not None:
         if peer.type is PeerType.CHANNEL:
             await existing_reaction.delete()
         else:
-            await MessageReaction.filter(user=user, message__internal_id=message.internal_id).delete()
+            reactions_q = MessageReaction.filter(
+                user=user, message__internal_id=message.internal_id,
+            ).values_list("id", flat=True)
+            await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
-    if peer.type is PeerType.CHANNEL:
-        # TODO: send update to message author
-        await MessageReaction.create(user=user, message=message, reaction=reaction)
-        return await upd.update_reactions(user, [message], peer)
+    if reaction is not None:
+        if peer.type is PeerType.CHANNEL:
+            # TODO: send update to message author
+            await MessageReaction.create(user=user, message=message, reaction=reaction)
+            return await upd.update_reactions(user, [message], peer)
 
-    reactions_to_create = []
-    messages: dict[Peer, Message] = {}
-    for opp_message in await Message.filter(internal_id=message.internal_id).select_related("peer", "peer__owner"):
-        messages[opp_message.peer] = opp_message
-        reactions_to_create.append(MessageReaction(user=user, message=opp_message, reaction=reaction))
+        reactions_to_create = []
+        for opp_message in messages.values():
+            reactions_to_create.append(MessageReaction(user=user, message=opp_message, reaction=reaction))
 
-    await MessageReaction.bulk_create(reactions_to_create)
+        await MessageReaction.bulk_create(reactions_to_create)
 
     result = await upd.update_reactions(user, [message], peer)
 
