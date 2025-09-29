@@ -510,7 +510,7 @@ class Client:
                 result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR"),
             )
 
-        logger.trace(f"Got RpcResponse from worker: {result!r}")
+        #logger.trace(f"Got RpcResponse from worker: {result!r}")
 
         if result.transport_error is not None:
             raise Disconnection(result.transport_error or None)

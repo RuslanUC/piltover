@@ -68,7 +68,6 @@ async def send_message(user: User, messages: dict[Peer, Message], ignore_current
         )
 
         if message.random_id:
-            logger.info("random id or something")
             updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
 
         if peer.owner == user:

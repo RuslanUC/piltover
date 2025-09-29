@@ -13,7 +13,7 @@ from piltover.db.models import User, Peer, Contact, Username
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
-    ExportedContactToken, Long, User as TLUser
+    ExportedContactToken, Long, User as TLUser, TLObjectVector
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken
@@ -136,7 +136,7 @@ async def get_top_peers():  # pragma: no cover
 
 @handler.on_request(GetStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_statuses():  # pragma: no cover
-    return []
+    return TLObjectVector()
 
 
 @handler.on_request(GetBirthdays)

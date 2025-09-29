@@ -3,14 +3,14 @@ from __future__ import annotations
 from abc import abstractmethod, ABC
 from array import array
 from io import BytesIO
-from typing import Literal, cast, TypeVar, TYPE_CHECKING, Protocol
+from typing import Literal, cast, TypeVar, TYPE_CHECKING, Protocol, Iterable
 
 from piltover.exceptions import InvalidConstructorException
 from piltover.tl import primitives
 from piltover.utils.utils import classinstancemethod
 
 if TYPE_CHECKING:
-    from piltover.tl import TLObject
+    from piltover.tl import TLObject, TObj
 
 
 T = TypeVar("T")
@@ -120,7 +120,10 @@ class StringVector(_Vector[str]):
     ELEMENT_TYPE = primitives.String
 
 
-class TLObjectVector(Vector["TLObject"]):
+class TLObjectVector(Vector["TObj"]):
+    def __init__(self, it: Iterable[TObj] = ()) -> None:
+        super().__init__(it)
+
     @classmethod
     def read(cls, stream: BytesIO) -> list[TLObject]:
         from piltover.tl import TLObject

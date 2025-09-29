@@ -1,18 +1,14 @@
-from time import time
-
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
-from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, Updates, EmojiKeywordsDifference, \
-    DocumentEmpty, PeerSettings, InputStickerSetAnimatedEmoji, StickerSet
+from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, EmojiKeywordsDifference, \
+    DocumentEmpty, PeerSettings, TLObjectVector
 from piltover.tl.functions.messages import GetPeerSettings, GetScheduledHistory, GetQuickReplies, GetMessageEditData, \
-    GetEmojiKeywordsLanguages, GetWebPage, GetStickerSet, GetRecentReactions, GetTopReactions, GetAttachMenuBots, \
+    GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, GetSavedReactionTags, \
-    GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetMessagesReactions, \
-    GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
+    GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
     GetEmojiKeywordsDifference
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Messages, Reactions, SavedReactionTags, \
     Stickers, SearchResultsPositions, AllStickers, FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, \
-    StickerSet as messages_StickerSet, QuickReplies
+    QuickReplies
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
@@ -34,7 +30,7 @@ async def get_scheduled_history():  # pragma: no cover
 
 @handler.on_request(GetEmojiKeywordsLanguages, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_emoji_keywords_languages():  # pragma: no cover
-    return []
+    return TLObjectVector()
 
 
 @handler.on_request(GetWebPage, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -76,7 +72,7 @@ async def get_search_results_positions():  # pragma: no cover
 
 @handler.on_request(GetSuggestedDialogFilters, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_suggested_dialog_filters():  # pragma: no cover
-    return []
+    return TLObjectVector()
 
 
 @handler.on_request(GetFeaturedStickers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -101,7 +97,7 @@ async def get_faved_stickers():  # pragma: no cover
 
 @handler.on_request(GetCustomEmojiDocuments, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_custom_emoji_documents(request: GetCustomEmojiDocuments):  # pragma: no cover
-    return [DocumentEmpty(id=doc) for doc in request.document_id]
+    return TLObjectVector([DocumentEmpty(id=doc) for doc in request.document_id])
 
 
 @handler.on_request(GetArchivedStickers, ReqHandlerFlags.AUTH_NOT_REQUIRED)

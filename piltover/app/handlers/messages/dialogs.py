@@ -10,7 +10,7 @@ from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Message
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates
+from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector
 from piltover.tl.functions.folders import EditPeerFolders
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
@@ -255,13 +255,13 @@ async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
 
 
 @handler.on_request(GetDialogUnreadMarks)
-async def get_dialog_unread_marks(user: User) -> list[DialogPeer]:
+async def get_dialog_unread_marks(user: User) -> TLObjectVector[DialogPeer]:
     dialogs = await Dialog.filter(peer__owner=user, unread_mark=True).select_related("peer")
 
-    return [
+    return TLObjectVector([
         DialogPeer(peer=dialog.peer.to_tl())
         for dialog in dialogs
-    ]
+    ])
 
 
 @handler.on_request(EditPeerFolders)

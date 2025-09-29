@@ -1,5 +1,5 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import LangPackLanguage, LangPackString, LangPackDifference, LangPackLanguage_72
+from piltover.tl import LangPackLanguage, LangPackString, LangPackDifference, LangPackLanguage_72, TLObjectVector
 from piltover.tl.functions.langpack import GetLanguages, GetStrings, GetLangPack, GetLanguages_72
 from piltover.worker import MessageHandler
 
@@ -8,20 +8,22 @@ handler = MessageHandler("langpack")
 
 @handler.on_request(GetLanguages, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_languages():  # pragma: no cover
-    return [LangPackLanguage(
-        name="Gramz",
-        native_name="Le Gramz",
-        lang_code="grz",
-        plural_code="",
-        strings_count=1,
-        translated_count=1,
-        translations_url="https://127.0.0.1/translations",
-    )]
+    return TLObjectVector([
+        LangPackLanguage(
+            name="Gramz",
+            native_name="Le Gramz",
+            lang_code="grz",
+            plural_code="",
+            strings_count=1,
+            translated_count=1,
+            translations_url="https://127.0.0.1/translations",
+        ),
+    ])
 
 
 @handler.on_request(GetLanguages_72, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_languages_72():  # pragma: no cover
-    return [LangPackLanguage_72(name="Gramz", native_name="Le Gramz", lang_code="grz")]
+    return TLObjectVector([LangPackLanguage_72(name="Gramz", native_name="Le Gramz", lang_code="grz")])
 
 
 @handler.on_request(GetLangPack, ReqHandlerFlags.AUTH_NOT_REQUIRED)
@@ -36,6 +38,6 @@ async def get_lang_pack():  # pragma: no cover
 
 @handler.on_request(GetStrings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_strings(request: GetStrings):  # pragma: no cover
-    return [
+    return TLObjectVector([
         LangPackString(key=key, value=key.upper()) for key in request.keys
-    ]
+    ])

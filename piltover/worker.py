@@ -189,7 +189,7 @@ class Worker(MessageHandler):
             logger.warning(f"Handler for {call.obj} returned None")
             result = RpcError(error_code=500, error_message="Not implemented")
 
-        logger.trace(f"Returning from worker: {type(result)}, {result}")
+        #logger.trace(f"Returning from worker: {type(result)}, {result}")
         return RpcResponse(obj=RpcResult(
             req_msg_id=call.message_id,
             result=result,

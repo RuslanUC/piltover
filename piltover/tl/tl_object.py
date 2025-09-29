@@ -128,6 +128,7 @@ class TLObject(ABC):
 
 
 T =  TypeVar("T")
+TObj = TypeVar("TObj", bound=TLObject)
 
 
 class TLRequest(TLObject, ABC, Generic[T]):

@@ -18,7 +18,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
-    InputMessagesFilterMyMentions, SearchResultsCalendarPeriod
+    InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
@@ -365,12 +365,12 @@ async def get_search_counters(request: GetSearchCounters, user: User):
     if peer.type is PeerType.SELF and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
 
-    return [
+    return TLObjectVector([
         SearchCounter(
             filter=filt,
             count=await (await get_messages_query_internal(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer)).count(),
         ) for filt in request.filters
-    ]
+    ])
 
 
 @handler.on_request(GetAllDrafts)
