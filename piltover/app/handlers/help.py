@@ -25,10 +25,10 @@ async def get_config(user: User | None):
     else:
         settings = await UserReactionsSettings.get_or_none(user=user).select_related("default_reaction")
         if settings is None:
-            default_reaction = await Reaction.get_or_none(reaction_id=Reaction.q_from_reaction("❤"))
+            default_reaction = await Reaction.get_or_none(Reaction.q_from_reaction("❤"))
             await UserReactionsSettings.create(user=user, default_reaction=default_reaction)
         elif settings.default_reaction_id is None:
-            default_reaction = await Reaction.get_or_none(reaction_id=Reaction.q_from_reaction("❤"))
+            default_reaction = await Reaction.get_or_none(Reaction.q_from_reaction("❤"))
             if default_reaction is not None:
                 settings.default_reaction = default_reaction
                 await settings.save(update_fields=["default_reaction_id"])

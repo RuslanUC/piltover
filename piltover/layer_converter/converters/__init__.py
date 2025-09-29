@@ -11,6 +11,7 @@ from .dialog_filters_downgrade import *
 from .invited_users_downgrade import *
 from .message_downgrade import *
 from .message_fwd_header_downgrade import *
+from .message_reactions_downgrade import *
 from .message_reply_header_downgrade import *
 from .message_service_downgrade import *
 from .messagemediadocument_downgrade import *
@@ -160,3 +161,7 @@ LayerConverter.register_for_downgrade(MessagesStickerSetDontDowngrade)
 LayerConverter.register_for_downgrade(StickerSetDowngradeTo133)
 LayerConverter.register_for_downgrade(StickerSetDontDowngrade144)
 LayerConverter.register_for_downgrade(StickerSetDontDowngrade)
+
+LayerConverter.register_for_downgrade(MessageReactionsDowngradeTo136)
+LayerConverter.register_for_downgrade(MessageReactionsDowngradeTo138)
+LayerConverter.register_for_downgrade(MessageReactionsDontDowngrade)
