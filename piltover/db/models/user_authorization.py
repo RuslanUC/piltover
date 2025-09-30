@@ -43,7 +43,6 @@ class UserAuthorization(Model):
         return Long.read_bytes(bytes.fromhex(self.hash[:-16]))
 
     def to_tl(self, **kwargs) -> Authorization:
-        kwargs["hash"] = 0 if kwargs.get("current", False) else self.tl_hash
         defaults = {
             "official_app": True,
             "country": "US",
@@ -53,6 +52,7 @@ class UserAuthorization(Model):
         return Authorization(
             api_id=1,
             app_name="Test",
+            hash=0 if kwargs.get("current", False) else self.tl_hash,
             date_created=int(self.created_at.timestamp()),
             date_active=int(self.active_at.timestamp()),
             ip=self.ip,

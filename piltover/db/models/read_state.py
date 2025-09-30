@@ -29,7 +29,7 @@ class ReadState(Model):
                     if peer.type is PeerType.CHANNEL
                     else Q(message__peer=peer)
                 )
-                & Q(),
+                & Q(user__id__not=peer.owner_id),
             ).count()
 
         out_read_max_id = 0
