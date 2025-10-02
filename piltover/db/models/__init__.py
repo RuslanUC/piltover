@@ -51,3 +51,7 @@ from .installed_stickerset import InstalledStickerset
 from .user_reactions_settings import UserReactionsSettings
 from .stickerset_thumb import StickersetThumb
 from .user_password_reset import UserPasswordReset
+from .theme import Theme
+from .theme_settings import ThemeSettings
+from .wallpaper import Wallpaper
+from .wallpaper_settings import WallpaperSettings
