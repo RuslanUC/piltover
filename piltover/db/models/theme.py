@@ -44,7 +44,9 @@ class Theme(Model):
             document=await self.document.to_tl_document(user) if self.document is not None else None,
             settings=[
                 await settings.to_tl(user)
-                for settings in await models.ThemeSettings.filter(theme=self)
+                for settings in await models.ThemeSettings.filter(theme=self).select_related(
+                    "wallpaper", "wallpaper__document",
+                )
             ],
             emoticon=self.emoticon,
             installs_count=None,  # TODO: count installs maybe

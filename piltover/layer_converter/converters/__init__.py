@@ -26,6 +26,7 @@ from .stickerset_downgrade import *
 from .update_peer_blocked_downgrade import *
 from .user_downgrade import *
 from .userfull_downgrade import *
+from .wallpaper_settings_downgrade import *
 
 from ..manager import LayerConverter
 
@@ -171,3 +172,6 @@ LayerConverter.register_for_downgrade(GlobalPrivacySettingsDowngradeTo133)
 LayerConverter.register_for_downgrade(GlobalPrivacySettingsDowngradeTo160)
 LayerConverter.register_for_downgrade(GlobalPrivacySettingsDowngradeTo200)
 LayerConverter.register_for_downgrade(GlobalPrivacySettingsDontDowngrade)
+
+LayerConverter.register_for_downgrade(WallPaperSettingsDowngradeTo133)
+LayerConverter.register_for_downgrade(WallPaperSettingsDontDowngrade)

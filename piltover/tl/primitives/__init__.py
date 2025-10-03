@@ -8,3 +8,4 @@ from .vector import Vector, IntVector, LongVector, Int128Vector, Int256Vector, F
 BOOL_TRUE = b"\xb5\x75\x72\x99"
 BOOL_FALSE = b"\x37\x97\x79\xbc"
 VECTOR = b"\x15\xc4\xb5\x1c"
+EMPTY_VECTOR = b"\x15\xc4\xb5\x1c\x00\x00\x00\x00"

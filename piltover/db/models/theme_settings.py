@@ -26,6 +26,16 @@ class BaseTheme(IntEnum):
             BaseTheme.ARCTIC: BaseThemeArctic(),
         }[self]
 
+    @classmethod
+    def from_tl(cls, tl: TLBaseTheme) -> BaseTheme:
+        return {
+            BaseThemeClassic: BaseTheme.CLASSIC,
+            BaseThemeDay: BaseTheme.DAY,
+            BaseThemeNight: BaseTheme.NIGHT,
+            BaseThemeTinted: BaseTheme.TINTED,
+            BaseThemeArctic: BaseTheme.ARCTIC,
+        }[type(tl)]
+
 
 class ThemeSettings(Model):
     id: int = fields.BigIntField(pk=True)

@@ -42,11 +42,6 @@ class WallpaperSettings(Model):
 
     wallpaper_id: int
 
-    class Meta:
-        unique_together = (
-            ("theme", "base_theme"),
-        )
-
     def to_tl(self) -> WallPaperSettings:
         return WallPaperSettings(
             blur=self.blur,

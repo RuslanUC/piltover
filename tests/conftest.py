@@ -51,8 +51,11 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
     real_key_gen = "real_key_gen" in marks
     create_countries = "create_countries" in marks
     create_reactions = "create_reactions" in marks
+    create_chat_themes = "create_chat_themes" in marks
 
-    async with app.run_test(create_countries=create_countries, create_reactions=create_reactions) as test_server:
+    async with app.run_test(
+            create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
+    ) as test_server:
         if not real_key_gen:
             Auth.create = _custom_auth_create
 

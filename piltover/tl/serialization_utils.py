@@ -46,6 +46,8 @@ class SerializationUtils:
         elif isinstance(value, TLObject):
             return value.write()
         elif isinstance(value, list) and not isinstance(value, primitives.Vector):
+            if not value:
+                return primitives.EMPTY_VECTOR
             raise TypeError(f"Writing raw lists is not supported. Use primitives.Vector* types.")
         elif isinstance(value, primitives.Vector):
             return value.write()

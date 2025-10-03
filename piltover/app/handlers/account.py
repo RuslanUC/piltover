@@ -3,12 +3,12 @@ from datetime import date, timedelta, datetime
 from pytz import UTC
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username
+from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username, telegram_hash
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
-    UserPasswordReset, SentCode, PhoneCodePurpose
+    UserPasswordReset, SentCode, PhoneCodePurpose, Theme
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -22,10 +22,10 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
-    ChangePhone, DeleteAccount
+    ChangePhone, DeleteAccount, GetChatThemes
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
-    ResetPasswordOk, ResetPasswordRequestedWait
+    ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms
 from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
@@ -550,3 +550,19 @@ async def delete_account(request: DeleteAccount, user: User) -> bool:
     raise ErrorRpc(error_code=420, error_message=f"2FA_CONFIRM_WAIT_{one_week}")
 
 
+@handler.on_request(GetChatThemes)
+async def get_chat_themes(request: GetChatThemes, user: User) -> Themes | ThemesNotModified:
+    query = Theme.filter(creator=None).order_by("id")
+    ids = await query.values_list("id", flat=True)
+
+    reactions_hash = telegram_hash(ids, 64)
+    if reactions_hash == request.hash:
+        return ThemesNotModified()
+
+    return Themes(
+        hash=reactions_hash,
+        themes=[
+            await theme.to_tl(user)
+            for theme in await query.select_related("document")
+        ]
+    )
