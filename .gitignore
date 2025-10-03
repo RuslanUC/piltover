@@ -2,11 +2,6 @@ venv
 **/__pycache__
 .**/
 !.github/
-data/secrets/
-data/migrations/
-data/records/
-data/files/
-data/reactions/
 
 !.gitignore
 
