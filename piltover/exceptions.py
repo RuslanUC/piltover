@@ -13,9 +13,12 @@ class Disconnection(Error):
 
 
 class ErrorRpc(Error):
-    def __init__(self, error_code: int, error_message: str):
+    __slots__ = ("error_code", "error_message", "reason",)
+
+    def __init__(self, error_code: int, error_message: str, reason: str | None = None):
         self.error_code = error_code
         self.error_message = error_message
+        self.reason = reason
 
     @classmethod
     def check(cls, cond: Any, message: str, code: int = 400) -> None:
@@ -28,3 +31,8 @@ class InvalidConstructorException(Error):
         self.constructor = constructor
         self.wrong_type = wrong_type
         self.leftover_bytes = leftover_bytes
+
+
+class Unreachable(RuntimeError):
+    def __init__(self, message: str = "Unreachable") -> None:
+        super().__init__(message)

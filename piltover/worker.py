@@ -179,7 +179,8 @@ class Worker(MessageHandler):
         try:
             result = await handler(call.obj, user)
         except ErrorRpc as e:
-            logger.warning(f"{call.obj.tlname()}: [{e.error_code} {e.error_message}]")
+            reason = f", reason: {e.reason}" if e.reason is not None else ""
+            logger.warning(f"{call.obj.tlname()}: [{e.error_code} {e.error_message}]{reason}")
             result = RpcError(error_code=e.error_code, error_message=e.error_message)
         except Exception as e:
             logger.opt(exception=e).warning(f"Error while processing {call.obj.tlname()}")

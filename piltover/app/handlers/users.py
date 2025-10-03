@@ -1,5 +1,5 @@
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule
+from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
@@ -19,6 +19,10 @@ async def get_full_user(request: GetFullUser, user: User):
     if await PrivacyRule.has_access_to(user, target_user, PrivacyRuleKeyType.ABOUT):
         about = target_user.about
 
+    chat_wallpaper = await ChatWallpaper.get_or_none(user=user, target=target_user).select_related(
+        "wallpaper", "wallpaper__document",
+    )
+
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
@@ -31,6 +35,7 @@ async def get_full_user(request: GetFullUser, user: User):
             common_chats_count=0,
             birthday=await target_user.to_tl_birthday(user),
             read_dates_private=True,
+            wallpaper=await chat_wallpaper.wallpaper.to_tl(user) if chat_wallpaper is not None else None,
         ),
         chats=[],
         users=[await target_user.to_tl(current_user=user)],

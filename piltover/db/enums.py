@@ -85,6 +85,7 @@ class UpdateType(IntEnum):
     NEW_STICKERSET = 26
     UPDATE_STICKERSETS = 27
     UPDATE_STICKERSETS_ORDER = 28
+    UPDATE_CHAT_WALLPAPER = 29
 
 
 class SecretUpdateType(IntEnum):
@@ -110,6 +111,7 @@ class MessageType(IntEnum):
     SERVICE_CHAT_USER_INVITE_JOIN = 7
     SERVICE_CHAT_USER_REQUEST_JOIN = 8
     SERVICE_CHANNEL_CREATE = 9
+    SERVICE_CHAT_UPDATE_WALLPAPER = 10
 
 
 class UserStatus(IntEnum):

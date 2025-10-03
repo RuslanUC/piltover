@@ -1,5 +1,6 @@
 from piltover.worker import MessageHandler
-from . import stubs, sending, history, dialogs, other, chats, reactions, invites, saved_dialogs, polls, folders, secret
+from . import stubs, sending, history, dialogs, other, chats, reactions, invites, saved_dialogs, polls, folders, secret, \
+    wallpaper
 
 handler = MessageHandler("messages")
 handler.register_handler(stubs.handler)
@@ -14,3 +15,4 @@ handler.register_handler(saved_dialogs.handler)
 handler.register_handler(polls.handler)
 handler.register_handler(folders.handler)
 handler.register_handler(secret.handler)
+handler.register_handler(wallpaper.handler)

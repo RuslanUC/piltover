@@ -9,7 +9,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
-    Stickerset
+    Stickerset, ChatWallpaper
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -21,7 +21,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
-    UpdateStickerSetsOrder, base
+    UpdateStickerSetsOrder, base, UpdatePeerWallpaper
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1260,6 +1260,34 @@ async def update_stickersets_order(user: User, new_order: list[int]) -> Updates:
                 order=new_order,
             )
         ],
+    )
+
+    await SessionManager.send(updates, user.id)
+
+    return updates
+
+
+async def update_chat_wallpaper(user: User, target: User, chat_wallpaper: ChatWallpaper | None) -> Updates:
+    new_pts = await State.add_pts(user, 1)
+
+    await Update.create(
+        user=user,
+        update_type=UpdateType.UPDATE_CHAT_WALLPAPER,
+        pts=new_pts,
+        pts_count=1,
+        related_id=target.id,
+        related_ids=[chat_wallpaper.wallpaper.id] if chat_wallpaper is not None else None,
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdatePeerWallpaper(
+                wallpaper_overridden=chat_wallpaper.overridden if chat_wallpaper is not None else False,
+                peer=PeerUser(user_id=target.id),
+                wallpaper=await chat_wallpaper.wallpaper.to_tl(user) if chat_wallpaper is not None else None,
+            )
+        ],
+        users=[await target.to_tl(user)]
     )
 
     await SessionManager.send(updates, user.id)

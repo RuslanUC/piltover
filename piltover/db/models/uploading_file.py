@@ -26,10 +26,19 @@ class UploadingFile(Model):
 
     async def finalize_upload(
             self, files_dir: Path, mime_type: str, attributes: list, file_type: FileType = FileType.DOCUMENT,
+            parts_num: int | None = None,
     ) -> models.File:
         parts = await UploadingFilePart.filter(file=self).order_by("part_id")
         if (self.total_parts > 0 and self.total_parts != len(parts)) or not parts:
-            raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID")
+            reason = ""
+            if self.total_parts != len(parts):
+                reason = f"{self.total_parts} != len({parts})"
+            elif not parts:
+                reason = f"not {parts}"
+            raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID", reason=reason)
+
+        if parts_num is not None and parts_num != len(parts):
+            raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID", reason=f"{parts_num} != len({parts})")
 
         size = parts[0].size
         for idx, part in enumerate(parts):

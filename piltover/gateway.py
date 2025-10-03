@@ -142,7 +142,9 @@ class Client:
         self.channels_loaded_at = 0.0
 
         self.no_updates = False
-        self.layer = 136
+        # TODO: start with minimal layer supported by the server
+        # TODO: remember highest layer supported by authorization
+        self.layer = 177
 
         self.disconnect_timeout: asyncio.Timeout | None = None
 

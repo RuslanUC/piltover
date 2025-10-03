@@ -14,7 +14,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, UpdateNewStickerSet, \
-    UpdateStickerSets, UpdateStickerSetsOrder
+    UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -22,7 +22,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
-              | UpdateStickerSetsOrder
+              | UpdateStickerSetsOrder | UpdatePeerWallpaper
 
 
 class Update(Model):
@@ -383,6 +383,22 @@ class Update(Model):
 
                 return UpdateStickerSetsOrder(
                     order=self.related_ids,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_CHAT_WALLPAPER:
+                if self.related_ids:
+                    wallpaper = await models.Wallpaper.get_or_none(id=self.related_ids[0]).select_related("document")
+                    chat_wallpaper = await models.ChatWallpaper.get_or_none(user=user, wallpaper=wallpaper)
+                else:
+                    wallpaper = None
+                    chat_wallpaper = None
+
+                users_q |= Q(id=self.related_id)
+
+                return UpdatePeerWallpaper(
+                    wallpaper_overridden=chat_wallpaper.overridden if chat_wallpaper is not None else False,
+                    peer=PeerUser(user_id=self.related_id),
+                    wallpaper=await wallpaper.to_tl(user) if wallpaper is not None else None,
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

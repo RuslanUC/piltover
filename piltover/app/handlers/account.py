@@ -1,4 +1,6 @@
+from base64 import urlsafe_b64encode
 from datetime import date, timedelta, datetime
+from os import urandom
 
 from pytz import UTC
 
@@ -8,13 +10,14 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
-    UserPasswordReset, SentCode, PhoneCodePurpose, Theme
+    UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
-    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, UpdatesTooLong
+    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, UpdatesTooLong, WallPaper, \
+    DocumentAttributeFilename
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
@@ -22,7 +25,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
-    ChangePhone, DeleteAccount, GetChatThemes
+    ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified
@@ -566,3 +569,37 @@ async def get_chat_themes(request: GetChatThemes, user: User) -> Themes | Themes
             for theme in await query.select_related("document")
         ]
     )
+
+
+@handler.on_request(UploadWallPaper_133)
+@handler.on_request(UploadWallPaper)
+async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user: User) -> WallPaper:
+    attributes = []
+    if request.file.name:
+        attributes.append(DocumentAttributeFilename(file_name=request.file.name))
+
+    if not request.mime_type.startswith("image/"):
+        raise ErrorRpc(error_code=400, error_message="WALLPAPER_MIME_INVALID")
+
+    uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.file.id)
+    if uploaded_file is None:
+        raise ErrorRpc(error_code=400, error_message="WALLPAPER_FILE_INVALID")
+    worker = request_ctx.get().worker
+    file = await uploaded_file.finalize_upload(
+        worker.data_dir / "files", request.mime_type, attributes, request.file.parts,
+    )
+
+    wallpaper = await Wallpaper.create(
+        creator=user,
+        slug=urlsafe_b64encode(urandom(32)).decode("utf8"),
+        pattern=False,
+        dark=False,
+        document=file,
+    )
+    await WallpaperSettings.create(
+        wallpaper=wallpaper,
+        blur=request.settings.blur,
+        motion=request.settings.motion,
+    )
+
+    return await wallpaper.to_tl(user)

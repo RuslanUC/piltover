@@ -5,9 +5,9 @@ from enum import IntEnum
 from tortoise import Model, fields
 
 from piltover.db import models
-from piltover.tl.types import ThemeSettings as TLThemeSettings, BaseThemeClassic, BaseThemeDay, BaseThemeNight, \
-    BaseThemeTinted, BaseThemeArctic, WallPaperSettings
 from piltover.tl.base import BaseTheme as TLBaseTheme
+from piltover.tl.types import BaseThemeClassic, BaseThemeDay, BaseThemeNight, \
+    BaseThemeTinted, BaseThemeArctic, WallPaperSettings
 
 
 class BaseTheme(IntEnum):
@@ -27,18 +27,19 @@ class BaseTheme(IntEnum):
         }[self]
 
 
+# TODO: just merge all the fields into models.Wallpaper model ?
 class WallpaperSettings(Model):
     id: int = fields.BigIntField(pk=True)
     wallpaper: models.Wallpaper = fields.OneToOneField("models.Wallpaper")
-    blur: bool = fields.BooleanField()
-    motion: bool = fields.BooleanField()
-    background_color: int | None = fields.IntField(null=True)
-    second_background_color: int | None = fields.IntField(null=True)
-    third_background_color: int | None = fields.IntField(null=True)
-    fourth_background_color: int | None = fields.IntField(null=True)
-    intensity: int | None = fields.IntField(null=True)
-    rotation: int | None = fields.IntField(null=True)
-    emoticon: str | None = fields.CharField(max_length=8, null=True)
+    blur: bool = fields.BooleanField(default=False)
+    motion: bool = fields.BooleanField(default=False)
+    background_color: int | None = fields.IntField(null=True, default=None)
+    second_background_color: int | None = fields.IntField(null=True, default=None)
+    third_background_color: int | None = fields.IntField(null=True, default=None)
+    fourth_background_color: int | None = fields.IntField(null=True, default=None)
+    intensity: int | None = fields.IntField(null=True, default=None)
+    rotation: int | None = fields.IntField(null=True, default=None)
+    emoticon: str | None = fields.CharField(max_length=8, null=True, default=None)
 
     wallpaper_id: int
 

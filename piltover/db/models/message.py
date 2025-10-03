@@ -15,10 +15,14 @@ from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.exceptions import Error, ErrorRpc
 from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, TLObject, String, LongVector
+from piltover.tl.base import MessageActionInst, MessageAction
+from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageActionNeedsProcessing
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatJoinedByRequest, MessageActionChatJoinedByLink, \
     MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage, MessageReactions, ReactionCount, \
-    ReactionEmoji, MessageMediaDocument, MessageMediaPhoto
+    ReactionEmoji, MessageMediaDocument, MessageMediaPhoto, MessageActionEmpty, WallPaperNoFile, \
+    MessageActionSetChatWallPaper
+from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
 from piltover.utils.snowflake import Snowflake
 
 
@@ -85,6 +89,25 @@ async def _service_chat_user_join_request(_1: Message, _2: models.User) -> Messa
     return MessageActionChatJoinedByRequest()
 
 
+async def _process_service_message_action(
+        action: MessageActionNeedsProcessing, _: Message, user: models.User,
+) -> tuple[MessageAction, bool]:
+    if isinstance(action, MessageActionProcessSetChatWallpaper):
+        wallpaper = await models.Wallpaper.get_or_none(id=action.wallpaper_id).select_related("document")
+        if wallpaper is not None:
+            wallpaper_tl = await wallpaper.to_tl(user)
+        else:
+            wallpaper_tl = WallPaperNoFile(id=0)
+        return MessageActionSetChatWallPaper(
+            same=action.same,
+            for_both=action.for_both,
+            wallpaper=wallpaper_tl,
+        ), False
+    else:
+        logger.warning(f"Got unknown message action to process: {action!r}")
+        return MessageActionEmpty(), False
+
+
 MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User], Awaitable[...]]] = {
     MessageType.SERVICE_PIN_MESSAGE: _service_pin_message,
     MessageType.SERVICE_CHAT_CREATE: _service_create_chat,
@@ -109,6 +132,7 @@ _REGULAR_DEFAULTS = {
     "noforwards": False,
     "restriction_reason": []
 }
+AllowedMessageActions = (*MessageActionInst, *MessageActionNeedsProcessingInst)
 
 
 class Message(Model):
@@ -169,6 +193,8 @@ class Message(Model):
             self.reply_to = await self.reply_to
         return MessageReplyHeader(reply_to_msg_id=self.reply_to.id) if self.reply_to is not None else None
 
+    # NOTE: keep in mind when implementing service messages caching:
+    #  file references and access hashes must also be properly refreshed
     async def _to_tl_service(self, user: models.User) -> MessageService:
         if self.type in (MessageType.SERVICE_CHAT_EDIT_PHOTO,):
             action = await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, user)
@@ -176,12 +202,26 @@ class Message(Model):
             try:
                 # TODO: ensure type is one of message action types
                 action = TLObject.read(BytesIO(self.extra_info))
+                if not isinstance(action, AllowedMessageActions):
+                    logger.error(
+                        f"Expected service message action to "
+                        f"be any of this types: {AllowedMessageActions}, got {action=!r}"
+                    )
+                    action = MessageActionEmpty()
             except Error:
                 logger.debug(
                     f"Message {self.id} contains non-TL-encoded extra_info service message action, "
                     f"trying to migrate it..."
                 )
                 action = await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, user)
+                self.extra_info = action.write()
+                await self.save(update_fields=["extra_info"])
+
+        if isinstance(action, MessageActionNeedsProcessingInst):
+            logger.trace(f"Initial processing of message action {action!r}")
+            action, save = await _process_service_message_action(action, self, user)
+            if not isinstance(action, MessageActionEmpty) and save:
+                logger.trace(f"Saving processed action: {action!r}")
                 self.extra_info = action.write()
                 await self.save(update_fields=["extra_info"])
 

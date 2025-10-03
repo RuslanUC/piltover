@@ -51,6 +51,10 @@ internal.tagged_bytes_vector#8d538c0f vec:Vector<bytes> = internal.TaggedVector;
 internal.tagged_string_vector#492bec2d vec:Vector<string> = internal.TaggedVector;
 internal.tagged_object_vector#b002bb63 vec:Vector<Object> = internal.TaggedVector;
 
+// Service messages
+
+internal.message_action_process_set_chat_wallpaper#ba5f701a flags:# same:flags.0?true for_both:flags.1?true wallpaper_id:long = internal.MessageActionNeedsProcessing;
+
 ---functions---
 
 // For my.telegram.org alternative page
