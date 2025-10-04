@@ -56,3 +56,4 @@ from .theme_settings import ThemeSettings, BaseTheme
 from .wallpaper import Wallpaper
 from .wallpaper_settings import WallpaperSettings
 from .chat_wallpaper import ChatWallpaper
+from .installed_wallpaper import InstalledWallpaper

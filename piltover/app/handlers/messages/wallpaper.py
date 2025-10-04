@@ -52,7 +52,7 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user: User) -> Updates:
         else:
             raise ErrorRpc(error_code=400, error_message="WALLPAPER_NOT_FOUND")
 
-        set_wallpaper = await Wallpaper.get_or_none(id=wallpaper_id).select_related("document")
+        set_wallpaper = await Wallpaper.get_or_none(id=wallpaper_id).select_related("document", "settings")
         if set_wallpaper is None:
             raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
     else:

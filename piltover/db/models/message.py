@@ -93,7 +93,7 @@ async def _process_service_message_action(
         action: MessageActionNeedsProcessing, _: Message, user: models.User,
 ) -> tuple[MessageAction, bool]:
     if isinstance(action, MessageActionProcessSetChatWallpaper):
-        wallpaper = await models.Wallpaper.get_or_none(id=action.wallpaper_id).select_related("document")
+        wallpaper = await models.Wallpaper.get_or_none(id=action.wallpaper_id).select_related("document", "settings")
         if wallpaper is not None:
             wallpaper_tl = await wallpaper.to_tl(user)
         else:

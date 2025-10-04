@@ -232,11 +232,25 @@ async def _create_chat_themes() -> None:
             wallpaper = None
             if settings_json.get("wallpaper"):
                 wp = settings_json["wallpaper"]
+
+                wallpaper_settings = await WallpaperSettings.create(
+                    blur=wp["settings"]["blur"],
+                    motion=wp["settings"]["motion"],
+                    background_color=wp["settings"]["background_color"],
+                    second_background_color=wp["settings"]["second_background_color"],
+                    third_background_color=wp["settings"]["third_background_color"],
+                    fourth_background_color=wp["settings"]["fourth_background_color"],
+                    intensity=wp["settings"]["intensity"],
+                    rotation=wp["settings"]["rotation"],
+                    emoticon=wp["settings"].get("emoticon"),
+                )
+
                 wp_defaults = {
                     "creator": None,
                     "pattern": wp["pattern"],
                     "dark": wp["dark"],
                     "document": None,
+                    "settings": wallpaper_settings,
                 }
 
                 if wp["document"]:
@@ -244,25 +258,8 @@ async def _create_chat_themes() -> None:
 
                 wallpaper, wp_created = await Wallpaper.get_or_create(slug=wp["slug"], defaults=wp_defaults)
                 if not wp_created:
+                    wallpaper.settings = wallpaper_settings
                     await wallpaper.update_from_dict(wp_defaults).save()
-
-                wp_settings_defaults = {
-                    "blur": wp["settings"]["blur"],
-                    "motion": wp["settings"]["motion"],
-                    "background_color": wp["settings"]["background_color"],
-                    "second_background_color": wp["settings"]["second_background_color"],
-                    "third_background_color": wp["settings"]["third_background_color"],
-                    "fourth_background_color": wp["settings"]["fourth_background_color"],
-                    "intensity": wp["settings"]["intensity"],
-                    "rotation": wp["settings"]["rotation"],
-                    "emoticon": wp["settings"].get("emoticon"),
-                }
-
-                wallpaper_settings, wps_created = await WallpaperSettings.get_or_create(
-                    wallpaper=wallpaper, defaults=wp_settings_defaults,
-                )
-                if not wps_created:
-                    await wallpaper_settings.update_from_dict(wp_settings_defaults).save()
 
             await ThemeSettings.create(
                 theme=theme,

@@ -45,7 +45,7 @@ class Theme(Model):
             settings=[
                 await settings.to_tl(user)
                 for settings in await models.ThemeSettings.filter(theme=self).select_related(
-                    "wallpaper", "wallpaper__document",
+                    "wallpaper", "wallpaper__document", "wallpaper__settings",
                 )
             ],
             emoticon=self.emoticon,

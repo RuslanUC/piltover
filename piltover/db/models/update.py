@@ -387,7 +387,9 @@ class Update(Model):
 
             case UpdateType.UPDATE_CHAT_WALLPAPER:
                 if self.related_ids:
-                    wallpaper = await models.Wallpaper.get_or_none(id=self.related_ids[0]).select_related("document")
+                    wallpaper = await models.Wallpaper.get_or_none(id=self.related_ids[0]).select_related(
+                        "document", "settings",
+                    )
                     chat_wallpaper = await models.ChatWallpaper.get_or_none(user=user, wallpaper=wallpaper)
                 else:
                     wallpaper = None

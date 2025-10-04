@@ -3,6 +3,7 @@ from datetime import date, timedelta, datetime
 from os import urandom
 
 from pytz import UTC
+from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username, telegram_hash
@@ -10,14 +11,15 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
-    UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings
+    UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
+    InstalledWallpaper
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, UpdatesTooLong, WallPaper, \
-    DocumentAttributeFilename
+    DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
@@ -25,10 +27,11 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
-    ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper
+    ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
+    SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
-    ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified
+    ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms
 from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
@@ -558,12 +561,12 @@ async def get_chat_themes(request: GetChatThemes, user: User) -> Themes | Themes
     query = Theme.filter(creator=None).order_by("id")
     ids = await query.values_list("id", flat=True)
 
-    reactions_hash = telegram_hash(ids, 64)
-    if reactions_hash == request.hash:
+    themes_hash = telegram_hash(ids, 64)
+    if themes_hash == request.hash:
         return ThemesNotModified()
 
     return Themes(
-        hash=reactions_hash,
+        hash=themes_hash,
         themes=[
             await theme.to_tl(user)
             for theme in await query.select_related("document")
@@ -589,17 +592,129 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
         worker.data_dir / "files", request.mime_type, attributes, request.file.parts,
     )
 
+    settings = await WallpaperSettings.create(
+        blur=request.settings.blur,
+        motion=request.settings.motion,
+    )
     wallpaper = await Wallpaper.create(
         creator=user,
         slug=urlsafe_b64encode(urandom(32)).decode("utf8"),
         pattern=False,
         dark=False,
         document=file,
-    )
-    await WallpaperSettings.create(
-        wallpaper=wallpaper,
-        blur=request.settings.blur,
-        motion=request.settings.motion,
+        settings=settings,
     )
 
     return await wallpaper.to_tl(user)
+
+
+@handler.on_request(GetWallPaper)
+async def get_wallpaper(request: GetWallPaper, user: User) -> WallPaper:
+    wallpaper = await Wallpaper.from_input(request.wallpaper)
+    if wallpaper is None:
+        raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
+    return await wallpaper.to_tl(user)
+
+
+@handler.on_request(GetMultiWallPapers)
+async def get_multi_wallpapers(request: GetMultiWallPapers, user: User) -> TLObjectVector[WallPaper]:
+    if not request.wallpapers:
+        return TLObjectVector()
+
+    query = Q()
+    for wp in request.wallpapers:
+        if (q := Wallpaper.from_input_q(wp, user)) is None:
+            raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
+        query &= q
+
+    return TLObjectVector([
+        await wallpaper.to_tl(user)
+        for wallpaper in await Wallpaper.filter(query).select_related("document", "settings")
+    ])
+
+
+@handler.on_request(SaveWallPaper)
+async def save_wallpaper(request: SaveWallPaper, user: User) -> bool:
+    if isinstance(request.wallpaper, InputWallPaperNoFile):
+        raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
+
+    wallpaper = await Wallpaper.from_input(request.wallpaper)
+    if wallpaper is None:
+        raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
+
+    installed = await InstalledWallpaper.get_or_none(user=user, wallpaper=wallpaper).select_related("settings")
+    if request.unsave:
+        await installed.delete()
+        return True
+
+    if installed is None:
+        if wallpaper.document is not None:
+            settings = await WallpaperSettings.create(
+                blur=request.settings.blur,
+                motion=request.settings.motion,
+            )
+        else:
+            settings = await WallpaperSettings.create(
+                motion=request.settings.motion,
+                background_color=request.settings.background_color,
+                second_background_color=request.settings.second_background_color,
+                third_background_color=request.settings.third_background_color,
+                fourth_background_color=request.settings.fourth_background_color,
+                intensity=request.settings.intensity,
+                rotation=request.settings.rotation,
+                emoticon=request.settings.emoticon,
+            )
+        await InstalledWallpaper.create(user=user, wallpaper=wallpaper, settings=settings)
+    else:
+        if installed.settings.to_tl() != request.settings:
+            if wallpaper.document is not None:
+                installed.settings.blur = request.settings.blur
+                installed.settings.motion = request.settings.motion
+            else:
+                installed.settings.motion = request.settings.motion
+                installed.settings.background_color = request.settings.background_color
+                installed.settings.second_background_color = request.settings.second_background_color
+                installed.settings.third_background_color = request.settings.third_background_color
+                installed.settings.fourth_background_color = request.settings.fourth_background_color
+                installed.settings.intensity = request.settings.intensity
+                installed.settings.rotation = request.settings.rotation
+                installed.settings.emoticon = request.settings.emoticon
+            await installed.settings.save()
+
+    return True
+
+
+@handler.on_request(InstallWallPaper)
+async def install_wallpaper(request: InstallWallPaper, user: User) -> bool:
+    return await save_wallpaper(
+        request=SaveWallPaper(
+            wallpaper=request.wallpaper,
+            unsave=False,
+            settings=request.settings,
+        ),
+        user=user,
+    )
+
+
+@handler.on_request(GetWallPapers)
+async def get_wallpapers(request: GetWallPapers, user: User) -> WallPapers | WallPapersNotModified:
+    query = InstalledWallpaper.filter(user=user).order_by("id")
+    ids = await query.values_list("id", flat=True)
+
+    wallpapers_hash = telegram_hash(ids, 64)
+    if wallpapers_hash == request.hash:
+        return WallPapersNotModified()
+
+    return WallPapers(
+        hash=wallpapers_hash,
+        wallpapers=[
+            await installed.wallpaper.to_tl(user, installed.settings)
+            for installed in await query.select_related("wallpaper", "wallpaper__document", "settings")
+        ]
+    )
+
+
+@handler.on_request(ResetWallPapers)
+async def reset_wallpapers(user: User) -> bool:
+    await InstalledWallpaper.filter(user=user).delete()
+    return True

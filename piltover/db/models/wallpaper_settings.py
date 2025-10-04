@@ -4,7 +4,6 @@ from enum import IntEnum
 
 from tortoise import Model, fields
 
-from piltover.db import models
 from piltover.tl.base import BaseTheme as TLBaseTheme
 from piltover.tl.types import BaseThemeClassic, BaseThemeDay, BaseThemeNight, \
     BaseThemeTinted, BaseThemeArctic, WallPaperSettings
@@ -27,10 +26,8 @@ class BaseTheme(IntEnum):
         }[self]
 
 
-# TODO: just merge all the fields into models.Wallpaper model ?
 class WallpaperSettings(Model):
     id: int = fields.BigIntField(pk=True)
-    wallpaper: models.Wallpaper = fields.OneToOneField("models.Wallpaper")
     blur: bool = fields.BooleanField(default=False)
     motion: bool = fields.BooleanField(default=False)
     background_color: int | None = fields.IntField(null=True, default=None)
