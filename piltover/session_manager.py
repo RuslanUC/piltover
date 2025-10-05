@@ -100,11 +100,9 @@ class Session:
         if originating_request is None:
             msg_id = self.msg_id(in_reply=False)
         else:
-            if is_content_related(obj):
-                msg_id = self.msg_id(in_reply=True)
-            else:
-                self._update_time_and_offset_from_message_maybe(originating_request.message_id)
-                msg_id = originating_request.message_id + 1
+            # TODO: !!! this needs to be tested on official clients !!!
+            self._update_time_and_offset_from_message_maybe(originating_request.message_id)
+            msg_id = self.msg_id(in_reply=True)
 
         return Message(
             message_id=msg_id,

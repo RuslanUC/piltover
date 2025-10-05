@@ -6,7 +6,7 @@ from pytz import UTC
 from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app.utils.utils import check_password_internal, get_perm_key, validate_username, telegram_hash
+from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
@@ -79,9 +79,9 @@ async def update_username(request: UpdateUsername, user: User) -> TLUser:
 
 @handler.on_request(GetAuthorizations)
 async def get_authorizations(user: User):
-    current_key = await get_perm_key(request_ctx.get().auth_key_id)
-    authorizations = await UserAuthorization.filter(user=user).select_related("key").all()
-    authorizations = [auth.to_tl(current=auth.key == current_key) for auth in authorizations]
+    current_key_id = request_ctx.get().perm_auth_key_id
+    authorizations = await UserAuthorization.filter(user=user).all()
+    authorizations = [auth.to_tl(current=auth.key_id == current_key_id) for auth in authorizations]
 
     return Authorizations(authorization_ttl_days=15, authorizations=authorizations)
 

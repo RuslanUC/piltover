@@ -36,7 +36,7 @@ async def _custom_auth_create(_) -> bytes:
 
     key = urandom(256)
     key_id = Long.read_bytes(hashlib.sha1(key).digest()[-8:])
-    await AuthKey.create(id=str(key_id), auth_key=key)
+    await AuthKey.create(id=key_id, auth_key=key)
     return key
 
 

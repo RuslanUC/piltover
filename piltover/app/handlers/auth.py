@@ -10,7 +10,7 @@ from pytz import UTC
 from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app.utils.utils import check_password_internal, get_perm_key
+from piltover.app.utils.utils import check_password_internal
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
@@ -123,7 +123,7 @@ async def sign_in(request: SignIn):
 
     password, _ = await UserPassword.get_or_create(user=user)
 
-    key = await get_perm_key(request_ctx.get().auth_key_id)
+    key = await AuthKey.get(id=request_ctx.get().perm_auth_key_id)
     await UserAuthorization.filter(key=key).delete()
     auth = await UserAuthorization.create(ip="127.0.0.1", user=user, key=key, mfa_pending=password.password is not None)
     if password.password is not None:
@@ -161,7 +161,7 @@ async def sign_up(request: SignUp | SignUp_133):
         first_name=request.first_name,
         last_name=request.last_name
     )
-    key = await get_perm_key(request_ctx.get().auth_key_id)
+    key = await AuthKey.get(id=request_ctx.get().perm_auth_key_id)
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
     # TODO: send notification to all users that have new user's number as contact if no_joined_notifications is False
@@ -278,9 +278,7 @@ async def accept_login_token(request: AcceptLoginToken, user: User) -> Authoriza
 
 @handler.on_request(LogOut)
 async def log_out() -> LoggedOut:
-    key = await get_perm_key(request_ctx.get().auth_key_id)
-    await UserAuthorization.filter(key=key).delete()
-
+    await UserAuthorization.filter(key__id=request_ctx.get().perm_auth_key_id).delete()
     return LoggedOut()
 
 
@@ -294,11 +292,9 @@ async def reset_authorizations(user: User) -> bool:
 
     auths = await UserAuthorization.filter(user=user, id__not=auth_id).select_related("key")
 
-    keys_s = [auth.key.id for auth in auths]
-    keys = list(map(int, keys_s))
-
-    temp_keys = await TempAuthKey.filter(perm_key__in__in=keys_s).values_list("id", flat=True)
-    keys.extend(map(int, temp_keys))
+    keys = [auth.key.id for auth in auths]
+    temp_keys_ids = await TempAuthKey.filter(perm_key__id__in=keys).values_list("id", flat=True)
+    keys.extend(temp_keys_ids)
 
     await UserAuthorization.filter(id__in=[auth.id for auth in auths]).delete()
 

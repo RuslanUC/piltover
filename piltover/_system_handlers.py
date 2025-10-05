@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
 
-from piltover.db.models import UserAuthorization, ServerSalt
+from piltover.db.models import UserAuthorization, ServerSalt, AuthKey
 from piltover.session_manager import Session
 from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
     InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts, FutureSalts
@@ -44,6 +44,9 @@ async def _invoke_inner_query(client: Client, request: Message, session: Session
 
 
 async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], session: Session) -> RpcResult:
+    if request.obj.layer > client.layer:
+        # TODO: only same layer if inner query is InitConnection?
+        await AuthKey.filter(id=client.auth_data.perm_auth_key_id).update(layer=client.layer)
     client.layer = request.obj.layer
     return await _invoke_inner_query(client, request, session)
 
@@ -60,7 +63,7 @@ async def invoke_without_updates(client: Client, request: Message[InvokeWithoutU
 async def init_connection(client: Client, request: Message[InitConnection], session: Session) -> RpcResult:
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
-    authorization = await UserAuthorization.get_or_none(key__id=str(await client.auth_data.get_perm_id()))
+    authorization = await UserAuthorization.get_or_none(key__id=client.auth_data.perm_auth_key_id)
     if authorization is not None:
         # TODO: set api id
         authorization.active_at = datetime.now()

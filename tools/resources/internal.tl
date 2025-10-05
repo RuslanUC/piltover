@@ -69,4 +69,4 @@ internal.get_available_servers#a2ed5af3 auth:bytes = internal.AvailableServers;
 
 // Rpc calls between brokers
 
-internal.call_rpc#c43b5f29 flags:# key_is_temp:flags.0?true auth_key_id:flags.1?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long layer:int obj:Object = internal.RpcResponse;
+internal.call_rpc#ead5e531 flags:# auth_key_id:flags.1?long perm_auth_key_id:flags.0?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long layer:int obj:Object = internal.RpcResponse;

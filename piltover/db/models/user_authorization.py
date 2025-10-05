@@ -33,10 +33,11 @@ class UserAuthorization(Model):
     upd_qts: int = fields.BigIntField(default=0)
 
     #app: models.ApiApplication = fields.ForeignKeyField("models.ApiApplication")
-    user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
-    key: models.AuthKey = fields.ForeignKeyField("models.AuthKey", on_delete=fields.CASCADE, unique=True)
+    user: models.User = fields.ForeignKeyField("models.User")
+    key: models.AuthKey = fields.OneToOneField("models.AuthKey")
 
     user_id: int
+    key_id: int
 
     @property
     def tl_hash(self) -> int:

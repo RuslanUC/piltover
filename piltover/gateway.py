@@ -104,10 +104,10 @@ class Gateway:
             await server.serve_forever()
 
     @staticmethod
-    async def get_auth_key(auth_key_id: int) -> tuple[int, bytes, bool] | None:
+    async def get_auth_key(auth_key_id: int) -> tuple[int, bytes, int] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
         if key := await AuthKey.get_or_temp(auth_key_id):
-            return auth_key_id, key.auth_key, isinstance(key, TempAuthKey)
+            return auth_key_id, key.auth_key, key.perm_key.id if isinstance(key, TempAuthKey) else auth_key_id
 
     async def get_current_salt(self) -> bytes:
         current_id = int(time() // (60 * 60))
@@ -142,9 +142,7 @@ class Client:
         self.channels_loaded_at = 0.0
 
         self.no_updates = False
-        # TODO: start with minimal layer supported by the server
-        # TODO: remember highest layer supported by authorization
-        self.layer = 177
+        self.layer = 133
 
         self.disconnect_timeout: asyncio.Timeout | None = None
 
@@ -235,7 +233,7 @@ class Client:
             self, obj: TLObject, session: Session, message_id: int | None = None
     ) -> AsyncTaskiqTask:
         auth_key_id = (self.auth_data.auth_key_id or None) if self.auth_data else None
-        is_temp = self.auth_data.is_temp if self.auth_data and auth_key_id else False
+        perm_auth_key_id = (self.auth_data.perm_auth_key_id or None) if self.auth_data else None
 
         auth_id = None
         user_id = None
@@ -243,10 +241,7 @@ class Client:
         if auth_key_id is not None:
             auth, loaded_at = self.authorization
             if auth is None or (time() - loaded_at) > 60:
-                query_key = "key__tempauthkeys__id" if is_temp else "key__id"
-                query = {query_key: str(auth_key_id)}
-
-                auth = await UserAuthorization.get_or_none(**query).select_related("user")
+                auth = await UserAuthorization.get_or_none(key__id=perm_auth_key_id).select_related("user")
 
                 self.authorization = (auth, time())
                 if auth is not None and session.user_id is None:
@@ -284,8 +279,8 @@ class Client:
         return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(CallRpc(
             obj=obj,
             layer=self.layer,
-            key_is_temp=is_temp,
             auth_key_id=auth_key_id,
+            perm_auth_key_id=perm_auth_key_id,
             session_id=session.session_id if session is not None else None,
             message_id=message_id,
             auth_id=auth_id,
@@ -439,6 +434,13 @@ class Client:
                 logger.info(f"Client ({self.peername}) sent unknown auth_key_id {auth_key_id}, disconnecting with 404")
                 raise Disconnection(404)
             self.auth_data = AuthData(*got)
+            _, _, perm_auth_key_id = got
+
+            if (perm_key := await AuthKey.get_or_none(id=perm_auth_key_id)) is None:
+                logger.error(f"Somehow we managed to get perm auth key {perm_auth_key_id}, but now it does not exist")
+                raise Disconnection(404)
+
+            self.layer = perm_key.layer
 
     def _create_quick_ack(self, message: DecryptedMessagePacket) -> QuickAckPacket:
         return message.quick_ack_response(self.auth_data.auth_key, ConnectionRole.CLIENT)

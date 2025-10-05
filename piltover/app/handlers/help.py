@@ -1,6 +1,5 @@
 import ctypes
 from time import time
-from uuid import UUID
 
 from piltover.app_config import AppConfig
 from piltover.db.models import AuthCountry, User, Reaction, UserReactionsSettings

@@ -172,11 +172,6 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
         raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
 
 
-async def get_perm_key(unk_key_id: int) -> AuthKey | None:
-    key = await AuthKey.get_or_temp(unk_key_id)
-    return key.perm_key if isinstance(key, TempAuthKey) else key
-
-
 MessageEntity = MessageEntityUnknown | MessageEntityMention | MessageEntityHashtag | MessageEntityBotCommand \
                 | MessageEntityUrl | MessageEntityEmail | MessageEntityBold | MessageEntityItalic | MessageEntityCode \
                 | MessageEntityPre | MessageEntityTextUrl | MessageEntityMentionName | MessageEntityPhone \

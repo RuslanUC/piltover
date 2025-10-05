@@ -1,28 +1,18 @@
-from piltover.db.models import TempAuthKey
-
-
 class AuthData:
-    __slots__ = ("auth_key_id", "auth_key", "is_temp",)
+    __slots__ = ("auth_key_id", "auth_key", "is_temp", "perm_auth_key_id",)
 
-    def __init__(self, auth_key_id: int | None = None, auth_key: bytes | None = None, is_temp: bool = False):
+    def __init__(
+            self, auth_key_id: int | None = None, auth_key: bytes | None = None, perm_auth_key_id: int | None = None,
+    ) -> None:
         self.auth_key_id = auth_key_id
         self.auth_key = auth_key
-        self.is_temp = is_temp
+        self.is_temp = auth_key_id != perm_auth_key_id
+        self.perm_auth_key_id = perm_auth_key_id
 
     def check_key(self, expected_auth_key_id: int) -> bool:
         if self.auth_key is None or expected_auth_key_id is None:
             return False
         return self.auth_key_id == expected_auth_key_id
-
-    async def get_perm_id(self) -> int | None:
-        if self.auth_key_id is None:
-            return None
-        if not self.is_temp:
-            return self.auth_key_id
-
-        temp = await TempAuthKey.get_or_none(id=str(self.auth_key_id)).select_related("perm_key")
-        if temp is not None and temp.perm_key is not None:
-            return int(temp.perm_key.id)
 
 
 class GenAuthData(AuthData):
