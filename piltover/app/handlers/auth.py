@@ -233,18 +233,14 @@ async def export_login_token():  # TODO: test
         auth = await UserAuthorization.get_or_none(id=ctx.auth_id).select_related("user")
         return LoginTokenSuccess(authorization=AuthAuthorization(user=await auth.user.to_tl(current_user=auth.user)))
 
-    key = await AuthKey.get_or_temp(ctx.auth_key_id)
-    if isinstance(key, TempAuthKey):
-        key = key.perm_key
-
-    login_q = Q(key=key) & (
+    login_q = Q(key__id=ctx.perm_auth_key_id) & (
         Q(created_at__gt=datetime.now(UTC) - timedelta(seconds=QrLogin.EXPIRE_TIME))
         | Q(auth__not=None)
     )
 
     login = await QrLogin.get_or_none(login_q).select_related("auth", "auth__user")
     if login is None:
-        login = await QrLogin.create(key=key)
+        login = await QrLogin.create(key=await AuthKey.get(id=ctx.perm_auth_key_id))
 
     if login.auth is not None:
         if login.auth.mfa_pending:

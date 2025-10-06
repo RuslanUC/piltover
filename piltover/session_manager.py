@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from mtproto.packets import DecryptedMessagePacket
 
-from piltover.db.models import UserAuthorization, AuthKey, Channel, User, Message as DbMessage, Chat, EncryptedChat
+from piltover.db.models import UserAuthorization, Channel, User, Message as DbMessage, Chat, EncryptedChat
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates, Vector
 from piltover.tl.core_types import Message, MsgContainer
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 class KeyInfo:
     auth_key: bytes
     auth_key_id: int
+    perm_auth_key_id: int
 
 
 class MsgIdValues:
@@ -100,7 +101,6 @@ class Session:
         if originating_request is None:
             msg_id = self.msg_id(in_reply=False)
         else:
-            # TODO: !!! this needs to be tested on official clients !!!
             self._update_time_and_offset_from_message_maybe(originating_request.message_id)
             msg_id = self.msg_id(in_reply=True)
 
@@ -209,10 +209,9 @@ class Session:
                 fetched_obj = await self._fetch_lazy_field(lazy_obj)  # type: ignore
                 self._set_attr_or_element(current, field_path[-1], fetched_obj)
 
-        if isinstance(obj, Updates):
-            key = await AuthKey.get_or_temp(self.auth_key.auth_key_id)
-            if key is not None:
-                auth = await UserAuthorization.get(key__id=str(key.id if isinstance(key, AuthKey) else key.perm_key.id))
+        if isinstance(obj, Updates) and self.auth_key is not None and self.auth_key.perm_auth_key_id:
+            # TODO: replace with id=self.auth_id ??
+            if (auth := await UserAuthorization.get_or_none(key__id=self.auth_key.perm_auth_key_id)) is not None:
                 auth.upd_seq += 1
                 await auth.save(update_fields=["upd_seq"])
                 obj.seq = auth.upd_seq
@@ -254,6 +253,7 @@ class SessionManager:
             auth_key=KeyInfo(
                 auth_key=client.auth_data.auth_key,
                 auth_key_id=client.auth_data.auth_key_id,
+                perm_auth_key_id=client.auth_data.perm_auth_key_id,
             ),
             msg_id_values=msg_id_values,
         )

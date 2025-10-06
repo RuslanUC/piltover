@@ -106,8 +106,13 @@ class Gateway:
     @staticmethod
     async def get_auth_key(auth_key_id: int) -> tuple[int, bytes, int] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
-        if key := await AuthKey.get_or_temp(auth_key_id):
-            return auth_key_id, key.auth_key, key.perm_key.id if isinstance(key, TempAuthKey) else auth_key_id
+
+        if (key := await AuthKey.get_or_none(id=auth_key_id)) is not None:
+            return key.id, key.auth_key, key.id
+
+        temp_key = await TempAuthKey.get_or_none(id=auth_key_id, expires_at__gt=int(time())).select_related("perm_key")
+        if temp_key is not None:
+            return temp_key.id, temp_key.auth_key, temp_key.perm_key.id
 
     async def get_current_salt(self) -> bytes:
         current_id = int(time() // (60 * 60))

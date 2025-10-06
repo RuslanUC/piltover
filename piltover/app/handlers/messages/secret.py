@@ -231,8 +231,8 @@ async def received_queue(request: ReceivedQueue):
     random_ids = await SecretUpdate.filter(
         authorization=current_auth, qts__lte=request.max_qts, message_random_id__not_isnull=True,
     ).values_list("message_random_id", flat=True)
-    logger.info(f"Removing {len(random_ids)}+ secret updates because of ReceivedQueue")
-    logger.info(f"Random ids btw: {random_ids!r}")
+    logger.trace(f"Removing {len(random_ids)}+ secret updates because of ReceivedQueue")
+    logger.trace(f"Random ids btw: {random_ids!r}")
     await SecretUpdate.filter(authorization=current_auth, qts__lte=request.max_qts).delete()
 
     return LongVector(random_ids)
