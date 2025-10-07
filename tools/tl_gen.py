@@ -15,17 +15,20 @@
 #
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with Pyrogram.  If not, see <http://www.gnu.org/licenses/>.
+from __future__ import annotations
+
 import os
 import re
 import shutil
 from collections import defaultdict
 from functools import partial
+from io import StringIO
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, TextIO
 
 from tqdm import tqdm
 
-
+DRY_RUN = True
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl")
 
@@ -34,7 +37,6 @@ LAYER_RE = re.compile(r"//\sLAYER\s(\d+)")
 COMBINATOR_RE = re.compile(r"^([\w.]+)#([0-9a-f]+)\s.*=\s([\w<>.]+);$", re.MULTILINE)
 ARGS_RE = re.compile(r"[^{](\w+):([\w?!.<>#]+)")
 FLAGS_RE = re.compile(r"flags(\d?)\.(\d+)\?")
-FLAGS_RE_3 = re.compile(r"flags(\d?):#")
 
 CORE_TYPES = {"int", "long", "int128", "int256", "double", "bytes", "string", "Bool", "true", "#"}
 CORE_TYPES_D = {"int": "Int", "#": "Int", "long": "Long", "int128": "Int128", "int256": "Int256"}
@@ -47,8 +49,19 @@ WARNING = """
 # # # # # # # # # # # # # # # # # # # # # # # #
 """.strip()
 
-# noinspection PyShadowingBuiltins
-open = partial(open, encoding="utf-8")
+if DRY_RUN:
+    __real_open = open
+
+    # noinspection PyShadowingBuiltins
+    def open(filename: os.PathLike, mode: Literal["r", "w", "a"] = "r", *args, **kwargs) -> TextIO:
+        if mode == "r":
+            return __real_open(filename, mode, *args, encoding="utf-8", **kwargs)
+
+        return StringIO()
+else:
+    # noinspection PyShadowingBuiltins
+    open = partial(open, encoding="utf-8")
+
 
 all_layers = set()
 types_to_constructors: dict[str, list[str]] = defaultdict(list)
@@ -58,18 +71,26 @@ namespaces_to_functions: dict[str, list[str]] = defaultdict(list)
 namespaces_to_types: dict[str, list[str]] = defaultdict(list)
 
 
-class Combinator(NamedTuple):
-    section: str
-    qualname: str
-    namespace: str
-    name: str
-    id: str
-    has_flags: bool
-    args: list[tuple[str, str]]
-    qualtype: str
-    typespace: str
-    type: str
-    layer: int = 0
+class Combinator:
+    __slots__ = (
+        "section", "qualname", "namespace", "name", "id", "args", "qualtype", "typespace", "type", "fields", "layer",
+    )
+
+    def __init__(
+            self, section: str, qualname: str, namespace: str, name: str, id: str, args: list[tuple[str, str]],
+            qualtype: str, typespace: str, type_: str
+    ) -> None:
+        self.section = section
+        self.qualname = qualname
+        self.namespace = namespace
+        self.name = name
+        self.id = id
+        self.args = args
+        self.qualtype = qualtype
+        self.typespace = typespace
+        self.type = type_
+        self.fields = []
+        self.layer = 0
 
 
 def snake(s: str):
@@ -194,9 +215,6 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
             type_ = camel(type_)
             qualtype = ".".join([typespace, type_]).lstrip(".")
 
-            # Pingu!
-            has_flags = not not FLAGS_RE_3.findall(line)
-
             args: list[tuple[str, str]] = ARGS_RE.findall(line)
 
             # Fix arg name being "self" (reserved python keyword)
@@ -215,11 +233,10 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
                 namespace=namespace,
                 name=name,
                 id=f"0x{id}",
-                has_flags=has_flags,
                 args=args,
                 qualtype=qualtype,
                 typespace=typespace,
-                type=type_
+                type_=type_,
             )
 
             combinators.append(combinator)
@@ -249,7 +266,7 @@ def parse_old_schemas(combinators_base: list[Combinator]) -> dict[int, dict[str,
             name = f"{c.qualname}#{c.id}"
             if name in schema_base:
                 continue
-            c = c._replace(layer=layer)
+            c.layer = layer
             schemas[layer][name] = c
 
     for i in range(len(layers)):
@@ -264,11 +281,8 @@ def parse_old_schemas(combinators_base: list[Combinator]) -> dict[int, dict[str,
             continue
         for cname in schemas[layer]:
             c = schemas[layer][cname]
-            replacements = {
-                "qualname": f"{c.qualname}_{layer}",
-                "name": f"{c.name}_{layer}",
-            }
-            schemas[layer][cname] = c._replace(**replacements)
+            c.qualname = f"{c.qualname}_{layer}"
+            c.name = f"{c.name}_{layer}"
 
     return schemas
 
@@ -288,26 +302,37 @@ def indent(lines: list[str], spaces: int) -> list[str]:
 class Field:
     _COUNTER = 0
 
-    __slots__ = ("position", "name", "is_flag", "flag_bit", "flag_num", "full_type", "write",)
+    __slots__ = ("position", "name", "flag_bit", "flag_num", "full_type",)
 
     def __init__(
-            self, name: str, is_flag: bool = False, flag_bit: int | None = None, flag_num: int | None = None,
-            type_: str | None = None, write: bool = True,
+            self, name: str, flag_bit: int | None = None, flag_num: int | None = None,
+            type_: str | None = None,
     ):
         self.position = self.__class__._COUNTER
         self.__class__._COUNTER += 1
         self.name = name
-        self.is_flag = is_flag
         self.flag_bit = flag_bit
         self.flag_num = flag_num
         self.full_type = type_
-        self.write = write
-
-    def opt(self) -> bool:
-        return self.flag_bit is not None and not self.is_flag
 
     def type(self) -> str:
         return self.full_type if "?" not in self.full_type else self.full_type.split("?", 1)[1]
+
+    @property
+    def is_flag(self) -> bool:
+        return self.full_type == "#"
+
+    @property
+    def is_optional(self) -> bool:
+        return self.flag_bit is not None and not self.is_flag
+
+    @property
+    def is_vector(self) -> bool:
+        return self.type().lower().startswith("vector<")
+
+    @property
+    def write(self) -> bool:
+        return self.type() != "true"
 
 
 def get_real_type_from_type_and_subtype(type_name: str, subtype_name: str | None) -> str:
@@ -330,8 +355,9 @@ def get_real_type_from_type_and_subtype(type_name: str, subtype_name: str | None
 
 
 def start():
-    shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
-    shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
+    if not DRY_RUN:
+        shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
+        shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
 
     schema = []
     for file_name in os.listdir(HOME_PATH / "resources"):
@@ -344,25 +370,24 @@ def start():
     combinators.extend(parse_old_objects(combinators))
 
     for c in tqdm(combinators, desc="Processing combinators", total=len(combinators)):
-        qualtype = c.qualtype
+        if c.section != "types":
+            continue
+        
+        if c.qualtype.startswith("Vector"):
+            raise RuntimeError(f"TL type constructors cannot be of type {c.qualtype}")
 
-        if qualtype.startswith("Vector"):
-            qualtype = qualtype.split("<")[1][:-1]
-
-        if c.section == "types":
-            types_to_constructors[qualtype].append(c.qualname)
-            if c.type not in namespaces_to_types[c.namespace]:
-                namespaces_to_types[c.namespace].append(c.type)
+        types_to_constructors[c.qualtype].append(c.qualname)
+        if c.type not in namespaces_to_types[c.namespace]:
+            namespaces_to_types[c.namespace].append(c.type)
 
     for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
-        fields = []
+        c.fields = fields = []
         flag_num = 1
         for arg in c.args:
             fields.append((field := Field(arg[0])))
 
             arg_type = arg[1]
             if arg_type == "#":
-                field.is_flag = True
                 field.flag_num = flag_num
                 flag_num += 1
             if "?" in arg_type:
@@ -371,7 +396,6 @@ def start():
 
                 field.flag_bit = bit
                 field.flag_num = int(this_flag_num) if this_flag_num else 1
-                field.write = arg_type.split("?")[1] != "true"
 
                 arg_type = arg_type.split("?", 1)[1]
 
@@ -383,8 +407,8 @@ def start():
 
         init_args = [
             f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True, True)}"
-            + ("" if not field.opt() else (" = False" if field.type() in ("true", "Bool") else " = None"))
-            for field in sorted(fields, key=lambda fd: (fd.opt(), fd.position))
+            + ("" if not field.is_optional else (" = False" if field.type() in ("true", "Bool") else " = None"))
+            for field in sorted(fields, key=lambda fd: (fd.is_optional, fd.position))
             if not field.is_flag
         ]
         if init_args:
@@ -399,10 +423,9 @@ def start():
         deserialize_body = []
         for field in fields:
             tmp_ = field.type().split("Vector<")
-            is_vec = len(tmp_) > 1
 
             subtype_name = None
-            if is_vec:
+            if field.is_vector:
                 type_name_ = "list"
                 tmp_ = tmp_[1].split(">")[0]
                 if is_tl_object(tmp_):
@@ -424,7 +447,7 @@ def start():
                 flag_var = f"flags{field.flag_num}"
                 serialize_body.append(f"{flag_var} = 0")
                 for ffield in fields:
-                    if not ffield.opt() or ffield.flag_num != field.flag_num:
+                    if not ffield.is_optional or ffield.flag_num != field.flag_num:
                         continue
                     empty_condition = "" if ffield.type().lower().startswith("vector") or not ffield.write else " is not None"
                     serialize_body.append(f"if self.{ffield.name}{empty_condition}: {flag_var} |= (1 << {ffield.flag_bit})")
@@ -433,15 +456,13 @@ def start():
                 deserialize_body.append(f"{flag_var} = Int.read(stream)")
                 continue
 
-            is_vec = field.type().lower().startswith("vector")
-
-            if field.opt():
+            if field.is_optional:
                 if field.write:
                     empty_condition = ""
                     fields_with_this_flag = len([
                         1 for f in fields if f.flag_num == field.flag_num and f.flag_bit == field.flag_bit
                     ])
-                    if fields_with_this_flag > 1 or not is_vec:
+                    if fields_with_this_flag > 1 or not field.is_vector:
                         empty_condition = " is not None"
 
                     serialize_body.append(f"if self.{field.name}{empty_condition}:")
@@ -462,6 +483,7 @@ def start():
 
         imports = [
             f"from __future__ import annotations",
+            f"from typing import Iterable",
             f"from {third_dot}..primitives import *",
             f"from {third_dot}.. import types",
             f"from {third_dot}..tl_object import TLObject",
@@ -470,7 +492,7 @@ def start():
 
         if c.section == "types":
             imports.extend((
-                f"from typing import TYPE_CHECKING, Iterable",
+                f"from typing import TYPE_CHECKING",
                 f"if TYPE_CHECKING:",
                 f"    from {third_dot}.. import base",
                 f"",
@@ -529,7 +551,8 @@ def start():
         ]
 
         dir_path = DESTINATION_PATH / c.section / c.namespace
-        dir_path.mkdir(parents=True, exist_ok=True)
+        if not DRY_RUN:
+            dir_path.mkdir(parents=True, exist_ok=True)
 
         out_path = dir_path / f"__init__.py"
         if not out_path.exists():
@@ -550,7 +573,8 @@ def start():
 
     for namespace, types in namespaces_to_types.items():
         base_dir = DESTINATION_PATH / "base" / namespace
-        base_dir.mkdir(parents=True, exist_ok=True)
+        if not DRY_RUN:
+            base_dir.mkdir(parents=True, exist_ok=True)
 
         with open(base_dir / "__init__.py", "w") as f:
             f.write(f"{WARNING}\n\n")
