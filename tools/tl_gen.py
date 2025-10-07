@@ -404,7 +404,7 @@ def start():
         slots.append("")  # For trailing comma
 
         init_args = [
-            f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True, True)}"
+            f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True)}"
             + ("" if not field.is_optional else (" = False" if field.type() in ("true", "Bool") else " = None"))
             for field in sorted(fields, key=lambda fd: (fd.is_optional, fd.position))
             if not field.is_flag

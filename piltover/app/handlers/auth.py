@@ -191,11 +191,9 @@ async def check_password(request: CheckPassword, user: User):
 async def bind_temp_auth_key(request: BindTempAuthKey):
     ctx = request_ctx.get()
 
-    encrypted_message = MessagePacket.parse(request.encrypted_message)
+    encrypted_message = cast(EncryptedMessagePacket, MessagePacket.parse(request.encrypted_message))
     if not isinstance(encrypted_message, EncryptedMessagePacket):
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
-
-    encrypted_message = cast(EncryptedMessagePacket, encrypted_message)
 
     if encrypted_message.auth_key_id != request.perm_auth_key_id:
         logger.debug(f"Perm auth key id mismatch: {encrypted_message.auth_key_id} != {request.perm_auth_key_id}")
@@ -213,9 +211,9 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
 
         obj = BindAuthKeyInner.read(BytesIO(message.data))
         sec_check(obj.perm_auth_key_id == encrypted_message.auth_key_id)
-        sec_check(obj.nonce == request.nonce)
-        sec_check(obj.temp_session_id == ctx.session_id)
-        sec_check(obj.temp_auth_key_id == ctx.auth_key_id)
+        sec_check(obj.nonce == request.nonce, msg=f"{obj.nonce} != {request.nonce}")
+        sec_check(obj.temp_session_id == ctx.session_id, msg=f"{obj.temp_session_id} != {ctx.session_id}")
+        sec_check(obj.temp_auth_key_id == ctx.auth_key_id, msg=f"{obj.temp_auth_key_id} != {ctx.auth_key_id}")
     except Exception as e:
         logger.opt(exception=e).debug("Failed to decrypt inner message")
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")

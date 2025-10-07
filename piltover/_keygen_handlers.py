@@ -98,8 +98,7 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
         raise Disconnection(404)
 
     auth_data.is_temp = isinstance(p_q_inner_data, (PQInnerDataTemp, PQInnerDataTempDc))
-    auth_data.expires_in = max(cast(PQInnerDataTempDc, p_q_inner_data).expires_in, 86400) \
-        if auth_data.is_temp else 0
+    auth_data.expires_in = max(cast(PQInnerDataTemp, p_q_inner_data).expires_in, 86400) if auth_data.is_temp else 0
 
     new_nonce = Int256.write(p_q_inner_data.new_nonce)
     auth_data.new_nonce = new_nonce

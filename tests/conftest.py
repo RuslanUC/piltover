@@ -6,6 +6,7 @@ import logging
 from asyncio import Event, Lock, timeout, Task, DefaultEventLoopPolicy
 from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
+from io import BytesIO
 from os import urandom
 from time import time
 from typing import AsyncIterator, TypeVar, Self, TYPE_CHECKING
@@ -22,6 +23,8 @@ from pyrogram.session import Auth, Session as PyroSession
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
+
+from piltover.tl import TLRequest
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
@@ -342,6 +345,10 @@ class TestClient(Client):
         if isinstance(res, Updates):
             await self.handle_updates(res, True)
         return res
+
+    async def invoke_p(self, query: TLRequest[T]) -> T:
+        pyro_query = PyroTLObject.read(BytesIO(query.write()))
+        return await self.invoke(pyro_query)
 
     async def expect_update(self, update_cls: type[T], timeout_: float = 1) -> T:
         async with timeout(timeout_):
