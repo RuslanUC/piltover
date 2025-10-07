@@ -95,6 +95,7 @@ def layer_suffix(type_: str, layer: int) -> str:
 # noinspection PyShadowingBuiltins, PyShadowingNames
 def get_type_hint(
         type: str, layer: int, int_is_int: bool = False, dont_use_base_when_only_one_constructor: bool = False,
+        use_iterable_for_vector: bool = False
 ) -> str:
     is_flag = FLAGS_RE.match(type)
     is_core = False
@@ -123,7 +124,8 @@ def get_type_hint(
         is_core = True
 
         sub_type = type.split("<")[1][:-1]
-        type = f"list[{get_type_hint(sub_type, layer, int_is_int)}]"
+        outer = "Iterable" if use_iterable_for_vector else "list"
+        type = f"{outer}[{get_type_hint(sub_type, layer, int_is_int)}]"
 
     if is_core:
         return f"{type} | None" if is_flag and type != "bool" else type
@@ -380,7 +382,7 @@ def start():
         slots.append("")  # For trailing comma
 
         init_args = [
-            f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True)}"
+            f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True, True)}"
             + ("" if not field.opt() else (" = False" if field.type() in ("true", "Bool") else " = None"))
             for field in sorted(fields, key=lambda fd: (fd.opt(), fd.position))
             if not field.is_flag
@@ -468,7 +470,7 @@ def start():
 
         if c.section == "types":
             imports.extend((
-                f"from typing import TYPE_CHECKING",
+                f"from typing import TYPE_CHECKING, Iterable",
                 f"if TYPE_CHECKING:",
                 f"    from {third_dot}.. import base",
                 f"",

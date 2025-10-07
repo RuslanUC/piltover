@@ -14,40 +14,15 @@ from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.exceptions import Error, ErrorRpc
-from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, TLObject, String, LongVector
+from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, TLObject
 from piltover.tl.base import MessageActionInst, MessageAction
 from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageActionNeedsProcessing
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser, MessageActionChatJoinedByRequest, MessageActionChatJoinedByLink, \
-    MessageActionChatEditTitle, MessageActionChatCreate, MessageActionPinMessage, MessageReactions, ReactionCount, \
+    MessageActionChatDeleteUser, MessageReactions, ReactionCount, \
     ReactionEmoji, MessageMediaDocument, MessageMediaPhoto, MessageActionEmpty, WallPaperNoFile, \
     MessageActionSetChatWallPaper
 from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
 from piltover.utils.snowflake import Snowflake
-
-
-async def _service_pin_message(_: Message, _u: models.User) -> MessageActionPinMessage:
-    return MessageActionPinMessage()
-
-
-async def _service_create_chat(message: Message, _: models.User) -> MessageActionChatCreate:
-    if not message.extra_info:
-        return MessageActionChatCreate(title="", users=[])
-
-    stream = BytesIO(message.extra_info)
-    title = String.read(stream)
-    # TODO: check if .tolist() can be safely removed
-    user_ids = LongVector.read(stream).tolist()
-    return MessageActionChatCreate(title=title, users=user_ids)
-
-
-async def _service_edit_chat_title(message: Message, _: models.User) -> MessageActionChatEditTitle:
-    if not message.extra_info:
-        return MessageActionChatEditTitle(title="")
-
-    return MessageActionChatEditTitle(
-        title=String.read(BytesIO(message.extra_info)),
-    )
 
 
 async def _service_edit_chat_photo(message: Message, user: models.User) -> MessageActionChatEditPhoto:
@@ -60,33 +35,6 @@ async def _service_edit_chat_photo(message: Message, user: models.User) -> Messa
         return MessageActionChatEditPhoto(photo=await file.to_tl_photo(user))
 
     return MessageActionChatEditPhoto(photo=PhotoEmpty(id=photo_id))
-
-
-async def _service_chat_add_user(message: Message, _: models.User) -> MessageActionChatAddUser:
-    if not message.extra_info:
-        return MessageActionChatAddUser(users=[])
-
-    # TODO: check if .tolist() can be safely removed
-    user_ids = LongVector.read(BytesIO(message.extra_info)).tolist()
-    return MessageActionChatAddUser(users=user_ids)
-
-
-async def _service_chat_del_user(message: Message, _: models.User) -> MessageActionChatDeleteUser:
-    if not message.extra_info:
-        return MessageActionChatDeleteUser(user_id=0)
-
-    return MessageActionChatDeleteUser(user_id=Long.read_bytes(message.extra_info))
-
-
-async def _service_chat_user_join_invite(message: Message, _: models.User) -> MessageActionChatJoinedByLink:
-    if not message.extra_info:
-        return MessageActionChatJoinedByLink(inviter_id=0)
-
-    return MessageActionChatJoinedByLink(inviter_id=Long.read_bytes(message.extra_info))
-
-
-async def _service_chat_user_join_request(_1: Message, _2: models.User) -> MessageActionChatJoinedByRequest:
-    return MessageActionChatJoinedByRequest()
 
 
 async def _process_service_message_action(
@@ -109,14 +57,7 @@ async def _process_service_message_action(
 
 
 MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User], Awaitable[...]]] = {
-    MessageType.SERVICE_PIN_MESSAGE: _service_pin_message,
-    MessageType.SERVICE_CHAT_CREATE: _service_create_chat,
-    MessageType.SERVICE_CHAT_EDIT_TITLE: _service_edit_chat_title,
     MessageType.SERVICE_CHAT_EDIT_PHOTO: _service_edit_chat_photo,
-    MessageType.SERVICE_CHAT_USER_ADD: _service_chat_add_user,
-    MessageType.SERVICE_CHAT_USER_DEL: _service_chat_del_user,
-    MessageType.SERVICE_CHAT_USER_INVITE_JOIN: _service_chat_user_join_invite,
-    MessageType.SERVICE_CHAT_USER_REQUEST_JOIN: _service_chat_user_join_request,
 }
 
 _FWD_HEADER_MISSING = object()
@@ -199,23 +140,13 @@ class Message(Model):
         if self.type in (MessageType.SERVICE_CHAT_EDIT_PHOTO,):
             action = await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, user)
         else:
-            try:
-                # TODO: ensure type is one of message action types
-                action = TLObject.read(BytesIO(self.extra_info))
-                if not isinstance(action, AllowedMessageActions):
-                    logger.error(
-                        f"Expected service message action to "
-                        f"be any of this types: {AllowedMessageActions}, got {action=!r}"
-                    )
-                    action = MessageActionEmpty()
-            except Error:
-                logger.debug(
-                    f"Message {self.id} contains non-TL-encoded extra_info service message action, "
-                    f"trying to migrate it..."
+            action = TLObject.read(BytesIO(self.extra_info))
+            if not isinstance(action, AllowedMessageActions):
+                logger.error(
+                    f"Expected service message action to "
+                    f"be any of this types: {AllowedMessageActions}, got {action=!r}"
                 )
-                action = await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, user)
-                self.extra_info = action.write()
-                await self.save(update_fields=["extra_info"])
+                action = MessageActionEmpty()
 
         if isinstance(action, MessageActionNeedsProcessingInst):
             logger.trace(f"Initial processing of message action {action!r}")
