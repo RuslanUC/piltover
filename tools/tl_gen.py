@@ -21,14 +21,13 @@ import os
 import re
 import shutil
 from collections import defaultdict
-from functools import partial
 from io import StringIO
 from pathlib import Path
 from typing import Literal, TextIO
 
 from tqdm import tqdm
 
-DRY_RUN = True
+DRY_RUN = False
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl")
 
@@ -58,9 +57,6 @@ if DRY_RUN:
             return __real_open(filename, mode, *args, encoding="utf-8", **kwargs)
 
         return StringIO()
-else:
-    # noinspection PyShadowingBuiltins
-    open = partial(open, encoding="utf-8")
 
 
 all_layers = set()
@@ -135,13 +131,15 @@ def get_type_hint(
             type = "str"
         elif type in ["Bool", "true"]:
             type = "bool"
-        else:  # bytes and object
-            type = "bytes"
+        elif type == "bytes":
+            pass
+        else:
+            raise RuntimeError(f"Got unknown type: {type}")
 
     if type in ["Object", "!X"]:
         return "TLObject"
 
-    if re.match("^vector", type, re.I):
+    if type.lower().startswith("vector"):
         is_core = True
 
         sub_type = type.split("<")[1][:-1]
@@ -163,7 +161,7 @@ def get_type_hint(
 
 
 def is_tl_object(field_type: str) -> bool:
-    if field_type in CORE_TYPES or re.match("^vector", field_type, re.I):
+    if field_type in CORE_TYPES or field_type.lower().startswith("vector"):
         return False
 
     return True
@@ -607,7 +605,7 @@ def start():
             with open(out_path, "a") as f:
                 f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_functions))}\n")
 
-    with open(DESTINATION_PATH / "all.py", "w", encoding="utf-8") as f:
+    with open(DESTINATION_PATH / "all.py", "w") as f:
         f.write(WARNING + "\n\n")
         f.write(f"from . import core_types, types, functions\n\n")
         f.write(f"min_layer = {min(all_layers)}\n")
@@ -615,12 +613,12 @@ def start():
         f.write("objects = {")
 
         for c in combinators:
-            f.write(f'\n    {c.id}: {c.section}.{c.qualname},')
+            f.write(f"\n    {c.id}: {c.section}.{c.qualname},")
 
-        f.write(f'\n    0x5bb8e511: core_types.Message,')
-        f.write(f'\n    0x73f1f8dc: core_types.MsgContainer,')
-        f.write(f'\n    0xf35c6d01: core_types.RpcResult,')
-        f.write(f'\n    0x3072cfa1: core_types.GzipPacked,')
+        f.write(f"\n    0x5bb8e511: core_types.Message,")
+        f.write(f"\n    0x73f1f8dc: core_types.MsgContainer,")
+        f.write(f"\n    0xf35c6d01: core_types.RpcResult,")
+        f.write(f"\n    0x3072cfa1: core_types.GzipPacked,")
 
         f.write("\n}\n")
 
