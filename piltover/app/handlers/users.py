@@ -20,7 +20,7 @@ async def get_full_user(request: GetFullUser, user: User):
         about = target_user.about
 
     chat_wallpaper = await ChatWallpaper.get_or_none(user=user, target=target_user).select_related(
-        "wallpaper", "wallpaper__document",
+        "wallpaper", "wallpaper__document", "wallpaper__settings",
     )
 
     return UserFull(

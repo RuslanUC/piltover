@@ -17,7 +17,8 @@ from piltover.db.enums import FileType, StickerSetType
 from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset, StickersetThumb
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
-    InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty
+    InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty, \
+    InputStickerSetAnimatedEmoji, StickerSet
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
@@ -495,6 +496,33 @@ async def change_sticker(request: ChangeSticker, user: User) -> MessagesStickerS
 
 @handler.on_request(GetStickerSet)
 async def get_stickerset(request: GetStickerSet, user: User) -> MessagesStickerSet | StickerSetNotModified:
+    if isinstance(request.stickerset, InputStickerSetAnimatedEmoji):
+        return MessagesStickerSet(
+            set=StickerSet(
+                id=1,
+                access_hash=1,
+                title="Telegram For Android, stfu",
+                short_name="animatedemojiorwhatever",
+                official=True,
+                creator=False,
+                installed_date=None,
+                archived=False,
+                count=0,
+                hash=0,
+                masks=False,
+                emojis=False,
+                thumbs=None,
+                thumb_dc_id=None,
+                thumb_version=None,
+                thumb_document_id=None,
+                text_color=False,
+                channel_emoji_status=False,
+            ),
+            packs=[],
+            keywords=[],
+            documents=[],
+        )
+
     stickerset = await Stickerset.from_input(request.stickerset)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
