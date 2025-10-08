@@ -24,10 +24,9 @@ from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
 
-from piltover.tl import TLRequest
-
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
+    from piltover.tl import TLRequest
 
 
 T = TypeVar("T")
@@ -44,6 +43,44 @@ async def _custom_auth_create(_) -> bytes:
 
 
 _real_auth_create = Auth.create
+
+
+class TransportError(RuntimeError):
+    def __init__(self, error_code: int) -> None:
+        super().__init__(f"Got transport error {error_code}")
+        self.code = error_code
+
+
+async def _session_recv_worker(self: PyroSession):
+    from piltover.tl.primitives import Int
+    from pyrogram.session.session import log
+    log.info("NetworkTask started")
+
+    while True:
+        packet = await self.connection.recv()
+
+        if packet is None or len(packet) == 4:
+            if packet:
+                error_code = -Int.read_bytes(packet)
+                log.warning(
+                    "Server sent transport error: %s (%s)",
+                    error_code, PyroSession.TRANSPORT_ERRORS.get(error_code, "unknown error")
+                )
+
+                if error_code == 404:
+                    raise TransportError(404)
+
+            if self.is_started.is_set():
+                self.loop.create_task(self.restart())
+
+            break
+
+        self.loop.create_task(self.handle_packet(packet))
+
+    log.info("NetworkTask stopped")
+
+
+PyroSession.recv_worker = _session_recv_worker
 
 
 @pytest_asyncio.fixture(autouse=True)

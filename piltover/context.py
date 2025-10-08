@@ -16,7 +16,7 @@ class RequestContext(Generic[T]):
     )
 
     def __init__(
-            self, auth_key_id: int, perm_auth_key_id: int, message_id: int, session_id: int, obj: T, layer: int,
+            self, auth_key_id: int, perm_auth_key_id: int | None, message_id: int, session_id: int, obj: T, layer: int,
             auth_id: int | None, user_id: int | None, worker: Worker,
             *, _parent: RequestContext | None = None
     ):

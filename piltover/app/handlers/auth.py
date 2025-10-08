@@ -191,6 +191,11 @@ async def check_password(request: CheckPassword, user: User):
 async def bind_temp_auth_key(request: BindTempAuthKey):
     ctx = request_ctx.get()
 
+    if ctx.auth_key_id == ctx.perm_auth_key_id:
+        raise ErrorRpc(error_code=400, error_message="TEMP_AUTH_KEY_EMPTY")
+    if ctx.perm_auth_key_id is not None:
+        raise ErrorRpc(error_code=400, error_message="TEMP_AUTH_KEY_ALREADY_BOUND")
+
     encrypted_message = cast(EncryptedMessagePacket, MessagePacket.parse(request.encrypted_message))
     if not isinstance(encrypted_message, EncryptedMessagePacket):
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
@@ -199,7 +204,7 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
         logger.debug(f"Perm auth key id mismatch: {encrypted_message.auth_key_id} != {request.perm_auth_key_id}")
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
 
-    perm_key = await AuthKey.get_or_none(id=str(encrypted_message.auth_key_id))
+    perm_key = await AuthKey.get_or_none(id=encrypted_message.auth_key_id)
 
     try:
         sec_check(perm_key is not None)
@@ -218,8 +223,8 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
         logger.opt(exception=e).debug("Failed to decrypt inner message")
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
 
-    await TempAuthKey.filter(perm_key=perm_key, id__not=str(obj.temp_auth_key_id)).delete()
-    await TempAuthKey.filter(id=str(obj.temp_auth_key_id)).update(perm_key=perm_key)
+    await TempAuthKey.filter(perm_key=perm_key, id__not=obj.temp_auth_key_id).delete()
+    await TempAuthKey.filter(id=obj.temp_auth_key_id).update(perm_key=perm_key)
 
     return True
 

@@ -14,10 +14,11 @@ from pyrogram.raw.types import BindAuthKeyInner
 from pyrogram.raw.types.help import CountriesList, CountriesListNotModified
 from pyrogram.session import Auth
 from pyrogram.session.internals import MsgFactory
+from tortoise.expressions import F
 
-from piltover.db.models import AuthKey, TempAuthKey
+from piltover.db.models import TempAuthKey
 from piltover.tl import Long
-from tests.conftest import TestClient
+from tests.conftest import TestClient, TransportError
 
 
 @pytest.mark.asyncio
@@ -68,16 +69,7 @@ async def test_get_countries_list() -> None:
         assert isinstance(countries3, CountriesListNotModified)
 
 
-class MsgFactoryCustom(MsgFactory):
-    def __call__(self, body: TLObject | Message) -> Message:
-        if isinstance(body, Message):
-            return body
-        return super().__call__(body)
-
-
-@pytest.mark.real_key_gen
-@pytest.mark.asyncio
-async def test_temp_auth_key() -> None:
+async def _create_temp_auth_key() -> bytes:
     from pyrogram import raw
 
     class FakePQInnerData(raw.types.PQInnerDataTemp):
@@ -92,43 +84,38 @@ async def test_temp_auth_key() -> None:
     setattr(client_, "proxy", None)
 
     try:
-        auth_key_temp = await Auth(cast(TestClient, client_), 2, False).create()
+        return cast(bytes, await Auth(cast(TestClient, client_), 2, False).create())
     finally:
         raw.types.PQInnerData = real_PQInnerData
 
-    perm_client = TestClient(phone_number="123456789")
-    temp_client = TestClient(phone_number="123456789")
 
-    async with perm_client:
-        user_me = await perm_client.get_me()
-
-    perm_auth_key = await perm_client.storage.auth_key()
+async def _bind_temp_auth_key(temp_client: TestClient, temp_auth_key: bytes, perm_auth_key: bytes) -> None:
+    temp_auth_key_id = Long.read_bytes(hashlib.sha1(temp_auth_key).digest()[-8:])
     perm_auth_key_id = Long.read_bytes(hashlib.sha1(perm_auth_key).digest()[-8:])
-    temp_auth_key_id = Long.read_bytes(hashlib.sha1(auth_key_temp).digest()[-8:])
 
     await temp_client.storage.dc_id(2)
-    await temp_client.storage.auth_key(auth_key_temp)
+    await temp_client.storage.auth_key(temp_auth_key)
     await temp_client.storage.is_bot(False)
+    await temp_client.storage.test_mode(False)
+    await temp_client.storage.user_id(0)
 
     await temp_client.connect()
+    session = temp_client.session
 
-    old_msg_factory = temp_client.session.msg_factory
-    temp_client.session.msg_factory = msg_factory = MsgFactoryCustom()
+    old_msg_factory = session.msg_factory
+    session.msg_factory = msg_factory = MsgFactoryCustom()
     msg_factory.seq_no = old_msg_factory.seq_no
 
     nonce = Long.read_bytes(urandom(8))
-    session_id = Long.read_bytes(temp_client.session.session_id)
+    session_id = Long.read_bytes(session.session_id)
 
-    # TODO: for some reason, temp_auth_key_id and Long.read_bytes(temp_client.session.auth_key_id) do not match.
-    #  (i dont have time now to figure out why)
     logger.info(f"Session id btw: {session_id}")
     logger.info(f"Perm auth key id btw: {perm_auth_key_id}")
-    logger.info(f"Session temp auth key id btw: {Long.read_bytes(temp_client.session.auth_key_id)}")
     logger.info(f"Temp auth key id btw: {temp_auth_key_id}")
 
     inner_message = BindAuthKeyInner(
         nonce=nonce,
-        temp_auth_key_id=Long.read_bytes(temp_client.session.auth_key_id),
+        temp_auth_key_id=temp_auth_key_id,
         perm_auth_key_id=perm_auth_key_id,
         temp_session_id=session_id,
         expires_at=0,
@@ -156,9 +143,32 @@ async def test_temp_auth_key() -> None:
     message_to_send.body = query
     message_to_send.length = len(query.write())
 
-    await temp_client.invoke(message_to_send)
+    assert await temp_client.invoke(message_to_send)
 
     await temp_client.disconnect()
+
+
+class MsgFactoryCustom(MsgFactory):
+    def __call__(self, body: TLObject | Message) -> Message:
+        if isinstance(body, Message):
+            return body
+        return super().__call__(body)
+
+
+@pytest.mark.real_key_gen
+@pytest.mark.asyncio
+async def test_temp_auth_key() -> None:
+    auth_key_temp = await _create_temp_auth_key()
+
+    perm_client = TestClient(phone_number="123456789")
+    temp_client = TestClient(phone_number="123456789")
+
+    async with perm_client:
+        user_me = await perm_client.get_me()
+
+    perm_auth_key = await perm_client.storage.auth_key()
+
+    await _bind_temp_auth_key(temp_client, auth_key_temp, perm_auth_key)
 
     await temp_client.storage.user_id(user_me.id)
     async with temp_client:
@@ -166,4 +176,65 @@ async def test_temp_auth_key() -> None:
         assert user_me_test.id == user_me.id
 
 
-# TODO: add test with re-binding new temp auth key after the old one was expired
+@pytest.mark.real_key_gen
+@pytest.mark.asyncio
+async def test_temp_auth_key_expired() -> None:
+    auth_key_temp = await _create_temp_auth_key()
+    temp_auth_key_id = Long.read_bytes(hashlib.sha1(auth_key_temp).digest()[-8:])
+
+    perm_client = TestClient(phone_number="123456789")
+    temp_client = TestClient(phone_number="123456789")
+
+    async with perm_client:
+        user_me = await perm_client.get_me()
+
+    perm_auth_key = await perm_client.storage.auth_key()
+
+    await _bind_temp_auth_key(temp_client, auth_key_temp, perm_auth_key)
+
+    await temp_client.storage.user_id(user_me.id)
+    async with temp_client:
+        user_me_test = await temp_client.get_me()
+        assert user_me_test.id == user_me.id
+
+    await TempAuthKey.filter(id=temp_auth_key_id).update(expires_at=F("expires_at") - 86400 * 2)
+
+    with pytest.raises(TransportError, check=lambda exc: exc.code == 404):
+        async with temp_client:
+            ...
+
+
+@pytest.mark.real_key_gen
+@pytest.mark.asyncio
+async def test_temp_auth_key_expired_rebind() -> None:
+    auth_key_temp = await _create_temp_auth_key()
+    temp_auth_key_id = Long.read_bytes(hashlib.sha1(auth_key_temp).digest()[-8:])
+
+    perm_client = TestClient(phone_number="123456789")
+    temp_client = TestClient(phone_number="123456789")
+
+    async with perm_client:
+        user_me = await perm_client.get_me()
+
+    perm_auth_key = await perm_client.storage.auth_key()
+
+    await _bind_temp_auth_key(temp_client, auth_key_temp, perm_auth_key)
+
+    await temp_client.storage.user_id(user_me.id)
+    async with temp_client:
+        user_me_test = await temp_client.get_me()
+        assert user_me_test.id == user_me.id
+
+    await TempAuthKey.filter(id=temp_auth_key_id).update(expires_at=F("expires_at") - 86400 * 2)
+
+    with pytest.raises(TransportError, check=lambda exc: exc.code == 404):
+        async with temp_client:
+            ...
+
+    auth_key_temp = await _create_temp_auth_key()
+    await _bind_temp_auth_key(temp_client, auth_key_temp, perm_auth_key)
+
+    await temp_client.storage.user_id(user_me.id)
+    async with temp_client:
+        user_me_test = await temp_client.get_me()
+        assert user_me_test.id == user_me.id

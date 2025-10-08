@@ -199,9 +199,9 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
     auth_key = auth_data.auth_key
     expires_in = auth_data.expires_in
     if expires_in:
-        await TempAuthKey.create(id=str(auth_key_id), auth_key=auth_key, expires_at=int(time() + expires_in))
+        await TempAuthKey.create(id=auth_key_id, auth_key=auth_key, expires_at=int(time() + expires_in))
     else:
-        await AuthKey.create(id=str(auth_key_id), auth_key=auth_key)
+        await AuthKey.create(id=auth_key_id, auth_key=auth_key)
 
     logger.info("Auth key generation successfully completed!")
 

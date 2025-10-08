@@ -104,7 +104,7 @@ class Gateway:
             await server.serve_forever()
 
     @staticmethod
-    async def get_auth_key(auth_key_id: int) -> tuple[int, bytes, int] | None:
+    async def get_auth_key(auth_key_id: int) -> tuple[int, bytes, int | None] | None:
         logger.debug(f"Requested auth key: {auth_key_id}")
 
         if (key := await AuthKey.get_or_none(id=auth_key_id)) is not None:
@@ -112,7 +112,7 @@ class Gateway:
 
         temp_key = await TempAuthKey.get_or_none(id=auth_key_id, expires_at__gt=int(time())).select_related("perm_key")
         if temp_key is not None:
-            return temp_key.id, temp_key.auth_key, temp_key.perm_key.id
+            return temp_key.id, temp_key.auth_key, temp_key.perm_key.id if temp_key.perm_key else None
 
     async def get_current_salt(self) -> bytes:
         current_id = int(time() // (60 * 60))
@@ -243,7 +243,7 @@ class Client:
         auth_id = None
         user_id = None
 
-        if auth_key_id is not None:
+        if auth_key_id is not None and perm_auth_key_id is not None:
             auth, loaded_at = self.authorization
             if auth is None or (time() - loaded_at) > 60:
                 auth = await UserAuthorization.get_or_none(key__id=perm_auth_key_id).select_related("user")
@@ -441,11 +441,14 @@ class Client:
             self.auth_data = AuthData(*got)
             _, _, perm_auth_key_id = got
 
-            if (perm_key := await AuthKey.get_or_none(id=perm_auth_key_id)) is None:
-                logger.error(f"Somehow we managed to get perm auth key {perm_auth_key_id}, but now it does not exist")
-                raise Disconnection(404)
+            if perm_auth_key_id is not None:
+                if (perm_key := await AuthKey.get_or_none(id=perm_auth_key_id)) is None:
+                    logger.error(
+                        f"Somehow we managed to get perm auth key {perm_auth_key_id}, but now it does not exist"
+                    )
+                    raise Disconnection(404)
 
-            self.layer = perm_key.layer
+                self.layer = perm_key.layer
 
     def _create_quick_ack(self, message: DecryptedMessagePacket) -> QuickAckPacket:
         return message.quick_ack_response(self.auth_data.auth_key, ConnectionRole.CLIENT)
