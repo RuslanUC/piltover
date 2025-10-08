@@ -45,8 +45,8 @@ async def _invoke_inner_query(client: Client, request: Message, session: Session
 
 async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], session: Session) -> RpcResult:
     if request.obj.layer > client.layer:
-        # TODO: only same layer if inner query is InitConnection?
-        await AuthKey.filter(id=client.auth_data.perm_auth_key_id).update(layer=client.layer)
+        logger.trace(f"saving layer for key {client.auth_data.perm_auth_key_id}")
+        await AuthKey.filter(id=client.auth_data.perm_auth_key_id).update(layer=request.obj.layer)
     client.layer = request.obj.layer
     return await _invoke_inner_query(client, request, session)
 
@@ -71,6 +71,8 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
         authorization.system_version = request.obj.system_version
         authorization.app_version = request.obj.app_version
         authorization.ip = client.peername[0]
+
+        await authorization.save(update_fields=["active_at", "device_model", "system_version", "app_version", "ip"])
 
         if not client.no_updates:
             ...  # TODO: subscribe user to updates manually

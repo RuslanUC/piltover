@@ -149,6 +149,10 @@ class Worker(MessageHandler):
     async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse:
         call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
 
+        #obj, call.obj = call.obj, None
+        #logger.trace(f"Got CallRpc: {call!r}")
+        #call.obj = obj
+
         if not (handler := self.request_handlers.get(call.obj.tlid())):
             logger.warning(f"No handler found for obj: {call.obj}")
             return RpcResponse(obj=RpcResult(

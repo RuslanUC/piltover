@@ -234,6 +234,19 @@ class Client:
             obj.write(),
         ))
 
+    async def _fetch_perm_auth_key_maybe(self) -> None:
+        if self.auth_data is None:
+            return
+
+        auth_key_id = self.auth_data.auth_key_id or None
+        perm_auth_key_id = self.auth_data.perm_auth_key_id or None
+
+        if auth_key_id is None or perm_auth_key_id is not None:
+            return
+
+        temp_key = await TempAuthKey.get_or_none(id=auth_key_id).select_related("perm_key")
+        self.auth_data.perm_auth_key_id = temp_key.perm_key.id if temp_key.perm_key else None
+
     async def _kiq(
             self, obj: TLObject, session: Session, message_id: int | None = None
     ) -> AsyncTaskiqTask:
@@ -502,6 +515,8 @@ class Client:
                 self.session.destroy()
 
     async def propagate(self, request: Message, session: Session) -> RpcResult | None:
+        await self._fetch_perm_auth_key_maybe()
+
         if request.obj.tlid() in SYSTEM_HANDLERS:
             return await SYSTEM_HANDLERS[request.obj.tlid()](self, request, session)
 

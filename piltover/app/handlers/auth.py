@@ -7,7 +7,7 @@ from loguru import logger
 from mtproto import ConnectionRole
 from mtproto.packets import EncryptedMessagePacket, MessagePacket
 from pytz import UTC
-from tortoise.expressions import Q
+from tortoise.expressions import Q, Subquery
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import check_password_internal
@@ -277,7 +277,11 @@ async def accept_login_token(request: AcceptLoginToken, user: User) -> Authoriza
 
 @handler.on_request(LogOut)
 async def log_out() -> LoggedOut:
-    await UserAuthorization.filter(key__id=request_ctx.get().perm_auth_key_id).delete()
+    await UserAuthorization.filter(
+        id__in=Subquery(
+            UserAuthorization.filter(key__id=request_ctx.get().perm_auth_key_id).values_list("id", flat=True)
+        )
+    ).delete()
     return LoggedOut()
 
 
