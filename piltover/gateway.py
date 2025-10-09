@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import sleep
 from io import BytesIO
 from os import environ
 from pathlib import Path
@@ -32,7 +33,8 @@ from piltover.auth_data import AuthData, GenAuthData
 from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, ServerSalt
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
-from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError
+from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
+    ReqPqMulti
 from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
@@ -123,6 +125,9 @@ class Gateway:
             self.salt = Long.write(salt.salt)
 
         return self.salt
+
+
+_check_req_pq_tlid = (Int.write(ReqPq.tlid(), False), Int.write(ReqPqMulti.tlid(), False))
 
 
 class Client:
@@ -442,6 +447,18 @@ class Client:
             asyncio.create_task(self.handle_encrypted_message(message, session))
         elif isinstance(packet, UnencryptedMessagePacket):
             decoded = TLObject.read(BytesIO(packet.message_data))
+            if isinstance(decoded, (ReqPq, ReqPqMulti)):
+                peeked = self.conn.peek_packet()
+                packet: UnencryptedMessagePacket | None = None
+                while isinstance(peeked, UnencryptedMessagePacket) and peeked.message_data[:4] in _check_req_pq_tlid:
+                    logger.debug(f"Skipping reqPQ: {decoded}")
+                    packet = self.conn.receive()
+                    peeked = self.conn.peek_packet()
+                    await sleep(0)
+
+                if packet is not None:
+                    decoded = TLObject.read(BytesIO(packet.message_data))
+
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 
