@@ -55,6 +55,113 @@ internal.tagged_object_vector#b002bb63 vec:Vector<Object> = internal.TaggedVecto
 
 internal.message_action_process_set_chat_wallpaper#ba5f701a flags:# same:flags.0?true for_both:flags.1?true wallpaper_id:long = internal.MessageActionNeedsProcessing;
 
+// For benchmarking only
+
+internal_benchmarking.nested_object#d5525aa8 some_int:int some_long:long = internal_benchmarking.NestedObject;
+
+internal_benchmarking.deeply_nested_object_x8#88ab7760 some_int256:int256 nested_obj:internal_benchmarking.NestedObject = internal_benchmarking.DeeplyNestedObject;
+internal_benchmarking.deeply_nested_object_x7#f5a1d88a some_int128:int128 inner_object:internal_benchmarking.DeeplyNestedObject = internal_benchmarking.DeeplyNestedObject;
+internal_benchmarking.deeply_nested_object_x6#17b5ec16 flags:# opt_long:flags.0?long inner_object:internal_benchmarking.DeeplyNestedObject = internal_benchmarking.DeeplyNestedObject;
+internal_benchmarking.deeply_nested_object_x5#524e6a6a some_double:double inner_object:internal_benchmarking.DeeplyNestedObject = internal_benchmarking.DeeplyNestedObject;
+internal_benchmarking.deeply_nested_object_x4#c9bfbfd0 some_bool:Bool inner_object:internal_benchmarking.DeeplyNestedObject = internal_benchmarking.DeeplyNestedObject;
+internal_benchmarking.deeply_nested_object_x3#11bdcd0b some_bytes:bytes inner_object:internal_benchmarking.DeeplyNestedObject = internal_benchmarking.DeeplyNestedObject;
+internal_benchmarking.deeply_nested_object_x2#bfffaeb7 some_string:string inner_object:internal_benchmarking.DeeplyNestedObject = internal_benchmarking.DeeplyNestedObject;
+internal_benchmarking.deeply_nested_object_x1#1c0441df some_long:long inner_object:internal_benchmarking.DeeplyNestedObject = internal_benchmarking.DeeplyNestedObject;
+
+//internal_benchmarking.object_to_benchmark
+//    flags:#
+//
+//    int32:int
+//    optional_int32:flags.0?int
+//    int64:long
+//    optional_int64:flags.1?long
+//    int128:int128
+//    optional_int128:flags.2?int128
+//    int256:int256
+//    optional_int256:flags.3?int256
+//    double:double
+//    optional_double:flags.4?double
+//    bytes_field:bytes
+//    optional_bytes:flags.5?bytes
+//    string_field:string
+//    optional_string:flags.6?string
+//    full_bool:Bool
+//    optional_full_bool:flags.7?Bool
+//    optional_bit_bool:flags.8?true
+//    nested_object:internal_benchmarking.NestedObject
+//    optional_nested_object:flags.9?internal_benchmarking.NestedObject
+//    deeply_nested_object:internal_benchmarking.DeeplyNestedObject
+//    optional_deeply_nested_object:flags.10?internal_benchmarking.DeeplyNestedObject
+//
+//    int32_vec:Vector<int>
+//    optional_int32_vec:flags.11?Vector<int>
+//    int64_vec:Vector<long>
+//    optional_int64_vec:flags.12?Vector<long>
+//    int128_vec:Vector<int128>
+//    optional_int128_vec:flags.13?Vector<int128>
+//    int256_vec:Vector<int256>
+//    optional_int256_vec:flags.14?Vector<int256>
+//    double_vec:Vector<double>
+//    optional_double_vec:flags.15?Vector<double>
+//    bytes_field_vec:Vector<bytes>
+//    optional_bytes_vec:flags.16?Vector<bytes>
+//    string_field_vec:Vector<string>
+//    optional_string_vec:flags.17?Vector<string>
+//    full_bool_vec:Vector<Bool>
+//    optional_full_bool_vec:flags.18?Vector<Bool>
+//    nested_object_vec:Vector<internal_benchmarking.NestedObject>
+//    optional_nested_object_vec:flags.19?Vector<internal_benchmarking.NestedObject>
+//    deeply_nested_object_vec:Vector<internal_benchmarking.DeeplyNestedObject>
+//    optional_deeply_nested_object_vec:flags.20?Vector<internal_benchmarking.DeeplyNestedObject>
+//
+//    flags2:#
+//
+//    int32_flags2:int
+//    optional_int32_flags2:flags2.0?int
+//    int64_flags2:long
+//    optional_int64_flags2:flags2.1?long
+//    int128_flags2:int128
+//    optional_int128_flags2:flags2.2?int128
+//    int256_flags2:int256
+//    optional_int256_flags2:flags2.3?int256
+//    double_flags2:double
+//    optional_double_flags2:flags2.4?double
+//    bytes_field_flags2:bytes
+//    optional_bytes_flags2:flags2.5?bytes
+//    string_field_flags2:string
+//    optional_string_flags2:flags2.6?string
+//    full_bool_flags2:Bool
+//    optional_full_bool_flags2:flags2.7?Bool
+//    optional_bit_bool_flags2:flags2.8?true
+//    nested_object_flags2:internal_benchmarking.NestedObject
+//    optional_nested_object_flags2:flags2.9?internal_benchmarking.NestedObject
+//    deeply_nested_object_flags2:internal_benchmarking.DeeplyNestedObject
+//    optional_deeply_nested_object_flags2:flags2.10?internal_benchmarking.DeeplyNestedObject
+//
+//    int32_vec_flags2:Vector<int>
+//    optional_int32_vec_flags2:flags2.11?Vector<int>
+//    int64_vec_flags2:Vector<long>
+//    optional_int64_vec_flags2:flags2.12?Vector<long>
+//    int128_vec_flags2:Vector<int128>
+//    optional_int128_vec_flags2:flags2.13?Vector<int128>
+//    int256_vec_flags2:Vector<int256>
+//    optional_int256_vec_flags2:flags2.14?Vector<int256>
+//    double_vec_flags2:Vector<double>
+//    optional_double_vec_flags2:flags2.15?Vector<double>
+//    bytes_field_vec_flags2:Vector<bytes>
+//    optional_bytes_vec_flags2:flags2.16?Vector<bytes>
+//    string_field_vec_flags2:Vector<string>
+//    optional_string_vec_flags2:flags2.17?Vector<string>
+//    full_bool_vec_flags2:Vector<Bool>
+//    optional_full_bool_vec_flags2:flags2.18?Vector<Bool>
+//    nested_object_vec_flags2:Vector<internal_benchmarking.NestedObject>
+//    optional_nested_object_vec_flags2:flags2.19?Vector<internal_benchmarking.NestedObject>
+//    deeply_nested_object_vec_flags2:Vector<internal_benchmarking.DeeplyNestedObject>
+//    optional_deeply_nested_object_vec_flags2:flags2.20?Vector<internal_benchmarking.DeeplyNestedObject>
+//
+//    = internal_benchmarking.ObjectToBenchmark;
+internal_benchmarking.object_to_benchmark#96be42f flags:# int32:int optional_int32:flags.0?int int64:long optional_int64:flags.1?long int128:int128 optional_int128:flags.2?int128 int256:int256 optional_int256:flags.3?int256 double:double optional_double:flags.4?double bytes_field:bytes optional_bytes:flags.5?bytes string_field:string optional_string:flags.6?string full_bool:Bool optional_full_bool:flags.7?Bool optional_bit_bool:flags.8?true nested_object:internal_benchmarking.NestedObject optional_nested_object:flags.9?internal_benchmarking.NestedObject deeply_nested_object:internal_benchmarking.DeeplyNestedObject optional_deeply_nested_object:flags.10?internal_benchmarking.DeeplyNestedObject int32_vec:Vector<int> optional_int32_vec:flags.11?Vector<int> int64_vec:Vector<long> optional_int64_vec:flags.12?Vector<long> int128_vec:Vector<int128> optional_int128_vec:flags.13?Vector<int128> int256_vec:Vector<int256> optional_int256_vec:flags.14?Vector<int256> double_vec:Vector<double> optional_double_vec:flags.15?Vector<double> bytes_field_vec:Vector<bytes> optional_bytes_vec:flags.16?Vector<bytes> string_field_vec:Vector<string> optional_string_vec:flags.17?Vector<string> full_bool_vec:Vector<Bool> optional_full_bool_vec:flags.18?Vector<Bool> nested_object_vec:Vector<internal_benchmarking.NestedObject> optional_nested_object_vec:flags.19?Vector<internal_benchmarking.NestedObject> deeply_nested_object_vec:Vector<internal_benchmarking.DeeplyNestedObject> optional_deeply_nested_object_vec:flags.20?Vector<internal_benchmarking.DeeplyNestedObject> flags2:# int32_flags2:int optional_int32_flags2:flags2.0?int int64_flags2:long optional_int64_flags2:flags2.1?long int128_flags2:int128 optional_int128_flags2:flags2.2?int128 int256_flags2:int256 optional_int256_flags2:flags2.3?int256 double_flags2:double optional_double_flags2:flags2.4?double bytes_field_flags2:bytes optional_bytes_flags2:flags2.5?bytes string_field_flags2:string optional_string_flags2:flags2.6?string full_bool_flags2:Bool optional_full_bool_flags2:flags2.7?Bool optional_bit_bool_flags2:flags2.8?true nested_object_flags2:internal_benchmarking.NestedObject optional_nested_object_flags2:flags2.9?internal_benchmarking.NestedObject deeply_nested_object_flags2:internal_benchmarking.DeeplyNestedObject optional_deeply_nested_object_flags2:flags2.10?internal_benchmarking.DeeplyNestedObject int32_vec_flags2:Vector<int> optional_int32_vec_flags2:flags2.11?Vector<int> int64_vec_flags2:Vector<long> optional_int64_vec_flags2:flags2.12?Vector<long> int128_vec_flags2:Vector<int128> optional_int128_vec_flags2:flags2.13?Vector<int128> int256_vec_flags2:Vector<int256> optional_int256_vec_flags2:flags2.14?Vector<int256> double_vec_flags2:Vector<double> optional_double_vec_flags2:flags2.15?Vector<double> bytes_field_vec_flags2:Vector<bytes> optional_bytes_vec_flags2:flags2.16?Vector<bytes> string_field_vec_flags2:Vector<string> optional_string_vec_flags2:flags2.17?Vector<string> full_bool_vec_flags2:Vector<Bool> optional_full_bool_vec_flags2:flags2.18?Vector<Bool> nested_object_vec_flags2:Vector<internal_benchmarking.NestedObject> optional_nested_object_vec_flags2:flags2.19?Vector<internal_benchmarking.NestedObject> deeply_nested_object_vec_flags2:Vector<internal_benchmarking.DeeplyNestedObject> optional_deeply_nested_object_vec_flags2:flags2.20?Vector<internal_benchmarking.DeeplyNestedObject> = internal_benchmarking.ObjectToBenchmark;
+
 ---functions---
 
 // For my.telegram.org alternative page
