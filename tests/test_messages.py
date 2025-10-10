@@ -1,10 +1,11 @@
+from contextlib import AsyncExitStack
 from io import BytesIO
 
 import pytest
 from pyrogram.enums import MessageEntityType
 from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
-from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages
+from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel
 from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument, ChatPermissions
@@ -547,3 +548,78 @@ async def test_edit_message_with_document() -> None:
         assert new_message.caption == "test caption 2"
         downloaded = await new_message.download(in_memory=True)
         assert downloaded.getvalue() == b"test document 2"
+
+
+@pytest.mark.asyncio
+async def test_mention_user(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
+
+    await client1.set_username("test1_username")
+    await client2.get_users("test1_username")
+
+    await client2.set_username("test2_username")
+    await client1.get_users("test2_username")
+
+    message = await client1.send_message("test2_username", "test no mention")
+    assert message
+    assert not message.mentioned
+
+    message = await client1.send_message("test2_username", "test @test2_username mention")
+    assert message
+    assert not message.mentioned
+
+    messages = [message2 async for message2 in client2.get_chat_history("test1_username")]
+    messages.sort(key=lambda m: m.id)
+    assert messages
+    assert len(messages) == 2
+    assert not messages[0].mentioned
+    assert messages[1].mentioned
+
+
+@pytest.mark.asyncio
+async def test_get_unread_mentions_and_read_them(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
+
+    await client1.set_username("test1_username")
+    await client2.get_users("test1_username")
+
+    await client2.set_username("test2_username")
+    await client1.get_users("test2_username")
+
+    assert await client1.send_message("test2_username", "test no mention")
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer("test1_username"),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 0
+
+    assert await client1.send_message("test2_username", "test @test2_username mention")
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer("test1_username"),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 1
+
+    assert await client2.invoke(ReadMentions(peer=await client2.resolve_peer("test1_username")))
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer("test1_username"),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 0

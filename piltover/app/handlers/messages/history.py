@@ -11,7 +11,7 @@ from tortoise.queryset import QuerySet
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType
-from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message
+from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, UnreadMention
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
@@ -20,9 +20,10 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
-    SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57
+    SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
+    GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
-    MessageViews as MessagesMessageViews, SearchResultsCalendar
+    MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.history")
@@ -53,13 +54,14 @@ def message_filter_to_query(filter_: TLObject | None) -> Q | None:
     return None
 
 
+# `peer` is Peer if fetching messages between current user (peer.owner) and peer
+# `peer` is User if fetching messages globally (such as global search)
 async def get_messages_query_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: TLObject | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
+        only_mentions: bool = False,
 ) -> QuerySet[Message]:
-    user_id = peer.owner_id if isinstance(peer, Peer) else peer.id
-
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
     if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
         query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
@@ -91,7 +93,11 @@ async def get_messages_query_internal(
         query &= filter_query
 
     if after_reaction_id is not None:
+        user_id = peer.owner_id if isinstance(peer, Peer) else peer.id
         query &= Q(messagereactions__id__gt=after_reaction_id, author__id__not=user_id)
+
+    if only_mentions:
+        query &= Q(id__in=Subquery(UnreadMention.filter(peer=peer).values_list("message__id", flat=True)))
 
     limit = max(min(100, limit), 1)
     select_related = "author", "peer", "peer__user"
@@ -548,3 +554,47 @@ async def get_outbox_read_date():
     # TODO: implement getting outbox read date
 
     raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
+
+
+
+@handler.on_request(GetUnreadMentions_133)
+@handler.on_request(GetUnreadMentions)
+async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Messages | MessagesSlice:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+
+    query = await get_messages_query_internal(
+        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, only_mentions=True
+    )
+    messages = await query
+
+    return await format_messages_internal(user, messages, peer=peer, query=query, offset_id=request.offset_id)
+
+
+@handler.on_request(ReadMentions_133)
+@handler.on_request(ReadMentions)
+async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+
+    ids_to_delete = await UnreadMention.filter(peer=peer).values_list("id", flat=True)
+    logger.trace(f"Unread mentions ids that will be deleted: {ids_to_delete}")
+
+    # TODO: check if pts should be 0
+    pts = await State.add_pts(user, 0)
+
+    if not ids_to_delete:
+        return AffectedHistory(
+            pts=pts,
+            pts_count=0,
+            offset=0,
+        )
+
+    await UnreadMention.filter(id__in=ids_to_delete).delete()
+
+    # TODO: check what updates should be sent (UpdatePts??), because afaik AffectedHistory
+    #  implies sending updates to other devices
+
+    return AffectedHistory(
+        pts=pts,
+        pts_count=0,
+        offset=0,
+    )

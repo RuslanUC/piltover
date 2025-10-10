@@ -27,13 +27,13 @@ class Dialog(Model):
 
         defaults = {
             "view_forum_as_messages": False,
-            "unread_mentions_count": 0,
             "notify_settings": PeerNotifySettings(),
         }
 
         top_message = await models.Message.filter(peer=self.peer).order_by("-id").first().values_list("id", flat=True)
         draft = await models.MessageDraft.get_or_none(dialog=self)
         draft = draft.to_tl() if draft else None
+        unread_mentions_count = await models.UnreadMention.filter(peer=self.peer).count()
 
         return TLDialog(
             **defaults,
@@ -47,4 +47,5 @@ class Dialog(Model):
             unread_count=unread_count,
             unread_reactions_count=unread_reactions,
             folder_id=self.folder_id.value,
+            unread_mentions_count=unread_mentions_count,
         )

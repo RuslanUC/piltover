@@ -62,7 +62,6 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
 
 _FWD_HEADER_MISSING = object()
 _BASE_DEFAULTS = {
-    "mentioned": False,
     "media_unread": False,
     "silent": False,
     "legacy": False,
@@ -168,6 +167,7 @@ class Message(Model):
             out=user.id == self.author_id,
             reply_to=await self._make_reply_to_header(),
             from_id=from_id,
+            mentioned=False,
             **_BASE_DEFAULTS,
         )
 
@@ -210,6 +210,7 @@ class Message(Model):
         for entity in (self.entities or []):
             tl_id = entity.pop("_")
             entities.append(objects[tl_id](**entity))
+            entity["_"] = tl_id
 
         from_id = None
         if not self.channel_post:
@@ -238,6 +239,7 @@ class Message(Model):
             forwards=post_info.forwards if post_info is not None else None,
             post_author=self.post_author if self.channel_post else None,
             reactions=await self.to_tl_reactions(current_user) if with_reactions else None,
+            mentioned=await models.UnreadMention.filter(peer__owner=current_user, message=self).exists(),
             **_BASE_DEFAULTS,
             **_REGULAR_DEFAULTS,
         )

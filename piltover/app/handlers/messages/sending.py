@@ -14,11 +14,11 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess
+    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess, UnreadMention
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
-    InputMediaDocument_133, TextWithEntities, InputMediaEmpty
+    InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176
@@ -43,6 +43,33 @@ async def send_message_internal(
     if opposite and peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
         opposite = False
 
+    message_text = message_kwargs.get("message")
+
+    mentioned_user_ids = set()
+    entities: list[dict[str, int | str]]
+    if (entities := message_kwargs.get("entities")) and message_text and opposite:
+        mentioned_usernames = set()
+
+        for entity in entities:
+            tl_id = entity["_"]
+            if tl_id == MessageEntityMention.tlid():
+                offset = entity["offset"]
+                length = entity["length"]
+                mentioned_usernames.add(message_text[offset + 1:offset + length])
+            elif tl_id == MessageEntityMentionName.tlid():
+                mentioned_user_ids.add(entity["user_id"])
+
+        if mentioned_usernames or mentioned_user_ids:
+            query = Q()
+            if mentioned_usernames:
+                query |= Q(usernames__username__in=list(mentioned_usernames))
+            if mentioned_user_ids:
+                query |= Q(id__in=list(mentioned_user_ids))
+
+            mentioned_user_ids = set(
+                await User.filter(id__not=author.id).filter(query).values_list("id", flat=True)
+            )
+
     messages = await Message.create_for_peer(
         peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
     )
@@ -50,6 +77,20 @@ async def send_message_internal(
     if opposite and peer.type is not PeerType.CHANNEL:
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, await peer.get_opposite())
+
+        if mentioned_user_ids:
+            mentioned_peers = [
+                message_peer
+                for message_peer in messages
+                if message_peer.owner_id in mentioned_user_ids
+            ]
+
+            unread_mentions_to_create = []
+            for mentioned_peer in mentioned_peers:
+                unread_mentions_to_create.append(UnreadMention(peer=mentioned_peer, message=messages[mentioned_peer]))
+
+            if unread_mentions_to_create:
+                await UnreadMention.bulk_create(unread_mentions_to_create)
 
     if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
         await draft.delete()
@@ -59,7 +100,19 @@ async def send_message_internal(
         if len(messages) != 1:
             logger.warning(f"Got {len(messages)} messages after creating message with channel peer!")
             return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
-        return await upd.send_message_channel(user, list(messages.values())[0])
+
+        message = list(messages.values())[0]
+
+        if mentioned_user_ids:
+            mentioned_peers = await Peer.filter(owner__id__in=list(mentioned_user_ids), channel__id=peer.channel_id)
+            unread_mentions_to_create = []
+            for mentioned_peer in mentioned_peers:
+                unread_mentions_to_create.append(UnreadMention(peer=mentioned_peer, message=message))
+
+            if unread_mentions_to_create:
+                await UnreadMention.bulk_create(unread_mentions_to_create)
+
+        return await upd.send_message_channel(user, message)
 
     if (update := await upd.send_message(user, messages)) is None:
         raise RuntimeError("unreachable ?")
@@ -250,6 +303,8 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     entities = None
     if message_text is not None:
         entities = await process_message_entities(message_text, request.entities)
+
+    # TODO: process mentioned users
 
     if peer.type is PeerType.CHANNEL:
         if message_text is not None:
