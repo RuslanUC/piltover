@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from loguru import logger
 from tortoise import fields, Model
 
 from piltover.db import models
@@ -34,6 +35,7 @@ class Dialog(Model):
         draft = await models.MessageDraft.get_or_none(dialog=self)
         draft = draft.to_tl() if draft else None
         unread_mentions_count = await models.UnreadMention.filter(peer=self.peer).count()
+        logger.trace(f"Unread mentions for peer={self.peer!r}: {unread_mentions_count}")
 
         return TLDialog(
             **defaults,

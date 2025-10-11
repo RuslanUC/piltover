@@ -62,7 +62,6 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
 
 _FWD_HEADER_MISSING = object()
 _BASE_DEFAULTS = {
-    "media_unread": False,
     "silent": False,
     "legacy": False,
 }
@@ -168,7 +167,7 @@ class Message(Model):
             reply_to=await self._make_reply_to_header(),
             from_id=from_id,
             mentioned=False,
-            **_BASE_DEFAULTS,
+            media_unread=False,
         )
 
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessage | MessageService:
@@ -220,6 +219,11 @@ class Message(Model):
         if self.channel_post and self.post_info_id is not None:
             self.post_info = post_info = await self.post_info
 
+        mentioned = await models.UnreadMention.filter(peer__owner=current_user, message=self).exists()
+        media_unread = mentioned
+        if not media_unread:
+            ...  # TODO: check if media is read
+
         message = TLMessage(
             id=self.id,
             message=self.message or "",
@@ -239,7 +243,8 @@ class Message(Model):
             forwards=post_info.forwards if post_info is not None else None,
             post_author=self.post_author if self.channel_post else None,
             reactions=await self.to_tl_reactions(current_user) if with_reactions else None,
-            mentioned=await models.UnreadMention.filter(peer__owner=current_user, message=self).exists(),
+            mentioned=mentioned,
+            media_unread=media_unread,
             **_BASE_DEFAULTS,
             **_REGULAR_DEFAULTS,
         )

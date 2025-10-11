@@ -601,3 +601,6 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
         pts_count=pts_count,
         offset=0,
     )
+
+
+# TODO: ReadMessageContents
