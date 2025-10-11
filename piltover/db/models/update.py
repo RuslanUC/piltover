@@ -14,7 +14,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, UpdateNewStickerSet, \
-    UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper
+    UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -22,7 +22,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
-              | UpdateStickerSetsOrder | UpdatePeerWallpaper
+              | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents
 
 
 class Update(Model):
@@ -401,6 +401,17 @@ class Update(Model):
                     wallpaper_overridden=chat_wallpaper.overridden if chat_wallpaper is not None else False,
                     peer=PeerUser(user_id=self.related_id),
                     wallpaper=await wallpaper.to_tl(user) if wallpaper is not None else None,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.READ_MESSAGES_CONTENTS:
+                if not self.related_ids:
+                    return none_ret
+
+                return UpdateReadMessagesContents(
+                    messages=self.related_ids,
+                    pts=self.pts,
+                    pts_count=self.pts_count,
+                    date=int(self.date.timestamp()),
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

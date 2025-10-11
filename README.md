@@ -9,7 +9,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
 - [ ] Improve the README.
 - [ ] Proper read states updates (updateReadHistoryInbox, updateReadHistoryOutbox)
-- [ ] Reactions
+- [x] Reactions
 - [ ] Stickers
 - [ ] Move UpdatesManager to separate worker
 - [ ] Add caching of some tl objects (e.g. piltover.tl.types.User, piltover.tl.types.Chat, piltover.tl.types.Message, etc.) based on versions (i think maybe add `version` field to db models and cache to_tl method results to key `[current_user_id]:[to_tl_user_id]:[version]` or something like that)
@@ -25,6 +25,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] Outbox read date (messages.getOutboxReadDate)
 - [ ] Make `access_hash`es completely offline (e.g. `hmac(current_user_id + current_session_id + target_user_id)`)
 - [ ] InstallTheme_133, InstallTheme, InstallWallPaper
+- [ ] Rewrite related users/chats/channels collection code, cache related ids
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 

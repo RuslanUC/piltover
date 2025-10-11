@@ -21,7 +21,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
-    UpdateStickerSetsOrder, base, UpdatePeerWallpaper
+    UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1293,3 +1293,32 @@ async def update_chat_wallpaper(user: User, target: User, chat_wallpaper: ChatWa
     await SessionManager.send(updates, user.id)
 
     return updates
+
+
+async def read_messages_contents(user: User, message_ids: list[int]) -> tuple[int, Updates]:
+    pts_count = len(message_ids)
+    new_pts = await State.add_pts(user, pts_count)
+
+    await Update.create(
+        user=user,
+        update_type=UpdateType.READ_MESSAGES_CONTENTS,
+        pts=new_pts,
+        pts_count=pts_count,
+        related_id=None,
+        related_ids=message_ids,
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdateReadMessagesContents(
+                messages=message_ids,
+                pts=new_pts,
+                pts_count=pts_count,
+                date=int(time()),
+            )
+        ],
+    )
+
+    await SessionManager.send(updates, user.id)
+
+    return new_pts, updates

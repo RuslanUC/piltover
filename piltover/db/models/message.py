@@ -403,6 +403,8 @@ class Message(Model):
             .select_related("reaction")\
             .values_list("reaction__id", "reaction__reaction", "msg_count")
 
+        # TODO: if `user.id == self.author_id`, always include unread reaction in recent_reactions
+
         return MessageReactions(
             can_see_list=False,
             results=[

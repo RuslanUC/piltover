@@ -578,23 +578,26 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     ids_to_delete = await UnreadMention.filter(peer=peer).values_list("id", flat=True)
     logger.trace(f"Unread mentions ids that will be deleted: {ids_to_delete}")
 
-    # TODO: check if pts should be 0
-    pts = await State.add_pts(user, 0)
+    pts_count = len(ids_to_delete)
 
     if not ids_to_delete:
         return AffectedHistory(
-            pts=pts,
+            pts=await State.add_pts(user, 0),
             pts_count=0,
             offset=0,
         )
 
     await UnreadMention.filter(id__in=ids_to_delete).delete()
 
-    # TODO: check what updates should be sent (UpdatePts??), because afaik AffectedHistory
-    #  implies sending updates to other devices
+    # TODO: check if in channels, other updates are emitted
+    #  (because UpdateReadMessagesContents is for common (user-specific) message box only)
+    if peer.type is not PeerType.CHANNEL:
+        pts, _ = await upd.read_messages_contents(user, ids_to_delete)
+    else:
+        pts = await State.add_pts(user, pts_count)
 
     return AffectedHistory(
         pts=pts,
-        pts_count=0,
+        pts_count=pts_count,
         offset=0,
     )

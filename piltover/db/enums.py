@@ -86,6 +86,7 @@ class UpdateType(IntEnum):
     UPDATE_STICKERSETS = 27
     UPDATE_STICKERSETS_ORDER = 28
     UPDATE_CHAT_WALLPAPER = 29
+    READ_MESSAGES_CONTENTS = 30
 
 
 class SecretUpdateType(IntEnum):
