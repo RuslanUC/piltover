@@ -11,7 +11,7 @@ from tortoise.queryset import QuerySet
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType
-from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, UnreadMention
+from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
@@ -97,7 +97,10 @@ async def get_messages_query_internal(
         query &= Q(messagereactions__id__gt=after_reaction_id, author__id__not=user_id)
 
     if only_mentions:
-        query &= Q(id__in=Subquery(UnreadMention.filter(peer=peer).values_list("message__id", flat=True)))
+        read_state = await ReadState.for_peer(peer=peer)
+        query &= Q(id__in=Subquery(
+            MessageMention.filter(peer=peer, id__gt=read_state.last_mention_id).values_list("message__id", flat=True)
+        ))
 
     limit = max(min(100, limit), 1)
     select_related = "author", "peer", "peer__user"
@@ -575,8 +578,11 @@ async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Message
 async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
-    ids_to_delete = await UnreadMention.filter(peer=peer).values_list("id", flat=True)
-    logger.trace(f"Unread mentions ids that will be deleted: {ids_to_delete}")
+    read_state = await ReadState.for_peer(peer=peer)
+    ids_to_delete = await MessageMention.filter(
+        peer=peer, id__gt=read_state.last_mention_id,
+    ).values_list("id", flat=True)
+    logger.trace(f"Unread mentions ids: {ids_to_delete}")
 
     pts_count = len(ids_to_delete)
 
@@ -587,7 +593,7 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
             offset=0,
         )
 
-    await UnreadMention.filter(id__in=ids_to_delete).delete()
+    await ReadState.filter(id=read_state.id).update(last_mention_id=max(ids_to_delete))
 
     # TODO: check if in channels, other updates are emitted
     #  (because UpdateReadMessagesContents is for common (user-specific) message box only)

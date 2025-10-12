@@ -11,13 +11,19 @@ class ReadState(Model):
     id: int = fields.BigIntField(pk=True)
     last_message_id: int = fields.BigIntField(default=0)
     last_reaction_id: int = fields.BigIntField(default=0)
+    last_mention_id: int = fields.BigIntField(default=0)
     peer: models.Peer = fields.ForeignKeyField("models.Peer", on_delete=fields.CASCADE, unique=True)
 
     @classmethod
+    async def for_peer(cls, peer: models.Peer) -> ReadState:
+        read_state, _ = await models.ReadState.get_or_create(peer=peer)
+        return read_state
+
+    @classmethod
     async def get_in_out_ids_and_unread(
-            cls, peer: models.Peer, no_reactions: bool = False,
-    ) -> tuple[int, int, int, int]:
-        in_read_state, _ = await models.ReadState.get_or_create(peer=peer)
+            cls, peer: models.Peer, no_reactions: bool = False, no_mentions: bool = False,
+    ) -> tuple[int, int, int, int, int]:
+        in_read_state = await cls.for_peer(peer=peer)
         unread_count = await models.Message.filter(peer=peer, id__gt=in_read_state.last_message_id).count()
         if no_reactions:
             unread_reactions_count = 0
@@ -60,5 +66,18 @@ class ReadState(Model):
             #     ).order_by("-id").first().values_list("id", flat=True)
             #     out_read_max_id = out_read_max_id or 0
 
-        return in_read_state.last_message_id, out_read_max_id or 0, unread_count, unread_reactions_count
+        if no_mentions:
+            unread_mentions = 0
+        else:
+            unread_mentions = await models.MessageMention.filter(
+                peer=peer, id__gt=in_read_state.last_mention_id,
+            ).count()
+
+        return (
+            in_read_state.last_message_id,
+            out_read_max_id or 0,
+            unread_count,
+            unread_reactions_count,
+            unread_mentions,
+        )
 

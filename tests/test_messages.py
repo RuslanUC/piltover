@@ -551,7 +551,7 @@ async def test_edit_message_with_document() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mention_user(exit_stack: AsyncExitStack) -> None:
+async def test_mention_user_in_pm(exit_stack: AsyncExitStack) -> None:
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
 
@@ -574,11 +574,11 @@ async def test_mention_user(exit_stack: AsyncExitStack) -> None:
     assert messages
     assert len(messages) == 2
     assert not messages[0].mentioned
-    assert messages[1].mentioned
+    assert not messages[1].mentioned
 
 
 @pytest.mark.asyncio
-async def test_get_unread_mentions_and_read_them(exit_stack: AsyncExitStack) -> None:
+async def test_get_unread_mentions_and_read_them_in_pm(exit_stack: AsyncExitStack) -> None:
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
 
@@ -610,7 +610,7 @@ async def test_get_unread_mentions_and_read_them(exit_stack: AsyncExitStack) -> 
         max_id=0,
         min_id=0,
     ))
-    assert len(unread.messages) == 1
+    assert len(unread.messages) == 0
 
     assert await client2.invoke(ReadMentions(peer=await client2.resolve_peer("test1_username")))
 
@@ -623,3 +623,131 @@ async def test_get_unread_mentions_and_read_them(exit_stack: AsyncExitStack) -> 
         min_id=0,
     ))
     assert len(unread.messages) == 0
+
+
+@pytest.mark.asyncio
+async def test_mention_user_in_chat(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
+
+    await client1.set_username("test1_username")
+    await client2.get_users("test1_username")
+
+    await client2.set_username("test2_username")
+    user2 = await client1.get_users("test2_username")
+
+    group = await client1.create_group("idk", [user2.id])
+
+    message = await client1.send_message(group.id, "test no mention")
+    assert message
+    assert not message.mentioned
+
+    message = await client1.send_message(group.id, "test @test2_username mention")
+    assert message
+    assert not message.mentioned
+
+    messages = [message2 async for message2 in client2.get_chat_history(group.id)]
+    messages.sort(key=lambda m: m.id)
+    assert messages
+    assert len(messages) == 2
+    assert not messages[0].mentioned
+    assert messages[1].mentioned
+
+
+@pytest.mark.asyncio
+async def test_get_unread_mentions_and_read_them_in_chat(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
+
+    await client1.set_username("test1_username")
+    await client2.get_users("test1_username")
+
+    await client2.set_username("test2_username")
+    user2 = await client1.get_users("test2_username")
+
+    group = await client1.create_group("idk", [user2.id])
+
+    assert await client1.send_message(group.id, "test no mention")
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer(group.id),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 0
+
+    assert await client1.send_message(group.id, "test @test2_username mention")
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer(group.id),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 1
+
+    assert await client2.invoke(ReadMentions(peer=await client2.resolve_peer(group.id)))
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer(group.id),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 0
+
+
+@pytest.mark.asyncio
+async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
+
+    await client1.set_username("test1_username")
+    await client2.get_users("test1_username")
+
+    await client2.set_username("test2_username")
+    user2 = await client1.get_users("test2_username")
+
+    group = await client1.create_group("idk", [user2.id])
+
+    await client2.send_message(group.id, "test message")
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer(group.id),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 0
+
+    reply_to = [m async for m in client1.get_chat_history(group.id)][0]
+
+    message = await client1.send_message(group.id, "test reply", reply_to_message_id=reply_to.id)
+    assert message
+    assert not message.mentioned
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer(group.id),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 1
+
+    messages = [message2 async for message2 in client2.get_chat_history(group.id)]
+    messages.sort(key=lambda m: m.id)
+    assert messages
+    assert len(messages) == 2
+    assert not messages[0].mentioned
+    assert messages[1].mentioned

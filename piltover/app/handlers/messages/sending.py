@@ -14,7 +14,7 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess, UnreadMention
+    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess, MessageMention
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
@@ -36,6 +36,32 @@ DocOrPhotoMedia = (
 )
 
 
+async def _extract_mentions_from_message(entities: list[dict], text: str, author: User) -> set[int]:
+    mentioned_user_ids = set()
+    mentioned_usernames = set()
+
+    for entity in entities:
+        tl_id = entity["_"]
+        if tl_id == MessageEntityMention.tlid():
+            offset = entity["offset"]
+            length = entity["length"]
+            mentioned_usernames.add(text[offset + 1:offset + length])
+        elif tl_id == MessageEntityMentionName.tlid():
+            mentioned_user_ids.add(entity["user_id"])
+
+    if not mentioned_usernames and not mentioned_user_ids:
+        return set()
+
+    query = Q()
+    if mentioned_usernames:
+        query |= Q(usernames__username__in=list(mentioned_usernames))
+    if mentioned_user_ids:
+        query |= Q(id__in=list(mentioned_user_ids))
+
+    return set(
+        await User.filter(id__not=author.id).filter(query).values_list("id", flat=True)
+    )
+
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         opposite: bool = True, **message_kwargs
@@ -47,28 +73,17 @@ async def send_message_internal(
 
     mentioned_user_ids = set()
     entities: list[dict[str, int | str]]
-    if (entities := message_kwargs.get("entities")) and message_text and opposite:
-        mentioned_usernames = set()
+    if opposite and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        if (entities := message_kwargs.get("entities")) and message_text:
+            mentioned_user_ids = await _extract_mentions_from_message(entities, message_text, author)
 
-        for entity in entities:
-            tl_id = entity["_"]
-            if tl_id == MessageEntityMention.tlid():
-                offset = entity["offset"]
-                length = entity["length"]
-                mentioned_usernames.add(message_text[offset + 1:offset + length])
-            elif tl_id == MessageEntityMentionName.tlid():
-                mentioned_user_ids.add(entity["user_id"])
-
-        if mentioned_usernames or mentioned_user_ids:
-            query = Q()
-            if mentioned_usernames:
-                query |= Q(usernames__username__in=list(mentioned_usernames))
-            if mentioned_user_ids:
-                query |= Q(id__in=list(mentioned_user_ids))
-
-            mentioned_user_ids = set(
-                await User.filter(id__not=author.id).filter(query).values_list("id", flat=True)
-            )
+        if reply_to_message_id:
+            peer_filter = {"peer__channel": peer.channel} if peer.type is PeerType.CHANNEL else {"peer": peer}
+            reply_author_id = cast(int, await Message.get_or_none(
+                id=reply_to_message_id, **peer_filter,
+            ).values_list("author__id", flat=True))
+            if reply_author_id is not None and reply_author_id != author.id:
+                mentioned_user_ids.add(reply_author_id)
 
     messages = await Message.create_for_peer(
         peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
@@ -78,19 +93,19 @@ async def send_message_internal(
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, await peer.get_opposite())
 
-        if mentioned_user_ids:
-            mentioned_peers = [
-                message_peer
-                for message_peer in messages
-                if message_peer.owner_id in mentioned_user_ids
-            ]
+    if opposite and peer.type is PeerType.CHAT and mentioned_user_ids:
+        mentioned_peers = [
+            message_peer
+            for message_peer in messages
+            if message_peer.owner_id in mentioned_user_ids
+        ]
 
-            unread_mentions_to_create = []
-            for mentioned_peer in mentioned_peers:
-                unread_mentions_to_create.append(UnreadMention(peer=mentioned_peer, message=messages[mentioned_peer]))
+        unread_mentions_to_create = []
+        for mentioned_peer in mentioned_peers:
+            unread_mentions_to_create.append(MessageMention(peer=mentioned_peer, message=messages[mentioned_peer]))
 
-            if unread_mentions_to_create:
-                await UnreadMention.bulk_create(unread_mentions_to_create)
+        if unread_mentions_to_create:
+            await MessageMention.bulk_create(unread_mentions_to_create)
 
     if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
         await draft.delete()
@@ -107,10 +122,10 @@ async def send_message_internal(
             mentioned_peers = await Peer.filter(owner__id__in=list(mentioned_user_ids), channel__id=peer.channel_id)
             unread_mentions_to_create = []
             for mentioned_peer in mentioned_peers:
-                unread_mentions_to_create.append(UnreadMention(peer=mentioned_peer, message=message))
+                unread_mentions_to_create.append(MessageMention(peer=mentioned_peer, message=message))
 
             if unread_mentions_to_create:
-                await UnreadMention.bulk_create(unread_mentions_to_create)
+                await MessageMention.bulk_create(unread_mentions_to_create)
 
         return await upd.send_message_channel(user, message)
 
@@ -176,7 +191,7 @@ async def send_message(request: SendMessage, user: User):
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message,
-        entities=await process_message_entities(request.message, request.entities),
+        entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
     )
 
@@ -302,7 +317,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
     entities = None
     if message_text is not None:
-        entities = await process_message_entities(message_text, request.entities)
+        entities = await process_message_entities(message_text, request.entities, user)
 
     # TODO: process mentioned users
 
@@ -481,7 +496,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, media=media,
-        entities=await process_message_entities(request.message, request.entities),
+        entities=await process_message_entities(request.message, request.entities, user),
     )
 
 
@@ -664,7 +679,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
             single_media.message,
             single_media.random_id,
             media,
-            await process_message_entities(single_media.message, single_media.entities),
+            await process_message_entities(single_media.message, single_media.entities, user),
         ))
 
     if await Message.filter(peer=peer, random_id__in=[str(random_id) for _, random_id, _, _ in messages]).exists():

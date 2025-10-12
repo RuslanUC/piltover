@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import cast
 
-from loguru import logger
 from tortoise import fields, Model
 
 from piltover.db import models
@@ -23,7 +22,7 @@ class Dialog(Model):
     peer_id: int
 
     async def to_tl(self) -> TLDialog:
-        in_read_max_id, out_read_max_id, unread_count, unread_reactions = \
+        in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = \
             await models.ReadState.get_in_out_ids_and_unread(self.peer)
 
         defaults = {
@@ -34,8 +33,6 @@ class Dialog(Model):
         top_message = await models.Message.filter(peer=self.peer).order_by("-id").first().values_list("id", flat=True)
         draft = await models.MessageDraft.get_or_none(dialog=self)
         draft = draft.to_tl() if draft else None
-        unread_mentions_count = await models.UnreadMention.filter(peer=self.peer).count()
-        logger.trace(f"Unread mentions for peer={self.peer!r}: {unread_mentions_count}")
 
         return TLDialog(
             **defaults,
@@ -49,5 +46,5 @@ class Dialog(Model):
             unread_count=unread_count,
             unread_reactions_count=unread_reactions,
             folder_id=self.folder_id.value,
-            unread_mentions_count=unread_mentions_count,
+            unread_mentions_count=unread_mentions,
         )

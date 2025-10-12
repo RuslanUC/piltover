@@ -6,19 +6,21 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from hashlib import md5
 from io import BytesIO
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Iterable, Literal, cast
 
 from PIL.Image import Image, open as img_open
 from loguru import logger
+from tortoise.expressions import Q
 
-from piltover.db.models import UserPassword, SrpSession, AuthKey, TempAuthKey
+from piltover.db.models import UserPassword, SrpSession, User, Peer
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEntityMention, \
     MessageEntityUnknown, MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
     MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
     MessageEntityPhone, MessageEntityCashtag, MessageEntityUnderline, MessageEntityStrike, MessageEntitySpoiler, \
-    MessageEntityBankCard, MessageEntityBlockquote, Long
-from piltover.tl.base import InputCheckPasswordSRP as InputCheckPasswordSRPBase
+    MessageEntityBankCard, MessageEntityBlockquote, Long, InputMessageEntityMentionName, InputUserSelf, InputUser, \
+    InputUserFromMessage
+from piltover.tl.base import InputCheckPasswordSRP as InputCheckPasswordSRPBase, InputUser as InputUserBase
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
@@ -172,6 +174,7 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
         raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
 
 
+# TODO: replace with base?
 MessageEntity = MessageEntityUnknown | MessageEntityMention | MessageEntityHashtag | MessageEntityBotCommand \
                 | MessageEntityUrl | MessageEntityEmail | MessageEntityBold | MessageEntityItalic | MessageEntityCode \
                 | MessageEntityPre | MessageEntityTextUrl | MessageEntityMentionName | MessageEntityPhone \
@@ -184,12 +187,14 @@ VALID_ENTITIES = (
 )
 
 
-async def validate_message_entities(text: str, entities: list[MessageEntity]) -> list[dict] | None:
+async def validate_message_entities(text: str, entities: list[MessageEntity], user: User) -> list[dict] | None:
     if not entities:
         return None
     # TODO: check what limit telegram has
     if len(entities) > 1024:
         raise ErrorRpc(error_code=400, error_message="ENTITIES_TOO_LONG")
+
+    fetch_users: list[tuple[InputUserBase, int]] = []
 
     result = []
     for idx, entity in enumerate(entities):
@@ -222,19 +227,42 @@ async def validate_message_entities(text: str, entities: list[MessageEntity]) ->
         elif isinstance(entity, MessageEntityCashtag):
             if text[entity.offset] != "$":
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+        elif isinstance(entity, InputMessageEntityMentionName):
+            fetch_users.append((entity.user_id, len(result)))
+            entity = MessageEntityMentionName(offset=entity.offset, length=entity.length, user_id=0)
         elif not isinstance(entity, VALID_ENTITIES):
             continue
 
         result.append(entity.to_dict() | {"_": entity.tlid()})
 
+    if fetch_users:
+        got_users = {user.id}
+        users_q = Q()
+        for input_user, _ in fetch_users:
+            if isinstance(input_user, InputUser):
+                users_q |= Q(user__id=input_user.user_id, access_hash=input_user.access_hash)
+            # TODO: InputUserFromMessage
+
+        got_users.update(await Peer.filter(users_q, owner=user).values_list("user__id", flat=True))
+
+        for input_user, idx in reversed(fetch_users):
+            entity = cast(MessageEntityMentionName, result[idx])
+            if isinstance(input_user, InputUserSelf):
+                entity.user_id = user.id
+            elif isinstance(input_user, (InputUser, InputUserFromMessage)):
+                if input_user.user_id in got_users:
+                    entity.user_id = input_user.user_id
+                else:
+                    del result[idx]
+
     return result or None
 
 
-async def process_message_entities(text: str | None, entities: list[MessageEntity]) -> list[dict] | None:
+async def process_message_entities(text: str | None, entities: list[MessageEntity], user: User) -> list[dict] | None:
     if not text:
         return None
 
-    entities = await validate_message_entities(text, entities)
+    entities = await validate_message_entities(text, entities, user)
 
     for mention in USERNAME_MENTION_REGEX.finditer(text):
         if entities is None:

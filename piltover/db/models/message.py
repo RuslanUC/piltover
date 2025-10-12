@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, cast
 
 from loguru import logger
 from pytz import UTC
@@ -20,7 +20,7 @@ from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageA
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, \
     ReactionEmoji, MessageMediaDocument, MessageMediaPhoto, MessageActionEmpty, WallPaperNoFile, \
-    MessageActionSetChatWallPaper
+    MessageActionSetChatWallPaper, MessageEntityMentionName
 from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
 from piltover.utils.snowflake import Snowflake
 
@@ -219,7 +219,16 @@ class Message(Model):
         if self.channel_post and self.post_info_id is not None:
             self.post_info = post_info = await self.post_info
 
-        mentioned = await models.UnreadMention.filter(peer__owner=current_user, message=self).exists()
+        mentioned = False
+        mention_id = cast(
+            int | None,
+            await models.MessageMention.get_or_none(peer__owner=current_user, message=self).values_list("id", flat=True)
+        )
+        if mention_id is not None:
+            # TODO: cache read state somewhere or pass as argument
+            read_state, _ = await models.ReadState.get_or_create(peer=self.peer)
+            mentioned = mention_id > read_state.last_mention_id
+
         media_unread = mentioned
         if not media_unread:
             ...  # TODO: check if media is read
@@ -390,6 +399,11 @@ class Message(Model):
             except Error:
                 return users, chats, channels
             users |= Q(id__in=user_ids)
+        if users is not None and self.entities:
+            for entity in self.entities:
+                if entity["_"] != MessageEntityMentionName.tlid():
+                    continue
+                users |= Q(id__in=entity["user_id"])
 
         # TODO: add users and chats from fwd_header
 
