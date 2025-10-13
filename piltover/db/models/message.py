@@ -403,7 +403,7 @@ class Message(Model):
             for entity in self.entities:
                 if entity["_"] != MessageEntityMentionName.tlid():
                     continue
-                users |= Q(id__in=entity["user_id"])
+                users |= Q(id=entity["user_id"])
 
         # TODO: add users and chats from fwd_header
 

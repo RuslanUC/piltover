@@ -14,6 +14,8 @@ class ReadState(Model):
     last_mention_id: int = fields.BigIntField(default=0)
     peer: models.Peer = fields.ForeignKeyField("models.Peer", on_delete=fields.CASCADE, unique=True)
 
+    peer_id: int
+
     @classmethod
     async def for_peer(cls, peer: models.Peer) -> ReadState:
         read_state, _ = await models.ReadState.get_or_create(peer=peer)

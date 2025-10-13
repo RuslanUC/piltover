@@ -10,6 +10,9 @@ class MessageMention(Model):
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     message: models.Message = fields.ForeignKeyField("models.Message")
 
+    peer_id: int
+    message_id: int
+
     class Meta:
         unique_together = (
             ("peer", "message"),

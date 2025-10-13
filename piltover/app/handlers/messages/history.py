@@ -24,7 +24,8 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
-    GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134
+    GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
+    ReadMessageContents
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory
 from piltover.worker import MessageHandler
@@ -611,26 +612,26 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
     read_state = await ReadState.for_peer(peer=peer)
-    ids_to_delete = await MessageMention.filter(
+    mention_ids = await MessageMention.filter(
         peer=peer, id__gt=read_state.last_mention_id,
     ).values_list("id", flat=True)
-    logger.trace(f"Unread mentions ids: {ids_to_delete}")
+    logger.trace(f"Unread mentions ids: {mention_ids}")
 
-    pts_count = len(ids_to_delete)
+    pts_count = len(mention_ids)
 
-    if not ids_to_delete:
+    if not mention_ids:
         return AffectedHistory(
             pts=await State.add_pts(user, 0),
             pts_count=0,
             offset=0,
         )
 
-    await ReadState.filter(id=read_state.id).update(last_mention_id=max(ids_to_delete))
+    await ReadState.filter(id=read_state.id).update(last_mention_id=max(mention_ids))
 
     # TODO: check if in channels, other updates are emitted
     #  (because UpdateReadMessagesContents is for common (user-specific) message box only)
     if peer.type is not PeerType.CHANNEL:
-        pts, _ = await upd.read_messages_contents(user, ids_to_delete)
+        pts, _ = await upd.read_messages_contents(user, mention_ids)
     else:
         pts = await State.add_pts(user, pts_count)
 
@@ -641,4 +642,47 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     )
 
 
-# TODO: ReadMessageContents
+@handler.on_request(ReadMessageContents)
+async def read_message_contents(request: ReadMessageContents, user: User) -> AffectedMessages:
+    if not request.id:
+        return AffectedMessages(
+            pts=await State.add_pts(user, 0),
+            pts_count=0,
+        )
+
+    mentions = await MessageMention.filter(
+        peer__owner=user, peer__type__not=PeerType.CHANNEL, message__id__in=request.id[:100],
+    ).select_related("peer")
+
+    if not mentions:
+        return AffectedMessages(
+            pts=await State.add_pts(user, 0),
+            pts_count=0,
+        )
+
+    max_mention_id_by_peer = {}
+    message_ids = set()
+
+    for mention in mentions:
+        message_ids.add(mention.message_id)
+        peer = mention.peer
+        if peer not in max_mention_id_by_peer or mention.id > max_mention_id_by_peer[peer]:
+            max_mention_id_by_peer[peer] = mention.id
+
+    to_update = []
+    for peer, max_mention_id in max_mention_id_by_peer.items():
+        read_state = await ReadState.for_peer(peer=peer)
+        if max_mention_id > read_state.last_mention_id:
+            read_state.last_mention_id = max_mention_id
+            to_update.append(read_state)
+
+    if to_update:
+        await ReadState.bulk_update(to_update, fields=["last_mention_id"])
+
+    message_ids = list(message_ids)
+    pts, _ = await upd.read_messages_contents(user, message_ids)
+
+    return AffectedMessages(
+        pts=pts,
+        pts_count=len(message_ids),
+    )

@@ -15,12 +15,13 @@ from tortoise.expressions import Q
 from piltover.db.models import UserPassword, SrpSession, User, Peer
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEntityMention, \
-    MessageEntityUnknown, MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
+    MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
     MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
     MessageEntityPhone, MessageEntityCashtag, MessageEntityUnderline, MessageEntityStrike, MessageEntitySpoiler, \
     MessageEntityBankCard, MessageEntityBlockquote, Long, InputMessageEntityMentionName, InputUserSelf, InputUser, \
     InputUserFromMessage
-from piltover.tl.base import InputCheckPasswordSRP as InputCheckPasswordSRPBase, InputUser as InputUserBase
+from piltover.tl.base import InputCheckPasswordSRP as InputCheckPasswordSRPBase, InputUser as InputUserBase, \
+    MessageEntity as MessageEntityBase
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
@@ -174,23 +175,15 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
         raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
 
 
-# TODO: replace with base?
-MessageEntity = MessageEntityUnknown | MessageEntityMention | MessageEntityHashtag | MessageEntityBotCommand \
-                | MessageEntityUrl | MessageEntityEmail | MessageEntityBold | MessageEntityItalic | MessageEntityCode \
-                | MessageEntityPre | MessageEntityTextUrl | MessageEntityMentionName | MessageEntityPhone \
-                | MessageEntityCashtag | MessageEntityUnderline | MessageEntityStrike | MessageEntityBankCard \
-                | MessageEntitySpoiler | MessageEntityBlockquote
-
 VALID_ENTITIES = (
     MessageEntityBold, MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl,
     MessageEntityUnderline, MessageEntityStrike, MessageEntityBankCard, MessageEntitySpoiler, MessageEntityBlockquote
 )
 
 
-async def validate_message_entities(text: str, entities: list[MessageEntity], user: User) -> list[dict] | None:
+async def validate_message_entities(text: str, entities: list[MessageEntityBase], user: User) -> list[dict] | None:
     if not entities:
         return None
-    # TODO: check what limit telegram has
     if len(entities) > 1024:
         raise ErrorRpc(error_code=400, error_message="ENTITIES_TOO_LONG")
 
@@ -246,19 +239,22 @@ async def validate_message_entities(text: str, entities: list[MessageEntity], us
         got_users.update(await Peer.filter(users_q, owner=user).values_list("user__id", flat=True))
 
         for input_user, idx in reversed(fetch_users):
-            entity = cast(MessageEntityMentionName, result[idx])
+            # entity = cast(MessageEntityMentionName, result[idx])
+            entity = result[idx]
             if isinstance(input_user, InputUserSelf):
-                entity.user_id = user.id
+                entity["user_id"] = user.id
             elif isinstance(input_user, (InputUser, InputUserFromMessage)):
                 if input_user.user_id in got_users:
-                    entity.user_id = input_user.user_id
+                    entity["user_id"] = input_user.user_id
                 else:
                     del result[idx]
 
     return result or None
 
 
-async def process_message_entities(text: str | None, entities: list[MessageEntity], user: User) -> list[dict] | None:
+async def process_message_entities(
+        text: str | None, entities: list[MessageEntityBase], user: User,
+) -> list[dict] | None:
     if not text:
         return None
 
