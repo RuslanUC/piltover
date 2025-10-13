@@ -40,6 +40,7 @@ class File(Model):
     # DocumentAttributeAudio
     title: str | None = fields.TextField(null=True, default=None)
     performer: str | None = fields.TextField(null=True, default=None)
+    waveform: bytes | None = fields.BinaryField(null=True, default=None)
 
     # Photo or thumbs
     photo_sizes: list[dict[str, str | int]] | None = fields.JSONField(null=True, default=None)
@@ -83,11 +84,13 @@ class File(Model):
                 self.nosound = attribute.nosound
                 self.preload_prefix_size = attribute.preload_prefix_size
             elif isinstance(attribute, DocumentAttributeAudio):
-                # TODO: waveform
                 self.type = FileType.DOCUMENT_VOICE if attribute.voice else FileType.DOCUMENT_AUDIO
                 self.duration = attribute.duration
-                self.title = attribute.title
-                self.performer = attribute.performer
+                if attribute.voice:
+                    self.waveform = attribute.waveform[:64]
+                else:
+                    self.title = attribute.title
+                    self.performer = attribute.performer
             elif isinstance(attribute, DocumentAttributeSticker):
                 self.type = FileType.DOCUMENT_STICKER
                 self.stickerset = await models.Stickerset.from_input(attribute.stickerset)

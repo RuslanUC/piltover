@@ -165,6 +165,7 @@ async def get_messages_query_internal(
     final_query = Q(id__in=message_ids_before_offset) | Q(id__in=message_ids_after_offset)
     return Message.filter(final_query).order_by("-date").select_related(*select_related)
 
+
 async def get_messages_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
