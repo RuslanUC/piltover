@@ -136,6 +136,7 @@ class File(Model):
                 voice=self.type is FileType.DOCUMENT_VOICE,
                 title=self.title,
                 performer=self.performer,
+                waveform=self.waveform,
             ))
 
         return result
