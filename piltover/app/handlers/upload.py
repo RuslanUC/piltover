@@ -2,6 +2,8 @@ from time import time
 from uuid import UUID
 
 import aiofiles
+import magic
+from loguru import logger
 from tortoise.expressions import Q
 
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
@@ -26,7 +28,19 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
     if isinstance(request, SaveBigFilePart):
         defaults["total_parts"] = request.file_total_parts
 
-    file, _ = await UploadingFile.get_or_create(user=user, file_id=request.file_id, defaults=defaults)
+    mime = None
+    if request.file_part == 0 and request.bytes_:
+        mime = magic.from_buffer(request.bytes_[:4096], mime=True)
+        if mime == "application/octet-stream":
+            mime = None
+        defaults["mime"] = mime
+        logger.trace(f"Resolved file mime type from first part: {mime!r}")
+
+    file, created = await UploadingFile.get_or_create(user=user, file_id=request.file_id, defaults=defaults)
+    if not created and request.file_part == 0 and file.mime is None and mime is not None:
+        file.mime = mime
+        await file.save(update_fields=["mime"])
+
     last_part = await UploadingFilePart.filter(file=file).order_by("-part_id").first()
 
     if file.total_parts > 0 and isinstance(request, SaveFilePart):

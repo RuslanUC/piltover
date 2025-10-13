@@ -83,6 +83,7 @@ class File(Model):
                 self.nosound = attribute.nosound
                 self.preload_prefix_size = attribute.preload_prefix_size
             elif isinstance(attribute, DocumentAttributeAudio):
+                # TODO: waveform
                 self.type = FileType.DOCUMENT_VOICE if attribute.voice else FileType.DOCUMENT_AUDIO
                 self.duration = attribute.duration
                 self.title = attribute.title

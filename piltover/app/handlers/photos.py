@@ -36,9 +36,12 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.file.id)
     if uploaded_file is None:
         raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+    if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):
+        raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+
     worker = request_ctx.get().worker
     files_dir = worker.data_dir / "files"
-    file = await uploaded_file.finalize_upload(files_dir, "image/png", [])
+    file = await uploaded_file.finalize_upload(files_dir, "image/png")
     file.photo_sizes = await resize_photo(files_dir, str(file.physical_id))
     file.photo_stripped = await generate_stripped(files_dir, str(file.physical_id))
     await file.save(update_fields=["photo_sizes", "photo_stripped"])

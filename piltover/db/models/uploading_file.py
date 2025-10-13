@@ -17,6 +17,7 @@ class UploadingFile(Model):
     file_id: str = fields.CharField(index=True, max_length=64)
     total_parts: int = fields.IntField(default=0)
     created_at: datetime = fields.DatetimeField(default=datetime.now)
+    mime: str | None = fields.CharField(max_length=64, null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
     class Meta:
@@ -25,8 +26,8 @@ class UploadingFile(Model):
         )
 
     async def finalize_upload(
-            self, files_dir: Path, mime_type: str, attributes: list, file_type: FileType = FileType.DOCUMENT,
-            parts_num: int | None = None,
+            self, files_dir: Path, fallback_mime: str, attributes: list | None = None,
+            file_type: FileType = FileType.DOCUMENT, parts_num: int | None = None, force_fallback_mime: bool = False,
     ) -> models.File:
         parts = await UploadingFilePart.filter(file=self).order_by("part_id")
         if (self.total_parts > 0 and self.total_parts != len(parts)) or not parts:
@@ -48,8 +49,13 @@ class UploadingFile(Model):
                 raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
             size += part.size
 
-        file = models.File(mime_type=mime_type, size=size, type=file_type)
-        await file.parse_attributes_from_tl(attributes)
+        file = models.File(
+            mime_type=fallback_mime if self.mime is None or force_fallback_mime else self.mime,
+            size=size,
+            type=file_type,
+        )
+        if attributes:
+            await file.parse_attributes_from_tl(attributes)
         await file.save()
 
         async with aiofiles.open(files_dir / f"{file.physical_id}", "wb") as f_out:
