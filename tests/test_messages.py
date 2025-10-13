@@ -2,11 +2,14 @@ from contextlib import AsyncExitStack
 from io import BytesIO
 
 import pytest
+from PIL import Image
 from pyrogram.enums import MessageEntityType
 from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
-from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions
-from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel
+from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
+    GetSearchResultsCalendar
+from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
+    InputMessagesFilterEmpty, InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo
 from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument, ChatPermissions
 
@@ -751,3 +754,32 @@ async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> No
     assert len(messages) == 2
     assert not messages[0].mentioned
     assert messages[1].mentioned
+
+
+class GetSearchResultsCalendarFailedManually(RuntimeError):
+    ...
+
+
+@pytest.mark.xfail(
+    True,
+    reason="Not actually testing functionality for now",
+    raises=GetSearchResultsCalendarFailedManually
+)
+@pytest.mark.asyncio
+async def test_get_search_results_calendar(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    photo_file = BytesIO()
+    Image.new(mode="RGB", size=(256, 256), color=(255, 255, 255)).save(photo_file, format="PNG")
+    setattr(photo_file, "name", "photo.png")
+
+    assert await client.send_photo("me", photo_file)
+
+    result = await client.invoke(GetSearchResultsCalendar(
+        peer=await client.resolve_peer("me"),
+        filter=InputMessagesFilterPhotoVideo(),
+        offset_id=0,
+        offset_date=0,
+    ))
+
+    raise GetSearchResultsCalendarFailedManually

@@ -1,10 +1,13 @@
 from datetime import datetime, UTC
 from time import time
-from typing import cast
+from typing import cast, Any
 
 from loguru import logger
+from pypika_tortoise import SqlContext, Dialects
+from pypika_tortoise.terms import Function as PypikaFunction
+from pypika_tortoise.utils import format_alias_sql
 from tortoise import connections
-from tortoise.expressions import Q, Subquery, RawSQL
+from tortoise.expressions import Q, Subquery, Function, CombinedExpression, Connector
 from tortoise.functions import Min, Max, Count
 from tortoise.queryset import QuerySet
 
@@ -21,7 +24,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
-    GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133
+    GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory
 from piltover.worker import MessageHandler
@@ -476,16 +479,43 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
     )
 
 
-DATE_TO_UNIXDAY_SQL = {
-    "mysql": RawSQL("UNIX_TIMESTAMP(`date`)/86400"),
-    "sqlite": RawSQL("CAST(strftime('%s', `date`) as INT)/86400"),
-    "postgres": None,
-    "postgresql": None,
-    "oracle": None,
-    "mssql": None,
-}
+class DatetimeToUnixPika(PypikaFunction):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(kwargs.get("alias"))
+        self.args: list = [self.wrap_constant(param) for param in args]
+
+    def get_function_sql(self, ctx: SqlContext) -> str:
+        args = ",".join(self.get_arg_sql(arg, ctx) for arg in self.args)
+
+        if ctx.dialect is Dialects.MYSQL:
+            return f"UNIX_TIMESTAMP({args})"
+        elif ctx.dialect is Dialects.SQLITE:
+            return f"CAST(strftime('%s', {args}) AS INT)"
+        elif ctx.dialect is Dialects.POSTGRESQL:
+            return f"DATE_PART('epoch', {args})"
+        elif ctx.dialect is Dialects.MSSQL:
+            return f"DATEDIFF(SECOND, '1970-01-01', {args})"
+
+        raise RuntimeError(f"Dialect {ctx.dialect!r} is not supported!")
+
+    def get_sql(self, ctx: SqlContext) -> str:
+        function_sql = self.get_function_sql(ctx)
+
+        if ctx.with_alias:
+            return format_alias_sql(function_sql, self.alias, ctx)
+
+        return function_sql
 
 
+class DatetimeToUnix(Function):
+    database_func = DatetimeToUnixPika
+
+    @staticmethod
+    def is_supported(dialect: str) -> bool:
+        return dialect in ("mysql", "sqlite", "postgres", "postgresql", "mssql")
+
+
+@handler.on_request(GetSearchResultsCalendar_134)
 @handler.on_request(GetSearchResultsCalendar)
 async def get_search_results_calendar(request: GetSearchResultsCalendar, user: User) -> SearchResultsCalendar:
     if isinstance(request.filter, (InputMessagesFilterEmpty, InputMessagesFilterMyMentions)):
@@ -493,7 +523,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
     saved_peer = None
-    if peer.type is PeerType.SELF and request.saved_peer_id:
+    if peer.type is PeerType.SELF and not isinstance(request, GetSearchResultsCalendar_134) and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
 
     if (filter_query := message_filter_to_query(request.filter)) is None:
@@ -504,16 +534,18 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
         query &= Q(fwd_header__saved_peer=saved_peer)
 
     dialect = connections.get("default").capabilities.dialect
-    day_sql = DATE_TO_UNIXDAY_SQL.get(dialect, None)
-    if day_sql is None:
+    if not DatetimeToUnix.is_supported(dialect):
         logger.warning(f"Dialect \"{dialect}\" is not supported in GetSearchResultsCalendar")
         periods = []
     else:
-        periods = await Message.annotate(
-            day=day_sql, min_msg_id=Min("id"), max_msg_id=Max("id"), msg_count=Count("id")
+        query = Message.annotate(
+            day=CombinedExpression(DatetimeToUnix("date"), Connector.div, 86400),
+            min_msg_id=Min("id"), max_msg_id=Max("id"), msg_count=Count("id")
         ).filter(
             query & Q(msg_count__gte=1)
         ).limit(100).order_by("-day").group_by("day").values_list("day", "min_msg_id", "max_msg_id", "msg_count")
+        logger.trace(query.sql())
+        periods = await query
 
     message_ids = []
     periods_tl = []
@@ -542,8 +574,8 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
 
     return SearchResultsCalendar(
         count=0,  # TODO: add count by request.filter
-        min_date=periods[-1][0],
-        min_msg_id=periods[-1][1],
+        min_date=periods[-1][0] if periods else 0,
+        min_msg_id=periods[-1][1] if periods else 0,
         offset_id_offset=None,  # TODO: add offset_id support
         periods=periods_tl,
         messages=messages_tl,
