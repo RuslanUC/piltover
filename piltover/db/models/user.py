@@ -8,7 +8,7 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday
-from piltover.tl.types import User as TLUser
+from piltover.tl.types import User as TLUser, PeerColor
 
 
 class _UsernameMissing(Enum):
@@ -27,6 +27,11 @@ class User(Model):
     birthday: date | None = fields.DateField(null=True, default=None)
     bot: bool = fields.BooleanField(default=False)
     deleted: bool = fields.BooleanField(default=False)
+    accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="accent")
+    profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="profile")
+
+    accent_color_id: int | None
+    profile_color_id: int | None
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
     is_lazy: bool = False
@@ -115,6 +120,8 @@ class User(Model):
             contact=contact is not None,
             bot=self.bot,
             bot_info_version=1 if self.bot else None,
+            color=PeerColor(color=self.accent_color_id) if self.accent_color is not None else None,
+            profile_color=PeerColor(color=self.profile_color_id) if self.profile_color is not None else None,
         )
 
     async def to_tl_birthday(self, user: User) -> Birthday | None:

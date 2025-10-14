@@ -12,7 +12,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
-    InstalledWallpaper
+    InstalledWallpaper, PeerColorOption
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -28,7 +28,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
-    SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers
+    SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -720,3 +720,34 @@ async def get_wallpapers(request: GetWallPapers, user: User) -> WallPapers | Wal
 async def reset_wallpapers(user: User) -> bool:
     await InstalledWallpaper.filter(user=user).delete()
     return True
+
+
+@handler.on_request(UpdateColor)
+async def update_color(request: UpdateColor, user: User) -> bool:
+    if request.color is None:
+        if request.for_profile and user.profile_color is not None:
+            user.profile_color = None
+            await user.save(update_fields="profile_color_id")
+        elif not request.for_profile and user.accent_color is not None:
+            user.accent_color = None
+            await user.save(update_fields="accent_color_id")
+        else:
+            return True
+
+        await upd.update_user(user)
+        return True
+
+    peer_color = await PeerColorOption.get_or_none(id=request.color, is_profile=request.for_profile)
+    if peer_color is None:
+        raise ErrorRpc(error_code=400, error_message="COLOR_INVALID")
+
+    if request.for_profile:
+        user.profile_color = peer_color
+        await user.save(update_fields="profile_color_id")
+    else:
+        user.accent_color = peer_color
+        await user.save(update_fields="accent_color_id")
+
+    await upd.update_user(user)
+    return True
+

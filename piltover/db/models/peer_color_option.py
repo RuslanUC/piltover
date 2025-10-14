@@ -50,9 +50,9 @@ class PeerColorOption(Model):
             if c4:
                 color_set.bg_colors.append(c4)
             if c5:
-                color_set.story_colors.append(c2)
+                color_set.story_colors.append(c5)
             if c6:
-                color_set.story_colors.append(c2)
+                color_set.story_colors.append(c6)
 
             return color_set
 
@@ -66,12 +66,12 @@ class PeerColorOption(Model):
 
     def to_tl(self) -> TLPeerColorOption:
         return TLPeerColorOption(
-            color_id=self.id + 6,
+            color_id=self.id,
             hidden=self.hidden,
             colors=self.to_peer_color_set(
                 self.color1, self.color2, self.color3,
                 self.color4, self.color5, self.color6,
-            ),
+            ) if self.id > 6 else None,
             dark_colors=self.to_peer_color_set(
                 self.dark_color1, self.dark_color2, self.dark_color3,
                 self.dark_color4, self.dark_color5, self.dark_color6,

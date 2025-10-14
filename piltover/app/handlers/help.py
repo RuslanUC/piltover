@@ -426,19 +426,26 @@ async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> Peer
     is_profile = isinstance(request, GetPeerProfileColors)
 
     builtin_colors_num = 6
-    colors = [TLPeerColorOption(color_id=color_id) for color_id in range(builtin_colors_num + 1)]
 
-    ids = list(range(builtin_colors_num + 1))
-    ids.extend(await PeerColorOption.filter(is_profile=is_profile).order_by("id").values_list("id", flat=True))
+    ids = await PeerColorOption.filter(is_profile=is_profile).order_by("id").values_list("id", flat=True)
+    ids_set = set(ids)
+
+    for color_id in range(builtin_colors_num + 1):
+        if color_id not in ids_set:
+            ids.append(color_id)
 
     colors_hash = telegram_hash(ids, 32)
     if colors_hash == request.hash:
         return PeerColorsNotModified()
 
-    colors.extend((
+    colors = [
         color.to_tl()
         for color in await PeerColorOption.filter(is_profile=is_profile).order_by("id")
-    ))
+    ]
+
+    for color_id in range(builtin_colors_num + 1):
+        if color_id not in ids_set:
+            colors.append(TLPeerColorOption(color_id=color_id))
 
     return PeerColors(
         hash=colors_hash,

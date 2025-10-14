@@ -340,6 +340,11 @@ async def _create_peer_colors() -> None:
     from os import listdir
     import json
 
+    from piltover.db.models import PeerColorOption
+
+    for color_id in range(6 + 1):
+        await PeerColorOption.get_or_create(id=color_id, defaults={"is_profile": False, "color1": 0})
+
     logger.info("Creating (or updating) peer accent colors...")
     for accent_file in listdir(accent_dir):
         if not accent_file.endswith(".json") or not accent_file.split(".")[0].isdigit():

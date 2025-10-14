@@ -67,9 +67,6 @@ async def extract_peer_colors(client: Client, out_dir: Path) -> None:
     colors: PeerColors = await client.invoke(GetPeerProfileColorsCompat(hash=0))
     logger.info(f"Got {len(colors.colors)} peer colors")
     for idx, color in enumerate(colors.colors):
-        if color.color_id <= 6 or not color.colors:
-            continue
-
         logger.info(f"Saving profile color \"{color.color_id}\"")
         with open(out_dir / "profile" / f"{idx}.json", "w") as f:
             json.dump(color, f, indent=4, default=TLObject_default, ensure_ascii=False)
