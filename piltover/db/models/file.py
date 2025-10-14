@@ -113,7 +113,7 @@ class File(Model):
                 duration=self.duration,
                 w=self.width,
                 h=self.height,
-                round_message=self.type is FileType.DOCUMENT_VIDEO,
+                round_message=self.type is FileType.DOCUMENT_VIDEO_NOTE,
                 supports_streaming=self.supports_streaming,
                 nosound=self.nosound,
                 preload_prefix_size=self.preload_prefix_size,

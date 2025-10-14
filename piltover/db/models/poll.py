@@ -43,8 +43,9 @@ class Poll(Model):
 
     async def to_tl_results(self, user: models.User) -> PollResults:
         user_votes = await models.PollVote.filter(answer__poll=self, user=user).select_related("answer")
-        if not user_votes:
-            return PollResults(min=True)
+        # TODO: create PollResults with min, results, total_voters, min and cache it
+        #if not user_votes:
+        #    return PollResults(min=True)
 
         chosen = set(vote.answer.option for vote in user_votes)
 

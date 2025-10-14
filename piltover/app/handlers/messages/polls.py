@@ -45,9 +45,9 @@ async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
         raise ErrorRpc(error_code=403, error_message="POLL_VOTE_REQUIRED")
 
     sel_related = ["user"]
-    query = Q(poll=message.media.poll, hidden=False)
+    query = Q(answer__poll=message.media.poll, hidden=False)
     if request.option is not None:
-        if (option := await PollAnswer.filter(poll=message.media.poll, option=request.option)) is None:
+        if (option := await PollAnswer.get_or_none(poll=message.media.poll, option=request.option)) is None:
             raise ErrorRpc(error_code=403, error_message="MSG_ID_INVALID")
         query &= Q(answer=option)
     else:
@@ -79,12 +79,14 @@ async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
         else:
             votes_tl.append(MessagePeerVote(peer=peer, date=vote_date, option=vote.answer.option))
 
+    has_more = await PollVote.filter(query & Q(id__lt=votes[-1].id)).exists()
+
     return VotesList(
         count=total_count,
         votes=votes_tl,
         chats=[],
         users=list(users.values()),
-        next_offset=base64.b64encode(Long.write(votes[-1].id)).decode("utf8"),
+        next_offset=base64.b64encode(Long.write(votes[-1].id)).decode("utf8") if has_more else "",
     )
 
 
@@ -102,10 +104,10 @@ async def send_vote(request: SendVote, user: User) -> Updates:
     if message.media.poll.is_closed_fr:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_POLL_CLOSED")
     if not request.options:
-        votes = await PollVote.filter(answer__poll=message.media.poll, user=user)
-        if not votes:
+        vote_ids = await PollVote.filter(answer__poll=message.media.poll, user=user).values_list("id", flat=True)
+        if not vote_ids:
             raise ErrorRpc(error_code=400, error_message="OPTION_INVALID")
-        await PollVote.filter(id__in=[vote.id for vote in votes]).delete()
+        await PollVote.filter(id__in=vote_ids).delete()
         return await upd.update_message_poll(message.media.poll, user)
     if len(request.options) > 1 and not message.media.poll.multiple_choices:
         raise ErrorRpc(error_code=400, error_message="OPTIONS_TOO_MUCH")
