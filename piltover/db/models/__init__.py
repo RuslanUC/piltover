@@ -58,3 +58,4 @@ from .wallpaper_settings import WallpaperSettings
 from .chat_wallpaper import ChatWallpaper
 from .installed_wallpaper import InstalledWallpaper
 from .message_mention import MessageMention
+from .peer_color_option import PeerColorOption

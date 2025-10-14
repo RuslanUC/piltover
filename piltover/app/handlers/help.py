@@ -1,8 +1,9 @@
 import ctypes
 from time import time
 
+from piltover.app.utils.utils import telegram_hash
 from piltover.app_config import AppConfig
-from piltover.db.models import AuthCountry, User, Reaction, UserReactionsSettings
+from piltover.db.models import AuthCountry, User, Reaction, UserReactionsSettings, PeerColorOption
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, JsonNumber, JsonObjectValue, \
     JsonBool, JsonArray, JsonString, ReactionEmoji
@@ -10,7 +11,8 @@ from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, Ge
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
     GetPeerProfileColors, DismissSuggestion
 from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
-    PeerColors, PeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified, AppConfigNotModified
+    PeerColors, PeerColorOption as TLPeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified, \
+    AppConfigNotModified, PeerColorsNotModified
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("help")
@@ -420,13 +422,27 @@ async def get_invite_text():  # pragma: no cover
 
 @handler.on_request(GetPeerColors, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 @handler.on_request(GetPeerProfileColors, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_peer_colors():  # pragma: no cover
+async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> PeerColors | PeerColorsNotModified:
+    is_profile = isinstance(request, GetPeerProfileColors)
+
+    builtin_colors_num = 6
+    colors = [TLPeerColorOption(color_id=color_id) for color_id in range(builtin_colors_num + 1)]
+
+    ids = list(range(builtin_colors_num + 1))
+    ids.extend(await PeerColorOption.filter(is_profile=is_profile).order_by("id").values_list("id", flat=True))
+
+    colors_hash = telegram_hash(ids, 32)
+    if colors_hash == request.hash:
+        return PeerColorsNotModified()
+
+    colors.extend((
+        color.to_tl()
+        for color in await PeerColorOption.filter(is_profile=is_profile).order_by("id")
+    ))
+
     return PeerColors(
-        hash=1,
-        colors=[
-            PeerColorOption(color_id=color_id)
-            for color_id in range(6)
-        ],
+        hash=colors_hash,
+        colors=colors,
     )
 
 

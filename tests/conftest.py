@@ -18,6 +18,7 @@ from pyrogram import Client
 from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
 from pyrogram.raw.core import TLObject as PyroTLObject
+from pyrogram.raw.functions import InvokeWithLayer
 from pyrogram.raw.types import Updates
 from pyrogram.session import Auth, Session as PyroSession
 from pyrogram.session.internals import DataCenter
@@ -92,9 +93,11 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
     create_countries = "create_countries" in marks
     create_reactions = "create_reactions" in marks
     create_chat_themes = "create_chat_themes" in marks
+    create_peer_colors = "create_peer_colors" in marks
 
     async with app.run_test(
             create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
+            create_peer_colors=create_peer_colors,
     ) as test_server:
         if not real_key_gen:
             Auth.create = _custom_auth_create
@@ -383,8 +386,10 @@ class TestClient(Client):
             await self.handle_updates(res, True)
         return res
 
-    async def invoke_p(self, query: TLRequest[T]) -> T:
+    async def invoke_p(self, query: TLRequest[T], with_layer: int | None = None) -> T:
         pyro_query = PyroTLObject.read(BytesIO(query.write()))
+        if with_layer:
+            pyro_query = InvokeWithLayer(layer=with_layer, query=pyro_query)
         return await self.invoke(pyro_query)
 
     async def expect_update(self, update_cls: type[T], timeout_: float = 1) -> T:

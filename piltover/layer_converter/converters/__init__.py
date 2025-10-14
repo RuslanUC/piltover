@@ -17,6 +17,7 @@ from .message_reply_header_downgrade import *
 from .message_service_downgrade import *
 from .messagemediadocument_downgrade import *
 from .messages_stickerset_downgrade import *
+from .peer_color_option_downgrade import *
 from .peernotifysettings_downgrade import *
 from .peersettings_downgrade import *
 from .poll_answer_downgrade import *
@@ -175,3 +176,7 @@ LayerConverter.register_for_downgrade(GlobalPrivacySettingsDontDowngrade)
 
 LayerConverter.register_for_downgrade(WallPaperSettingsDowngradeTo133)
 LayerConverter.register_for_downgrade(WallPaperSettingsDontDowngrade)
+
+LayerConverter.register_for_downgrade(PeerColorOptionDowngradeTo167)
+LayerConverter.register_for_downgrade(PeerColorOptionDowngradeTo168)
+LayerConverter.register_for_downgrade(PeerColorOptionDontDowngrade)

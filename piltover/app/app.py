@@ -38,6 +38,8 @@ class ArgsNamespace(SimpleNamespace):
     reactions_dir: Path | None
     create_chat_themes: bool
     chat_themes_dir: Path | None
+    create_peer_colors: bool
+    peer_colors_dir: Path | None
     privkey_file: Path | None
     pubkey_file: Path | None
     rabbitmq_address: str | None
@@ -57,6 +59,8 @@ class ArgsNamespace(SimpleNamespace):
             self.reactions_dir = self.data_dir / "reactions"
         if self.chat_themes_dir is None:
             self.chat_themes_dir = self.data_dir / "chat_themes"
+        if self.peer_colors_dir is None:
+            self.peer_colors_dir = self.data_dir / "peer_colors"
 
 
 class MigrateNoDowngrade(Migrate):
@@ -281,8 +285,144 @@ async def _create_chat_themes() -> None:
             await theme.update_from_dict(defaults).save()
 
 
+async def _create_or_update_peer_color(
+        is_profile: bool,
+        color1: int,
+        color2: int | None,
+        color3: int | None,
+        color4: int | None,
+        color5: int | None,
+        color6: int | None,
+        dark_color1: int | None,
+        dark_color2: int | None,
+        dark_color3: int | None,
+        dark_color4: int | None,
+        dark_color5: int | None,
+        dark_color6: int | None,
+        hidden: bool,
+        color_id: int,
+) -> None:
+    from piltover.db.models import PeerColorOption
+
+    peer_color, created = await PeerColorOption.get_or_create(
+        is_profile=is_profile,
+        color1=color1,
+        color2=color2,
+        color3=color3,
+        color4=color4,
+        color5=color5,
+        color6=color6,
+        dark_color1=dark_color1,
+        dark_color2=dark_color2,
+        dark_color3=dark_color3,
+        dark_color4=dark_color4,
+        dark_color5=dark_color5,
+        dark_color6=dark_color6,
+        defaults={"hidden": hidden}
+    )
+
+    if not created:
+        peer_color.hidden = hidden
+        await peer_color.save(update_fields=["hidden"])
+
+    if created:
+        logger.info(f"Created accent color \"{color_id}\" ")
+    else:
+        logger.info(f"Updated accent color \"{color_id}\" ")
+
+
+async def _create_peer_colors() -> None:
+    accent_dir = args.peer_colors_dir / "accent"
+    profile_dir = args.peer_colors_dir / "profile"
+    if not args.peer_colors_dir.exists() or not accent_dir.exists() or not profile_dir.exists():
+        return
+
+    from os import listdir
+    import json
+
+    logger.info("Creating (or updating) peer accent colors...")
+    for accent_file in listdir(accent_dir):
+        if not accent_file.endswith(".json") or not accent_file.split(".")[0].isdigit():
+            continue
+
+        with open(accent_dir / accent_file) as f:
+            color_info = json.load(f)
+
+        colors = color_info["colors"]["colors"]
+        color1 = colors[0]
+        color2 = colors[1] if len(colors) > 1 else None
+        color3 = colors[2] if len(colors) > 2 else None
+        color4 = color5 = color6 = None
+
+        dark_colors = color_info["dark_colors"]["colors"] if color_info.get("dark_colors") else None
+        dark_color1 = dark_colors[0] if dark_colors else None
+        dark_color2 = dark_colors[1] if dark_colors and len(dark_colors) > 1 else None
+        dark_color3 = dark_colors[2] if dark_colors and len(dark_colors) > 2 else None
+        dark_color4 = dark_color5 = dark_color6 = None
+
+        await _create_or_update_peer_color(
+            is_profile=False,
+            color1=color1,
+            color2=color2,
+            color3=color3,
+            color4=color4,
+            color5=color5,
+            color6=color6,
+            dark_color1=dark_color1,
+            dark_color2=dark_color2,
+            dark_color3=dark_color3,
+            dark_color4=dark_color4,
+            dark_color5=dark_color5,
+            dark_color6=dark_color6,
+            hidden=color_info.get("hidden", False),
+            color_id=color_info["color_id"],
+        )
+
+    logger.info("Creating (or updating) peer profile colors...")
+    for profile_file in listdir(profile_dir):
+        if not profile_file.endswith(".json") or not profile_file.split(".")[0].isdigit():
+            continue
+
+        with open(profile_dir / profile_file) as f:
+            color_info = json.load(f)
+
+        colors = color_info["colors"]
+        color1 = colors["palette_colors"][0]
+        color2 = colors["palette_colors"][1] if len(colors["palette_colors"]) > 1 else None
+        color3 = colors["bg_colors"][0]
+        color4 = colors["bg_colors"][1] if len(colors["bg_colors"]) > 1 else None
+        color5 = colors["story_colors"][0]
+        color6 = colors["story_colors"][1]
+
+        dark_colors = color_info["colors"] if color_info.get("dark_colors") else None
+        dark_color1 = dark_colors["palette_colors"][0] if dark_colors else None
+        dark_color2 = dark_colors["palette_colors"][1] if dark_colors and len(colors["palette_colors"]) > 1 else None
+        dark_color3 = dark_colors["bg_colors"][0] if dark_colors else None
+        dark_color4 = dark_colors["bg_colors"][1] if dark_colors and len(colors["bg_colors"]) > 1 else None
+        dark_color5 = dark_colors["story_colors"][0] if dark_colors else None
+        dark_color6 = dark_colors["story_colors"][1] if dark_colors else None
+
+        await _create_or_update_peer_color(
+            is_profile=True,
+            color1=color1,
+            color2=color2,
+            color3=color3,
+            color4=color4,
+            color5=color5,
+            color6=color6,
+            dark_color1=dark_color1,
+            dark_color2=dark_color2,
+            dark_color3=dark_color3,
+            dark_color4=dark_color4,
+            dark_color5=dark_color5,
+            dark_color6=dark_color6,
+            hidden=color_info.get("hidden", False),
+            color_id=color_info["color_id"],
+        )
+
 async def _create_system_data(
         system_users: bool = True, countries_list: bool = True, reactions: bool = True, chat_themes: bool = True,
+        peer_colors: bool = True,
 ) -> None:
     if system_users:
         logger.info("Creating system user...")
@@ -332,6 +472,9 @@ async def _create_system_data(
     if chat_themes:
         await _create_chat_themes()
 
+    if peer_colors:
+        await _create_peer_colors()
+
 
 async def migrate():
     migrations_dir = (args.data_dir / "migrations").absolute()
@@ -349,6 +492,7 @@ async def migrate():
 
     await _create_system_data(
         args.create_system_user, args.create_auth_countries, args.create_reactions, args.create_chat_themes,
+        args.create_peer_colors,
     )
     await Tortoise.close_connections()
 
@@ -413,7 +557,7 @@ class PiltoverApp:
     @asynccontextmanager
     async def run_test(
             self, create_sys_user: bool = True, create_countries: bool = False, create_reactions: bool = False,
-            create_chat_themes: bool = False,
+            create_chat_themes: bool = False, create_peer_colors: bool = False,
     ) -> AsyncIterator[Gateway]:
         await Tortoise.init(
             db_url="sqlite://:memory:",
@@ -421,7 +565,9 @@ class PiltoverApp:
             _create_db=True,
         )
         await Tortoise.generate_schemas()
-        await _create_system_data(create_sys_user, create_countries, create_reactions, create_chat_themes)
+        await _create_system_data(
+            create_sys_user, create_countries, create_reactions, create_chat_themes, create_peer_colors,
+        )
 
         from piltover.app.handlers import testing
         if not testing.handler.registered:
@@ -460,6 +606,11 @@ if __name__ == "__main__":
         "Path to directory containing chat theme files (for --create-chat-themes option). "
         "By default, <data-dir>/chat_themes will be used."
     ))
+    parser.add_argument("--create-peer-colors", action="store_true", help="Insert peer colors to database")
+    parser.add_argument("--peer-colors-dir", type=Path, default=None, help=(
+        "Path to directory containing peer colors files (for --create-peer-colors option). "
+        "By default, <data-dir>/peer_colors will be used."
+    ))
     parser.add_argument("--privkey-file", type=Path, default=None, help=(
         "Path to private key file. "
         "By default, <data-dir>/secrets/privkey.asc will be used."
@@ -495,6 +646,8 @@ else:
         reactions_dir=Path("./data/reactions"),
         create_chat_themes=True,
         chat_themes_dir=Path("./data/chat_themes"),
+        create_peer_colors=True,
+        peer_colors_dir=Path("./data/peer_colors"),
         data_dir=Path("./data") / "testing",
         privkey_file=None,
         pubkey_file=None,
