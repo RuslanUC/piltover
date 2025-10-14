@@ -518,7 +518,7 @@ async def test_message_poll() -> None:
         assert poll.options[0].voter_count == 1
 
         poll = await client.retract_vote("me", message.id)
-        assert poll.total_voter_count is None
+        assert poll.total_voter_count == 0
         assert poll.options[0].voter_count == 0
 
 
