@@ -482,13 +482,18 @@ async def _create_system_data(
 
 
 async def migrate():
+    from os import environ
     migrations_dir = (args.data_dir / "migrations").absolute()
 
     command = Command({
         "connections": {"default": DB_CONNECTION_STRING},
         "apps": {"models": {"models": ["piltover.db.models", "aerich.models"], "default_connection": "default"}},
     }, location=str(migrations_dir))
+
+    if environ.get("AERICH_RUN_FIX_MIGRATIONS", "").lower() in ("1", "true"):
+        await command.fix_migrations()
     await command.init()
+
     if Path(migrations_dir).exists():
         await MigrateNoDowngrade.migrate("update", False)
         await command.upgrade(True)

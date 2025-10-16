@@ -74,7 +74,8 @@ class File(Model):
                 self.width = attribute.w
                 self.height = attribute.h
             elif isinstance(attribute, DocumentAttributeAnimated):
-                self.type = FileType.DOCUMENT_GIF
+                if self.type is FileType.DOCUMENT:
+                    self.type = FileType.DOCUMENT_GIF
             elif isinstance(attribute, DocumentAttributeVideo):
                 self.type = FileType.DOCUMENT_VIDEO_NOTE if attribute.round_message else FileType.DOCUMENT_VIDEO
                 self.width = attribute.w

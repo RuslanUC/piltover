@@ -6,7 +6,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from hashlib import md5
 from io import BytesIO
 from pathlib import Path
-from typing import Iterable, Literal, cast
+from typing import Iterable, Literal
 
 from PIL.Image import Image, open as img_open
 from loguru import logger

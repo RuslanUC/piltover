@@ -12,6 +12,13 @@ class InvitedUsersDowngradeTo136(BaseDowngrader):
         return from_obj.updates
 
 
+class InvitedUsersDontDowngrade177(AutoDowngrader):
+    BASE_TYPE = InvitedUsers
+    TARGET_TYPE = InvitedUsers
+    TARGET_LAYER = 177
+    REMOVE_FIELDS = set()
+
+
 class InvitedUsersDontDowngrade(AutoDowngrader):
     BASE_TYPE = InvitedUsers
     TARGET_TYPE = InvitedUsers

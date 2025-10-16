@@ -28,7 +28,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
-    SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor
+    SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -505,6 +505,7 @@ async def change_phone(request: ChangePhone, user: User) -> TLUser:
 
     return await user.to_tl(user)
 
+
 # https://core.telegram.org/api/account-deletion
 #@handler.on_request(SendConfirmPhoneCode)
 #async def send_confirm_phone_code(request: SendConfirmPhoneCode, user: User) -> TLSentCode:
@@ -751,3 +752,7 @@ async def update_color(request: UpdateColor, user: User) -> bool:
     await upd.update_user(user)
     return True
 
+
+@handler.on_request(GetDefaultBackgroundEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_default_background_emojis() -> EmojiList:
+    return EmojiList(hash=0, document_id=[])

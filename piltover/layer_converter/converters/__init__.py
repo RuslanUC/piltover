@@ -88,6 +88,7 @@ LayerConverter.register_for_downgrade(MessageFwdHeaderDowngradeTo133)
 LayerConverter.register_for_downgrade(MessageFwdHeaderDontDowngrade)
 
 LayerConverter.register_for_downgrade(InvitedUsersDowngradeTo136)
+LayerConverter.register_for_downgrade(InvitedUsersDontDowngrade177)
 LayerConverter.register_for_downgrade(InvitedUsersDontDowngrade)
 
 LayerConverter.register_for_downgrade(ChatInviteDowngradeTo133)

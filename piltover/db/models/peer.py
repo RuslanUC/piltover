@@ -102,7 +102,7 @@ class Peer(Model):
             return [peer]
         elif self.type is PeerType.CHAT:
             return await Peer.filter(
-                type=PeerType.CHAT, owner__id__not=self.owner.id,
+                type=PeerType.CHAT, owner__id__not=self.owner.id, chat__id=self.chat_id,
             ).select_related("owner", "chat")
 
         return []
