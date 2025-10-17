@@ -17,8 +17,8 @@ from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBloc
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken
-from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, BlockedSlice, \
-    ImportedContacts
+from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, \
+    BlockedSlice, ImportedContacts
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("contacts")

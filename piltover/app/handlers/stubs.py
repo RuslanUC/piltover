@@ -1,17 +1,8 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, EmojiKeywordsDifference, \
-    DocumentEmpty, PeerSettings, TLObjectVector
 from piltover.tl.functions.channels import GetSponsoredMessages_133
-from piltover.tl.functions.messages import GetPeerSettings, GetScheduledHistory, GetQuickReplies, GetMessageEditData, \
-    GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
-    GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, GetSavedReactionTags, \
-    GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetArchivedStickers, \
-    GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
-    GetEmojiKeywordsDifference, GetSponsoredMessages, GetSavedGifs
+from piltover.tl.functions.messages import GetSponsoredMessages, GetSavedGifs
 from piltover.tl.functions.premium import GetBoostsStatus
-from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Messages, Reactions, SavedReactionTags, \
-    Stickers, SearchResultsPositions, AllStickers, FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, \
-    QuickReplies, SponsoredMessages, SponsoredMessagesEmpty, SavedGifs, SavedGifsNotModified
+from piltover.tl.types.messages import SponsoredMessages, SponsoredMessagesEmpty, SavedGifs, SavedGifsNotModified
 from piltover.tl.types.premium import BoostsStatus
 from piltover.worker import MessageHandler
 

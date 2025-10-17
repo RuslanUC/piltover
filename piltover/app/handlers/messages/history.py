@@ -152,7 +152,9 @@ async def get_messages_query_internal(
     """
 
     after_offset_limit = min(abs(add_offset), limit)
-    message_ids_after_offset = await Message.filter(query & Q(id__gte=offset_id)).limit(after_offset_limit).order_by("date").values_list("id", flat=True)
+    message_ids_after_offset = await Message.filter(
+        query & Q(id__gte=offset_id)
+    ).limit(after_offset_limit).order_by("date").values_list("id", flat=True)
 
     if len(message_ids_after_offset) >= limit:
         return Message.filter(id__in=message_ids_after_offset).order_by("-date").select_related(*select_related)
@@ -382,7 +384,9 @@ async def get_search_counters(request: GetSearchCounters, user: User):
     return TLObjectVector([
         SearchCounter(
             filter=filt,
-            count=await (await get_messages_query_internal(peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer)).count(),
+            count=await (await get_messages_query_internal(
+                peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer,
+            )).count(),
         ) for filt in request.filters
     ])
 
@@ -394,7 +398,9 @@ async def get_all_drafts(user: User):
     channels_q = Q()
 
     updates = []
-    drafts = await MessageDraft.filter(dialog__peer__owner=user).select_related("dialog", "dialog__peer", "dialog__peer__user")
+    drafts = await MessageDraft.filter(dialog__peer__owner=user).select_related(
+        "dialog", "dialog__peer", "dialog__peer__user",
+    )
     for draft in drafts:
         peer = draft.dialog.peer
         updates.append(UpdateDraftMessage(peer=peer.to_tl(), draft=draft.to_tl()))
@@ -591,7 +597,6 @@ async def get_outbox_read_date():
     # TODO: implement getting outbox read date
 
     raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
-
 
 
 @handler.on_request(GetUnreadMentions_133)

@@ -1,5 +1,5 @@
 from piltover.layer_converter.converters import AutoDowngrader
-from piltover.tl import UserFull, UserFull_135, UserFull_140, UserFull_144, UserFull_151, UserFull_158,\
+from piltover.tl import UserFull, UserFull_135, UserFull_140, UserFull_144, UserFull_151, UserFull_158, \
     UserFull_160, UserFull_164, UserFull_176, UserFull_177, UserFull_189, UserFull_195, UserFull_196, UserFull_200
 
 

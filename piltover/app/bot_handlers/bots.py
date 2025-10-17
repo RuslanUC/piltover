@@ -9,6 +9,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
     }
 }
 
+
 async def process_message_to_bot(peer: Peer, message: Message) -> Message | None:
     if not peer.user.bot or await peer.user.get_raw_username() not in HANDLERS:
         return None

@@ -57,7 +57,7 @@ class PiltoverWorker:
                 public_key=self._public_key,
             ),
             rabbitmq_address=rabbitmq_address,
-            redis_address = redis_address,
+            redis_address=redis_address,
         )
 
         register_handlers(self._worker)

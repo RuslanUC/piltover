@@ -18,45 +18,12 @@ TAny = TypeVar("TAny")
 
 
 class LayerConverter:
-    _up: dict[type[T], dict[int, Callable[[T], TLObject]]] = defaultdict(dict)
     _down: dict[type[T], dict[int, Callable[[T], TLObject]]] = defaultdict(dict)
-
-    @classmethod
-    def register_for_upgrade(cls, upgrader: type[conv.BaseUpgrader]) -> None:
-        logger.trace(f"Registered upgrader for type {upgrader.BASE_TYPE.tlname()}, layer {upgrader.BASE_LAYER}")
-        cls._up[upgrader.BASE_TYPE][upgrader.BASE_LAYER] = upgrader.upgrade
 
     @classmethod
     def register_for_downgrade(cls, downgrader: type[conv.BaseDowngrader]) -> None:
         logger.trace(f"Registered downgrader for type {downgrader.BASE_TYPE.tlname()}, layer {downgrader.TARGET_LAYER}")
         cls._down[downgrader.BASE_TYPE][downgrader.TARGET_LAYER] = downgrader.downgrade
-
-    @classmethod
-    def _try_upgrade_list(cls, vec: list[TAny]) -> list[TAny]:
-        if not vec:
-            return vec
-
-        if isinstance(vec[0], list):
-            return [cls._try_upgrade_list(item) for item in vec]
-        if isinstance(vec[0], TLObject):
-            return [cls.upgrade(item) for item in vec]
-
-        return vec
-
-    @classmethod
-    def upgrade(cls, obj: TLObject) -> TLObject:
-        if obj.__class__ in cls._up:
-            layer = int(obj.__class__.__name__.split("_")[-1])
-            obj = cls._up[obj.__class__][layer](obj)
-
-        for slot in obj.__slots__:
-            attr = getattr(obj, slot)
-            if isinstance(attr, TLObject):
-                setattr(obj, slot, cls.upgrade(attr))
-            elif isinstance(attr, list):
-                setattr(obj, slot, cls._try_upgrade_list(attr))
-
-        return obj
 
     @classmethod
     def _try_downgrade_list(cls, vec: list[TAny], to_layer: int) -> list[TAny]:
@@ -72,7 +39,6 @@ class LayerConverter:
         return vec
 
     @classmethod
-    @logger.catch(level="ERROR", reraise=True)
     def downgrade(cls, obj: TLObject, to_layer: int) -> TLObject:
         obj_cls = obj.__class__
         if obj_cls in cls._down:

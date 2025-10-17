@@ -6,7 +6,6 @@ from uuid import UUID
 import aiofiles
 import aiofiles.os
 from loguru import logger
-from typing_extensions import Buffer
 
 from .base import BaseStorage, BaseStorageComponent, StorageType, StorageBuffer
 

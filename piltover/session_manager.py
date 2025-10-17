@@ -104,10 +104,16 @@ class Session:
             self._update_time_and_offset_from_message_maybe(originating_request.message_id)
             msg_id = self.msg_id(in_reply=True)
 
+        try:
+            downgraded_maybe = LayerConverter.downgrade(obj, self.client.layer)
+        except Exception as e:
+            logger.opt(exception=e).error("Failed to downgrade object")
+            raise
+
         return Message(
             message_id=msg_id,
             seq_no=self.get_outgoing_seq_no(obj),
-            obj=LayerConverter.downgrade(obj, self.client.layer)
+            obj=downgraded_maybe,
         )
 
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id

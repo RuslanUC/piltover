@@ -10,7 +10,8 @@ from typing import Literal, AsyncIterator, TYPE_CHECKING
 from uuid import UUID
 
 import uvloop
-from aerich import Command, Migrate
+from aerich import Command
+from aerich.migrate import Migrate
 from fastrand import xorshift128plus_bytes
 from loguru import logger
 from tortoise import Tortoise, connections
@@ -425,6 +426,7 @@ async def _create_peer_colors() -> None:
             hidden=color_info.get("hidden", False),
             color_id=color_info["color_id"],
         )
+
 
 async def _create_system_data(
         system_users: bool = True, countries_list: bool = True, reactions: bool = True, chat_themes: bool = True,

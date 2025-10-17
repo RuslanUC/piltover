@@ -298,7 +298,7 @@ class Client:
                 SessionManager.broker.unsubscribe_auth(old_auth_id, session)
                 SessionManager.broker.subscribe_auth(auth_id, session)
 
-         # TODO: dont do .write.hex(), RpcResponse somehow dont need encoding it manually, check how exactly
+        # TODO: dont do .write.hex(), RpcResponse somehow dont need encoding it manually, check how exactly
         return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(CallRpc(
             obj=obj,
             layer=self.layer,

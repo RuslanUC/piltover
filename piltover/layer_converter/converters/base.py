@@ -6,6 +6,7 @@ from piltover.tl import TLObject
 TBase = TypeVar("TBase", bound=TLObject)
 TTarget = TypeVar("TTarget", bound=TLObject)
 
+
 class BaseUpgrader(ABC):
     BASE_TYPE: type[TBase]
     BASE_LAYER: int

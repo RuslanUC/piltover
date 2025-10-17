@@ -63,6 +63,7 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
         await User.filter(id__not=author.id).filter(query).values_list("id", flat=True)
     )
 
+
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         opposite: bool = True, **message_kwargs
@@ -145,12 +146,18 @@ async def send_message_internal(
     return cast(Updates, update)
 
 
+SendMessageTypes = SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia \
+                   | SendMultiMedia_148 | SendMultiMedia
+
+
 def _resolve_reply_id(
-        request: SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia | SendMultiMedia_148 | SendMultiMedia,
+        request: SendMessageTypes,
 ) -> int | None:
-    if isinstance(request, (SendMessage, SendMedia, SendMultiMedia, SendMessage_176, SendMedia_176)) and request.reply_to is not None:
+    if isinstance(request, (SendMessage, SendMedia, SendMultiMedia, SendMessage_176, SendMedia_176)) \
+            and request.reply_to is not None:
         return request.reply_to.reply_to_msg_id
-    elif isinstance(request, (SendMessage_148, SendMedia_148, SendMultiMedia_148)) and request.reply_to_msg_id is not None:
+    elif isinstance(request, (SendMessage_148, SendMedia_148, SendMultiMedia_148)) \
+            and request.reply_to_msg_id is not None:
         return request.reply_to_msg_id
 
 
@@ -241,7 +248,9 @@ async def delete_messages(request: DeleteMessages, user: User):
 
     ids = request.id[:100]
     messages = defaultdict(list)
-    for message in await Message.filter(id__in=ids, peer__owner=user).select_related("peer", "peer__user", "peer__owner"):
+    for message in await Message.filter(id__in=ids, peer__owner=user).select_related(
+            "peer", "peer__user", "peer__owner",
+    ):
         messages[user].append(message.id)
         if not request.revoke:
             continue
@@ -362,7 +371,9 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     return await upd.edit_message(user, messages)
 
 
-async def _get_media_thumb(user: User, media: InputMediaUploadedDocument | InputMediaUploadedDocument_133) -> bytes | None:
+async def _get_media_thumb(
+        user: User, media: InputMediaUploadedDocument | InputMediaUploadedDocument_133,
+) -> bytes | None:
     if media.thumb is None:
         return None
 
@@ -609,7 +620,9 @@ async def forward_messages(
         reply_ids[message.id] = internal_id
 
         for opp_peer in peers:
-            logger.trace(f"Creating forwarded message for peer {opp_peer.id}({opp_peer.owner_id}) -> {opp_peer.user_id}")
+            logger.trace(
+                f"Creating forwarded message for peer {opp_peer.id}({opp_peer.owner_id}) -> {opp_peer.user_id}"
+            )
             if opp_peer.owner_id is not None:
                 await Dialog.get_or_create(peer=opp_peer)
             result[opp_peer].append(

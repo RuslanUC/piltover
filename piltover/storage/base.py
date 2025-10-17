@@ -2,8 +2,6 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from uuid import UUID
 
-from typing_extensions import Buffer
-
 
 class StorageType(StrEnum):
     PHOTO = "photos"

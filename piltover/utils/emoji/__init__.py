@@ -39,7 +39,7 @@ from .tokenizer import tokenize
 
 
 __all__ = [
-    'purely_emoji',
+    "purely_emoji",
 ]
 
 

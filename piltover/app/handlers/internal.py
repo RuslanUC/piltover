@@ -9,8 +9,8 @@ from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebA
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.tl import Long
 from piltover.tl.functions.internal import SendCode, SignIn, GetUserApp, EditUserApp, GetAvailableServers
-from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers, AvailableServer, \
-    PublicKey
+from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers, \
+    AvailableServer, PublicKey
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
 

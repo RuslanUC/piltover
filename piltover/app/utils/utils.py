@@ -12,6 +12,7 @@ from uuid import UUID
 
 import av
 from PIL.Image import Image, open as img_open
+from av import VideoFrame
 from loguru import logger
 from tortoise.expressions import Q
 
@@ -197,6 +198,7 @@ def _extract_video_metadata(location: str) -> tuple[int, bool, bool, Image | Non
     duration = container.duration // av.time_base if container.duration else None
     for stream in container.streams.video:
         for packet in container.demux(stream):
+            frame: VideoFrame
             for frame in packet.decode():
                 return duration, has_video, has_audio, frame.to_image()
 

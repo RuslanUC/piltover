@@ -4,10 +4,10 @@ from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, EmojiKe
 from piltover.tl.functions.messages import GetPeerSettings, GetScheduledHistory, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, GetSavedReactionTags, \
-    GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetArchivedStickers, GetEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
-    GetEmojiKeywordsDifference
+    GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetEmojiStickers, \
+    GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, GetEmojiKeywordsDifference
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Messages, Reactions, SavedReactionTags, \
-    Stickers, SearchResultsPositions, AllStickers, FavedStickers, ArchivedStickers, FeaturedStickers, MessageEditData, \
+    Stickers, SearchResultsPositions, AllStickers, FavedStickers, FeaturedStickers, MessageEditData, \
     QuickReplies
 from piltover.worker import MessageHandler
 
@@ -147,7 +147,9 @@ async def get_saved_reaction_tags() -> SavedReactionTags:  # pragma: no cover
 
 
 @handler.on_request(GetEmojiKeywordsDifference, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_emoji_keywords_difference(request: GetEmojiKeywordsDifference) -> EmojiKeywordsDifference:  # pragma: no cover
+async def get_emoji_keywords_difference(
+        request: GetEmojiKeywordsDifference,
+) -> EmojiKeywordsDifference:  # pragma: no cover
     return EmojiKeywordsDifference(
         lang_code=request.lang_code,
         from_version=request.from_version,

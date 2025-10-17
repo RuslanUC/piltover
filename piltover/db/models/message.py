@@ -61,6 +61,7 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
     MessageType.SERVICE_CHAT_EDIT_PHOTO: _service_edit_chat_photo,
 }
 
+
 class _FwdHeaderMissing(Enum):
     FWD_HEADER_MISSING = auto()
 

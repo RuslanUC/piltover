@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import cast
 
 from tortoise import fields
-from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType
@@ -49,7 +48,8 @@ class Channel(ChatBase):
         user_id = user.id if isinstance(user, models.User) else user
 
         peer: models.Peer | None = await models.Peer.get_or_none(owner__id=user_id, channel=self, type=PeerType.CHANNEL)
-        if peer is None or (participant := await models.ChatParticipant.get_or_none(user__id=user_id, channel=self)) is None:
+        if peer is None \
+                or (participant := await models.ChatParticipant.get_or_none(user__id=user_id, channel=self)) is None:
             return ChannelForbidden(
                 id=self.id,
                 access_hash=0 if peer is None else cast(models.Peer, peer).access_hash,

@@ -130,7 +130,7 @@ class TLObject(ABC):
         return result
 
 
-T =  TypeVar("T")
+T = TypeVar("T")
 TObj = TypeVar("TObj", bound=TLObject)
 
 

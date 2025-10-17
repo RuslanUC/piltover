@@ -1111,7 +1111,10 @@ async def encryption_update(user: User, chat: EncryptedChat) -> None:
 
 
 async def send_encrypted_update(update: SecretUpdate) -> None:
-    logger.trace(f"Sending secret update of type {update.type!r} to user {update.authorization.user_id} (auth {update.authorization.id})")
+    logger.trace(
+        f"Sending secret update of type {update.type!r} "
+        f"to user {update.authorization.user_id} (auth {update.authorization.id})"
+    )
     await SessionManager.send(
         UpdatesWithDefaults(updates=[await update.to_tl()]),
         auth_id=update.authorization_id,

@@ -2,11 +2,10 @@ from datetime import datetime, UTC
 from typing import cast, TypeVar
 
 from tortoise.expressions import Q
-from tortoise.fields import ReverseRelation
 from tortoise.functions import Max
 
-from piltover.app.handlers.updates import get_state_internal
 import piltover.app.utils.updates_manager as upd
+from piltover.app.handlers.updates import get_state_internal
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Message
 from piltover.db.models._utils import resolve_users_chats
@@ -20,6 +19,7 @@ from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.dialogs")
 DialogT = TypeVar("DialogT", bound=Dialog | SavedDialog)
+
 
 async def format_dialogs(
         model: type[DialogT], user: User, dialogs: list[DialogT], allow_slicing: bool = False,
@@ -119,7 +119,7 @@ async def get_dialogs_internal(
     dialogs: list[Dialog | SavedDialog] = []
 
     async for peer_with_dialog in peers_with_dialogs:
-        dialog = peer_with_dialog.dialogs
+        dialog = getattr(peer_with_dialog, prefix)
         dialog.peer = peer_with_dialog
         dialogs.append(dialog)
 
@@ -213,7 +213,8 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
         if (peer := await Peer.from_input_peer(user, dialog_peer.peer)) is None:
             continue
 
-        dialog = pinned_now.get(peer, None) or await Dialog.get_or_none(peer=peer, folder_id=folder_id).select_related("peer")
+        dialog = pinned_now.get(peer, None) \
+                 or await Dialog.get_or_none(peer=peer, folder_id=folder_id).select_related("peer")
         if not dialog:
             continue
 

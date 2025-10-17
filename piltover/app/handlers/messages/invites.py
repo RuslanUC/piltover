@@ -235,7 +235,9 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
         owner=user, type=PeerType.CHAT if isinstance(invite.chat_or_channel, Chat) else PeerType.CHANNEL,
         **Chat.or_channel(invite.chat_or_channel),
     )
-    await ChatParticipant.create(user=user, inviter_id=invite.user_id, invite=invite, **Chat.or_channel(invite.chat_or_channel))
+    await ChatParticipant.create(
+        user=user, inviter_id=invite.user_id, invite=invite, **Chat.or_channel(invite.chat_or_channel),
+    )
     await ChatInviteRequest.filter(id__in=Subquery(
         ChatInviteRequest.filter(
             Chat.query(invite.chat_or_channel, "invite") & Q(user=user)

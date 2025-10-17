@@ -118,5 +118,5 @@ def get_search_tree() -> dict[str, Any]:
                     sub_tree[char] = {}
                 sub_tree = sub_tree[char]
                 if i == lastidx:
-                    sub_tree['has_data'] = True
+                    sub_tree["has_data"] = True
     return _SEARCH_TREE

@@ -1,6 +1,6 @@
 from piltover.layer_converter.converters.base import AutoDowngrader
-from piltover.tl import Message_136, Message_133, Message, Message_170, Message_174, Message_176, Message_177, Message_181, \
-    Message_196
+from piltover.tl import Message_136, Message_133, Message, Message_170, Message_174, Message_176, Message_177, \
+    Message_181, Message_196
 
 
 class MessageDowngradeTo133(AutoDowngrader):

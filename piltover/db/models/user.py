@@ -14,7 +14,9 @@ from piltover.tl.types import User as TLUser, PeerColor
 class _UsernameMissing(Enum):
     USERNAME_MISSING = auto()
 
+
 _USERNAME_MISSING = _UsernameMissing.USERNAME_MISSING
+
 
 class User(Model):
     id: int = fields.BigIntField(pk=True)
@@ -79,7 +81,8 @@ class User(Model):
 
     async def to_tl(self, current_user: models.User | None = None) -> TLUser:
         # TODO: min (https://core.telegram.org/api/min)
-        # TODO: add some "version" field and save tl user in some cache with key f"{self.id}:{current_user.id}:{version}"
+        # TODO: add some "version" field and save tl user
+        #  in some cache with key f"{self.id}:{current_user.id}:{version}"
 
         defaults = {
             "mutual_contact": False,

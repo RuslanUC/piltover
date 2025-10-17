@@ -22,8 +22,9 @@ from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllS
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet, SetStickerSetThumb
-from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, AllStickers, \
-    AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive, ArchivedStickers
+from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, \
+    AllStickers, AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive, \
+    ArchivedStickers
 from piltover.utils.emoji import purely_emoji
 from piltover.worker import MessageHandler
 
@@ -53,7 +54,8 @@ async def check_stickerset_short_name(request: CheckShortName, prefix: str = "")
     if ord(short_name[0]) < ord_a or ord(short_name[0]) > ord_z:
         raise ErrorRpc(error_code=400, error_message=f"{prefix}SHORT_NAME_INVALID")
 
-    if not all(ord_0 <= ord(char) <= ord_9 or ord_a <= ord(char) <= ord_z or char == "_" for char in short_name) or "__" in short_name:
+    if not all(ord_0 <= ord(char) <= ord_9 or ord_a <= ord(char) <= ord_z or char == "_" for char in short_name) \
+            or "__" in short_name:
         raise ErrorRpc(error_code=400, error_message=f"{prefix}SHORT_NAME_INVALID")
 
     if await Stickerset.filter(short_name=request.short_name).exists():
@@ -246,7 +248,10 @@ async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: Sti
     return file
 
 
-async def _make_sticker_from_file(file: File, stickerset: Stickerset, pos: int, alt: str, mask: bool, mask_coords: MaskCoords | None, create: bool = True) -> File:
+async def _make_sticker_from_file(
+        file: File, stickerset: Stickerset, pos: int, alt: str, mask: bool, mask_coords: MaskCoords | None,
+        create: bool = True,
+) -> File:
     new_file = File(
         physical_id=file.physical_id,
         created_at=file.created_at,
@@ -394,9 +399,13 @@ async def change_sticker_position(request: ChangeStickerPosition, user: User) ->
 
     file.sticker_pos = new_pos
     if new_pos > old_pos:
-        update_query = File.filter(stickerset=stickerset, sticker_pos__gt=old_pos, sticker_pos__lte=new_pos).update(sticker_pos=F("sticker_pos") - 1)
+        update_query = File.filter(
+            stickerset=stickerset, sticker_pos__gt=old_pos, sticker_pos__lte=new_pos,
+        ).update(sticker_pos=F("sticker_pos") - 1)
     else:
-        update_query = File.filter(stickerset=stickerset, sticker_pos__gte=new_pos, sticker_pos__lt=old_pos).update(sticker_pos=F("sticker_pos") + 1)
+        update_query = File.filter(
+            stickerset=stickerset, sticker_pos__gte=new_pos, sticker_pos__lt=old_pos,
+        ).update(sticker_pos=F("sticker_pos") + 1)
 
     async with in_transaction():
         await update_query
@@ -585,7 +594,9 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> 
 
     async with in_transaction():
         await file.delete()
-        await File.filter(stickerset=stickerset, sticker_pos__gt=file.sticker_pos).update(sticker_pos=F("sticker_pos") - 1)
+        await File.filter(
+            stickerset=stickerset, sticker_pos__gt=file.sticker_pos,
+        ).update(sticker_pos=F("sticker_pos") - 1)
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
@@ -613,7 +624,9 @@ async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers |
 
 
 @handler.on_request(InstallStickerSet)
-async def install_stickerset(request: InstallStickerSet, user: User) -> StickerSetInstallResultSuccess | StickerSetInstallResultArchive:
+async def install_stickerset(
+        request: InstallStickerSet, user: User,
+) -> StickerSetInstallResultSuccess | StickerSetInstallResultArchive:
     stickerset = await Stickerset.from_input(request.stickerset)
     if stickerset is None or stickerset.owner_id != user.id:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
@@ -625,7 +638,8 @@ async def install_stickerset(request: InstallStickerSet, user: User) -> StickerS
         installed.archived = request.archived
         await installed.save(update_fields=["archived"])
 
-    # TODO: archive unused stickersets so maximum number of InstalledStickerset would be 25 (?, what is the telegram's limit)
+    # TODO: archive unused stickersets so maximum number of InstalledStickerset
+    #  would be 25 (?, what is the telegram's limit)
 
     await upd.new_stickerset(user, stickerset)
 

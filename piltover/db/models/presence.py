@@ -18,6 +18,7 @@ RECENTLY = UserStatusRecently()
 LAST_WEEK = UserStatusLastWeek()
 LAST_MONTH = UserStatusLastMonth()
 
+
 class Presence(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.OneToOneField("models.User")

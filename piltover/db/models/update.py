@@ -13,8 +13,8 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
-    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, UpdateNewStickerSet, \
-    UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents
+    UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
+    UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -33,8 +33,9 @@ class Update(Model):
     date: datetime = fields.DatetimeField(auto_now_add=True)
     related_id: int = fields.BigIntField(index=True, null=True)
     # TODO: probably there is a better way to store multiple updates (right now it is only used for deleted messages,
-    #  so maybe create two tables: something like UpdateDeletedMessage and UpdateDeletedMessageId, related_id will point to
-    #  UpdateDeletedMessage.id and UpdateDeletedMessage will have one-to-many relation to UpdateDeletedMessageId)
+    #  so maybe create two tables: something like UpdateDeletedMessage and UpdateDeletedMessageId,
+    #  related_id will point to UpdateDeletedMessage.id
+    #  and UpdateDeletedMessage will have one-to-many relation to UpdateDeletedMessageId)
     related_ids: list[int] = fields.JSONField(null=True, default=None)
     additional_data: list | dict = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User")
@@ -53,7 +54,8 @@ class Update(Model):
                     pts_count=len(self.related_ids),
                 ), users_q, chats_q, channels_q
             case UpdateType.MESSAGE_EDIT:
-                if (message := await models.Message.get_or_none(id=self.related_id).select_related("peer", "author")) is None:
+                message = await models.Message.get_or_none(id=self.related_id).select_related("peer", "author")
+                if message is None:
                     return none_ret
 
                 users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
@@ -179,7 +181,9 @@ class Update(Model):
                     if missing_id == peer.chat.creator.id:
                         participants.append(ChatParticipantCreator(user_id=missing_id))
                     else:
-                        participants.append(ChatParticipant(user_id=missing_id, inviter_id=peer.chat.creator.id, date=0))
+                        participants.append(
+                            ChatParticipant(user_id=missing_id, inviter_id=peer.chat.creator.id, date=0)
+                        )
 
                 return UpdateChatParticipants(
                     participants=ChatParticipants(
