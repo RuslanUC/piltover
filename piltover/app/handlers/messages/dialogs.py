@@ -62,7 +62,7 @@ async def format_dialogs(
 
 
 class PeerWithDialogs(Peer):
-    dialogs: ReverseRelation[Dialog | SavedDialog]
+    dialogs: Dialog | SavedDialog
 
     class Meta:
         abstract = True
@@ -119,9 +119,9 @@ async def get_dialogs_internal(
     dialogs: list[Dialog | SavedDialog] = []
 
     async for peer_with_dialog in peers_with_dialogs:
-        for dialog in await peer_with_dialog.dialogs:
-            dialog.peer = peer_with_dialog
-            dialogs.append(dialog)
+        dialog = peer_with_dialog.dialogs
+        dialog.peer = peer_with_dialog
+        dialogs.append(dialog)
 
     return await format_dialogs(model, user, dialogs, allow_slicing, folder_id)
 
