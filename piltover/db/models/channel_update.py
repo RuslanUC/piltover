@@ -21,7 +21,7 @@ class ChannelUpdate(Model):
     date: datetime = fields.DatetimeField(auto_now_add=True)
     related_id: int = fields.BigIntField(index=True, null=True)
     extra_data: bytes = fields.BinaryField(null=True, default=None)
-    channel: models.Channel = fields.ForeignKeyField("models.Channel", unique=True)
+    channel: models.Channel = fields.ForeignKeyField("models.Channel")
 
     channel_id: int
 

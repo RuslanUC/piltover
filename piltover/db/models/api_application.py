@@ -16,4 +16,4 @@ class ApiApplication(Model):
     hash: str = fields.CharField(max_length=32, default=gen_hash)
     name: str = fields.CharField(max_length=64)
     short_name: str = fields.CharField(max_length=32)
-    owner: models.User = fields.ForeignKeyField("models.User", null=True, on_delete=fields.SET_NULL, unique=True)
+    owner: models.User = fields.OneToOneField("models.User", null=True, on_delete=fields.SET_NULL)

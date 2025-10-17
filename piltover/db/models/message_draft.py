@@ -12,7 +12,7 @@ class MessageDraft(Model):
     id: int = fields.BigIntField(pk=True)
     message: str = fields.TextField()
     date: datetime = fields.DatetimeField(default=datetime.now)
-    dialog: models.Dialog = fields.ForeignKeyField("models.Dialog", on_delete=fields.CASCADE, unique=True)
+    dialog: models.Dialog = fields.OneToOneField("models.Dialog", on_delete=fields.CASCADE)
 
     def to_tl(self) -> DraftMessage:
         return DraftMessage(

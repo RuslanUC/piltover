@@ -11,7 +11,7 @@ from piltover.tl.types.updates import State as TLState
 class State(Model):
     id: int = fields.BigIntField(pk=True)
     pts: int = fields.BigIntField(default=0)
-    user: models.User = fields.ForeignKeyField("models.User", unique=True)
+    user: models.User = fields.OneToOneField("models.User")
 
     async def to_tl(self) -> TLState:
         return State(

@@ -27,7 +27,7 @@ class UserPassword(Model):
     salt2: bytes = fields.BinaryField(default=gen_salt2)  # 16 bytes
     password: bytes | None = fields.BinaryField(null=True, default=None)  # 256 bytes
     hint: str | None = fields.CharField(max_length=120, null=True, default=None)
-    user: models.User = fields.ForeignKeyField("models.User", unique=True)
+    user: models.User = fields.OneToOneField("models.User")
     modified_at: datetime = fields.DatetimeField(auto_now_add=True)
 
     async def to_tl(self) -> TLPassword:

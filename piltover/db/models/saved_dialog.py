@@ -9,7 +9,7 @@ from piltover.tl.types import SavedDialog as TLSavedDialog
 class SavedDialog(Model):
     id: int = fields.BigIntField(pk=True)
     pinned_index: int | None = fields.SmallIntField(null=True, default=None)
-    peer: models.Peer = fields.ForeignKeyField("models.Peer", unique=True)
+    peer: models.Peer = fields.OneToOneField("models.Peer")
 
     async def to_tl(self) -> TLSavedDialog:
         top_message_id = await models.Message.filter(peer=self.peer).order_by("-id").first().values_list("id", flat=True)

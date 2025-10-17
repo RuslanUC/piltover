@@ -16,7 +16,7 @@ class Dialog(Model):
     unread_mark: bool = fields.BooleanField(default=False)
     folder_id: DialogFolderId = fields.IntEnumField(DialogFolderId, default=DialogFolderId.ALL)
 
-    peer: models.Peer = fields.ForeignKeyField("models.Peer", unique=True)
+    peer: models.Peer = fields.OneToOneField("models.Peer")
     draft: fields.ReverseRelation[models.MessageDraft]
 
     peer_id: int

@@ -20,4 +20,4 @@ class TempAuthKey(Model):
     id: int = fields.BigIntField(pk=True)
     auth_key: bytes = fields.BinaryField()
     expires_at: int = fields.BigIntField()
-    perm_key: AuthKey | None = fields.ForeignKeyField("models.AuthKey", unique=True, null=True)
+    perm_key: AuthKey | None = fields.OneToOneField("models.AuthKey", null=True)
