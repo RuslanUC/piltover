@@ -5,6 +5,7 @@ from typing import TypeVar, Generic, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from piltover.worker import Worker
+    from piltover.storage import BaseStorage
 
 T = TypeVar("T")
 
@@ -12,12 +13,13 @@ T = TypeVar("T")
 class RequestContext(Generic[T]):
     __slots__ = (
         "auth_key_id", "perm_auth_key_id", "message_id", "session_id", "obj", "auth_id", "user_id", "layer", "worker",
+        "storage",
         "_parent",
     )
 
     def __init__(
             self, auth_key_id: int, perm_auth_key_id: int | None, message_id: int, session_id: int, obj: T, layer: int,
-            auth_id: int | None, user_id: int | None, worker: Worker,
+            auth_id: int | None, user_id: int | None, worker: Worker, storage: BaseStorage,
             *, _parent: RequestContext | None = None
     ):
         self.auth_key_id = auth_key_id
@@ -29,6 +31,7 @@ class RequestContext(Generic[T]):
         self.user_id = user_id
         self.layer = layer
         self.worker = worker
+        self.storage = storage
 
         self._parent: RequestContext[T] | None = _parent
 

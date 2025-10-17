@@ -1,19 +1,23 @@
 import asyncio
 import ctypes
+import os
 import re
-from asyncio import get_event_loop, gather
+from asyncio import get_event_loop, gather, sleep
 from concurrent.futures.thread import ThreadPoolExecutor
+from contextlib import ExitStack
 from hashlib import md5
 from io import BytesIO
-from pathlib import Path
 from typing import Iterable, Literal
+from uuid import UUID
 
+import av
 from PIL.Image import Image, open as img_open
 from loguru import logger
 from tortoise.expressions import Q
 
 from piltover.db.models import UserPassword, SrpSession, User, Peer
 from piltover.exceptions import ErrorRpc
+from piltover.storage.base import BaseStorage, StorageType
 from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEntityMention, \
     MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
     MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
@@ -79,10 +83,11 @@ TELEGRAM_QUANTIZATION_TABLES = {
 }
 
 image_executor = ThreadPoolExecutor(thread_name_prefix="ImageResizeWorker")
+video_executor = ThreadPoolExecutor(thread_name_prefix="VideoMetadataWorker")
 
 
-def resize_image_internal(files_dir: Path, file_id: str, width: int) -> tuple[int, int]:
-    img = img_open(files_dir / f"{file_id}")
+def _resize_image_internal(location: str, width: int) -> tuple[BytesIO, int]:
+    img = img_open(location)
     img.load()
 
     original_width, height = img.size
@@ -90,30 +95,49 @@ def resize_image_internal(files_dir: Path, file_id: str, width: int) -> tuple[in
     height *= factor
     height = int(height)
 
-    with open(files_dir / f"{file_id}_{width}", "wb") as f_out:
-        img.resize((width, height)).save(f_out, format="JPEG")
-        return f_out.tell(), height
+    out = BytesIO()
+    img.resize((width, height)).save(out, format="JPEG")
+    return out, height
 
 
-async def resize_photo(files_dir: Path, file_id: str, sizes: str = "abc") -> list[dict[str, int | str]]:
+async def resize_photo(storage: BaseStorage, file_id: UUID, sizes: str = "abc") -> list[dict[str, int | str]]:
+    location = await storage.photos.get_location(file_id)
     tasks = [
         get_event_loop().run_in_executor(
-            image_executor, resize_image_internal,
-            files_dir, file_id, PHOTOSIZE_TO_INT[size]
+            image_executor, _resize_image_internal,
+            location, PHOTOSIZE_TO_INT[size],
         )
         for size in sizes
     ]
-    res = await gather(*tasks)
+    res: list[tuple[BytesIO, int]] = await gather(*tasks)
 
-    return [
-        {"type_": sizes[idx], "w": PHOTOSIZE_TO_INT[sizes[idx]], "h": height, "size": file_size}
-        for idx, (file_size, height) in enumerate(res)
-    ]
+    result = []
+
+    for idx, (resized, height) in enumerate(res):
+        width = PHOTOSIZE_TO_INT[sizes[idx]]
+
+        await sleep(0)
+
+        resized.seek(0, os.SEEK_END)
+        file_size = resized.tell()
+        resized.seek(0)
+
+        await storage.save_part(file_id, 0, resized.getbuffer(), True, str(width))
+        await storage.finalize_upload_as(file_id, StorageType.PHOTO, str(width))
+
+        result.append({
+            "type_": sizes[idx],
+            "w": width,
+            "h": height,
+            "size": file_size,
+        })
+
+    return result
 
 
-def _get_image_dims(files_dir: Path, file_id: str) -> tuple[int, int] | None:
+def _get_image_dims(location: str) -> tuple[int, int] | None:
     try:
-        img = img_open(files_dir / f"{file_id}")
+        img = img_open(location)
         img.load()
     except Exception as e:
         logger.opt(exception=e).error("Failed to load image!")
@@ -122,28 +146,53 @@ def _get_image_dims(files_dir: Path, file_id: str) -> tuple[int, int] | None:
     return img.size
 
 
-async def get_image_dims(files_dir: Path, file_id: str) -> tuple[int, int] | None:
+async def get_image_dims(storage: BaseStorage, file_id: UUID) -> tuple[int, int] | None:
     return await get_event_loop().run_in_executor(
         image_executor, _get_image_dims,
-        files_dir, file_id,
+        await storage.documents.get_location(file_id),
     )
 
 
-async def generate_stripped(files_dir: Path, file_id: str, size: int = 8) -> bytes:
-    def _gen(im: Image) -> bytes:
-        img_file = BytesIO()
+def _generate_stripped(location: str, size: int) -> bytes:
+    img = img_open(location)
+    img_file = BytesIO()
 
-        im = im.convert("RGB").resize((size, size))
-        im.save(img_file, "JPEG", qtables=TELEGRAM_QUANTIZATION_TABLES)
+    img = img.convert("RGB").resize((size, size))
+    img.save(img_file, "JPEG", qtables=TELEGRAM_QUANTIZATION_TABLES)
 
-        img_file.seek(0)
-        header_offset = 623  # 619 + 4, 619 is header size, 4 is width and height
+    header_offset = 623  # 619 + 4, 619 is header size, 4 is width and height
+    img_file.seek(header_offset)
 
-        return img_file.read()[header_offset:]
+    return img_file.read()
 
-    img = img_open(files_dir / f"{file_id}")
 
-    return await get_event_loop().run_in_executor(image_executor, _gen, img)
+async def generate_stripped(storage: BaseStorage, file_id: UUID, size: int = 8) -> bytes:
+    location = await storage.photos.get_location(file_id)
+    return await get_event_loop().run_in_executor(
+        image_executor, _generate_stripped,
+        location, size,
+    )
+
+
+def _extract_video_metadata(location: str) -> tuple[int, bool, bool, Image | None]:
+    exit_stack = ExitStack()
+    # TODO: might be url (e.g. s3) in the future
+    file = exit_stack.enter_context(open(location, "rb"))
+    container = exit_stack.enter_context(av.open(file, options={"probesize": "16k", "analyzeduration": "200000"}))
+
+    has_audio = any(s.type == "audio" for s in container.streams)
+    has_video = any(s.type == "video" for s in container.streams)
+    duration = container.duration // av.time_base if container.duration else None
+    for stream in container.streams.video:
+        for packet in container.demux(stream):
+            for frame in packet.decode():
+                return duration, has_video, has_audio, frame.to_image()
+
+    return duration, has_video, has_audio, None
+
+
+async def extract_video_metadata(location: str) -> tuple[int, bool, bool, Image | None]:
+    return await get_event_loop().run_in_executor(video_executor, _extract_video_metadata, location)
 
 
 async def check_password_internal(password: UserPassword, check: InputCheckPasswordSRPBase) -> None:

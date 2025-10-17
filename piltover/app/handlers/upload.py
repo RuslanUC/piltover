@@ -1,7 +1,6 @@
 from time import time
 from uuid import UUID
 
-import aiofiles
 import magic
 from loguru import logger
 from tortoise.expressions import Q
@@ -10,7 +9,7 @@ from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, FileType
 from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer, Stickerset
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, \
     InputEncryptedFileLocation, InputStickerSetThumb
 from piltover.tl.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
@@ -53,7 +52,8 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
         if size == ex_part.size:
             return True
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
-    if (size % 1024 != 0 or 524288 % size != 0) and last_part is not None and last_part.part_id >= request.file_part:
+    maybe_last = size % 1024 != 0 or 524288 % size != 0
+    if maybe_last and last_part is not None and last_part.part_id >= request.file_part:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_INVALID")
     if size > 524288:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_TOO_BIG")
@@ -66,12 +66,8 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
             return True
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
 
-    # TODO: upload to s3 or something similar
-    files_dir = request_ctx.get().worker.data_dir / "files"
-    parts_dir = files_dir / "parts"
-    parts_dir.mkdir(parents=True, exist_ok=True)
-    async with aiofiles.open(parts_dir / f"{part.physical_id}_{request.file_part}", "wb") as f:
-        await f.write(request.bytes_)
+    storage = request_ctx.get().storage
+    await storage.save_part(file.physical_id, request.file_part, request.bytes_, maybe_last)
 
     return True
 
@@ -80,16 +76,6 @@ SUPPORTED_LOCS = (
     InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, InputEncryptedFileLocation,
     InputStickerSetThumb,
 )
-
-
-async def read_file_content(file: File, offset: int, limit: int, name: str | None = None) -> bytes:
-    # TODO: download from s3 or something similar
-
-    name = name or str(file.physical_id)
-    files_dir = request_ctx.get().worker.data_dir / "files"
-    async with aiofiles.open(files_dir / name, "rb") as f:
-        await f.seek(offset)
-        return await f.read(limit)
 
 
 @handler.on_request(GetFile)
@@ -156,7 +142,10 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")
 
-    f_name = str(file.physical_id)
+    storage = request_ctx.get().storage
+    component = storage.documents
+
+    suffix = None
     if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)):
         if not file.photo_sizes:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo or does not have thumbs
@@ -164,14 +153,18 @@ async def get_file(request: GetFile, user: User) -> TLFile:
             size = PHOTOSIZE_TO_INT[location.thumb_size]
         elif isinstance(location, InputStickerSetThumb):
             size = 100
-        else:
+        elif isinstance(location, InputPeerPhotoFileLocation):
             size = 640 if location.big else 160
+        else:
+            raise Unreachable
+
         available = [size_["w"] for size_ in file.photo_sizes]
         if size not in available:
             size = min(available, key=lambda x: abs(x - size))
-        f_name += f"_{size}"
+        suffix = str(size)
+        component = storage.photos
 
-    data = await read_file_content(file, request.offset, request.limit, f_name)
+    data = await component.get_part(file.physical_id, request.offset, request.limit, suffix)
 
     if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)):
         file_type = FileJpeg()

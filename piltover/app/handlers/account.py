@@ -590,10 +590,8 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_FILE_INVALID")
     if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_MIME_INVALID")
-    worker = request_ctx.get().worker
-    file = await uploaded_file.finalize_upload(
-        worker.data_dir / "files", request.mime_type, attributes, request.file.parts,
-    )
+    storage = request_ctx.get().storage
+    file = await uploaded_file.finalize_upload(storage, request.mime_type, attributes, request.file.parts)
 
     settings = await WallpaperSettings.create(
         blur=request.settings.blur,

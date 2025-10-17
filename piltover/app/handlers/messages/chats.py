@@ -5,7 +5,7 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights
+from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
     ChatInviteRequest
 from piltover.exceptions import ErrorRpc
@@ -162,11 +162,11 @@ async def resolve_input_chat_photo(
         if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
 
-        worker = request_ctx.get().worker
-        files_dir = worker.data_dir / "files"
-        file = await uploaded_file.finalize_upload(files_dir, "image/png")
-        file.photo_sizes = await resize_photo(files_dir, str(file.physical_id))
-        file.photo_stripped = await generate_stripped(files_dir, str(file.physical_id))
+        storage = request_ctx.get().storage
+        file = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO)
+        # TODO: replace this functions with something like generate_thumbnails
+        file.photo_sizes = await resize_photo(storage, file.physical_id)
+        file.photo_stripped = await generate_stripped(storage, file.physical_id)
         await file.save(update_fields=["photo_sizes", "photo_stripped"])
 
         return file

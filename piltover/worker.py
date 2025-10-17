@@ -14,6 +14,7 @@ from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.in_memory_broker import InMemoryMessageBroker
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.session_manager import SessionManager
+from piltover.storage import LocalFileStorage
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
 
@@ -105,7 +106,7 @@ class Worker(MessageHandler):
     ):
         super().__init__()
 
-        self.data_dir = data_dir
+        self._storage = LocalFileStorage(data_dir)
         self.server_keys = server_keys
         self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
 
@@ -162,7 +163,7 @@ class Worker(MessageHandler):
 
         request_ctx.set(RequestContext(
             call.auth_key_id, call.perm_auth_key_id, call.message_id, call.session_id, call.obj, call.layer,
-            call.auth_id, call.user_id, self,
+            call.auth_id, call.user_id, self, self._storage,
         ))
 
         user = None

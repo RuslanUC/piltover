@@ -115,10 +115,11 @@ async def _upload_doc(base_dir: Path, idx: int, doc: dict) -> File:
     ])
     await file.save()
 
-    files_dir = args.data_dir / "files"
+    photos_dir = args.data_dir / "photos"
+    docs_dir = args.data_dir / "documents"
 
     with open(base_files_dir / f"{doc['id']}-{idx}.{ext}", "rb") as f_in:
-        with open(files_dir / f"{file.physical_id}", "wb") as f_out:
+        with open(docs_dir / f"{file.physical_id}", "wb") as f_out:
             f_out.write(f_in.read())
 
     for thumb in doc["thumbs"]:
@@ -126,7 +127,7 @@ async def _upload_doc(base_dir: Path, idx: int, doc: dict) -> File:
             continue
         width = PHOTOSIZE_TO_INT[thumb["type"]]
         with open(base_files_dir / f"{doc['id']}-{idx}-thumb-{thumb['type']}.{ext}", "rb") as f_in:
-            with open(files_dir / f"{file.physical_id}_{width}", "wb") as f_out:
+            with open(photos_dir / f"{file.physical_id}-{width}", "wb") as f_out:
                 f_out.write(f_in.read())
 
         file.photo_sizes.append({

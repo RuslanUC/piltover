@@ -153,10 +153,9 @@ async def _resolve_file(input_file: InputEncryptedFileT, user: User) -> Encrypte
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=input_file.id)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
-        worker = request_ctx.get().worker
+        storage = request_ctx.get().storage
         file = await uploaded_file.finalize_upload(
-            worker.data_dir / "files", "application/vnd.encrypted", file_type=FileType.ENCRYPTED,
-            force_fallback_mime=True,
+            storage, "application/vnd.encrypted", file_type=FileType.ENCRYPTED, force_fallback_mime=True,
         )
         return await EncryptedFile.create(file=file, key_fingerprint=input_file.key_fingerprint)
 

@@ -9,7 +9,6 @@ from loguru import logger
 from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction
 
-from piltover.app.handlers.upload import read_file_content
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash, get_image_dims
 from piltover.context import request_ctx
@@ -71,8 +70,8 @@ async def _validate_png_webp(file: File) -> None:
         raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
     if file.width is None or file.height is None:
-        worker = request_ctx.get().worker
-        dims = await get_image_dims(worker.data_dir / "files", str(file.physical_id))
+        storage = request_ctx.get().storage
+        dims = await get_image_dims(storage, file.physical_id)
         if dims is None:
             raise ErrorRpc(error_code=400, error_message="STICKER_PNG_NOPNG")
         else:
@@ -120,7 +119,8 @@ async def _validate_tgs(file: File) -> None:
     if file.size > 64 * 1024:
         raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-    data = await read_file_content(file, 0, 64 * 1024)
+    storage = request_ctx.get().storage
+    data = await storage.documents.get_part(file.physical_id, 0, 64 * 1024)
     try:
         data = gzip.decompress(data)
         tgs = json.loads(data)
