@@ -2,7 +2,6 @@ from tortoise.expressions import Subquery
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType
@@ -164,10 +163,6 @@ async def resolve_input_chat_photo(
 
         storage = request_ctx.get().storage
         file = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO)
-        # TODO: replace this functions with something like generate_thumbnails
-        file.photo_sizes = await resize_photo(storage, file.physical_id)
-        file.photo_stripped = await generate_stripped(storage, file.physical_id)
-        await file.save(update_fields=["photo_sizes", "photo_stripped"])
 
         return file
 

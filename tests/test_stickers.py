@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 from PIL import Image
 from fastrand import xorshift128plus_bytes
-from pyrogram.errors import StickerPngDimensions, StickerPngNopng
+from pyrogram.errors import StickerPngDimensions, StickerPngNopng, StickerFileInvalid
 from pyrogram.file_id import FileId, FileType
 from pyrogram.raw.functions.messages import UploadMedia
 from pyrogram.raw.functions.stickers import CheckShortName, CreateStickerSet
@@ -169,7 +169,7 @@ async def test_create_stickerset_not_png(exit_stack: AsyncExitStack) -> None:
     setattr(sticker_file, "name", "sticker.png")
 
     sticker = await _make_input_stickerset_item(client, sticker_file, "👍")
-    with pytest.raises(StickerPngNopng):
+    with pytest.raises((StickerPngNopng, StickerFileInvalid)):
         await client.invoke(CreateStickerSet(
             user_id=InputUserSelf(),
             title="Test stickerset",

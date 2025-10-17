@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from io import BytesIO
 from uuid import UUID, uuid4
 
 from tortoise import fields, Model
@@ -28,6 +29,7 @@ class UploadingFile(Model):
     async def finalize_upload(
             self, storage: BaseStorage, fallback_mime: str, attributes: list | None = None,
             file_type: FileType = FileType.DOCUMENT, parts_num: int | None = None, force_fallback_mime: bool = False,
+            thumb_bytes: bytes | None = None,
     ) -> models.File:
         parts = await UploadingFilePart.filter(file=self).order_by("part_id")
         if (self.total_parts > 0 and self.total_parts != len(parts)) or not parts:
@@ -65,7 +67,6 @@ class UploadingFile(Model):
             finalize_as = StorageType.DOCUMENT
             component = storage.documents
 
-        # TODO: suffix for photos
         await storage.finalize_upload_as(self.physical_id, finalize_as)
 
         if not force_fallback_mime and self.mime is not None and self.mime.startswith("video/"):
@@ -75,8 +76,12 @@ class UploadingFile(Model):
             duration, has_video, has_audio, thumb = await extract_video_metadata(location)
             if duration > 0:
                 file.duration = duration
-            # TODO: upload thumbs
+            if thumb is not None and thumb_bytes is None:
+                thumb_file = BytesIO()
+                thumb.save(thumb_file, format="JPEG")
+                thumb_bytes = thumb_file.getbuffer()
 
+        await file.make_thumbs(storage, thumb_bytes)
         await file.save()
 
         return file

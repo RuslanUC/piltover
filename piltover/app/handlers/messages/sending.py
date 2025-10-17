@@ -7,9 +7,9 @@ from loguru import logger
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
-from piltover.app.bot_handlers import bots
 import piltover.app.utils.updates_manager as upd
-from piltover.app.utils.utils import resize_photo, generate_stripped, process_message_entities
+from piltover.app.bot_handlers import bots
+from piltover.app.utils.utils import process_message_entities
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
@@ -462,13 +462,6 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
                 PollAnswer(poll=poll, text=answer.text, option=answer.option, correct=answer.option == correct_option)
                 for answer in media.poll.answers
             ])
-
-    if isinstance(media, InputMediaUploadedPhoto):
-        storage = request_ctx.get().storage
-        # TODO: replace this functions with something like generate_thumbnails
-        file.photo_sizes = await resize_photo(storage, file.physical_id)
-        file.photo_stripped = await generate_stripped(storage, file.physical_id)
-        await file.save(update_fields=["photo_sizes", "photo_stripped"])
 
     return await MessageMedia.create(file=file, spoiler=getattr(media, "spoiler", False), type=media_type, poll=poll)
 

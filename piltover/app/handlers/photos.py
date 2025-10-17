@@ -1,5 +1,4 @@
 import piltover.app.utils.updates_manager as upd
-from piltover.app.utils.utils import resize_photo, generate_stripped
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, FileType
 from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule
@@ -41,10 +40,6 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
 
     storage = request_ctx.get().storage
     file = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO)
-    # TODO: replace this functions with something like generate_thumbnails
-    file.photo_sizes = await resize_photo(storage, file.physical_id)
-    file.photo_stripped = await generate_stripped(storage, file.physical_id)
-    await file.save(update_fields=["photo_sizes", "photo_stripped"])
     await UserPhoto.filter(user=user).update(current=False)
     photo = await UserPhoto.create(current=True, file=file, user=user)
 

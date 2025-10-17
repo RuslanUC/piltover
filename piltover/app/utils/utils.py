@@ -100,8 +100,14 @@ def _resize_image_internal(location: str, width: int) -> tuple[BytesIO, int]:
     return out, height
 
 
-async def resize_photo(storage: BaseStorage, file_id: UUID, sizes: str = "abc") -> list[dict[str, int | str]]:
-    location = await storage.photos.get_location(file_id)
+async def resize_photo(
+        storage: BaseStorage, file_id: UUID, sizes: str = "abc", suffix: str | None = None, is_document: bool = False,
+) -> list[dict[str, int | str]]:
+    if is_document:
+        location = await storage.documents.get_location(file_id, suffix)
+    else:
+        location = await storage.photos.get_location(file_id, suffix)
+
     tasks = [
         get_event_loop().run_in_executor(
             image_executor, _resize_image_internal,
@@ -166,8 +172,14 @@ def _generate_stripped(location: str, size: int) -> bytes:
     return img_file.read()
 
 
-async def generate_stripped(storage: BaseStorage, file_id: UUID, size: int = 8) -> bytes:
-    location = await storage.photos.get_location(file_id)
+async def generate_stripped(
+        storage: BaseStorage, file_id: UUID, size: int = 8, suffix: str | None = None, is_document: bool = False,
+) -> bytes:
+    if is_document:
+        location = await storage.documents.get_location(file_id, suffix)
+    else:
+        location = await storage.photos.get_location(file_id, suffix)
+
     return await get_event_loop().run_in_executor(
         image_executor, _generate_stripped,
         location, size,

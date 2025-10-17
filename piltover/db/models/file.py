@@ -5,10 +5,13 @@ from datetime import datetime
 from io import BytesIO
 from uuid import UUID, uuid4
 
+from PIL import UnidentifiedImageError
 from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import FileType
+from piltover.storage import BaseStorage
+from piltover.storage.base import StorageBuffer, StorageType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords
@@ -142,7 +145,36 @@ class File(Model):
 
         return result
 
-    def _make_thumbs(self) -> list[PhotoSizeInst]:
+    async def make_thumbs(self, storage: BaseStorage, thumb_bytes: StorageBuffer | None = None) -> None:
+        from piltover.app.utils.utils import resize_photo, generate_stripped
+
+        thumb_suffix = None
+        has_thumbnail = False
+        is_document = True
+
+        if self.type is not FileType.PHOTO and thumb_bytes is not None:
+            await storage.save_part(self.physical_id, 0, thumb_bytes, True, "thumb")
+            await storage.finalize_upload_as(self.physical_id, StorageType.PHOTO, "thumb")
+            thumb_suffix = "thumb"
+            has_thumbnail = True
+        elif self.type is FileType.PHOTO or self.mime_type.startswith("image/"):
+            has_thumbnail = True
+            is_document = self.type is not FileType.PHOTO
+
+        if not has_thumbnail:
+            return
+
+        try:
+            self.photo_sizes = await resize_photo(
+                storage, self.physical_id, suffix=thumb_suffix, is_document=is_document,
+            )
+            self.photo_stripped = await generate_stripped(
+                storage, self.physical_id, suffix=thumb_suffix, is_document=is_document,
+            )
+        except UnidentifiedImageError:
+            self.mime_type = "application/octet-stream"
+
+    def _to_tl_thumbs(self) -> list[PhotoSizeInst]:
         sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
         sizes = [PhotoSize(**size) for size in self.photo_sizes] if self.photo_sizes else []
         if self.photo_stripped:
@@ -175,7 +207,7 @@ class File(Model):
             size=self.size,
             dc_id=2,
             attributes=self.attributes_to_tl(),
-            thumbs=self._make_thumbs(),
+            thumbs=self._to_tl_thumbs(),
         )
 
     async def to_tl_photo(self, user: models.User) -> TLPhoto:
@@ -193,7 +225,7 @@ class File(Model):
             access_hash=access_hash,
             file_reference=file_ref,
             date=int(self.created_at.timestamp()),
-            sizes=self._make_thumbs(),
+            sizes=self._to_tl_thumbs(),
             dc_id=2,
             video_sizes=[],
         )
