@@ -31,7 +31,9 @@ class BaseStorage(ABC):
         ...
 
     @abstractmethod
-    async def finalize_upload_as(self, file_id: UUID, as_: StorageType, suffix: str | None = None) -> None:
+    async def finalize_upload_as(
+            self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
+    ) -> None:
         ...
 
     @property

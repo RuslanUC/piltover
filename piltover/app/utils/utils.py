@@ -129,7 +129,7 @@ async def resize_photo(
         resized.seek(0)
 
         await storage.save_part(file_id, 0, resized.getbuffer(), True, str(width))
-        await storage.finalize_upload_as(file_id, StorageType.PHOTO, str(width))
+        await storage.finalize_upload_as(file_id, StorageType.PHOTO, 0, str(width))
 
         result.append({
             "type_": sizes[idx],

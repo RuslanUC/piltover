@@ -3,13 +3,14 @@ from io import BytesIO
 
 import pytest
 from PIL import Image
+from fastrand import xorshift128plus_bytes
 from pyrogram.enums import MessageEntityType
 from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
-    InputMessagesFilterEmpty, InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo
+    InputMessagesFilterPhotoVideo
 from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument, ChatPermissions
 
@@ -43,6 +44,17 @@ async def test_send_message_with_document_to_self() -> None:
         assert message.document is not None
         downloaded = await message.download(in_memory=True)
         assert downloaded.getvalue() == b"test document"
+
+
+@pytest.mark.asyncio
+async def test_send_message_with_big_file_to_self() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        file = BytesIO(xorshift128plus_bytes(1024 * 1024 * 32))
+        setattr(file, "name", "test.bin")
+        message = await client.send_document("me", document=file)
+        assert message.document is not None
+        downloaded = await message.download(in_memory=True)
+        assert downloaded.getvalue() == file.getvalue()
 
 
 @pytest.mark.asyncio

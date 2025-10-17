@@ -8,6 +8,7 @@ from .chat_invite_downgrade import *
 from .chat_invite_exported_downgrade import *
 from .dialog_filter_downgrade import *
 from .dialog_filters_downgrade import *
+from .document_attribute_video_downgrade import *
 from .global_privacy_settings_downgrade import *
 from .invited_users_downgrade import *
 from .message_downgrade import *
@@ -181,3 +182,8 @@ LayerConverter.register_for_downgrade(WallPaperSettingsDontDowngrade)
 LayerConverter.register_for_downgrade(PeerColorOptionDowngradeTo167)
 LayerConverter.register_for_downgrade(PeerColorOptionDowngradeTo168)
 LayerConverter.register_for_downgrade(PeerColorOptionDontDowngrade)
+
+LayerConverter.register_for_downgrade(DocumentAttributeVideoDowngradeTo133)
+LayerConverter.register_for_downgrade(DocumentAttributeVideoDowngradeTo160)
+LayerConverter.register_for_downgrade(DocumentAttributeVideoDowngradeTo185)
+LayerConverter.register_for_downgrade(DocumentAttributeVideoDontDowngrade)

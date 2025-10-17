@@ -70,21 +70,18 @@ class LocalFileStorage(BaseStorage):
         if suffix is not None:
             file_name += f"-{suffix}"
 
+        if part_id > 0:
+            file_name += f".part{part_id}"
+
         file_path = self._dir / "uploading" / file_name
         file_path.touch(exist_ok=True)
 
         async with aiofiles.open(file_path, "r+b") as f:
-            await f.seek(0, os.SEEK_END)
-            file_size = await f.tell()
-            if not is_last:
-                part_offset = len(data) * part_id
-                if part_offset > file_size:
-                    await f.truncate(part_offset)
-                await f.seek(part_offset)
-
             await f.write(data)
 
-    async def finalize_upload_as(self, file_id: UUID, as_: StorageType, suffix: str | None = None) -> None:
+    async def finalize_upload_as(
+            self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
+    ) -> None:
         file_name = str(file_id)
         if suffix is not None:
             file_name += f"-{suffix}"
@@ -94,6 +91,17 @@ class LocalFileStorage(BaseStorage):
         logger.trace(f"Finalizing {src_path} as {as_.value}, moving to {dst_path}")
 
         await aiofiles.os.rename(src_path, dst_path)
+
+        if parts_num <= 1:
+            return
+
+        async with aiofiles.open(dst_path, "r+b") as f_out:
+            await f_out.seek(0, os.SEEK_END)
+            for part_id in range(1, parts_num):
+                append_filename = self._dir / "uploading" / f"{file_name}.part{part_id}"
+                async with aiofiles.open(append_filename, "rb") as f_in:
+                    await f_out.write(await f_in.read())
+                await aiofiles.os.remove(append_filename)
 
     @property
     def documents(self) -> BaseStorageComponent:

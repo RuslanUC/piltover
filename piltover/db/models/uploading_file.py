@@ -43,10 +43,12 @@ class UploadingFile(Model):
         if parts_num is not None and parts_num != len(parts):
             raise ErrorRpc(error_code=400, error_message="FILE_PARTS_INVALID", reason=f"{parts_num} != len({parts})")
 
+        if parts[0].part_id != 0:
+            raise ErrorRpc(error_code=400, error_message=f"FILE_PART_0_MISSING")
+
         size = parts[0].size
-        for idx, part in enumerate(parts):
-            if idx == 0:
-                continue
+        for idx in range(1, len(parts)):
+            part = parts[idx]
             if part.part_id - 1 != parts[idx - 1].part_id:
                 raise ErrorRpc(error_code=400, error_message=f"FILE_PART_{part.part_id - 1}_MISSING")
             size += part.size
@@ -67,7 +69,7 @@ class UploadingFile(Model):
             finalize_as = StorageType.DOCUMENT
             component = storage.documents
 
-        await storage.finalize_upload_as(self.physical_id, finalize_as)
+        await storage.finalize_upload_as(self.physical_id, finalize_as, len(parts))
 
         if not force_fallback_mime and self.mime is not None and self.mime.startswith("video/"):
             from piltover.app.utils.utils import extract_video_metadata

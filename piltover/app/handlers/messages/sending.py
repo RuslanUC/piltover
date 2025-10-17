@@ -362,6 +362,31 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     return await upd.edit_message(user, messages)
 
 
+async def _get_media_thumb(user: User, media: InputMediaUploadedDocument | InputMediaUploadedDocument_133) -> bytes | None:
+    if media.thumb is None:
+        return None
+
+    uploaded_thumb = await UploadingFile.get_or_none(user=user, file_id=media.thumb.id)
+    if uploaded_thumb is None \
+            or uploaded_thumb.mime is None \
+            or not uploaded_thumb.mime.startswith("image/"):
+        return None
+
+    storage = request_ctx.get().storage
+    try:
+        thumb_file = await uploaded_thumb.finalize_upload(
+            storage, "application/vnd.thumbnail", [], FileType.DOCUMENT, force_fallback_mime=True,
+        )
+    except ErrorRpc as e:
+        logger.opt(exception=e).warning("Failed to process thumbnail!")
+        return None
+
+    if thumb_file.size > 1024 * 1024 * 2:
+        return None
+
+    return await storage.documents.get_part(thumb_file.physical_id, 0, 1024 * 1024 * 2)
+
+
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll,)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
@@ -386,9 +411,18 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+
         storage = request_ctx.get().storage
-        file_type = FileType.PHOTO if isinstance(media, InputMediaUploadedPhoto) else FileType.DOCUMENT
-        file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type)
+        thumb_bytes = None
+
+        if isinstance(media, InputMediaUploadedPhoto):
+            file_type = FileType.PHOTO
+        else:
+            file_type = FileType.DOCUMENT
+            thumb_bytes = await _get_media_thumb(user, media)
+
+        # TODO: set filename from media.file.name if DocumentAttributeFilename is not in attributes
+        file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
         valid, const = FileAccess.is_file_ref_valid(media.id.file_reference, user.id, media.id.id)
         if not valid:

@@ -14,8 +14,14 @@ from piltover.storage import BaseStorage
 from piltover.storage.base import StorageBuffer, StorageType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
-    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords
+    PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords, \
+    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185
 from piltover.tl.base import PhotoSizeInst
+
+
+VIDEO_ATTRIBUTES = (
+    DocumentAttributeVideo, DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185,
+)
 
 
 class File(Model):
@@ -79,14 +85,15 @@ class File(Model):
             elif isinstance(attribute, DocumentAttributeAnimated):
                 if self.type is FileType.DOCUMENT:
                     self.type = FileType.DOCUMENT_GIF
-            elif isinstance(attribute, DocumentAttributeVideo):
+            elif isinstance(attribute, VIDEO_ATTRIBUTES):
                 self.type = FileType.DOCUMENT_VIDEO_NOTE if attribute.round_message else FileType.DOCUMENT_VIDEO
                 self.width = attribute.w
                 self.height = attribute.h
                 self.duration = attribute.duration
                 self.supports_streaming = attribute.supports_streaming
-                self.nosound = attribute.nosound
-                self.preload_prefix_size = attribute.preload_prefix_size
+                if not isinstance(attribute, DocumentAttributeVideo_133):
+                    self.nosound = attribute.nosound
+                    self.preload_prefix_size = attribute.preload_prefix_size
             elif isinstance(attribute, DocumentAttributeAudio):
                 self.type = FileType.DOCUMENT_VOICE if attribute.voice else FileType.DOCUMENT_AUDIO
                 self.duration = attribute.duration
@@ -154,9 +161,10 @@ class File(Model):
 
         if self.type is not FileType.PHOTO and thumb_bytes is not None:
             await storage.save_part(self.physical_id, 0, thumb_bytes, True, "thumb")
-            await storage.finalize_upload_as(self.physical_id, StorageType.PHOTO, "thumb")
+            await storage.finalize_upload_as(self.physical_id, StorageType.PHOTO, 0, "thumb")
             thumb_suffix = "thumb"
             has_thumbnail = True
+            is_document = False
         elif self.type is FileType.PHOTO or self.mime_type.startswith("image/"):
             has_thumbnail = True
             is_document = self.type is not FileType.PHOTO
