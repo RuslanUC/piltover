@@ -10,7 +10,7 @@ from piltover.tl import MessageFwdHeader as TLMessageFwdHeader, PeerUser
 
 class MessageFwdHeader(Model):
     id: int = fields.BigIntField(pk=True)
-    # TODO: add from_channel
+    # TODO: add from_chat and from_channel
     from_user: models.User = fields.ForeignKeyField("models.User", null=True, default=None, related_name="from_user")
     from_name: str = fields.CharField(max_length=64)
     date: datetime = fields.DatetimeField()

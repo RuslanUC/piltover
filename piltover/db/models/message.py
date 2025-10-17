@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum, auto
 from io import BytesIO
 from typing import Callable, Awaitable, cast
 
@@ -60,7 +61,11 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
     MessageType.SERVICE_CHAT_EDIT_PHOTO: _service_edit_chat_photo,
 }
 
-_FWD_HEADER_MISSING = object()
+class _FwdHeaderMissing(Enum):
+    FWD_HEADER_MISSING = auto()
+
+
+_FWD_HEADER_MISSING = _FwdHeaderMissing.FWD_HEADER_MISSING
 _BASE_DEFAULTS = {
     "silent": False,
     "legacy": False,
@@ -263,9 +268,10 @@ class Message(Model):
 
     async def clone_for_peer(
             self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,
-            random_id: int | None = None, fwd_header: models.MessageFwdHeader | None | object = _FWD_HEADER_MISSING,
+            random_id: int | None = None,
+            fwd_header: models.MessageFwdHeader | None | _FwdHeaderMissing = _FWD_HEADER_MISSING,
             reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
-            drop_author: bool = False,
+            drop_author: bool = False, is_forward: bool = False,
     ) -> models.Message:
         if new_author is None and self.author is not None:
             self.author = new_author = await self.author
@@ -284,15 +290,15 @@ class Message(Model):
 
         if fwd_header is _FWD_HEADER_MISSING:
             self.fwd_header = fwd_header = await self.fwd_header
-        if not drop_author:
+        if not drop_author and self.post_info is not None:
             self.post_info = await self.post_info
 
         return await Message.create(
             internal_id=internal_id or Snowflake.make_id(),
             message=self.message if self.media is None or not drop_captions else None,
             pinned=self.pinned,
-            date=self.date,
-            edit_date=self.edit_date,
+            date=self.date if not is_forward else datetime.now(UTC),
+            edit_date=self.edit_date if not is_forward else None,
             type=self.type,
             author=new_author,
             peer=peer,
@@ -313,7 +319,7 @@ class Message(Model):
 
         fwd_header = self.fwd_header
         self.author = await self.author
-        if peer.type == PeerType.SELF and self.peer is not None:
+        if peer.type is PeerType.SELF and self.peer is not None or True:
             self.peer = await self.peer
 
         if fwd_header is not None:

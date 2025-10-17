@@ -54,9 +54,9 @@ class DialogFolder(Model):
             exclude_muted=self.exclude_muted,
             exclude_read=self.exclude_read,
             exclude_archived=self.exclude_archived,
-            pinned_peers=[peer.to_input_peer() for peer in pinned_peers],
-            include_peers=[peer.to_input_peer() for peer in include_peers],
-            exclude_peers=[peer.to_input_peer() for peer in exclude_peers],
+            pinned_peers=[peer.to_input_peer(True) for peer in pinned_peers],
+            include_peers=[peer.to_input_peer(True) for peer in include_peers],
+            exclude_peers=[peer.to_input_peer(True) for peer in exclude_peers],
         )
 
     def get_difference(self, tl_filter: DialogFilter) -> list[str]:

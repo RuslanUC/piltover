@@ -392,7 +392,7 @@ async def get_participants(request: GetParticipants, user: User):
     if isinstance(request.filter, ChannelParticipantsRecent):
         query = Q(channel=peer.channel)
     elif isinstance(request.filter, ChannelParticipantsAdmins):
-        query = Q(channel=peer.channel, is_admin=True)
+        query = Q(channel=peer.channel, admin_rights__gt=0)
     elif isinstance(request.filter, ChannelParticipantsSearch):
         query = Q(channel=peer.channel, user__first_name__icontains=request.filter.q)
     else:

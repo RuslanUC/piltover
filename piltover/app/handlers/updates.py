@@ -151,7 +151,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
 
     has_more = await ChannelUpdate.filter(channel=peer.channel, pts__gt=new_updates[-1].pts).exists()
 
-    messages_from_channel_query = Q(peer__owner=user, peer_channel=peer.channel) \
+    messages_from_channel_query = Q(peer__owner=user, peer__channel=peer.channel) \
                                   | Q(peer__owner=None, peer__channel=peer.channel)
     new_messages_ids = [update.related_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE]
     new = await Message.filter(

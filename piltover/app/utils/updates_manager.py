@@ -170,6 +170,9 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
         for message in messages:
             users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
 
+            if message.random_id:
+                updates.append(UpdateMessageID(id=message.id, random_id=int(message.random_id)))
+
             updates.append(UpdateNewMessage(
                 message=await message.to_tl(peer.owner),
                 pts=await State.add_pts(peer.owner, 1),

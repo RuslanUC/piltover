@@ -12,7 +12,7 @@ class ReadState(Model):
     last_message_id: int = fields.BigIntField(default=0)
     last_reaction_id: int = fields.BigIntField(default=0)
     last_mention_id: int = fields.BigIntField(default=0)
-    peer: models.Peer = fields.ForeignKeyField("models.Peer", on_delete=fields.CASCADE, unique=True)
+    peer: models.Peer = fields.OneToOneField("models.Peer")
 
     peer_id: int
 

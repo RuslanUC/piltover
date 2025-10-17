@@ -1,9 +1,10 @@
 from piltover.app.handlers import auth, updates, users, stories, account, messages, photos, contacts, langpack, \
-    channels, upload, internal, help as help_, stickers
+    channels, upload, internal, help as help_, stickers, stubs
 from piltover.worker import Worker
 
 
 def register_handlers(worker_: Worker) -> None:
+    worker_.register_handler(stubs.handler)
     worker_.register_handler(help_.handler)
     worker_.register_handler(auth.handler)
     worker_.register_handler(updates.handler)

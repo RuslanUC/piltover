@@ -119,8 +119,12 @@ class Peer(Model):
 
         raise RuntimeError("Unreachable")
 
-    def to_input_peer(self) -> InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel:
+    def to_input_peer(
+            self, self_is_user: bool = False,
+    ) -> InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel:
         if self.type is PeerType.SELF:
+            if self_is_user:
+                return InputPeerUser(user_id=self.owner_id, access_hash=self.access_hash)
             return InputPeerSelf()
         if self.type is PeerType.USER:
             return InputPeerUser(user_id=self.user_id, access_hash=self.access_hash)

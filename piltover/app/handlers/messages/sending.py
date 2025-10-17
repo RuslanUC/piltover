@@ -21,7 +21,8 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
-    UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176
+    UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
+    ForwardMessages_176
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -517,12 +518,17 @@ async def save_draft(request: SaveDraft, user: User):
 
 
 @handler.on_request(ForwardMessages_148)
+@handler.on_request(ForwardMessages_176)
 @handler.on_request(ForwardMessages)
-async def forward_messages(request: ForwardMessages | ForwardMessages_148, user: User) -> Updates:
+async def forward_messages(
+        request: ForwardMessages | ForwardMessages_148 | ForwardMessages_176, user: User,
+) -> Updates:
     from_peer = None
 
     if isinstance(request.from_peer, InputPeerEmpty):
-        first_msg = await Message.get_or_none(peer__owner=user, id=request.id[0]).select_related("peer")
+        first_msg = await Message.get_or_none(peer__owner=user, id=request.id[0]).select_related(
+            "peer", "peer__chat", "peer__channel",
+        )
         if not first_msg:
             raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
         from_peer = first_msg.peer
@@ -575,6 +581,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
         reply_ids[message.id] = internal_id
 
         for opp_peer in peers:
+            logger.trace(f"Creating forwarded message for peer {opp_peer.id}({opp_peer.owner_id}) -> {opp_peer.user_id}")
             if opp_peer.owner_id is not None:
                 await Dialog.get_or_create(peer=opp_peer)
             result[opp_peer].append(
@@ -589,6 +596,7 @@ async def forward_messages(request: ForwardMessages | ForwardMessages_148, user:
                     drop_author=request.drop_author,
 
                     fwd_header=await message.create_fwd_header(opp_peer) if not request.drop_author else None,
+                    is_forward=True,
                 )
             )
 
