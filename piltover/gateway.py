@@ -17,6 +17,7 @@ from piltover._system_handlers import SYSTEM_HANDLERS
 from piltover.cache import Cache
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
+from piltover.tl.utils import is_id_content_related
 from piltover.utils.utils import run_coro_with_additional_return
 
 try:
@@ -361,6 +362,7 @@ class Client:
     # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
     async def _is_message_bad(self, packet: DecryptedMessagePacket, check_salt: bool) -> bool:
         error_code = 0
+        inner_id = Int.read_bytes(packet.data[:4])
 
         if packet.message_id % 4 != 0:
             # 18: incorrect two lower order msg_id bits (the server expects client message msg_id to be divisible by 4)
@@ -371,13 +373,20 @@ class Client:
             logger.debug(f"Client sent message id which is too low")
             error_code = 16
         elif (packet.message_id >> 32) < (time() - 300):
-            # 16: msg_id too high
+            # 17: msg_id too high
             logger.debug(f"Client sent message id which is too low")
             error_code = 17
+        elif (packet.seq_no & 1) == 1 and not is_id_content_related(inner_id):
+            # 34: an even msg_seqno expected (irrelevant message), but odd received
+            logger.debug(f"Client sent odd seq_no for content-related message")
+            error_code = 34
+        elif (packet.seq_no & 1) == 0 and is_id_content_related(inner_id):
+            # 35: odd msg_seqno expected (relevant message), but even received
+            logger.debug(f"Client sent even seq_no for not content-related message")
+            error_code = 35
 
         # TODO: add validation for message_id duplication (code 19)
         # TODO: add validation for seq_no too low/high (code 32 and 33)
-        # TODO: add validation for seq_no even/odd (code 34 and 35)
 
         if error_code:
             await self.send(
