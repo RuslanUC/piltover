@@ -21,7 +21,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
-    UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents
+    UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1328,3 +1328,23 @@ async def read_messages_contents(user: User, message_ids: list[int]) -> tuple[in
     await SessionManager.send(updates, user.id)
 
     return new_pts, updates
+
+
+async def new_scheduled_message(user: User, message: Message) -> Updates:
+    new_pts = await State.add_pts(user, 1)
+
+    await Update.create(
+        user=user,
+        update_type=UpdateType.NEW_SCHEDULED_MESSAGE,
+        pts=new_pts,
+        pts_count=1,
+        related_id=message.id,
+        related_ids=None,
+    )
+
+    updates = UpdatesWithDefaults(updates=[UpdateNewScheduledMessage(message=await message.to_tl(user))])
+
+    await SessionManager.send(updates, user.id)
+
+    return updates
+

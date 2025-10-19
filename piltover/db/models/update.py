@@ -6,9 +6,9 @@ from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.db import models
-from piltover.db.enums import UpdateType, PeerType
+from piltover.db.enums import UpdateType, PeerType, MessageType
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
-    UpdateDialogFilterOrder, UpdateRecentReactions
+    UpdateDialogFilterOrder, UpdateRecentReactions, UpdateNewScheduledMessage
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
     UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
@@ -22,7 +22,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
-              | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents
+              | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage
 
 
 class Update(Model):
@@ -417,5 +417,16 @@ class Update(Model):
                     pts_count=self.pts_count,
                     date=int(self.date.timestamp()),
                 ), users_q, chats_q, channels_q
+
+            case UpdateType.NEW_SCHEDULED_MESSAGE:
+                message = await models.Message.get_or_none(
+                    id=self.related_id, type=MessageType.SCHEDULED, peer__owner=user
+                ).select_related("peer", "author")
+                if message is None:
+                    return none_ret
+
+                users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+
+                return UpdateNewScheduledMessage(message=await message.to_tl(user)), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import builtins
 import hashlib
 import logging
@@ -9,7 +10,8 @@ from contextlib import asynccontextmanager, AsyncExitStack
 from io import BytesIO
 from os import urandom
 from time import time
-from typing import AsyncIterator, TypeVar, Self, TYPE_CHECKING
+from typing import AsyncIterator, TypeVar, Self, TYPE_CHECKING, cast
+from unittest import mock
 
 import pytest
 import pytest_asyncio
@@ -24,6 +26,10 @@ from pyrogram.session import Auth, Session as PyroSession
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
+from taskiq import TaskiqScheduler
+from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
+
+from piltover.app_config import AppConfig
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
@@ -84,6 +90,10 @@ async def _session_recv_worker(self: PyroSession):
 PyroSession.recv_worker = _session_recv_worker
 
 
+async def _empty_async_func(*args, **kwargs) -> None:
+    ...
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
     from piltover.app.app import app
@@ -94,11 +104,27 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
     create_reactions = "create_reactions" in marks
     create_chat_themes = "create_chat_themes" in marks
     create_peer_colors = "create_peer_colors" in marks
+    run_scheduler = "run_scheduler" in marks
 
-    async with app.run_test(
+    sched_insta_send_thresh = AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD
+    AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = -30
+
+    async with AsyncExitStack() as stack:
+        if run_scheduler:
+            scheduler = cast(TaskiqScheduler, app._gateway.scheduler.scheduler)
+
+            scheduler.startup = _empty_async_func
+            scheduler.shutdown = _empty_async_func
+
+            stack.enter_context(
+                mock.patch("taskiq.cli.scheduler.run.run_scheduler_loop", _run_scheduler_loop_every_100ms)
+            )
+
+        test_server = await stack.enter_async_context(app.run_test(
             create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
-            create_peer_colors=create_peer_colors,
-    ) as test_server:
+            create_peer_colors=create_peer_colors, run_scheduler=run_scheduler,
+        ))
+
         if not real_key_gen:
             Auth.create = _custom_auth_create
 
@@ -109,6 +135,8 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
 
         if not real_key_gen:
             Auth.create = _real_auth_create
+
+    AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = sched_insta_send_thresh
 
 
 class TestDataCenter(DataCenter):
@@ -370,6 +398,7 @@ class TestClient(Client):
 
         async with self._updates_lock:
             for update in _updates:
+                logger.trace(f"Got update btw: {update}")
                 self._got_updates[type(update)].append(update)
 
         self._updates_event.set()
@@ -452,6 +481,8 @@ class InterceptHandler(logging.Handler):
 
 InterceptHandler.redirect_to_loguru("pyrogram")
 InterceptHandler.redirect_to_loguru("aiocache.base", logging.DEBUG)
+InterceptHandler.redirect_to_loguru("taskiq", logging.WARNING)
+InterceptHandler.redirect_to_loguru(taskiq_sched_logger.name, logging.DEBUG)
 
 
 def _async_task_done_callback(task: Task) -> None:
@@ -480,3 +511,29 @@ async def exit_stack(request: pytest.FixtureRequest) -> AsyncIterator[AsyncExitS
     async with AsyncExitStack() as stack:
         yield stack
 
+
+async def _run_scheduler_loop_every_100ms(scheduler: TaskiqScheduler) -> None:
+    from taskiq.cli.scheduler.run import get_all_schedules, get_task_delay, delayed_send, logger as taskiq_logger
+
+    logger.debug("Starting taskiq scheduler")
+
+    loop = asyncio.get_event_loop()
+    while True:
+        scheduled_tasks = await get_all_schedules(scheduler)
+        logger.trace(f"Got {len(scheduled_tasks)} scheduled tasks")
+        for source, task_list in scheduled_tasks.items():
+            for task in task_list:
+                try:
+                    task_delay = get_task_delay(task)
+                except ValueError:
+                    taskiq_logger.warning(
+                        "Cannot parse cron: %s for task: %s, schedule_id: %s",
+                        task.cron,
+                        task.task_name,
+                        task.schedule_id,
+                    )
+                    continue
+                logger.trace(f"Task delay is {task_delay} seconds")
+                if task_delay is not None:
+                    loop.create_task(delayed_send(scheduler, source, task, task_delay))
+        await asyncio.sleep(.25)

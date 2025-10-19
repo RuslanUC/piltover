@@ -1,4 +1,6 @@
+import asyncio
 from contextlib import AsyncExitStack
+from datetime import timedelta, datetime
 from io import BytesIO
 
 import pytest
@@ -10,7 +12,7 @@ from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
-    InputMessagesFilterPhotoVideo
+    InputMessagesFilterPhotoVideo, UpdateNewMessage
 from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument, ChatPermissions
 
@@ -794,4 +796,18 @@ async def test_get_search_results_calendar(exit_stack: AsyncExitStack) -> None:
         offset_date=0,
     ))
 
+    _ = result
+
     raise GetSearchResultsCalendarFailedManually
+
+
+@pytest.mark.run_scheduler
+@pytest.mark.asyncio
+async def test_send_scheduled_message(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=3))
+
+    update = await client.expect_update(UpdateNewMessage, 4)
+    assert update.message.from_scheduled
+    assert update.message.message == "test 123"

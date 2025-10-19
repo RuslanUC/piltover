@@ -1,15 +1,18 @@
+from __future__ import annotations
+
 import asyncio
 from asyncio import sleep
 from io import BytesIO
 from os import environ
 from pathlib import Path
 from time import time
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from mtproto import Connection, ConnectionRole
 from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
     ErrorPacket, QuickAckPacket, BasePacket
-from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqEvents
+from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqEvents, AsyncBroker
 from taskiq.kicker import AsyncKicker
 
 from piltover._keygen_handlers import KEYGEN_HANDLERS
@@ -41,6 +44,10 @@ from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse, TaggedLongVector
+
+if TYPE_CHECKING:
+    from piltover.worker import Worker
+    from piltover.scheduler import Scheduler
 
 
 class Gateway:
@@ -74,15 +81,22 @@ class Gateway:
         self.salt_id = 0
         self.salt = b"\x00" * 8
 
+        self.worker: Worker | None
+        self.broker: AsyncBroker | None
+        self.scheduler: Scheduler | None
+
         if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
             logger.info("rabbitmq_address or redis_address is None, falling back to worker broker")
             from piltover.worker import Worker
+            from piltover.scheduler import Scheduler
             self.worker = Worker(data_dir, self.server_keys, None, None)
             self.broker = self.worker.broker
+            self.scheduler = Scheduler(None, _broker=self.broker)
             self.message_broker = self.worker.message_broker
         else:
             logger.debug("Using AioPikaBroker + RedisAsyncResultBackend")
             self.worker = None
+            self.scheduler = None
             self.broker = AioPikaBroker(rabbitmq_address).with_result_backend(RedisAsyncResultBackend(redis_address))
             self.message_broker = RabbitMqMessageBroker(BrokerType.READ, rabbitmq_address)
             self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)

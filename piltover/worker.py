@@ -29,10 +29,10 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.context import RequestContext, request_ctx
-from piltover.db.models import UserAuthorization, User
+from piltover.db.models import UserAuthorization, User, TaskIqScheduledMessage
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import TLObject, RpcError, TLRequest
+from piltover.tl import TLObject, RpcError, TLRequest, LongVector, primitives, Int, layer
 from piltover.tl.core_types import RpcResult
 from piltover.utils import Keys, get_public_key_fingerprint
 
@@ -120,6 +120,7 @@ class Worker(MessageHandler):
             self.message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
 
         self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
+        self.broker.register_task(self._handle_scheduled_message, "send_scheduled")
         self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
         self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
 
@@ -201,3 +202,29 @@ class Worker(MessageHandler):
             req_msg_id=call.message_id,
             result=result,
         ))
+
+    async def _handle_scheduled_message(self, message_id: int) -> None:
+        from piltover.app.handlers.messages import sending
+
+        task = await TaskIqScheduledMessage.get_or_none(message__id=message_id).select_related(
+            "message", "message__peer", "message__peer__owner", "message__author", "message__media",
+            "message__reply_to", "message__fwd_header", "message__post_info",
+        )
+        scheduled = task.message
+
+        request_ctx.set(RequestContext(
+            1, 1, 0, 0, None, layer, -1, scheduled.peer.owner_id, self, self._storage,
+        ))
+
+        messages = await scheduled.send_scheduled(task.opposite)
+
+        mentioned_ids = set()
+        if task.mentioned_users:
+            stream = BytesIO(primitives.VECTOR + Int.write(len(task.mentioned_users) // 8) + task.mentioned_users)
+            mentioned_ids = set(LongVector.read(stream))
+
+        await sending.send_created_messages_internal(
+            messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, mentioned_ids,
+        )
+
+        await scheduled.delete()

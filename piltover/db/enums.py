@@ -87,6 +87,7 @@ class UpdateType(IntEnum):
     UPDATE_STICKERSETS_ORDER = 28
     UPDATE_CHAT_WALLPAPER = 29
     READ_MESSAGES_CONTENTS = 30
+    NEW_SCHEDULED_MESSAGE = 31
 
 
 class SecretUpdateType(IntEnum):
@@ -113,6 +114,7 @@ class MessageType(IntEnum):
     SERVICE_CHAT_USER_REQUEST_JOIN = 8
     SERVICE_CHANNEL_CREATE = 9
     SERVICE_CHAT_UPDATE_WALLPAPER = 10
+    SCHEDULED = 100
 
 
 class UserStatus(IntEnum):

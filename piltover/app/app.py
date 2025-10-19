@@ -546,6 +546,17 @@ class PiltoverApp:
         if self._gateway.worker is not None:
             register_handlers(self._gateway.worker)
 
+    def _run_in_memory_scheduler(self) -> asyncio.Task | None:
+        if self._gateway.scheduler is None:
+            return None
+
+        from taskiq.cli.scheduler.run import run_scheduler
+        from taskiq.cli.scheduler.args import SchedulerArgs
+
+        return asyncio.create_task(run_scheduler(
+            SchedulerArgs(scheduler=self._gateway.scheduler.scheduler, modules=[])
+        ))
+
     async def run(self, host: str | None = None, port: int | None = None):
         self._host = host or self._host
         self._port = port or self._port
@@ -564,13 +575,16 @@ class PiltoverApp:
             modules={"models": ["piltover.db.models"]},
         )
 
+        scheduler_task = self._run_in_memory_scheduler()
+
         logger.success(f"Running on {self._host}:{self._port}")
         await self._gateway.serve()
+        await scheduler_task
 
     @asynccontextmanager
     async def run_test(
             self, create_sys_user: bool = True, create_countries: bool = False, create_reactions: bool = False,
-            create_chat_themes: bool = False, create_peer_colors: bool = False,
+            create_chat_themes: bool = False, create_peer_colors: bool = False, run_scheduler: bool = False,
     ) -> AsyncIterator[Gateway]:
         await Tortoise.init(
             db_url="sqlite://:memory:",
@@ -587,10 +601,19 @@ class PiltoverApp:
             self._gateway.worker.register_handler(testing.handler)
 
         await self._gateway.broker.startup()
+
+        scheduler_task = None
+        if run_scheduler:
+            scheduler_task = self._run_in_memory_scheduler()
+
         server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
         async with server:
             self._gateway.host, self._gateway.port = server.sockets[0].getsockname()
             yield self._gateway
+
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            await scheduler_task
 
         await self._gateway.broker.shutdown()
         await connections.close_all(True)

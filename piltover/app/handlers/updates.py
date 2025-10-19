@@ -7,7 +7,7 @@ from tortoise.expressions import Q
 from tortoise.functions import Min
 
 from piltover.context import request_ctx
-from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType
+from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType, MessageType
 from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
@@ -70,7 +70,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     logger.trace(f"User's {user.id} last secret id is {last_local_secret_id}")
 
     new = await Message.filter(
-        peer__owner=user, date__gt=date
+        peer__owner=user, date__gt=date, type__not=MessageType.SCHEDULED,
     ).select_related("author", "peer", "peer__owner", "peer__user", "peer__chat").order_by("id")
     new_updates = await Update.filter(user=user, pts__gt=request.pts).order_by("pts")
     new_secret = await SecretUpdate.filter(authorization__id=ctx.auth_id, id__gt=last_local_secret_id)

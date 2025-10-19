@@ -1,3 +1,4 @@
+from array import array
 from collections import defaultdict
 from datetime import datetime, UTC, timedelta
 from time import time
@@ -14,11 +15,13 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess, MessageMention
+    SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess, MessageMention, \
+    TaskIqScheduledMessage
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
-    InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName
+    InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
+    LongVector
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -64,33 +67,10 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
     )
 
 
-async def send_message_internal(
-        user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
-        opposite: bool = True, **message_kwargs
+async def send_created_messages_internal(
+        messages: dict[Peer, Message], opposite: bool, peer: Peer, user: User, clear_draft: bool,
+        mentioned_user_ids: set[int],
 ) -> Updates:
-    if opposite and peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
-        opposite = False
-
-    message_text = message_kwargs.get("message")
-
-    mentioned_user_ids = set()
-    entities: list[dict[str, int | str]]
-    if opposite and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
-        if (entities := message_kwargs.get("entities")) and message_text:
-            mentioned_user_ids = await _extract_mentions_from_message(entities, message_text, author)
-
-        if reply_to_message_id:
-            peer_filter = {"peer__channel": peer.channel} if peer.type is PeerType.CHANNEL else {"peer": peer}
-            reply_author_id = cast(int, await Message.get_or_none(
-                id=reply_to_message_id, **peer_filter,
-            ).values_list("author__id", flat=True))
-            if reply_author_id is not None and reply_author_id != author.id:
-                mentioned_user_ids.add(reply_author_id)
-
-    messages = await Message.create_for_peer(
-        peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
-    )
-
     if opposite and peer.type is not PeerType.CHANNEL:
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, await peer.get_opposite())
@@ -146,6 +126,61 @@ async def send_message_internal(
     return cast(Updates, update)
 
 
+async def send_message_internal(
+        user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
+        opposite: bool = True, scheduled_date: int | None = None, **message_kwargs
+) -> Updates:
+    if opposite and peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
+        opposite = False
+
+    mentioned_user_ids = set()
+    entities: list[dict[str, int | str]]
+
+    message_text = message_kwargs.get("message")
+    if opposite and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        if (entities := message_kwargs.get("entities")) and message_text:
+            mentioned_user_ids = await _extract_mentions_from_message(entities, message_text, author)
+
+        if reply_to_message_id:
+            peer_filter = {"peer__channel": peer.channel} if peer.type is PeerType.CHANNEL else {"peer": peer}
+            reply_author_id = cast(int, await Message.get_or_none(
+                id=reply_to_message_id, **peer_filter,
+            ).values_list("author__id", flat=True))
+            if reply_author_id is not None and reply_author_id != author.id:
+                mentioned_user_ids.add(reply_author_id)
+
+    schedule = False
+    real_opposite = opposite
+    if scheduled_date is not None and (scheduled_date - AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD) > time():
+        schedule = True
+        opposite = False
+        message_kwargs["scheduled_date"] = datetime.fromtimestamp(scheduled_date, UTC)
+        message_kwargs["type"] = MessageType.SCHEDULED
+
+    messages = await Message.create_for_peer(
+        peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
+    )
+
+    if schedule:
+        message = messages[peer]
+
+        mentioned_users = None
+        if mentioned_user_ids:
+            ids = array("q", mentioned_user_ids)
+            mentioned_users = LongVector.write(ids)[8:]
+
+        await TaskIqScheduledMessage.create(
+            scheduled_time=scheduled_date,
+            message=message,
+            mentioned_users=mentioned_users,
+            opposite=real_opposite,
+        )
+
+        return await upd.new_scheduled_message(user, message)
+
+    return await send_created_messages_internal(messages, opposite, peer, user, clear_draft, mentioned_user_ids)
+
+
 SendMessageTypes = SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia \
                    | SendMultiMedia_148 | SendMultiMedia
 
@@ -198,7 +233,7 @@ async def send_message(request: SendMessage, user: User):
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
-        author=user, message=request.message,
+        author=user, message=request.message, scheduled_date=request.schedule_date,
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
     )
@@ -328,6 +363,8 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     entities = None
     if message_text is not None:
         entities = await process_message_entities(message_text, request.entities, user)
+
+    # TODO: schedule_date
 
     # TODO: process mentioned users
 
@@ -533,6 +570,8 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     media = await _process_media(user, request.media)
     reply_to_message_id = _resolve_reply_id(request)
 
+    # TODO: schedule_date
+
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, media=media,
@@ -735,6 +774,8 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
     group_id = Snowflake.make_id()
+
+    # TODO: schedule_date
 
     updates = None
     for message, random_id, media, entities in messages:

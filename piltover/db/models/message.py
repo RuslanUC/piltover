@@ -72,10 +72,9 @@ _BASE_DEFAULTS = {
     "legacy": False,
 }
 _REGULAR_DEFAULTS = {
-    "from_scheduled": False,
     "edit_hide": False,
     "noforwards": False,
-    "restriction_reason": []
+    "restriction_reason": [],
 }
 AllowedMessageActions = (*MessageActionInst, *MessageActionNeedsProcessingInst)
 
@@ -95,6 +94,8 @@ class Message(Model):
     media_group_id: int = fields.BigIntField(null=True, default=None)
     channel_post: bool = fields.BooleanField(default=False)
     post_author: str | None = fields.CharField(max_length=128, null=True, default=None)
+    scheduled_date: datetime | None = fields.DatetimeField(null=True, default=None)
+    from_scheduled: bool = fields.BooleanField(default=False)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -200,7 +201,7 @@ class Message(Model):
 
             return cached
 
-        if self.type is not MessageType.REGULAR:
+        if self.type not in (MessageType.REGULAR, MessageType.SCHEDULED):
             return await self._to_tl_service(current_user)
 
         media = None
@@ -244,7 +245,7 @@ class Message(Model):
             message=self.message or "",
             pinned=self.pinned,
             peer_id=self.peer.to_tl(),
-            date=int(self.date.timestamp()),
+            date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
             out=current_user.id == self.author_id,
             media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
@@ -260,12 +261,45 @@ class Message(Model):
             reactions=await self.to_tl_reactions(current_user) if with_reactions else None,
             mentioned=mentioned,
             media_unread=media_unread,
+            from_scheduled=self.from_scheduled or self.scheduled_date is not None,
             **_BASE_DEFAULTS,
             **_REGULAR_DEFAULTS,
         )
 
         await Cache.obj.set(self._cache_key(current_user), message)
         return message
+
+    async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, Message]:
+        peers = [self.peer]
+        if opposite and self.peer.type is not PeerType.CHANNEL:
+            peers.extend(await self.peer.get_opposite())
+        elif opposite and self.peer.type is PeerType.CHANNEL:
+            peers = [await models.Peer.get_or_none(owner=None, channel__id=self.peer.channel_id, type=PeerType.CHANNEL)]
+
+        messages: dict[models.Peer, Message] = {}
+
+        for to_peer in peers:
+            await to_peer.fetch_related("owner", "user")
+            await models.Dialog.get_or_create(peer=to_peer)
+            messages[to_peer] = await Message.create(
+                from_scheduled=to_peer == self.peer,
+                internal_id=self.internal_id,
+                message=self.message,
+                date=datetime.now(UTC),
+                type=MessageType.REGULAR,
+                author=self.author,
+                peer=to_peer,
+                media=self.media,
+                reply_to=self.reply_to,
+                fwd_header=self.fwd_header,
+                entities=self.entities,
+                media_group_id=self.media_group_id,
+                channel_post=self.channel_post,
+                post_author=self.post_author,
+                post_info=self.post_info,
+            )
+
+        return messages
 
     async def clone_for_peer(
             self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,
