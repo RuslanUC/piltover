@@ -218,13 +218,8 @@ class Worker(MessageHandler):
 
         messages = await scheduled.send_scheduled(task.opposite)
 
-        mentioned_ids = set()
-        if task.mentioned_users:
-            stream = BytesIO(primitives.VECTOR + Int.write(len(task.mentioned_users) // 8) + task.mentioned_users)
-            mentioned_ids = set(LongVector.read(stream))
-
         await sending.send_created_messages_internal(
-            messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, mentioned_ids,
+            messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
         )
 
         await scheduled.delete()

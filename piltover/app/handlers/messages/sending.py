@@ -570,10 +570,8 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     media = await _process_media(user, request.media)
     reply_to_message_id = _resolve_reply_id(request)
 
-    # TODO: schedule_date
-
     return await send_message_internal(
-        user, peer, request.random_id, reply_to_message_id, request.clear_draft,
+        user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, message=request.message, media=media,
         entities=await process_message_entities(request.message, request.entities, user),
     )
@@ -653,6 +651,8 @@ async def forward_messages(
     else:
         peers = [to_peer, *(await to_peer.get_opposite())]
     result: defaultdict[Peer, list[Message]] = defaultdict(list)
+
+    # TODO: schedule_date
 
     for message in messages:
         internal_id = Snowflake.make_id()
@@ -775,12 +775,10 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
 
     group_id = Snowflake.make_id()
 
-    # TODO: schedule_date
-
     updates = None
     for message, random_id, media, entities in messages:
         new_updates = await send_message_internal(
-            user, peer, random_id, reply_to_message_id, request.clear_draft,
+            user, peer, random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
             author=user, message=message, media=media, entities=entities, media_group_id=group_id,
         )
         if updates is None:

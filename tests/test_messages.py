@@ -808,6 +808,14 @@ async def test_send_scheduled_message(exit_stack: AsyncExitStack) -> None:
 
     await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=3))
 
+    messages = [m async for m in client.get_chat_history("me")]
+    assert len(messages) == 0
+    assert await client.get_chat_history_count("me") == 0
+
     update = await client.expect_update(UpdateNewMessage, 4)
     assert update.message.from_scheduled
     assert update.message.message == "test 123"
+
+    messages = [m async for m in client.get_chat_history("me")]
+    assert len(messages) == 1
+    assert await client.get_chat_history_count("me") == 1
