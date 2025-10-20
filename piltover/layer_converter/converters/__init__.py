@@ -25,6 +25,7 @@ from .poll_answer_downgrade import *
 from .poll_downgrade import *
 from .poll_results_downgrade import *
 from .stickerset_downgrade import *
+from .update_delete_scheduled_messages_downgrade import *
 from .update_peer_blocked_downgrade import *
 from .user_downgrade import *
 from .userfull_downgrade import *
@@ -187,3 +188,7 @@ LayerConverter.register_for_downgrade(DocumentAttributeVideoDowngradeTo133)
 LayerConverter.register_for_downgrade(DocumentAttributeVideoDowngradeTo160)
 LayerConverter.register_for_downgrade(DocumentAttributeVideoDowngradeTo185)
 LayerConverter.register_for_downgrade(DocumentAttributeVideoDontDowngrade)
+
+LayerConverter.register_for_downgrade(UpdateDeleteScheduledMessagesDowngradeTo133)
+LayerConverter.register_for_downgrade(UpdateDeleteScheduledMessagesDontDowngrade192)
+LayerConverter.register_for_downgrade(UpdateDeleteScheduledMessagesDontDowngrade)

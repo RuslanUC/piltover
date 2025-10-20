@@ -12,7 +12,7 @@ from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
-    InputMessagesFilterPhotoVideo, UpdateNewMessage
+    InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages
 from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument, ChatPermissions
 
@@ -815,6 +815,8 @@ async def test_send_scheduled_message(exit_stack: AsyncExitStack) -> None:
     update = await client.expect_update(UpdateNewMessage, 4)
     assert update.message.from_scheduled
     assert update.message.message == "test 123"
+
+    await client.expect_update(UpdateDeleteScheduledMessages, .1)
 
     messages = [m async for m in client.get_chat_history("me")]
     assert len(messages) == 1
