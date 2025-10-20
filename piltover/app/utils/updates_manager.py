@@ -21,7 +21,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
-    UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage
+    UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
+    UpdateDeleteScheduledMessages
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1348,3 +1349,32 @@ async def new_scheduled_message(user: User, message: Message) -> Updates:
 
     return updates
 
+
+async def delete_scheduled_messages(
+        user: User, peer: Peer, deleted_message_ids: list[int], sent_message_ids: list[int] | None = None,
+) -> Updates:
+    pts_count = len(deleted_message_ids)
+    new_pts = await State.add_pts(user, pts_count)
+
+    await Update.create(
+        user=user,
+        update_type=UpdateType.DELETE_SCHEDULED_MESSAGE,
+        pts=new_pts,
+        pts_count=pts_count,
+        related_id=peer.id,
+        related_ids=[*deleted_message_ids, *(sent_message_ids if sent_message_ids else ())],
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdateDeleteScheduledMessages(
+                peer=peer.to_tl(),
+                messages=deleted_message_ids,
+                sent_messages=sent_message_ids or None,
+            )
+        ],
+    )
+
+    await SessionManager.send(updates, user.id)
+
+    return updates

@@ -26,4 +26,3 @@ class TaskIqScheduledMessage(Model):
 
         stream = BytesIO(primitives.VECTOR + Int.write(len(self.mentioned_users) // 8) + self.mentioned_users)
         return set(LongVector.read(stream))
-

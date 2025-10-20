@@ -14,7 +14,8 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
-    UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents
+    UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
+    UpdateDeleteScheduledMessages
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -22,7 +23,8 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateReadHistoryOutbox | UpdateFolderPeers | UpdateChannel | UpdateReadChannelInbox \
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
-              | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage
+              | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
+              | UpdateDeleteScheduledMessages
 
 
 class Update(Model):
@@ -428,5 +430,18 @@ class Update(Model):
                 users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
 
                 return UpdateNewScheduledMessage(message=await message.to_tl(user)), users_q, chats_q, channels_q
+
+            case UpdateType.DELETE_SCHEDULED_MESSAGE:
+                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
+                    return none_ret
+
+                deleted_message_ids = self.related_ids[:self.pts_count]
+                sent_message_ids = self.related_ids[self.pts_count:]
+
+                return UpdateDeleteScheduledMessages(
+                    peer=peer.to_tl(),
+                    messages=deleted_message_ids,
+                    sent_messages=sent_message_ids or None,
+                ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

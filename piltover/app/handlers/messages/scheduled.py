@@ -1,14 +1,17 @@
 from time import time
 
 from tortoise.expressions import Q
+from tortoise.transactions import in_transaction
 
+import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages import sending
 from piltover.app.utils.utils import telegram_hash
-from piltover.db.enums import MessageType
+from piltover.db.enums import MessageType, PeerType
 from piltover.db.models import User, Peer, Message, TaskIqScheduledMessage
 from piltover.db.models._utils import resolve_users_chats
 from piltover.tl import Updates
-from piltover.tl.functions.messages import GetScheduledHistory, GetScheduledMessages, SendScheduledMessages
+from piltover.tl.functions.messages import GetScheduledHistory, GetScheduledMessages, SendScheduledMessages, \
+    DeleteScheduledMessages
 from piltover.tl.types.messages import Messages, MessagesNotModified
 from piltover.worker import MessageHandler
 
@@ -68,31 +71,57 @@ async def get_scheduled_messages(request: GetScheduledMessages, user: User) -> M
 
 @handler.on_request(SendScheduledMessages)
 async def send_scheduled_messages(request: SendScheduledMessages, user: User) -> Updates:
-    # TODO: use transactions
-
     peer = await Peer.from_input_peer_raise(user, request.peer)
-    tasks = await TaskIqScheduledMessage.filter(message__peer=peer, message__id__in=request.id[:100]).select_related(
-        "message", "message__peer", "message__peer__owner", "message__author", "message__media",
-        "message__reply_to", "message__fwd_header", "message__post_info",
-    )
 
     updates = Updates(updates=[], chats=[], users=[], date=int(time()), seq=0)
+    deleted = []
+    new = []
 
-    for task in tasks:
-        scheduled = task.message
-        messages = await scheduled.send_scheduled(task.opposite)
-        msg_updates = await sending.send_created_messages_internal(
-            messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
+    async with in_transaction():
+        tasks = await TaskIqScheduledMessage.select_for_update(
+            skip_locked=True, of=("message",), no_key=True,
+        ).filter(
+            message__peer=peer, message__id__in=request.id[:100],
+        ).select_related(
+            "message", "message__peer", "message__peer__owner", "message__author", "message__media",
+            "message__reply_to", "message__fwd_header", "message__post_info",
         )
-        await scheduled.delete()
 
-        updates.updates.extend(msg_updates.updates)
-        updates.chats.extend(msg_updates.chats)
-        updates.users.extend(msg_updates.users)
-        updates.date = msg_updates.date
+        for task in tasks:
+            scheduled = task.message
+            messages = await scheduled.send_scheduled(task.opposite)
+            msg_updates = await sending.send_created_messages_internal(
+                messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
+            )
+            await scheduled.delete()
+
+            updates.updates.extend(msg_updates.updates)
+            updates.chats.extend(msg_updates.chats)
+            updates.users.extend(msg_updates.users)
+            updates.date = msg_updates.date
+
+            if peer.type is PeerType.CHANNEL and task.opposite:
+                new_message = next(iter(messages.values()))
+            else:
+                new_message = messages[peer]
+
+            new.append(new_message.id)
+            deleted.append(scheduled.id)
+
+    if deleted and new:
+        delete_updates = await upd.delete_scheduled_messages(user, peer, deleted, new)
+        updates.updates.extend(delete_updates.updates)
 
     return updates
 
 
-# TODO:
-#  messages.deleteScheduledMessages#59ae2b16 peer:InputPeer id:Vector<int> = Updates;
+@handler.on_request(DeleteScheduledMessages)
+async def delete_scheduled_messages(request: DeleteScheduledMessages, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    ids_to_delete = await Message.filter(
+        peer=peer, id__in=request.id, type=MessageType.SCHEDULED,
+    ).values_list("id", flat=True)
+
+    await Message.filter(id__in=ids_to_delete).delete()
+
+    return await upd.delete_scheduled_messages(user, peer, ids_to_delete)

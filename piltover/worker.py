@@ -8,8 +8,10 @@ from typing import Awaitable, Callable, Any, TypeVar
 
 from loguru import logger
 from taskiq import InMemoryBroker, TaskiqEvents
+from tortoise.transactions import in_transaction
 
 from piltover._faster_taskiq_inmemory_result_backend import FasterInmemoryResultBackend
+from piltover.db.enums import PeerType
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.in_memory_broker import InMemoryMessageBroker
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
@@ -32,7 +34,7 @@ from piltover.context import RequestContext, request_ctx
 from piltover.db.models import UserAuthorization, User, TaskIqScheduledMessage
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import TLObject, RpcError, TLRequest, LongVector, primitives, Int, layer
+from piltover.tl import TLObject, RpcError, TLRequest, layer
 from piltover.tl.core_types import RpcResult
 from piltover.utils import Keys, get_public_key_fingerprint
 
@@ -205,21 +207,35 @@ class Worker(MessageHandler):
 
     async def _handle_scheduled_message(self, message_id: int) -> None:
         from piltover.app.handlers.messages import sending
+        import piltover.app.utils.updates_manager as upd
 
-        task = await TaskIqScheduledMessage.get_or_none(message__id=message_id).select_related(
-            "message", "message__peer", "message__peer__owner", "message__author", "message__media",
-            "message__reply_to", "message__fwd_header", "message__post_info",
-        )
-        scheduled = task.message
+        async with in_transaction():
+            task = await TaskIqScheduledMessage.select_for_update(
+                skip_locked=True, of=("message",), no_key=True,
+            ).get_or_none(
+                message__id=message_id
+            ).select_related(
+                "message", "message__peer", "message__peer__owner", "message__author", "message__media",
+                "message__reply_to", "message__fwd_header", "message__post_info",
+            )
+            scheduled = task.message
+            peer = scheduled.peer
 
-        request_ctx.set(RequestContext(
-            1, 1, 0, 0, None, layer, -1, scheduled.peer.owner_id, self, self._storage,
-        ))
+            request_ctx.set(RequestContext(
+                1, 1, 0, 0, None, layer, -1, scheduled.peer.owner_id, self, self._storage,
+            ))
 
-        messages = await scheduled.send_scheduled(task.opposite)
+            messages = await scheduled.send_scheduled(task.opposite)
 
-        await sending.send_created_messages_internal(
-            messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
-        )
+            await sending.send_created_messages_internal(
+                messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
+            )
 
-        await scheduled.delete()
+            await scheduled.delete()
+
+        if peer.type is PeerType.CHANNEL and task.opposite:
+            new_message = next(iter(messages.values()))
+        else:
+            new_message = messages[peer]
+
+        await upd.delete_scheduled_messages(peer.owner, peer, [scheduled.id], [new_message.id])

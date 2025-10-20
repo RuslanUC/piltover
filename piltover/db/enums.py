@@ -88,6 +88,7 @@ class UpdateType(IntEnum):
     UPDATE_CHAT_WALLPAPER = 29
     READ_MESSAGES_CONTENTS = 30
     NEW_SCHEDULED_MESSAGE = 31
+    DELETE_SCHEDULED_MESSAGE = 32
 
 
 class SecretUpdateType(IntEnum):
