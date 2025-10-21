@@ -119,11 +119,16 @@ class Message(Model):
         return f"message:{user.id}:{self.id}:{self.version}"
 
     @classmethod
-    async def get_(cls, id_: int, peer: models.Peer) -> models.Message | None:
+    async def get_(
+            cls, id_: int, peer: models.Peer, types: tuple[MessageType, ...] = (MessageType.REGULAR,),
+    ) -> models.Message | None:
+        types_query = Q()
+        for message_type in types:
+            types_query |= Q(type=message_type)
         peer_query = Q(peer=peer)
         if peer.type is PeerType.CHANNEL:
             peer_query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
-        return await Message.get_or_none(peer_query, id=id_, type=MessageType.REGULAR)\
+        return await Message.get_or_none(peer_query, types_query, id=id_)\
             .select_related("peer", "author", "media")
 
     @classmethod

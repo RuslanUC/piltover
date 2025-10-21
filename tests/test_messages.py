@@ -2,6 +2,7 @@ import asyncio
 from contextlib import AsyncExitStack
 from datetime import timedelta, datetime
 from io import BytesIO
+from time import time
 
 import pytest
 from PIL import Image
@@ -10,7 +11,7 @@ from pyrogram.enums import MessageEntityType
 from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
-    GetSearchResultsCalendar
+    GetSearchResultsCalendar, EditMessage
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages
 from pyrogram.raw.types.messages import Messages, AffectedHistory
@@ -813,6 +814,34 @@ async def test_send_scheduled_message(exit_stack: AsyncExitStack) -> None:
     assert await client.get_chat_history_count("me") == 0
 
     update = await client.expect_update(UpdateNewMessage, 4)
+    assert update.message.from_scheduled
+    assert update.message.message == "test 123"
+
+    await client.expect_update(UpdateDeleteScheduledMessages, .1)
+
+    messages = [m async for m in client.get_chat_history("me")]
+    assert len(messages) == 1
+    assert await client.get_chat_history_count("me") == 1
+
+
+@pytest.mark.run_scheduler
+@pytest.mark.asyncio
+async def test_edit_scheduled_message_date(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    message = await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(minutes=30))
+
+    messages = [m async for m in client.get_chat_history("me")]
+    assert len(messages) == 0
+    assert await client.get_chat_history_count("me") == 0
+
+    await client.invoke(EditMessage(
+        peer=await client.resolve_peer("me"),
+        id=message.id,
+        schedule_date=int(time()),
+    ))
+
+    update = await client.expect_update(UpdateNewMessage, 1)
     assert update.message.from_scheduled
     assert update.message.message == "test 123"
 

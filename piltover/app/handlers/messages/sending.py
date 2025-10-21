@@ -324,15 +324,16 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
     if peer.type is PeerType.CHANNEL:
         message = await Message.get_or_none(
-            id=request.id, peer__owner=None, peer__channel=peer.channel, type=MessageType.REGULAR
+            Q(type=MessageType.REGULAR) | Q(type=MessageType.SCHEDULED),
+            id=request.id, peer__owner=None, peer__channel=peer.channel,
         ).select_related("peer", "author", "media")
     else:
-        message = await Message.get_(request.id, peer)
+        message = await Message.get_(request.id, peer, (MessageType.REGULAR, MessageType.SCHEDULED))
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     new_has_media = request.media is not None and not isinstance(request.media, InputMediaEmpty)
-    if message.media_id is None and not request.message:
+    if message.media_id is None and not request.message and not request.schedule_date:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
     elif message.media_id is None and new_has_media:
         raise ErrorRpc(error_code=400, error_message="MEDIA_PREV_INVALID")
@@ -364,19 +365,31 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     if message_text is not None:
         entities = await process_message_entities(message_text, request.entities, user)
 
-    # TODO: schedule_date
+    def _edit_message(m: Message, new_edit_date: datetime | None) -> None:
+        if message_text is not None:
+            m.message = message_text
+            if entities is not None:
+                m.entities = entities
+        if media is not None:
+            m.media = media
+        m.edit_date = new_edit_date
+        m.version += 1
 
     # TODO: process mentioned users
 
+    if message.scheduled_date is not None:
+        _edit_message(message, None)
+        if request.schedule_date is not None:
+            if request.schedule_date < time() - 30:
+                raise ErrorRpc(error_code=400, error_message="SCHEDULE_DATE_INVALID")
+            message.scheduled_date = datetime.fromtimestamp(request.schedule_date, UTC)
+            await TaskIqScheduledMessage.filter(message=message).update(scheduled_time=request.schedule_date)
+
+        await message.save(update_fields=["message", "version", "media_id", "entities", "scheduled_date"])
+        return await upd.edit_message(user, {peer: message})
+
     if peer.type is PeerType.CHANNEL:
-        if message_text is not None:
-            message.message = message_text
-            if entities is not None:
-                message.entities = entities
-        if media is not None:
-            message.media = media
-        message.edit_date = datetime.now(UTC)
-        message.version += 1
+        _edit_message(message, datetime.now(UTC))
         await message.save(update_fields=["message", "edit_date", "version", "media_id", "entities"])
         message.peer.channel = peer.channel
         return await upd.edit_message_channel(user, message)
@@ -386,20 +399,11 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     messages: dict[Peer, Message] = {}
 
     edit_date = datetime.now(UTC)
-    for to_peer in peers:
-        message = await Message.get_or_none(
-            internal_id=message.internal_id, peer=to_peer,
-        ).select_related("author", "peer")
-        if message is not None:
-            if message_text is not None:
-                message.message = message_text
-                if entities is not None:
-                    message.entities = entities
-            if media is not None:
-                message.media = media
-            message.edit_date = edit_date
-            message.version += 1
-            messages[to_peer] = message
+    for message in await Message.filter(
+            internal_id=message.internal_id, peer__id__in=[p.id for p in peers],
+    ).select_related("author", "peer", "peer__owner", "peer__user"):
+        _edit_message(message, edit_date)
+        messages[message.peer] = message
 
     await Message.bulk_update(messages.values(), ["message", "edit_date", "version", "media_id", "entities"])
     presence = await Presence.update_to_now(user)
