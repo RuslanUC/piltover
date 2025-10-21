@@ -78,17 +78,17 @@ async def send_scheduled_messages(request: SendScheduledMessages, user: User) ->
     new = []
 
     async with in_transaction():
-        tasks = await TaskIqScheduledMessage.select_for_update(
-            skip_locked=True, of=("message",), no_key=True,
-        ).filter(
-            message__peer=peer, message__id__in=request.id[:100],
+        scheduled_messages = await Message.select_for_update(
+            skip_locked=True, no_key=True,
+        ).get_or_none(
+            peer=peer, id__in=request.id[:100],
         ).select_related(
-            "message", "message__peer", "message__peer__owner", "message__author", "message__media",
-            "message__reply_to", "message__fwd_header", "message__post_info",
+            "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "author", "media", "reply_to",
+            "fwd_header", "post_info",
         )
 
-        for task in tasks:
-            scheduled = task.message
+        for scheduled in scheduled_messages:
+            task = scheduled.taskiqscheduledmessages
             messages = await scheduled.send_scheduled(task.opposite)
             msg_updates = await sending.send_created_messages_internal(
                 messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,

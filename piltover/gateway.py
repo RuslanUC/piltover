@@ -376,7 +376,7 @@ class Client:
     # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
     async def _is_message_bad(self, packet: DecryptedMessagePacket, check_salt: bool) -> bool:
         error_code = 0
-        inner_id = Int.read_bytes(packet.data[:4])
+        inner_id = Int.read_bytes(packet.data[:4], False)
 
         if packet.message_id % 4 != 0:
             # 18: incorrect two lower order msg_id bits (the server expects client message msg_id to be divisible by 4)
@@ -392,11 +392,11 @@ class Client:
             error_code = 17
         elif (packet.seq_no & 1) == 1 and not is_id_content_related(inner_id):
             # 34: an even msg_seqno expected (irrelevant message), but odd received
-            logger.debug(f"Client sent odd seq_no for content-related message")
+            logger.debug(f"Client sent odd seq_no for content-related message ({hex(inner_id)[2:]})")
             error_code = 34
         elif (packet.seq_no & 1) == 0 and is_id_content_related(inner_id):
             # 35: odd msg_seqno expected (relevant message), but even received
-            logger.debug(f"Client sent even seq_no for not content-related message")
+            logger.debug(f"Client sent even seq_no for not content-related message ({hex(inner_id)[2:]})")
             error_code = 35
 
         # TODO: add validation for message_id duplication (code 19)

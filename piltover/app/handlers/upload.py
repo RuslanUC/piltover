@@ -165,6 +165,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
         component = storage.photos
 
     data = await component.get_part(file.physical_id, request.offset, request.limit, suffix)
+    data = data or b""
 
     if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)):
         file_type = FileJpeg()
