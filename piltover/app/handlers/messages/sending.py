@@ -21,7 +21,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
-    LongVector
+    LongVector, DocumentAttributeFilename
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -473,7 +473,8 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             file_type = FileType.DOCUMENT
             thumb_bytes = await _get_media_thumb(user, media)
 
-        # TODO: set filename from media.file.name if DocumentAttributeFilename is not in attributes
+        if media.file.name:
+            attributes.insert(0, DocumentAttributeFilename(file_name=media.file.name))
         file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
         valid, const = FileAccess.is_file_ref_valid(media.id.file_reference, user.id, media.id.id)

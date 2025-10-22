@@ -11,7 +11,7 @@ from pyrogram.enums import MessageEntityType
 from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
-    GetSearchResultsCalendar, EditMessage
+    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages
 from pyrogram.raw.types.messages import Messages, AffectedHistory
@@ -850,3 +850,21 @@ async def test_edit_scheduled_message_date(exit_stack: AsyncExitStack) -> None:
     messages = [m async for m in client.get_chat_history("me")]
     assert len(messages) == 1
     assert await client.get_chat_history_count("me") == 1
+
+
+@pytest.mark.run_scheduler
+@pytest.mark.asyncio
+async def test_delete_scheduled_message(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    message = await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=1))
+
+    await client.invoke(DeleteScheduledMessages(
+        peer=await client.resolve_peer("me"),
+        id=[message.id],
+    ))
+
+    await client.expect_update(UpdateDeleteScheduledMessages, 0.5)
+
+    with pytest.raises(TimeoutError):
+        await client.expect_update(UpdateNewMessage, 2)
