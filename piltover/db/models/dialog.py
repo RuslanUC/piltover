@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from loguru import logger
 from tortoise import fields, Model
 
 from piltover.db import models
@@ -24,6 +25,8 @@ class Dialog(Model):
     async def to_tl(self) -> TLDialog:
         in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = \
             await models.ReadState.get_in_out_ids_and_unread(self.peer)
+
+        logger.trace(f"Max read outbox message id is {out_read_max_id} for peer {self.peer.id} for user {self.peer.owner_id}")
 
         defaults = {
             "view_forum_as_messages": False,

@@ -24,6 +24,7 @@ class ChatParticipant(Model):
     inviter_id: int = fields.BigIntField(default=0)
     invited_at: datetime = fields.DatetimeField(auto_now_add=True)
     banned_until: datetime = fields.DatetimeField(null=True, default=None)
+    # TODO: make null by default
     banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights(0))
     admin_rights: ChatAdminRights = IntFlagField(ChatAdminRights, default=ChatAdminRights(0))
     invite: models.ChatInvite | None = fields.ForeignKeyField("models.ChatInvite", null=True, default=None, on_delete=fields.SET_NULL)

@@ -336,6 +336,8 @@ async def read_history(request: ReadHistory, user: User):
     state.pts += messages_count
     await state.save(update_fields=["pts"])
 
+    logger.info(f"Set last read message id to {message_id} for peer {peer.id} of user {user.id}")
+
     messages_out: dict[Peer, tuple[int, int]] = {}
     for other in await peer.get_opposite():
         count = await Message.filter(id__gt=old_last_message_id, internal_id__lte=internal_id, peer=other).count()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum, auto
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
@@ -11,7 +12,12 @@ from piltover.db.models._utils import IntFlagField
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Chat, ChatForbidden, ChannelForbidden, Channel, Photo, PhotoEmpty, ChatPhoto, ChatPhotoEmpty
 
-_PHOTO_MISSING = object()
+
+class _PhotoMissing(Enum):
+    PHOTO_MISSING = auto()
+
+
+_PHOTO_MISSING = _PhotoMissing.PHOTO_MISSING
 
 
 class ChatBase(Model):
@@ -33,7 +39,7 @@ class ChatBase(Model):
 
     async def update(
             self, title: str | None = None, description: str | None = None,
-            photo: models.File | None | object = _PHOTO_MISSING
+            photo: models.File | None | _PhotoMissing = _PHOTO_MISSING
     ) -> None:
         save_fields = []
 
@@ -121,13 +127,25 @@ class ChatBase(Model):
                 and self.creator_id != participant.user_id:
             return False
 
-        return participant.is_admin or \
-            self.creator_id == participant.user_id \
-            or not (participant.banned_rights & permission or self.banned_rights & permission)
+        if participant.is_admin or self.creator_id == participant.user_id:
+            return True
+
+        return not (participant.banned_rights & permission or self.banned_rights & permission)
 
     def admin_has_permission(self, participant: models.ChatParticipant, permission: ChatAdminRights) -> bool:
         return self.creator_id == participant.user_id \
-            or (participant.is_admin and ((participant.admin_rights & permission) == permission))
+            or ((participant.admin_rights & permission) == permission)
+
+    def can_invite(self, participant: models.ChatParticipant) -> bool:
+        if isinstance(self, models.Chat) \
+                and not self.user_has_permission(participant, ChatBannedRights.INVITE_USERS):
+            return False
+        elif isinstance(self, models.Channel) \
+                and not self.user_has_permission(participant, ChatBannedRights.INVITE_USERS) \
+                and not self.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+            return False
+
+        return True
 
     async def to_tl(self, user: models.User) -> Chat | ChatForbidden | Channel | ChannelForbidden:
         raise NotImplemented

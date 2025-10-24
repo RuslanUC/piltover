@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import auto, Enum
 from typing import cast
 
 from tortoise import fields
@@ -8,7 +9,7 @@ from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.db.models import ChatBase
 from piltover.tl import ChannelForbidden, Channel as TLChannel
-from piltover.tl.types import ChatAdminRights
+from piltover.tl.types import ChatAdminRights, PeerColor
 
 CREATOR_RIGHTS = ChatAdminRights(
     change_info=True,
@@ -27,7 +28,13 @@ CREATOR_RIGHTS = ChatAdminRights(
     edit_stories=True,
     delete_stories=True,
 )
-_USERNAME_MISSING = object()
+
+
+class _UsernameMissing(Enum):
+    USERNAME_MISSING = auto()
+
+
+_USERNAME_MISSING = _UsernameMissing.USERNAME_MISSING
 
 
 class Channel(ChatBase):
@@ -35,8 +42,13 @@ class Channel(ChatBase):
     supergroup: bool = fields.BooleanField(default=False)
     pts: int = fields.BigIntField(default=1)
     signatures: bool = fields.BooleanField(default=False)
+    accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_accent")
+    profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_profile")
 
-    cached_username: models.Username | None | object = _USERNAME_MISSING
+    accent_color_id: int | None
+    profile_color_id: int | None
+
+    cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
 
     async def get_username(self) -> models.Username | None:
         if self.cached_username is _USERNAME_MISSING:
@@ -98,5 +110,7 @@ class Channel(ChatBase):
             username=username.username if username is not None else None,
             usernames=[],
             default_banned_rights=self.banned_rights.to_tl(),
-            banned_rights=participant.banned_rights.to_tl()
+            banned_rights=participant.banned_rights.to_tl(),
+            color=PeerColor(color=self.accent_color_id) if self.accent_color is not None else None,
+            profile_color=PeerColor(color=self.profile_color_id) if self.profile_color is not None else None,
         )

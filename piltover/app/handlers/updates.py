@@ -19,6 +19,8 @@ from piltover.worker import MessageHandler
 
 handler = MessageHandler("auth")
 
+CHANNEL_UPDATES_TIMEOUT = 300  # it seems like 300 is default Telegram value
+
 
 async def get_seq_qts() -> tuple[int, int]:
     ctx = request_ctx.get()
@@ -144,9 +146,12 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
 
     if not new_updates:
         return ChannelDifferenceEmpty(
-            final=False,
+            # > "always false" (as documentation says)
+            # > look inside Telegram response
+            # > true
+            final=True,
             pts=peer.channel.pts,
-            timeout=30,  # TODO: what value Telegram is using?
+            timeout=CHANNEL_UPDATES_TIMEOUT,
         )
 
     has_more = await ChannelUpdate.filter(channel=peer.channel, pts__gt=new_updates[-1].pts).exists()
@@ -181,7 +186,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
     return ChannelDifference(
         final=not has_more,
         pts=new_updates[-1].pts,
-        timeout=30,  # TODO: what value Telegram is using?
+        timeout=CHANNEL_UPDATES_TIMEOUT,
         new_messages=list(new_messages.values()),
         other_updates=other_updates,
         chats=[*chats.values(), *channels.values()],

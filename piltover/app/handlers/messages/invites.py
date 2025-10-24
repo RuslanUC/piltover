@@ -29,7 +29,7 @@ handler = MessageHandler("messages.invites")
 @handler.on_request(GetExportedChatInvites)
 async def get_exported_chat_invites(request: GetExportedChatInvites, user: User) -> ExportedChatInvites:
     peer = await Peer.from_input_peer_raise(user, request.peer)
-    if peer.type is not PeerType.CHAT:
+    if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     participant = await ChatParticipant.get_or_none(Chat.query(peer.chat_or_channel) & Q(user=user))
@@ -83,14 +83,11 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
 
     request_new = isinstance(request, (ExportChatInvite_134, ExportChatInvite))
     request_needed = request.request_needed if request_new else True
+    title = request.title if request_new else None
+    expires_at = None if request.expire_date is None else datetime.fromtimestamp(request.expire_date, UTC)
 
-    invite = await ChatInvite.create(
-        **Chat.or_channel(peer.chat_or_channel),
-        user=user,
-        request_needed=request_needed,
-        usage_limit=request.usage_limit if not request_needed else None,
-        title=request.title if request_new else None,
-        expires_at=None if request.expire_date is None else datetime.fromtimestamp(request.expire_date, UTC),
+    invite = await ChatInvite.get_or_create_for_chat(
+        user, peer.chat_or_channel, request_needed, request.usage_limit, title, expires_at, True,
     )
 
     return await invite.to_tl()
@@ -273,13 +270,17 @@ async def check_chat_invite(request: CheckChatInvite, user: User) -> TLChatInvit
     if await ChatParticipant.filter(Chat.query(invite.chat_or_channel) & Q(user=user)).exists():
         return ChatInviteAlready(chat=await invite.chat_or_channel.to_tl(user))
 
+    channel = invite.channel
     return TLChatInvite(
+        channel=isinstance(invite.chat_or_channel, Channel),
+        broadcast=not channel.supergroup if channel is not None else False,
+        megagroup=channel.supergroup if channel is not None else False,
         request_needed=invite.request_needed,
         title=invite.chat_or_channel.name,
         about=invite.chat_or_channel.description,
         photo=await invite.chat_or_channel.to_tl_photo(user),
         participants_count=await ChatParticipant.filter(Chat.query(invite.chat_or_channel)).count(),
-        color=1,
+        color=1 if channel is None or channel.accent_color_id is None else channel.accent_color_id,
     )
 
 

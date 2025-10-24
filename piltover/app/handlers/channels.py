@@ -10,7 +10,7 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import validate_username
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
-    ChatInviteRequest, Username
+    ChatInviteRequest, Username, ChatInvite
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -151,7 +151,11 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         channel.photo = await channel.photo
         photo = await channel.photo.to_tl_photo(user)
 
-    # TODO: full_chat.exported_invite
+    invite = None
+    participant = await ChatParticipant.get_or_none(channel=channel, user=user)
+    if channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+        invite = await ChatInvite.get_or_create_for_chat(user, peer.chat_or_channel)
+
     # TODO: full_chat.migrated_from_chat_id and full_chat.migrated_from_max_id
     # TODO: full_chat.available_min_id
     in_read_max_id, out_read_max_id, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(
@@ -190,6 +194,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
                 ).order_by("-id").first().values_list("id", flat=True)
             ),
             pts=channel.pts,
+            exported_invite=await invite.to_tl() if invite is not None else None,
         ),
         chats=[await channel.to_tl(user)],
         users=[await user.to_tl(user)],
@@ -453,9 +458,13 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     if request.max_id <= read_state.last_message_id:
         return True
 
-    message_id, internal_id = await Message.filter(
+    unread_ids = await Message.filter(
         id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
     ).order_by("-id").first().values_list("id", "internal_id")
+    if not unread_ids:
+        return True
+
+    message_id, internal_id = unread_ids
     if not message_id:
         return True
 

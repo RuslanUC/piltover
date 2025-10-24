@@ -5,9 +5,11 @@ from fastrand import xorshift128plus_bytes
 import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence
+from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
-from piltover.tl import Updates, UpdateUserTyping
-from piltover.tl.functions.messages import SetTyping, GetDhConfig
+from piltover.tl import Updates, UpdateUserTyping, DefaultHistoryTTL
+from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
+    SetHistoryTTL
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
@@ -56,3 +58,24 @@ async def get_dh_config(request: GetDhConfig):
         version=CURRENT_DH_VERSION,
         random=random_bytes,
     )
+
+
+@handler.on_request(GetDefaultHistoryTTL)
+async def get_default_history_ttl(user: User) -> DefaultHistoryTTL:
+    return DefaultHistoryTTL(period=user.history_ttl_days * 86400)
+
+
+@handler.on_request(SetDefaultHistoryTTL)
+async def set_default_history_ttl(request: SetDefaultHistoryTTL, user: User) -> bool:
+    if request.period % 86400 != 0:
+        raise ErrorRpc(error_code=400, error_message="TTL_PERIOD_INVALID")
+
+    user.history_ttl_days = request.period // 86400
+    await user.save(update_fields=["history_ttl_days"])
+
+    return True
+
+
+@handler.on_request(SetHistoryTTL)
+async def set_history_ttl(_request: SetHistoryTTL, _user: User) -> Updates:
+    raise ErrorRpc(error_code=400, error_message="TTL_PERIOD_INVALID")
