@@ -147,5 +147,16 @@ class ChatBase(Model):
 
         return True
 
+    def make_id(self) -> int:
+        raise NotImplemented
+
+    @classmethod
+    def make_id_from(cls, in_id: int) -> int:
+        raise NotImplemented
+
+    @staticmethod
+    def norm_id(t_id: int) -> int:
+        return t_id // 2
+
     async def to_tl(self, user: models.User) -> Chat | ChatForbidden | Channel | ChannelForbidden:
         raise NotImplemented

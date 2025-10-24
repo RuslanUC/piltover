@@ -69,7 +69,9 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 
 @handler.on_request(GetChats)
 async def get_chats(request: GetChats, user: User) -> Chats:
-    peers = await Peer.filter(owner=user, chat__id__in=request.id).select_related("chat")
+    chat_ids = [Chat.norm_id(chat_id) for chat_id in request.id]
+    peers = await Peer.filter(owner=user, chat__id__in=chat_ids).select_related("chat")
+
     return Chats(
         chats=[
             await peer.chat.to_tl(user)
@@ -92,10 +94,10 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
         full_chat=ChatFull(
             can_set_username=True,
             translations_disabled=True,
-            id=chat.id,
+            id=chat.make_id(),
             about=chat.description,
             participants=ChatParticipants(
-                chat_id=chat.id,
+                chat_id=chat.make_id(),
                 participants=[
                     await participant.to_tl()
                     for participant in await ChatParticipant.filter(chat=chat).select_related("chat")
@@ -331,6 +333,8 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
 
 @handler.on_request(EditChatDefaultBannedRights)
 async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, user: User) -> Updates:
+    # TODO: add support for channels
+
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is not PeerType.CHAT:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")

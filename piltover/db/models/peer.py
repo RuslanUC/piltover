@@ -53,6 +53,7 @@ class Peer(Model):
 
     @classmethod
     async def from_chat_id(cls, user: models.User, chat_id: int) -> Peer | None:
+        chat_id = models.Chat.norm_id(chat_id)
         return await Peer.get_or_none(owner=user, chat__id=chat_id, type=PeerType.CHAT).select_related("owner", "chat")
 
     @classmethod
@@ -76,10 +77,12 @@ class Peer(Model):
                 owner=user, user__id=input_peer.user_id, access_hash=input_peer.access_hash,
             ).select_related("owner", "user")
         elif isinstance(input_peer, InputPeerChat):
-            return await Peer.get_or_none(owner=user, chat__id=input_peer.chat_id).select_related("owner", "chat")
+            chat_id = models.Chat.norm_id(input_peer.chat_id)
+            return await Peer.get_or_none(owner=user, chat__id=chat_id).select_related("owner", "chat")
         elif isinstance(input_peer, (InputPeerChannel, InputChannel)):
+            channel_id = models.Channel.norm_id(input_peer.channel_id)
             return await Peer.get_or_none(
-                owner=user, channel__id=input_peer.channel_id, access_hash=input_peer.access_hash,
+                owner=user, channel__id=channel_id, access_hash=input_peer.access_hash,
             ).select_related("owner", "channel")
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
@@ -113,9 +116,9 @@ class Peer(Model):
         if self.type is PeerType.USER:
             return PeerUser(user_id=self.user_id)
         if self.type == PeerType.CHAT:
-            return PeerChat(chat_id=self.chat_id)
+            return PeerChat(chat_id=models.Chat.make_id_from(self.chat_id))
         if self.type == PeerType.CHANNEL:
-            return PeerChannel(channel_id=self.channel_id)
+            return PeerChannel(channel_id=models.Channel.make_id_from(self.channel_id))
 
         raise RuntimeError("Unreachable")
 
@@ -129,9 +132,11 @@ class Peer(Model):
         if self.type is PeerType.USER:
             return InputPeerUser(user_id=self.user_id, access_hash=self.access_hash)
         if self.type == PeerType.CHAT:
-            return InputPeerChat(chat_id=self.chat_id)
+            return InputPeerChat(chat_id=models.Chat.make_id_from(self.chat_id))
         if self.type == PeerType.CHANNEL:
-            return InputPeerChannel(channel_id=self.channel_id, access_hash=self.access_hash)
+            return InputPeerChannel(
+                channel_id=models.Channel.make_id_from(self.channel_id), access_hash=self.access_hash,
+            )
 
         raise RuntimeError("Unreachable")
 

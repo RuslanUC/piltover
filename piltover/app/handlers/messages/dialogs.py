@@ -32,7 +32,7 @@ async def format_dialogs(
     channels_q = Q()
 
     for dialog in dialogs:
-        message = await Message.filter(peer=dialog.peer).select_related("author", "peer").order_by("-id").first()
+        message = await dialog.top_message_query()
         if message is not None:
             messages.append(await message.to_tl(user))
             users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
@@ -136,7 +136,7 @@ async def get_dialogs(request: GetDialogs, user: User) -> Dialogs:
 
 
 @handler.on_request(GetPeerDialogs)
-async def get_peer_dialogs(request: GetPeerDialogs, user: User):
+async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
     query = Q(peer__owner=user)
 
     peers_query = None

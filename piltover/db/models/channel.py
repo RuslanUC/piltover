@@ -50,6 +50,13 @@ class Channel(ChatBase):
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
 
+    def make_id(self) -> int:
+        return self.make_id_from(self.id)
+
+    @classmethod
+    def make_id_from(cls, in_id: int) -> int:
+        return in_id * 2 + 1
+
     async def get_username(self) -> models.Username | None:
         if self.cached_username is _USERNAME_MISSING:
             self.cached_username = await models.Username.get_or_none(channel=self)
@@ -63,7 +70,7 @@ class Channel(ChatBase):
         if peer is None \
                 or (participant := await models.ChatParticipant.get_or_none(user__id=user_id, channel=self)) is None:
             return ChannelForbidden(
-                id=self.id,
+                id=self.make_id(),
                 access_hash=0 if peer is None else cast(models.Peer, peer).access_hash,
                 title=self.name,
             )
@@ -77,7 +84,7 @@ class Channel(ChatBase):
         username = await self.get_username()
 
         return TLChannel(
-            id=self.id,
+            id=self.make_id(),
             title=self.name,
             photo=await self.to_tl_chat_photo(),
             date=int((participant.invited_at if participant else self.created_at).timestamp()),

@@ -25,10 +25,17 @@ DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
 
 
 class Chat(ChatBase):
+    def make_id(self) -> int:
+        return self.make_id_from(self.id)
+
+    @classmethod
+    def make_id_from(cls, in_id: int) -> int:
+        return in_id * 2
+
     async def to_tl(self, user: models.User) -> TLChat | ChatForbidden:
         participant = await models.ChatParticipant.get_or_none(user=user, chat=self)
         if participant is None:
-            return ChatForbidden(id=self.id, title=self.name)
+            return ChatForbidden(id=self.make_id(), title=self.name)
 
         return TLChat(
             creator=self.creator_id == user.id,
@@ -37,7 +44,7 @@ class Chat(ChatBase):
             call_active=False,
             call_not_empty=False,
             noforwards=self.no_forwards,
-            id=self.id,
+            id=self.make_id(),
             title=self.name,
             photo=await self.to_tl_chat_photo(),
             participants_count=await models.ChatParticipant.filter(chat=self).count(),

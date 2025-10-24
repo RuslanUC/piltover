@@ -196,6 +196,19 @@ def _resolve_reply_id(
         return request.reply_to_msg_id
 
 
+async def _make_channel_post_info_maybe(peer: Peer, user: User) -> tuple[bool, ChannelPostInfo | None, str | None]:
+    if peer.type is not PeerType.CHANNEL or not peer.channel.channel:
+        return False, None, None
+
+    post_signature = None
+    is_channel_post = True
+    post_info = await ChannelPostInfo.create()
+    if peer.channel.signatures:
+        post_signature = user.first_name
+
+    return is_channel_post, post_info, post_signature
+
+
 @handler.on_request(SendMessage_148)
 @handler.on_request(SendMessage_176)
 @handler.on_request(SendMessage)
@@ -221,15 +234,7 @@ async def send_message(request: SendMessage, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
     reply_to_message_id = _resolve_reply_id(request)
-
-    is_channel_post = False
-    post_info = None
-    post_signature = None
-    if peer.type is PeerType.CHANNEL and peer.channel.channel:
-        is_channel_post = True
-        post_info = await ChannelPostInfo.create()
-        if peer.channel.signatures:
-            post_signature = user.first_name
+    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
@@ -574,11 +579,13 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
 
     media = await _process_media(user, request.media)
     reply_to_message_id = _resolve_reply_id(request)
+    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, message=request.message, media=media,
         entities=await process_message_entities(request.message, request.entities, user),
+        channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
     )
 
 
@@ -658,6 +665,7 @@ async def forward_messages(
     result: defaultdict[Peer, list[Message]] = defaultdict(list)
 
     # TODO: schedule_date
+    # TODO: channel post info
 
     for message in messages:
         internal_id = Snowflake.make_id()
@@ -781,10 +789,12 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
     group_id = Snowflake.make_id()
 
     updates = None
-    for message, random_id, media, entities in messages:
+    for idx, (message, random_id, media, entities) in enumerate(messages):
+        is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
         new_updates = await send_message_internal(
             user, peer, random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
             author=user, message=message, media=media, entities=entities, media_group_id=group_id,
+            channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
         )
         if updates is None:
             updates = new_updates

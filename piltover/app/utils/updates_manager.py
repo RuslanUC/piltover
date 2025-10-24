@@ -340,7 +340,7 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
             object=UpdatesWithDefaults(
                 updates=[
                     UpdateDeleteChannelMessages(
-                        channel_id=channel.id,
+                        channel_id=channel.make_id(),
                         messages=messages,
                         pts=channel.pts,
                         pts_count=1,
@@ -600,6 +600,7 @@ async def update_user(user: User) -> None:
 
     await Update.bulk_create(updates_to_create)
 
+
 # TODO: rename to something like "update_chat_participants"
 
 async def create_chat(user: User, chat: Chat, peers: list[Peer]) -> Updates:
@@ -630,7 +631,7 @@ async def create_chat(user: User, chat: Chat, peers: list[Peer]) -> Updates:
             updates=[
                 UpdateChatParticipants(
                     participants=ChatParticipants(
-                        chat_id=chat.id,
+                        chat_id=chat.make_id(),
                         participants=participants,
                         version=1,
                     ),
@@ -755,7 +756,7 @@ async def update_chat(chat: Chat, user: User | None = None) -> Updates | None:
         ))
 
         updates = UpdatesWithDefaults(
-            updates=[UpdateChat(chat_id=chat.id)],
+            updates=[UpdateChat(chat_id=chat.make_id())],
             chats=[await chat.to_tl(peer.owner)],
         )
         if user == peer.owner:
@@ -827,7 +828,7 @@ async def update_read_history_inbox_channel(peer: Peer, max_id: int, unread_coun
     await SessionManager.send(UpdatesWithDefaults(
         updates=[
             UpdateReadChannelInbox(
-                channel_id=peer.channel_id,
+                channel_id=Channel.make_id_from(peer.channel_id),
                 max_id=max_id,
                 still_unread_count=unread_count,
                 pts=pts,
@@ -882,7 +883,7 @@ async def update_channel(channel: Channel, user: User | None = None) -> Updates 
     await SessionManager.send(
         ObjectWithLazyFields(
             object=UpdatesWithDefaults(
-                updates=[UpdateChannel(channel_id=channel.id)],
+                updates=[UpdateChannel(channel_id=channel.make_id())],
                 chats=[LazyChannel(channel_id=channel.id)],  # type: ignore
             ),
             fields=["chats.0"],
@@ -892,7 +893,7 @@ async def update_channel(channel: Channel, user: User | None = None) -> Updates 
 
     if user is not None:
         return UpdatesWithDefaults(
-            updates=[UpdateChannel(channel_id=channel.id)],
+            updates=[UpdateChannel(channel_id=channel.make_id())],
             chats=[await channel.to_tl(user)],
         )
 
@@ -975,7 +976,7 @@ async def update_channel_for_user(channel: Channel, user: User) -> Updates:
     )
 
     updates = UpdatesWithDefaults(
-        updates=[UpdateChannel(channel_id=channel.id)],
+        updates=[UpdateChannel(channel_id=channel.make_id())],
         chats=[await channel.to_tl(user)],
     )
 

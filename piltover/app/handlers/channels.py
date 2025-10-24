@@ -116,7 +116,7 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
         extra_info=MessageActionChannelCreate(title=request.title).write(),
     )
 
-    updates.updates.insert(0, UpdateChannel(channel_id=channel.id))
+    updates.updates.insert(0, UpdateChannel(channel_id=channel.make_id()))
 
     return updates
 
@@ -124,12 +124,16 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
 @handler.on_request(GetChannels)
 async def get_channels(request: GetChannels, user: User) -> Chats:
     channels = []
+
+    # TODO: do it in batch, i.e. using single query via .filter instead of fetching every channel separately
     for input_channel in request.id:
         if isinstance(input_channel, InputChannelEmpty):
             channels.append(ChatEmpty(id=0))
         elif isinstance(input_channel, (InputChannel, InputChannelFromMessage)):
-            # TODO: search for channel in list of channels where user is a member if input_channel.access_hash == 0
-            channel = await Channel.get_or_none(id=input_channel.channel_id, chatparticipants__user=user)
+            # TODO: search for channel in list of channels where user is a member if input_channel.access_hash == 0,
+            #  otherwise search in peers
+            channel_id = Channel.norm_id(input_channel.channel_id)
+            channel = await Channel.get_or_none(id=channel_id, chatparticipants__user=user)
             if channel is None:
                 channels.append(ChatEmpty(id=0))
             else:
@@ -177,7 +181,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             restricted_sponsored=True,
             can_view_revenue=False,
 
-            id=channel.id,
+            id=channel.make_id(),
             about=channel.description,
             participants_count=await ChatParticipant.filter(channel=channel).count(),
             admins_count=await ChatParticipant.filter(channel=channel, admin_rights__gt=0).count(),
@@ -326,7 +330,7 @@ async def edit_banned(request: EditBanned, user: User):
 
     await upd.update_channel_for_user(peer.channel, target_peer.user)
     return Updates(
-        updates=[UpdateChannel(channel_id=peer.channel.id)],
+        updates=[UpdateChannel(channel_id=peer.channel.make_id())],
         users=[],
         chats=[await peer.channel.to_tl(user)],
         date=int(time()),
@@ -377,7 +381,7 @@ async def edit_admin(request: EditAdmin, user: User):
 
     await upd.update_channel_for_user(peer.channel, target_peer.user)
     return Updates(
-        updates=[UpdateChannel(channel_id=peer.channel.id)],
+        updates=[UpdateChannel(channel_id=peer.channel.make_id())],
         users=[],
         chats=[await peer.channel.to_tl(user)],
         date=int(time()),
@@ -523,7 +527,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
 
     return InvitedUsers(
         updates=Updates(
-            updates=[UpdateChannel(channel_id=peer.channel.id)],
+            updates=[UpdateChannel(channel_id=peer.channel.make_id())],
             chats=[await peer.channel.to_tl(user)],
             users=[],
             date=int(time()),
