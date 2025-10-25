@@ -164,7 +164,9 @@ async def resolve_input_chat_photo(
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
 
         storage = request_ctx.get().storage
-        file = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO)
+        file = await uploaded_file.finalize_upload(
+            storage, "image/png", file_type=FileType.PHOTO, profile_photo=True,
+        )
 
         return file
 

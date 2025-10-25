@@ -87,18 +87,22 @@ image_executor = ThreadPoolExecutor(thread_name_prefix="ImageResizeWorker")
 video_executor = ThreadPoolExecutor(thread_name_prefix="VideoMetadataWorker")
 
 
-def _resize_image_internal(location: str, width: int) -> tuple[BytesIO, int]:
+def _resize_image_internal(location: str, to_size: int) -> tuple[BytesIO, int, int]:
     img = img_open(location)
     img.load()
 
-    original_width, height = img.size
-    factor = width / original_width
-    height *= factor
-    height = int(height)
+    width, height = img.size
+    factor = to_size / max(width, height)
+    if width >= height:
+        height = int(height * factor)
+        width = to_size
+    else:
+        width = int(width * factor)
+        height = to_size
 
     out = BytesIO()
     img.resize((width, height)).save(out, format="JPEG")
-    return out, height
+    return out, width, height
 
 
 async def resize_photo(
@@ -116,13 +120,11 @@ async def resize_photo(
         )
         for size in sizes
     ]
-    res: list[tuple[BytesIO, int]] = await gather(*tasks)
+    res: list[tuple[BytesIO, int, int]] = await gather(*tasks)
 
     result = []
 
-    for idx, (resized, height) in enumerate(res):
-        width = PHOTOSIZE_TO_INT[sizes[idx]]
-
+    for idx, (resized, width, height) in enumerate(res):
         await sleep(0)
 
         resized.seek(0, os.SEEK_END)

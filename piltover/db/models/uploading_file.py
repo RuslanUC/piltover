@@ -29,7 +29,7 @@ class UploadingFile(Model):
     async def finalize_upload(
             self, storage: BaseStorage, fallback_mime: str, attributes: list | None = None,
             file_type: FileType = FileType.DOCUMENT, parts_num: int | None = None, force_fallback_mime: bool = False,
-            thumb_bytes: bytes | None = None,
+            thumb_bytes: bytes | None = None, profile_photo: bool = False,
     ) -> models.File:
         parts = await UploadingFilePart.filter(file=self).order_by("part_id")
         if (self.total_parts > 0 and self.total_parts != len(parts)) or not parts:
@@ -83,7 +83,7 @@ class UploadingFile(Model):
                 thumb.save(thumb_file, format="JPEG")
                 thumb_bytes = thumb_file.getbuffer()
 
-        await file.make_thumbs(storage, thumb_bytes)
+        await file.make_thumbs(storage, thumb_bytes, profile_photo)
         await file.save()
 
         return file

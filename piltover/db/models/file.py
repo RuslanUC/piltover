@@ -152,7 +152,9 @@ class File(Model):
 
         return result
 
-    async def make_thumbs(self, storage: BaseStorage, thumb_bytes: StorageBuffer | None = None) -> None:
+    async def make_thumbs(
+            self, storage: BaseStorage, thumb_bytes: StorageBuffer | None = None, profile_photo: bool = False,
+    ) -> None:
         from piltover.app.utils.utils import resize_photo, generate_stripped
 
         thumb_suffix = None
@@ -175,6 +177,7 @@ class File(Model):
         try:
             self.photo_sizes = await resize_photo(
                 storage, self.physical_id, suffix=thumb_suffix, is_document=is_document,
+                sizes="abc" if profile_photo else "m",
             )
             self.photo_stripped = await generate_stripped(
                 storage, self.physical_id, suffix=thumb_suffix, is_document=is_document,

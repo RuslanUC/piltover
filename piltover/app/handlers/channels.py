@@ -165,6 +165,8 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     in_read_max_id, out_read_max_id, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(
         peer, True, True,
     )
+
+    # TODO: available_reactions
     return MessagesChatFull(
         full_chat=ChannelFull(
             can_view_participants=False,  # TODO: allow viewing participants

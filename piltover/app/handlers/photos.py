@@ -39,7 +39,9 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
         raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
 
     storage = request_ctx.get().storage
-    file = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO)
+    file = await uploaded_file.finalize_upload(
+        storage, "image/png", file_type=FileType.PHOTO, profile_photo=True,
+    )
     await UserPhoto.filter(user=user).update(current=False)
     photo = await UserPhoto.create(current=True, file=file, user=user)
 
