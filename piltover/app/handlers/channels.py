@@ -10,18 +10,21 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import validate_username
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
-    ChatInviteRequest, Username, ChatInvite
+    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session_manager import SessionManager
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, InputChannelEmpty, ChatEmpty, \
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
     Long, InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
-    ChannelParticipantsSearch
+    ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
+    ReactionCustomEmoji
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133
+from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
+    SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers
 from piltover.worker import MessageHandler
@@ -166,7 +169,16 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         peer, True, True,
     )
 
-    # TODO: available_reactions
+    if channel.all_reactions:
+        available_reactions = ChatReactionsAll(allow_custom=channel.all_reactions_custom)
+    else:
+        some = await AvailableChannelReaction.filter(channel=channel).select_related("reaction")
+        some = [ReactionEmoji(emoticon=reaction.reaction.reaction) for reaction in some]
+        if some:
+            available_reactions = ChatReactionsSome(reactions=some)
+        else:
+            available_reactions = ChatReactionsNone()
+
     return MessagesChatFull(
         full_chat=ChannelFull(
             can_view_participants=False,  # TODO: allow viewing participants
@@ -201,6 +213,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             ),
             pts=channel.pts,
             exported_invite=await invite.to_tl() if invite is not None else None,
+            available_reactions=available_reactions,
         ),
         chats=[await channel.to_tl(user)],
         users=[await user.to_tl(user)],
@@ -568,3 +581,75 @@ async def toggle_signatures_136(request: ToggleSignatures_133, user: User):
         profiles_enabled=False,
         channel=request.channel,
     ), user)
+
+
+@handler.on_request(SetChatAvailableReactions_179)
+@handler.on_request(SetChatAvailableReactions_145)
+@handler.on_request(SetChatAvailableReactions_136)
+@handler.on_request(SetChatAvailableReactions)
+async def set_chat_available_reactions(request: SetChatAvailableReactions, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    channel = peer.channel
+
+    participant = await ChatParticipant.get_or_none(channel=channel, user=user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    reactions = request.available_reactions
+    if isinstance(reactions, ChatReactionsAll):
+        if channel.all_reactions and reactions.allow_custom == channel.all_reactions_custom:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+        channel.all_reactions = True
+        channel.all_reactions_custom = reactions.allow_custom
+    elif isinstance(reactions, ChatReactionsNone):
+        some_available = await AvailableChannelReaction.filter(channel=channel).exists()
+        if not channel.all_reactions and not some_available:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+        channel.all_reactions = False
+        await AvailableChannelReaction.filter(channel=channel).delete()
+    elif isinstance(reactions, ChatReactionsSome):
+        if not reactions.reactions:
+            raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")  # TODO: or set to ChatReactionsNone?
+
+        reactions_emoticons = []
+
+        for reaction in reactions.reactions:
+            if isinstance(reaction, ReactionEmoji):
+                reactions_emoticons.append(Reaction.reaction_to_uuid(reaction.emoticon))
+            elif isinstance(reaction, ReactionCustomEmoji):
+                raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
+
+        new_reactions = await Reaction.filter(reaction_id__in=reactions_emoticons)
+        current_reactions = dict(await AvailableChannelReaction.filter(
+            channel=channel,
+        ).values_list("reaction__id", "id"))
+
+        to_create_reactions = []
+
+        for reaction in new_reactions:
+            if reaction.id not in current_reactions:
+                to_create_reactions.append(AvailableChannelReaction(channel=channel, reaction=reaction))
+            else:
+                del current_reactions[reaction.id]
+
+        to_delete_ids = list(current_reactions.values())
+
+        if not to_create_reactions and not to_delete_ids:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+        if to_create_reactions:
+            await AvailableChannelReaction.bulk_create(to_create_reactions)
+        if to_delete_ids:
+            await AvailableChannelReaction.filter(id__in=to_delete_ids).delete()
+    else:
+        raise Unreachable
+
+    channel.version += 1
+    await channel.save(update_fields=["all_reactions", "all_reactions_custom", "version"])
+
+    return await upd.update_channel(channel, user)

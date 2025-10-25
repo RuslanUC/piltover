@@ -60,3 +60,4 @@ from .installed_wallpaper import InstalledWallpaper
 from .message_mention import MessageMention
 from .peer_color_option import PeerColorOption
 from .taskiq_scheduled_message import TaskIqScheduledMessage
+from .available_channel_reaction import AvailableChannelReaction

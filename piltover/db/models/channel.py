@@ -44,6 +44,8 @@ class Channel(ChatBase):
     signatures: bool = fields.BooleanField(default=False)
     accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_accent")
     profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_profile")
+    all_reactions: bool = fields.BooleanField(default=True)
+    all_reactions_custom: bool = fields.BooleanField(default=False)
 
     accent_color_id: int | None
     profile_color_id: int | None
