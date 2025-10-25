@@ -179,6 +179,12 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         else:
             available_reactions = ChatReactionsNone()
 
+    has_scheduled = False
+    if channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
+        has_scheduled = await Message.filter(
+            peer__owner=user, peer__channel=channel, scheduled_date__not_isnull=True,
+        ).exists()
+
     return MessagesChatFull(
         full_chat=ChannelFull(
             can_view_participants=False,  # TODO: allow viewing participants
@@ -186,7 +192,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             can_set_stickers=False,
             hidden_prehistory=False,  # TODO: hide history for new users
             can_set_location=False,
-            has_scheduled=False,  # TODO: change when scheduled messages will be added
+            has_scheduled=has_scheduled,
             can_view_stats=False,
             can_delete_channel=True,
             antispam=False,
