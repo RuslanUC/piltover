@@ -445,7 +445,7 @@ async def _get_media_thumb(
 
 
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
-    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll,)):
+    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     file: File | None = None
@@ -484,7 +484,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
         valid, const = FileAccess.is_file_ref_valid(media.id.file_reference, user.id, media.id.id)
         if not valid:
-            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
         file_q = Q(id=media.id.id)
         if const:
             file_q &= Q(constant_access_hash=media.id.access_hash, constant_file_ref=media.id.file_reference[12:])
@@ -494,7 +494,9 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         if file is None \
                 or (not file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \
                 or (file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
-            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+            raise ErrorRpc(
+                error_code=400, error_message="MEDIA_INVALID", reason="file is None, or invalid mime, or no photo sizes"
+            )
 
         media_type = MediaType.PHOTO if isinstance(media, InputMediaPhoto) else MediaType.DOCUMENT
     elif isinstance(media, InputMediaPoll):

@@ -142,14 +142,17 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")
 
+    document_thumb = isinstance(location, InputDocumentFileLocation) and location.thumb_size
+
     storage = request_ctx.get().storage
     component = storage.documents
 
     suffix = None
-    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)):
+    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)) \
+            or document_thumb:
         if not file.photo_sizes:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")  # not a photo or does not have thumbs
-        if isinstance(location, InputPhotoFileLocation):
+        if isinstance(location, (InputPhotoFileLocation, InputDocumentFileLocation)):
             size = PHOTOSIZE_TO_INT[location.thumb_size]
         elif isinstance(location, InputStickerSetThumb):
             size = 100
@@ -167,7 +170,8 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     data = await component.get_part(file.physical_id, request.offset, request.limit, suffix)
     data = data or b""
 
-    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)):
+    if isinstance(location, (InputPhotoFileLocation, InputPeerPhotoFileLocation, InputStickerSetThumb)) \
+            or document_thumb:
         file_type = FileJpeg()
     elif len(data) != file.size:
         file_type = FilePartial()
