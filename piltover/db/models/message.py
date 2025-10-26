@@ -67,15 +67,6 @@ class _FwdHeaderMissing(Enum):
 
 
 _FWD_HEADER_MISSING = _FwdHeaderMissing.FWD_HEADER_MISSING
-_BASE_DEFAULTS = {
-    "silent": False,
-    "legacy": False,
-}
-_REGULAR_DEFAULTS = {
-    "edit_hide": False,
-    "noforwards": False,
-    "restriction_reason": [],
-}
 AllowedMessageActions = (*MessageActionInst, *MessageActionNeedsProcessingInst)
 
 
@@ -96,6 +87,7 @@ class Message(Model):
     post_author: str | None = fields.CharField(max_length=128, null=True, default=None)
     scheduled_date: datetime | None = fields.DatetimeField(null=True, default=None)
     from_scheduled: bool = fields.BooleanField(default=False)
+    ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -180,6 +172,7 @@ class Message(Model):
             from_id=from_id,
             mentioned=False,
             media_unread=False,
+            ttl_period=self.ttl_period_days * 86400 if self.ttl_period_days else None,
         )
 
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessage | MessageService:
@@ -238,12 +231,16 @@ class Message(Model):
         )
         if mention_id is not None:
             # TODO: cache read state somewhere or pass as argument
-            read_state, _ = await models.ReadState.get_or_create(peer=self.peer)
-            mentioned = mention_id > read_state.last_mention_id
+            # read_state, _ = await models.ReadState.get_or_create(peer=self.peer)
+            mentioned = True  # mention_id > read_state.last_mention_id
 
         media_unread = mentioned
         if not media_unread:
             ...  # TODO: check if media is read
+
+        ttl_period = None
+        if self.ttl_period_days and self.type is MessageType.REGULAR:
+            ttl_period = self.ttl_period_days * 86400
 
         message = TLMessage(
             id=self.id,
@@ -267,8 +264,13 @@ class Message(Model):
             mentioned=mentioned,
             media_unread=media_unread,
             from_scheduled=self.from_scheduled or self.scheduled_date is not None,
-            **_BASE_DEFAULTS,
-            **_REGULAR_DEFAULTS,
+            ttl_period=ttl_period,
+
+            silent=False,
+            legacy=False,
+            edit_hide=False,
+            noforwards=False,
+            restriction_reason=[],
         )
 
         await Cache.obj.set(self._cache_key(current_user), message)
@@ -283,6 +285,7 @@ class Message(Model):
 
         messages: dict[models.Peer, Message] = {}
 
+        send_date = datetime.now(UTC)
         for to_peer in peers:
             await to_peer.fetch_related("owner", "user")
             await models.Dialog.get_or_create(peer=to_peer)
@@ -290,7 +293,7 @@ class Message(Model):
                 from_scheduled=to_peer == self.peer,
                 internal_id=self.internal_id,
                 message=self.message,
-                date=datetime.now(UTC),
+                date=send_date,
                 type=MessageType.REGULAR,
                 author=self.author,
                 peer=to_peer,
@@ -302,6 +305,7 @@ class Message(Model):
                 channel_post=self.channel_post,
                 post_author=self.post_author,
                 post_info=self.post_info,
+                ttl_period_days=self.ttl_period_days,
             )
 
         return messages

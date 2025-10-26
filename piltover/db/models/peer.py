@@ -27,7 +27,7 @@ class Peer(Model):
     type: PeerType = fields.IntEnumField(PeerType)
     access_hash: int = fields.BigIntField(default=gen_access_hash)
     blocked_at: datetime = fields.DatetimeField(null=True, default=None)
-    user_ttl_period_days: int | None = fields.SmallIntField(default=None)
+    user_ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
 
     user: models.User | None = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)

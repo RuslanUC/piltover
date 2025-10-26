@@ -211,7 +211,10 @@ async def add_chat_user(request: AddChatUser, user: User):
     if not await PrivacyRule.has_access_to(user, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):
         raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
-    chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
+    chat_peers = {
+        peer.owner.id: peer
+        for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner", "chat")
+    }
     if chat_peer.owner.id not in chat_peers:
         chat_peers[chat_peer.owner.id] = chat_peer
     invited_user = user_peer.peer_user(user)

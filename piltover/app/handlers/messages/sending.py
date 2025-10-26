@@ -16,7 +16,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess, MessageMention, \
-    TaskIqScheduledMessage
+    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
@@ -93,6 +93,17 @@ async def send_created_messages_internal(
         await draft.delete()
         await upd.update_draft(user, peer, None)
 
+    ttl_tasks = []
+    for message in messages.values():
+        if message.ttl_period_days:
+            ttl_tasks.append(TaskIqScheduledDeleteMessage(
+                message=message,
+                scheduled_for=int(message.date.timestamp()) + message.ttl_period_days * 86400,
+            ))
+
+    if ttl_tasks:
+        await TaskIqScheduledDeleteMessage.bulk_create(ttl_tasks)
+
     if peer.type is PeerType.CHANNEL:
         if len(messages) != 1:
             logger.warning(f"Got {len(messages)} messages after creating message with channel peer!")
@@ -157,7 +168,11 @@ async def send_message_internal(
         message_kwargs["scheduled_date"] = datetime.fromtimestamp(scheduled_date, UTC)
         message_kwargs["type"] = MessageType.SCHEDULED
 
-    # TODO: set ttl_period
+    ttl_not_in_kwargs = "ttl_period_days" not in message_kwargs
+    if ttl_not_in_kwargs and peer.type is PeerType.USER and peer.user_ttl_period_days:
+        message_kwargs["ttl_period_days"] = peer.user_ttl_period_days
+    elif ttl_not_in_kwargs and peer.type in (PeerType.CHAT, PeerType.CHANNEL) and peer.chat_or_channel.ttl_period_days:
+        message_kwargs["ttl_period_days"] = peer.chat_or_channel.ttl_period_days
 
     messages = await Message.create_for_peer(
         peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,

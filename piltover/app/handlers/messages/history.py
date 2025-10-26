@@ -734,7 +734,7 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
 
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
-        author=user, type=MessageType.SERVICE_CHAT_UPDATE_TTL, ttl_period=None,
+        author=user, type=MessageType.SERVICE_CHAT_UPDATE_TTL, ttl_period_days=None,
         extra_info=MessageActionSetMessagesTTL(period=ttl_days * 86400).write(),
     )
     updates.updates.extend(updates_msg.updates)

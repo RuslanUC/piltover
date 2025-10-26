@@ -7,7 +7,7 @@ from typing import TypeVar
 from loguru import logger
 from taskiq import InMemoryBroker, TaskiqScheduler, ScheduleSource, ScheduledTask, AsyncBroker
 
-from piltover.db.models.taskiq_scheduled_message import TaskIqScheduledMessage
+from piltover.db.models import TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
 
 try:
     from taskiq_aio_pika import AioPikaBroker
@@ -21,7 +21,8 @@ T = TypeVar("T")
 
 
 class OrmDatabaseScheduleSource(ScheduleSource):
-    async def get_schedules(self) -> list[ScheduledTask]:
+    @staticmethod
+    async def _get_scheduled_to_send_messages() -> list[ScheduledTask]:
         current_minute = int(time())
         current_minute += (-current_minute % 60)
         scheduled_messages = await TaskIqScheduledMessage.filter(
@@ -42,6 +43,36 @@ class OrmDatabaseScheduleSource(ScheduleSource):
                 time=datetime.fromtimestamp(scheduled.scheduled_time, UTC),
             )
             for scheduled in scheduled_messages
+        ]
+
+    @staticmethod
+    async def _get_scheduled_to_delete_messages() -> list[ScheduledTask]:
+        current_minute = int(time())
+        current_minute += (-current_minute % 60)
+        scheduled_messages = await TaskIqScheduledDeleteMessage.filter(
+            scheduled_for__lte=current_minute, start_processing__isnull=True,
+        ).order_by("scheduled_for").limit(100)
+
+        scheduled_ids = [scheduled.id for scheduled in scheduled_messages]
+
+        await TaskIqScheduledMessage.filter(id__in=scheduled_ids).update(start_processing=int(time()))
+
+        return [
+            ScheduledTask(
+                task_name="delete_scheduled",
+                schedule_id=str(scheduled.id),
+                labels={},
+                args=[],
+                kwargs={"message_id": scheduled.message_id},
+                time=datetime.fromtimestamp(scheduled.scheduled_for, UTC),
+            )
+            for scheduled in scheduled_messages
+        ]
+
+    async def get_schedules(self) -> list[ScheduledTask]:
+        return [
+            *(await self._get_scheduled_to_send_messages()),
+            *(await self._get_scheduled_to_delete_messages()),
         ]
 
 

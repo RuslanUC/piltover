@@ -22,7 +22,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
-    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -271,20 +271,18 @@ async def send_messages_channel(
     )
 
 
-async def delete_messages(user: User, messages: dict[User, list[int]]) -> int:
+async def delete_messages(user: User | None, messages: dict[User, list[int]]) -> int:
     updates_to_create = []
+    user_new_pts = None
 
     for upd_user, message_ids in messages.items():
-        if user == upd_user:
-            continue
-
         pts_count = len(message_ids)
-        pts = await State.add_pts(upd_user, pts_count)
+        new_pts = await State.add_pts(upd_user, pts_count)
 
         update = Update(
             user=upd_user,
             update_type=UpdateType.MESSAGE_DELETE,
-            pts=pts,
+            pts=new_pts,
             related_id=None,
             related_ids=message_ids,
         )
@@ -292,29 +290,25 @@ async def delete_messages(user: User, messages: dict[User, list[int]]) -> int:
 
         await SessionManager.send(
             UpdatesWithDefaults(
-                updates=[(await update.to_tl(upd_user))[0]],
+                updates=[
+                    UpdateDeleteMessages(
+                        messages=message_ids,
+                        pts=new_pts,
+                        pts_count=pts_count,
+                    ),
+                ],
             ),
             upd_user.id
         )
 
-    all_ids = [i for ids in messages.values() for i in ids]
-    new_pts = await State.add_pts(user, len(all_ids))
-    update = Update(
-        user=user,
-        update_type=UpdateType.MESSAGE_DELETE,
-        pts=new_pts,
-        related_id=None,
-        related_ids=all_ids,
-    )
-    updates_to_create.append(update)
+        if user == upd_user:
+            user_new_pts = new_pts
 
+    all_ids = [i for ids in messages.values() for i in ids]
     await Update.filter(related_id__in=all_ids).delete()
     await Update.bulk_create(updates_to_create)
 
-    updates = Updates(updates=[(await update.to_tl(user))[0]], users=[], chats=[], date=int(time()), seq=0)
-    await SessionManager.send(updates, user.id)
-
-    return new_pts
+    return user_new_pts
 
 
 async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:

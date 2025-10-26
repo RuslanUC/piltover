@@ -252,7 +252,7 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
 
     chat_peers = {
         peer.owner.id: peer
-        for peer in await Peer.filter(Chat.query(invite.chat_or_channel)).select_related("owner")
+        for peer in await Peer.filter(Chat.query(invite.chat_or_channel)).select_related("owner", "chat", "channel")
     }
 
     updates = await upd.create_chat(user, cast(Chat, invite.chat_or_channel), list(chat_peers.values()))
@@ -347,7 +347,9 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
     peer_type = PeerType.CHAT if isinstance(chat, Chat) else PeerType.CHANNEL
-    this_peer = await Peer.get_or_none(owner=user, type=peer_type, **Chat.or_channel(chat)).select_related("owner")
+    this_peer = await Peer.get_or_none(
+        owner=user, type=peer_type, **Chat.or_channel(chat),
+    ).select_related("owner", "chat", "channel")
 
     requested_users = [request.user.id for request in requests]
     new_peers = {

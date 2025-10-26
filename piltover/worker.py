@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from inspect import getfullargspec
 from io import BytesIO
 from pathlib import Path
@@ -130,6 +131,7 @@ class Worker(MessageHandler):
 
         self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
         self.broker.register_task(self._handle_scheduled_message, "send_scheduled")
+        self.broker.register_task(self._handle_scheduled_delete_message, "delete_scheduled")
         self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
         self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
 
@@ -246,3 +248,33 @@ class Worker(MessageHandler):
             new_message = messages[peer]
 
         await upd.delete_scheduled_messages(peer.owner, peer, [scheduled.id], [new_message.id])
+
+    async def _handle_scheduled_delete_message(self, message_id: int) -> None:
+        import piltover.app.utils.updates_manager as upd
+
+        internal_id = await Message.filter(id=message_id).first().values_list("internal_id", flat=True)
+        if internal_id is None:
+            return
+
+        async with in_transaction():
+            to_delete = await Message.select_for_update(
+                skip_locked=True, no_key=True,
+            ).filter(internal_id=internal_id).select_related("peer", "peer__owner", "peer__channel")
+
+            all_ids = []
+            regular_messages = defaultdict(list)
+            channel_messages = defaultdict(list)
+
+            for message in to_delete:
+                all_ids.append(message.id)
+                if message.peer.type is PeerType.CHANNEL:
+                    channel_messages[message.peer.channel_id].append(message.id)
+                else:
+                    regular_messages[message.peer.owner].append(message.id)
+
+            await Message.filter(id__in=all_ids).delete()
+
+            if regular_messages:
+                await upd.delete_messages(None, regular_messages)
+            for channel, message_ids in channel_messages.items():
+                await upd.delete_messages_channel(channel, message_ids)
