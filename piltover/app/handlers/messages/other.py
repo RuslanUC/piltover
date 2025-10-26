@@ -74,8 +74,3 @@ async def set_default_history_ttl(request: SetDefaultHistoryTTL, user: User) -> 
     await user.save(update_fields=["history_ttl_days"])
 
     return True
-
-
-@handler.on_request(SetHistoryTTL)
-async def set_history_ttl(_request: SetHistoryTTL, _user: User) -> Updates:
-    raise ErrorRpc(error_code=400, error_message="TTL_PERIOD_INVALID")

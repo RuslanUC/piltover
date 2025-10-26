@@ -12,20 +12,22 @@ from tortoise.functions import Min, Max, Count
 from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
+from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
-from piltover.db.enums import MediaType, PeerType, FileType, MessageType
-from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention
+from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights
+from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention, \
+    ChatParticipant, Chat
 from piltover.db.models._utils import resolve_users_chats
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
-    InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector
+    InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
-    ReadMessageContents
+    ReadMessageContents, SetHistoryTTL
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory
 from piltover.worker import MessageHandler
@@ -694,3 +696,49 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> Aff
         pts=pts,
         pts_count=len(message_ids),
     )
+
+
+@handler.on_request(SetHistoryTTL)
+async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
+    if request.period % 86400 != 0:
+        raise ErrorRpc(error_code=400, error_message="TTL_PERIOD_INVALID")
+
+    ttl_days = request.period // 86400
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+
+    if peer.type is PeerType.SELF:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    elif peer.type is PeerType.USER:
+        if peer.user_ttl_period_days == ttl_days:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+        opp_peer, _ = await Peer.get_or_create(type=PeerType.USER, owner=peer.user, user=peer.owner)
+        peer.user_ttl_period_days = opp_peer.user_ttl_period_days = ttl_days
+        await Peer.bulk_update([peer, opp_peer], fields=["user_ttl_period_days"])
+    elif peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        participant = await ChatParticipant.get_or_none(**Chat.or_channel(peer.chat_or_channel), user=user)
+        if peer.type is PeerType.CHAT \
+                and (participant is None or not (participant.is_admin or peer.chat.creator_id == user.id)):
+            raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+        elif peer.type is PeerType.CHANNEL \
+                and not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+            raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+        await peer.chat_or_channel.update(ttl_period_days=ttl_days)
+    else:
+        raise Unreachable
+
+    if peer.type is PeerType.CHANNEL:
+        updates = await upd.update_channel(peer.channel, user)
+    else:
+        updates = await upd.update_history_ttl(peer, ttl_days)
+
+    updates_msg = await send_message_internal(
+        user, peer, None, None, False,
+        author=user, type=MessageType.SERVICE_CHAT_UPDATE_TTL, ttl_period=None,
+        extra_info=MessageActionSetMessagesTTL(period=ttl_days * 86400).write(),
+    )
+    updates.updates.extend(updates_msg.updates)
+    updates.users.extend(updates_msg.users)
+    updates.chats.extend(updates_msg.chats)
+
+    return updates

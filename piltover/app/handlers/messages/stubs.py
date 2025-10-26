@@ -23,11 +23,6 @@ async def get_peer_settings():  # pragma: no cover
     )
 
 
-@handler.on_request(GetScheduledHistory, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_scheduled_history():  # pragma: no cover
-    return Messages(messages=[], chats=[], users=[])
-
-
 @handler.on_request(GetEmojiKeywordsLanguages, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_emoji_keywords_languages():  # pragma: no cover
     return TLObjectVector()
@@ -55,11 +50,6 @@ async def get_attach_menu_bots():  # pragma: no cover
 @handler.on_request(GetStickers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_stickers():  # pragma: no cover
     return Stickers(hash=0, stickers=[])
-
-
-@handler.on_request(GetDefaultHistoryTTL, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_default_history_ttl():  # pragma: no cover
-    return DefaultHistoryTTL(period=10)
 
 
 @handler.on_request(GetSearchResultsPositions, ReqHandlerFlags.AUTH_NOT_REQUIRED)

@@ -157,6 +157,8 @@ async def send_message_internal(
         message_kwargs["scheduled_date"] = datetime.fromtimestamp(scheduled_date, UTC)
         message_kwargs["type"] = MessageType.SCHEDULED
 
+    # TODO: set ttl_period
+
     messages = await Message.create_for_peer(
         peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
     )

@@ -22,7 +22,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
-    UpdateDeleteScheduledMessages
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1379,3 +1379,45 @@ async def delete_scheduled_messages(
     await SessionManager.send(updates, user.id)
 
     return updates
+
+
+async def update_history_ttl(peer: Peer, ttl_days: int) -> Updates:
+    peers = [peer]
+    peers.extend(await peer.get_opposite())
+
+    result: Updates | None = None
+
+    updates_to_create: list[Update] = []
+    updates_to_send: list[tuple[Updates, int]] = []
+    for update_peer in peers:
+        new_pts = await State.add_pts(update_peer.owner, 1)
+
+        updates_to_create.append(Update(
+            user=update_peer.owner,
+            update_type=UpdateType.UPDATE_HISTORY_TTL,
+            pts=new_pts,
+            pts_count=1,
+            related_id=peer.id,
+            additional_data=[ttl_days],
+        ))
+
+        updates = UpdatesWithDefaults(
+            updates=[
+                UpdatePeerHistoryTTL(
+                    peer=update_peer.to_tl(),
+                    ttl_period=ttl_days * 86400 if ttl_days else None,
+                ),
+            ],
+        )
+
+        updates_to_send.append((updates, update_peer.owner_id))
+
+        if update_peer == peer:
+            result = updates
+
+    await Update.bulk_create(updates_to_create)
+
+    for upd, uid in updates_to_send:
+        await SessionManager.send(upd, uid)
+
+    return result

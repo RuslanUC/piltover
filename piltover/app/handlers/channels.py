@@ -220,6 +220,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             pts=channel.pts,
             exported_invite=await invite.to_tl() if invite is not None else None,
             available_reactions=available_reactions,
+            ttl_period=channel.ttl_period_days * 86400 if channel.ttl_period_days else None,
         ),
         chats=[await channel.to_tl(user)],
         users=[await user.to_tl(user)],
@@ -558,7 +559,6 @@ async def invite_to_channel(request: InviteToChannel, user: User):
     )
 
 
-@handler.on_request(ToggleSignatures_133)
 @handler.on_request(ToggleSignatures)
 async def toggle_signatures(request: ToggleSignatures, user: User):
     peer = await Peer.from_input_peer_raise(user, request.channel)

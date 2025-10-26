@@ -106,6 +106,7 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             ),
             notify_settings=PeerNotifySettings(),
             chat_photo=photo,
+            ttl_period=chat.ttl_period_days * 86400 if chat.ttl_period_days else None,
         ),
         chats=[await chat.to_tl(user)],
         users=[await user.to_tl(user)],

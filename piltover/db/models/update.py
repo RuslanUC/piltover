@@ -15,7 +15,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
-    UpdateDeleteScheduledMessages
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -24,7 +24,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
-              | UpdateDeleteScheduledMessages
+              | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL
 
 
 class Update(Model):
@@ -442,6 +442,16 @@ class Update(Model):
                     peer=peer.to_tl(),
                     messages=deleted_message_ids,
                     sent_messages=sent_message_ids or None,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_HISTORY_TTL:
+                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
+                    return none_ret
+
+                ttl_days = self.additional_data[0]
+                return UpdatePeerHistoryTTL(
+                    peer=peer.to_tl(),
+                    ttl_period=ttl_days * 86400 if ttl_days else None,
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

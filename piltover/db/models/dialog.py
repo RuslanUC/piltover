@@ -60,4 +60,5 @@ class Dialog(Model):
             unread_reactions_count=unread_reactions,
             folder_id=self.folder_id.value,
             unread_mentions_count=unread_mentions,
+            ttl_period=self.peer.user_ttl_period_days * 86400 if self.peer.user_ttl_period_days else None,
         )

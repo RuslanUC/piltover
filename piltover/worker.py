@@ -31,7 +31,7 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.context import RequestContext, request_ctx
-from piltover.db.models import UserAuthorization, User, TaskIqScheduledMessage, Message
+from piltover.db.models import UserAuthorization, User, Message
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import TLObject, RpcError, TLRequest, layer
@@ -80,6 +80,9 @@ class MessageHandler:
 
     def on_request(self, typ: type[TLRequest[T]], flags: int = 0) -> Callable[[HandlerFunc[T]], HandlerFunc[T]]:
         def decorator(func: HandlerFunc[T]):
+            if typ.tlid() in self.request_handlers:
+                logger.warning(f"Overriding existing handler for {typ.tlname()} ({hex(typ.tlid())[2:]})")
+
             logger.trace(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
 
             self.request_handlers[typ.tlid()] = RequestHandler(func, flags)
@@ -90,6 +93,10 @@ class MessageHandler:
     def register_handler(self, handler: MessageHandler, clear: bool = True):
         if handler.registered:
             raise RuntimeError(f"Handler {handler} already registered!")
+
+        for new_handler_id in handler.request_handlers:
+            if new_handler_id in self.request_handlers:
+                logger.warning(f"Overriding existing handler for ({hex(new_handler_id)[2:]})")
 
         self.request_handlers.update(handler.request_handlers)
         if clear:

@@ -30,6 +30,7 @@ class ChatBase(Model):
     no_forwards: bool = fields.BooleanField(default=False)
     banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights(0))
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
+    ttl_period_days: int = fields.SmallIntField(default=0)
 
     creator_id: int
     photo_id: int
@@ -39,7 +40,7 @@ class ChatBase(Model):
 
     async def update(
             self, title: str | None = None, description: str | None = None,
-            photo: models.File | None | _PhotoMissing = _PHOTO_MISSING
+            photo: models.File | None | _PhotoMissing = _PHOTO_MISSING, ttl_period_days: int | None = None,
     ) -> None:
         save_fields = []
 
@@ -69,6 +70,13 @@ class ChatBase(Model):
 
             self.photo = photo
             save_fields.append("photo_id")
+
+        if ttl_period_days is not None:
+            if ttl_period_days == self.ttl_period_days:
+                raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+            self.ttl_period_days = ttl_period_days
+            save_fields.append("ttl_period_days")
 
         if not save_fields:
             return
