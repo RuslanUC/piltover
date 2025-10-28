@@ -1,12 +1,18 @@
+from contextlib import AsyncExitStack
 from io import BytesIO
 from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import ChatWriteForbidden, UsernameOccupied
-from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage
+from pyrogram.errors import ChatWriteForbidden, UsernameOccupied, PasswordMissing, PasswordHashInvalid, \
+    ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate
+from pyrogram.raw.functions.account import GetPassword
+from pyrogram.raw.functions.channels import EditCreator
+from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser
 from pyrogram.types import ChatMember, ChatPrivileges
+from pyrogram.utils import compute_password_check
 
+from piltover.tl import InputCheckPasswordEmpty
 from tests.conftest import TestClient, color_is_near
 
 PHOTO_COLOR = (0x00, 0xff, 0x80)
@@ -146,3 +152,241 @@ async def test_change_channel_username_to_occupied_by_user() -> None:
             await client.set_username("test_username")
         with pytest.raises(UsernameOccupied):
             await client.set_chat_username(channel.id, "test_username")
+
+
+@pytest.mark.parametrize(
+    ("password_set", "password_check", "before", "after", "expect_updates_after", "expected_exception"),
+    [
+        ("test_passw0rd", "test_passw0rd", (True, False), (False, True), True, None),
+        (None, "test_passw0rd", (True, False), (True, False), False, PasswordMissing),
+        ("test_passw0rd", "test_passw0rd-wrong", (True, False), (True, False), False, PasswordHashInvalid),
+    ],
+    ids=("success", "fail-no-password", "fail-wrong-password"),
+)
+@pytest.mark.asyncio
+async def test_edit_channel_owner(
+        exit_stack: AsyncExitStack, password_set: str | None, password_check: str, before: tuple[bool, bool],
+        after: tuple[bool, bool], expect_updates_after: bool, expected_exception: type[Exception] | None,
+) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    await client1.set_username("test1_username")
+    await client2.set_username("test2_username")
+    await client1.expect_update(UpdateUserName)
+    await client2.expect_update(UpdateUserName)
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_channel("idk")
+    assert channel
+
+    await client1.add_chat_members(channel.id, "test2_username")
+    await client2.expect_update(UpdateChannel)
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator is before[0]
+
+    channel2 = await client2.get_chat(channel.id)
+    assert channel2.is_creator is before[1]
+
+    input_password = InputCheckPasswordEmpty()
+    if password_set is not None:
+        await client1.enable_cloud_password(password=password_set)
+        input_password = compute_password_check(await client1.invoke(GetPassword()), password_check)
+
+    request = EditCreator(
+        channel=await client1.resolve_peer(channel.id),
+        user_id=await client1.resolve_peer("test2_username"),
+        password=input_password,
+    )
+
+    if expected_exception is None:
+        assert await client1.invoke(request)
+    else:
+        with pytest.raises(expected_exception):
+            await client1.invoke(request)
+
+    if expect_updates_after:
+        await client1.expect_update(UpdateChannel)
+        await client2.expect_update(UpdateChannel)
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator is after[0]
+
+    channel2 = await client2.get_chat(channel.id)
+    assert channel2.is_creator is after[1]
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_owner_fail_not_owner(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+    client3: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456781"))
+
+    async with client1.expect_updates_m(UpdateUserName), \
+            client2.expect_updates_m(UpdateUserName), \
+            client3.expect_updates_m(UpdateUserName):
+        await client1.set_username("test1_username")
+        await client2.set_username("test2_username")
+        await client3.set_username("test3_username")
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_channel("idk")
+    assert channel
+
+    await client1.add_chat_members(channel.id, ["test2_username", "test3_username"])
+    await client2.expect_update(UpdateChannel)
+    await client3.expect_update(UpdateChannel)
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator
+    channel2 = await client2.get_chat(channel.id)
+    assert not channel2.is_creator
+    channel3 = await client3.get_chat(channel.id)
+    assert not channel3.is_creator
+
+    await client2.enable_cloud_password(password="test_passw0rd")
+
+    with pytest.raises(ChatAdminRequired):
+        await client2.invoke(EditCreator(
+            channel=await client2.resolve_peer(channel.id),
+            user_id=await client2.resolve_peer("test3_username"),
+            password=compute_password_check(await client2.invoke(GetPassword()), "test_passw0rd"),
+        ))
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator
+    channel2 = await client2.get_chat(channel.id)
+    assert not channel2.is_creator
+    channel3 = await client3.get_chat(channel.id)
+    assert not channel3.is_creator
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_owner_fail_invalid_user(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_channel("idk")
+    assert channel
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator
+
+    await client1.enable_cloud_password(password="test_passw0rd")
+
+    with pytest.raises(PeerIdInvalid):
+        await client1.invoke(EditCreator(
+            channel=await client1.resolve_peer(channel.id),
+            user_id=InputUser(user_id=client1.me.id + 1, access_hash=123456789),
+            password=compute_password_check(await client1.invoke(GetPassword()), "test_passw0rd"),
+        ))
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_owner_fail_user_not_participant(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    async with client2.expect_updates_m(UpdateUserName):
+        await client2.set_username("test2_username")
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_channel("idk")
+    assert channel
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator
+
+    await client1.enable_cloud_password(password="test_passw0rd")
+
+    with pytest.raises(UserIdInvalid):
+        await client1.invoke(EditCreator(
+            channel=await client1.resolve_peer(channel.id),
+            user_id=await client1.resolve_peer("test2_username"),
+            password=compute_password_check(await client1.invoke(GetPassword()), "test_passw0rd"),
+        ))
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_owner_fail_not_user(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_channel("idk")
+    assert channel
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator
+
+    await client1.enable_cloud_password(password="test_passw0rd")
+
+    with pytest.raises(UserIdInvalid):
+        await client1.invoke(EditCreator(
+            channel=await client1.resolve_peer(channel.id),
+            user_id=await client1.resolve_peer(channel.id),
+            password=compute_password_check(await client1.invoke(GetPassword()), "test_passw0rd"),
+        ))
+
+    channel1 = await client1.get_chat(channel.id)
+    assert channel1.is_creator
+
+
+@pytest.mark.asyncio
+async def test_delete_channel_success(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    async with client2.expect_updates_m(UpdateUserName):
+        await client2.set_username("test2_username")
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_channel("idk")
+    assert channel
+
+    await client1.add_chat_members(channel.id, "test2_username")
+    await client2.expect_update(UpdateChannel)
+
+    assert await client1.get_chat(channel.id)
+    assert await client2.get_chat(channel.id)
+
+    assert await client1.delete_channel(channel.id)
+    await client1.expect_update(UpdateChannel)
+    await client2.expect_update(UpdateChannel)
+
+    with pytest.raises(ChannelPrivate):
+        await client1.get_chat(channel.id)
+
+    with pytest.raises(ChannelPrivate):
+        await client2.get_chat(channel.id)
+
+
+@pytest.mark.asyncio
+async def test_delete_channel_fail_not_owner(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    async with client2.expect_updates_m(UpdateUserName):
+        await client2.set_username("test2_username")
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_channel("idk")
+    assert channel
+
+    await client1.add_chat_members(channel.id, "test2_username")
+    await client2.expect_update(UpdateChannel)
+
+    assert await client1.get_chat(channel.id)
+    assert await client2.get_chat(channel.id)
+
+    with pytest.raises(ChatAdminRequired):
+        await client2.delete_channel(channel.id)
+
+    assert await client1.get_chat(channel.id)
+    assert await client2.get_chat(channel.id)

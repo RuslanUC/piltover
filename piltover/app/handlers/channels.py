@@ -7,10 +7,10 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
 from piltover.app.handlers.messages.history import format_messages_internal
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.app.utils.utils import validate_username
+from piltover.app.utils.utils import validate_username, check_password_internal
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
-    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction
+    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session_manager import SessionManager
@@ -22,7 +22,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
-    UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel
+    UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
@@ -680,3 +680,32 @@ async def delete_channel(request: DeleteChannel, user: User) -> Updates:
     # TODO: delete channel peers, dialogs, participants and messages lazily
 
     return await upd.update_channel(channel, user)
+
+
+@handler.on_request(EditCreator)
+async def edit_creator(request: EditCreator, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    channel = peer.channel
+    if channel.creator_id != user.id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    password = await UserPassword.get_or_none(user=user)
+    if password is None or password.password is None:
+        raise ErrorRpc(error_code=400, error_message="PASSWORD_MISSING")
+
+    await check_password_internal(password, request.password)
+
+    target_peer = await Peer.from_input_peer_raise(user, request.user_id)
+    if target_peer.type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+    target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=peer.channel)
+    if target_participant is None:
+        raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+
+    channel.creator = target_peer.user
+    await channel.save(update_fields=["creator_id"])
+
+    return await upd.update_channel(channel, user, send_to_users=[user.id, target_peer.user.id])

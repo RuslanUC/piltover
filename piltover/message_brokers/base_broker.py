@@ -129,7 +129,7 @@ class BaseMessageBroker(ABC):
             channels = message.channel_ids
             keys = message.key_ids
             auths = message.auth_ids
-            ignore_auths = set(message.ignore_auth_id)
+            ignore_auths = set(message.ignore_auth_id) if message.ignore_auth_id is not None else set()
         else:
             users = [message.user] if message.user is not None else None
             channels = [message.channel_id] if message.channel_id is not None else None

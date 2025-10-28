@@ -6,7 +6,7 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
-    ChatInviteRequest
+    ChatInviteRequest, ChatInvite
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
@@ -90,6 +90,11 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
         await chat.fetch_related("photo")
         photo = await chat.photo.to_tl_photo(user)
 
+    invite = None
+    participant = await ChatParticipant.get_or_none(chat=chat, user=user)
+    if chat.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+        invite = await ChatInvite.get_or_create_for_chat(user, peer.chat_or_channel)
+
     return MessagesChatFull(
         full_chat=ChatFull(
             can_set_username=True,
@@ -107,6 +112,7 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             notify_settings=PeerNotifySettings(),
             chat_photo=photo,
             ttl_period=chat.ttl_period_days * 86400 if chat.ttl_period_days else None,
+            exported_invite=await invite.to_tl() if invite is not None else None,
         ),
         chats=[await chat.to_tl(user)],
         users=[await user.to_tl(user)],

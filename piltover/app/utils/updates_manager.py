@@ -862,7 +862,9 @@ async def update_read_history_outbox(messages: dict[Peer, tuple[int, int]]) -> N
     await Update.bulk_create(updates_to_create)
 
 
-async def update_channel(channel: Channel, user: User | None = None) -> Updates | None:
+async def update_channel(
+        channel: Channel, user: User | None = None, send_to_users: list[int] | None = None,
+) -> Updates | None:
     channel.pts += 1
     this_pts = channel.pts
     await channel.save(update_fields=["pts"])
@@ -882,7 +884,8 @@ async def update_channel(channel: Channel, user: User | None = None) -> Updates 
             ),
             fields=["chats.0"],
         ),
-        channel_id=channel.id,
+        channel_id=channel.id if send_to_users is None else None,
+        user_id=send_to_users,
     )
 
     if user is not None:

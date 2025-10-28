@@ -19,7 +19,7 @@ from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, Ch
     MessageActionChatJoinedByRequest
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
-    HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_133, ExportChatInvite_134
+    HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_133, ExportChatInvite_134, EditExportedChatInvite
 from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters, \
     ExportedChatInvite
 from piltover.worker import MessageHandler
@@ -464,3 +464,48 @@ async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user: Us
         return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
 
     return await add_requested_users_to_chat(user, peer.chat_or_channel, requests)
+
+
+@handler.on_request(EditExportedChatInvite)
+async def edit_exported_chat_invite(request: EditExportedChatInvite, user: User) -> ExportedChatInvite:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(Chat.query(peer.chat_or_channel) & Q(user=user))
+    if not peer.chat_or_channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    if (invite_hash := _get_invite_hash_from_link(request.link)) is None:
+        raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
+    invite = await ChatInvite.get_or_none(
+        ChatInvite.query_from_link_hash(invite_hash.strip()) & Chat.query(peer.chat_or_channel) & Q(revoked=False)
+    )
+    if invite is None:
+        raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
+
+    update_fields = []
+
+    if request.revoked:
+        invite.revoked = True
+        update_fields.append("revoked")
+    #if request.expire_date:
+    #    if invite.expires_at is None or request.expire_date < (time() + 60):
+    #        raise ErrorRpc(error_code=400, error_message="CHAT_INVITE_PERMANENT")
+    #    invite.expires_at = datetime.fromtimestamp(request.expire_date, UTC)
+    #    update_fields.append("expires_at")
+    if request.title:
+        invite.title = request.title
+        update_fields.append("title")
+
+    # TODO: usage_limit, expire_date, request_needed
+
+    if update_fields:
+        await invite.save(update_fields=update_fields)
+
+    users, *_ = await resolve_users_chats(user, *invite.query_users_chats(Q()), {}, None, None)
+
+    return ExportedChatInvite(
+        invite=await invite.to_tl(),
+        users=list(users.values()),
+    )
