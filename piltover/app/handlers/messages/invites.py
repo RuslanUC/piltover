@@ -87,8 +87,13 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
     title = request.title if request_new else None
     expires_at = None if request.expire_date is None else datetime.fromtimestamp(request.expire_date, UTC)
 
-    invite = await ChatInvite.get_or_create_for_chat(
-        user, peer.chat_or_channel, request_needed, request.usage_limit, title, expires_at, True,
+    invite = await ChatInvite.create(
+        **Chat.or_channel(peer.chat_or_channel),
+        user=user,
+        request_needed=request_needed,
+        usage_limit=request.usage_limit if not request_needed else None,
+        title=title,
+        expires_at=expires_at,
     )
 
     return await invite.to_tl()

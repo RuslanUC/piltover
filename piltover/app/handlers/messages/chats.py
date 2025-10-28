@@ -93,7 +93,7 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
     invite = None
     participant = await ChatParticipant.get_or_none(chat=chat, user=user)
     if chat.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
-        invite = await ChatInvite.get_or_create_for_chat(user, peer.chat_or_channel)
+        invite = await ChatInvite.get_or_create_permanent(user, peer.chat_or_channel)
 
     return MessagesChatFull(
         full_chat=ChatFull(

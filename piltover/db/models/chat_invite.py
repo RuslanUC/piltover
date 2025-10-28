@@ -86,13 +86,14 @@ class ChatInvite(Model):
         raise NotImplementedError
 
     @classmethod
-    async def get_or_create_for_chat(
+    async def get_or_create_permanent(
             cls, user: models.User, chat_or_channel: models.ChatBase, request: bool = False,
-            limit: int | None = None, title: str | None = None, expires_at: datetime | None = None,
-            force_create: bool = False,
+            limit: int | None = None, title: str | None = None, force_create: bool = False,
     ) -> ChatInvite:
         if not force_create:
-            invite = await cls.get_or_none(**models.Chat.or_channel(chat_or_channel), user=user, revoked=False)
+            invite = await cls.filter(
+                **models.Chat.or_channel(chat_or_channel), user=user, revoked=False, expires_at__isnull=True
+            ).first()
             if invite is not None:
                 return invite
 
@@ -102,5 +103,4 @@ class ChatInvite(Model):
             request_needed=request,
             usage_limit=limit if not request else None,
             title=title,
-            expires_at=expires_at,
         )

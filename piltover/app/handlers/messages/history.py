@@ -23,7 +23,8 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
-    InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL
+    InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
+    InputMessagesFilterRoundVoice
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
@@ -49,9 +50,11 @@ def message_filter_to_query(filter_: TLObject | None) -> Q | None:
     elif isinstance(filter_, InputMessagesFilterGif):
         return Q(media__file__type=FileType.DOCUMENT_GIF)
     elif isinstance(filter_, InputMessagesFilterVoice):
-        return Q(media__file__type=FileType.DOCUMENT_VOICE) | Q(media__file__type=FileType.DOCUMENT_VIDEO_NOTE)
+        return Q(media__file__type=FileType.DOCUMENT_VOICE)
     elif isinstance(filter_, InputMessagesFilterMusic):
         return Q(media__file__type=FileType.DOCUMENT_AUDIO)
+    elif isinstance(filter_, InputMessagesFilterRoundVoice):
+        return Q(media__file__type=FileType.DOCUMENT_VOICE) | Q(media__file__type=FileType.DOCUMENT_VIDEO_NOTE)
     elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
         # TODO: InputMessagesFilterUrl
         logger.warning(f"Unsupported filter: {filter_}")

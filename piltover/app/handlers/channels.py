@@ -161,7 +161,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     invite = None
     participant = await ChatParticipant.get_or_none(channel=channel, user=user)
     if channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
-        invite = await ChatInvite.get_or_create_for_chat(user, peer.chat_or_channel)
+        invite = await ChatInvite.get_or_create_permanent(user, peer.chat_or_channel)
 
     # TODO: full_chat.migrated_from_chat_id and full_chat.migrated_from_max_id
     # TODO: full_chat.available_min_id
@@ -677,7 +677,7 @@ async def delete_channel(request: DeleteChannel, user: User) -> Updates:
     channel.version += 1
     await channel.save(update_fields=["deleted", "version"])
 
-    # TODO: delete channel peers, dialogs, participants and messages lazily
+    # TODO: delete channel peers, dialogs, participants and messages lazily or in background
 
     return await upd.update_channel(channel, user)
 
