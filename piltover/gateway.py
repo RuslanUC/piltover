@@ -184,7 +184,13 @@ class Client:
 
         return self.session, created
 
+    def _disconnect_if_invalid_packet_length(self) -> None:
+        if (packet_len := self.conn.peek_length()) is not None and packet_len >= 1024 * 1024:
+            raise Disconnection
+
     async def read_packet(self) -> MessagePacket | None:
+        self._disconnect_if_invalid_packet_length()
+
         packet = self.conn.receive()
         if isinstance(packet, MessagePacket):
             return packet
@@ -195,6 +201,7 @@ class Client:
 
         packet = self.conn.receive(recv)
         if not isinstance(packet, MessagePacket):
+            self._disconnect_if_invalid_packet_length()
             return None
 
         return packet
