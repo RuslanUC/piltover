@@ -16,6 +16,13 @@ class PeerColorOptionDowngradeTo168(AutoDowngrader):
     REMOVE_FIELDS = {"group_min_level"}
 
 
+class PeerColorOptionDontDowngrade174(AutoDowngrader):
+    BASE_TYPE = PeerColorOption
+    TARGET_LAYER = 174
+    TARGET_TYPE = PeerColorOption
+    REMOVE_FIELDS = set()
+
+
 class PeerColorOptionDontDowngrade(AutoDowngrader):
     BASE_TYPE = PeerColorOption
     TARGET_LAYER = 201

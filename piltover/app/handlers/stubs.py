@@ -1,9 +1,9 @@
 from piltover.enums import ReqHandlerFlags
 from piltover.tl.functions.channels import GetSponsoredMessages_133
 from piltover.tl.functions.messages import GetSponsoredMessages, GetSavedGifs
-from piltover.tl.functions.premium import GetBoostsStatus
+from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts
 from piltover.tl.types.messages import SponsoredMessages, SponsoredMessagesEmpty, SavedGifs, SavedGifsNotModified
-from piltover.tl.types.premium import BoostsStatus
+from piltover.tl.types.premium import BoostsStatus, MyBoosts
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("stubs")
@@ -12,7 +12,6 @@ handler = MessageHandler("stubs")
 @handler.on_request(GetBoostsStatus, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_boosts_status() -> BoostsStatus:  # pragma: no cover
     return BoostsStatus(
-        my_boost=True,
         level=3,
         current_level_boosts=100,
         boosts=100,
@@ -29,3 +28,8 @@ async def get_sponsored_messages() -> SponsoredMessages | SponsoredMessagesEmpty
 @handler.on_request(GetSavedGifs)
 async def get_saved_gifs() -> SavedGifs | SavedGifsNotModified:
     return SavedGifsNotModified()
+
+
+@handler.on_request(GetMyBoosts, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_my_boosts() -> MyBoosts:
+    return MyBoosts(my_boosts=[], chats=[], users=[])

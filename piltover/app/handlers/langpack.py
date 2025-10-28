@@ -23,7 +23,15 @@ async def get_languages():  # pragma: no cover
 
 @handler.on_request(GetLanguages_72, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_languages_72():  # pragma: no cover
-    return TLObjectVector([LangPackLanguage_72(name="Gramz", native_name="Le Gramz", lang_code="grz")])
+    return TLObjectVector([LangPackLanguage(
+        name="Gramz",
+        native_name="Le Gramz",
+        lang_code="grz",
+        plural_code="idk",
+        strings_count=0,
+        translated_count=0,
+        translations_url="http://127.0.0.1"
+    )])
 
 
 @handler.on_request(GetLangPack, ReqHandlerFlags.AUTH_NOT_REQUIRED)

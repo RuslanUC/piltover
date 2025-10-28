@@ -47,6 +47,7 @@ class Channel(ChatBase):
     all_reactions: bool = fields.BooleanField(default=True)
     all_reactions_custom: bool = fields.BooleanField(default=False)
     deleted: bool = fields.BooleanField(default=False)
+    nojoin_allow_view: bool = fields.BooleanField(default=False)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -70,19 +71,25 @@ class Channel(ChatBase):
         user_id = user.id if isinstance(user, models.User) else user
 
         peer: models.Peer | None = await models.Peer.get_or_none(owner__id=user_id, channel=self, type=PeerType.CHANNEL)
-        if self.deleted \
-                or peer is None \
-                or (participant := await models.ChatParticipant.get_or_none(user__id=user_id, channel=self)) is None:
+        if self.deleted or peer is None:
             return ChannelForbidden(
                 id=self.make_id(),
                 access_hash=0 if peer is None else cast(models.Peer, peer).access_hash,
                 title=self.name,
             )
 
+        participant = await models.ChatParticipant.get_or_none(user__id=user_id, channel=self)
+        if participant is None and not (self.nojoin_allow_view or await models.Username.filter(channel=self).exists()):
+            return ChannelForbidden(
+                id=self.make_id(),
+                access_hash=peer.access_hash,
+                title=self.name,
+            )
+
         admin_rights = None
         if self.creator_id == user_id:
             admin_rights = CREATOR_RIGHTS
-        elif participant.is_admin:
+        elif participant is not None and participant.is_admin:
             admin_rights = participant.admin_rights.to_tl()
 
         username = await self.get_username()
@@ -93,7 +100,7 @@ class Channel(ChatBase):
             photo=await self.to_tl_chat_photo(),
             date=int((participant.invited_at if participant else self.created_at).timestamp()),
             creator=self.creator_id == user_id,
-            left=False,
+            left=participant is None,
             broadcast=self.channel,
             verified=False,
             megagroup=self.supergroup,
@@ -109,7 +116,7 @@ class Channel(ChatBase):
             fake=False,
             gigagroup=False,
             noforwards=self.no_forwards,
-            join_to_send=True,
+            join_to_send=not self.channel,
             join_request=False,
             forum=False,
             stories_hidden=False,
@@ -121,7 +128,8 @@ class Channel(ChatBase):
             username=username.username if username is not None else None,
             usernames=[],
             default_banned_rights=self.banned_rights.to_tl(),
-            banned_rights=participant.banned_rights.to_tl(),
-            color=PeerColor(color=self.accent_color_id) if self.accent_color is not None else None,
-            profile_color=PeerColor(color=self.profile_color_id) if self.profile_color is not None else None,
-        )
+            banned_rights=participant.banned_rights.to_tl() if participant is not None else None,
+            color=PeerColor(color=self.accent_color_id) if self.accent_color_id is not None else None,
+            profile_color=PeerColor(color=self.profile_color_id) if self.profile_color_id is not None else None,
+            # NOTE: participants_count is not included here since it is present in ChannelFull
+            )

@@ -160,7 +160,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
 
     invite = None
     participant = await ChatParticipant.get_or_none(channel=channel, user=user)
-    if channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+    if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         invite = await ChatInvite.get_or_create_permanent(user, peer.chat_or_channel)
 
     # TODO: full_chat.migrated_from_chat_id and full_chat.migrated_from_max_id
@@ -180,21 +180,23 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             available_reactions = ChatReactionsNone()
 
     has_scheduled = False
-    if channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
+    if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
         has_scheduled = await Message.filter(
             peer__owner=user, peer__channel=channel, scheduled_date__not_isnull=True,
         ).exists()
 
+    can_change_info = participant is not None and channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)
+
     return MessagesChatFull(
         full_chat=ChannelFull(
             can_view_participants=False,  # TODO: allow viewing participants
-            can_set_username=True,
+            can_set_username=can_change_info,
             can_set_stickers=False,
             hidden_prehistory=False,  # TODO: hide history for new users
             can_set_location=False,
             has_scheduled=has_scheduled,
             can_view_stats=False,
-            can_delete_channel=True,
+            can_delete_channel=channel.creator_id == user.id,
             antispam=False,
             participants_hidden=True,  # TODO: allow viewing participants
             translations_disabled=True,
@@ -417,8 +419,8 @@ async def get_participants(request: GetParticipants, user: User):
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
-    participant = await peer.channel.get_participant_raise(user)
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+    participant = await peer.channel.get_participant(user)
+    if participant is None or not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     if isinstance(request.filter, ChannelParticipantsRecent):
@@ -455,13 +457,19 @@ async def get_participant(request: GetParticipant, user: User):
     peer = await Peer.from_input_peer_raise(user, request.channel)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
-    participant = await peer.channel.get_participant_raise(user)
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
-        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+    participant = await peer.channel.get_participant(user)
+    if participant is None:
+        raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     target_peer = await Peer.from_input_peer_raise(user, request.participant)
     if target_peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
+
+    # TODO: check if you can request info about self if you are not an admin
+    if not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS) \
+            and target_peer.type is not PeerType.SELF:
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
     target_participant = await ChatParticipant.get_or_none(
         user=target_peer.user, channel=peer.channel,
     ).select_related("user")
