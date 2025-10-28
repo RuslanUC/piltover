@@ -22,7 +22,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
-    UpdateUsername, ToggleSignatures_133
+    UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
@@ -53,7 +53,7 @@ async def check_username(request: CheckUsername) -> bool:
 
 @handler.on_request(UpdateUsername)
 async def update_username(request: UpdateUsername, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
@@ -147,7 +147,7 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
 
 @handler.on_request(GetFullChannel)
 async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatFull:
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
@@ -229,7 +229,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
 
 @handler.on_request(EditTitle)
 async def edit_channel_title(request: EditTitle, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
@@ -254,7 +254,7 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
 
 @handler.on_request(EditPhoto)
 async def edit_channel_photo(request: EditPhoto, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
@@ -278,9 +278,10 @@ async def edit_channel_photo(request: EditPhoto, user: User):
     return updates
 
 
+@handler.on_request(GetMessages_40)
 @handler.on_request(GetMessages)
 async def get_messages(request: GetMessages, user: User) -> Messages:
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
     await peer.channel.get_participant_raise(user)
@@ -299,12 +300,12 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
     query &= Q(peer__channel=peer.channel)
 
-    return await format_messages_internal(user, await Message.filter(query))
+    return await format_messages_internal(user, await Message.filter(query).select_related("peer"))
 
 
 @handler.on_request(DeleteMessages)
 async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessages:
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
     participant = await peer.channel.get_participant_raise(user)
@@ -327,7 +328,7 @@ async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessag
 
 @handler.on_request(EditBanned)
 async def edit_banned(request: EditBanned, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
     participant = await peer.channel.get_participant_raise(user)
@@ -362,7 +363,7 @@ async def edit_banned(request: EditBanned, user: User):
 
 @handler.on_request(EditAdmin)
 async def edit_admin(request: EditAdmin, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
     participant = await peer.channel.get_participant_raise(user)
@@ -413,7 +414,7 @@ async def edit_admin(request: EditAdmin, user: User):
 
 @handler.on_request(GetParticipants)
 async def get_participants(request: GetParticipants, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
     participant = await peer.channel.get_participant_raise(user)
@@ -476,7 +477,7 @@ async def get_participant(request: GetParticipant, user: User):
 
 @handler.on_request(ReadHistory)
 async def read_channel_history(request: ReadHistory, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
@@ -509,7 +510,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
 @handler.on_request(InviteToChannel_133)
 @handler.on_request(InviteToChannel)
 async def invite_to_channel(request: InviteToChannel, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
     participant = await peer.channel.get_participant_raise(user)
@@ -561,7 +562,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
 
 @handler.on_request(ToggleSignatures)
 async def toggle_signatures(request: ToggleSignatures, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.channel)
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
@@ -594,7 +595,7 @@ async def toggle_signatures_136(request: ToggleSignatures_133, user: User):
 @handler.on_request(SetChatAvailableReactions_136)
 @handler.on_request(SetChatAvailableReactions)
 async def set_chat_available_reactions(request: SetChatAvailableReactions, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -657,5 +658,25 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user:
 
     channel.version += 1
     await channel.save(update_fields=["all_reactions", "all_reactions_custom", "version"])
+
+    return await upd.update_channel(channel, user)
+
+
+@handler.on_request(DeleteChannel)
+async def delete_channel(request: DeleteChannel, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    channel = peer.channel
+
+    if channel.creator_id != user.id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    channel.deleted = True
+    channel.version += 1
+    await channel.save(update_fields=["deleted", "version"])
+
+    # TODO: delete channel peers, dialogs, participants and messages lazily
 
     return await upd.update_channel(channel, user)

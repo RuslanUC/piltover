@@ -46,6 +46,7 @@ class Channel(ChatBase):
     profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_profile")
     all_reactions: bool = fields.BooleanField(default=True)
     all_reactions_custom: bool = fields.BooleanField(default=False)
+    deleted: bool = fields.BooleanField(default=False)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -69,7 +70,8 @@ class Channel(ChatBase):
         user_id = user.id if isinstance(user, models.User) else user
 
         peer: models.Peer | None = await models.Peer.get_or_none(owner__id=user_id, channel=self, type=PeerType.CHANNEL)
-        if peer is None \
+        if self.deleted \
+                or peer is None \
                 or (participant := await models.ChatParticipant.get_or_none(user__id=user_id, channel=self)) is None:
             return ChannelForbidden(
                 id=self.make_id(),

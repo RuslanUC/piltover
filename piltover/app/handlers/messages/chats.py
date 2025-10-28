@@ -339,7 +339,7 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
 
 @handler.on_request(EditChatDefaultBannedRights)
 async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, user: User) -> Updates:
-    # TODO: add support for channels
+    # TODO: add support for channels ?
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is not PeerType.CHAT:

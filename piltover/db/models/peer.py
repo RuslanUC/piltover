@@ -83,16 +83,18 @@ class Peer(Model):
         elif isinstance(input_peer, (InputPeerChannel, InputChannel)):
             channel_id = models.Channel.norm_id(input_peer.channel_id)
             return await Peer.get_or_none(
-                owner=user, channel__id=channel_id, access_hash=input_peer.access_hash,
+                owner=user, channel__id=channel_id, access_hash=input_peer.access_hash, channel__deleted=False,
             ).select_related("owner", "channel")
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
     @classmethod
-    async def from_input_peer_raise(cls, user: models.User, peer: InputPeers, message: str = "PEER_ID_INVALID") -> Peer:
+    async def from_input_peer_raise(
+            cls, user: models.User, peer: InputPeers, message: str = "PEER_ID_INVALID", code: int = 400,
+    ) -> Peer:
         if (peer_ := await Peer.from_input_peer(user, peer)) is not None:
             return peer_
-        raise ErrorRpc(error_code=400, error_message=message)
+        raise ErrorRpc(error_code=code, error_message=message)
 
     async def get_opposite(self) -> list[Peer]:
         if self.type is PeerType.USER:
