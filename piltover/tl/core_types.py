@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from gzip import decompress
 from io import BytesIO
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, TYPE_CHECKING
 
 from . import TLObject, Int, Long, Bytes
 from .serialization_utils import SerializationUtils
+
+if TYPE_CHECKING:
+    from .types import FutureSalt
+
 
 T = TypeVar("T", bound=TLObject)
 
@@ -22,7 +26,7 @@ class Message(TLObject, Generic[T]):
         self.obj = obj
 
     @classmethod
-    def deserialize(cls, stream) -> Message:
+    def deserialize(cls, stream: BytesIO) -> Message:
         msg_id = Long.read(stream)
         seq_no = Int.read(stream)
         length = Int.read(stream)
@@ -35,7 +39,7 @@ class Message(TLObject, Generic[T]):
         return Long.write(self.message_id) + Int.write(self.seq_no) + Int.write(len(body)) + body
 
     @classmethod
-    def read(cls, stream, strict_type: bool = False) -> TLObject:
+    def read(cls, stream: BytesIO, strict_type: bool = False) -> TLObject:
         return Message.deserialize(stream)
 
     def write(self) -> bytes:
@@ -52,7 +56,7 @@ class MsgContainer(TLObject):
         self.messages = messages
 
     @classmethod
-    def deserialize(cls, stream) -> TLObject:
+    def deserialize(cls, stream: BytesIO) -> TLObject:
         count = Int.read(stream)
         result = []
 
@@ -79,7 +83,7 @@ class RpcResult(TLObject):
         self.result = result
 
     @classmethod
-    def deserialize(cls, stream) -> TLObject:
+    def deserialize(cls, stream: BytesIO) -> TLObject:
         req_msg_id = Long.read(stream)
         result = TLObject.read(stream)
 
@@ -99,7 +103,7 @@ class GzipPacked(TLObject):
         self.packed_data = packed_data
 
     @classmethod
-    def deserialize(cls, stream) -> TLObject:
+    def deserialize(cls, stream: BytesIO) -> TLObject:
         packed_data = Bytes.read(stream)
         decompressed_stream = BytesIO(decompress(packed_data))
 
@@ -107,3 +111,40 @@ class GzipPacked(TLObject):
 
     def serialize(self) -> bytes:
         return Bytes.write(self.packed_data)
+
+
+class FutureSalts(TLObject):
+    __tl_id__ = 0xae500895
+    __tl_name__ = "FutureSalts"
+
+    __slots__ = ("req_msg_id", "now", "salts",)
+
+    def __init__(self, req_msg_id: int, now: int, salts: list[FutureSalt]):
+        self.req_msg_id = req_msg_id
+        self.now = now
+        self.salts = salts
+
+    @classmethod
+    def deserialize(cls, stream: BytesIO) -> TLObject:
+        from .types import FutureSalt
+
+        req_msg_id = Long.read(stream)
+        now = Int.read(stream)
+
+        count = Int.read(stream)
+        salts = []
+
+        for _ in range(count):
+            salts.append(FutureSalt.deserialize(stream))
+
+        return FutureSalts(req_msg_id=req_msg_id, now=now, salts=salts)
+
+    def serialize(self) -> bytes:
+        result = Long.write(self.req_msg_id)
+        result += Int.write(self.now)
+        result += Int.write(len(self.salts))
+
+        for salt in self.salts:
+            result += salt.serialize()
+
+        return result

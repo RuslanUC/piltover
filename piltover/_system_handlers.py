@@ -10,8 +10,8 @@ from loguru import logger
 from piltover.db.models import UserAuthorization, ServerSalt, AuthKey
 from piltover.session_manager import Session
 from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
-    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts, FutureSalts
-from piltover.tl.core_types import Message, RpcResult
+    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts
+from piltover.tl.core_types import Message, RpcResult, FutureSalts
 
 if TYPE_CHECKING:
     from piltover.gateway import Client

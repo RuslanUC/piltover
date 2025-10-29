@@ -585,6 +585,11 @@ def start():
 
             f.write("\n")
 
+            if not namespace:
+                f.write("FutureSalts = tl.core_types.FutureSalts\n")
+                f.write("FutureSaltsInst = (tl.core_types.FutureSalts,)\n")
+                f.write("\n")
+
             for t in types:
                 qualtype = f"{namespace}.{t}" if namespace else t
                 constructors = sorted(types_to_constructors[qualtype])
@@ -619,6 +624,7 @@ def start():
         f.write(f"\n    0x73f1f8dc: core_types.MsgContainer,")
         f.write(f"\n    0xf35c6d01: core_types.RpcResult,")
         f.write(f"\n    0x3072cfa1: core_types.GzipPacked,")
+        f.write(f"\n    0xae500895: core_types.FutureSalts,")
 
         f.write("\n}\n")
 
