@@ -4,12 +4,13 @@ from datetime import date, timedelta, datetime
 from hashlib import sha256
 from time import time
 
+from loguru import logger
 from pytz import UTC
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Contact, Username
+from piltover.db.models import User, Peer, Contact, Username, Dialog
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
@@ -54,6 +55,8 @@ async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
         peer, _ = await Peer.get_or_create(owner=user, channel=resolved.channel, type=PeerType.CHANNEL)
     else:  # pragma: no cover
         raise RuntimeError("Unreachable")
+
+    dialog = await Dialog.get_or_create_hidden(peer)
 
     return ResolvedPeer(
         peer=peer.to_tl(),

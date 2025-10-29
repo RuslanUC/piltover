@@ -288,7 +288,7 @@ class Message(Model):
         send_date = datetime.now(UTC)
         for to_peer in peers:
             await to_peer.fetch_related("owner", "user")
-            await models.Dialog.get_or_create(peer=to_peer)
+            await models.Dialog.create_or_unhide(to_peer)
             messages[to_peer] = await Message.create(
                 from_scheduled=to_peer == self.peer,
                 internal_id=self.internal_id,
@@ -417,7 +417,7 @@ class Message(Model):
         internal_id = Snowflake.make_id()
         for to_peer in peers:
             await to_peer.fetch_related("owner", "user")
-            await models.Dialog.get_or_create(peer=to_peer)
+            await models.Dialog.create_or_unhide(to_peer)
             if to_peer == peer and random_id is not None:
                 message_kwargs["random_id"] = str(random_id)
             messages[to_peer] = await Message.create(

@@ -109,7 +109,7 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
     await ChatParticipant.create(
         channel=channel, user=user, admin_rights=ChatAdminRights.all() & ~ChatAdminRights.ANONYMOUS,
     )
-    await Dialog.get_or_create(peer=peer_for_user)
+    await Dialog.create_or_unhide(peer_for_user)
     peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL, access_hash=0)
     await SessionManager.subscribe_to_channel(channel.id, [user.id])
 

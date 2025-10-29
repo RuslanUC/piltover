@@ -90,7 +90,7 @@ class Update(Model):
 
             case UpdateType.DIALOG_PIN:
                 if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None \
-                        or (dialog := await models.Dialog.get_or_none(peer=peer)) is None:
+                        or (dialog := await models.Dialog.get_or_none(peer=peer, visible=True)) is None:
                     return none_ret
 
                 users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
@@ -104,7 +104,7 @@ class Update(Model):
 
             case UpdateType.DIALOG_PIN_REORDER:
                 dialogs = await models.Dialog.filter(
-                    peer__owner=user, pinned_index__not_isnull=True
+                    peer__owner=user, pinned_index__not_isnull=True, visible=True,
                 ).select_related("peer")
 
                 for dialog in dialogs:
@@ -297,7 +297,9 @@ class Update(Model):
                 users_q, chats_q, channels_q = Q(), Q(), Q()
 
                 dialog: models.Dialog
-                async for dialog in models.Dialog.filter(peer__id__in=self.related_ids).select_related("peer"):
+                async for dialog in models.Dialog.filter(
+                        peer__id__in=self.related_ids, visible=True,
+                ).select_related("peer"):
                     folder_peers.append(FolderPeer(peer=dialog.peer.to_tl(), folder_id=dialog.folder_id.value))
                     users_q, chats_q, channels_q = dialog.peer.query_users_chats(users_q, chats_q, channels_q)
 

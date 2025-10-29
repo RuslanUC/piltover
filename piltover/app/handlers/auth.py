@@ -79,7 +79,7 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
         return resp
 
     peer_system, _ = await Peer.get_or_create(owner=user, user=system_user, type=PeerType.USER)
-    await Dialog.get_or_create(peer=peer_system)
+    await Dialog.create_or_unhide(peer_system)
     message = await Message.create(
         internal_id=Snowflake.make_id(),
         message=LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5)),

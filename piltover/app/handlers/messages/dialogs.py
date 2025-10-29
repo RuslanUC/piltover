@@ -7,10 +7,11 @@ from tortoise.functions import Max
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.updates import get_state_internal
 from piltover.db.enums import PeerType, DialogFolderId
-from piltover.db.models import User, Dialog, Peer, SavedDialog, Message
+from piltover.db.models import User, Dialog, Peer, SavedDialog, Message, Chat, Channel
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector
+from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector, \
+    InputPeerChannel
 from piltover.tl.functions.folders import EditPeerFolders
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
@@ -71,7 +72,7 @@ class PeerWithDialogs(Peer):
 async def get_dialogs_internal(
         model: type[Dialog | SavedDialog], user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: InputPeerUser | InputPeerChat | None = None, folder_id: int | None = None,
-        exclude_pinned: bool = False, allow_slicing: bool = False,
+        exclude_pinned: bool = False, allow_slicing: bool = False, only_visible: bool = True,
 ) -> dict:
     if limit > 100 or limit < 1:
         limit = 100
@@ -107,6 +108,8 @@ async def get_dialogs_internal(
         query &= Q(last_message_date__lt=datetime.fromtimestamp(offset_date, UTC))
     if folder_id is not None and issubclass(model, Dialog):
         query &= Q(dialogs__folder_id=DialogFolderId(folder_id))
+    if only_visible and isinstance(model, Dialog):
+        query &= Q(dialogs__visible=True)
 
     # Doing it this way because, as far as i know, in Tortoise you cant reference outer-value from inner query
     #  and e.g. do something like
@@ -140,15 +143,23 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
     query = Q(peer__owner=user)
 
     peers_query = None
-    for peer in request.peers:
-        if isinstance(peer.peer, InputPeerSelf):
+    for peer_dialog in request.peers:
+        peer = peer_dialog.peer
+
+        if isinstance(peer, InputPeerSelf):
             add_to_query = Q(peer__type=PeerType.SELF, peer__user=None)
-        elif isinstance(peer.peer, InputPeerUser):
+        elif isinstance(peer, InputPeerUser):
             add_to_query = Q(
-                peer__type=PeerType.USER, peer__user__id=peer.peer.user_id, peer__access_hash=peer.peer.access_hash,
+                peer__type=PeerType.USER, peer__user__id=peer.user_id, peer__access_hash=peer.access_hash,
             )
-        elif isinstance(peer.peer, InputPeerChat):
-            add_to_query = Q(peer__type=PeerType.CHAT, peer__chat__id=peer.peer.chat_id)
+        elif isinstance(peer, InputPeerChat):
+            add_to_query = Q(peer__type=PeerType.CHAT, peer__chat__id=Chat.norm_id(peer.chat_id))
+        elif isinstance(peer, InputPeerChannel):
+            add_to_query = Q(
+                peer__type=PeerType.CHANNEL,
+                peer__channel__id=Channel.norm_id(peer.channel_id),
+                peer__access_hash=peer.access_hash,
+            )
         else:
             continue
 
@@ -169,7 +180,7 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
 @handler.on_request(GetPinnedDialogs)
 async def get_pinned_dialogs(request: GetPinnedDialogs, user: User):
     dialogs = await Dialog.filter(
-        peer__owner=user, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id),
+        peer__owner=user, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True,
     ).select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
 
     return PeerDialogs(
@@ -181,14 +192,14 @@ async def get_pinned_dialogs(request: GetPinnedDialogs, user: User):
 @handler.on_request(ToggleDialogPin)
 async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer.peer)) is None \
-            or (dialog := await Dialog.get_or_none(peer=peer)) is None:
+            or (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
 
     if dialog.pinned_index:
         dialog.pinned_index = None
     else:
         dialog.pinned_index = await Dialog.filter(
-            peer=peer, pinned_index__not_isnull=True, folder_id=dialog.folder_id,
+            peer=peer, pinned_index__not_isnull=True, folder_id=dialog.folder_id, visible=True,
         ).count()
         if dialog.pinned_index > 10:
             raise ErrorRpc(error_code=400, error_message="PINNED_DIALOGS_TOO_MUCH")
@@ -202,7 +213,7 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
 @handler.on_request(ReorderPinnedDialogs)
 async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
     pinned_now = await Dialog.filter(
-        peer__owner=user, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id),
+        peer__owner=user, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True,
     ).select_related("peer")
     pinned_now = {dialog.peer: dialog for dialog in pinned_now}
     pinned_after = []
@@ -214,7 +225,7 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
             continue
 
         dialog = pinned_now.get(peer, None) \
-                 or await Dialog.get_or_none(peer=peer, folder_id=folder_id).select_related("peer")
+                 or await Dialog.get_or_none(peer=peer, folder_id=folder_id, visible=True).select_related("peer")
         if not dialog:
             continue
 
@@ -242,7 +253,7 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
 @handler.on_request(MarkDialogUnread)
 async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.peer.peer)
-    if (dialog := await Dialog.get_or_none(peer=peer).select_related("peer")) is None:
+    if (dialog := await Dialog.get_or_none(peer=peer, visible=True).select_related("peer")) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     if dialog.unread_mark == request.unread:
@@ -257,7 +268,7 @@ async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
 
 @handler.on_request(GetDialogUnreadMarks)
 async def get_dialog_unread_marks(user: User) -> TLObjectVector[DialogPeer]:
-    dialogs = await Dialog.filter(peer__owner=user, unread_mark=True).select_related("peer")
+    dialogs = await Dialog.filter(peer__owner=user, unread_mark=True, visible=True).select_related("peer")
 
     return TLObjectVector([
         DialogPeer(peer=dialog.peer.to_tl())
@@ -273,7 +284,7 @@ async def edit_peer_folders(request: EditPeerFolders, user: User) -> Updates:
         if folder_peer.folder_id not in DialogFolderId._value2member_map_:
             raise ErrorRpc(error_code=400, error_message="FOLDER_ID_INVALID")
         if (peer := await Peer.from_input_peer(user, folder_peer.peer)) is None \
-                or (dialog := await Dialog.get_or_none(peer=peer)) is None:
+                or (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
             continue
 
         new_folder_id = DialogFolderId(folder_peer.folder_id)

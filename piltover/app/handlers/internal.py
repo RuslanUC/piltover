@@ -48,7 +48,7 @@ async def send_code(request: SendCode, user: User) -> SentCode:
     print(f"Password: {webauth.password}")
 
     peer_system, _ = await Peer.get_or_create(owner=target_user, user=user, type=PeerType.USER)
-    await Dialog.get_or_create(peer=peer_system)
+    await Dialog.create_or_unhide(peer_system)
     message = await Message.create(
         internal_id=Snowflake.make_id(),
         message=LOGIN_MESSAGE_FMT.format(code=webauth.password, name=target_user.first_name),

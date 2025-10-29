@@ -127,7 +127,7 @@ class Channel(ChatBase):
             admin_rights=admin_rights,
             username=username.username if username is not None else None,
             usernames=[],
-            default_banned_rights=self.banned_rights.to_tl(),
+            default_banned_rights=self.banned_rights.to_tl() if participant is not None else None,
             banned_rights=participant.banned_rights.to_tl() if participant is not None else None,
             color=PeerColor(color=self.accent_color_id) if self.accent_color_id is not None else None,
             profile_color=PeerColor(color=self.profile_color_id) if self.profile_color_id is not None else None,

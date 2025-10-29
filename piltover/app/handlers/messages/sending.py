@@ -614,7 +614,7 @@ async def save_draft(request: SaveDraft, user: User):
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         await peer.chat_or_channel.get_participant_raise(user)
 
-    dialog = await Dialog.get_or_create(peer=peer)
+    dialog = await Dialog.create_or_unhide(peer)
     draft, _ = await MessageDraft.get_or_create(
         dialog=dialog,
         defaults={"message": request.message, "date": datetime.now()}
@@ -695,7 +695,7 @@ async def forward_messages(
                 f"Creating forwarded message for peer {opp_peer.id}({opp_peer.owner_id}) -> {opp_peer.user_id}"
             )
             if opp_peer.owner_id is not None:
-                await Dialog.get_or_create(peer=opp_peer)
+                await Dialog.create_or_unhide(opp_peer)
             result[opp_peer].append(
                 await message.clone_for_peer(
                     peer=opp_peer,
@@ -868,7 +868,7 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
 
     if not offset_id:
         # TODO: delete for other users if request.revoke
-        await Dialog.filter(peer=peer).delete()
+        await Dialog.filter(peer=peer).update(visible=False)
         if peer.type == PeerType.CHAT:
             await ChatParticipant.filter(char=peer.chat, user=user).delete()
             await peer.delete()

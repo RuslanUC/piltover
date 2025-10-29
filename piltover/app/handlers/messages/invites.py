@@ -247,7 +247,7 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
         ).values_list("id", flat=True)
     )).delete()
 
-    await Dialog.get_or_create(peer=new_peer)
+    await Dialog.create_or_unhide(new_peer)
 
     if isinstance(invite.chat_or_channel, Channel):
         await SessionManager.subscribe_to_channel(invite.channel.id, [user.id])

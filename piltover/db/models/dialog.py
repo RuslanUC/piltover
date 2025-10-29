@@ -18,6 +18,7 @@ class Dialog(Model):
     pinned_index: int | None = fields.SmallIntField(null=True, default=None)
     unread_mark: bool = fields.BooleanField(default=False)
     folder_id: DialogFolderId = fields.IntEnumField(DialogFolderId, default=DialogFolderId.ALL)
+    visible: bool = fields.BooleanField(default=True)
 
     peer: models.Peer = fields.OneToOneField("models.Peer")
     draft: fields.ReverseRelation[models.MessageDraft]
@@ -62,3 +63,13 @@ class Dialog(Model):
             unread_mentions_count=unread_mentions,
             ttl_period=self.peer.user_ttl_period_days * 86400 if self.peer.user_ttl_period_days else None,
         )
+
+    @classmethod
+    async def create_or_unhide(cls, peer: models.Peer) -> Dialog:
+        dialog, _ = await cls.update_or_create(peer=peer, defaults={"visible": True})
+        return dialog
+
+    @classmethod
+    async def get_or_create_hidden(cls, peer: models.Peer) -> Dialog:
+        dialog, _ = await cls.get_or_create(peer=peer, defaults={"visible": False})
+        return dialog
