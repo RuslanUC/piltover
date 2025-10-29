@@ -125,16 +125,19 @@ async def test_send_text_message_in_group() -> None:
     async with TestClient(phone_number="123456789") as client:
         group = await client.create_group("idk", [])
         messages = [msg async for msg in client.get_chat_history(group.id)]
-        assert len(messages) == 0
+        assert len(messages) == 1
+        assert messages[0].service
 
         message = await client.send_message(group.id, text="test 123456")
         assert message.text == "test 123456"
 
         messages = [msg async for msg in client.get_chat_history(group.id)]
-        assert len(messages) == 1
+        assert len(messages) == 2
 
-        assert messages[0].id == message.id
-        assert messages[0].text == message.text
+        messages.sort(key=lambda msg: msg.id)
+        assert messages[1].id == message.id
+        assert messages[1].text == message.text
+        assert messages[1].service is None
 
 
 @pytest.mark.asyncio
@@ -358,10 +361,13 @@ async def test_send_message_in_channel() -> None:
         assert message.text == "test message 123"
 
         messages = [msg async for msg in client.get_chat_history(channel.id)]
-        assert len(messages) == 1
+        assert len(messages) == 2
 
-        assert messages[0].id == message.id
-        assert messages[0].text == message.text
+        messages.sort(key=lambda msg: msg.id)
+        assert messages[1].id == message.id
+        assert messages[1].text == message.text
+        assert messages[1].service is None
+        assert messages[0].service
 
 
 @pytest.mark.asyncio
@@ -667,9 +673,9 @@ async def test_mention_user_in_chat(exit_stack: AsyncExitStack) -> None:
     messages = [message2 async for message2 in client2.get_chat_history(group.id)]
     messages.sort(key=lambda m: m.id)
     assert messages
-    assert len(messages) == 2
-    assert not messages[0].mentioned
-    assert messages[1].mentioned
+    assert len(messages) == 3
+    assert not messages[1].mentioned
+    assert messages[2].mentioned
 
 
 @pytest.mark.asyncio
@@ -766,9 +772,9 @@ async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> No
     messages = [message2 async for message2 in client2.get_chat_history(group.id)]
     messages.sort(key=lambda m: m.id)
     assert messages
-    assert len(messages) == 2
-    assert not messages[0].mentioned
-    assert messages[1].mentioned
+    assert len(messages) == 3
+    assert not messages[1].mentioned
+    assert messages[2].mentioned
 
 
 class GetSearchResultsCalendarFailedManually(RuntimeError):

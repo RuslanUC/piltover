@@ -56,7 +56,7 @@ async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
     else:  # pragma: no cover
         raise RuntimeError("Unreachable")
 
-    dialog = await Dialog.get_or_create_hidden(peer)
+    await Dialog.get_or_create_hidden(peer)
 
     return ResolvedPeer(
         peer=peer.to_tl(),

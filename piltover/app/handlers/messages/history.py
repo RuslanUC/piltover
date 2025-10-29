@@ -75,9 +75,10 @@ async def get_messages_query_internal(
     if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
         query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
 
-    # TODO: probably dont add this to query if user requested messages with InputMessageReplyTo or something
-    # TODO: why did i even add this in the first place???
-    query &= Q(type=MessageType.REGULAR)
+    if not only_mentions and filter_ is None and saved_peer is None and q is None and after_reaction_id is None:
+        query &= Q(type__not=MessageType.SCHEDULED)
+    else:
+        query &= Q(type=MessageType.REGULAR)
 
     if q:
         query &= Q(message__istartswith=q)

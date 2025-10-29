@@ -108,7 +108,7 @@ async def get_dialogs_internal(
         query &= Q(last_message_date__lt=datetime.fromtimestamp(offset_date, UTC))
     if folder_id is not None and issubclass(model, Dialog):
         query &= Q(dialogs__folder_id=DialogFolderId(folder_id))
-    if only_visible and isinstance(model, Dialog):
+    if only_visible and issubclass(model, Dialog):
         query &= Q(dialogs__visible=True)
 
     # Doing it this way because, as far as i know, in Tortoise you cant reference outer-value from inner query
@@ -133,7 +133,7 @@ async def get_dialogs_internal(
 async def get_dialogs(request: GetDialogs, user: User) -> Dialogs:
     result = await get_dialogs_internal(
         Dialog, user, request.offset_id, request.offset_date, request.limit, request.offset_peer, request.folder_id,
-        request.exclude_pinned, True,
+        request.exclude_pinned, True, True,
     )
     return Dialogs(**result) if "count" not in result else DialogsSlice(**result)
 
