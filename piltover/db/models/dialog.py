@@ -70,6 +70,11 @@ class Dialog(Model):
         return dialog
 
     @classmethod
+    async def hide(cls, peer: models.Peer) -> Dialog:
+        dialog, _ = await cls.update_or_create(peer=peer, defaults={"visible": False})
+        return dialog
+
+    @classmethod
     async def get_or_create_hidden(cls, peer: models.Peer) -> Dialog:
         dialog, _ = await cls.get_or_create(peer=peer, defaults={"visible": False})
         return dialog

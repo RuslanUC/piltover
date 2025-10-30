@@ -23,7 +23,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
-    UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel
+    UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
@@ -726,7 +726,32 @@ async def join_channel(request: JoinChannel, user: User) -> Updates:
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
+    if await ChatParticipant.filter(channel=peer.channel, user=user).exists():
+        raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
+
     if not await Username.filter(channel=peer.channel).exists():
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     return await user_join_chat_or_channel(peer.channel, user, None)
+
+
+@handler.on_request(LeaveChannel)
+async def leave_channel(request: LeaveChannel, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+
+    if peer.channel.creator_id == user.id:
+        raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
+
+    participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
+    if participant is None:
+        raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
+
+    await participant.delete()
+    await ChatInvite.filter(channel=peer.channel, user=user).update(revoked=True)
+    await Dialog.hide(peer)
+
+    # TODO: remove scheduled messages, if any
+
+    return await upd.update_channel_for_user(peer.channel, user)

@@ -444,3 +444,31 @@ async def test_get_public_channel_messages_without_join(exit_stack: AsyncExitSta
     assert messages[1].id == message.id
     assert messages[1].text == message.text
     assert messages[1].service is None
+
+
+@pytest.mark.asyncio
+async def test_channel_leave(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    await client2.set_username("test2_username")
+    await client2.expect_update(UpdateUserName)
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage, UpdateChannel):
+        channel = await client1.create_channel("idk")
+        await client1.set_chat_username(channel.id, "test_public_channel")
+
+    assert await client1.get_chat_members_count(channel.id) == 1
+    assert len([dialog async for dialog in client2.get_dialogs()]) == 0
+
+    async with client2.expect_updates_m(UpdateChannel):
+        await client2.join_chat("test_public_channel")
+
+    assert await client1.get_chat_members_count(channel.id) == 2
+    assert len([dialog async for dialog in client2.get_dialogs()]) == 1
+
+    async with client2.expect_updates_m(UpdateChannel):
+        await client2.leave_chat("test_public_channel")
+
+    assert await client1.get_chat_members_count(channel.id) == 1
+    assert len([dialog async for dialog in client2.get_dialogs()]) == 0
