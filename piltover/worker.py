@@ -227,6 +227,9 @@ class Worker(MessageHandler):
                 "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "author", "media", "reply_to",
                 "fwd_header", "post_info",
             )
+            if scheduled is None:
+                return
+
             task = scheduled.taskiqscheduledmessages
             peer = scheduled.peer
 

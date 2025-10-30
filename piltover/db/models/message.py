@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum, auto
 from io import BytesIO
+from os import environ
 from typing import Callable, Awaitable, cast
 
 from loguru import logger
@@ -102,6 +103,10 @@ class Message(Model):
     reply_to_id: int | None
     post_info_id: int | None
 
+    TTL_MULT = 86400
+    if (_ttl_mult := environ.get("DEBUG_MESSAGE_TTL_MULTIPLIER", "")).isdigit():
+        TTL_MULT = int(_ttl_mult)
+
     class Meta:
         unique_together = (
             ("peer", "random_id"),
@@ -172,7 +177,7 @@ class Message(Model):
             from_id=from_id,
             mentioned=False,
             media_unread=False,
-            ttl_period=self.ttl_period_days * 86400 if self.ttl_period_days else None,
+            ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessage | MessageService:
@@ -240,7 +245,7 @@ class Message(Model):
 
         ttl_period = None
         if self.ttl_period_days and self.type is MessageType.REGULAR:
-            ttl_period = self.ttl_period_days * 86400
+            ttl_period = self.ttl_period_days * self.TTL_MULT
 
         message = TLMessage(
             id=self.id,

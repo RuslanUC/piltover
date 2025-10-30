@@ -1,4 +1,3 @@
-import asyncio
 from contextlib import AsyncExitStack
 from datetime import timedelta, datetime
 from io import BytesIO
@@ -11,9 +10,9 @@ from pyrogram.enums import MessageEntityType
 from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
-    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages
+    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
-    InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages
+    InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages
 from pyrogram.raw.types.messages import Messages, AffectedHistory
 from pyrogram.types import InputMediaDocument, ChatPermissions
 
@@ -874,3 +873,38 @@ async def test_delete_scheduled_message(exit_stack: AsyncExitStack) -> None:
 
     with pytest.raises(TimeoutError):
         await client.expect_update(UpdateNewMessage, 2)
+
+
+@pytest.mark.run_scheduler
+@pytest.mark.asyncio
+async def test_messages_ttl(exit_stack: AsyncExitStack) -> None:
+    Message.TTL_MULT = 1
+
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    group = await client.create_group("idk", [])
+    message1 = await client.send_message(group.id, "test message that wont be deleted")
+
+    await client.invoke(SetHistoryTTL(
+        peer=await client.resolve_peer(group.id),
+        period=86400 * 1,
+    ))
+
+    message2 = await client.send_message(group.id, "test message that WILL be deleted")
+
+    await client.invoke(SetHistoryTTL(
+        peer=await client.resolve_peer(group.id),
+        period=0,
+    ))
+
+    update = await client.expect_update(UpdateDeleteMessages, 1.5)
+    assert update.messages == [message2.id]
+
+    message3 = await client.send_message(group.id, "test message 2 that wont be deleted")
+
+    message_ids = [m.id async for m in client.get_chat_history(group.id)]
+    assert message1.id in message_ids
+    assert message2.id not in message_ids
+    assert message3.id in message_ids
+
+

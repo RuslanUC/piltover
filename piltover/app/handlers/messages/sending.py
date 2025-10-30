@@ -98,7 +98,7 @@ async def send_created_messages_internal(
         if message.ttl_period_days:
             ttl_tasks.append(TaskIqScheduledDeleteMessage(
                 message=message,
-                scheduled_for=int(message.date.timestamp()) + message.ttl_period_days * 86400,
+                scheduled_for=int(message.date.timestamp()) + message.ttl_period_days * Message.TTL_MULT,
             ))
 
     if ttl_tasks:
