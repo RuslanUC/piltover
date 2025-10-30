@@ -16,7 +16,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage, MessageActionChatJoinedByLink, \
-    MessageActionChatJoinedByRequest
+    MessageActionChatJoinedByRequest, MessageActionChatAddUser
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
     HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_133, ExportChatInvite_134, EditExportedChatInvite
@@ -215,6 +215,66 @@ def _get_invite_hash_from_link(invite_link: str) -> str | None:
         return query.get("invite") or None
 
 
+async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_invite: ChatInvite | None) -> Updates:
+    if isinstance(chat_or_channel, Channel) \
+            and await ChatParticipant.filter(user=user, channel__id__not=None).count() > AppConfig.CHANNELS_PER_USER_LIMIT:
+        raise ErrorRpc(error_code=400, error_message="CHANNELS_TOO_MUCH")
+
+    member_limit = AppConfig.BASIC_GROUP_MEMBER_LIMIT
+    if isinstance(chat_or_channel, Channel):
+        member_limit = AppConfig.SUPER_GROUP_MEMBER_LIMIT  # TODO: add separate limit for channels
+    if await ChatParticipant.filter(**Chat.or_channel(chat_or_channel)).count() > member_limit:
+        raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
+
+    new_peer, _ = await Peer.get_or_create(
+        owner=user, type=PeerType.CHAT if isinstance(chat_or_channel, Chat) else PeerType.CHANNEL,
+        **Chat.or_channel(chat_or_channel),
+    )
+    await ChatParticipant.create(
+        user=user,
+        inviter_id=from_invite.user_id if from_invite is not None else 0,
+        invite=from_invite,
+        **Chat.or_channel(chat_or_channel),
+    )
+    await ChatInviteRequest.filter(id__in=Subquery(
+        ChatInviteRequest.filter(
+            Chat.query(chat_or_channel, "invite") & Q(user=user)
+        ).values_list("id", flat=True)
+    )).delete()
+
+    await Dialog.create_or_unhide(new_peer)
+
+    if isinstance(chat_or_channel, Channel):
+        channel = cast(Channel, chat_or_channel)
+        await SessionManager.subscribe_to_channel(channel.id, [user.id])
+
+        # TODO: send SERVICE_CHAT_USER_INVITE_JOIN or SERVICE_CHAT_USER_ADD message if channel is a supergroup
+        return await upd.update_channel_for_user(channel, user)
+
+    chat_peers = {
+        peer.owner.id: peer
+        for peer in await Peer.filter(Chat.query(chat_or_channel)).select_related("owner", "chat", "channel")
+    }
+
+    updates = await upd.create_chat(user, cast(Chat, chat_or_channel), list(chat_peers.values()))
+    if from_invite is not None:
+        updates_msg = await send_message_internal(
+            user, chat_peers[user.id], None, None, False,
+            author=user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
+            extra_info=MessageActionChatJoinedByLink(inviter_id=from_invite.user_id).write(),
+        )
+    else:
+        updates_msg = await send_message_internal(
+            user, chat_peers[user.id], None, None, False,
+            author=user, type=MessageType.SERVICE_CHAT_USER_ADD,
+            extra_info=MessageActionChatAddUser(users=[user.id]).write(),
+        )
+
+    updates.updates.extend(updates_msg.updates)
+
+    return updates
+
+
 @handler.on_request(ImportChatInvite)
 async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     invite = await _get_invite_with_some_checks(request.hash)
@@ -228,48 +288,7 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
             await ChatInviteRequest.create(user=user, invite=invite)
         raise ErrorRpc(error_code=400, error_message="INVITE_REQUEST_SENT")
 
-    member_limit = AppConfig.BASIC_GROUP_MEMBER_LIMIT
-    if invite.channel is not None:
-        member_limit = AppConfig.SUPER_GROUP_MEMBER_LIMIT  # TODO: add separate limit for channels
-    if await ChatParticipant.filter(**Chat.or_channel(invite.chat_or_channel)).count() > member_limit:
-        raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
-
-    new_peer, _ = await Peer.get_or_create(
-        owner=user, type=PeerType.CHAT if isinstance(invite.chat_or_channel, Chat) else PeerType.CHANNEL,
-        **Chat.or_channel(invite.chat_or_channel),
-    )
-    await ChatParticipant.create(
-        user=user, inviter_id=invite.user_id, invite=invite, **Chat.or_channel(invite.chat_or_channel),
-    )
-    await ChatInviteRequest.filter(id__in=Subquery(
-        ChatInviteRequest.filter(
-            Chat.query(invite.chat_or_channel, "invite") & Q(user=user)
-        ).values_list("id", flat=True)
-    )).delete()
-
-    await Dialog.create_or_unhide(new_peer)
-
-    if isinstance(invite.chat_or_channel, Channel):
-        await SessionManager.subscribe_to_channel(invite.channel.id, [user.id])
-
-        # TODO: send SERVICE_CHAT_USER_INVITE_JOIN message if channel is a supergroup
-        return await upd.update_channel_for_user(invite.channel, user)
-
-    chat_peers = {
-        peer.owner.id: peer
-        for peer in await Peer.filter(Chat.query(invite.chat_or_channel)).select_related("owner", "chat", "channel")
-    }
-
-    updates = await upd.create_chat(user, cast(Chat, invite.chat_or_channel), list(chat_peers.values()))
-    updates_msg = await send_message_internal(
-        user, chat_peers[user.id], None, None, False,
-        author=user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
-        extra_info=MessageActionChatJoinedByLink(inviter_id=invite.user_id).write(),
-    )
-
-    updates.updates.extend(updates_msg.updates)
-
-    return updates
+    return await user_join_chat_or_channel(invite.chat_or_channel, user, invite)
 
 
 @handler.on_request(CheckChatInvite)

@@ -6,6 +6,7 @@ from tortoise.expressions import Q, Subquery
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
 from piltover.app.handlers.messages.history import format_messages_internal
+from piltover.app.handlers.messages.invites import user_join_chat_or_channel
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import validate_username, check_password_internal
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
@@ -22,7 +23,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, Inpu
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
-    UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator
+    UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
@@ -717,3 +718,15 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
     await channel.save(update_fields=["creator_id"])
 
     return await upd.update_channel(channel, user, send_to_users=[user.id, target_peer.user.id])
+
+
+@handler.on_request(JoinChannel)
+async def join_channel(request: JoinChannel, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if not await Username.filter(channel=peer.channel).exists():
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+
+    return await user_join_chat_or_channel(peer.channel, user, None)

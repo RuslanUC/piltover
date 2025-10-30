@@ -390,3 +390,30 @@ async def test_delete_channel_fail_not_owner(exit_stack: AsyncExitStack) -> None
 
     assert await client1.get_chat(channel.id)
     assert await client2.get_chat(channel.id)
+
+
+@pytest.mark.asyncio
+async def test_channel_join(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    await client2.set_username("test2_username")
+    await client2.expect_update(UpdateUserName)
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_channel("idk")
+
+    async with client1.expect_updates_m(UpdateChannel):
+        await client1.set_chat_username(channel.id, "test_public_channel")
+
+    assert await client1.get_chat_members_count(channel.id) == 1
+    assert len([dialog async for dialog in client2.get_dialogs()]) == 0
+
+    async with client2.expect_updates_m(UpdateChannel):
+        channel2 = await client2.join_chat("test_public_channel")
+    assert channel2
+
+    assert channel.id == channel2.id
+
+    assert await client1.get_chat_members_count(channel.id) == 2
+    assert len([dialog async for dialog in client2.get_dialogs()]) == 1
