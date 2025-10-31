@@ -9,9 +9,10 @@ from piltover.app.handlers.messages.history import format_messages_internal
 from piltover.app.handlers.messages.invites import user_join_chat_or_channel
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import validate_username, check_password_internal
+from piltover.app_config import AppConfig
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
-    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword
+    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session_manager import SessionManager
@@ -35,11 +36,6 @@ handler = MessageHandler("channels")
 
 @handler.on_request(GetChannelRecommendations, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_channel_recommendations():  # pragma: no cover
-    return Chats(chats=[])
-
-
-@handler.on_request(GetAdminedPublicChannels, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_admined_public_channels():  # pragma: no cover
     return Chats(chats=[])
 
 
@@ -78,6 +74,7 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
     if current_username is not None:
         if not request.username:
             await current_username.delete()
+            await UserPersonalChannel.filter(channel=channel).delete()
             channel.cached_username = None
         else:
             current_username.username = request.username
@@ -287,7 +284,9 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
-    await peer.channel.get_participant_raise(user)
+
+    if not await Username.filter(channel=peer.channel).exists() and await peer.channel.get_participant(user) is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_RESTRICTED")
 
     query = Q()
 
@@ -440,7 +439,18 @@ async def get_participants(request: GetParticipants, user: User):
     participants_tl = []
     users_tl = []
 
+    peers_to_create = []
+
     for participant in participants:
+        if participant.user != user:
+            peers_to_create.append(Peer(owner=user, user=participant.user, type=PeerType.USER))
+
+    await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
+
+    for participant in participants:
+        #if participant.user != user:
+        #    await Peer.get_or_create(type=PeerType.USER, owner=user, user=participant.user)
+
         participant.channel = peer.channel
         participants_tl.append(await participant.to_tl_channel(user))
         users_tl.append(await participant.user.to_tl(user))
@@ -686,6 +696,7 @@ async def delete_channel(request: DeleteChannel, user: User) -> Updates:
     channel.version += 1
     await channel.save(update_fields=["deleted", "version"])
 
+    await UserPersonalChannel.filter(channel=channel).delete()
     # TODO: delete channel peers, dialogs, participants and messages lazily or in background
 
     return await upd.update_channel(channel, user)
@@ -755,3 +766,16 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
     # TODO: remove scheduled messages, if any
 
     return await upd.update_channel_for_user(peer.channel, user)
+
+
+@handler.on_request(GetAdminedPublicChannels)
+async def get_admined_public_channels(request: GetAdminedPublicChannels, user: User) -> Chats:
+    query = Channel.filter(deleted=False, creator=user, chatparticipants__user=user, usernames__isnull=False)
+
+    if request.check_limit and await query.count() >= AppConfig.PUBLIC_CHANNELS_LIMIT:
+        raise ErrorRpc(error_code=400, error_message="CHANNELS_ADMIN_PUBLIC_TOO_MUCH")
+
+    return Chats(chats=[
+        await channel.to_tl(user)
+        for channel in await query
+    ])

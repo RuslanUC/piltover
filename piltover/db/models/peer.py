@@ -35,7 +35,9 @@ class Peer(Model):
 
     class Meta:
         unique_together = (
-            ("owner", "type", "user", "chat", "channel",),
+            ("owner", "user",),
+            ("owner", "chat",),
+            ("owner", "channel",),
         )
 
     owner_id: int
@@ -70,7 +72,7 @@ class Peer(Model):
 
         if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user.id):
-            peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF, user=None)
+            peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF, user=user)
             peer.owner = await peer.owner
             return peer
         elif isinstance(input_peer, (InputPeerUser, InputUser)):

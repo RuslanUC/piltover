@@ -141,7 +141,10 @@ async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
         opposite: bool = True, scheduled_date: int | None = None, **message_kwargs
 ) -> Updates:
-    if opposite and peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
+    if opposite \
+            and peer.type is PeerType.USER \
+            and peer.user.bot \
+            and await peer.user.get_raw_username() in bots.HANDLERS:
         opposite = False
 
     mentioned_user_ids = set()

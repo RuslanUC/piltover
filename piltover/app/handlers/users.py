@@ -1,5 +1,7 @@
+from typing import cast
+
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact
+from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
@@ -23,10 +25,29 @@ async def get_full_user(request: GetFullUser, user: User):
         "wallpaper", "wallpaper__document", "wallpaper__settings",
     )
 
+    has_scheduled = await Message.filter(peer=peer, scheduled_date__not_isnull=True).exists()
+    pinned_msg_id = cast(
+        int | None,
+        await Message.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True),
+    )
+
+    personal_channel = await Channel.get_or_none(userpersonalchannels__user=target_user)
+    if personal_channel is not None:
+        personal_channel_msg_id = cast(
+            int | None,
+            await Message.filter(
+                peer__owner=None, peer__channel=personal_channel,
+            ).order_by("-id").first().values_list("id", flat=True),
+        )
+    else:
+        personal_channel_msg_id = None
+
+    if personal_channel is not None:
+        await Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=personal_channel)
+
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
-            voice_messages_forbidden=True,
             id=target_user.id,
             about=about,
             settings=PeerSettings(),
@@ -36,9 +57,14 @@ async def get_full_user(request: GetFullUser, user: User):
             birthday=await target_user.to_tl_birthday(user),
             read_dates_private=True,
             wallpaper=await chat_wallpaper.wallpaper.to_tl(user) if chat_wallpaper is not None else None,
+            has_scheduled=has_scheduled,
+            ttl_period=bool(peer.user_ttl_period_days),
+            pinned_msg_id=pinned_msg_id,
+            personal_channel_id=personal_channel.make_id() if personal_channel is not None else None,
+            personal_channel_message=personal_channel_msg_id,
         ),
-        chats=[],
-        users=[await target_user.to_tl(current_user=user)],
+        chats=[await personal_channel.to_tl(user)] if personal_channel is not None else [],
+        users=[await target_user.to_tl(user)],
     )
 
 

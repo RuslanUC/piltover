@@ -9,17 +9,17 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType
+from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
-    InstalledWallpaper, PeerColorOption
+    InstalledWallpaper, PeerColorOption, UserPersonalChannel
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, UpdatesTooLong, \
-    WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile
+    WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
@@ -28,7 +28,8 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
-    SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis
+    SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis, \
+    UpdatePersonalChannel
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -754,3 +755,29 @@ async def update_color(request: UpdateColor, user: User) -> bool:
 @handler.on_request(GetDefaultBackgroundEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_default_background_emojis() -> EmojiList:
     return EmojiList(hash=0, document_id=[])
+
+
+@handler.on_request(UpdatePersonalChannel)
+async def update_personal_channel(request: UpdatePersonalChannel, user: User) -> bool:
+    if isinstance(request.channel, InputChannelEmpty):
+        personal_channel = await UserPersonalChannel.get_or_none(user=user)
+        if personal_channel is not None:
+            await personal_channel.delete()
+        return True
+
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+
+    if peer.channel.creator_id != user.id:
+        raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
+
+    if not await Username.filter(channel=peer.channel).exists():
+        # TODO: check if this is valid error
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+
+    await UserPersonalChannel.update_or_create(user=user, defaults={"channel": peer.channel})
+
+    await upd.update_user(user)
+    return True
+

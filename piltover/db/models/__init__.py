@@ -62,3 +62,4 @@ from .peer_color_option import PeerColorOption
 from .taskiq_scheduled_message import TaskIqScheduledMessage
 from .available_channel_reaction import AvailableChannelReaction
 from .taskiq_scheduled_delete_message import TaskIqScheduledDeleteMessage
+from .user_personal_channel import UserPersonalChannel
