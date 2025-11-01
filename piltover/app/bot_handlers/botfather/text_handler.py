@@ -67,10 +67,9 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             bot_user = await User.create(phone_number=None, first_name=state_data.name, bot=True)
             await Username.create(user=bot_user, username=username)
             bot = await Bot.create(owner=peer.owner, bot=bot_user)
+            await state.delete()
 
         messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__bot_created.format(
             username=username, token=f"{bot_user.id}:{bot.token_nonce}"
         ))
         return messages[peer]
-
-    ...  # TODO: process user state (from BotFatherUserState)

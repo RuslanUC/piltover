@@ -442,7 +442,7 @@ class TestClient(Client):
     @asynccontextmanager
     async def expect_updates_m(self, *update_clss: type[PyroTLObject], timeout_per_update: float = 0.5) -> ...:
         yield
-        await self.expect_updates(*update_clss, timeout_per_update)
+        await self.expect_updates(*update_clss, timeout_per_update=timeout_per_update)
 
 
 def color_is_near(expected: tuple[int, int, int], actual: tuple[int, int, int], error: float = 0.05) -> bool:
