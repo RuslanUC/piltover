@@ -3,7 +3,7 @@ from pyrogram.raw.functions.messages import UpdateDialogFilter, GetDialogFilters
 from pyrogram.raw.types import DialogFilter, DialogFilterDefault, UpdateDialogFilter as UpdateDialogFilter_, \
     UpdateDialogFilterOrder
 
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 @pytest.mark.asyncio

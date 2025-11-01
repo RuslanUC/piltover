@@ -18,7 +18,7 @@ from pyrogram.types import InputMediaDocument, ChatPermissions
 
 from piltover.db.enums import PeerType
 from piltover.db.models import Message, Peer, User
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 import pytest
 
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 @pytest.mark.asyncio

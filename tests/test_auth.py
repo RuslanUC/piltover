@@ -18,7 +18,7 @@ from tortoise.expressions import F
 
 from piltover.db.models import TempAuthKey
 from piltover.tl import Long
-from tests.conftest import TestClient, TransportError
+from tests.client import TestClient, TransportError
 
 
 @pytest.mark.asyncio

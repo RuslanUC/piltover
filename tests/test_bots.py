@@ -3,7 +3,7 @@ from contextlib import AsyncExitStack
 import pytest
 from pyrogram.raw.types import UpdateNewMessage
 
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 @pytest.mark.asyncio

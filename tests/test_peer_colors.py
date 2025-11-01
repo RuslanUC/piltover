@@ -9,7 +9,7 @@ from piltover.tl.types.help import PeerColorsNotModified
 from tests._peer_colors_compat import GetPeerColorsCompat, PeerColorsCompat, PeerColorOptionCompat, \
     PeerColorOption_167Compat, PeerColorSetCompat, PeerColorProfileSetCompat, GetPeerProfileColorsCompat, \
     PeerColorsNotModifiedCompat
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 @contextmanager

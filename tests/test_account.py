@@ -5,7 +5,7 @@ from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModifi
 from pyrogram.raw.functions.account import CheckUsername, SetAccountTTL, GetAccountTTL, GetAuthorizations
 from pyrogram.raw.types import UpdateUserName, UpdateUser, AccountDaysTTL
 
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 @pytest.mark.asyncio

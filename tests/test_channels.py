@@ -13,7 +13,8 @@ from pyrogram.types import ChatMember, ChatPrivileges
 from pyrogram.utils import compute_password_check
 
 from piltover.tl import InputCheckPasswordEmpty
-from tests.conftest import TestClient, color_is_near
+from tests.client import TestClient
+from tests.utils import color_is_near
 
 PHOTO_COLOR = (0x00, 0xff, 0x80)
 

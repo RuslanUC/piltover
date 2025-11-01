@@ -8,7 +8,7 @@ import pytest
 from tg_secret import TelegramSecretClient, ChatRequestResult, SecretChat, ChatState, SecretMessage
 from tg_secret.client_adapters.pyrogram_adapter import PyrogramClientAdapter
 
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 class WaitForSecretEvent:

@@ -5,7 +5,7 @@ from pyrogram.raw.functions.account import GetChatThemes
 from pyrogram.raw.types.account import Themes, ThemesNotModified
 
 from piltover.app.app import args as app_args
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 @pytest.mark.asyncio

@@ -9,12 +9,13 @@ from pyrogram.errors import StickerPngDimensions, StickerPngNopng, StickerFileIn
 from pyrogram.file_id import FileId, FileType
 from pyrogram.raw.functions.messages import UploadMedia
 from pyrogram.raw.functions.stickers import CheckShortName, CreateStickerSet
-from pyrogram.errors.exceptions.bad_request_400 import PackShortNameInvalid, BadRequest, PackShortNameOccupied
+from pyrogram.errors.exceptions.bad_request_400 import BadRequest, PackShortNameOccupied
 from pyrogram.raw.types import InputStickerSetItem, InputPeerSelf, InputMediaUploadedDocument, DocumentAttributeSticker, \
     InputStickerSetEmpty, Document, InputDocument, InputUserSelf, StickerSet
 from pyrogram.raw.types.messages import StickerSet as MessagesStickerSet
 
-from tests.conftest import TestClient, color_is_near
+from tests.client import TestClient
+from tests.utils import color_is_near
 
 PHOTO_COLOR = (128, 128, 0)
 

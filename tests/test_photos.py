@@ -4,7 +4,8 @@ from typing import cast
 import pytest
 from PIL import Image
 
-from tests.conftest import TestClient, color_is_near
+from tests.client import TestClient
+from tests.utils import color_is_near
 
 PHOTO_COLOR = (255, 0, 0)
 

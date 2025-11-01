@@ -8,7 +8,8 @@ from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs
 from pyrogram.raw.types.messages import Dialogs
 
 from piltover.tl import InputPeerEmpty
-from tests.conftest import TestClient, color_is_near
+from tests.client import TestClient
+from tests.utils import color_is_near
 
 PHOTO_COLOR = (0x00, 0xff, 0x00)
 

@@ -3,7 +3,7 @@ from pyrogram.raw.types.messages import AvailableReactionsNotModified
 
 from piltover.app.app import args as app_args
 from piltover.tl.functions.messages import GetAvailableReactions
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 
 @pytest.mark.asyncio

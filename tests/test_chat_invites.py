@@ -4,7 +4,7 @@ from pyrogram.errors import InviteHashInvalid, UserAlreadyParticipant, PeerIdInv
 from pyrogram.raw.functions.messages import ExportChatInvite
 from pyrogram.types import Chat, ChatPreview
 
-from tests.conftest import TestClient
+from tests.client import TestClient
 
 PHOTO_COLOR = (0x00, 0xff, 0x00)
 
