@@ -71,6 +71,17 @@ _FWD_HEADER_MISSING = _FwdHeaderMissing.FWD_HEADER_MISSING
 AllowedMessageActions = (*MessageActionInst, *MessageActionNeedsProcessingInst)
 
 
+async def append_channel_min_message_id_to_query_maybe(
+        peer: models.Peer, query: Q, participant: models.ChatParticipant | None = None,
+) -> Q:
+    if isinstance(peer, models.Peer) and peer.type is PeerType.CHANNEL:
+        if participant is None:
+            participant = await models.ChatParticipant.get_or_none(channel=peer.channel, user=peer.owner)
+        if (channel_min_id := peer.channel.min_id(participant)) is not None:
+            query &= Q(id__gte=channel_min_id)
+    return query
+
+
 class Message(Model):
     id: int = fields.BigIntField(pk=True)
     internal_id: int = fields.BigIntField(index=True)
@@ -125,16 +136,22 @@ class Message(Model):
         peer_query = Q(peer=peer)
         if peer.type is PeerType.CHANNEL:
             peer_query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
-        return await Message.get_or_none(peer_query, types_query, id=id_)\
-            .select_related("peer", "author", "media")
+
+        query = peer_query & types_query & Q(id=id_)
+        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+
+        return await Message.get_or_none(query).select_related("peer", "author", "media")
 
     @classmethod
     async def get_many(cls, ids: list[int], peer: models.Peer) -> list[models.Message]:
         peer_query = Q(peer=peer)
         if peer.type is PeerType.CHANNEL:
             peer_query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
-        return await Message.filter(peer_query, id__in=ids, type=MessageType.REGULAR) \
-            .select_related("peer", "author", "media")
+
+        query = peer_query & Q(id__in=ids, type=MessageType.REGULAR)
+        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+
+        return await Message.filter(query).select_related("peer", "author", "media")
 
     async def _make_reply_to_header(self) -> MessageReplyHeader:
         if self.reply_to is not None:

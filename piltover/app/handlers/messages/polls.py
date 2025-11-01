@@ -5,6 +5,7 @@ from tortoise.expressions import Q
 import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Message, PollAnswer, PollVote
+from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, PeerUser, MessagePeerVoteInputOption, MessagePeerVote, Updates
 from piltover.tl.functions.messages import GetPollResults, SendVote, GetPollVotes
@@ -19,6 +20,7 @@ async def get_poll_results(request: GetPollResults, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is PeerType.CHANNEL:
         query = Q(peer__type=PeerType.CHANNEL, peer__owner=None, peer__channel=peer.channel)
+        query = await append_channel_min_message_id_to_query_maybe(peer, query)
     else:
         query = Q(peer=peer)
 
@@ -35,8 +37,7 @@ async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
     if peer.type is PeerType.CHANNEL:
         raise ErrorRpc(error_code=403, error_message="BROADCAST_FORBIDDEN")
 
-    query = Q(peer=peer)
-    message = await Message.get_or_none(query & Q(id=request.id)).select_related("media", "media__poll")
+    message = await Message.get_or_none(peer=peer, id=request.id).select_related("media", "media__poll")
     if message is None or message.media is None or message.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
     if not message.media.poll.public_voters:
@@ -95,6 +96,7 @@ async def send_vote(request: SendVote, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is PeerType.CHANNEL:
         query = Q(peer__type=PeerType.CHANNEL, peer__owner=None, peer__channel=peer.channel)
+        query = await append_channel_min_message_id_to_query_maybe(peer, query)
     else:
         query = Q(peer=peer)
 

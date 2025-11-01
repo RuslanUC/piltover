@@ -18,6 +18,7 @@ from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAd
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention, \
     ChatParticipant, Chat
 from piltover.db.models._utils import resolve_users_chats
+from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
@@ -111,6 +112,8 @@ async def get_messages_query_internal(
         query &= Q(id__in=Subquery(
             MessageMention.filter(peer=peer, id__gt=read_state.last_mention_id).values_list("message__id", flat=True)
         ))
+
+    query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
     limit = max(min(100, limit), 1)
     select_related = "author", "peer", "peer__user"
@@ -246,6 +249,7 @@ async def format_messages_internal(
         query = Q(peer=peer)
         if saved_peer is not None:
             query &= Q(fwd_header__saved_peer=saved_peer)
+        query = await append_channel_min_message_id_to_query_maybe(peer, query)
     messages_count = await Message.filter(query).count()
 
     if messages_count <= len(messages_tl) and not offset_id:
@@ -288,7 +292,7 @@ async def get_history(request: GetHistory, user: User) -> Messages:
 async def get_messages(request: GetMessages, user: User) -> Messages:
     query = Q()
 
-    for message_query in request.id:
+    for message_query in request.id[:100]:
         if isinstance(message_query, InputMessageID):
             query |= Q(id=message_query.id)
         elif isinstance(message_query, InputMessageReplyTo):
@@ -298,7 +302,7 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
                 ).first().values_list("reply_to__id", flat=True)
             ))
 
-    query &= Q(peer__owner=user)
+    query &= Q(peer__owner=user, peer__type__not=PeerType.CHANNEL)
 
     return await format_messages_internal(user, await Message.filter(query).select_related("peer"))
 

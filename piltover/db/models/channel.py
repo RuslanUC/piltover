@@ -48,6 +48,8 @@ class Channel(ChatBase):
     all_reactions_custom: bool = fields.BooleanField(default=False)
     deleted: bool = fields.BooleanField(default=False)
     nojoin_allow_view: bool = fields.BooleanField(default=False)
+    hidden_prehistory: bool = fields.BooleanField(default=False)
+    min_available_id: int | None = fields.BigIntField(null=True, default=None)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -132,4 +134,9 @@ class Channel(ChatBase):
             color=PeerColor(color=self.accent_color_id) if self.accent_color_id is not None else None,
             profile_color=PeerColor(color=self.profile_color_id) if self.profile_color_id is not None else None,
             # NOTE: participants_count is not included here since it is present in ChannelFull
-            )
+        )
+
+    def min_id(self, participant: models.ChatParticipant) -> int | None:
+        if participant is not None:
+            return participant.min_message_id
+        return self.min_available_id

@@ -21,7 +21,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.11.1"
 cryptography = "^46.0.3"
 tgcrypto = "^1.2.5"
 uvloop = { version = "^0.22.1", markers = "sys_platform != 'win32'" }
@@ -56,6 +56,7 @@ tg-secret = "^0.1.3"
 mypy = "^1.17.1"
 ty = "^0.0.1a20"
 pyinstrument = "^5.1.1"
+scalene = "^1.5.55"
 
 
 [tool.poetry.group.test.dependencies]

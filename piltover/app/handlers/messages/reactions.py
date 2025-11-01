@@ -228,5 +228,4 @@ async def clear_recent_reactions(user: User) -> bool:
     return True
 
 
-# TODO: SetChatAvailableReactions
 # TODO: GetMessageReactionsList

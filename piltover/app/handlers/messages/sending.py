@@ -17,6 +17,7 @@ from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
+from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
@@ -149,6 +150,12 @@ async def send_message_internal(
 
     mentioned_user_ids = set()
     entities: list[dict[str, int | str]]
+
+    if opposite and reply_to_message_id and peer.type is PeerType.CHANNEL:
+        participant = await ChatParticipant.get_or_none(channel=peer.channel, user=peer.owner)
+        if (channel_min_id := peer.channel.min_id(participant)) is not None:
+            if channel_min_id >= reply_to_message_id:
+                reply_to_message_id = None
 
     message_text = message_kwargs.get("message")
     if opposite and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
@@ -348,10 +355,11 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
 
     if peer.type is PeerType.CHANNEL:
-        message = await Message.get_or_none(
-            Q(type=MessageType.REGULAR) | Q(type=MessageType.SCHEDULED),
-            id=request.id, peer__owner=None, peer__channel=peer.channel,
-        ).select_related("peer", "author", "media")
+        query = Q(id=request.id, peer__channel=peer.channel) & (
+                Q(peer__owner=None, type=MessageType.REGULAR) | Q(peer__owner=user, type=MessageType.SCHEDULED)
+        )
+        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+        message = await Message.get_or_none(query).select_related("peer", "author", "media")
     else:
         message = await Message.get_(request.id, peer, (MessageType.REGULAR, MessageType.SCHEDULED))
     if message is None:
@@ -669,10 +677,11 @@ async def forward_messages(
     if await Message.filter(peer=to_peer, id__in=list(map(str, request.random_id[:100]))).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
+    src_messages_query = Q(peer=from_peer, id__in=request.id[:100], type=MessageType.REGULAR)
+    src_messages_query = await append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query)
+
     random_ids = dict(zip(request.id[:100], request.random_id[:100]))
-    messages = await Message.filter(
-        peer=from_peer, id__in=request.id[:100], type=MessageType.REGULAR
-    ).order_by("id").select_related("author", "media")
+    messages = await Message.filter(src_messages_query).order_by("id").select_related("author", "media")
     reply_ids = {}
     media_group_ids: defaultdict[int | None, int | None] = defaultdict(Snowflake.make_id)
     media_group_ids[None] = None
@@ -830,6 +839,8 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
 @handler.on_request(DeleteHistory)
 async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if peer.type is PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     query = Q(peer=peer)
     if request.max_id:

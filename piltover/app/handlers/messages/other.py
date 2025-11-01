@@ -8,8 +8,7 @@ from piltover.db.models import User, Peer, Presence
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateUserTyping, DefaultHistoryTTL
-from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
-    SetHistoryTTL
+from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION

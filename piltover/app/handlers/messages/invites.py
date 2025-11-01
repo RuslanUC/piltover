@@ -10,7 +10,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel, \
-    Dialog
+    Dialog, Message
 from piltover.db.models._utils import resolve_users_chats
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -226,6 +226,19 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
     if await ChatParticipant.filter(**Chat.or_channel(chat_or_channel)).count() > member_limit:
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
+    min_message_id = None
+    if isinstance(chat_or_channel, Channel):
+        if chat_or_channel.hidden_prehistory:
+            min_message_id = cast(
+                int | None,
+                await Message.filter(
+                    peer__owner=None, peer__channel=chat_or_channel,
+                ).order_by("-id").first().values_list("id", flat=True)
+            )
+            min_message_id = (min_message_id + 1) if min_message_id is not None else None
+        else:
+            min_message_id = chat_or_channel.min_available_id
+
     new_peer, _ = await Peer.get_or_create(
         owner=user, type=PeerType.CHAT if isinstance(chat_or_channel, Chat) else PeerType.CHANNEL,
         **Chat.or_channel(chat_or_channel),
@@ -234,6 +247,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         user=user,
         inviter_id=from_invite.user_id if from_invite is not None else 0,
         invite=from_invite,
+        min_message_id=min_message_id,
         **Chat.or_channel(chat_or_channel),
     )
     await ChatInviteRequest.filter(id__in=Subquery(

@@ -7,7 +7,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages import sending
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import MessageType, PeerType
-from piltover.db.models import User, Peer, Message, TaskIqScheduledMessage
+from piltover.db.models import User, Peer, Message
 from piltover.db.models._utils import resolve_users_chats
 from piltover.tl import Updates
 from piltover.tl.functions.messages import GetScheduledHistory, GetScheduledMessages, SendScheduledMessages, \

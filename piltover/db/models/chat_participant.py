@@ -30,6 +30,7 @@ class ChatParticipant(Model):
     invite: models.ChatInvite | None = fields.ForeignKeyField("models.ChatInvite", null=True, default=None, on_delete=fields.SET_NULL)
     admin_rank: str = fields.CharField(max_length=24, default="")
     promoted_by_id: int = fields.BigIntField(default=0)
+    min_message_id: int | None = fields.BigIntField(null=True, default=None)
 
     user_id: int
     chat_id: int | None
