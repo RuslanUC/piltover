@@ -63,3 +63,5 @@ from .taskiq_scheduled_message import TaskIqScheduledMessage
 from .available_channel_reaction import AvailableChannelReaction
 from .taskiq_scheduled_delete_message import TaskIqScheduledDeleteMessage
 from .user_personal_channel import UserPersonalChannel
+from .bot import Bot
+from .botfather_state import BotFatherUserState

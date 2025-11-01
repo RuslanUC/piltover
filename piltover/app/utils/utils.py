@@ -340,8 +340,12 @@ async def process_message_entities(
     return entities
 
 
+def is_username_valid(username: str) -> bool:
+    return 5 < len(username) < 32 and USERNAME_REGEX.match(username)
+
+
 def validate_username(username: str) -> None:
-    if len(username) not in range(5, 32) or not USERNAME_REGEX.match(username):
+    if not is_username_valid(username):
         raise ErrorRpc(error_code=400, error_message="USERNAME_INVALID")
 
 

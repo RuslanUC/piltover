@@ -28,6 +28,7 @@ class User(Model):
     ttl_days: int = fields.IntField(default=365)
     birthday: date | None = fields.DateField(null=True, default=None)
     bot: bool = fields.BooleanField(default=False)
+    system: bool = fields.BooleanField(default=False)
     deleted: bool = fields.BooleanField(default=False)
     accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="accent")
     profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="profile")

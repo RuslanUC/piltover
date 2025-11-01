@@ -227,3 +227,8 @@ class StickerSetType(IntEnum):
     VIDEO = 2
     EMOJIS = 3
     MASKS = 4
+
+
+class BotFatherState(IntEnum):
+    NEWBOT_WAIT_NAME = 1
+    NEWBOT_WAIT_USERNAME = 2

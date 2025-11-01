@@ -367,7 +367,7 @@ class TestClient(Client):
             phone_code=phone_code,
             password=password,
             workers=workers,
-            no_updates = no_updates,
+            no_updates=no_updates,
         )
 
         self.storage = SimpleStorage(self.name)
@@ -426,16 +426,23 @@ class TestClient(Client):
             while True:
                 async with self._updates_lock:
                     if self._got_updates[update_cls]:
-                        return self._got_updates[update_cls].pop()
+                        return self._got_updates[update_cls].pop(0)
 
                 await self._updates_event.wait()
                 self._updates_event.clear()
 
+    async def expect_updates(
+            self, *update_clss: type[PyroTLObject], timeout_per_update: float = 0.5
+    ) -> list[PyroTLObject]:
+        result = []
+        for update_cls in update_clss:
+            result.append(await self.expect_update(update_cls, timeout_per_update))
+        return result
+
     @asynccontextmanager
     async def expect_updates_m(self, *update_clss: type[PyroTLObject], timeout_per_update: float = 0.5) -> ...:
         yield
-        for update_cls in update_clss:
-            await self.expect_update(update_cls, timeout_per_update)
+        await self.expect_updates(*update_clss, timeout_per_update)
 
 
 def color_is_near(expected: tuple[int, int, int], actual: tuple[int, int, int], error: float = 0.05) -> bool:

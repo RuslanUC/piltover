@@ -15,13 +15,13 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Dialog, Message, TempAuthKey, SentCode, \
-    User, QrLogin, PhoneCodePurpose
+    User, QrLogin, PhoneCodePurpose, Bot
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
-    SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode
+    SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode, ImportBotAuthorization
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
     LoginToken, AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut, LoginTokenSuccess
 from piltover.utils.snowflake import Snowflake
@@ -99,7 +99,7 @@ async def send_code(request: SendCode):
 
 
 @handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def sign_in(request: SignIn):
+async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpRequired:
     if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
     if request.phone_code is None:
@@ -322,3 +322,25 @@ async def cancel_code(request: CancelCode) -> bool:
     await code.delete()
 
     return True
+
+
+@handler.on_request(ImportBotAuthorization, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def import_bot_authorization(request: ImportBotAuthorization) -> AuthAuthorization:
+    token_parts = request.bot_auth_token.split(":")
+    if len(token_parts) != 2:
+        raise ErrorRpc(error_code=400, error_message="ACCESS_TOKEN_INVALID")
+    bot_id, token_nonce = token_parts
+    if not bot_id.isdigit():
+        raise ErrorRpc(error_code=400, error_message="ACCESS_TOKEN_INVALID")
+
+    bot = await Bot.get_or_none(bot__id=int(bot_id), token_nonce=token_nonce).select_related("bot")
+    if bot is None:
+        raise ErrorRpc(error_code=400, error_message="ACCESS_TOKEN_INVALID")
+
+    user = bot.bot
+
+    key = await AuthKey.get(id=request_ctx.get().perm_auth_key_id)
+    await UserAuthorization.filter(key=key).delete()
+    await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
+
+    return AuthAuthorization(user=await user.to_tl(current_user=user))

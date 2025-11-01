@@ -4,7 +4,6 @@ An experimental Telegram server written from scratch in Python. Development chat
 
 ## TODO
 
-- [ ] WebK gets stuck on `sendCode()`. (note to self: inspect the MTProto workers in `chrome://inspect/#workers`)
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
 - [ ] Improve the README.
@@ -16,16 +15,18 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [x] Add proper privacy rules handling
 - [x] Channels
 - [ ] Supergroups
-- [ ] Scheduled messages
+- [x] Scheduled messages
 - [ ] Bots
 - [x] Dialog filters (folders)
 - [x] Secret chats (https://core.telegram.org/api/end-to-end)
 - [ ] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
-- [ ] Mentions read state
+- [x] Mentions read state
 - [ ] Outbox read date (messages.getOutboxReadDate)
 - [ ] Make `access_hash`es completely offline (e.g. `hmac(current_user_id + current_session_id + target_user_id)`)
-- [ ] InstallTheme_133, InstallTheme, InstallWallPaper
+- [ ] InstallTheme_133, InstallTheme
+- [x] InstallWallPaper
 - [ ] Rewrite related users/chats/channels collection code, cache related ids
+- [ ] Channel admin log
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
