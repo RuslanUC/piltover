@@ -19,6 +19,7 @@ from piltover.db.models import User, MessageDraft, ReadState, State, Peer, Chann
     ChatParticipant, Chat
 from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
@@ -275,7 +276,7 @@ async def format_messages_internal(
     )
 
 
-@handler.on_request(GetHistory)
+@handler.on_request(GetHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_history(request: GetHistory, user: User) -> Messages:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
@@ -315,7 +316,7 @@ async def get_messages_57(request: GetMessages_57, user: User) -> Messages:
     )
 
 
-@handler.on_request(ReadHistory)
+@handler.on_request(ReadHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_history(request: ReadHistory, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
@@ -365,7 +366,7 @@ async def read_history(request: ReadHistory, user: User):
     )
 
 
-@handler.on_request(Search)
+@handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def messages_search(request: Search, user: User) -> Messages:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     saved_peer = None
@@ -386,7 +387,7 @@ async def messages_search(request: Search, user: User) -> Messages:
     return await format_messages_internal(user, messages)
 
 
-@handler.on_request(GetSearchCounters)
+@handler.on_request(GetSearchCounters, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_search_counters(request: GetSearchCounters, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
     saved_peer = None
@@ -403,7 +404,7 @@ async def get_search_counters(request: GetSearchCounters, user: User):
     ])
 
 
-@handler.on_request(GetAllDrafts)
+@handler.on_request(GetAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_all_drafts(user: User):
     users_q = Q()
     chats_q = Q()
@@ -429,7 +430,7 @@ async def get_all_drafts(user: User):
     )
 
 
-@handler.on_request(SearchGlobal)
+@handler.on_request(SearchGlobal, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def search_global(request: SearchGlobal, user: User):
     users = {}
 
@@ -453,7 +454,7 @@ async def search_global(request: SearchGlobal, user: User):
     return await format_messages_internal(user, messages, users)
 
 
-@handler.on_request(GetMessagesViews)
+@handler.on_request(GetMessagesViews, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesMessageViews:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
@@ -535,8 +536,8 @@ class DatetimeToUnix(Function):
         return dialect in ("mysql", "sqlite", "postgres", "postgresql", "mssql")
 
 
-@handler.on_request(GetSearchResultsCalendar_134)
-@handler.on_request(GetSearchResultsCalendar)
+@handler.on_request(GetSearchResultsCalendar_134, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetSearchResultsCalendar, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_search_results_calendar(request: GetSearchResultsCalendar, user: User) -> SearchResultsCalendar:
     if isinstance(request.filter, (InputMessagesFilterEmpty, InputMessagesFilterMyMentions)):
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
@@ -611,8 +612,8 @@ async def get_outbox_read_date():
     raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
 
-@handler.on_request(GetUnreadMentions_133)
-@handler.on_request(GetUnreadMentions)
+@handler.on_request(GetUnreadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetUnreadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Messages | MessagesSlice:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
@@ -624,8 +625,8 @@ async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Message
     return await format_messages_internal(user, messages, peer=peer, query=query, offset_id=request.offset_id)
 
 
-@handler.on_request(ReadMentions_133)
-@handler.on_request(ReadMentions)
+@handler.on_request(ReadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(ReadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
@@ -660,7 +661,7 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     )
 
 
-@handler.on_request(ReadMessageContents)
+@handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_message_contents(request: ReadMessageContents, user: User) -> AffectedMessages:
     if not request.id:
         return AffectedMessages(
@@ -706,7 +707,7 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> Aff
     )
 
 
-@handler.on_request(SetHistoryTTL)
+@handler.on_request(SetHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
     if request.period % 86400 != 0:
         raise ErrorRpc(error_code=400, error_message="TTL_PERIOD_INVALID")

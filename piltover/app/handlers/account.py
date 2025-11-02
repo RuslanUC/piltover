@@ -42,7 +42,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("account")
 
 
-@handler.on_request(CheckUsername)
+@handler.on_request(CheckUsername, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def check_username(request: CheckUsername) -> bool:
     request.username = request.username.lower()
     validate_username(request.username)
@@ -51,7 +51,7 @@ async def check_username(request: CheckUsername) -> bool:
     return True
 
 
-@handler.on_request(UpdateUsername)
+@handler.on_request(UpdateUsername, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_username(request: UpdateUsername, user: User) -> TLUser:
     request.username = request.username.lower().strip()
     current_username = await user.get_username()
@@ -78,7 +78,7 @@ async def update_username(request: UpdateUsername, user: User) -> TLUser:
     return await user.to_tl(user)
 
 
-@handler.on_request(GetAuthorizations)
+@handler.on_request(GetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_authorizations(user: User):
     current_key_id = request_ctx.get().perm_auth_key_id
     authorizations = await UserAuthorization.filter(user=user).all()
@@ -87,12 +87,12 @@ async def get_authorizations(user: User):
     return Authorizations(authorization_ttl_days=15, authorizations=authorizations)
 
 
-@handler.on_request(GetAccountTTL)
+@handler.on_request(GetAccountTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_account_ttl(user: User):
     return AccountDaysTTL(days=user.ttl_days)
 
 
-@handler.on_request(SetAccountTTL)
+@handler.on_request(SetAccountTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_account_ttl(request: SetAccountTTL, user: User):
     if request.ttl.days not in range(30, 366):
         raise ErrorRpc(error_code=400, error_message="TTL_DAYS_INVALID")
@@ -103,8 +103,8 @@ async def set_account_ttl(request: SetAccountTTL, user: User):
     return True
 
 
-@handler.on_request(RegisterDevice_70)
-@handler.on_request(RegisterDevice)
+@handler.on_request(RegisterDevice_70, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(RegisterDevice, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def register_device(request: RegisterDevice, user: User) -> bool:
     if request.token_type not in PushTokenType._value2member_map_:
         return False
@@ -125,18 +125,18 @@ async def register_device(request: RegisterDevice, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetContactSignUpNotification)
+@handler.on_request(GetContactSignUpNotification, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_contact_sign_up_notification() -> bool:  # pragma: no cover
     return True
 
 
-@handler.on_request(GetPassword, ReqHandlerFlags.ALLOW_MFA_PENDING)
+@handler.on_request(GetPassword, ReqHandlerFlags.ALLOW_MFA_PENDING | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_password(user: User) -> Password:
     password, _ = await UserPassword.get_or_create(user=user)
     return await password.to_tl()
 
 
-@handler.on_request(UpdatePasswordSettings)
+@handler.on_request(UpdatePasswordSettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_password_settings(request: UpdatePasswordSettings, user: User) -> bool:
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
@@ -175,7 +175,7 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
     return True
 
 
-@handler.on_request(GetPasswordSettings)
+@handler.on_request(GetPasswordSettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_password_settings(request: GetPasswordSettings, user: User) -> PasswordSettings:
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
@@ -199,12 +199,12 @@ async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRu
     )
 
 
-@handler.on_request(GetPrivacy)
+@handler.on_request(GetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_privacy(request: GetPrivacy, user: User):
     return await get_privacy_internal(TL_KEY_TO_PRIVACY_ENUM[type(request.key)], user)
 
 
-@handler.on_request(SetPrivacy)
+@handler.on_request(SetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_privacy(request: SetPrivacy, user: User):
     key = TL_KEY_TO_PRIVACY_ENUM[type(request.key)]
     await PrivacyRule.update_from_tl(user, key, request.rules)
@@ -212,17 +212,17 @@ async def set_privacy(request: SetPrivacy, user: User):
     return await get_privacy_internal(key, user)
 
 
-@handler.on_request(GetThemes, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetThemes, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_themes():  # pragma: no cover
     return Themes(hash=0, themes=[])
 
 
-@handler.on_request(GetGlobalPrivacySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetGlobalPrivacySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_global_privacy_settings():  # pragma: no cover
     return GlobalPrivacySettings(archive_and_mute_new_noncontact_peers=True)
 
 
-@handler.on_request(GetContentSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetContentSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_content_settings():  # pragma: no cover
     return ContentSettings(
         sensitive_enabled=True,
@@ -230,7 +230,7 @@ async def get_content_settings():  # pragma: no cover
     )
 
 
-@handler.on_request(UpdateStatus)
+@handler.on_request(UpdateStatus, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_status(request: UpdateStatus, user: User) -> bool:
     presence = await Presence.update_to_now(user, UserStatus.OFFLINE if request.offline else UserStatus.ONLINE)
     await upd.update_status(user, presence, await Peer.filter(user=user).select_related("owner"))
@@ -238,7 +238,7 @@ async def update_status(request: UpdateStatus, user: User) -> bool:
     return True
 
 
-@handler.on_request(UpdateProfile)
+@handler.on_request(UpdateProfile, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_profile(request: UpdateProfile, user: User):
     updates = {}
     if request.first_name is not None:
@@ -262,7 +262,7 @@ async def update_profile(request: UpdateProfile, user: User):
     return await user.to_tl(user)
 
 
-@handler.on_request(GetNotifySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetNotifySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_notify_settings():  # pragma: no cover
     return PeerNotifySettings(
         show_previews=True,
@@ -270,17 +270,17 @@ async def get_notify_settings():  # pragma: no cover
     )
 
 
-@handler.on_request(GetDefaultEmojiStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetDefaultEmojiStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_default_emoji_statuses():  # pragma: no cover
     return EmojiStatuses(hash=0, statuses=[])
 
 
-@handler.on_request(GetSavedRingtones, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetSavedRingtones, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_saved_ringtones(request: GetSavedRingtones):  # pragma: no cover
     return SavedRingtones(hash=request.hash, ringtones=[])
 
 
-@handler.on_request(GetAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_auto_download_settings():  # pragma: no cover
     return AccAutoDownloadSettings(
         low=AutoDownloadSettings(
@@ -319,7 +319,7 @@ async def get_auto_download_settings():  # pragma: no cover
     )
 
 
-@handler.on_request(SaveAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(SaveAutoDownloadSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_auto_download_settings() -> bool:  # pragma: no cover
     """
     It seems like this function is doing nothing on official Telegram server??
@@ -345,17 +345,17 @@ async def save_auto_download_settings() -> bool:  # pragma: no cover
     return True
 
 
-@handler.on_request(GetDefaultProfilePhotoEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetDefaultProfilePhotoEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_default_profile_photo_emojis(request: GetDefaultProfilePhotoEmojis) -> EmojiList:  # pragma: no cover
     return EmojiList(hash=request.hash, document_id=[])
 
 
-@handler.on_request(GetWebAuthorizations)
+@handler.on_request(GetWebAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_web_authorizations(user: User) -> WebAuthorizations:  # pragma: no cover
     return WebAuthorizations(authorizations=[], users=[await user.to_tl(user)])
 
 
-@handler.on_request(UpdateBirthday)
+@handler.on_request(UpdateBirthday, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_birthday(request: UpdateBirthday, user: User) -> bool:
     before = user.birthday
     after = None
@@ -379,7 +379,7 @@ async def update_birthday(request: UpdateBirthday, user: User) -> bool:
     return True
 
 
-@handler.on_request(ChangeAuthorizationSettings)
+@handler.on_request(ChangeAuthorizationSettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def change_auth_settings(request: ChangeAuthorizationSettings, user: User) -> bool:
     auth_id = request_ctx.get().auth_id
     this_auth = await UserAuthorization.get_or_none(id=auth_id)
@@ -412,7 +412,7 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user: User)
     return True
 
 
-@handler.on_request(ResetAuthorization)
+@handler.on_request(ResetAuthorization, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reset_authorization(request: ResetAuthorization, user: User) -> bool:
     auth_id = request_ctx.get().auth_id
     this_auth = await UserAuthorization.get_or_none(id=auth_id)
@@ -433,7 +433,7 @@ async def reset_authorization(request: ResetAuthorization, user: User) -> bool:
     return True
 
 
-@handler.on_request(ResetPassword)
+@handler.on_request(ResetPassword, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reset_password(user: User) -> ResetPasswordResult:
     if (password := await UserPassword.get_or_none(user=user)) is None:
         raise ErrorRpc(error_code=400, error_message="PASSWORD_EMPTY")
@@ -448,7 +448,7 @@ async def reset_password(user: User) -> ResetPasswordResult:
     return ResetPasswordRequestedWait(until_date=int(reset_date.timestamp()))
 
 
-@handler.on_request(DeclinePasswordReset)
+@handler.on_request(DeclinePasswordReset, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def decline_password_reset(user: User) -> bool:
     if (reset_request := await UserPasswordReset.get_or_none(user=user)) is None:
         raise ErrorRpc(error_code=400, error_message="RESET_REQUEST_MISSING")
@@ -483,12 +483,12 @@ async def _create_sent_code(user: User, phone_number: str, purpose: PhoneCodePur
     )
 
 
-@handler.on_request(SendChangePhoneCode)
+@handler.on_request(SendChangePhoneCode, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_change_phone_code(request: SendChangePhoneCode, user: User) -> TLSentCode:
     return await _create_sent_code(user, request.phone_number, PhoneCodePurpose.CHANGE_NUMBER)
 
 
-@handler.on_request(ChangePhone)
+@handler.on_request(ChangePhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def change_phone(request: ChangePhone, user: User) -> TLUser:
     code = await SentCode.get_(request.phone_number, request.phone_code_hash, PhoneCodePurpose.CHANGE_NUMBER)
     await SentCode.check_raise_cls(code, request.phone_code)
@@ -538,7 +538,7 @@ async def _delete_account(user: User) -> None:
     # TODO: send UpdateUser to related peers ?
 
 
-@handler.on_request(DeleteAccount)
+@handler.on_request(DeleteAccount, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_account(request: DeleteAccount, user: User) -> bool:
     password = await UserPassword.get_or_none(user=user)
     if password is None or password.password is None:
@@ -558,7 +558,7 @@ async def delete_account(request: DeleteAccount, user: User) -> bool:
     raise ErrorRpc(error_code=420, error_message=f"2FA_CONFIRM_WAIT_{one_week}")
 
 
-@handler.on_request(GetChatThemes)
+@handler.on_request(GetChatThemes, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_chat_themes(request: GetChatThemes, user: User) -> Themes | ThemesNotModified:
     query = Theme.filter(creator=None).order_by("id")
     ids = await query.values_list("id", flat=True)
@@ -576,8 +576,8 @@ async def get_chat_themes(request: GetChatThemes, user: User) -> Themes | Themes
     )
 
 
-@handler.on_request(UploadWallPaper_133)
-@handler.on_request(UploadWallPaper)
+@handler.on_request(UploadWallPaper_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(UploadWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user: User) -> WallPaper:
     attributes = []
     if request.file.name:
@@ -610,7 +610,7 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
     return await wallpaper.to_tl(user)
 
 
-@handler.on_request(GetWallPaper)
+@handler.on_request(GetWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_wallpaper(request: GetWallPaper, user: User) -> WallPaper:
     wallpaper = await Wallpaper.from_input(request.wallpaper)
     if wallpaper is None:
@@ -618,7 +618,7 @@ async def get_wallpaper(request: GetWallPaper, user: User) -> WallPaper:
     return await wallpaper.to_tl(user)
 
 
-@handler.on_request(GetMultiWallPapers)
+@handler.on_request(GetMultiWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_multi_wallpapers(request: GetMultiWallPapers, user: User) -> TLObjectVector[WallPaper]:
     if not request.wallpapers:
         return TLObjectVector()
@@ -635,7 +635,7 @@ async def get_multi_wallpapers(request: GetMultiWallPapers, user: User) -> TLObj
     ])
 
 
-@handler.on_request(SaveWallPaper)
+@handler.on_request(SaveWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_wallpaper(request: SaveWallPaper, user: User) -> bool:
     if isinstance(request.wallpaper, InputWallPaperNoFile):
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
@@ -686,7 +686,7 @@ async def save_wallpaper(request: SaveWallPaper, user: User) -> bool:
     return True
 
 
-@handler.on_request(InstallWallPaper)
+@handler.on_request(InstallWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def install_wallpaper(request: InstallWallPaper, user: User) -> bool:
     return await save_wallpaper(
         request=SaveWallPaper(
@@ -698,7 +698,7 @@ async def install_wallpaper(request: InstallWallPaper, user: User) -> bool:
     )
 
 
-@handler.on_request(GetWallPapers)
+@handler.on_request(GetWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_wallpapers(request: GetWallPapers, user: User) -> WallPapers | WallPapersNotModified:
     query = InstalledWallpaper.filter(user=user).order_by("id")
     ids = await query.values_list("id", flat=True)
@@ -716,13 +716,13 @@ async def get_wallpapers(request: GetWallPapers, user: User) -> WallPapers | Wal
     )
 
 
-@handler.on_request(ResetWallPapers)
+@handler.on_request(ResetWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reset_wallpapers(user: User) -> bool:
     await InstalledWallpaper.filter(user=user).delete()
     return True
 
 
-@handler.on_request(UpdateColor)
+@handler.on_request(UpdateColor, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_color(request: UpdateColor, user: User) -> bool:
     if request.color is None:
         if request.for_profile and user.profile_color is not None:
@@ -752,12 +752,12 @@ async def update_color(request: UpdateColor, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetDefaultBackgroundEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetDefaultBackgroundEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_default_background_emojis() -> EmojiList:
     return EmojiList(hash=0, document_id=[])
 
 
-@handler.on_request(UpdatePersonalChannel)
+@handler.on_request(UpdatePersonalChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_personal_channel(request: UpdatePersonalChannel, user: User) -> bool:
     if isinstance(request.channel, InputChannelEmpty):
         personal_channel = await UserPersonalChannel.get_or_none(user=user)

@@ -1,12 +1,12 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import WebPageEmpty, AttachMenuBots, DefaultHistoryTTL, EmojiKeywordsDifference, \
+from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
     DocumentEmpty, PeerSettings, TLObjectVector
-from piltover.tl.functions.messages import GetPeerSettings, GetScheduledHistory, GetQuickReplies, GetMessageEditData, \
+from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
-    GetStickers, GetSearchResultsPositions, GetDefaultHistoryTTL, GetSuggestedDialogFilters, GetSavedReactionTags, \
+    GetStickers, GetSearchResultsPositions, GetSuggestedDialogFilters, GetSavedReactionTags, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetEmojiStickers, \
     GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, GetEmojiKeywordsDifference
-from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Messages, Reactions, SavedReactionTags, \
+from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
     Stickers, SearchResultsPositions, AllStickers, FavedStickers, FeaturedStickers, MessageEditData, \
     QuickReplies
 from piltover.worker import MessageHandler

@@ -63,6 +63,9 @@ class RequestHandler:
     def allow_mfa_pending(self) -> bool:
         return bool(self.flags & ReqHandlerFlags.ALLOW_MFA_PENDING)
 
+    def bots_not_allowed(self) -> bool:
+        return bool(self.flags & ReqHandlerFlags.BOT_NOT_ALLOWED)
+
     async def __call__(self, request: TLObject, user: User | None) -> Any:
         kwargs = {}
         if self.has_request_arg: kwargs["request"] = request
@@ -79,7 +82,9 @@ class MessageHandler:
         self.registered = False
         self.request_handlers: dict[int, RequestHandler] = {}
 
-    def on_request(self, typ: type[TLRequest[T]], flags: int = 0) -> Callable[[HandlerFunc[T]], HandlerFunc[T]]:
+    def on_request(
+            self, typ: type[TLRequest[T]], flags: ReqHandlerFlags = 0,
+    ) -> Callable[[HandlerFunc[T]], HandlerFunc[T]]:
         def decorator(func: HandlerFunc[T]):
             if typ.tlid() in self.request_handlers:
                 logger.warning(f"Overriding existing handler for {typ.tlname()} ({hex(typ.tlid())[2:]})")
@@ -156,7 +161,8 @@ class Worker(MessageHandler):
     async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse:
         time_start = perf_counter()
         result = await self._handle_tl_rpc(call_hex)
-        logger.trace(f"Rpc call processing took {(perf_counter() - time_start) * 1000:.2f} ms")
+        time_end = perf_counter()
+        logger.trace(f"Rpc call processing took {(time_end - time_start) * 1000:.2f} ms")
         return result
 
     async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse:
@@ -171,6 +177,13 @@ class Worker(MessageHandler):
             return RpcResponse(obj=RpcResult(
                 req_msg_id=call.message_id,
                 result=RpcError(error_code=500, error_message="Not implemented"),
+            ))
+
+        # TODO: send this error from gateway
+        if call.is_bot and handler.bots_not_allowed():
+            return RpcResponse(obj=RpcResult(
+                req_msg_id=call.message_id,
+                result=RpcError(error_code=400, error_message="BOT_METHOD_INVALID"),
             ))
 
         request_ctx.set(RequestContext(

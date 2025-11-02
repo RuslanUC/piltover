@@ -1,4 +1,5 @@
 from .base import BaseDowngrader, BaseUpgrader
+from .botinfo_downgrade import *
 from .channel_downgrader import *
 from .channel_full_downgrader import *
 from .channel_participant_downgrade import *
@@ -193,3 +194,10 @@ LayerConverter.register_for_downgrade(DocumentAttributeVideoDontDowngrade)
 LayerConverter.register_for_downgrade(UpdateDeleteScheduledMessagesDowngradeTo133)
 LayerConverter.register_for_downgrade(UpdateDeleteScheduledMessagesDontDowngrade192)
 LayerConverter.register_for_downgrade(UpdateDeleteScheduledMessagesDontDowngrade)
+
+LayerConverter.register_for_downgrade(BotInfoDowngradeTo133)
+LayerConverter.register_for_downgrade(BotInfoDowngradeTo140)
+LayerConverter.register_for_downgrade(BotInfoDowngradeTo143)
+LayerConverter.register_for_downgrade(BotInfoDowngradeTo186)
+LayerConverter.register_for_downgrade(BotInfoDowngradeTo193)
+LayerConverter.register_for_downgrade(BotInfoDontDowngrade)

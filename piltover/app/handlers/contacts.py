@@ -25,7 +25,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("contacts")
 
 
-@handler.on_request(GetContacts)
+@handler.on_request(GetContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_contacts(user: User):
     contacts = await Contact.filter(owner=user).select_related("target")
 
@@ -88,7 +88,7 @@ async def resolve_username(request: ResolveUsername, user: User) -> ResolvedPeer
     return await _format_resolved_peer(user, resolved_username)
 
 
-@handler.on_request(GetBlocked)
+@handler.on_request(GetBlocked, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice:
     limit = max(min(request.limit, 1), 100)
     blocked_query = Peer.filter(
@@ -118,8 +118,9 @@ async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice
     )
 
 
-@handler.on_request(Search, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(Search, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def contacts_search():  # pragma: no cover
+    # TODO: implement Search
     return Found(
         my_results=[],
         results=[],
@@ -128,8 +129,9 @@ async def contacts_search():  # pragma: no cover
     )
 
 
-@handler.on_request(GetTopPeers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetTopPeers, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_top_peers():  # pragma: no cover
+    # TODO: implement GetTopPeers
     return TopPeers(
         categories=[],
         chats=[],
@@ -137,12 +139,13 @@ async def get_top_peers():  # pragma: no cover
     )
 
 
-@handler.on_request(GetStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_statuses():  # pragma: no cover
+    # TODO: implement GetStatuses
     return TLObjectVector()
 
 
-@handler.on_request(GetBirthdays)
+@handler.on_request(GetBirthdays, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_birthdays(user: User) -> ContactBirthdays:
     yesterday = date.today() - timedelta(days=1)
     tomorrow = date.today() + timedelta(days=1)
@@ -164,7 +167,7 @@ async def get_birthdays(user: User) -> ContactBirthdays:
     )
 
 
-@handler.on_request(ResolvePhone)
+@handler.on_request(ResolvePhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
     if (resolved := await User.get_or_none(phone_number=request.phone)) is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_NOT_OCCUPIED")
@@ -172,7 +175,7 @@ async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
     return await _format_resolved_peer_by_phone(user, resolved)
 
 
-@handler.on_request(AddContact)
+@handler.on_request(AddContact, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def add_contact(request: AddContact, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.id)
     if peer.type is not PeerType.USER:
@@ -192,7 +195,7 @@ async def add_contact(request: AddContact, user: User) -> Updates:
     return await upd.add_remove_contact(user, [peer.user])
 
 
-@handler.on_request(DeleteContacts)
+@handler.on_request(DeleteContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
     peers = {}
     for peer_id in request.id:
@@ -215,10 +218,10 @@ async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
     return await upd.add_remove_contact(user, users)
 
 
-@handler.on_request(Unblock_133)
-@handler.on_request(Unblock)
-@handler.on_request(Block_133)
-@handler.on_request(Block)
+@handler.on_request(Unblock_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(Unblock, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(Block_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(Block, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def block_unblock(request: Block, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.id)
     if peer.type is not PeerType.USER:
@@ -233,7 +236,7 @@ async def block_unblock(request: Block, user: User) -> bool:
     return True
 
 
-@handler.on_request(ImportContacts)
+@handler.on_request(ImportContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def import_contacts(request: ImportContacts, user: User) -> ImportedContacts:
     to_import = request.contacts[:100]
     to_retry = [contact.client_id for contact in request.contacts[100:]]
@@ -300,7 +303,7 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
     )
 
 
-@handler.on_request(ExportContactToken)
+@handler.on_request(ExportContactToken, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def export_contact_token(user: User) -> ExportedContactToken:
     created_at = int(time())
     payload = Long.write(user.id) + Long.write(created_at)
@@ -314,7 +317,7 @@ async def export_contact_token(user: User) -> ExportedContactToken:
     )
 
 
-@handler.on_request(ImportContactToken)
+@handler.on_request(ImportContactToken, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def import_contact_token(request: ImportContactToken, user: User) -> TLUser:
     try:
         token_bytes = urlsafe_b64decode(request.token)

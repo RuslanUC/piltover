@@ -169,7 +169,7 @@ async def sign_up(request: SignUp | SignUp_133):
     return AuthAuthorization(user=await user.to_tl(current_user=user))
 
 
-@handler.on_request(CheckPassword, ReqHandlerFlags.ALLOW_MFA_PENDING)
+@handler.on_request(CheckPassword, ReqHandlerFlags.ALLOW_MFA_PENDING | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def check_password(request: CheckPassword, user: User):
     ctx = request_ctx.get()
     auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
@@ -254,7 +254,7 @@ async def export_login_token():  # TODO: test
     return LoginToken(expires=int(login.created_at.timestamp()) + QrLogin.EXPIRE_TIME, token=login.to_token())
 
 
-@handler.on_request(AcceptLoginToken)
+@handler.on_request(AcceptLoginToken, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def accept_login_token(request: AcceptLoginToken, user: User) -> Authorization:  # TODO: test
     login = await QrLogin.from_token(request.token)
     if login is None:
@@ -285,7 +285,7 @@ async def log_out() -> LoggedOut:
     return LoggedOut()
 
 
-@handler.on_request(ResetAuthorizations)
+@handler.on_request(ResetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reset_authorizations(user: User) -> bool:
     auth_id = request_ctx.get().auth_id
     this_auth = await UserAuthorization.get_or_none(id=auth_id)

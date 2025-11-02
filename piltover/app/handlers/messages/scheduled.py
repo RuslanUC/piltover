@@ -9,6 +9,7 @@ from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import MessageType, PeerType
 from piltover.db.models import User, Peer, Message
 from piltover.db.models._utils import resolve_users_chats
+from piltover.enums import ReqHandlerFlags
 from piltover.tl import Updates
 from piltover.tl.functions.messages import GetScheduledHistory, GetScheduledMessages, SendScheduledMessages, \
     DeleteScheduledMessages
@@ -39,7 +40,7 @@ async def _format_messages(user: User, messages: list[Message]) -> Messages:
     )
 
 
-@handler.on_request(GetScheduledHistory)
+@handler.on_request(GetScheduledHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_scheduled_history(request: GetScheduledHistory, user: User) -> Messages | MessagesNotModified:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
@@ -58,7 +59,7 @@ async def get_scheduled_history(request: GetScheduledHistory, user: User) -> Mes
     return await _format_messages(user, messages)
 
 
-@handler.on_request(GetScheduledMessages)
+@handler.on_request(GetScheduledMessages, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_scheduled_messages(request: GetScheduledMessages, user: User) -> Messages:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
@@ -69,7 +70,7 @@ async def get_scheduled_messages(request: GetScheduledMessages, user: User) -> M
     return await _format_messages(user, messages)
 
 
-@handler.on_request(SendScheduledMessages)
+@handler.on_request(SendScheduledMessages, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_scheduled_messages(request: SendScheduledMessages, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
@@ -115,7 +116,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user: User) ->
     return updates
 
 
-@handler.on_request(DeleteScheduledMessages)
+@handler.on_request(DeleteScheduledMessages, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_scheduled_messages(request: DeleteScheduledMessages, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     ids_to_delete = await Message.filter(

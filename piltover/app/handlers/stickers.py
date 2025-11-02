@@ -14,6 +14,7 @@ from piltover.app.utils.utils import telegram_hash, get_image_dims
 from piltover.context import request_ctx
 from piltover.db.enums import FileType, StickerSetType
 from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset, StickersetThumb
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
     InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty, \
@@ -45,7 +46,7 @@ set_types_to_mimes = {
 }
 
 
-@handler.on_request(CheckShortName)
+@handler.on_request(CheckShortName, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def check_stickerset_short_name(request: CheckShortName, prefix: str = "") -> bool:
     if not request.short_name or len(request.short_name) > 64:
         raise ErrorRpc(error_code=400, error_message=f"{prefix}SHORT_NAME_INVALID")
@@ -300,6 +301,8 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     if not request.title or len(request.title) > 64:
         raise ErrorRpc(error_code=400, error_message="PACK_TITLE_INVALID")
 
+    # TODO: handle request.user_id if current user is a bot
+
     await check_stickerset_short_name(CheckShortName(short_name=request.short_name), "PACK_")
 
     if not request.stickers:
@@ -463,7 +466,7 @@ async def _make_covered_list(sets: list[Stickerset], user: User) -> list[Sticker
     return result
 
 
-@handler.on_request(GetMyStickers)
+@handler.on_request(GetMyStickers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
     limit = max(1, min(50, request.limit))
     id_filter = Q(set__lt=request.offset_id) if request.offset_id else Q()
@@ -604,7 +607,7 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> 
     return await stickerset.to_tl_messages(user)
 
 
-@handler.on_request(GetAllStickers)
+@handler.on_request(GetAllStickers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers | AllStickersNotModified:
     sets = await InstalledStickerset.filter(user=user, archived=False)\
         .order_by("pos", "-installed_at")\
@@ -623,7 +626,7 @@ async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers |
     )
 
 
-@handler.on_request(InstallStickerSet)
+@handler.on_request(InstallStickerSet, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def install_stickerset(
         request: InstallStickerSet, user: User,
 ) -> StickerSetInstallResultSuccess | StickerSetInstallResultArchive:
@@ -651,7 +654,7 @@ async def install_stickerset(
     return StickerSetInstallResultSuccess()
 
 
-@handler.on_request(UninstallStickerSet)
+@handler.on_request(UninstallStickerSet, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool:
     stickerset = await Stickerset.from_input(request.stickerset)
     if stickerset is None or stickerset.owner_id != user.id:
@@ -668,7 +671,7 @@ async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool
     return True
 
 
-@handler.on_request(ReorderStickerSets)
+@handler.on_request(ReorderStickerSets, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reorder_sticker_sets(request: ReorderStickerSets, user: User) -> bool:
     sets: list[InstalledStickerset | None] = await InstalledStickerset.filter(user=user, archived=False) \
         .order_by("pos", "-installed_at").select_related("set")
@@ -699,7 +702,7 @@ async def reorder_sticker_sets(request: ReorderStickerSets, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetArchivedStickers)
+@handler.on_request(GetArchivedStickers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_archived_stickers(request: GetArchivedStickers, user: User) -> ArchivedStickers:
     limit = max(1, min(50, request.limit))
     id_filter = Q(set__id__lt=request.offset_id) if request.offset_id else Q()
@@ -714,7 +717,7 @@ async def get_archived_stickers(request: GetArchivedStickers, user: User) -> Arc
     )
 
 
-@handler.on_request(ToggleStickerSets)
+@handler.on_request(ToggleStickerSets, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_sticker_sets(request: ToggleStickerSets, user: User) -> bool:
     if not request.uninstall and not request.archive and not request.unarchive:
         return True

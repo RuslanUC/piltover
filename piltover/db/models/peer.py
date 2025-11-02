@@ -66,7 +66,9 @@ class Peer(Model):
         raise ErrorRpc(error_code=400, error_message=message)
 
     @classmethod
-    async def from_input_peer(cls, user: models.User, input_peer: InputPeers) -> Peer | None:
+    async def from_input_peer(
+            cls, user: models.User, input_peer: InputPeers, allow_bot: bool = True,
+    ) -> Peer | None:
         if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
             return None
 
@@ -76,9 +78,10 @@ class Peer(Model):
             peer.owner = await peer.owner
             return peer
         elif isinstance(input_peer, (InputPeerUser, InputUser)):
-            return await Peer.get_or_none(
-                owner=user, user__id=input_peer.user_id, access_hash=input_peer.access_hash,
-            ).select_related("owner", "user")
+            query = Q(owner=user, user__id=input_peer.user_id, access_hash=input_peer.access_hash)
+            if not allow_bot:
+                query &= Q(user__bot=False)
+            return await Peer.get_or_none(query).select_related("owner", "user")
         elif isinstance(input_peer, InputPeerChat):
             chat_id = models.Chat.norm_id(input_peer.chat_id)
             return await Peer.get_or_none(owner=user, chat__id=chat_id).select_related("owner", "chat")

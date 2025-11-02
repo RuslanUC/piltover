@@ -348,14 +348,14 @@ APP_CONFIG = JsonObject(value=[
 ])
 
 
-@handler.on_request(GetAppConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_app_config(request: GetAppConfig):  # pragma: no cover
+@handler.on_request(GetAppConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_app_config(request: GetAppConfig):
     if request.hash == APP_CONFIG_HASH:
         return AppConfigNotModified()
     return TLAppConfig(hash=APP_CONFIG_HASH, config=APP_CONFIG)
 
 
-@handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_countries_list(request: GetCountriesList) -> CountriesList | CountriesListNotModified:
     global CACHED_COUNTRIES_LIST
     countries, cache_time = CACHED_COUNTRIES_LIST
@@ -381,17 +381,17 @@ async def get_countries_list(request: GetCountriesList) -> CountriesList | Count
     return countries
 
 
-@handler.on_request(GetTermsOfServiceUpdate, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetTermsOfServiceUpdate, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_terms_of_service_update():  # pragma: no cover
     return TermsOfServiceUpdateEmpty(expires=int(time() + 9000))
 
 
-@handler.on_request(GetPromoData, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetPromoData, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_promo_data():  # pragma: no cover
     return PromoDataEmpty(expires=int(time() + 9000))
 
 
-@handler.on_request(GetPremiumPromo, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetPremiumPromo, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_premium_promo():  # pragma: no cover
     return PremiumPromo(
         status_text="Premium Lol",
@@ -410,18 +410,18 @@ async def get_premium_promo():  # pragma: no cover
     )
 
 
-@handler.on_request(SaveAppLog, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(SaveAppLog, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_app_log():  # pragma: no cover
     return True
 
 
-@handler.on_request(GetInviteText, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetInviteText, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_invite_text():  # pragma: no cover
     return InviteText(message="🐳")
 
 
-@handler.on_request(GetPeerColors, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-@handler.on_request(GetPeerProfileColors, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetPeerColors, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetPeerProfileColors, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> PeerColors | PeerColorsNotModified:
     is_profile = isinstance(request, GetPeerProfileColors)
 
@@ -453,7 +453,7 @@ async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> Peer
     )
 
 
-@handler.on_request(DismissSuggestion)
+@handler.on_request(DismissSuggestion, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def dismiss_suggestion() -> bool:  # pragma: no cover
     return True
 

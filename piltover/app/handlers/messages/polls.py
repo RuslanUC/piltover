@@ -6,6 +6,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Message, PollAnswer, PollVote
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, PeerUser, MessagePeerVoteInputOption, MessagePeerVote, Updates
 from piltover.tl.functions.messages import GetPollResults, SendVote, GetPollVotes
@@ -15,7 +16,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.polls")
 
 
-@handler.on_request(GetPollResults)
+@handler.on_request(GetPollResults, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_poll_results(request: GetPollResults, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is PeerType.CHANNEL:
@@ -31,7 +32,7 @@ async def get_poll_results(request: GetPollResults, user: User) -> Updates:
     return await upd.update_message_poll(message.media.poll, user)
 
 
-@handler.on_request(GetPollVotes)
+@handler.on_request(GetPollVotes, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is PeerType.CHANNEL:
@@ -91,7 +92,7 @@ async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
     )
 
 
-@handler.on_request(SendVote)
+@handler.on_request(SendVote, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_vote(request: SendVote, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is PeerType.CHANNEL:

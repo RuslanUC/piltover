@@ -1,5 +1,6 @@
 import piltover.app.utils.updates_manager as upd
 from piltover.db.models import User, DialogFolder
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DialogFilterDefault, TextWithEntities, TLObjectVector
 from piltover.tl.functions.messages import GetDialogFilters, UpdateDialogFilter, UpdateDialogFiltersOrder, \
@@ -10,8 +11,8 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.folders")
 
 
-@handler.on_request(GetDialogFilters_133)
-@handler.on_request(GetDialogFilters)
+@handler.on_request(GetDialogFilters_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetDialogFilters, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_dialog_filters(user: User) -> DialogFilters:
     folders = TLObjectVector()
     for folder in await DialogFolder.filter(owner=user, id_for_user__gt=0).order_by("position", "id"):
@@ -26,7 +27,7 @@ async def get_dialog_filters(user: User) -> DialogFilters:
     )
 
 
-@handler.on_request(UpdateDialogFilter)
+@handler.on_request(UpdateDialogFilter, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
     if request.id < 2 or request.id >= (2 ** 15 - 1):
         raise ErrorRpc(error_code=400, error_message="FILTER_ID_INVALID")
@@ -71,7 +72,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
     return True
 
 
-@handler.on_request(UpdateDialogFiltersOrder)
+@handler.on_request(UpdateDialogFiltersOrder, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_dialog_filters_order(request: UpdateDialogFiltersOrder, user: User) -> bool:
     folders = {
         folder.id_for_user: folder

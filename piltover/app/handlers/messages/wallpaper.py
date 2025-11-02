@@ -4,6 +4,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.db.enums import MessageType
 from piltover.db.models import User, Peer, Wallpaper, ChatWallpaper, Message
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable, Error
 from piltover.tl import Updates, InputPeerUser, InputUser, TLObject, MessageActionSetChatWallPaper
 from piltover.tl.functions.messages import SetChatWallPaper
@@ -13,7 +14,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("wallpaper")
 
 
-@handler.on_request(SetChatWallPaper)
+@handler.on_request(SetChatWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_chat_wallpaper(request: SetChatWallPaper, user: User) -> Updates:
     if not isinstance(request.peer, (InputPeerUser, InputUser)):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")

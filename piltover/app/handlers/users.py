@@ -5,7 +5,7 @@ from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, 
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
-from piltover.tl.types import UserFull as FullUser, InputUser
+from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo
 from piltover.tl.types.users import UserFull
 from piltover.worker import MessageHandler
 
@@ -62,6 +62,7 @@ async def get_full_user(request: GetFullUser, user: User):
             pinned_msg_id=pinned_msg_id,
             personal_channel_id=personal_channel.make_id() if personal_channel is not None else None,
             personal_channel_message=personal_channel_msg_id,
+            bot_info=BotInfo() if target_user.bot else None,
         ),
         chats=[await personal_channel.to_tl(user)] if personal_channel is not None else [],
         users=[await target_user.to_tl(user)],

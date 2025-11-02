@@ -36,12 +36,12 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("channels")
 
 
-@handler.on_request(GetChannelRecommendations, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetChannelRecommendations, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_channel_recommendations():  # pragma: no cover
     return Chats(chats=[])
 
 
-@handler.on_request(CheckUsername)
+@handler.on_request(CheckUsername, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def check_username(request: CheckUsername) -> bool:
     request.username = request.username.lower()
     validate_username(request.username)
@@ -50,7 +50,7 @@ async def check_username(request: CheckUsername) -> bool:
     return True
 
 
-@handler.on_request(UpdateUsername)
+@handler.on_request(UpdateUsername, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_username(request: UpdateUsername, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
@@ -100,7 +100,7 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
     return True
 
 
-@handler.on_request(CreateChannel)
+@handler.on_request(CreateChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def create_channel(request: CreateChannel, user: User) -> Updates:
     if not request.broadcast and not request.megagroup:
         raise ErrorRpc(error_code=400, error_message="CHANNELS_TOO_MUCH")
@@ -524,7 +524,7 @@ async def get_participant(request: GetParticipant, user: User):
     )
 
 
-@handler.on_request(ReadHistory)
+@handler.on_request(ReadHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_channel_history(request: ReadHistory, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
@@ -556,8 +556,8 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     return True
 
 
-@handler.on_request(InviteToChannel_133)
-@handler.on_request(InviteToChannel)
+@handler.on_request(InviteToChannel_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(InviteToChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def invite_to_channel(request: InviteToChannel, user: User):
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
@@ -613,7 +613,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
     )
 
 
-@handler.on_request(ToggleSignatures)
+@handler.on_request(ToggleSignatures, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_signatures(request: ToggleSignatures, user: User):
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
@@ -634,7 +634,7 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
     return await upd.update_channel(channel, user)
 
 
-@handler.on_request(ToggleSignatures_133)
+@handler.on_request(ToggleSignatures_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_signatures_136(request: ToggleSignatures_133, user: User):
     return await toggle_signatures(ToggleSignatures(
         signatures_enabled=request.enabled,
@@ -643,10 +643,10 @@ async def toggle_signatures_136(request: ToggleSignatures_133, user: User):
     ), user)
 
 
-@handler.on_request(SetChatAvailableReactions_179)
-@handler.on_request(SetChatAvailableReactions_145)
-@handler.on_request(SetChatAvailableReactions_136)
-@handler.on_request(SetChatAvailableReactions)
+@handler.on_request(SetChatAvailableReactions_179, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SetChatAvailableReactions_145, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SetChatAvailableReactions_136, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SetChatAvailableReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_chat_available_reactions(request: SetChatAvailableReactions, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
@@ -715,7 +715,7 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user:
     return await upd.update_channel(channel, user)
 
 
-@handler.on_request(DeleteChannel)
+@handler.on_request(DeleteChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_channel(request: DeleteChannel, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
@@ -736,7 +736,7 @@ async def delete_channel(request: DeleteChannel, user: User) -> Updates:
     return await upd.update_channel(channel, user)
 
 
-@handler.on_request(EditCreator)
+@handler.on_request(EditCreator, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def edit_creator(request: EditCreator, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
@@ -765,7 +765,7 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
     return await upd.update_channel(channel, user, send_to_users=[user.id, target_peer.user.id])
 
 
-@handler.on_request(JoinChannel)
+@handler.on_request(JoinChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def join_channel(request: JoinChannel, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:
@@ -802,7 +802,7 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
     return await upd.update_channel_for_user(peer.channel, user)
 
 
-@handler.on_request(GetAdminedPublicChannels)
+@handler.on_request(GetAdminedPublicChannels, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_admined_public_channels(request: GetAdminedPublicChannels, user: User) -> Chats:
     query = Channel.filter(deleted=False, creator=user, chatparticipants__user=user, usernames__isnull=False)
 
@@ -815,7 +815,7 @@ async def get_admined_public_channels(request: GetAdminedPublicChannels, user: U
     ])
 
 
-@handler.on_request(TogglePreHistoryHidden)
+@handler.on_request(TogglePreHistoryHidden, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
     if peer.type is not PeerType.CHANNEL:

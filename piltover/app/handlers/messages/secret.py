@@ -9,6 +9,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import SecretUpdateType, FileType
 from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, SecretUpdate, EncryptedFile, \
     UploadingFile, FileAccess
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded, EncryptedFileEmpty, \
     InputEncryptedFileEmpty, InputEncryptedFile, InputEncryptedFileUploaded, InputEncryptedFileBigUploaded, \
@@ -33,7 +34,7 @@ def _check_g_a_or_b(g_a_or_b_bytes: bytes) -> bool:
     return True
 
 
-@handler.on_request(RequestEncryption)
+@handler.on_request(RequestEncryption, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def request_encryption(request: RequestEncryption, user: User):
     if not isinstance(request.user_id, (InputUser, InputUserFromMessage)):
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
@@ -42,7 +43,7 @@ async def request_encryption(request: RequestEncryption, user: User):
         raise ErrorRpc(error_code=400, error_message="DH_G_A_INVALID")
 
     try:
-        peer = await Peer.from_input_peer(user, request.user_id)
+        peer = await Peer.from_input_peer(user, request.user_id, False)
     except ErrorRpc as e:
         if e.error_message != "USER_ID_INVALID":
             logger.opt(exception=e).debug(f"Overriding rpc error from {e.error_message} to USER_ID_INVALID")
@@ -67,7 +68,7 @@ async def request_encryption(request: RequestEncryption, user: User):
     return await chat.to_tl(user, ctx.auth_id)
 
 
-@handler.on_request(AcceptEncryption)
+@handler.on_request(AcceptEncryption, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def accept_encryption(request: AcceptEncryption, user: User):
     if not _check_g_a_or_b(request.g_b):
         raise ErrorRpc(error_code=400, error_message="DH_G_B_INVALID")
@@ -100,7 +101,7 @@ async def accept_encryption(request: AcceptEncryption, user: User):
 
 
 # TODO: Handle it properly (allow discarding when it was and was not accepted)
-@handler.on_request(DiscardEncryption)
+@handler.on_request(DiscardEncryption, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def discard_encryption(request: DiscardEncryption, user: User):
     async with in_transaction():
         chat = await EncryptedChat.select_for_update().get_or_none(id=request.chat_id, to_user=user)\
@@ -183,9 +184,9 @@ async def _inc_qts(auth_id: int) -> UserAuthorization:
     return auth
 
 
-@handler.on_request(SendEncryptedFile)
-@handler.on_request(SendEncryptedService)
-@handler.on_request(SendEncrypted)
+@handler.on_request(SendEncryptedFile, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendEncryptedService, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendEncrypted, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEncryptedFile, user: User):
     chat = await _get_secret_chat(request.peer, user)
 
@@ -220,7 +221,7 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEnc
         return SentEncryptedMessage(date=int(update.date.timestamp()))
 
 
-@handler.on_request(ReceivedQueue)
+@handler.on_request(ReceivedQueue, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def received_queue(request: ReceivedQueue):
     ctx = request_ctx.get()
     current_auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
@@ -238,7 +239,7 @@ async def received_queue(request: ReceivedQueue):
     return LongVector(random_ids)
 
 
-@handler.on_request(SetEncryptedTyping)
+@handler.on_request(SetEncryptedTyping, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_encrypted_typing(request: SetEncryptedTyping, user: User):
     chat = await _get_secret_chat(request.peer, user)
 
@@ -251,7 +252,7 @@ async def set_encrypted_typing(request: SetEncryptedTyping, user: User):
     return True
 
 
-@handler.on_request(ReadEncryptedHistory)
+@handler.on_request(ReadEncryptedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_encrypted_history(request: ReadEncryptedHistory, user: User):
     chat = await _get_secret_chat(request.peer, user)
 

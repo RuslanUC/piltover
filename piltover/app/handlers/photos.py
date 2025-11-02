@@ -1,9 +1,10 @@
 import piltover.app.utils.updates_manager as upd
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleKeyType, FileType
-from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule
+from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType
+from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule, Bot
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector
+from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector, InputUser
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
 from piltover.worker import MessageHandler
@@ -27,10 +28,24 @@ async def get_user_photos(request: GetUserPhotos, user: User):
     )
 
 
+async def _current_user_or_bot(input_bot: InputUser, user: User) -> User:
+    if input_bot is None:
+        return user
+
+    peer = await Peer.from_input_peer_raise(user, input_bot, "BOT_INVALID")
+    if peer.type is not PeerType.USER or not peer.user.bot:
+        raise ErrorRpc(error_code=400, error_message="BOT_INVALID")
+    if not await Bot.filter(owner=user, bot=peer.user).exists():
+        raise ErrorRpc(error_code=400, error_message="BOT_INVALID")
+    return peer.user
+
+
 @handler.on_request(UploadProfilePhoto)
 async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     if request.file is None:
         raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
+
+    target_user = await _current_user_or_bot(request.bot, user)
 
     uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.file.id)
     if uploaded_file is None:
@@ -42,10 +57,10 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     file = await uploaded_file.finalize_upload(
         storage, "image/png", file_type=FileType.PHOTO, profile_photo=True,
     )
-    await UserPhoto.filter(user=user).update(current=False)
-    photo = await UserPhoto.create(current=True, file=file, user=user)
+    await UserPhoto.filter(user=target_user).update(current=False)
+    photo = await UserPhoto.create(current=True, file=file, user=target_user)
 
-    await upd.update_user(user)
+    await upd.update_user(target_user)
 
     return PhotosPhoto(
         photo=await photo.to_tl(user),
@@ -53,7 +68,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     )
 
 
-@handler.on_request(DeletePhotos)
+@handler.on_request(DeletePhotos, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_photos(request: DeletePhotos, user: User):
     deleted = LongVector()
 
@@ -74,15 +89,17 @@ async def delete_photos(request: DeletePhotos, user: User):
 
 @handler.on_request(UpdateProfilePhoto)
 async def update_profile_photo(request: UpdateProfilePhoto, user: User):
+    target_user = await _current_user_or_bot(request.bot, user)
+
     photo = None
     if isinstance(request.id, InputPhotoEmpty):
-        await UserPhoto.filter(user=user).delete()
-    elif (photo := await UserPhoto.get_or_none(id=request.id.id, user=user)) is not None:
-        await UserPhoto.filter(user=user).update(current=False)
+        await UserPhoto.filter(user=target_user).delete()
+    elif (photo := await UserPhoto.get_or_none(id=request.id.id, user=target_user)) is not None:
+        await UserPhoto.filter(user=target_user).update(current=False)
         photo.current = True
         await photo.save(update_fields=["current"])
 
-    await upd.update_user(user)
+    await upd.update_user(target_user)
 
     return PhotosPhoto(
         photo=await photo.to_tl(user) if photo else PhotoEmpty(id=0),

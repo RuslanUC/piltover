@@ -12,6 +12,7 @@ from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdmin
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel, \
     Dialog, Message
 from piltover.db.models._utils import resolve_users_chats
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
@@ -27,7 +28,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.invites")
 
 
-@handler.on_request(GetExportedChatInvites)
+@handler.on_request(GetExportedChatInvites, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_exported_chat_invites(request: GetExportedChatInvites, user: User) -> ExportedChatInvites:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
@@ -99,7 +100,7 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
     return await invite.to_tl()
 
 
-@handler.on_request(GetAdminsWithInvites)
+@handler.on_request(GetAdminsWithInvites, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> ChatAdminsWithInvites:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
@@ -117,7 +118,7 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> 
     )
 
 
-@handler.on_request(GetChatInviteImporters)
+@handler.on_request(GetChatInviteImporters, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_chat_invite_importers(request: GetChatInviteImporters, user: User) -> ChatInviteImporters:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
@@ -289,7 +290,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
     return updates
 
 
-@handler.on_request(ImportChatInvite)
+@handler.on_request(ImportChatInvite, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     invite = await _get_invite_with_some_checks(request.hash)
     if await ChatParticipant.filter(Chat.query(invite.chat_or_channel) & Q(user=user)).exists():
@@ -305,7 +306,7 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     return await user_join_chat_or_channel(invite.chat_or_channel, user, invite)
 
 
-@handler.on_request(CheckChatInvite)
+@handler.on_request(CheckChatInvite, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def check_chat_invite(request: CheckChatInvite, user: User) -> TLChatInvite | ChatInviteAlready:
     invite = await _get_invite_with_some_checks(request.hash)
     if await ChatParticipant.filter(Chat.query(invite.chat_or_channel) & Q(user=user)).exists():
@@ -325,7 +326,7 @@ async def check_chat_invite(request: CheckChatInvite, user: User) -> TLChatInvit
     )
 
 
-@handler.on_request(GetExportedChatInvite)
+@handler.on_request(GetExportedChatInvite, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_exported_chat_invite(request: GetExportedChatInvite, user: User) -> ExportedChatInvite:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
@@ -355,7 +356,7 @@ async def get_exported_chat_invite(request: GetExportedChatInvite, user: User) -
     )
 
 
-@handler.on_request(DeleteRevokedExportedChatInvites)
+@handler.on_request(DeleteRevokedExportedChatInvites, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_revoked_exported_chat_invites(request: DeleteRevokedExportedChatInvites, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
@@ -468,7 +469,7 @@ async def hide_chat_join_request(request: HideChatJoinRequest, user: User) -> Up
     return await add_requested_users_to_chat(user, peer.chat_or_channel, [invite_request])
 
 
-@handler.on_request(HideAllChatJoinRequests)
+@handler.on_request(HideAllChatJoinRequests, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):

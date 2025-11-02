@@ -9,6 +9,7 @@ from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import PeerType, ChatBannedRights
 from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State, RecentReaction, \
     UserReactionsSettings
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
 from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, \
@@ -20,7 +21,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.reactions")
 
 
-@handler.on_request(GetAvailableReactions)
+@handler.on_request(GetAvailableReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_available_reactions(
         request: GetAvailableReactions, user: User,
 ) -> AvailableReactions | AvailableReactionsNotModified:
@@ -108,7 +109,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
     return result
 
 
-@handler.on_request(SetDefaultReaction)
+@handler.on_request(SetDefaultReaction, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
     if not isinstance(request.reaction, ReactionEmoji):
         raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
@@ -129,7 +130,7 @@ async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetMessagesReactions)
+@handler.on_request(GetMessagesReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_messages_reactions(request: GetMessagesReactions, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
@@ -145,7 +146,7 @@ async def get_messages_reactions(request: GetMessagesReactions, user: User) -> U
     return await upd.update_reactions(user, messages, peer, False)
 
 
-@handler.on_request(GetUnreadReactions)
+@handler.on_request(GetUnreadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_unread_reactions(request: GetUnreadReactions, user: User) -> Messages:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     read_state, _ = await ReadState.get_or_create(peer=peer)
@@ -165,7 +166,7 @@ async def get_unread_reactions(request: GetUnreadReactions, user: User) -> Messa
     )
 
 
-@handler.on_request(ReadReactions)
+@handler.on_request(ReadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     read_state, _ = await ReadState.get_or_create(peer=peer)
@@ -198,7 +199,7 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
     )
 
 
-@handler.on_request(GetRecentReactions)
+@handler.on_request(GetRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_recent_reactions(request: GetRecentReactions, user: User) -> Reactions | ReactionsNotModified:
     limit = min(50, max(1, request.limit))
     ids = await RecentReaction.filter(user=user).limit(limit).order_by("-used_at").values_list("id", flat=True)
@@ -219,7 +220,7 @@ async def get_recent_reactions(request: GetRecentReactions, user: User) -> React
     )
 
 
-@handler.on_request(ClearRecentReactions)
+@handler.on_request(ClearRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def clear_recent_reactions(user: User) -> bool:
     if await RecentReaction.filter(user=user).exists():
         await RecentReaction.filter(user=user).delete()

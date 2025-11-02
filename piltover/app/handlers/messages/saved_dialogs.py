@@ -8,6 +8,7 @@ from piltover.app.handlers.messages.history import get_messages_internal, format
 import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, SavedDialog, Peer, State, Message
+from piltover.enums import ReqHandlerFlags
 from piltover.tl.functions.messages import GetSavedDialogs, GetSavedHistory, DeleteSavedHistory
 from piltover.tl.types.messages import SavedDialogs, Messages, AffectedHistory
 from piltover.worker import MessageHandler
@@ -15,7 +16,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.saved_dialogs")
 
 
-@handler.on_request(GetSavedDialogs)
+@handler.on_request(GetSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_saved_dialogs(request: GetSavedDialogs, user: User) -> SavedDialogs:
     return SavedDialogs(
         **(await get_dialogs_internal(
@@ -24,7 +25,7 @@ async def get_saved_dialogs(request: GetSavedDialogs, user: User) -> SavedDialog
     )
 
 
-@handler.on_request(GetSavedHistory)
+@handler.on_request(GetSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_saved_history(request: GetSavedHistory, user: User) -> Messages:
     self_peer = await Peer.get_or_none(owner=user, type=PeerType.SELF)
     if self_peer is None:
@@ -43,7 +44,7 @@ async def get_saved_history(request: GetSavedHistory, user: User) -> Messages:
     )
 
 
-@handler.on_request(DeleteSavedHistory)
+@handler.on_request(DeleteSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_messages(request: DeleteSavedHistory, user: User):
     self_peer = await Peer.get_or_none(owner=user, type=PeerType.SELF)
     if self_peer is None:

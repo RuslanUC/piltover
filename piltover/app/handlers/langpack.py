@@ -6,7 +6,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("langpack")
 
 
-@handler.on_request(GetLanguages, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetLanguages, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_languages():  # pragma: no cover
     return TLObjectVector([
         LangPackLanguage(
@@ -21,7 +21,7 @@ async def get_languages():  # pragma: no cover
     ])
 
 
-@handler.on_request(GetLanguages_72, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetLanguages_72, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_languages_72():  # pragma: no cover
     return TLObjectVector([LangPackLanguage(
         name="Gramz",
@@ -34,7 +34,7 @@ async def get_languages_72():  # pragma: no cover
     )])
 
 
-@handler.on_request(GetLangPack, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetLangPack, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_lang_pack():  # pragma: no cover
     return LangPackDifference(
         lang_code="US",
@@ -44,7 +44,7 @@ async def get_lang_pack():  # pragma: no cover
     )
 
 
-@handler.on_request(GetStrings, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetStrings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_strings(request: GetStrings):  # pragma: no cover
     return TLObjectVector([
         LangPackString(key=key, value=key.upper()) for key in request.keys

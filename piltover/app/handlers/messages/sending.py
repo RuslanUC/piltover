@@ -18,6 +18,7 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
     SavedDialog, Message, ChatParticipant, Channel, ChannelPostInfo, Poll, PollAnswer, FileAccess, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
@@ -72,7 +73,7 @@ async def send_created_messages_internal(
         messages: dict[Peer, Message], opposite: bool, peer: Peer, user: User, clear_draft: bool,
         mentioned_user_ids: set[int],
 ) -> Updates:
-    if opposite and peer.type is not PeerType.CHANNEL:
+    if opposite and peer.type is not PeerType.CHANNEL and not user.bot:
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, await peer.get_opposite())
 
@@ -236,10 +237,13 @@ async def _make_channel_post_info_maybe(peer: Peer, user: User) -> tuple[bool, C
     return is_channel_post, post_info, post_signature
 
 
-@handler.on_request(SendMessage_148)
-@handler.on_request(SendMessage_176)
-@handler.on_request(SendMessage)
+@handler.on_request(SendMessage_148, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendMessage_176, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendMessage, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_message(request: SendMessage, user: User):
+    if request.schedule_date and user.bot:
+        raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
+
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -251,6 +255,10 @@ async def send_message(request: SendMessage, user: User):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_PLAIN):
             raise ErrorRpc(error_code=403, error_message="CHAT_SEND_PLAIN_FORBIDDEN")
+    elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
+        raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
+
+    # TODO: check if bot can message this peer
 
     if peer.blocked_at is not None:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -273,6 +281,9 @@ async def send_message(request: SendMessage, user: User):
 
 @handler.on_request(UpdatePinnedMessage)
 async def update_pinned_message(request: UpdatePinnedMessage, user: User):
+    if user.bot and request.pm_oneside:
+        raise ErrorRpc(error_code=400, error_message="BOT_ONESIDE_NOT_AVAIL")
+
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -335,8 +346,9 @@ async def delete_messages(request: DeleteMessages, user: User):
     await Message.filter(id__in=all_ids).delete()
     pts = await upd.delete_messages(user, messages)
 
-    presence = await Presence.update_to_now(user)
-    await upd.update_status(user, presence, list(messages.keys()))
+    if not user.bot:
+        presence = await Presence.update_to_now(user)
+        await upd.update_status(user, presence, list(messages.keys()))
 
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
@@ -439,8 +451,10 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         messages[message.peer] = message
 
     await Message.bulk_update(messages.values(), ["message", "edit_date", "version", "media_id", "entities"])
-    presence = await Presence.update_to_now(user)
-    await upd.update_status(user, presence, peers[1:])
+
+    if not user.bot:
+        presence = await Presence.update_to_now(user)
+        await upd.update_status(user, presence, peers[1:])
 
     return await upd.edit_message(user, messages)
 
@@ -592,6 +606,9 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 @handler.on_request(SendMedia_176)
 @handler.on_request(SendMedia)
 async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: User):
+    if request.schedule_date and user.bot:
+        raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
+
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -600,6 +617,10 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MEDIA):
             raise ErrorRpc(error_code=403, error_message="CHAT_SEND_GIFS_FORBIDDEN")
+    elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
+        raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
+
+    # TODO: check if bot can message this peer
 
     if peer.blocked_at is not None:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -619,7 +640,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     )
 
 
-@handler.on_request(SaveDraft)
+@handler.on_request(SaveDraft, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_draft(request: SaveDraft, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
@@ -669,6 +690,10 @@ async def forward_messages(
         participant = await chat_or_channel.get_participant_raise(user)
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+    elif user.bot and (to_peer.type is PeerType.SELF or (to_peer.type is PeerType.USER and to_peer.user.bot)):
+        raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
+
+    # TODO: check if bot can message this peer
 
     if not request.id:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
@@ -732,8 +757,9 @@ async def forward_messages(
             raise RuntimeError("`result` contains multiple peers, but should contain only one - channel peer")
         return await upd.send_messages_channel(next(iter(result.values())), to_peer.channel, user)
 
-    presence = await Presence.update_to_now(user)
-    await upd.update_status(user, presence, peers[1:])
+    if not user.bot:
+        presence = await Presence.update_to_now(user)
+        await upd.update_status(user, presence, peers[1:])
 
     if (update := await upd.send_messages(result, user)) is None:
         raise NotImplementedError("unknown chat type ?")
@@ -763,6 +789,9 @@ async def upload_media(request: UploadMedia | UploadMedia_133, user: User):
 @handler.on_request(SendMultiMedia_148)
 @handler.on_request(SendMultiMedia)
 async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: User):
+    if request.schedule_date and user.bot:
+        raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
+
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -771,6 +800,10 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MEDIA):
             raise ErrorRpc(error_code=403, error_message="CHAT_SEND_GIFS_FORBIDDEN")
+    elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
+        raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
+
+    # TODO: check if bot can message this peer
 
     if peer.blocked_at is not None:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
@@ -836,7 +869,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
     return updates
 
 
-@handler.on_request(DeleteHistory)
+@handler.on_request(DeleteHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is PeerType.CHANNEL:

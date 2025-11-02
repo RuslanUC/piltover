@@ -88,7 +88,6 @@ class User(Model):
 
         defaults = {
             "mutual_contact": False,
-            "deleted": False,
             "verified": False,
             "restricted": False,
             "min": False,
@@ -127,6 +126,7 @@ class User(Model):
             bot_info_version=1 if self.bot else None,
             color=PeerColor(color=self.accent_color_id) if self.accent_color is not None else None,
             profile_color=PeerColor(color=self.profile_color_id) if self.profile_color is not None else None,
+            deleted=self.deleted,
         )
 
     async def to_tl_birthday(self, user: User) -> Birthday | None:

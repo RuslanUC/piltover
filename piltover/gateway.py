@@ -282,6 +282,7 @@ class Client:
 
         auth_id = None
         user_id = None
+        is_bot = False
 
         if auth_key_id is not None and perm_auth_key_id is not None:
             auth, loaded_at = self.authorization
@@ -294,6 +295,7 @@ class Client:
 
             auth_id = auth.id if auth is not None else None
             user_id = auth.user.id if auth is not None else None
+            is_bot = auth.user.bot if auth is not None else False
 
             if auth is not None and (time() - self.channels_loaded_at) > 60 * 5:
                 channel_ids: TaggedLongVector | None = await Cache.obj.get(f"channels:{auth.user.id}")
@@ -330,6 +332,7 @@ class Client:
             message_id=message_id,
             auth_id=auth_id,
             user_id=user_id,
+            is_bot=is_bot,
         ).write().hex())
 
     async def handle_unencrypted_message(self, obj: TLObject) -> None:

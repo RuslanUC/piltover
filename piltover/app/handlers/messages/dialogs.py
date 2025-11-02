@@ -9,6 +9,7 @@ from piltover.app.handlers.updates import get_state_internal
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Message, Chat, Channel
 from piltover.db.models._utils import resolve_users_chats
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector, \
     InputPeerChannel
@@ -129,7 +130,7 @@ async def get_dialogs_internal(
     return await format_dialogs(model, user, dialogs, allow_slicing, folder_id)
 
 
-@handler.on_request(GetDialogs)
+@handler.on_request(GetDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_dialogs(request: GetDialogs, user: User) -> Dialogs:
     result = await get_dialogs_internal(
         Dialog, user, request.offset_id, request.offset_date, request.limit, request.offset_peer, request.folder_id,
@@ -138,7 +139,7 @@ async def get_dialogs(request: GetDialogs, user: User) -> Dialogs:
     return Dialogs(**result) if "count" not in result else DialogsSlice(**result)
 
 
-@handler.on_request(GetPeerDialogs)
+@handler.on_request(GetPeerDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
     query = Q(peer__owner=user)
 
@@ -177,7 +178,7 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
     )
 
 
-@handler.on_request(GetPinnedDialogs)
+@handler.on_request(GetPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_pinned_dialogs(request: GetPinnedDialogs, user: User):
     dialogs = await Dialog.filter(
         peer__owner=user, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True,
@@ -189,7 +190,7 @@ async def get_pinned_dialogs(request: GetPinnedDialogs, user: User):
     )
 
 
-@handler.on_request(ToggleDialogPin)
+@handler.on_request(ToggleDialogPin, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
     if (peer := await Peer.from_input_peer(user, request.peer.peer)) is None \
             or (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
@@ -210,7 +211,7 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
     return True
 
 
-@handler.on_request(ReorderPinnedDialogs)
+@handler.on_request(ReorderPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
     pinned_now = await Dialog.filter(
         peer__owner=user, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True,
@@ -250,7 +251,7 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
     return True
 
 
-@handler.on_request(MarkDialogUnread)
+@handler.on_request(MarkDialogUnread, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.peer.peer)
     if (dialog := await Dialog.get_or_none(peer=peer, visible=True).select_related("peer")) is None:
@@ -266,7 +267,7 @@ async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetDialogUnreadMarks)
+@handler.on_request(GetDialogUnreadMarks, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_dialog_unread_marks(user: User) -> TLObjectVector[DialogPeer]:
     dialogs = await Dialog.filter(peer__owner=user, unread_mark=True, visible=True).select_related("peer")
 
@@ -276,7 +277,7 @@ async def get_dialog_unread_marks(user: User) -> TLObjectVector[DialogPeer]:
     ])
 
 
-@handler.on_request(EditPeerFolders)
+@handler.on_request(EditPeerFolders, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def edit_peer_folders(request: EditPeerFolders, user: User) -> Updates:
     updated_dialogs = []
 

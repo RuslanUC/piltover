@@ -7,6 +7,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
     ChatInviteRequest, ChatInvite
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
@@ -21,9 +22,9 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.chats")
 
 
-@handler.on_request(CreateChat_133)
-@handler.on_request(CreateChat_150)
-@handler.on_request(CreateChat)
+@handler.on_request(CreateChat_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(CreateChat_150, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(CreateChat, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     chat = await Chat.create(name=request.title, creator=user)
     chat_peers = {user.id: await Peer.create(owner=user, chat=chat, type=PeerType.CHAT)}
@@ -198,8 +199,8 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
     )
 
 
-@handler.on_request(AddChatUser_133)
-@handler.on_request(AddChatUser)
+@handler.on_request(AddChatUser_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(AddChatUser, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def add_chat_user(request: AddChatUser, user: User):
     chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
     user_peer = await Peer.from_input_peer_raise(user, request.user_id)
@@ -293,7 +294,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     return updates
 
 
-@handler.on_request(EditChatAdmin)
+@handler.on_request(EditChatAdmin, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
     chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
     user_peer = await Peer.from_input_peer_raise(user, request.user_id)
@@ -322,7 +323,7 @@ async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
     return True
 
 
-@handler.on_request(ToggleNoForwards)
+@handler.on_request(ToggleNoForwards, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type is not PeerType.CHAT:

@@ -5,6 +5,7 @@ from fastrand import xorshift128plus_bytes
 import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateUserTyping, DefaultHistoryTTL
@@ -36,13 +37,14 @@ async def set_typing(request: SetTyping, user: User):
         )
         await SessionManager.send(updates, other.id)
 
-    presence = await Presence.update_to_now(user)
-    await upd.update_status(user, presence, peers)
+    if not user.bot:
+        presence = await Presence.update_to_now(user)
+        await upd.update_status(user, presence, peers)
 
     return True
 
 
-@handler.on_request(GetDhConfig)
+@handler.on_request(GetDhConfig, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_dh_config(request: GetDhConfig):
     random_bytes = xorshift128plus_bytes(min(1024, request.random_length)) if request.random_length else b""
 
@@ -59,12 +61,12 @@ async def get_dh_config(request: GetDhConfig):
     )
 
 
-@handler.on_request(GetDefaultHistoryTTL)
+@handler.on_request(GetDefaultHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_default_history_ttl(user: User) -> DefaultHistoryTTL:
     return DefaultHistoryTTL(period=user.history_ttl_days * 86400)
 
 
-@handler.on_request(SetDefaultHistoryTTL)
+@handler.on_request(SetDefaultHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_default_history_ttl(request: SetDefaultHistoryTTL, user: User) -> bool:
     if request.period % 86400 != 0:
         raise ErrorRpc(error_code=400, error_message="TTL_PERIOD_INVALID")
