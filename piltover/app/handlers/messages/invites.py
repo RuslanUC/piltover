@@ -30,7 +30,7 @@ handler = MessageHandler("messages.invites")
 
 @handler.on_request(GetExportedChatInvites, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_exported_chat_invites(request: GetExportedChatInvites, user: User) -> ExportedChatInvites:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -102,7 +102,7 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
 
 @handler.on_request(GetAdminsWithInvites, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> ChatAdminsWithInvites:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -120,7 +120,7 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> 
 
 @handler.on_request(GetChatInviteImporters, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_chat_invite_importers(request: GetChatInviteImporters, user: User) -> ChatInviteImporters:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -199,7 +199,8 @@ async def _get_invite_with_some_checks(invite_hash: str) -> ChatInvite:
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_INVALID")
     if invite.usage_limit is not None and invite.usage > invite.usage_limit:
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
-    if invite.expires_at is not None and datetime.now(UTC) > invite.expires_at:
+    if (invite.expires_at is not None and datetime.now(UTC) > invite.expires_at) \
+            or (invite.chat is not None and invite.chat.migrated):
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
 
     return invite
@@ -328,7 +329,7 @@ async def check_chat_invite(request: CheckChatInvite, user: User) -> TLChatInvit
 
 @handler.on_request(GetExportedChatInvite, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_exported_chat_invite(request: GetExportedChatInvite, user: User) -> ExportedChatInvite:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -507,7 +508,7 @@ async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user: Us
 
 @handler.on_request(EditExportedChatInvite)
 async def edit_exported_chat_invite(request: EditExportedChatInvite, user: User) -> ExportedChatInvite:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 

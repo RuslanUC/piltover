@@ -141,7 +141,7 @@ async def send_created_messages_internal(
 
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
-        opposite: bool = True, scheduled_date: int | None = None, **message_kwargs
+        opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, **message_kwargs
 ) -> Updates:
     if opposite \
             and peer.type is PeerType.USER \
@@ -186,7 +186,7 @@ async def send_message_internal(
         message_kwargs["ttl_period_days"] = peer.chat_or_channel.ttl_period_days
 
     messages = await Message.create_for_peer(
-        peer, random_id, reply_to_message_id, author, opposite, **message_kwargs,
+        peer, random_id, reply_to_message_id, author, opposite, unhide_dialog, **message_kwargs,
     )
 
     if schedule:
@@ -327,11 +327,14 @@ async def delete_messages(request: DeleteMessages, user: User):
     ids = request.id[:100]
     messages = defaultdict(list)
     for message in await Message.filter(id__in=ids, peer__owner=user).select_related(
-            "peer", "peer__user", "peer__owner",
+            "peer", "peer__user", "peer__owner", "peer__chat",
     ):
         messages[user].append(message.id)
         if not request.revoke:
             continue
+
+        if message.peer.type is PeerType.CHAT and message.peer.chat.migrated:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
         for opposite_peer in await message.peer.get_opposite():
             opp_message = await Message.get_or_none(internal_id=message.internal_id, peer=opposite_peer)

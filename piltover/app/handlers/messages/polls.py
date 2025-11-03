@@ -18,7 +18,7 @@ handler = MessageHandler("messages.polls")
 
 @handler.on_request(GetPollResults, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_poll_results(request: GetPollResults, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     if peer.type is PeerType.CHANNEL:
         query = Q(peer__type=PeerType.CHANNEL, peer__owner=None, peer__channel=peer.channel)
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
@@ -34,7 +34,7 @@ async def get_poll_results(request: GetPollResults, user: User) -> Updates:
 
 @handler.on_request(GetPollVotes, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     if peer.type is PeerType.CHANNEL:
         raise ErrorRpc(error_code=403, error_message="BROADCAST_FORBIDDEN")
 

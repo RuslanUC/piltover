@@ -182,9 +182,8 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     invite = None
     participant = await ChatParticipant.get_or_none(channel=channel, user=user)
     if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
-        invite = await ChatInvite.get_or_create_permanent(user, peer.chat_or_channel)
+        invite = await ChatInvite.get_or_create_permanent(user, peer.channel)
 
-    # TODO: full_chat.migrated_from_chat_id and full_chat.migrated_from_max_id
     in_read_max_id, out_read_max_id, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(
         peer, True, True,
     )
@@ -215,6 +214,12 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
                 peer__owner=None, peer__channel=channel, id__gte=participant.min_message_id,
             ).order_by("id").first().values_list("id", flat=True)
         )
+
+    migrated_from_chat_id = migrated_from_max_id = None
+    if channel.migrated_from_id is not None \
+            and (chat_peer := await Peer.get_or_none(owner=user, chat__id=channel.migrated_from_id)) is not None:
+        migrated_from_chat_id = channel.migrated_from_id
+        migrated_from_max_id = await Message.filter(peer=chat_peer).order_by("-id").first().values_list("id", flat=True)
 
     return MessagesChatFull(
         full_chat=ChannelFull(
@@ -253,6 +258,8 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             available_reactions=available_reactions,
             ttl_period=channel.ttl_period_days * 86400 if channel.ttl_period_days else None,
             available_min_id=min_message_id,
+            migrated_from_chat_id=migrated_from_chat_id,
+            migrated_from_max_id=migrated_from_max_id,
         ),
         chats=[await channel.to_tl(user)],
         users=[await user.to_tl(user)],

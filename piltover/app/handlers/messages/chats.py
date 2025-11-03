@@ -1,4 +1,6 @@
-from tortoise.expressions import Subquery
+from loguru import logger
+from tortoise.expressions import Subquery, F
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
@@ -6,16 +8,17 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
-    ChatInviteRequest, ChatInvite
+    ChatInviteRequest, ChatInvite, Channel, Dialog
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
+from piltover.session_manager import SessionManager
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
     Long, MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser
+    MessageActionChatDeleteUser, MessageActionChatMigrateTo
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
-    EditChatDefaultBannedRights, CreateChat_133
+    EditChatDefaultBannedRights, CreateChat_133, MigrateChat
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 from piltover.worker import MessageHandler
 
@@ -83,7 +86,7 @@ async def get_chats(request: GetChats, user: User) -> Chats:
 
 @handler.on_request(GetFullChat)
 async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
-    peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    peer = await Peer.from_chat_id_raise(user, request.chat_id, allow_migrated=True)
 
     chat = peer.chat
     photo = PhotoEmpty(id=0)
@@ -367,3 +370,85 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
     await chat.save(update_fields=["banned_rights", "version"])
 
     return await upd.update_chat_default_banned_rights(chat, user)
+
+
+@handler.on_request(MigrateChat, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def migrate_chat(request: MigrateChat, user: User) -> Updates:
+    peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    if peer.type is not PeerType.CHAT:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
+    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    chat = peer.chat
+    await chat.fetch_related("creator", "photo")
+
+    participants = await ChatParticipant.filter(chat=chat).select_related("user")
+
+    async with in_transaction():
+        channel = await Channel.create(
+            creator=chat.creator,
+            name=chat.name,
+            description=chat.description,
+            channel=False,
+            supergroup=True,
+            migrated_from=chat,
+            no_forwards=chat.no_forwards,
+            banned_rights=chat.banned_rights,
+            ttl_period_days=chat.ttl_period_days,
+            photo=chat.photo,
+        )
+
+        peers_to_create = [Peer(owner=None, type=PeerType.CHANNEL, channel=channel)]
+        participants_to_create = []
+
+        for participant in participants:
+            peers_to_create.append(Peer(owner=participant.user, type=PeerType.CHANNEL, channel=channel))
+            participants_to_create.append(ChatParticipant(
+                user=participant.user,
+                channel=channel,
+                inviter_id=participant.inviter_id,
+                invited_at=participant.invited_at,
+                banned_until=participant.banned_until,
+                banned_rights=participant.banned_rights,
+                admin_rights=participant.admin_rights,
+                admin_rank=participant.admin_rank,
+                promoted_by_id=participant.promoted_by_id,
+            ))
+
+        await Peer.bulk_create(peers_to_create)
+        new_peers = await Peer.filter(channel=channel, owner__id__not_isnull=True)
+
+        dialogs_to_create = []
+        for new_peer in new_peers:
+            dialogs_to_create.append(Dialog(peer=new_peer, visible=True))
+
+        await Chat.filter(id=chat.id).update(migrated=True, version=F("version") + 1)
+
+        await Message.filter(id__in=Subquery(
+            Message.filter(peer__chat=chat, type=MessageType.SCHEDULED).values_list("id", flat=True)
+        )).delete()
+        await ChatInvite.filter(chat=chat).update(revoked=True)
+        await ChatInviteRequest.filter(id__in=Subquery(
+            ChatInviteRequest.filter(invite__chat=chat).values_list("id", flat=True)
+        )).delete()
+
+        await ChatParticipant.bulk_create(participants_to_create)
+        await Dialog.bulk_create(dialogs_to_create)
+        await Dialog.filter(id__in=Subquery(
+            Dialog.filter(peer__chat=chat).values_list("id", flat=True)
+        )).update(visible=False)
+
+    await SessionManager.subscribe_to_channel(channel.id, [new_peer.owner_id for new_peer in new_peers])
+
+    updates = await upd.migrate_chat(chat, channel, user)
+    msg_updates = await send_message_internal(
+        user, peer, None, None, False, unhide_dialog=False,
+        author=user, type=MessageType.SERVICE_CHAT_MIGRATE,
+        extra_info=MessageActionChatMigrateTo(channel_id=channel.make_id()).write(),
+    )
+    updates.updates.extend(msg_updates.updates)
+
+    return updates

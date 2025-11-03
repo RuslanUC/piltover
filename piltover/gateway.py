@@ -21,6 +21,7 @@ from piltover.cache import Cache
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.tl.utils import is_id_content_related
+from piltover.utils.debug import measure_time
 from piltover.utils.utils import run_coro_with_additional_return
 
 try:
@@ -570,8 +571,12 @@ class Client:
         if request.obj.tlid() in SYSTEM_HANDLERS:
             return await SYSTEM_HANDLERS[request.obj.tlid()](self, request, session)
 
-        task = await self._kiq(request.obj, session, request.message_id)
-        task_result: TaskiqResult[str] = await task.wait_result(timeout=5)
+        with measure_time("\"execute task\""):
+            with measure_time("_kiq()"):
+                task = await self._kiq(request.obj, session, request.message_id)
+            with measure_time(".wait_result()"):
+                task_result: TaskiqResult[str] = await task.wait_result(timeout=5)
+
         if task_result.is_err:
             logger.opt(exception=task_result.error).error("An error occurred in worker while processing request.")
             return RpcResult(

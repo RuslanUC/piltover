@@ -278,7 +278,7 @@ async def format_messages_internal(
 
 @handler.on_request(GetHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_history(request: GetHistory, user: User) -> Messages:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset
@@ -368,7 +368,7 @@ async def read_history(request: ReadHistory, user: User):
 
 @handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def messages_search(request: Search, user: User) -> Messages:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     saved_peer = None
     if peer.type is PeerType.SELF and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
@@ -389,7 +389,7 @@ async def messages_search(request: Search, user: User) -> Messages:
 
 @handler.on_request(GetSearchCounters, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_search_counters(request: GetSearchCounters, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     saved_peer = None
     if peer.type is PeerType.SELF and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
@@ -542,7 +542,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     if isinstance(request.filter, (InputMessagesFilterEmpty, InputMessagesFilterMyMentions)):
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     saved_peer = None
     if peer.type is PeerType.SELF and not isinstance(request, GetSearchResultsCalendar_134) and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
@@ -615,7 +615,7 @@ async def get_outbox_read_date():
 @handler.on_request(GetUnreadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(GetUnreadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Messages | MessagesSlice:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
 
     query = await get_messages_query_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, only_mentions=True
@@ -628,7 +628,7 @@ async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Message
 @handler.on_request(ReadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(ReadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
 
     read_state = await ReadState.for_peer(peer=peer)
     mention_ids = await MessageMention.filter(

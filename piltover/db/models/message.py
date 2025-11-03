@@ -417,7 +417,7 @@ class Message(Model):
     @classmethod
     async def create_for_peer(
             cls, peer: models.Peer, random_id: int | None, reply_to_message_id: int | None,
-            author: models.User, opposite: bool = True, **message_kwargs
+            author: models.User, opposite: bool = True, unhide_dialog: bool = True, **message_kwargs
     ) -> dict[models.Peer, Message]:
         if random_id is not None and await Message.filter(peer=peer, random_id=str(random_id)).exists():
             raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
@@ -439,7 +439,8 @@ class Message(Model):
         internal_id = Snowflake.make_id()
         for to_peer in peers:
             await to_peer.fetch_related("owner", "user")
-            await models.Dialog.create_or_unhide(to_peer)
+            if unhide_dialog:
+                await models.Dialog.create_or_unhide(to_peer)
             if to_peer == peer and random_id is not None:
                 message_kwargs["random_id"] = str(random_id)
             messages[to_peer] = await Message.create(

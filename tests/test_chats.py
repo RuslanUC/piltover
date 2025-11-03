@@ -1,11 +1,15 @@
+from contextlib import AsyncExitStack
 from io import BytesIO
 from typing import cast
 
 import pytest
 from PIL import Image
 from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatRestricted
-from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs
+from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs, MigrateChat
+from pyrogram.raw.types import UpdateUserName, UpdateNewMessage, MessageService, MessageActionChatMigrateTo, \
+    UpdateNewChannelMessage
 from pyrogram.raw.types.messages import Dialogs
+from pyrogram.utils import get_channel_id
 
 from piltover.tl import InputPeerEmpty
 from tests.client import TestClient
@@ -175,3 +179,51 @@ async def test_archive_unarchive_dialog() -> None:
             GetDialogs(offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=10, hash=0, folder_id=1),
         )
         assert len(dialogs.dialogs) == 0
+
+
+@pytest.mark.asyncio
+async def test_migrate_basic_chat_to_supergroup(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    await client2.set_username("test2_username")
+    await client2.expect_update(UpdateUserName)
+
+    async with client1.expect_updates_m(UpdateNewMessage), client2.expect_updates_m(UpdateNewMessage):
+        group = await client1.create_group("idk basic group", ["test2_username"])
+    assert group
+
+    async with client1.expect_updates_m(UpdateNewMessage), client2.expect_updates_m(UpdateNewMessage):
+        assert await client1.send_message(group.id, "test message 1")
+    async with client1.expect_updates_m(UpdateNewMessage), client2.expect_updates_m(UpdateNewMessage):
+        assert await client2.send_message(group.id, "test message 2")
+
+    assert await client1.invoke(MigrateChat(chat_id=-group.id))
+    upd1 = await client1.expect_update(UpdateNewMessage)
+    upd2 = await client2.expect_update(UpdateNewMessage)
+    assert isinstance(upd1.message, MessageService)
+    assert isinstance(upd2.message, MessageService)
+    assert isinstance(upd1.message.action, MessageActionChatMigrateTo)
+    channel_id = upd1.message.action.channel_id
+
+    channel1 = await client1.get_chat(get_channel_id(channel_id))
+    channel2 = await client2.get_chat(get_channel_id(channel_id))
+    assert channel1
+    assert channel2
+
+    with pytest.raises(PeerIdInvalid):
+        await client1.send_message(group.id, "test message 3")
+    with pytest.raises(PeerIdInvalid):
+        await client2.send_message(group.id, "test message 4")
+
+    async with client1.expect_updates_m(UpdateNewChannelMessage), client2.expect_updates_m(UpdateNewChannelMessage):
+        assert await client1.send_message(channel1.id, "test message 5")
+    # TODO: allow all users to write in supergroups
+    #async with client1.expect_updates_m(UpdateNewChannelMessage), client2.expect_updates_m(UpdateNewChannelMessage):
+    #    assert await client2.send_message(channel1.id, "test message 6")
+
+    dialogs1 = [dialog async for dialog in client1.get_dialogs()]
+    dialogs2 = [dialog async for dialog in client2.get_dialogs()]
+
+    assert len(dialogs1) == 1
+    assert len(dialogs2) == 1

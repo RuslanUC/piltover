@@ -163,3 +163,17 @@ def event_loop_policy(request):
 async def exit_stack(request: pytest.FixtureRequest) -> AsyncIterator[AsyncExitStack]:
     async with AsyncExitStack() as stack:
         yield stack
+
+
+#@pytest_asyncio.fixture(scope="session", autouse=True)
+#async def profile_tests() -> ...:
+#    import yappi
+#
+#    yappi.set_clock_type("wall")
+#    yappi.start()
+#
+#    yield
+#
+#    yappi.stop()
+#    stats = yappi.get_func_stats()
+#    stats.print_all()

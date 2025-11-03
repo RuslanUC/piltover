@@ -4,7 +4,6 @@ from collections import defaultdict
 from inspect import getfullargspec
 from io import BytesIO
 from pathlib import Path
-from time import perf_counter
 from typing import Awaitable, Callable, Any, TypeVar
 
 from loguru import logger
@@ -20,6 +19,7 @@ from piltover.session_manager import SessionManager
 from piltover.storage import LocalFileStorage
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
+from piltover.utils.debug import measure_time
 
 try:
     from taskiq_aio_pika import AioPikaBroker
@@ -134,7 +134,8 @@ class Worker(MessageHandler):
             self.broker = AioPikaBroker(rabbitmq_address, result_backend=RedisAsyncResultBackend(redis_address))
             self.message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
 
-        self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
+        # self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
+        self.broker.register_task(self._handle_tl_rpc_measure_time, "handle_tl_rpc")
         self.broker.register_task(self._handle_scheduled_message, "send_scheduled")
         self.broker.register_task(self._handle_scheduled_delete_message, "delete_scheduled")
         self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
@@ -159,11 +160,8 @@ class Worker(MessageHandler):
         return auth.user if auth is not None else None
 
     async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse:
-        time_start = perf_counter()
-        result = await self._handle_tl_rpc(call_hex)
-        time_end = perf_counter()
-        logger.trace(f"Rpc call processing took {(time_end - time_start) * 1000:.2f} ms")
-        return result
+        with measure_time("_handle_tl_rpc()"):
+            return await self._handle_tl_rpc(call_hex)
 
     async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse:
         call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
@@ -208,7 +206,8 @@ class Worker(MessageHandler):
                 ))
 
         try:
-            result = await handler(call.obj, user)
+            with measure_time("handler()"):
+                result = await handler(call.obj, user)
         except ErrorRpc as e:
             reason = f", reason: {e.reason}" if e.reason is not None else ""
             logger.warning(f"{call.obj.tlname()}: [{e.error_code} {e.error_message}]{reason}")

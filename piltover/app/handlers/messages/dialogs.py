@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
 from typing import cast, TypeVar
 
+from loguru import logger
 from tortoise.expressions import Q
 from tortoise.functions import Max
 

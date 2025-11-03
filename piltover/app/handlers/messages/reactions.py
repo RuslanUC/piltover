@@ -132,7 +132,7 @@ async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
 
 @handler.on_request(GetMessagesReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_messages_reactions(request: GetMessagesReactions, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)

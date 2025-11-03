@@ -1418,3 +1418,34 @@ async def update_history_ttl(peer: Peer, ttl_days: int) -> Updates:
         await SessionManager.send(upd, uid)
 
     return result
+
+
+async def migrate_chat(chat: Chat, channel: Channel, user: User | None = None) -> Updates | None:
+    updates_to_create = []
+    update_to_return = None
+
+    peer: Peer
+    async for peer in Peer.filter(chat=chat).select_related("owner"):
+        pts = await State.add_pts(peer.owner, 2)
+        updates_to_create.append(Update(
+            user=peer.owner, update_type=UpdateType.UPDATE_CHAT, pts=pts - 1, related_id=chat.id
+        ))
+        updates_to_create.append(Update(
+            user=peer.owner, update_type=UpdateType.UPDATE_CHANNEL, pts=pts, related_id=channel.id
+        ))
+
+        updates = UpdatesWithDefaults(
+            updates=[
+                UpdateChat(chat_id=chat.make_id()),
+                UpdateChannel(channel_id=channel.make_id())
+            ],
+            chats=[await chat.to_tl(peer.owner), await channel.to_tl(peer.owner)],
+        )
+        if user == peer.owner:
+            update_to_return = updates
+
+        await SessionManager.send(updates, peer.owner.id)
+
+    await Update.bulk_create(updates_to_create)
+
+    return update_to_return

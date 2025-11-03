@@ -50,9 +50,11 @@ class Channel(ChatBase):
     nojoin_allow_view: bool = fields.BooleanField(default=False)
     hidden_prehistory: bool = fields.BooleanField(default=False)
     min_available_id: int | None = fields.BigIntField(null=True, default=None)
+    migrated_from: models.Chat | None = fields.OneToOneField("models.Chat", null=True, default=None)
 
     accent_color_id: int | None
     profile_color_id: int | None
+    migrated_from_id: int | None
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
 

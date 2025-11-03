@@ -177,11 +177,16 @@ class BaseMessageBroker(ABC):
                 logger.opt(exception=e).error("Error occurred while sending message")
 
     async def _process_channels_subscribe(self, message: ChannelSubscribe) -> None:
+        logger.trace(f"Subscribing/unsubscribing {len(message.user_ids)} to {len(message.channel_ids)} channels...")
+
         sessions = set()
         for user_id in message.user_ids:
             if user_id not in self.subscribed_users:
                 continue
             sessions.update(self.subscribed_users[user_id])
+
+        logger.trace(f"Will subscribe/unsubscribe {len(sessions)} sessions...")
+        logger.trace(f"{message=!r}, {self.subscribed_users=}")
 
         to_add, to_delete = message.channel_ids, []
         if not message.subscribe:

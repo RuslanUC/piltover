@@ -18,6 +18,9 @@ from pyrogram.session import Session as PyroSession
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
+from pyrogram.types import User
+
+from piltover.utils.debug import measure_time
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
@@ -108,6 +111,7 @@ async def _session_recv_worker(self: PyroSession):
 
 
 PyroSession.recv_worker = _session_recv_worker
+
 
 class SimpleStorage(Storage):
     VERSION = 3
@@ -342,7 +346,7 @@ class TestClient(Client):
                 self._updates_event.clear()
 
     async def expect_updates(
-            self, *update_clss: type[PyroTLObject], timeout_per_update: float = 0.5
+            self, *update_clss: type[PyroTLObject], timeout_per_update: float = 0.5,
     ) -> list[PyroTLObject]:
         result = []
         for update_cls in update_clss:
@@ -353,3 +357,15 @@ class TestClient(Client):
     async def expect_updates_m(self, *update_clss: type[PyroTLObject], timeout_per_update: float = 0.5) -> ...:
         yield
         await self.expect_updates(*update_clss, timeout_per_update=timeout_per_update)
+
+    async def authorize(self) -> User:
+        with measure_time("authorize()"):
+            return await super().authorize()
+
+    async def connect(self) -> bool:
+        with measure_time("connect()"):
+            return await super().connect()
+
+    async def start(self) -> bool:
+        with measure_time("start()"):
+            return await super().start()
