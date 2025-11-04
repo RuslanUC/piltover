@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatRestricted
+from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatRestricted, ChatWriteForbidden
 from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs, MigrateChat
 from pyrogram.raw.types import UpdateUserName, UpdateNewMessage, MessageService, MessageActionChatMigrateTo, \
     UpdateNewChannelMessage
@@ -109,7 +109,7 @@ async def test_add_delete_user_in_group_chat() -> None:
         assert len([dialog async for dialog in client1.get_dialogs()]) == 1
         assert len([dialog async for dialog in client2.get_dialogs()]) == 1
         assert await client1.get_chat_members_count(group.id) == 1
-        with pytest.raises(ChatRestricted):
+        with pytest.raises(ChatWriteForbidden):
             await client2.send_message(group.id, "test3")
 
 

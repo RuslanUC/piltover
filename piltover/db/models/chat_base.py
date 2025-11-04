@@ -131,14 +131,17 @@ class ChatBase(Model):
     def user_has_permission(self, participant: models.ChatParticipant, permission: ChatBannedRights) -> bool:
         if isinstance(self, models.Channel) \
                 and self.channel \
-                and not participant.is_admin \
+                and not (participant is not None and participant.is_admin) \
                 and self.creator_id != participant.user_id:
             return False
 
-        if participant.is_admin or self.creator_id == participant.user_id:
+        if participant is not None and (participant.is_admin or self.creator_id == participant.user_id):
             return True
 
-        return not (participant.banned_rights & permission or self.banned_rights & permission)
+        if participant is None or not participant.banned_rights:
+            return not (self.banned_rights & permission)
+
+        return not (participant.banned_rights & permission)
 
     def admin_has_permission(self, participant: models.ChatParticipant, permission: ChatAdminRights) -> bool:
         return self.creator_id == participant.user_id \
