@@ -218,9 +218,8 @@ async def test_migrate_basic_chat_to_supergroup(exit_stack: AsyncExitStack) -> N
 
     async with client1.expect_updates_m(UpdateNewChannelMessage), client2.expect_updates_m(UpdateNewChannelMessage):
         assert await client1.send_message(channel1.id, "test message 5")
-    # TODO: allow all users to write in supergroups
-    #async with client1.expect_updates_m(UpdateNewChannelMessage), client2.expect_updates_m(UpdateNewChannelMessage):
-    #    assert await client2.send_message(channel1.id, "test message 6")
+    async with client1.expect_updates_m(UpdateNewChannelMessage), client2.expect_updates_m(UpdateNewChannelMessage):
+        assert await client2.send_message(channel1.id, "test message 6")
 
     dialogs1 = [dialog async for dialog in client1.get_dialogs()]
     dialogs2 = [dialog async for dialog in client2.get_dialogs()]

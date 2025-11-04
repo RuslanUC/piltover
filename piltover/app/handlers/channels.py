@@ -26,7 +26,7 @@ from piltover.tl.functions.channels import GetChannelRecommendations, GetAdmined
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
-    TogglePreHistoryHidden
+    TogglePreHistoryHidden, ToggleJoinToSend
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
@@ -853,3 +853,26 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user: User)
     await channel.save(update_fields=["hidden_prehistory", "min_available_id", "version"])
 
     return await upd.update_channel(channel, user)
+
+
+@handler.on_request(ToggleJoinToSend, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def toggle_join_to_send(request: ToggleJoinToSend, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
+    if peer.type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    channel = peer.channel
+
+    if channel.join_to_send == request.enabled:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    channel.join_to_send = request.enabled
+    channel.version += 1
+    await channel.save(update_fields=["join_to_send", "version"])
+
+    return await upd.update_channel(channel, user)
+
