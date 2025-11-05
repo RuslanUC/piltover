@@ -16,7 +16,7 @@ class Language(Model):
     official: bool = fields.BooleanField(default=False)
     rtl: bool = fields.BooleanField(default=False)
     beta: bool = fields.BooleanField(default=False)
-    version: int = fields.BigIntField()
+    version: int = fields.IntField()
 
     class Meta:
         unique_together = (

@@ -19,7 +19,7 @@ class LanguageString(Model):
     two_value: str | None = fields.TextField(null=True, default=None)
     few_value: str | None = fields.TextField(null=True, default=None)
     many_value: str | None = fields.TextField(null=True, default=None)
-    version: int = fields.BigIntField()
+    version: int = fields.IntField()
 
     class Meta:
         unique_together = (

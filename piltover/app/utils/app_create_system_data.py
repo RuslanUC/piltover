@@ -424,6 +424,7 @@ async def _create_languages(langs_dir: Path) -> None:
 
         to_create = []
         to_update = []
+        version = int(time() / 60 / 5)
 
         logger.info(f"Creating (or updating) languages for platform {platform}...")
         for lang in listdir(platform_dir):
@@ -435,7 +436,6 @@ async def _create_languages(langs_dir: Path) -> None:
             with open(lang_dir / "strings.json") as f:
                 lang_strings = json.load(f)
 
-            version = int(time() * 1000)
             language, created = await Language.update_or_create(
                 platform=platform,
                 lang_code=lang_info["lang_code"],
