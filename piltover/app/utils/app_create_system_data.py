@@ -451,7 +451,10 @@ async def _create_languages(langs_dir: Path) -> None:
                 },
             )
 
-            strings = {} if created else {string.key for string in await LanguageString.filter(language=language)}
+            strings = {} if created else {
+                string.key: string
+                for string in await LanguageString.filter(language=language)
+            }
 
             for new_string in lang_strings:
                 deleted = new_string["_"] == "types.LangPackStringDeleted"
@@ -530,7 +533,7 @@ async def _create_languages(langs_dir: Path) -> None:
             )
 
         if to_create:
-            await LanguageString.bulk_create(to_create)
+            await LanguageString.bulk_create(to_create, ignore_conflicts=True)
         if to_update:
             await LanguageString.bulk_update(to_update, fields=[
                 "deleted", "plural", "value", "zero_value", "one_value", "two_value", "few_value", "many_value",
