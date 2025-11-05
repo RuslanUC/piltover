@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatRestricted, ChatWriteForbidden
+from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatWriteForbidden
 from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs, MigrateChat
 from pyrogram.raw.types import UpdateUserName, UpdateNewMessage, MessageService, MessageActionChatMigrateTo, \
     UpdateNewChannelMessage

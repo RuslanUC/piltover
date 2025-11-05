@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from enum import IntFlag
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar, cast, Self
 
 import tortoise
+from tortoise import Model
 from tortoise.expressions import Q
+from tortoise.queryset import QuerySet, MODEL
 
 from piltover.db import models
 from piltover.tl import User as TLUser, Chat as TLChat, Channel as TLChannel
@@ -93,3 +95,32 @@ async def resolve_users_chats(
             channels[rel_channel.id] = await rel_channel.to_tl(user)
 
     return users, chats, channels
+
+
+TModel = TypeVar("TModel", bound=Model)
+
+
+class CachedQuerySet(QuerySet[TModel]):
+    def __init__(self, model: type[TModel], name: str | None = None) -> None:
+        super().__init__(model)
+        self._cache_key = name
+
+    def filter(self, *args: Q, **kwargs: Any) -> QuerySet[TModel]:
+        if (_query_cache := getattr(self.model._meta, "_query_cache", None)) is None:
+            _query_cache = {}
+            setattr(self.model._meta, "_query_cache", _query_cache)
+
+        if self._cache_key in _query_cache:
+            # TODO: save parameters (args and kwargs) somewhere to later pass them to query
+            ...
+
+        new_query: CachedQuerySet[TModel] = self._filter_or_exclude(negate=False, *args, **kwargs)
+        new_query._cache_key = self._cache_key
+
+        return new_query
+
+
+class ModelCachedQuery(Model):
+    @classmethod
+    def cache_query(cls, name: str) -> QuerySet[Self]:
+        return CachedQuerySet(cls, name)

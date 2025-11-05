@@ -65,3 +65,5 @@ from .taskiq_scheduled_delete_message import TaskIqScheduledDeleteMessage
 from .user_personal_channel import UserPersonalChannel
 from .bot import Bot
 from .botfather_state import BotFatherUserState
+from .language import Language
+from .language_string import LanguageString

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import time
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -276,10 +277,10 @@ async def _create_or_update_peer_color(
         logger.info(f"Updated accent color \"{color_id}\" ")
 
 
-async def _create_peer_colors(args: ArgsNamespace) -> None:
-    accent_dir = args.peer_colors_dir / "accent"
-    profile_dir = args.peer_colors_dir / "profile"
-    if not args.peer_colors_dir.exists() or not accent_dir.exists() or not profile_dir.exists():
+async def _create_peer_colors(colors_dir: Path) -> None:
+    accent_dir = colors_dir / "accent"
+    profile_dir = colors_dir / "profile"
+    if not colors_dir.exists() or not accent_dir.exists() or not profile_dir.exists():
         return
 
     from os import listdir
@@ -407,10 +408,140 @@ async def _create_builtin_bots(bots: list[tuple[str, str]]) -> None:
         await Username.create(user=bot, username=bot_username)
 
 
+async def _create_languages(langs_dir: Path) -> None:
+    if not langs_dir.exists():
+        return
+
+    from os import listdir
+    import json
+
+    from piltover.db.models import Language, LanguageString
+
+    for platform in listdir(langs_dir):
+        platform_dir = langs_dir / platform
+        if not platform_dir.is_dir():
+            continue
+
+        to_create = []
+        to_update = []
+
+        logger.info(f"Creating (or updating) languages for platform {platform}...")
+        for lang in listdir(platform_dir):
+            lang_dir = platform_dir / lang
+
+            with open(lang_dir / "info.json") as f:
+                lang_info = json.load(f)
+
+            with open(lang_dir / "strings.json") as f:
+                lang_strings = json.load(f)
+
+            version = int(time() * 1000)
+            language, created = await Language.update_or_create(
+                platform=platform,
+                lang_code=lang_info["lang_code"],
+                defaults={
+                    "name": lang_info["name"],
+                    "native_name": lang_info["native_name"],
+                    "base_lang_code": lang_info.get("base_lang_code"),
+                    "plural_lang_code": lang_info["plural_code"],
+                    "strings_count": lang_info["strings_count"],
+                    "translated_count": lang_info["translated_count"],
+                    "version": version,
+                    "official": True,
+                },
+            )
+
+            strings = {} if created else {string.key for string in await LanguageString.filter(language=language)}
+
+            for new_string in lang_strings:
+                deleted = new_string["_"] == "types.LangPackStringDeleted"
+                plural = new_string["_"] == "types.LangPackStringPluralized"
+
+                if plural:
+                    value = new_string["other_value"]
+                elif deleted:
+                    value = None
+                else:
+                    value = new_string["value"]
+
+                deleted = deleted
+                plural = plural
+                value = value
+                zero_value = new_string.get("zero_value") if plural else None
+                one_value = new_string.get("one_value") if plural else None
+                two_value = new_string.get("two_value") if plural else None
+                few_value = new_string.get("few_value") if plural else None
+                many_value = new_string.get("many_value") if plural else None
+
+                if new_string["key"] not in strings:
+                    to_create.append(LanguageString(
+                        language=language,
+                        key=new_string["key"],
+                        deleted=deleted,
+                        plural=plural,
+                        value=value,
+                        zero_value=zero_value,
+                        one_value=one_value,
+                        two_value=two_value,
+                        few_value=few_value,
+                        many_value=many_value,
+                        version=version,
+                    ))
+                else:
+                    existing = strings.pop(new_string["key"])
+                    if deleted == existing.deleted \
+                            and plural == existing.plural \
+                            and value == existing.value \
+                            and zero_value == existing.zero_value \
+                            and one_value == existing.one_value \
+                            and two_value == existing.two_value \
+                            and few_value == existing.few_value \
+                            and many_value == existing.many_value:
+                        continue
+
+                    existing.deleted = deleted
+                    existing.plural = plural
+                    existing.value = value
+                    existing.zero_value = zero_value
+                    existing.one_value = one_value
+                    existing.two_value = two_value
+                    existing.few_value = few_value
+                    existing.many_value = many_value
+                    existing.version = version
+                    to_update.append(existing)
+
+            for to_delete in strings.values():
+                to_delete.deleted = True
+                to_delete.plural = False
+                to_delete.value = None
+                to_delete.zero_value = None
+                to_delete.one_value = None
+                to_delete.two_value = None
+                to_delete.few_value = None
+                to_delete.many_value = None
+                to_delete.version = version
+                to_update.append(to_delete)
+
+            logger.info(
+                f"Creating {len(to_create)} strings for language \"{language.lang_code}\" for platform {platform}...",
+            )
+            logger.info(
+                f"Updating {len(to_update)} strings for language \"{language.lang_code}\" for platform {platform}...",
+            )
+
+        if to_create:
+            await LanguageString.bulk_create(to_create)
+        if to_update:
+            await LanguageString.bulk_update(to_update, fields=[
+                "deleted", "plural", "value", "zero_value", "one_value", "two_value", "few_value", "many_value",
+                "version",
+            ])
+
+
 async def create_system_data(
         args: ArgsNamespace,
         system_users: bool = True, countries_list: bool = True, reactions: bool = True, chat_themes: bool = True,
-        peer_colors: bool = True,
+        peer_colors: bool = True, languages: bool = True,
 ) -> None:
     if system_users:
         await _create_system_user()
@@ -446,4 +577,7 @@ async def create_system_data(
         await _create_chat_themes(args)
 
     if peer_colors:
-        await _create_peer_colors(args)
+        await _create_peer_colors(args.peer_colors_dir)
+
+    if languages:
+        await _create_languages(args.languages_dir)

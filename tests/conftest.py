@@ -53,6 +53,7 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
     create_reactions = "create_reactions" in marks
     create_chat_themes = "create_chat_themes" in marks
     create_peer_colors = "create_peer_colors" in marks
+    create_languages = "create_languages" in marks
     run_scheduler = "run_scheduler" in marks
 
     sched_insta_send_thresh = AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD
@@ -71,7 +72,7 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
 
         test_server = await stack.enter_async_context(app.run_test(
             create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
-            create_peer_colors=create_peer_colors, run_scheduler=run_scheduler,
+            create_peer_colors=create_peer_colors, create_languages=create_languages, run_scheduler=run_scheduler,
         ))
 
         if not real_key_gen:
