@@ -10,7 +10,7 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
-from piltover.app.utils.utils import process_message_entities
+from piltover.app.utils.utils import process_message_entities, process_reply_markup
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
@@ -285,6 +285,7 @@ async def send_message(request: SendMessage, user: User):
         author=user, message=request.message, scheduled_date=request.schedule_date,
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
+        reply_markup=await process_reply_markup(request.reply_markup, user),
     )
 
 
@@ -445,6 +446,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         m.version += 1
 
     # TODO: process mentioned users
+    # TODO: edit reply_markup
 
     if message.scheduled_date is not None:
         _edit_message(message, None)
@@ -668,6 +670,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
         author=user, message=request.message, media=media,
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
+        reply_markup=await process_reply_markup(request.reply_markup, user),
     )
 
 

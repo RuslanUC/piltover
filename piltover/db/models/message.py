@@ -17,7 +17,7 @@ from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.exceptions import Error, ErrorRpc
 from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, TLObject
-from piltover.tl.base import MessageActionInst, MessageAction
+from piltover.tl.base import MessageActionInst, MessageAction, ReplyMarkupInst, ReplyMarkup
 from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageActionNeedsProcessing
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, \
@@ -63,11 +63,11 @@ MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User
 }
 
 
-class _FwdHeaderMissing(Enum):
-    FWD_HEADER_MISSING = auto()
+class _SomethingMissing(Enum):
+    MISSING = auto()
 
 
-_FWD_HEADER_MISSING = _FwdHeaderMissing.FWD_HEADER_MISSING
+_SMTH_MISSING = _SomethingMissing.MISSING
 AllowedMessageActions = (*MessageActionInst, *MessageActionNeedsProcessingInst)
 
 
@@ -100,6 +100,8 @@ class Message(Model):
     scheduled_date: datetime | None = fields.DatetimeField(null=True, default=None)
     from_scheduled: bool = fields.BooleanField(default=False)
     ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
+    # TODO: create fields type for tl objects
+    reply_markup: bytes | None = fields.BinaryField(null=True, default=None)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -117,6 +119,8 @@ class Message(Model):
     TTL_MULT = 86400
     if (_ttl_mult := environ.get("DEBUG_MESSAGE_TTL_MULTIPLIER", "")).isdigit():
         TTL_MULT = int(_ttl_mult)
+
+    _cached_reply_markup: ReplyMarkup | None | _SomethingMissing = _SMTH_MISSING
 
     class Meta:
         unique_together = (
@@ -264,6 +268,8 @@ class Message(Model):
         if self.ttl_period_days and self.type is MessageType.REGULAR:
             ttl_period = self.ttl_period_days * self.TTL_MULT
 
+        reply_markup = self._make_reply_markup()
+
         message = TLMessage(
             id=self.id,
             message=self.message or "",
@@ -287,6 +293,7 @@ class Message(Model):
             media_unread=media_unread,
             from_scheduled=self.from_scheduled or self.scheduled_date is not None,
             ttl_period=ttl_period,
+            reply_markup=reply_markup,
 
             silent=False,
             legacy=False,
@@ -297,6 +304,21 @@ class Message(Model):
 
         await Cache.obj.set(self._cache_key(current_user), message)
         return message
+
+    def _make_reply_markup(self) -> ReplyMarkup | None:
+        if self._cached_reply_markup is _SMTH_MISSING:
+            if self.reply_markup is None:
+                self._cached_reply_markup = None
+            else:
+                reply_markup = TLObject.read(BytesIO(self.reply_markup))
+                if not isinstance(reply_markup, ReplyMarkupInst):
+                    logger.error(
+                        f"Expected reply markup to be any of this types: {ReplyMarkupInst}, got {reply_markup=!r}"
+                    )
+                    reply_markup = None
+                self._cached_reply_markup = reply_markup
+
+        return self._cached_reply_markup
 
     async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, Message]:
         peers = [self.peer]
@@ -335,7 +357,7 @@ class Message(Model):
     async def clone_for_peer(
             self, peer: models.Peer, new_author: models.User | None = None, internal_id: int | None = None,
             random_id: int | None = None,
-            fwd_header: models.MessageFwdHeader | None | _FwdHeaderMissing = _FWD_HEADER_MISSING,
+            fwd_header: models.MessageFwdHeader | None | _SomethingMissing = _SMTH_MISSING,
             reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False,
     ) -> models.Message:
@@ -354,7 +376,7 @@ class Message(Model):
             if self.reply_to is not None:
                 reply_to = await Message.get_or_none(peer=peer, internal_id=self.reply_to.internal_id)
 
-        if fwd_header is _FWD_HEADER_MISSING:
+        if fwd_header is _SMTH_MISSING:
             self.fwd_header = fwd_header = await self.fwd_header
         if not drop_author and self.post_info is not None:
             self.post_info = await self.post_info

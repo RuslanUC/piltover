@@ -8,6 +8,7 @@ from contextlib import ExitStack
 from hashlib import md5
 from io import BytesIO
 from typing import Iterable, Literal
+from urllib.parse import urlparse
 from uuid import UUID
 
 import av
@@ -16,17 +17,21 @@ from av import VideoFrame
 from loguru import logger
 from tortoise.expressions import Q
 
-from piltover.db.models import UserPassword, SrpSession, User, Peer
-from piltover.exceptions import ErrorRpc
+from piltover.db.enums import PeerType, PrivacyRuleKeyType
+from piltover.db.models import UserPassword, SrpSession, User, Peer, PrivacyRule
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.storage.base import BaseStorage, StorageType
 from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEntityMention, \
     MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
     MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
     MessageEntityPhone, MessageEntityCashtag, MessageEntityUnderline, MessageEntityStrike, MessageEntitySpoiler, \
     MessageEntityBankCard, MessageEntityBlockquote, Long, InputMessageEntityMentionName, InputUserSelf, InputUser, \
-    InputUserFromMessage
+    InputUserFromMessage, ReplyKeyboardHide, ReplyKeyboardForceReply, ReplyKeyboardMarkup, ReplyInlineMarkup, \
+    KeyboardButtonUrl, KeyboardButtonCallback, InputKeyboardButtonUserProfile, KeyboardButtonCopy, \
+    KeyboardButtonRequestPhone, KeyboardButtonRequestPoll, InputKeyboardButtonRequestPeer, KeyboardButton, \
+    KeyboardButtonUserProfile, KeyboardButtonRow, KeyboardButtonRequestPeer
 from piltover.tl.base import InputCheckPasswordSRP as InputCheckPasswordSRPBase, InputUser as InputUserBase, \
-    MessageEntity as MessageEntityBase
+    MessageEntity as MessageEntityBase, ReplyMarkup
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
@@ -367,4 +372,107 @@ def telegram_hash(ids: Iterable[int | str], bits: Literal[32, 64]) -> int:
     elif bits == 64:
         return ctypes.c_int64(result_hash).value
     else:
-        raise RuntimeError("Unreachable")
+        raise Unreachable
+
+
+async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> ReplyMarkup | None:
+    if reply_markup is None:
+        return None
+    if not user.bot:
+        raise ErrorRpc(error_code=400, error_message="REPLY_MARKUP_INVALID")
+
+    if isinstance(reply_markup, ReplyKeyboardHide):
+        return reply_markup
+    if isinstance(reply_markup, ReplyKeyboardForceReply):
+        if reply_markup.placeholder is not None and len(reply_markup.placeholder) > 64:
+            reply_markup.placeholder = reply_markup.placeholder[:64]
+        return reply_markup
+
+    if isinstance(reply_markup, ReplyKeyboardMarkup):
+        is_inline = False
+        if reply_markup.placeholder is not None and len(reply_markup.placeholder) > 64:
+            reply_markup.placeholder = reply_markup.placeholder[:64]
+    elif isinstance(reply_markup, ReplyInlineMarkup):
+        is_inline = True
+    else:
+        raise Unreachable
+
+    if not reply_markup.rows:
+        # TODO: or raise error?
+        return None
+
+    # TODO: keyboardButtonSwitchInline (only inline)
+    # TODO: keyboardButtonGame (only inline)
+    # TODO: keyboardButtonBuy (only inline)
+    # TODO: inputKeyboardButtonUrlAuth (only inline)
+    # TODO: keyboardButtonWebView
+    # TODO: keyboardButtonSimpleWebView
+    # TODO: KeyboardButtonRequestGeoLocation (only not-inline)
+
+    processed_rows = []
+    total_buttons = 0
+    max_row_idx = (100 if is_inline else 300) - 1
+    max_col_idx = (8 if is_inline else 12) - 1
+
+    for row_idx, row_to_process in enumerate(reply_markup.rows):
+        processed_rows.append((row := KeyboardButtonRow(buttons=[])))
+        for col_idx, button in enumerate(row_to_process.buttons):
+            if len(button.text) > 32:
+                reply_markup.text = reply_markup.text[:32]
+
+            if isinstance(button, KeyboardButtonUrl):
+                if is_inline:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+                parsed = urlparse(button.url)
+                if parsed.scheme not in ("tg", "http", "https") or not parsed.netloc:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_URL_INVALID")
+            elif isinstance(button, KeyboardButtonCallback):
+                if is_inline:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+                if not button.data or len(button.data) > 64:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_DATA_INVALID")
+            elif isinstance(button, InputKeyboardButtonUserProfile):
+                if is_inline:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+                peer = await Peer.from_input_peer_raise(user, button.user_id, "BUTTON_USER_INVALID")
+                if peer.type not in (PeerType.USER, PeerType.SELF):
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_USER_INVALID")
+                if not await PrivacyRule.has_access_to(user, peer.user_id, PrivacyRuleKeyType.FORWARDS):
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_USER_PRIVACY_RESTRICTED")
+                button = KeyboardButtonUserProfile(text=button.text, user_id=peer.user_id)
+            elif isinstance(button, KeyboardButtonCopy):
+                if is_inline:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+                if not button.copy_text or len(button.copy_text) > 256:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_COPY_TEXT_INVALID")
+            elif isinstance(button, KeyboardButton):
+                if not is_inline:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+            elif isinstance(button, KeyboardButtonRequestPhone):
+                if not is_inline:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+            elif isinstance(button, KeyboardButtonRequestPoll):
+                if not is_inline:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+            elif isinstance(button, InputKeyboardButtonRequestPeer):
+                if not is_inline:
+                    raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+                button = KeyboardButtonRequestPeer(
+                    text=button.text,
+                    button_id=button.button_id,
+                    peer_type=button.peer_type,
+                    max_quantity=button.max_quantity,
+                )
+            else:
+                raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+
+            row.buttons.append(button)
+            total_buttons += 1
+            if col_idx >= max_col_idx or total_buttons >= 300:
+                break
+
+        if row_idx >= max_row_idx or total_buttons >= 300:
+            break
+
+    reply_markup.rows = processed_rows
+    return reply_markup
