@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from enum import IntFlag
-from typing import Any, TypeVar, cast, Self
+from typing import Any, TypeVar, cast, Self, Generator
 
 import tortoise
+from loguru import logger
+from pypika_tortoise import Query, Parameterizer
 from tortoise import Model
-from tortoise.expressions import Q
+from tortoise.exceptions import DoesNotExist, MultipleObjectsReturned
+from tortoise.expressions import Q, ResolveContext
+from tortoise.query_utils import QueryModifier
 from tortoise.queryset import QuerySet, MODEL
 
 from piltover.db import models
@@ -97,30 +101,90 @@ async def resolve_users_chats(
     return users, chats, channels
 
 
-TModel = TypeVar("TModel", bound=Model)
+class CacheHitQuerySet(QuerySet[MODEL]):
+    def __init__(self, model: type[MODEL], sql: str) -> None:
+        super().__init__(model)
+        self._cached_sql = sql
+
+    def __await__(self) -> Generator[Any, None, list[MODEL]]:
+        if self._db is None:
+            self._db = self._choose_db(self._select_for_update)
+        self._make_query()
+
+        modifier = QueryModifier()
+        for node in self._q_objects:
+            modifier &= node.resolve(
+                ResolveContext(
+                    model=self.model,
+                    table=self.model._meta.basetable,
+                    annotations=self._annotations,
+                    custom_filters=self._custom_filters,
+                )
+            )
+
+        param = Parameterizer()
+        ctx = Query.SQL_CONTEXT.copy(parameterizer=param)
+
+        modifier.where_criterion.get_sql(ctx)
+        modifier.having_criterion.get_sql(ctx)
+
+        return self._execute(param.values).__await__()
+
+    def filter(self, *args: Q, **kwargs: Any) -> QuerySet[MODEL]:
+        new_query = cast(CacheHitQuerySet[MODEL], self._filter_or_exclude(negate=False, *args, **kwargs))
+        new_query._cached_sql = self._cached_sql
+        return new_query
+
+    async def _execute(self, params: list[...]) -> list[MODEL]:
+        logger.trace(f"executing cached query: {self._cached_sql} with params {params}")
+
+        instance_list = await self._db.executor_class(
+            model=self.model,
+            db=self._db,
+            prefetch_map=self._prefetch_map,
+            prefetch_queries=self._prefetch_queries,
+            select_related_idx=self._select_related_idx,  # type: ignore
+        ).execute_select(
+            self._cached_sql, params,
+            custom_fields=list(self._annotations.keys()),
+        )
+        if self._single:
+            if len(instance_list) == 1:
+                return instance_list[0]
+            if not instance_list:
+                if self._raise_does_not_exist:
+                    raise DoesNotExist(self.model)
+                return None  # type: ignore
+            raise MultipleObjectsReturned(self.model)
+        return instance_list
 
 
-class CachedQuerySet(QuerySet[TModel]):
-    def __init__(self, model: type[TModel], name: str | None = None) -> None:
+class CachedQuerySet(QuerySet[MODEL]):
+    def __init__(self, model: type[MODEL], name: str | None = None) -> None:
         super().__init__(model)
         self._cache_key = name
 
-    def filter(self, *args: Q, **kwargs: Any) -> QuerySet[TModel]:
-        if (_query_cache := getattr(self.model._meta, "_query_cache", None)) is None:
-            _query_cache = {}
-            setattr(self.model._meta, "_query_cache", _query_cache)
-
-        if self._cache_key in _query_cache:
-            # TODO: save parameters (args and kwargs) somewhere to later pass them to query
-            ...
-
-        new_query: CachedQuerySet[TModel] = self._filter_or_exclude(negate=False, *args, **kwargs)
+    def filter(self, *args: Q, **kwargs: Any) -> QuerySet[MODEL]:
+        new_query = cast(CachedQuerySet[MODEL], self._filter_or_exclude(negate=False, *args, **kwargs))
         new_query._cache_key = self._cache_key
 
         return new_query
+
+    def __await__(self) -> Generator[Any, None, list[MODEL]]:
+        if (_query_cache := getattr(self.model.Meta, "_query_cache", None)) is None:
+            _query_cache = {}
+            setattr(self.model.Meta, "_query_cache", _query_cache)
+
+        sql_to_cache = self.sql(False)
+        _query_cache[self._cache_key] = sql_to_cache
+
+        return super().__await__()
 
 
 class ModelCachedQuery(Model):
     @classmethod
     def cache_query(cls, name: str) -> QuerySet[Self]:
+        if (_query_cache := getattr(cls.Meta, "_query_cache", None)) is not None \
+                and name in _query_cache:
+            return CacheHitQuerySet(cls, _query_cache[name])
         return CachedQuerySet(cls, name)
