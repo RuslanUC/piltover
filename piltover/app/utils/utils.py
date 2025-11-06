@@ -415,6 +415,8 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
     max_col_idx = (8 if is_inline else 12) - 1
 
     for row_idx, row_to_process in enumerate(reply_markup.rows):
+        if total_buttons % 10 == 0:
+            await sleep(0)
         processed_rows.append((row := KeyboardButtonRow(buttons=[])))
         for col_idx, button in enumerate(row_to_process.buttons):
             if len(button.text) > 32:
