@@ -1,5 +1,7 @@
 from typing import cast, Callable, Awaitable
 
+from piltover.app.bot_handlers.botfather.cancel_command import botfather_cancel_command
+from piltover.app.bot_handlers.botfather.mybots_command import botfather_mybots_command
 from piltover.app.bot_handlers.botfather.newbot_command import botfather_newbot_command
 from piltover.app.bot_handlers.botfather.start_command import botfather_start_command
 from piltover.app.bot_handlers.botfather.text_handler import botfather_text_message_handler
@@ -19,7 +21,10 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
     "botfather": {
         "__text": botfather_text_message_handler,
         "start": botfather_start_command,
+        "help": botfather_start_command,
         "newbot": botfather_newbot_command,
+        "cancel": botfather_cancel_command,
+        "mybots": botfather_mybots_command,
     }
 }
 

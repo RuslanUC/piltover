@@ -249,20 +249,15 @@ async def send_message(request: SendMessage, user: User):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant(user)
         if peer.type is PeerType.CHAT and participant is None:
-            logger.error("WHAT 1")
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHANNEL and participant is None and not peer.channel.join_to_send:
-            logger.error("WHAT 2")
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHANNEL and peer.channel.channel \
                 and not peer.channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
-            logger.error("WHAT 3")
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
-            logger.error("WHAT 4")
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_PLAIN):
-            logger.error("WHAT 5")
             raise ErrorRpc(error_code=403, error_message="CHAT_SEND_PLAIN_FORBIDDEN")
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
@@ -279,13 +274,14 @@ async def send_message(request: SendMessage, user: User):
 
     reply_to_message_id = _resolve_reply_id(request)
     is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
+    reply_markup = await process_reply_markup(request.reply_markup, user)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, scheduled_date=request.schedule_date,
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
-        reply_markup=await process_reply_markup(request.reply_markup, user),
+        reply_markup=reply_markup.write() if reply_markup else None,
     )
 
 
@@ -664,13 +660,14 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     media = await _process_media(user, request.media)
     reply_to_message_id = _resolve_reply_id(request)
     is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
+    reply_markup = await process_reply_markup(request.reply_markup, user)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, message=request.message, media=media,
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
-        reply_markup=await process_reply_markup(request.reply_markup, user),
+        reply_markup=reply_markup.write() if reply_markup else None,
     )
 
 
