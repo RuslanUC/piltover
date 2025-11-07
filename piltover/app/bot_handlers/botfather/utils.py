@@ -1,11 +1,15 @@
-from piltover.db.models import Username, User
+from tortoise.expressions import Subquery
+
+from piltover.db.models import Username, User, Bot
 from piltover.tl import KeyboardButtonRow, KeyboardButtonCallback
 
 
 async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[KeyboardButtonRow] | None:
     user_bots = await Username.filter(
-        user__bots__owner=user, user__bot=True,
-    ).order_by("-user__id").limit(7).offset(page * 6).values_list("username", "user__id")
+        user__bot=True, user__id__in=Subquery(
+            Bot.filter(owner=user).order_by("-bot__id").limit(7).offset(page * 6).values_list("bot__id")
+        ),
+    ).values_list("username", "user__id")
 
     if not user_bots:
         return None

@@ -19,6 +19,6 @@ async def botfather_mybots_command(peer: Peer, _: Message) -> Message | None:
     messages = await Message.create_for_peer(
         peer, None, None, peer.user, False, message=__text, reply_markup=ReplyInlineMarkup(
             rows=rows,
-        ),
+        ).write(),
     )
     return messages[peer]
