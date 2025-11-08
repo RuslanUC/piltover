@@ -18,9 +18,9 @@ def measure_time(name: str, loglevel: str = _measure_time_loglevel) -> ...:
     _measure_time_level += 1
     start = perf_counter()
 
-    yield
-
-    end = perf_counter()
-    # TODO: fix this counter not decrementing sometimes
-    _measure_time_level -= 1
-    logger.log(loglevel, f"<---{hyphens} {name} took {(end - start) * 1000:.2f}ms")
+    try:
+        yield
+    finally:
+        end = perf_counter()
+        _measure_time_level -= 1
+        logger.log(loglevel, f"<---{hyphens} {name} took {(end - start) * 1000:.2f}ms")
