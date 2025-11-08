@@ -329,22 +329,26 @@ async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
 @handler.on_request(ToggleNoForwards, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
-    if peer.type is not PeerType.CHAT:
+    if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
-    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
-        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+    chat_or_channel = peer.chat_or_channel
 
-    chat = peer.chat
-    if request.enabled == chat.no_forwards:
+    if request.enabled == chat_or_channel.no_forwards:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
-    chat.no_forwards = request.enabled
-    chat.version += 1
-    await chat.save(update_fields=["no_forwards", "version"])
+    participant = await ChatParticipant.get_or_none(chat=chat_or_channel, user=user)
+    if participant is None or not chat_or_channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    return await upd.update_chat(chat, user)
+    chat_or_channel.no_forwards = request.enabled
+    chat_or_channel.version += 1
+    await chat_or_channel.save(update_fields=["no_forwards", "version"])
+
+    if peer.type is PeerType.CHAT:
+        return await upd.update_chat(peer.chat, user)
+    else:
+        return await upd.update_channel(peer.channel, user)
 
 
 @handler.on_request(EditChatDefaultBannedRights)

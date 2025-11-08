@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 from fastrand import xorshift128plus_bytes
 from pyrogram.enums import MessageEntityType
-from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired
+from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired, ChatForwardsRestricted, NotAcceptable
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL
@@ -941,3 +941,35 @@ async def test_send_multiple_scheduled_messages(exit_stack: AsyncExitStack) -> N
     messages = [m async for m in client.get_chat_history("me")]
     assert len(messages) == 3
     assert await client.get_chat_history_count("me") == 3
+
+
+@pytest.mark.asyncio
+async def test_messages_noforwards(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    group = await client.create_group("idk", [])
+    message1 = await client.send_message(group.id, "test message that wont have noforwards")
+
+    assert await client.get_chat_history_count("me") == 0
+    assert await client.forward_messages("me", group.id, message1.id)
+    assert await client.get_chat_history_count("me") == 1
+
+    await client.set_chat_protected_content(group.id, True)
+    message2 = await client.send_message(group.id, "test message that WILL have noforwards")
+
+    with pytest.raises(NotAcceptable, match="CHAT_FORWARDS_RESTRICTED"):
+        assert await client.forward_messages("me", group.id, message1.id)
+    assert await client.get_chat_history_count("me") == 1
+
+    with pytest.raises(NotAcceptable, match="CHAT_FORWARDS_RESTRICTED"):
+        assert await client.forward_messages("me", group.id, message2.id)
+    assert await client.get_chat_history_count("me") == 1
+
+    await client.set_chat_protected_content(group.id, False)
+
+    assert await client.forward_messages("me", group.id, message1.id)
+    assert await client.get_chat_history_count("me") == 2
+
+    with pytest.raises(NotAcceptable, match="CHAT_FORWARDS_RESTRICTED"):
+        assert await client.forward_messages("me", group.id, message2.id)
+    assert await client.get_chat_history_count("me") == 2

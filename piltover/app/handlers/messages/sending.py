@@ -237,6 +237,14 @@ async def _make_channel_post_info_maybe(peer: Peer, user: User) -> tuple[bool, C
     return is_channel_post, post_info, post_signature
 
 
+def _resolve_noforwards(peer: Peer, user: User, request_noforwards: bool = False) -> bool:
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL) and peer.chat_or_channel.no_forwards:
+        return True
+    if user.bot and request_noforwards:
+        return True
+    return False
+
+
 @handler.on_request(SendMessage_148, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SendMessage_176, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SendMessage, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -282,6 +290,7 @@ async def send_message(request: SendMessage, user: User):
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
         reply_markup=reply_markup.write() if reply_markup else None,
+        no_forwards=_resolve_noforwards(peer, user, request.noforwards),
     )
 
 
@@ -442,6 +451,12 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         m.version += 1
 
     # TODO: process mentioned users
+
+    reply_markup = message.reply_markup
+    if request.reply_markup is not None:
+        reply_markup = await process_reply_markup(reply_markup, user)
+        if reply_markup is not None:
+            reply_markup = reply_markup.write()
     # TODO: edit reply_markup
 
     if message.scheduled_date is not None:
@@ -668,6 +683,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
         reply_markup=reply_markup.write() if reply_markup else None,
+        no_forwards=_resolve_noforwards(peer, user, request.noforwards),
     )
 
 
@@ -751,6 +767,8 @@ async def forward_messages(
 
     if not messages:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
+    if any(msg.no_forwards for msg in messages):
+        raise ErrorRpc(error_code=406, error_message="CHAT_FORWARDS_RESTRICTED")
 
     if to_peer.type is PeerType.CHANNEL:
         peers = [await Peer.get_or_none(owner=None, channel=to_peer.channel)]
@@ -781,6 +799,7 @@ async def forward_messages(
                     reply_to_internal_id=reply_ids.get(message.reply_to_id),
                     media_group_id=media_group_ids[message.media_group_id],
                     drop_author=request.drop_author,
+                    no_forwards=_resolve_noforwards(to_peer, user, request.noforwards),
 
                     fwd_header=await message.create_fwd_header(opp_peer) if not request.drop_author else None,
                     is_forward=True,
@@ -904,6 +923,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
             user, peer, random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
             author=user, message=message, media=media, entities=entities, media_group_id=group_id,
             channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
+            no_forwards=_resolve_noforwards(peer, user, request.noforwards),
         )
         if updates is None:
             updates = new_updates

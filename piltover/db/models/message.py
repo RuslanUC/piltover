@@ -102,6 +102,7 @@ class Message(Model):
     ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
     # TODO: create fields type for tl objects
     reply_markup: bytes | None = fields.BinaryField(null=True, default=None)
+    no_forwards: bool = fields.BooleanField(default=False)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -294,11 +295,11 @@ class Message(Model):
             from_scheduled=self.from_scheduled or self.scheduled_date is not None,
             ttl_period=ttl_period,
             reply_markup=reply_markup,
+            noforwards=self.no_forwards,
 
             silent=False,
             legacy=False,
             edit_hide=False,
-            noforwards=False,
             restriction_reason=[],
         )
 
@@ -362,7 +363,7 @@ class Message(Model):
             random_id: int | None = None,
             fwd_header: models.MessageFwdHeader | None | _SomethingMissing = _SMTH_MISSING,
             reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
-            drop_author: bool = False, is_forward: bool = False,
+            drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
     ) -> models.Message:
         if new_author is None and self.author is not None:
             self.author = new_author = await self.author
@@ -402,6 +403,7 @@ class Message(Model):
             channel_post=self.channel_post if not drop_author else None,
             post_author=self.post_author if not drop_author else None,
             post_info=self.post_info if not drop_author else None,
+            no_forwards=no_forwards,
         )
 
     async def create_fwd_header(self, peer: models.Peer) -> models.MessageFwdHeader | None:
