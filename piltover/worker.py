@@ -230,6 +230,8 @@ class Worker(MessageHandler):
         from piltover.app.handlers.messages import sending
         import piltover.app.utils.updates_manager as upd
 
+        logger.trace(f"Processing scheduled message {message_id}")
+
         async with in_transaction():
             scheduled = await Message.select_for_update(
                 skip_locked=True, no_key=True,
@@ -240,6 +242,7 @@ class Worker(MessageHandler):
                 "fwd_header", "post_info",
             )
             if scheduled is None:
+                logger.warning(f"Scheduled message {message_id} does not exist?")
                 return
 
             task = scheduled.taskiqscheduledmessages

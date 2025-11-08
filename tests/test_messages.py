@@ -908,3 +908,36 @@ async def test_messages_ttl(exit_stack: AsyncExitStack) -> None:
     assert message3.id in message_ids
 
 
+@pytest.mark.run_scheduler
+@pytest.mark.asyncio
+async def test_send_multiple_scheduled_messages(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=1))
+    await client.send_message("me", "test 456", schedule_date=datetime.now() + timedelta(seconds=2))
+    await client.send_message("me", "test 789", schedule_date=datetime.now() + timedelta(seconds=3))
+
+    messages = [m async for m in client.get_chat_history("me")]
+    assert len(messages) == 0
+    assert await client.get_chat_history_count("me") == 0
+
+    update1 = await client.expect_update(UpdateNewMessage, 3)
+    assert update1.message.from_scheduled
+    assert update1.message.message == "test 123"
+    update2 = await client.expect_update(UpdateNewMessage, 2)
+    assert update2.message.from_scheduled
+    assert update2.message.message == "test 456"
+    update3 = await client.expect_update(UpdateNewMessage, 2)
+    assert update3.message.from_scheduled
+    assert update3.message.message == "test 789"
+
+    await client.expect_updates(
+        UpdateDeleteScheduledMessages,
+        UpdateDeleteScheduledMessages,
+        UpdateDeleteScheduledMessages,
+        timeout_per_update=.1,
+    )
+
+    messages = [m async for m in client.get_chat_history("me")]
+    assert len(messages) == 3
+    assert await client.get_chat_history_count("me") == 3
