@@ -67,3 +67,4 @@ from .bot import Bot
 from .botfather_state import BotFatherUserState
 from .language import Language
 from .language_string import LanguageString
+from .callback_query import CallbackQuery

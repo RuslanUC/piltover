@@ -11,7 +11,7 @@ async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[Keybo
         ),
     ).values_list("username", "user__id")
 
-    if not user_bots:
+    if not user_bots and not page:
         return None
 
     has_prev_page = page > 0
@@ -24,7 +24,7 @@ async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[Keybo
             rows.append(KeyboardButtonRow(buttons=[]))
         rows[-1].buttons.append(KeyboardButtonCallback(
             text=f"@{username}",
-            data=f"mybots/bot/{bot_id}".encode("latin1"),
+            data=f"bots/{bot_id}".encode("latin1"),
         ))
 
     if has_prev_page or has_next_page:

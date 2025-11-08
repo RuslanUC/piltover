@@ -9,7 +9,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
-    Stickerset, ChatWallpaper
+    Stickerset, ChatWallpaper, CallbackQuery
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -22,7 +22,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
-    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1449,3 +1449,31 @@ async def migrate_chat(chat: Chat, channel: Channel, user: User | None = None) -
     await Update.bulk_create(updates_to_create)
 
     return update_to_return
+
+
+async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
+    new_pts = await State.add_pts(bot, 1)
+
+    await Update.create(
+        user=bot,
+        update_type=UpdateType.BOT_CALLBACK_QUERY,
+        pts=new_pts,
+        pts_count=1,
+        related_id=query.id,
+        related_ids=[],
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdateBotCallbackQuery(
+                query_id=query.id,
+                user_id=query.user_id,
+                peer=query.message.peer.to_tl(),
+                msg_id=query.message_id,
+                chat_instance=0,
+                data=query.data,
+            )
+        ],
+    )
+
+    await SessionManager.send(updates, bot.id)

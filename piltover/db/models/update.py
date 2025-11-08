@@ -15,7 +15,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
-    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -24,7 +24,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
-              | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL
+              | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery
 
 
 class Update(Model):
@@ -454,6 +454,22 @@ class Update(Model):
                 return UpdatePeerHistoryTTL(
                     peer=peer.to_tl(),
                     ttl_period=ttl_days * 86400 if ttl_days else None,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.BOT_CALLBACK_QUERY:
+                query = await models.CallbackQuery.get_or_none(id=self.related_id).select_related(
+                    "message", "message__peer",
+                )
+                if query is None:
+                    return none_ret
+
+                return UpdateBotCallbackQuery(
+                    query_id=query.id,
+                    user_id=query.user_id,
+                    peer=query.message.peer.to_tl(),
+                    msg_id=query.message_id,
+                    chat_instance=0,
+                    data=query.data,
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

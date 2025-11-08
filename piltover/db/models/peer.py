@@ -8,7 +8,7 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
     InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, PeerChannel
 
@@ -127,6 +127,23 @@ class Peer(Model):
 
         return []
 
+    async def get_for_user(self, for_user: models.User) -> Peer | None:
+        if for_user.id == self.owner_id:
+            return self
+        if self.type is PeerType.SELF or self.type is PeerType.USER:
+            return await Peer.get_or_none(
+                owner=for_user, user=self.user,
+            ).select_related("owner", "user")
+        elif self.type is PeerType.CHAT:
+            return await Peer.get_or_none(
+                type=PeerType.CHAT, owner=for_user, chat=self.chat,
+            ).select_related("owner", "chat")
+        elif self.type is PeerType.CHANNEL:
+            return await Peer.get_or_none(
+                type=PeerType.CHANNEL, owner=for_user, channel=self.channel,
+            ).select_related("owner", "channel")
+        raise Unreachable
+
     def to_tl(self) -> PeerUser | PeerChat | PeerChannel:
         if self.type is PeerType.SELF:
             return PeerUser(user_id=self.owner_id)
@@ -137,7 +154,7 @@ class Peer(Model):
         if self.type == PeerType.CHANNEL:
             return PeerChannel(channel_id=models.Channel.make_id_from(self.channel_id))
 
-        raise RuntimeError("Unreachable")
+        raise Unreachable
 
     def to_input_peer(
             self, self_is_user: bool = False,

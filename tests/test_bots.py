@@ -48,7 +48,7 @@ async def test_create_botfather_bot(exit_stack: AsyncExitStack) -> None:
 @pytest.mark.parametrize(
     ("bots_count", "check_text", "rows_count", "has_page_buttons"),
     [
-        (0, "No bots", 0, False),
+        (0, "no bots", 0, False),
         (1, "Choose a bot", 1, False),
         (2, "Choose a bot", 1, False),
         (3, "Choose a bot", 2, False),

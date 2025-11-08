@@ -15,7 +15,7 @@ from tortoise.functions import Count
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
-from piltover.exceptions import Error, ErrorRpc
+from piltover.exceptions import Error, ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, TLObject
 from piltover.tl.base import MessageActionInst, MessageAction, ReplyMarkupInst, ReplyMarkup
 from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageActionNeedsProcessing
@@ -268,7 +268,7 @@ class Message(Model):
         if self.ttl_period_days and self.type is MessageType.REGULAR:
             ttl_period = self.ttl_period_days * self.TTL_MULT
 
-        reply_markup = self._make_reply_markup()
+        reply_markup = self.make_reply_markup()
 
         message = TLMessage(
             id=self.id,
@@ -305,7 +305,7 @@ class Message(Model):
         await Cache.obj.set(self._cache_key(current_user), message)
         return message
 
-    def _make_reply_markup(self) -> ReplyMarkup | None:
+    def make_reply_markup(self) -> ReplyMarkup | None:
         if self._cached_reply_markup is _SMTH_MISSING:
             if self.reply_markup is None:
                 self._cached_reply_markup = None
@@ -530,3 +530,20 @@ class Message(Model):
                 for reaction_id, reaction_emoji, msg_count in reactions
             ],
         )
+
+    async def get_for_user(self, for_user: models.User) -> Message | None:
+        if self.peer.type is PeerType.CHANNEL:
+            return self
+
+        if self.peer.type is PeerType.SELF:
+            if for_user.id == self.peer.owner_id:
+                return self
+            return None
+
+        if self.peer.type in (PeerType.USER, PeerType.CHAT):
+            peer_for_user = await self.peer.get_for_user(for_user)
+            return await Message.get_or_none(
+                peer=peer_for_user, internal_id=self.internal_id,
+            ).select_related("peer", "author", "media")
+
+        raise Unreachable
