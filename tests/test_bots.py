@@ -1,7 +1,7 @@
 from contextlib import AsyncExitStack
 
 import pytest
-from pyrogram.raw.types import UpdateNewMessage
+from pyrogram.raw.types import UpdateNewMessage, UpdateEditMessage
 from pyrogram.types import Message as PyroMessage, InlineKeyboardMarkup
 
 from piltover.db.models import User, Username, Bot
@@ -100,3 +100,75 @@ async def test_botfather_mybots(
     if has_page_buttons:
         btn_text = bot_message.reply_markup.inline_keyboard[-1][-1].text
         assert btn_text in ("->", "<-")
+
+
+@pytest.mark.asyncio
+async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    db_user = await User.get_or_none(phone_number="123456789")
+
+    await User.bulk_create([
+        User(phone_number=None, first_name=f"Bot #{i}", bot=True)
+        for i in range(8)
+    ])
+
+    usernames_to_create = []
+    bots_to_create = []
+
+    for bot_user in await User.filter(bot=True, first_name__startswith="Bot #"):
+        num = int(bot_user.first_name.replace("Bot #", ""))
+        usernames_to_create.append(Username(user=bot_user, username=f"test_{num}_bot"))
+        bots_to_create.append(Bot(owner=db_user, bot=bot_user))
+
+    await Username.bulk_create(usernames_to_create)
+    await Bot.bulk_create(bots_to_create)
+
+    await client.send_message("botfather", "/mybots")
+
+    _, bot_response = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    bot_message = await PyroMessage._parse(
+        client,
+        bot_response.message,
+        {},
+        {},
+    )
+    assert "Choose a bot" in bot_message.text
+    assert isinstance(bot_message.reply_markup, InlineKeyboardMarkup)
+    assert len(bot_message.reply_markup.inline_keyboard) == 4
+    btn_text = bot_message.reply_markup.inline_keyboard[-1][-1].text
+    assert btn_text == "->"
+
+    await bot_message.click("->")
+
+    new_response = await client.expect_updates(UpdateEditMessage)
+    assert new_response
+    new_response = new_response[0]
+    new_message = await PyroMessage._parse(
+        client,
+        new_response.message,
+        {},
+        {},
+    )
+    assert "Choose a bot" in new_message.text
+    assert isinstance(new_message.reply_markup, InlineKeyboardMarkup)
+    assert len(new_message.reply_markup.inline_keyboard) == 2
+    assert new_message.reply_markup.inline_keyboard[-1][-1].text == "<-"
+
+    await new_message.click("<-")
+
+    new_response = await client.expect_updates(UpdateEditMessage)
+    assert new_response
+    new_response = new_response[0]
+    new_message = await PyroMessage._parse(
+        client,
+        new_response.message,
+        {},
+        {},
+    )
+    assert "Choose a bot" in new_message.text
+    assert isinstance(new_message.reply_markup, InlineKeyboardMarkup)
+    assert len(new_message.reply_markup.inline_keyboard) == 4
+    assert new_message.reply_markup.inline_keyboard[-1][-1].text == "->"
+
+    assert new_message.reply_markup == bot_message.reply_markup

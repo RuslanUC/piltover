@@ -320,6 +320,9 @@ class Message(Model):
 
         return self._cached_reply_markup
 
+    def invalidate_reply_markup_cache(self) -> None:
+        self._cached_reply_markup = _SMTH_MISSING
+
     async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, Message]:
         peers = [self.peer]
         if opposite and self.peer.type is not PeerType.CHANNEL:

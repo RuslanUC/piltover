@@ -9,7 +9,7 @@ async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[Keybo
         user__bot=True, user__id__in=Subquery(
             Bot.filter(owner=user).order_by("-bot__id").limit(7).offset(page * 6).values_list("bot__id")
         ),
-    ).values_list("username", "user__id")
+    ).order_by("-user__id").values_list("username", "user__id")
 
     if not user_bots and not page:
         return None

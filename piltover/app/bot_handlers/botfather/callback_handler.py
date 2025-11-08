@@ -23,12 +23,14 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             message.message = text_no_bots
         else:
             message.message = text_choose_bot
-            message.reply_markup = ReplyInlineMarkup(
-                rows=rows,
-            ).write()
+            message.reply_markup = ReplyInlineMarkup(rows=rows).write()
+        message.version += 1
+        message.invalidate_reply_markup_cache()
 
-        await message.save(update_fields=["message", "reply_markup"])
+        await message.save(update_fields=["message", "reply_markup", "version"])
         await upd.edit_message(peer.owner, {peer: message})
+
+        return BotCallbackAnswer(cache_time=0)
 
     logger.warning(f"Got unexpected callback data: {data} for BotFather")
     return None
