@@ -440,6 +440,12 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     if message_text is not None:
         entities = await process_message_entities(message_text, request.entities, user)
 
+    reply_markup = message.reply_markup
+    if user.bot and request.reply_markup is not None:
+        reply_markup = await process_reply_markup(reply_markup, user)
+        if reply_markup is not None:
+            reply_markup = reply_markup.write()
+
     def _edit_message(m: Message, new_edit_date: datetime | None) -> None:
         if message_text is not None:
             m.message = message_text
@@ -448,16 +454,10 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         if media is not None:
             m.media = media
         m.edit_date = new_edit_date
+        m.reply_markup = reply_markup
         m.version += 1
 
     # TODO: process mentioned users
-
-    reply_markup = message.reply_markup
-    if request.reply_markup is not None:
-        reply_markup = await process_reply_markup(reply_markup, user)
-        if reply_markup is not None:
-            reply_markup = reply_markup.write()
-    # TODO: edit reply_markup
 
     if message.scheduled_date is not None:
         _edit_message(message, None)
@@ -467,12 +467,14 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
             message.scheduled_date = datetime.fromtimestamp(request.schedule_date, UTC)
             await TaskIqScheduledMessage.filter(message=message).update(scheduled_time=request.schedule_date)
 
-        await message.save(update_fields=["message", "version", "media_id", "entities", "scheduled_date"])
+        await message.save(update_fields=[
+            "message", "version", "media_id", "entities", "reply_markup", "scheduled_date",
+        ])
         return await upd.edit_message(user, {peer: message})
 
     if peer.type is PeerType.CHANNEL:
         _edit_message(message, datetime.now(UTC))
-        await message.save(update_fields=["message", "edit_date", "version", "media_id", "entities"])
+        await message.save(update_fields=["message", "edit_date", "version", "media_id", "entities", "reply_markup"])
         message.peer.channel = peer.channel
         return await upd.edit_message_channel(user, message)
 
@@ -487,7 +489,9 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         _edit_message(message, edit_date)
         messages[message.peer] = message
 
-    await Message.bulk_update(messages.values(), ["message", "edit_date", "version", "media_id", "entities"])
+    await Message.bulk_update(messages.values(), [
+        "message", "edit_date", "version", "media_id", "entities", "reply_markup",
+    ])
 
     if not user.bot:
         presence = await Presence.update_to_now(user)
