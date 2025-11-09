@@ -14,7 +14,7 @@ handler = MessageHandler("users")
 
 @handler.on_request(GetFullUser)
 async def get_full_user(request: GetFullUser, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.id)
+    peer = await Peer.from_input_peer_raise(user, request.id, peer_types=(PeerType.SELF, PeerType.USER))
     target_user = peer.peer_user(user)
 
     about = ""

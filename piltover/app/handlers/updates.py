@@ -136,9 +136,9 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
 @handler.on_request(GetChannelDifference)
 async def get_channel_difference(request: GetChannelDifference, user: User):
-    peer = await Peer.from_input_peer(user, request.channel)
-    if peer.type is not PeerType.CHANNEL:
-        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
+    )
 
     new_updates = await ChannelUpdate.filter(
         channel=peer.channel, pts__gt=request.pts

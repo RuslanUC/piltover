@@ -73,27 +73,36 @@ class Peer(Model):
     @classmethod
     async def from_input_peer(
             cls, user: models.User, input_peer: InputPeers, allow_bot: bool = True, allow_migrated_chat: bool = False,
+            peer_types: tuple[PeerType, ...] | None = None,
     ) -> Peer | None:
         if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
             return None
 
         if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user.id):
+            if peer_types is not None and PeerType.SELF not in peer_types:
+                return None
             peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF, user=user)
             peer.owner = await peer.owner
             return peer
         elif isinstance(input_peer, (InputPeerUser, InputUser)):
+            if peer_types is not None and PeerType.USER not in peer_types:
+                return None
             query = Q(owner=user, user__id=input_peer.user_id, access_hash=input_peer.access_hash)
             if not allow_bot:
                 query &= Q(user__bot=False)
             return await Peer.get_or_none(query).select_related("owner", "user")
         elif isinstance(input_peer, InputPeerChat):
+            if peer_types is not None and PeerType.CHAT not in peer_types:
+                return None
             chat_id = models.Chat.norm_id(input_peer.chat_id)
             query = Q(owner=user, chat__id=chat_id)
             if not allow_migrated_chat:
                 query &= Q(chat__migrated=False)
             return await Peer.get_or_none(query).select_related("owner", "chat")
         elif isinstance(input_peer, (InputPeerChannel, InputChannel)):
+            if peer_types is not None and PeerType.CHANNEL not in peer_types:
+                return None
             channel_id = models.Channel.norm_id(input_peer.channel_id)
             return await Peer.get_or_none(
                 owner=user, channel__id=channel_id, access_hash=input_peer.access_hash, channel__deleted=False,
@@ -104,9 +113,10 @@ class Peer(Model):
     @classmethod
     async def from_input_peer_raise(
             cls, user: models.User, peer: InputPeers, message: str = "PEER_ID_INVALID", code: int = 400,
-            allow_migrated_chat: bool = False,
+            allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
     ) -> Peer:
-        if (peer_ := await Peer.from_input_peer(user, peer, allow_migrated_chat=allow_migrated_chat)) is not None:
+        peer_ = await Peer.from_input_peer(user, peer, allow_migrated_chat=allow_migrated_chat, peer_types=peer_types)
+        if peer_ is not None:
             return peer_
         raise ErrorRpc(error_code=code, error_message=message)
 

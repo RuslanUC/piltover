@@ -765,9 +765,9 @@ async def update_personal_channel(request: UpdatePersonalChannel, user: User) ->
             await personal_channel.delete()
         return True
 
-    peer = await Peer.from_input_peer_raise(user, request.channel, message="CHANNEL_PRIVATE", code=406)
-    if peer.type is not PeerType.CHANNEL:
-        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
+    )
 
     if peer.channel.creator_id != user.id:
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
