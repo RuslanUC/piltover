@@ -166,6 +166,15 @@ internal_benchmarking.object_to_benchmark#96be42f flags:# int32:int optional_int
 
 internal_botfather.botfather_state_newbot#bcb2c294 name:string = internal_botfather.BotFatherState;
 
+// Access hashes
+internal_access.access_hash_payload_user#916e7528 this_user_id:long user_id:long auth_id:long = internal_access.AccessHashPayload;
+internal_access.access_hash_payload_channel#8195bf26 this_user_id:long channel_id:long auth_id:long = internal_access.AccessHashPayload;
+internal_access.access_hash_payload_file#4c9a07fe this_user_id:long file_id:long auth_id:long = internal_access.AccessHashPayload;
+internal_access.access_hash_payload_encrypted_chat#a773e2af this_user_id:long chat_id:long auth_id:long = internal_access.AccessHashPayload;
+internal_access.access_hash_payload_stickerset#8009da5b this_user_id:long set_id:long auth_id:long = internal_access.AccessHashPayload;
+internal_access.access_hash_payload_wallpaper#cb83392e this_user_id:long wallpaper_id:long auth_id:long = internal_access.AccessHashPayload;
+internal_access.access_hash_payload_theme#1c9a2a19 this_user_id:long theme_id:long auth_id:long = internal_access.AccessHashPayload;
+
 ---functions---
 
 // For my.telegram.org alternative page

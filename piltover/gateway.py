@@ -18,6 +18,7 @@ from taskiq.kicker import AsyncKicker
 from piltover._keygen_handlers import KEYGEN_HANDLERS
 from piltover._system_handlers import SYSTEM_HANDLERS
 from piltover.cache import Cache
+from piltover.context import serialization_ctx, SerializationContext
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.tl.utils import is_id_content_related
@@ -218,6 +219,12 @@ class Client:
             raise Disconnection(404)
 
         logger.debug(f"Sending to {self.session.session_id if self.session else 0}: {message!r}")
+
+        auth, _ = self.authorization
+        serialization_ctx.set(SerializationContext(
+            auth_id=auth.id if auth is not None else None,
+            user_id=auth.user_id if auth is not None else None,
+        ))
 
         if self.server.TL_CHECK_RESPONSES:
             try:

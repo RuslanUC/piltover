@@ -27,6 +27,9 @@ from typing import Literal, TextIO
 
 from tqdm import tqdm
 
+from tl_gen_placeholders import PLACEHOLDERS
+
+
 DRY_RUN = False
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl")
@@ -417,6 +420,8 @@ def start():
             for field in fields if not field.is_flag
         ]
 
+        placeholders = PLACEHOLDERS.get(int(c.id[2:], 16), {})
+
         serialize_body = []
         deserialize_body = []
         for field in fields:
@@ -454,6 +459,21 @@ def start():
                 deserialize_body.append(f"{flag_var} = Int.read(stream)")
                 continue
 
+            write_var_name = f"self.{field.name}"
+            if field.name in placeholders:
+                name_with_ns = snake(c.qualname.replace(".", "_"))
+                write_var_name = f"__{field.name}"
+                for idx, (check, suffix) in enumerate(placeholders[field.name].items()):
+                    if not idx:
+                        serialize_body.append(f"if {check}:")
+                    else:
+                        serialize_body.append(f"elif {check}:")
+                    serialize_body.append(
+                        f"    {write_var_name} = tl_placeholders.{name_with_ns}_fill_{field.name}{suffix}(self)"
+                    )
+                serialize_body.append(f"else:")
+                serialize_body.append(f"    {write_var_name} = self.{field.name}")
+
             if field.is_optional:
                 if field.write:
                     empty_condition = ""
@@ -463,8 +483,8 @@ def start():
                     if fields_with_this_flag > 1 or not field.is_vector:
                         empty_condition = " is not None"
 
-                    serialize_body.append(f"if self.{field.name}{empty_condition}:")
-                    serialize_body.append(f"    result += {type_name}.write(self.{field.name})")
+                    serialize_body.append(f"if {write_var_name}{empty_condition}:")
+                    serialize_body.append(f"    result += {type_name}.write({write_var_name})")
                     deserialize_body.append(
                         f"{field.name} = {type_name}.read(stream) "
                         f"if (flags{field.flag_num} & (1 << {field.flag_bit})) == (1 << {field.flag_bit}) else None"
@@ -476,17 +496,20 @@ def start():
 
                 continue
 
-            serialize_body.append(f"result += {type_name}.write(self.{field.name})")
+            serialize_body.append(f"result += {type_name}.write({write_var_name})")
             deserialize_body.append(f"{field.name} = {type_name}.read(stream)")
 
         imports = [
             f"from __future__ import annotations",
-            f"from typing import Iterable",
             f"from {third_dot}..primitives import *",
             f"from {third_dot}.. import types",
             f"from {third_dot}..tl_object import TLObject",
-            f"",
         ]
+
+        if c.section == "types":
+            imports.append(f"from {third_dot}.. import placeholders as tl_placeholders")
+
+        imports.append(f"")
 
         if c.section == "types":
             imports.extend((
