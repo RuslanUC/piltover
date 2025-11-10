@@ -66,6 +66,9 @@ class RequestHandler:
     def bots_not_allowed(self) -> bool:
         return bool(self.flags & ReqHandlerFlags.BOT_NOT_ALLOWED)
 
+    def refresh_session(self) -> bool:
+        return bool(self.flags & ReqHandlerFlags.REFRESH_SESSION)
+
     async def __call__(self, request: TLObject, user: User | None) -> Any:
         kwargs = {}
         if self.has_request_arg: kwargs["request"] = request
@@ -221,10 +224,13 @@ class Worker(MessageHandler):
             result = RpcError(error_code=500, error_message="Not implemented")
 
         #logger.trace(f"Returning from worker: {type(result)}, {result}")
-        return RpcResponse(obj=RpcResult(
-            req_msg_id=call.message_id,
-            result=result,
-        ))
+        return RpcResponse(
+            obj=RpcResult(
+                req_msg_id=call.message_id,
+                result=result,
+            ),
+            refresh_auth=handler.refresh_session(),
+        )
 
     async def _handle_scheduled_message(self, message_id: int) -> None:
         from piltover.app.handlers.messages import sending

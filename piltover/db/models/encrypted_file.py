@@ -13,11 +13,12 @@ class EncryptedFile(Model):
 
     file_id: int
 
+    # TODO: remove user
+    # TODO: remove async
     async def to_tl(self, user: models.User) -> TLEncryptedFile:
-        access, _ = await models.FileAccess.get_or_create(file=self.file, user=user, defaults={"expires": None})
         return TLEncryptedFile(
             id=self.file.id,
-            access_hash=access.access_hash,
+            access_hash=-1,
             size=self.file.size,
             dc_id=2,
             key_fingerprint=self.key_fingerprint,

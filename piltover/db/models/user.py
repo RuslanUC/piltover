@@ -9,7 +9,7 @@ from tortoise import fields, Model
 
 from piltover.app_config import AppConfig
 from piltover.db import models
-from piltover.db.enums import PeerType, PrivacyRuleKeyType
+from piltover.db.enums import PrivacyRuleKeyType
 from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday, Long
 from piltover.tl.types import User as TLUser, PeerColor
 from piltover.tl.types.internal_access import AccessHashPayloadUser
@@ -104,7 +104,7 @@ class User(Model):
             "attach_menu_enabled": False,
         }
 
-        peer = await models.Peer.get_or_none(owner=current_user, user__id=self.id, type=PeerType.USER)
+        peer_exists = await models.Peer.filter(owner=current_user, user__id=self.id).exists()
         contact = await models.Contact.get_or_none(owner=current_user, target=self)
 
         phone_number = None
@@ -123,7 +123,7 @@ class User(Model):
             lang_code=self.lang_code,
             is_self=self == current_user,
             photo=await self.get_photo(current_user, True),
-            access_hash=peer.access_hash if peer is not None else 1,
+            access_hash=-1 if peer_exists else 0,
             status=await models.Presence.to_tl_or_empty(self, current_user),
             contact=contact is not None,
             bot=self.bot,

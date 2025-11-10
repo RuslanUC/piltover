@@ -282,60 +282,65 @@ class Client:
         temp_key = await TempAuthKey.get_or_none(id=auth_key_id).select_related("perm_key")
         self.auth_data.perm_auth_key_id = temp_key.perm_key.id if temp_key.perm_key else None
 
-    async def _kiq(
-            self, obj: TLObject, session: Session, message_id: int | None = None
-    ) -> AsyncTaskiqTask:
+    async def _refresh_session_maybe(self, session: Session, force_refresh_auth: bool = False) -> None:
         auth_key_id = (self.auth_data.auth_key_id or None) if self.auth_data else None
         perm_auth_key_id = (self.auth_data.perm_auth_key_id or None) if self.auth_data else None
 
-        auth_id = None
-        user_id = None
-        is_bot = False
+        if auth_key_id is None or perm_auth_key_id is None:
+            self.authorization = None, time()
+            return
 
-        if auth_key_id is not None and perm_auth_key_id is not None:
-            auth, loaded_at = self.authorization
-            if auth is None or (time() - loaded_at) > 60:
-                auth = await UserAuthorization.get_or_none(key__id=perm_auth_key_id).select_related("user")
+        auth, loaded_at = self.authorization
+        if auth is None or (time() - loaded_at) > 60 or force_refresh_auth:
+            auth = await UserAuthorization.get_or_none(key__id=perm_auth_key_id).select_related("user")
 
-                self.authorization = (auth, time())
-                if auth is not None and session.user_id is None:
-                    session.set_user_id(auth.user.id)
+            self.authorization = (auth, time())
+            if auth is not None and session.user_id is None:
+                session.set_user_id(auth.user.id)
 
-            auth_id = auth.id if auth is not None else None
-            user_id = auth.user.id if auth is not None else None
-            is_bot = auth.user.bot if auth is not None else False
+        if auth is not None and (time() - self.channels_loaded_at) > 60 * 5:
+            channel_ids: TaggedLongVector | None = await Cache.obj.get(f"channels:{auth.user.id}")
+            if channel_ids is None:
+                channel_ids = TaggedLongVector(vec=[
+                    channel_id
+                    async for channel_id in ChatParticipant.filter(
+                        channel_id__not_isnull=True, user=auth.user
+                    ).values_list("channel_id", flat=True)
+                ])
+                await Cache.obj.set(f"channels:{auth.user.id}", channel_ids, ttl=60 * 10)
 
-            if auth is not None and (time() - self.channels_loaded_at) > 60 * 5:
-                channel_ids: TaggedLongVector | None = await Cache.obj.get(f"channels:{auth.user.id}")
-                if channel_ids is None:
-                    channel_ids = TaggedLongVector(vec=[
-                        channel_id
-                        async for channel_id in ChatParticipant.filter(
-                            channel_id__not_isnull=True, user=auth.user
-                        ).values_list("channel_id", flat=True)
-                    ])
-                    await Cache.obj.set(f"channels:{auth.user.id}", channel_ids, ttl=60 * 10)
+            channel_ids: list[int] = channel_ids.vec
+            old_channels = set(session.channel_ids)
+            new_channels = set(channel_ids)
+            channels_to_delete = old_channels - new_channels
+            channels_to_add = new_channels - old_channels
 
-                channel_ids: list[int] = channel_ids.vec
-                old_channels = set(session.channel_ids)
-                new_channels = set(channel_ids)
-                channels_to_delete = old_channels - new_channels
-                channels_to_add = new_channels - old_channels
+            SessionManager.broker.channels_diff_update(session, channels_to_delete, channels_to_add)
 
-                SessionManager.broker.channels_diff_update(session, channels_to_delete, channels_to_add)
+        auth_id = auth.id if auth is not None else None
+        old_auth_id = session.auth_id
 
-            old_auth_id = session.auth_id
-            if old_auth_id != auth_id:
-                session.auth_id = auth_id
-                SessionManager.broker.unsubscribe_auth(old_auth_id, session)
-                SessionManager.broker.subscribe_auth(auth_id, session)
+        if old_auth_id != auth_id:
+            session.auth_id = auth_id
+            SessionManager.broker.unsubscribe_auth(old_auth_id, session)
+            SessionManager.broker.subscribe_auth(auth_id, session)
+
+    async def _kiq(
+            self, obj: TLObject, session: Session, message_id: int | None = None
+    ) -> AsyncTaskiqTask:
+        await self._refresh_session_maybe(session)
+
+        auth, _ = self.authorization
+        auth_id = auth.id if auth is not None else None
+        user_id = auth.user.id if auth is not None else None
+        is_bot = auth.user.bot if auth is not None else False
 
         # TODO: dont do .write.hex(), RpcResponse somehow dont need encoding it manually, check how exactly
         return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(CallRpc(
             obj=obj,
             layer=self.layer,
-            auth_key_id=auth_key_id,
-            perm_auth_key_id=perm_auth_key_id,
+            auth_key_id=(self.auth_data.auth_key_id or None) if self.auth_data else None,
+            perm_auth_key_id=(self.auth_data.perm_auth_key_id or None) if self.auth_data else None,
             session_id=session.session_id if session is not None else None,
             message_id=message_id,
             auth_id=auth_id,
@@ -603,5 +608,7 @@ class Client:
 
         if result.transport_error is not None:
             raise Disconnection(result.transport_error or None)
+        if result.refresh_auth:
+            await self._refresh_session_maybe(session, True)
 
         return result.obj

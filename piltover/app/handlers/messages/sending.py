@@ -15,7 +15,7 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, FileAccess, MessageMention, \
+    SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -565,7 +565,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             attributes.insert(0, DocumentAttributeFilename(file_name=media.file.name))
         file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
-        valid, const = FileAccess.is_file_ref_valid(media.id.file_reference, user.id, media.id.id)
+        valid, const = File.is_file_ref_valid(media.id.file_reference, user.id, media.id.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
         file_q = Q(id=media.id.id)
@@ -896,7 +896,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
 
         media_id = single_media.media.id
 
-        valid, const = FileAccess.is_file_ref_valid(media_id.file_reference, user.id, media_id.id)
+        valid, const = File.is_file_ref_valid(media_id.file_reference, user.id, media_id.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")  # TODO: FILE_REFERENCE_%d_EXPIRED ?
         media_q = Q(file__id=media_id.id)
@@ -904,7 +904,9 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
             file_ref = media_id.file_reference[12:]
             media_q &= Q(file__constant_access_hash=media_id.access_hash, file__constant_file_ref=file_ref)
         else:
-            media_q &= Q(file__fileaccesss__user=user, file__fileaccesss__access_hash=media_id.access_hash)
+            ctx = request_ctx.get()
+            if not File.check_access_hash(user.id, ctx.auth_id, media_id.id, media_id.access_hash):
+                raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         media = await MessageMedia.get_or_none(media_q)
 

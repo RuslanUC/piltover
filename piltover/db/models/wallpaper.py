@@ -8,7 +8,6 @@ from tortoise import Model, fields
 from tortoise.expressions import Q
 
 from piltover.app_config import AppConfig
-from piltover.context import request_ctx
 from piltover.db import models
 from piltover.exceptions import Unreachable
 from piltover.tl import Long, base
@@ -43,15 +42,13 @@ class Wallpaper(Model):
                 settings=settings.to_tl() if settings is not None else None,
             )
 
-        ctx = request_ctx.get()
-
         return WallPaper(
             id=self.id,
             creator=self.creator_id == user.id,
             default=False,
             pattern=self.pattern,
             dark=self.dark,
-            access_hash=self.make_access_hash(user.id, ctx.auth_id, self.id),
+            access_hash=-1,
             slug=self.slug,
             document=await self.document.to_tl_document(user),
             settings=settings.to_tl() if settings is not None else None,
@@ -73,7 +70,7 @@ class Wallpaper(Model):
         if isinstance(wp, InputWallPaper):
             if user is None:
                 return None
-            if cls.make_access_hash(user.id, auth_id, wp.id) != wp.access_hash:
+            if not cls.check_access_hash(user.id, auth_id, wp.id, wp.access_hash):
                 return None
             return Q(id=wp.id)
         elif isinstance(wp, InputWallPaperNoFile):

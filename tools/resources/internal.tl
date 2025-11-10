@@ -19,7 +19,7 @@ internal.available_servers#58d5526f servers:Vector<internal.AvailableServer> = i
 
 // Rpc calls between brokers
 
-internal.rpc_response#22be0328 flags:# transport_error:flags.0?int obj:flags.1?Object = internal.RpcResponse;
+internal.rpc_response#22be0328 flags:# refresh_auth:flags.2?true transport_error:flags.0?int obj:flags.1?Object = internal.RpcResponse;
 
 // Message exchange between gateway and brokers
 

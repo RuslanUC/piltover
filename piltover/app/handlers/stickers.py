@@ -13,7 +13,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash, get_image_dims
 from piltover.context import request_ctx
 from piltover.db.enums import FileType, StickerSetType
-from piltover.db.models import User, Stickerset, FileAccess, File, InstalledStickerset, StickersetThumb
+from piltover.db.models import User, Stickerset, File, InstalledStickerset, StickersetThumb
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
@@ -161,7 +161,7 @@ async def _get_sticker_files(
             raise ErrorRpc(error_code=400, error_message="STICKER_EMOJI_INVALID")
 
         input_doc = input_sticker.document
-        valid, const = FileAccess.is_file_ref_valid(input_doc.file_reference, user.id, input_doc.id)
+        valid, const = File.is_file_ref_valid(input_doc.file_reference, user.id, input_doc.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
@@ -174,9 +174,9 @@ async def _get_sticker_files(
                 constant_access_hash=input_doc.access_hash, constant_file_ref=input_doc.file_reference,
             )
         else:
-            files_q |= base_q & Q(
-                fileaccesss__user=user, fileaccesss__access_hash=input_doc.access_hash,
-            )
+            ctx = request_ctx.get()
+            if not File.check_access_hash(user.id, ctx.auth_id, input_doc.id, input_doc.access_hash):
+                raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
     files = {file.id: file for file in await File.filter(files_q)}
 
@@ -214,7 +214,7 @@ async def _get_sticker_files(
 async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: StickerSetType) -> File:
     file_q = Q()
 
-    valid, const = FileAccess.is_file_ref_valid(input_doc.file_reference, user.id, input_doc.id)
+    valid, const = File.is_file_ref_valid(input_doc.file_reference, user.id, input_doc.id)
     if not valid:
         raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
@@ -366,7 +366,7 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
 
 
 async def _get_sticker_with_set(sticker: InputDocument, user: User) -> tuple[File, Stickerset]:
-    valid, const = FileAccess.is_file_ref_valid(sticker.file_reference, user.id, sticker.id)
+    valid, const = File.is_file_ref_valid(sticker.file_reference, user.id, sticker.id)
     if not valid or not const:
         raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
 

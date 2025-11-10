@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from tortoise import fields
 
+from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.db.models.chat_base import ChatBase
@@ -44,8 +45,12 @@ class Chat(ChatBase):
 
         migrated_to = None
         if self.migrated and (to_channel := await models.Channel.get_or_none(migrated_from=self)) is not None:
+            ctx = request_ctx.get()
             peer, _ = await models.Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=to_channel)
-            migrated_to = InputChannel(channel_id=to_channel.make_id(), access_hash=peer.access_hash)
+            migrated_to = InputChannel(
+                channel_id=to_channel.make_id(),
+                access_hash=models.Channel.make_access_hash(user.id, ctx.auth_id, to_channel.id),
+            )
 
         return TLChat(
             creator=self.creator_id == user.id,

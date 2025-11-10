@@ -212,15 +212,12 @@ class Message(Model):
 
             if self.media_id is not None \
                     and file_ref_obj is not None \
-                    and not models.FileAccess.is_file_ref_valid(file_ref_obj.file_reference)[0]:
+                    and not models.File.is_file_ref_valid(file_ref_obj.file_reference)[0]:
                 file = await models.File.get_or_none(messagemedias__messages__id=self.id)
                 if file is None:
                     return cached
 
-                await current_user.load_if_lazy()
-
-                access, _ = await models.FileAccess.get_or_create(file=file, user=current_user)
-                file_ref_obj.file_reference = access.create_file_ref()
+                file_ref_obj.file_reference = file.create_file_ref(current_user)
 
                 await Cache.obj.set(self._cache_key(current_user), cached)
 

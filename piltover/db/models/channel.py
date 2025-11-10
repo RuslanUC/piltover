@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 from enum import auto, Enum
-from typing import cast
 
 from tortoise import fields
 
@@ -79,11 +78,11 @@ class Channel(ChatBase):
     async def to_tl(self, user: models.User | int) -> TLChannel | ChannelForbidden:
         user_id = user.id if isinstance(user, models.User) else user
 
-        peer: models.Peer | None = await models.Peer.get_or_none(owner__id=user_id, channel=self, type=PeerType.CHANNEL)
-        if self.deleted or peer is None:
+        peer_exists = await models.Peer.filter(owner__id=user_id, channel=self, type=PeerType.CHANNEL).exists()
+        if self.deleted or not peer_exists:
             return ChannelForbidden(
                 id=self.make_id(),
-                access_hash=0 if peer is None else cast(models.Peer, peer).access_hash,
+                access_hash=-1 if peer_exists is None else 0,
                 title=self.name,
             )
 
@@ -91,7 +90,7 @@ class Channel(ChatBase):
         if participant is None and not (self.nojoin_allow_view or await models.Username.filter(channel=self).exists()):
             return ChannelForbidden(
                 id=self.make_id(),
-                access_hash=peer.access_hash,
+                access_hash=-1,
                 title=self.name,
             )
 
@@ -131,7 +130,7 @@ class Channel(ChatBase):
             stories_hidden=False,
             stories_hidden_min=True,
             stories_unavailable=True,
-            access_hash=peer.access_hash,
+            access_hash=-1,
             restriction_reason=None,
             admin_rights=admin_rights,
             username=username.username if username is not None else None,

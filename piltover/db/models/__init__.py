@@ -8,7 +8,6 @@ from .chat_participant import ChatParticipant
 from .contact import Contact
 from .dialog import Dialog
 from .file import File
-from .file_access import FileAccess
 from .message import Message
 from .message_draft import MessageDraft
 from .message_fwd_header import MessageFwdHeader

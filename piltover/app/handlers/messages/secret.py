@@ -8,7 +8,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.context import request_ctx
 from piltover.db.enums import SecretUpdateType, FileType
 from piltover.db.models import User, Peer, EncryptedChat, UserAuthorization, SecretUpdate, EncryptedFile, \
-    UploadingFile, FileAccess
+    UploadingFile, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputUser, InputUserFromMessage, EncryptedChatDiscarded, EncryptedFileEmpty, \
@@ -150,24 +150,24 @@ async def _resolve_file(input_file: InputEncryptedFileT, user: User) -> Encrypte
     if isinstance(input_file, InputEncryptedFileEmpty):
         return None
 
+    ctx = request_ctx.get()
+
     if isinstance(input_file, (InputEncryptedFileUploaded, InputEncryptedFileBigUploaded)):
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=input_file.id)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
-        storage = request_ctx.get().storage
         file = await uploaded_file.finalize_upload(
-            storage, "application/vnd.encrypted", file_type=FileType.ENCRYPTED, force_fallback_mime=True,
+            ctx.storage, "application/vnd.encrypted", file_type=FileType.ENCRYPTED, force_fallback_mime=True,
         )
         return await EncryptedFile.create(file=file, key_fingerprint=input_file.key_fingerprint)
 
     if isinstance(input_file, InputEncryptedFile):
-        file_access = await FileAccess.get_or_none(
-            user=user, file__id=input_file.id, access_hash=input_file.access_hash, type=FileType.ENCRYPTED,
-        ).select_related("file")
-        if file_access is None:
+        if not File.check_access_hash(user.id, ctx.auth_id, input_file.id, input_file.access_hash):
             raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
-
-        if (file := await EncryptedFile.get_or_none(file=file_access.file)) is None:
+        file = await EncryptedFile.get_or_none(
+            file__id=input_file.id, file__type=FileType.ENCRYPTED,
+        ).select_related("file")
+        if file is None:
             raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
 
         return file

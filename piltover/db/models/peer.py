@@ -1,20 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from os import urandom
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
 
+from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
     InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, PeerChannel
-
-
-def gen_access_hash() -> int:
-    return int.from_bytes(urandom(8)) >> 2
 
 
 InputPeers = InputPeerSelf | InputPeerUser | InputUserSelf | InputUser | InputPeerChat | InputChannel \
@@ -25,7 +21,6 @@ class Peer(Model):
     id: int = fields.BigIntField(pk=True)
     owner: models.User = fields.ForeignKeyField("models.User", related_name="owner", null=True)
     type: PeerType = fields.IntEnumField(PeerType)
-    access_hash: int = fields.BigIntField(default=gen_access_hash)
     blocked_at: datetime = fields.DatetimeField(null=True, default=None)
     user_ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
 
@@ -78,6 +73,8 @@ class Peer(Model):
         if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
             return None
 
+        ctx = request_ctx.get()
+
         if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user.id):
             if peer_types is not None and PeerType.SELF not in peer_types:
@@ -85,14 +82,18 @@ class Peer(Model):
             peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF, user=user)
             peer.owner = await peer.owner
             return peer
-        elif isinstance(input_peer, (InputPeerUser, InputUser)):
+
+        if isinstance(input_peer, (InputPeerUser, InputUser)):
             if peer_types is not None and PeerType.USER not in peer_types:
                 return None
-            query = Q(owner=user, user__id=input_peer.user_id, access_hash=input_peer.access_hash)
+            if not models.User.check_access_hash(user.id, ctx.auth_id, input_peer.user_id, input_peer.access_hash):
+                return None
+            query = Q(owner=user, user__id=input_peer.user_id)
             if not allow_bot:
                 query &= Q(user__bot=False)
             return await Peer.get_or_none(query).select_related("owner", "user")
-        elif isinstance(input_peer, InputPeerChat):
+
+        if isinstance(input_peer, InputPeerChat):
             if peer_types is not None and PeerType.CHAT not in peer_types:
                 return None
             chat_id = models.Chat.norm_id(input_peer.chat_id)
@@ -100,12 +101,16 @@ class Peer(Model):
             if not allow_migrated_chat:
                 query &= Q(chat__migrated=False)
             return await Peer.get_or_none(query).select_related("owner", "chat")
-        elif isinstance(input_peer, (InputPeerChannel, InputChannel)):
+
+        if isinstance(input_peer, (InputPeerChannel, InputChannel)):
             if peer_types is not None and PeerType.CHANNEL not in peer_types:
                 return None
-            channel_id = models.Channel.norm_id(input_peer.channel_id)
+            channel_id = input_peer.channel_id
+            if not models.Channel.check_access_hash(user.id, ctx.auth_id, channel_id, input_peer.access_hash):
+                return None
+            channel_id = models.Channel.norm_id(channel_id)
             return await Peer.get_or_none(
-                owner=user, channel__id=channel_id, access_hash=input_peer.access_hash, channel__deleted=False,
+                owner=user, channel__id=channel_id, channel__deleted=False,
             ).select_related("owner", "channel")
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
@@ -171,16 +176,14 @@ class Peer(Model):
     ) -> InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel:
         if self.type is PeerType.SELF:
             if self_is_user:
-                return InputPeerUser(user_id=self.owner_id, access_hash=self.access_hash)
+                return InputPeerUser(user_id=self.owner_id, access_hash=-1)
             return InputPeerSelf()
         if self.type is PeerType.USER:
-            return InputPeerUser(user_id=self.user_id, access_hash=self.access_hash)
+            return InputPeerUser(user_id=self.user_id, access_hash=-1)
         if self.type == PeerType.CHAT:
             return InputPeerChat(chat_id=models.Chat.make_id_from(self.chat_id))
         if self.type == PeerType.CHANNEL:
-            return InputPeerChannel(
-                channel_id=models.Channel.make_id_from(self.channel_id), access_hash=self.access_hash,
-            )
+            return InputPeerChannel(channel_id=self.channel_id, access_hash=-1)
 
         raise RuntimeError("Unreachable")
 

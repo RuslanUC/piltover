@@ -8,7 +8,7 @@ from tortoise.expressions import Q
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, FileType
-from piltover.db.models import User, UploadingFile, UploadingFilePart, FileAccess, File, Peer, Stickerset
+from piltover.db.models import User, UploadingFile, UploadingFilePart, File, Peer, Stickerset
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, \
     InputEncryptedFileLocation, InputStickerSetThumb
@@ -88,53 +88,48 @@ async def get_file(request: GetFile, user: User) -> TLFile:
         raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
 
     location = request.location
-    ref_const = False
+    ctx = request_ctx.get()
 
     if isinstance(location, InputPeerPhotoFileLocation):
         peer = await Peer.from_input_peer_raise(user, location.peer)
         if peer.type in (PeerType.SELF, PeerType.USER):
-            q = {"file__userphotos__id": location.photo_id, "file__userphotos__user": peer.peer_user(user)}
+            q = {"userphotos__id": location.photo_id, "userphotos__user": peer.peer_user(user)}
         elif peer.type is PeerType.CHAT:
-            q = {"file__chats__photo__id": location.photo_id, "file__chats__id": peer.chat_id}
+            q = {"chats__photo__id": location.photo_id, "chats__id": peer.chat_id}
         elif peer.type is PeerType.CHANNEL:
-            q = {"file__channels__photo__id": location.photo_id, "file__channels__id": peer.channel_id}
+            q = {"channels__photo__id": location.photo_id, "channels__id": peer.channel_id}
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     elif isinstance(location, InputEncryptedFileLocation):
-        q = {"file__id": location.id, "file__type": FileType.ENCRYPTED, "access_hash": location.access_hash}
+        if not File.check_access_hash(user.id, ctx.auth_id, location.id, location.access_hash):
+            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
+        q = {"id": location.id, "type": FileType.ENCRYPTED}
     elif isinstance(location, InputStickerSetThumb):
         set_q = Stickerset.from_input_q(location.stickerset, prefix="stickersetthumbs__set")
         if set_q is None:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         q = Q(stickersetthumbs__id=location.thumb_version) | set_q
     else:
-        valid, const = FileAccess.is_file_ref_valid(location.file_reference, user.id, location.id)
+        valid, const = File.is_file_ref_valid(location.file_reference, user.id, location.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
 
         if const:
-            ref_const = True
             q = {
                 "id": location.id, "type__not": FileType.ENCRYPTED, "constant_access_hash": location.access_hash,
                 "constant_file_ref": UUID(bytes=location.file_reference[12:]),
             }
         else:
-            q = {"file__id": location.id, "file__type__not": FileType.ENCRYPTED, "access_hash": location.access_hash}
+            if not File.check_access_hash(user.id, ctx.auth_id, location.id, location.access_hash):
+                raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
+            q = {"id": location.id, "type__not": FileType.ENCRYPTED}
 
-    if ref_const:
-        file = await File.get_or_none(**q)
-    elif isinstance(location, InputStickerSetThumb):
+    if isinstance(location, InputStickerSetThumb):
         file = await File.get_or_none(q)
         if file is None:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     else:
-        access = await FileAccess.get_or_none(user=user, **q).select_related("file")
-        if not isinstance(location, InputPeerPhotoFileLocation) and access is None:
-            raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
-        elif isinstance(location, InputPeerPhotoFileLocation) and access is None:  # ?
-            file = await File.get_or_none(userphotos__id=location.photo_id)
-        else:
-            file = access.file
+        file = await File.get_or_none(**q)
 
     if file is None:
         raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")

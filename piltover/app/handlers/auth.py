@@ -98,7 +98,7 @@ async def send_code(request: SendCode):
     return await _send_or_resend_code(request.phone_number, None)
 
 
-@handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
 async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpRequired:
     if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
@@ -135,8 +135,8 @@ async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpReq
     return AuthAuthorization(user=await user.to_tl(current_user=user))
 
 
-@handler.on_request(SignUp_133, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-@handler.on_request(SignUp, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(SignUp_133, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
+@handler.on_request(SignUp, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
 async def sign_up(request: SignUp | SignUp_133):
     if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
@@ -169,7 +169,9 @@ async def sign_up(request: SignUp | SignUp_133):
     return AuthAuthorization(user=await user.to_tl(current_user=user))
 
 
-@handler.on_request(CheckPassword, ReqHandlerFlags.ALLOW_MFA_PENDING | ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(
+    CheckPassword, ReqHandlerFlags.ALLOW_MFA_PENDING | ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.REFRESH_SESSION
+)
 async def check_password(request: CheckPassword, user: User):
     ctx = request_ctx.get()
     auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
@@ -187,7 +189,7 @@ async def check_password(request: CheckPassword, user: User):
     return AuthAuthorization(user=await user.to_tl(current_user=user))
 
 
-@handler.on_request(BindTempAuthKey, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(BindTempAuthKey, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
 async def bind_temp_auth_key(request: BindTempAuthKey):
     ctx = request_ctx.get()
 
@@ -229,7 +231,7 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
     return True
 
 
-@handler.on_request(ExportLoginToken, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(ExportLoginToken, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
 async def export_login_token():  # TODO: test
     ctx = request_ctx.get()
     if ctx.auth_id:
@@ -275,7 +277,7 @@ async def accept_login_token(request: AcceptLoginToken, user: User) -> Authoriza
     return auth.to_tl()
 
 
-@handler.on_request(LogOut)
+@handler.on_request(LogOut, ReqHandlerFlags.REFRESH_SESSION)
 async def log_out() -> LoggedOut:
     await UserAuthorization.filter(
         id__in=Subquery(
@@ -324,7 +326,7 @@ async def cancel_code(request: CancelCode) -> bool:
     return True
 
 
-@handler.on_request(ImportBotAuthorization, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(ImportBotAuthorization, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
 async def import_bot_authorization(request: ImportBotAuthorization) -> AuthAuthorization:
     token_parts = request.bot_auth_token.split(":")
     if len(token_parts) != 2:

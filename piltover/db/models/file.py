@@ -5,6 +5,7 @@ import hmac
 from base64 import b85encode, b85decode
 from datetime import datetime
 from io import BytesIO
+from time import time
 from uuid import UUID, uuid4
 
 from PIL import UnidentifiedImageError
@@ -18,7 +19,7 @@ from piltover.storage.base import StorageBuffer, StorageType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords, \
-    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185
+    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int
 from piltover.tl.base import PhotoSizeInst
 from piltover.tl.types.internal_access import AccessHashPayloadFile
 
@@ -200,13 +201,11 @@ class File(Model):
 
     async def to_tl_document(self, user: models.User) -> TLDocument:
         if self.constant_access_hash is None or self.constant_file_ref is None:
-            await user.load_if_lazy()
-            access, _ = await models.FileAccess.get_or_create(user=user, file=self)
-            access_hash = access.access_hash
-            file_ref = access.create_file_ref()
+            access_hash = -1
+            file_ref = self.create_file_ref(user)
         else:
             access_hash = self.constant_access_hash
-            file_ref = models.FileAccess.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
+            file_ref = self.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
 
         # TODO: fetch when fetching file
         if self.stickerset is not None:
@@ -224,15 +223,14 @@ class File(Model):
             thumbs=self._to_tl_thumbs(),
         )
 
+    # TODO: remove async
     async def to_tl_photo(self, user: models.User) -> TLPhoto:
         if self.constant_access_hash is None or self.constant_file_ref is None:
-            await user.load_if_lazy()
-            access, _ = await models.FileAccess.get_or_create(user=user, file=self)
-            access_hash = access.access_hash
-            file_ref = access.create_file_ref()
+            access_hash = -1
+            file_ref = self.create_file_ref(user)
         else:
             access_hash = self.constant_access_hash
-            file_ref = models.FileAccess.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
+            file_ref = self.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
 
         return TLPhoto(
             id=self.id,
@@ -243,6 +241,38 @@ class File(Model):
             dc_id=2,
             video_sizes=[],
         )
+
+    # constantFileReference file_id:long file_ref:bytes = ConstantFileReference
+    CONST_FILE_REF_ID = 0x51a32644
+    CONST_FILE_REF_ID_BYTES = Int.write(CONST_FILE_REF_ID, signed=False)
+
+    def create_file_ref(self, user: models.User) -> bytes:
+        created_at = Int.write(int(time() // 60))
+        payload = Long.write(user.id) + Long.write(self.id) + created_at
+
+        return created_at + hmac.new(AppConfig.HMAC_KEY, payload, hashlib.sha256).digest()
+
+    @staticmethod
+    def is_file_ref_valid(file_ref: bytes, user_id: int | None = None, file_id: int | None = None) -> tuple[bool, bool]:
+        if len(file_ref) == (4 + 8 + 16) and file_ref.startswith(File.CONST_FILE_REF_ID_BYTES):
+            valid = file_ref[4:12] == Long.write(file_id)
+            return valid, valid
+
+        if len(file_ref) != (4 + 256 // 8):
+            return False, False
+
+        now_minutes = time() // 60
+        created_at = Int.read_bytes(file_ref[:4])
+        if (created_at + AppConfig.FILE_REF_EXPIRE_MINUTES) < now_minutes:
+            return False, False
+
+        if user_id is not None and file_id is not None:
+            payload = Long.write(user_id) + Long.write(file_id) + file_ref[:4]
+
+            if hmac.new(AppConfig.HMAC_KEY, payload, hashlib.sha256).digest() != file_ref[4:]:
+                return False, False
+
+        return True, False
 
     @staticmethod
     def make_access_hash(user: int, auth: int, file: int) -> int:

@@ -6,7 +6,6 @@ import hmac
 from tortoise import Model, fields
 
 from piltover.app_config import AppConfig
-from piltover.context import request_ctx
 from piltover.db import models
 from piltover.tl import Long
 from piltover.tl.types import Theme as TLTheme
@@ -26,13 +25,12 @@ class Theme(Model):
     document_id: int | None
 
     async def to_tl(self, user: models.User) -> TLTheme:
-        ctx = request_ctx.get()
         return TLTheme(
             creator=self.creator_id == user.id,
             default=False,
             for_chat=self.for_chat,
             id=self.id,
-            access_hash=self.make_access_hash(user.id, ctx.auth_id, self.id),
+            access_hash=-1,
             slug=self.slug,
             title=self.title,
             document=await self.document.to_tl_document(user) if self.document is not None else None,
