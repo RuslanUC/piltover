@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import hashlib
 import hmac
-from hashlib import sha256
 from typing import Self
 
 from tortoise import Model, fields
@@ -13,6 +13,7 @@ from piltover.db import models
 from piltover.exceptions import Unreachable
 from piltover.tl import Long, base
 from piltover.tl.types import WallPaper, WallPaperNoFile, InputWallPaper, InputWallPaperSlug, InputWallPaperNoFile
+from piltover.tl.types.internal_access import AccessHashPayloadWallpaper
 
 
 class Wallpaper(Model):
@@ -28,15 +29,6 @@ class Wallpaper(Model):
     document_id: int | None
     settings_id: int | None
 
-    @classmethod
-    def make_access_hash(cls, wallpaper_id: int, user: models.User, auth_id: int | None = None) -> int:
-        if auth_id is None:
-            auth_id = request_ctx.get().auth_id
-
-        payload = Long.write(WallPaper.tlid()) + Long.write(wallpaper_id) + Long.write(user.id) + Long.write(auth_id)
-        hmac_digest = hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest()
-        return Long.read_bytes(hmac_digest[:8])
-
     async def to_tl(
             self, user: models.User, settings: models.WallpaperSettings | None = None,
     ) -> WallPaper | WallPaperNoFile:
@@ -51,13 +43,15 @@ class Wallpaper(Model):
                 settings=settings.to_tl() if settings is not None else None,
             )
 
+        ctx = request_ctx.get()
+
         return WallPaper(
             id=self.id,
             creator=self.creator_id == user.id,
             default=False,
             pattern=self.pattern,
             dark=self.dark,
-            access_hash=self.make_access_hash(self.id, user),
+            access_hash=self.make_access_hash(user.id, ctx.auth_id, self.id),
             slug=self.slug,
             document=await self.document.to_tl_document(user),
             settings=settings.to_tl() if settings is not None else None,
@@ -79,7 +73,7 @@ class Wallpaper(Model):
         if isinstance(wp, InputWallPaper):
             if user is None:
                 return None
-            if cls.make_access_hash(wp.id, user, auth_id) != wp.access_hash:
+            if cls.make_access_hash(user.id, auth_id, wp.id) != wp.access_hash:
                 return None
             return Q(id=wp.id)
         elif isinstance(wp, InputWallPaperNoFile):
@@ -88,3 +82,13 @@ class Wallpaper(Model):
             return Q(slug=wp.slug)
         else:
             raise Unreachable
+
+    @staticmethod
+    def make_access_hash(user: int, auth: int, wallpaper: int) -> int:
+        to_sign = AccessHashPayloadWallpaper(this_user_id=user, wallpaper_id=wallpaper, auth_id=auth).write()
+        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        return Long.read_bytes(digest[-8:])
+
+    @staticmethod
+    def check_access_hash(user: int, auth: int, wallpaper: int, access_hash: int) -> bool:
+        return Wallpaper.make_access_hash(user, auth, wallpaper) == access_hash

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
+from typing import TYPE_CHECKING
 
-from piltover.app_config import AppConfig
 from piltover.context import serialization_ctx
-from piltover.tl import types
-from piltover.tl.primitives import Long
+
+if TYPE_CHECKING:
+    from piltover.tl import types
 
 
 def channel_fill_access_hash_calc(obj: types.ChannelForbidden | types.Channel) -> int:
@@ -14,12 +13,8 @@ def channel_fill_access_hash_calc(obj: types.ChannelForbidden | types.Channel) -
     if ctx is None:
         return obj.access_hash
 
-    to_sign = types.internal_access.AccessHashPayloadChannel(
-        this_user_id=ctx.user_id, channel_id=obj.id, auth_id=ctx.auth_id,
-    ).write()
-    digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
-
-    return Long.read_bytes(digest[-8:])
+    from piltover.db.models import Channel
+    return Channel.make_access_hash(ctx.user_id, ctx.auth_id, obj.id)
 
 
 def input_channel_fill_access_hash_calc(obj: types.InputChannel) -> int:
@@ -27,9 +22,5 @@ def input_channel_fill_access_hash_calc(obj: types.InputChannel) -> int:
     if ctx is None:
         return obj.access_hash
 
-    to_sign = types.internal_access.AccessHashPayloadChannel(
-        this_user_id=ctx.user_id, channel_id=obj.channel_id, auth_id=ctx.auth_id,
-    ).write()
-    digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
-
-    return Long.read_bytes(digest[-8:])
+    from piltover.db.models import Channel
+    return Channel.make_access_hash(ctx.user_id, ctx.auth_id, obj.channel_id)

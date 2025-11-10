@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from os import urandom
 from typing import Generator
 
@@ -7,9 +9,11 @@ from tortoise import Model, fields
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
+from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.db.enums import StickerSetType
 from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize
+from piltover.tl.types.internal_access import AccessHashPayloadStickerset
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 
 
@@ -106,3 +110,13 @@ class Stickerset(Model):
                 for file in await self.documents_query()
             ],
         )
+
+    @staticmethod
+    def make_access_hash(user: int, auth: int, set_id: int) -> int:
+        to_sign = AccessHashPayloadStickerset(this_user_id=user, set_id=set_id, auth_id=auth).write()
+        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        return Long.read_bytes(digest[-8:])
+
+    @staticmethod
+    def check_access_hash(user: int, auth: int, set_id: int, access_hash: int) -> bool:
+        return Stickerset.make_access_hash(user, auth, set_id) == access_hash

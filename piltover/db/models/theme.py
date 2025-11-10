@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import hashlib
 import hmac
-from hashlib import sha256
 
 from tortoise import Model, fields
 
@@ -10,6 +10,7 @@ from piltover.context import request_ctx
 from piltover.db import models
 from piltover.tl import Long
 from piltover.tl.types import Theme as TLTheme
+from piltover.tl.types.internal_access import AccessHashPayloadTheme
 
 
 class Theme(Model):
@@ -24,21 +25,14 @@ class Theme(Model):
     creator_id: int
     document_id: int | None
 
-    def make_access_hash(self, user: models.User, auth_id: int | None = None) -> int:
-        if auth_id is None:
-            auth_id = request_ctx.get().auth_id
-
-        payload = Long.write(TLTheme.tlid()) + Long.write(self.id) + Long.write(user.id) + Long.write(auth_id)
-        hmac_digest = hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest()
-        return Long.read_bytes(hmac_digest[:8])
-
     async def to_tl(self, user: models.User) -> TLTheme:
+        ctx = request_ctx.get()
         return TLTheme(
             creator=self.creator_id == user.id,
             default=False,
             for_chat=self.for_chat,
             id=self.id,
-            access_hash=self.make_access_hash(user),
+            access_hash=self.make_access_hash(user.id, ctx.auth_id, self.id),
             slug=self.slug,
             title=self.title,
             document=await self.document.to_tl_document(user) if self.document is not None else None,
@@ -51,4 +45,14 @@ class Theme(Model):
             emoticon=self.emoticon,
             installs_count=None,  # TODO: count installs maybe
         )
+
+    @staticmethod
+    def make_access_hash(user: int, auth: int, theme: int) -> int:
+        to_sign = AccessHashPayloadTheme(this_user_id=user, theme_id=theme, auth_id=auth).write()
+        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        return Long.read_bytes(digest[-8:])
+
+    @staticmethod
+    def check_access_hash(user: int, auth: int, theme: int, access_hash: int) -> bool:
+        return Theme.make_access_hash(user, auth, theme) == access_hash
 

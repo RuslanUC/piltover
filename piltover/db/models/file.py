@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from base64 import b85encode, b85decode
 from datetime import datetime
 from io import BytesIO
@@ -8,6 +10,7 @@ from uuid import UUID, uuid4
 from PIL import UnidentifiedImageError
 from tortoise import fields, Model
 
+from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.storage import BaseStorage
@@ -17,7 +20,7 @@ from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, D
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords, \
     DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185
 from piltover.tl.base import PhotoSizeInst
-
+from piltover.tl.types.internal_access import AccessHashPayloadFile
 
 VIDEO_ATTRIBUTES = (
     DocumentAttributeVideo, DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185,
@@ -240,3 +243,13 @@ class File(Model):
             dc_id=2,
             video_sizes=[],
         )
+
+    @staticmethod
+    def make_access_hash(user: int, auth: int, file: int) -> int:
+        to_sign = AccessHashPayloadFile(this_user_id=user, file_id=file, auth_id=auth).write()
+        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        return Long.read_bytes(digest[-8:])
+
+    @staticmethod
+    def check_access_hash(user: int, auth: int, file: int, access_hash: int) -> bool:
+        return File.make_access_hash(user, auth, file) == access_hash

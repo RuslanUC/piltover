@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import datetime
 from os import urandom
 
 from tortoise import fields, Model
 
+from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.tl import Long, EncryptedChat as TLEncryptedChat, EncryptedChatWaiting, EncryptedChatRequested, \
     EncryptedChatDiscarded
+from piltover.tl.types.internal_access import AccessHashPayloadEncryptedChat
 
 
 class EncryptedChat(Model):
@@ -80,3 +84,13 @@ class EncryptedChat(Model):
                 )
 
         raise RuntimeError("Unreachable")
+
+    @staticmethod
+    def make_access_hash(user: int, auth: int, chat: int) -> int:
+        to_sign = AccessHashPayloadEncryptedChat(this_user_id=user, chat_id=chat, auth_id=auth).write()
+        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        return Long.read_bytes(digest[-8:])
+
+    @staticmethod
+    def check_access_hash(user: int, auth: int, chat: int, access_hash: int) -> bool:
+        return EncryptedChat.make_access_hash(user, auth, chat) == access_hash

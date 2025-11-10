@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from enum import auto, Enum
 from typing import cast
 
 from tortoise import fields
 
+from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.db.models import ChatBase
-from piltover.tl import ChannelForbidden, Channel as TLChannel
+from piltover.tl import ChannelForbidden, Channel as TLChannel, Long
 from piltover.tl.types import ChatAdminRights, PeerColor
+from piltover.tl.types.internal_access import AccessHashPayloadChannel
 
 CREATOR_RIGHTS = ChatAdminRights(
     change_info=True,
@@ -143,3 +147,13 @@ class Channel(ChatBase):
         if participant is not None:
             return participant.min_message_id
         return self.min_available_id
+
+    @staticmethod
+    def make_access_hash(user: int, auth: int, channel: int) -> int:
+        to_sign = AccessHashPayloadChannel(this_user_id=user, channel_id=channel, auth_id=auth).write()
+        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        return Long.read_bytes(digest[-8:])
+
+    @staticmethod
+    def check_access_hash(user: int, auth: int, channel: int, access_hash: int) -> bool:
+        return Channel.make_access_hash(user, auth, channel) == access_hash

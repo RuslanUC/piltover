@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import date
 from enum import auto, Enum
 
 from tortoise import fields, Model
 
+from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday
+from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday, Long
 from piltover.tl.types import User as TLUser, PeerColor
+from piltover.tl.types.internal_access import AccessHashPayloadUser
 
 
 class _UsernameMissing(Enum):
@@ -138,3 +142,13 @@ class User(Model):
             month=self.birthday.month,
             year=self.birthday.year if self.birthday.year != 1900 else None,
         )
+
+    @staticmethod
+    def make_access_hash(user: int, auth: int, target: int) -> int:
+        to_sign = AccessHashPayloadUser(this_user_id=user, user_id=target, auth_id=auth).write()
+        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        return Long.read_bytes(digest[-8:])
+
+    @staticmethod
+    def check_access_hash(user: int, auth: int, target: int, access_hash: int) -> bool:
+        return User.make_access_hash(user, auth, target) == access_hash
