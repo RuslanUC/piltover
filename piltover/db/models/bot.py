@@ -18,3 +18,6 @@ class Bot(Model):
     owner: models.User = fields.ForeignKeyField("models.User", related_name="bot_owner")
     bot: models.User = fields.OneToOneField("models.User", related_name="bot_bot")
     token_nonce: str = fields.CharField(max_length=36, default=gen_bot_token)
+
+    owner_id: int
+    bot_id: int

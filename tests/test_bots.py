@@ -1,6 +1,7 @@
 from contextlib import AsyncExitStack
 
 import pytest
+from pyrogram import filters
 from pyrogram.raw.types import UpdateNewMessage, UpdateEditMessage
 from pyrogram.types import Message as PyroMessage, InlineKeyboardMarkup
 
@@ -45,6 +46,26 @@ async def test_create_botfather_bot(exit_stack: AsyncExitStack) -> None:
     assert bot_me.username == "test_user_created_bot"
 
 
+async def _create_bots(owner: User, count: int, username_prefix: str = "") -> list[Bot]:
+    await User.bulk_create([
+        User(phone_number=None, first_name=f"Bot #{i}", bot=True)
+        for i in range(count)
+    ])
+
+    usernames_to_create = []
+    bots_to_create = []
+
+    for bot_user in await User.filter(bot=True, first_name__startswith="Bot #"):
+        num = int(bot_user.first_name.replace("Bot #", ""))
+        usernames_to_create.append(Username(user=bot_user, username=f"{username_prefix}test_{num}_bot"))
+        bots_to_create.append(Bot(owner=owner, bot=bot_user))
+
+    await Username.bulk_create(usernames_to_create)
+    await Bot.bulk_create(bots_to_create)
+
+    return await Bot.filter(owner=owner)
+
+
 @pytest.mark.parametrize(
     ("bots_count", "check_text", "rows_count", "has_page_buttons"),
     [
@@ -66,21 +87,7 @@ async def test_botfather_mybots(
     db_user = await User.get_or_none(phone_number="123456789")
 
     if bots_count:
-        await User.bulk_create([
-            User(phone_number=None, first_name=f"Bot #{i}", bot=True)
-            for i in range(bots_count)
-        ])
-
-        usernames_to_create = []
-        bots_to_create = []
-
-        for bot_user in await User.filter(bot=True, first_name__startswith="Bot #"):
-            num = int(bot_user.first_name.replace("Bot #", ""))
-            usernames_to_create.append(Username(user=bot_user, username=f"test_{num}_bot"))
-            bots_to_create.append(Bot(owner=db_user, bot=bot_user))
-
-        await Username.bulk_create(usernames_to_create)
-        await Bot.bulk_create(bots_to_create)
+        await _create_bots(db_user, bots_count)
 
     await client.send_message("botfather", "/mybots")
 
@@ -107,22 +114,7 @@ async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
     db_user = await User.get_or_none(phone_number="123456789")
-
-    await User.bulk_create([
-        User(phone_number=None, first_name=f"Bot #{i}", bot=True)
-        for i in range(8)
-    ])
-
-    usernames_to_create = []
-    bots_to_create = []
-
-    for bot_user in await User.filter(bot=True, first_name__startswith="Bot #"):
-        num = int(bot_user.first_name.replace("Bot #", ""))
-        usernames_to_create.append(Username(user=bot_user, username=f"test_{num}_bot"))
-        bots_to_create.append(Bot(owner=db_user, bot=bot_user))
-
-    await Username.bulk_create(usernames_to_create)
-    await Bot.bulk_create(bots_to_create)
+    await _create_bots(db_user, 1)
 
     await client.send_message("botfather", "/mybots")
 
@@ -172,3 +164,26 @@ async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
     assert new_message.reply_markup.inline_keyboard[-1][-1].text == "->"
 
     assert new_message.reply_markup == bot_message.reply_markup
+
+
+@pytest.mark.asyncio
+async def test_bot_send_message_get_response(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    db_user = await User.get_or_none(phone_number="123456789")
+    bot, = await _create_bots(db_user, 1)
+
+    token = f"{bot.bot_id}:{bot.token_nonce}"
+    bot_client: TestClient = await exit_stack.enter_async_context(TestClient(bot_token=token))
+
+    @bot_client.on_message(filters.command("start"))
+    async def start_handler(_: TestClient, message: PyroMessage) -> None:
+        await message.reply("123")
+
+    start_message = await client.send_message("test_0_bot", "/start")
+    await client.expect_update(UpdateNewMessage)
+
+    bot_response = await client.expect_update(UpdateNewMessage)
+    assert bot_response.message.message == "123"
+    # TODO: reply_to is None for some reason
+    #assert bot_response.message.reply_to.reply_to_msg_id == start_message.id

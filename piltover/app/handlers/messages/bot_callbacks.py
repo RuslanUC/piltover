@@ -1,4 +1,5 @@
 from asyncio import sleep
+from datetime import timedelta, datetime, UTC
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.bots import process_callback_query
@@ -8,7 +9,7 @@ from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup
-from piltover.tl.functions.messages import GetBotCallbackAnswer
+from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer
 from piltover.tl.types.messages import BotCallbackAnswer
 from piltover.worker import MessageHandler
 
@@ -102,3 +103,33 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
             url=query.response_url,
             cache_time=query.cache_time,
         )
+
+
+@handler.on_request(SetBotCallbackAnswer, ReqHandlerFlags.USER_NOT_ALLOWED)
+async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> bool:
+    if request.message and len(request.message) > 240:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
+
+    query = await CallbackQuery.get_or_none(
+        message__author=user, id=request.query_id, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
+    )
+
+    if query is None:
+        raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
+    if query.response:
+        return True  # TODO: or raise an error?
+
+    query.response = True
+    query.response_message = request.message
+    query.response_url = request.url
+    query.response_alert = request.alert
+    query.cache_time = request.cache_time
+    await query.save(update_fields=[
+        "response",
+        "response_message",
+        "response_url",
+        "response_alert",
+        "cache_time",
+    ])
+
+    return True

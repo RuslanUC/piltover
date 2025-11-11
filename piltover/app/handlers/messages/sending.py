@@ -245,9 +245,9 @@ def _resolve_noforwards(peer: Peer, user: User, request_noforwards: bool = False
     return False
 
 
-@handler.on_request(SendMessage_148, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SendMessage_176, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SendMessage, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendMessage_148)
+@handler.on_request(SendMessage_176)
+@handler.on_request(SendMessage)
 async def send_message(request: SendMessage, user: User):
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
