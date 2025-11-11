@@ -1463,6 +1463,15 @@ async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
         related_ids=[],
     )
 
+    # TODO: add this to Update.to_tl
+    rel_users, rel_chats, rel_channels = await fetch_users_chats(
+        *query.message.query_users_chats(Q(id=query.user_id), Q(), Q()), {}, {}, {},
+    )
+
+    users = [await user.to_tl(bot) for user in rel_users.values()]
+    chats = [await chat.to_tl(bot) for chat in rel_users.values()]
+    channels = [await channel.to_tl(bot) for channel in rel_users.values()]
+
     updates = UpdatesWithDefaults(
         updates=[
             UpdateBotCallbackQuery(
@@ -1474,6 +1483,8 @@ async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
                 data=query.data,
             )
         ],
+        users=users,
+        chats=[*chats, *channels],
     )
 
     await SessionManager.send(updates, bot.id)

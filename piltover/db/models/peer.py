@@ -146,15 +146,15 @@ class Peer(Model):
             return self
         if self.type is PeerType.SELF or self.type is PeerType.USER:
             return await Peer.get_or_none(
-                owner=for_user, user=self.user,
+                owner=for_user, user__id=self.user_id,
             ).select_related("owner", "user")
         elif self.type is PeerType.CHAT:
             return await Peer.get_or_none(
-                type=PeerType.CHAT, owner=for_user, chat=self.chat,
+                type=PeerType.CHAT, owner=for_user, chat__id=self.chat_id,
             ).select_related("owner", "chat")
         elif self.type is PeerType.CHANNEL:
             return await Peer.get_or_none(
-                type=PeerType.CHANNEL, owner=for_user, channel=self.channel,
+                type=PeerType.CHANNEL, owner=for_user, channel__id=self.channel_id,
             ).select_related("owner", "channel")
         raise Unreachable
 

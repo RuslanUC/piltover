@@ -428,18 +428,18 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
                 reply_markup.text = reply_markup.text[:32]
 
             if isinstance(button, KeyboardButtonUrl):
-                if is_inline:
+                if not is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
                 parsed = urlparse(button.url)
                 if parsed.scheme not in ("tg", "http", "https") or not parsed.netloc:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_URL_INVALID")
             elif isinstance(button, KeyboardButtonCallback):
-                if is_inline:
+                if not is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
                 if not button.data or len(button.data) > 64:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_DATA_INVALID")
             elif isinstance(button, InputKeyboardButtonUserProfile):
-                if is_inline:
+                if not is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
                 peer = await Peer.from_input_peer_raise(user, button.user_id, "BUTTON_USER_INVALID")
                 if peer.type not in (PeerType.USER, PeerType.SELF):
@@ -448,21 +448,21 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
                     raise ErrorRpc(error_code=400, error_message="BUTTON_USER_PRIVACY_RESTRICTED")
                 button = KeyboardButtonUserProfile(text=button.text, user_id=peer.user_id)
             elif isinstance(button, KeyboardButtonCopy):
-                if is_inline:
+                if not is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
                 if not button.copy_text or len(button.copy_text) > 256:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_COPY_TEXT_INVALID")
             elif isinstance(button, KeyboardButton):
-                if not is_inline:
+                if is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
             elif isinstance(button, KeyboardButtonRequestPhone):
-                if not is_inline:
+                if is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
             elif isinstance(button, KeyboardButtonRequestPoll):
-                if not is_inline:
+                if is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
             elif isinstance(button, InputKeyboardButtonRequestPeer):
-                if not is_inline:
+                if is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
                 button = KeyboardButtonRequestPeer(
                     text=button.text,

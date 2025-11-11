@@ -542,7 +542,12 @@ class Message(Model):
                 return self
             return None
 
-        if self.peer.type in (PeerType.USER, PeerType.CHAT):
+        if self.peer.type is PeerType.USER:
+            return await Message.get_or_none(
+                peer__owner=for_user, peer__user=self.peer.owner_id, internal_id=self.internal_id,
+            ).select_related("peer", "author", "media")
+
+        if self.peer.type is PeerType.CHAT:
             peer_for_user = await self.peer.get_for_user(for_user)
             return await Message.get_or_none(
                 peer=peer_for_user, internal_id=self.internal_id,

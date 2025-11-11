@@ -3,7 +3,8 @@ from contextlib import AsyncExitStack
 import pytest
 from pyrogram import filters
 from pyrogram.raw.types import UpdateNewMessage, UpdateEditMessage
-from pyrogram.types import Message as PyroMessage, InlineKeyboardMarkup
+from pyrogram.raw.types.messages import BotCallbackAnswer
+from pyrogram.types import Message as PyroMessage, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from piltover.db.models import User, Username, Bot
 from tests.client import TestClient
@@ -152,12 +153,7 @@ async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
     new_response = await client.expect_updates(UpdateEditMessage)
     assert new_response
     new_response = new_response[0]
-    new_message = await PyroMessage._parse(
-        client,
-        new_response.message,
-        {},
-        {},
-    )
+    new_message = await PyroMessage._parse(client, new_response.message, {}, {})
     assert "Choose a bot" in new_message.text
     assert isinstance(new_message.reply_markup, InlineKeyboardMarkup)
     assert len(new_message.reply_markup.inline_keyboard) == 4
@@ -187,3 +183,39 @@ async def test_bot_send_message_get_response(exit_stack: AsyncExitStack) -> None
     assert bot_response.message.message == "123"
     # TODO: reply_to is None for some reason
     #assert bot_response.message.reply_to.reply_to_msg_id == start_message.id
+
+
+@pytest.mark.asyncio
+async def test_bot_send_callback_query_get_response(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    db_user = await User.get_or_none(phone_number="123456789")
+    bot, = await _create_bots(db_user, 1)
+
+    token = f"{bot.bot_id}:{bot.token_nonce}"
+    bot_client: TestClient = await exit_stack.enter_async_context(TestClient(bot_token=token))
+
+    @bot_client.on_message(filters.command("start"))
+    async def start_handler(_: TestClient, message: PyroMessage) -> None:
+        await message.reply("123", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="test", callback_data="test_callback_data")
+            ]
+        ]))
+
+    @bot_client.on_callback_query()
+    async def callback_query_handler(_: TestClient, callback_query: CallbackQuery) -> None:
+        await callback_query.answer("test response 123", show_alert=True)
+
+    await client.send_message("test_0_bot", "/start")
+    await client.expect_update(UpdateNewMessage)
+
+    bot_response = await client.expect_update(UpdateNewMessage)
+    assert bot_response.message.message == "123"
+    bot_message = await PyroMessage._parse(client, bot_response.message, {}, {})
+    assert len(bot_message.reply_markup.inline_keyboard) == 1
+    assert bot_message.reply_markup.inline_keyboard[0][0].text == "test"
+
+    resp: BotCallbackAnswer = await bot_message.click(0, 0)
+    assert resp.message == "test response 123"
+    assert resp.alert
