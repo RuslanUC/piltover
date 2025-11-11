@@ -221,7 +221,7 @@ class Client:
         logger.debug(f"Sending to {self.session.session_id if self.session else 0}: {message!r}")
 
         auth, _ = self.authorization
-        serialization_ctx.set(SerializationContext(
+        ctx_token = serialization_ctx.set(SerializationContext(
             auth_id=auth.id if auth is not None else None,
             user_id=auth.user_id if auth is not None else None,
         ))
@@ -246,6 +246,8 @@ class Client:
             seq_no=message.seq_no,
             data=message.obj.write(),
         ).encrypt(self.auth_data.auth_key, ConnectionRole.SERVER)
+
+        serialization_ctx.reset(ctx_token)
 
         await self._write(encrypted)
 

@@ -105,10 +105,9 @@ class Peer(Model):
         if isinstance(input_peer, (InputPeerChannel, InputChannel)):
             if peer_types is not None and PeerType.CHANNEL not in peer_types:
                 return None
-            channel_id = input_peer.channel_id
+            channel_id = models.Channel.norm_id(input_peer.channel_id)
             if not models.Channel.check_access_hash(user.id, ctx.auth_id, channel_id, input_peer.access_hash):
                 return None
-            channel_id = models.Channel.norm_id(channel_id)
             return await Peer.get_or_none(
                 owner=user, channel__id=channel_id, channel__deleted=False,
             ).select_related("owner", "channel")
@@ -183,7 +182,7 @@ class Peer(Model):
         if self.type == PeerType.CHAT:
             return InputPeerChat(chat_id=models.Chat.make_id_from(self.chat_id))
         if self.type == PeerType.CHANNEL:
-            return InputPeerChannel(channel_id=self.channel_id, access_hash=-1)
+            return InputPeerChannel(channel_id=models.Channel.make_id_from(self.channel_id), access_hash=-1)
 
         raise RuntimeError("Unreachable")
 

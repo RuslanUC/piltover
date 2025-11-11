@@ -14,7 +14,7 @@ def channel_fill_access_hash_calc(obj: types.ChannelForbidden | types.Channel) -
         return obj.access_hash
 
     from piltover.db.models import Channel
-    return Channel.make_access_hash(ctx.user_id, ctx.auth_id, obj.id)
+    return Channel.make_access_hash(ctx.user_id, ctx.auth_id, Channel.norm_id(obj.id))
 
 
 def input_channel_fill_access_hash_calc(obj: types.InputChannel) -> int:
@@ -23,4 +23,4 @@ def input_channel_fill_access_hash_calc(obj: types.InputChannel) -> int:
         return obj.access_hash
 
     from piltover.db.models import Channel
-    return Channel.make_access_hash(ctx.user_id, ctx.auth_id, obj.channel_id)
+    return Channel.make_access_hash(ctx.user_id, ctx.auth_id, Channel.norm_id(obj.channel_id))

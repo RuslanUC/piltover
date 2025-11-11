@@ -17,6 +17,7 @@ from av import VideoFrame
 from loguru import logger
 from tortoise.expressions import Q
 
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import UserPassword, SrpSession, User, Peer, PrivacyRule
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -299,14 +300,18 @@ async def validate_message_entities(text: str, entities: list[MessageEntityBase]
         result.append(entity.to_dict() | {"_": entity.tlid()})
 
     if fetch_users:
+        ctx = request_ctx.get()
         got_users = {user.id}
-        users_q = Q()
+        users_ids = []
         for input_user, _ in fetch_users:
             if isinstance(input_user, InputUser):
-                users_q |= Q(user__id=input_user.user_id, access_hash=input_user.access_hash)
+                if not User.check_access_hash(user.id, ctx.auth_id, input_user.user_id, input_user.access_hash):
+                    continue
+                users_ids.append(input_user.user_id)
             # TODO: InputUserFromMessage
 
-        got_users.update(await Peer.filter(users_q, owner=user).values_list("user__id", flat=True))
+        if users_ids:
+            got_users.update(await Peer.filter(owner=user, user__id__in=users_ids).values_list("user__id", flat=True))
 
         for input_user, idx in reversed(fetch_users):
             # entity = cast(MessageEntityMentionName, result[idx])

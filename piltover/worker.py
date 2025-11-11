@@ -69,6 +69,9 @@ class RequestHandler:
     def refresh_session(self) -> bool:
         return bool(self.flags & ReqHandlerFlags.REFRESH_SESSION)
 
+    def users_not_allowed(self) -> bool:
+        return bool(self.flags & ReqHandlerFlags.USER_NOT_ALLOWED)
+
     async def __call__(self, request: TLObject, user: User | None) -> Any:
         kwargs = {}
         if self.has_request_arg: kwargs["request"] = request
@@ -186,11 +189,11 @@ class Worker(MessageHandler):
                 req_msg_id=call.message_id,
                 result=RpcError(error_code=400, error_message="BOT_METHOD_INVALID"),
             ))
-
-        request_ctx.set(RequestContext(
-            call.auth_key_id, call.perm_auth_key_id, call.message_id, call.session_id, call.obj, call.layer,
-            call.auth_id, call.user_id, self, self._storage,
-        ))
+        elif not call.is_bot and handler.users_not_allowed():
+            return RpcResponse(obj=RpcResult(
+                req_msg_id=call.message_id,
+                result=RpcError(error_code=400, error_message="USER_BOT_REQUIRED"),
+            ))
 
         user = None
         if handler.auth_required() or (call.user_id is not None and call.auth_id is not None):
@@ -208,6 +211,11 @@ class Worker(MessageHandler):
                     result=RpcError(error_code=401, error_message="AUTH_KEY_UNREGISTERED"),
                 ))
 
+        ctx_token = request_ctx.set(RequestContext(
+            call.auth_key_id, call.perm_auth_key_id, call.message_id, call.session_id, call.obj, call.layer,
+            call.auth_id, call.user_id, self, self._storage,
+        ))
+
         try:
             with measure_time("handler()"):
                 result = await handler(call.obj, user)
@@ -218,6 +226,8 @@ class Worker(MessageHandler):
         except Exception as e:
             logger.opt(exception=e).warning(f"Error while processing {call.obj.tlname()}")
             result = RpcError(error_code=500, error_message="Server error")
+
+        request_ctx.reset(ctx_token)
 
         if result is None:
             logger.warning(f"Handler for {call.obj} returned None")
@@ -254,7 +264,7 @@ class Worker(MessageHandler):
             task = scheduled.taskiqscheduledmessages
             peer = scheduled.peer
 
-            request_ctx.set(RequestContext(
+            ctx_token = request_ctx.set(RequestContext(
                 1, 1, 0, 0, None, layer, -1, scheduled.peer.owner_id, self, self._storage,
             ))
 
@@ -263,6 +273,8 @@ class Worker(MessageHandler):
             await sending.send_created_messages_internal(
                 messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
             )
+
+            request_ctx.reset(ctx_token)
 
             await scheduled.delete()
 

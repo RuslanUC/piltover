@@ -45,12 +45,8 @@ class Chat(ChatBase):
 
         migrated_to = None
         if self.migrated and (to_channel := await models.Channel.get_or_none(migrated_from=self)) is not None:
-            ctx = request_ctx.get()
-            peer, _ = await models.Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=to_channel)
-            migrated_to = InputChannel(
-                channel_id=to_channel.make_id(),
-                access_hash=models.Channel.make_access_hash(user.id, ctx.auth_id, to_channel.id),
-            )
+            await models.Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=to_channel)
+            migrated_to = InputChannel(channel_id=to_channel.make_id(), access_hash=-1)
 
         return TLChat(
             creator=self.creator_id == user.id,

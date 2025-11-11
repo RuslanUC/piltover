@@ -572,7 +572,9 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         if const:
             file_q &= Q(constant_access_hash=media.id.access_hash, constant_file_ref=media.id.file_reference[12:])
         else:
-            file_q &= Q(fileaccesss__user=user, fileaccesss__access_hash=media.id.access_hash)
+            ctx = request_ctx.get()
+            if not File.check_access_hash(user.id, ctx.auth_id, media.id.id, media.id.access_hash):
+                raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="access_hash is invalid")
         file = await File.get_or_none(file_q)
         if file is None \
                 or (not file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \

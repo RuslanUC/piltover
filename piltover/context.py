@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from typing import TypeVar, Generic, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,13 +14,13 @@ class RequestContext(Generic[T]):
     __slots__ = (
         "auth_key_id", "perm_auth_key_id", "message_id", "session_id", "obj", "auth_id", "user_id", "layer", "worker",
         "storage",
-        "_parent",
+        "_parent_token",
     )
 
     def __init__(
             self, auth_key_id: int, perm_auth_key_id: int | None, message_id: int, session_id: int, obj: T, layer: int,
             auth_id: int | None, user_id: int | None, worker: Worker, storage: BaseStorage,
-            *, _parent: RequestContext | None = None
+            *, _parent_token: Token[RequestContext[T]] | None = None
     ):
         self.auth_key_id = auth_key_id
         self.perm_auth_key_id = perm_auth_key_id
@@ -33,7 +33,7 @@ class RequestContext(Generic[T]):
         self.worker = worker
         self.storage = storage
 
-        self._parent: RequestContext[T] | None = _parent
+        self._parent_token: Token[RequestContext[T]] | None = _parent_token
 
     def clone(self, **kwargs) -> RequestContext:
         values = {slot: getattr(self, slot) for slot in self.__slots__}
@@ -48,18 +48,17 @@ class RequestContext(Generic[T]):
     def save(**kwargs) -> RequestContext:
         old_ctx = request_ctx.get()
         new_ctx = old_ctx.clone(_parent=old_ctx, **kwargs)
-        request_ctx.set(new_ctx)
-
+        new_ctx._parent_token = request_ctx.set(new_ctx)
         return new_ctx
 
     @staticmethod
     def restore() -> RequestContext:
-        old_ctx = request_ctx.get()._parent
-        if old_ctx is None:
+        old_token = request_ctx.get()._parent_token
+        if old_token is None:
             raise RuntimeError("Context has no parent context to restore.")
 
-        request_ctx.set(old_ctx)
-        return old_ctx
+        request_ctx.reset(old_token)
+        return request_ctx.get(None)
 
 
 request_ctx: ContextVar[RequestContext] = ContextVar("request_ctx")

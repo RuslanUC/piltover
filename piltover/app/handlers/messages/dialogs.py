@@ -7,6 +7,7 @@ from tortoise.functions import Max
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.updates import get_state_internal
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Message, Chat, Channel
 from piltover.db.models._utils import resolve_users_chats
@@ -142,6 +143,7 @@ async def get_dialogs(request: GetDialogs, user: User) -> Dialogs:
 
 @handler.on_request(GetPeerDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
+    ctx = request_ctx.get()
     query = Q(peer__owner=user)
 
     peers_query = None
@@ -151,17 +153,16 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
         if isinstance(peer, InputPeerSelf):
             add_to_query = Q(peer__type=PeerType.SELF, peer__user=None)
         elif isinstance(peer, InputPeerUser):
-            add_to_query = Q(
-                peer__type=PeerType.USER, peer__user__id=peer.user_id, peer__access_hash=peer.access_hash,
-            )
+            if not User.check_access_hash(user.id, ctx.auth_id, peer.user_id, peer.access_hash):
+                continue
+            add_to_query = Q(peer__type=PeerType.USER, peer__user__id=peer.user_id)
         elif isinstance(peer, InputPeerChat):
             add_to_query = Q(peer__type=PeerType.CHAT, peer__chat__id=Chat.norm_id(peer.chat_id))
         elif isinstance(peer, InputPeerChannel):
-            add_to_query = Q(
-                peer__type=PeerType.CHANNEL,
-                peer__channel__id=Channel.norm_id(peer.channel_id),
-                peer__access_hash=peer.access_hash,
-            )
+            channel_id = Channel.norm_id(peer.channel_id)
+            if not Channel.check_access_hash(user.id, ctx.auth_id, channel_id, peer.access_hash):
+                continue
+            add_to_query = Q(peer__type=PeerType.CHANNEL, peer__channel__id=channel_id)
         else:
             continue
 

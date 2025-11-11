@@ -4,6 +4,7 @@ from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
+from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.tl import DialogFilter, InputPeerSelf, InputPeerUser, InputPeerChat, InputPeerChannel, TextWithEntities
@@ -38,7 +39,7 @@ class DialogFolder(Model):
         )
 
     async def to_tl(self) -> DialogFilter:
-        # TODO: select only type, id and access_hash
+        # TODO: select only type, id
         pinned_peers = await self.pinned_peers.all()
         include_peers = await self.include_peers.all()
         exclude_peers = await self.exclude_peers.all()
@@ -78,23 +79,24 @@ class DialogFolder(Model):
         if not input_peers:
             return []
 
+        ctx = request_ctx.get()
         query = Q()
         for input_peer in input_peers:
             if isinstance(input_peer, InputPeerSelf) \
                     or (isinstance(input_peer, InputPeerUser) and input_peer.user_id == self.owner_id):
                 query |= Q(owner__id=self.owner_id, type=PeerType.SELF)
             elif isinstance(input_peer, InputPeerUser):
-                query |= Q(
-                    owner__id=self.owner_id, user__id=input_peer.user_id, access_hash=input_peer.access_hash,
-                    type=PeerType.USER,
-                )
+                if models.User.check_access_hash(
+                        self.owner_id, ctx.auth_id, input_peer.user_id, input_peer.access_hash
+                ):
+                    query |= Q(owner__id=self.owner_id, user__id=input_peer.user_id, type=PeerType.USER)
             elif isinstance(input_peer, InputPeerChat):
                 query |= Q(owner__id=self.owner_id, chat__id=input_peer.chat_id, type=PeerType.CHAT)
             elif isinstance(input_peer, InputPeerChannel):
-                query |= Q(
-                    owner__id=self.owner_id, channel__id=input_peer.channel_id, access_hash=input_peer.access_hash,
-                    type=PeerType.CHANNEL,
-                )
+                if models.Channel.check_access_hash(
+                        self.owner_id, ctx.auth_id, input_peer.channel_id, input_peer.access_hash
+                ):
+                    query |= Q(owner__id=self.owner_id, channel__id=input_peer.channel_id, type=PeerType.CHANNEL)
 
         return await models.Peer.filter(query)
 

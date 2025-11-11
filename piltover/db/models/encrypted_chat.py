@@ -84,13 +84,3 @@ class EncryptedChat(Model):
                 )
 
         raise RuntimeError("Unreachable")
-
-    @staticmethod
-    def make_access_hash(user: int, auth: int, chat: int) -> int:
-        to_sign = AccessHashPayloadEncryptedChat(this_user_id=user, chat_id=chat, auth_id=auth).write()
-        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
-        return Long.read_bytes(digest[-8:])
-
-    @staticmethod
-    def check_access_hash(user: int, auth: int, chat: int, access_hash: int) -> bool:
-        return EncryptedChat.make_access_hash(user, auth, chat) == access_hash

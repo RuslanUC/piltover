@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from os import urandom
-
 from tortoise import fields, Model
 
 from piltover.db import models
@@ -10,18 +7,6 @@ from piltover.db.enums import MediaType
 from piltover.tl import MessageMediaUnsupported, MessageMediaPhoto, MessageMediaDocument, MessageMediaPoll
 
 MessageMediaTypes = MessageMediaUnsupported | MessageMediaPhoto | MessageMediaDocument | MessageMediaPoll
-
-
-def gen_access_hash() -> int:
-    return int.from_bytes(urandom(8))
-
-
-def gen_file_reference() -> bytes:
-    return urandom(16)
-
-
-def gen_expires() -> datetime:
-    return datetime.now() + timedelta(days=7)
 
 
 class MessageMedia(Model):

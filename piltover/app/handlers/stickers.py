@@ -226,9 +226,9 @@ async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: Sti
             constant_access_hash=input_doc.access_hash, constant_file_ref=input_doc.file_reference,
         )
     else:
-        file_q |= base_q & Q(
-            fileaccesss__user=user, fileaccesss__access_hash=input_doc.access_hash,
-        )
+        ctx = request_ctx.get()
+        if not File.check_access_hash(user.id, ctx.auth_id, input_doc.id, input_doc.access_hash):
+            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
     if (file := await File.get_or_none(file_q)) is None:
         raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")

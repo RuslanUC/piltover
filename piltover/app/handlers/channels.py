@@ -10,6 +10,7 @@ from piltover.app.handlers.messages.invites import user_join_chat_or_channel
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import validate_username, check_password_internal
 from piltover.app_config import AppConfig
+from piltover.context import request_ctx
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel
@@ -122,7 +123,7 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
         channel=channel, user=user, admin_rights=ChatAdminRights.all() & ~ChatAdminRights.ANONYMOUS,
     )
     await Dialog.create_or_unhide(peer_for_user)
-    peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL, access_hash=0)
+    peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL)
     await SessionManager.subscribe_to_channel(channel.id, [user.id])
 
     updates = await send_message_internal(
@@ -138,7 +139,7 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
 
 @handler.on_request(GetChannels)
 async def get_channels(request: GetChannels, user: User) -> Chats:
-
+    ctx = request_ctx.get()
     channels_q = Q()
 
     for input_channel in request.id:
@@ -151,9 +152,9 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
             if input_channel.access_hash == 0:
                 channels_q |= Q(id=channel_id, chatparticipants__user=user)
             else:
-                channels_q |= Q(
-                    peers__owner=user, peers__channel__id=channel_id, peers__access_hash=input_channel.access_hash,
-                )
+                if not Channel.check_access_hash(user.id, ctx.auth_id, channel_id, input_channel.access_hash):
+                    continue
+                channels_q |= Q(peers__owner=user, peers__channel__id=channel_id)
         elif isinstance(input_channel, InputChannelFromMessage):
             ...  # TODO: support channels from message
 

@@ -132,12 +132,11 @@ InputEncryptedFileT = (InputEncryptedFileEmpty | InputEncryptedFile | InputEncry
 async def _get_secret_chat(peer: InputEncryptedChat, user: User) -> EncryptedChat:
     ctx = request_ctx.get()
 
-    chat_query = Q(
+    chat = await EncryptedChat.get_or_none(
         Q(from_user=user, from_sess=ctx.auth_id) | Q(to_user=user, to_sess=ctx.auth_id),
         id=peer.chat_id, access_hash=peer.access_hash,
     )
 
-    chat = await EncryptedChat.get_or_none(chat_query)
     if chat is None or chat.to_sess is None:
         raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
     if chat.discarded:
