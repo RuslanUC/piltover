@@ -115,7 +115,7 @@ async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
     db_user = await User.get_or_none(phone_number="123456789")
-    await _create_bots(db_user, 1)
+    await _create_bots(db_user, 7)
 
     await client.send_message("botfather", "/mybots")
 
@@ -174,15 +174,14 @@ async def test_bot_send_message_get_response(exit_stack: AsyncExitStack) -> None
 
     @bot_client.on_message(filters.command("start"))
     async def start_handler(_: TestClient, message: PyroMessage) -> None:
-        await message.reply("123")
+        await message.reply("123", quote=True)
 
     start_message = await client.send_message("test_0_bot", "/start")
     await client.expect_update(UpdateNewMessage)
 
     bot_response = await client.expect_update(UpdateNewMessage)
     assert bot_response.message.message == "123"
-    # TODO: reply_to is None for some reason
-    #assert bot_response.message.reply_to.reply_to_msg_id == start_message.id
+    assert bot_response.message.reply_to.reply_to_msg_id == start_message.id
 
 
 @pytest.mark.asyncio
