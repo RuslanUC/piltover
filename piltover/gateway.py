@@ -221,9 +221,12 @@ class Client:
         logger.debug(f"Sending to {self.session.session_id if self.session else 0}: {message!r}")
 
         auth, _ = self.authorization
+        auth_id = auth.id if auth is not None else None
+        user_id = auth.user_id if auth is not None else None
+        logger.trace(f"SerializationContext: {user_id=}, {auth_id=}")
         ctx_token = serialization_ctx.set(SerializationContext(
-            auth_id=auth.id if auth is not None else None,
-            user_id=auth.user_id if auth is not None else None,
+            auth_id=auth_id,
+            user_id=user_id,
         ))
 
         if self.server.TL_CHECK_RESPONSES:
@@ -252,8 +255,11 @@ class Client:
         await self._write(encrypted)
 
     async def send(
-            self, obj: TLObject, session: Session, originating_request: Message | DecryptedMessagePacket | None = None
+            self, obj: TLObject, session: Session, originating_request: Message | DecryptedMessagePacket | None = None,
+            need_auth_refresh: bool = False,
     ) -> None:
+        await self._refresh_session_maybe(session, need_auth_refresh)
+
         message = session.pack_message(obj, originating_request)
 
         await self._send_raw(message, session)

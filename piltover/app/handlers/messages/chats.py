@@ -1,4 +1,3 @@
-from loguru import logger
 from tortoise.expressions import Subquery, F
 from tortoise.transactions import in_transaction
 
@@ -15,7 +14,7 @@ from piltover.session_manager import SessionManager
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
     Long, MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser, MessageActionChatMigrateTo
+    MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
     EditChatDefaultBannedRights, CreateChat_133, MigrateChat
@@ -430,6 +429,7 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
             dialogs_to_create.append(Dialog(peer=new_peer, visible=True))
 
         await Chat.filter(id=chat.id).update(migrated=True, version=F("version") + 1)
+        await chat.refresh_from_db(["migrated", "version"])
 
         await Message.filter(id__in=Subquery(
             Message.filter(peer__chat=chat, type=MessageType.SCHEDULED).values_list("id", flat=True)
@@ -448,10 +448,19 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
     await SessionManager.subscribe_to_channel(channel.id, [new_peer.owner_id for new_peer in new_peers])
 
     updates = await upd.migrate_chat(chat, channel, user)
+
     msg_updates = await send_message_internal(
         user, peer, None, None, False, unhide_dialog=False,
-        author=user, type=MessageType.SERVICE_CHAT_MIGRATE,
+        author=user, type=MessageType.SERVICE_CHAT_MIGRATE_TO,
         extra_info=MessageActionChatMigrateTo(channel_id=channel.make_id()).write(),
+    )
+    updates.updates.extend(msg_updates.updates)
+
+    peer_channel = await Peer.get(owner=user, channel=channel).select_related("owner", "channel")
+    msg_updates = await send_message_internal(
+        user, peer_channel, None, None, False, unhide_dialog=False,
+        author=user, type=MessageType.SERVICE_CHAT_MIGRATE_FROM,
+        extra_info=MessageActionChannelMigrateFrom(title=chat.name, chat_id=chat.make_id()).write(),
     )
     updates.updates.extend(msg_updates.updates)
 

@@ -207,7 +207,8 @@ class BaseMessageBroker(ABC):
                 return
             if message.key_id not in SessionManager.sessions[message.session_id]:
                 return
-            SessionManager.sessions[message.session_id][message.key_id].set_user_id(message.user_id)
+            session = SessionManager.sessions[message.session_id][message.key_id]
+            session.set_user_id(message.user_id, need_auth_refresh=True)
             return
         if isinstance(message, ChannelSubscribe):
             return await self._process_channels_subscribe(message)

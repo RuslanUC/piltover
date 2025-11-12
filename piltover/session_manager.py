@@ -48,6 +48,7 @@ class Session:
     min_msg_id: int = 0
     online: bool = False
     auth_id: int | None = None
+    need_auth_refresh: bool = False
 
     incoming_content_related_msgs = 0
     outgoing_content_related_msgs = 0
@@ -133,9 +134,11 @@ class Session:
     def __hash__(self) -> int:
         return self.session_id
 
-    def set_user_id(self, user_id: int) -> None:
+    def set_user_id(self, user_id: int, need_auth_refresh: bool = False) -> None:
         self.user_id = user_id
         self.online = True
+        if need_auth_refresh:
+            self.need_auth_refresh = True
 
         SessionManager.broker.subscribe(self)
 
@@ -224,7 +227,8 @@ class Session:
                 obj.qts = auth.upd_qts
 
         try:
-            await self.client.send(obj, self)
+            await self.client.send(obj, self, need_auth_refresh=self.need_auth_refresh)
+            self.need_auth_refresh = False
         except Exception as e:
             logger.opt(exception=e).warning(f"Failed to send {obj} to {self.client}")
 

@@ -90,10 +90,6 @@ async def migrate():
     else:
         await command.init_db(True)
 
-    await create_system_data(
-        args, args.create_system_user, args.create_auth_countries, args.create_reactions, args.create_chat_themes,
-        args.create_peer_colors,
-    )
     await Tortoise.close_connections()
 
 
@@ -160,6 +156,11 @@ class PiltoverApp:
         await Tortoise.init(
             db_url=DB_CONNECTION_STRING,
             modules={"models": ["piltover.db.models"]},
+        )
+
+        await create_system_data(
+            args, args.create_system_user, args.create_auth_countries, args.create_reactions, args.create_chat_themes,
+            args.create_peer_colors, args.create_languages,
         )
 
         scheduler_task = self._run_in_memory_scheduler()

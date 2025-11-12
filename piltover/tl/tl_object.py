@@ -59,6 +59,8 @@ class TLObject(ABC):
             value = getattr(self, slot)
             if self.tlid() in (0xb304a621, 0xde7b673d, 0x96a18d5) and slot == "bytes_" and value is not None and len(value) > 32:
                 value_repr = f"<bytes of length {len(value)}>({value[:32]}...)"
+            elif self.tlid() == 0x768e3aad and slot == "reactions" and len(value) > 4:  # AvailableReactions
+                value_repr = f"<reactions of length {len(value)}>"
             else:
                 value_repr = repr(value)
                 if not isinstance(value, TLObject) and value is not None:
