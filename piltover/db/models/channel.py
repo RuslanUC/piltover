@@ -23,7 +23,6 @@ CREATOR_RIGHTS = ChatAdminRights(
     invite_users=True,
     pin_messages=True,
     add_admins=True,
-    anonymous=True,
     manage_call=True,
     other=True,
     manage_topics=True,

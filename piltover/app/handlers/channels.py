@@ -13,7 +13,8 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
-    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel
+    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, Chat
+from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -120,7 +121,7 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
     )
     peer_for_user = await Peer.create(owner=user, channel=channel, type=PeerType.CHANNEL)
     await ChatParticipant.create(
-        channel=channel, user=user, admin_rights=ChatAdminRights.all() & ~ChatAdminRights.ANONYMOUS,
+        channel=channel, user=user, admin_rights=ChatAdminRights.from_tl(CREATOR_RIGHTS),
     )
     await Dialog.create_or_unhide(peer_for_user)
     peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL)
@@ -259,7 +260,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             available_reactions=available_reactions,
             ttl_period=channel.ttl_period_days * 86400 if channel.ttl_period_days else None,
             available_min_id=min_message_id,
-            migrated_from_chat_id=migrated_from_chat_id,
+            migrated_from_chat_id=Chat.make_id_from(migrated_from_chat_id) if migrated_from_chat_id else None,
             migrated_from_max_id=migrated_from_max_id,
         ),
         chats=[await channel.to_tl(user)],
@@ -409,22 +410,26 @@ async def edit_admin(request: EditAdmin, user: User):
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
-    participant = await peer.channel.get_participant_raise(user)
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.ADD_ADMINS):
+    channel = peer.channel
+
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.ADD_ADMINS):
         raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
 
-    target_peer = await Peer.from_input_peer_raise(user, request.user_id)
-    if target_peer.type is not PeerType.USER:
-        raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
-    if target_peer.user_id == peer.channel.creator_id and target_peer.user != user:
+    target_peer = await Peer.from_input_peer_raise(
+        user, request.user_id, "PARTICIPANT_ID_INVALID", peer_types=(PeerType.USER, PeerType.SELF,)
+    )
+    if target_peer.user_id == channel.creator_id and target_peer.user_id != user.id:
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
-    target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=peer.channel)
+    target_participant = await ChatParticipant.get_or_none(user__id=target_peer.user_id, channel=channel)
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
     new_admin_rights = ChatAdminRights.from_tl(request.admin_rights)
+    if target_peer.user_id == channel.creator_id:
+        new_admin_rights |= ChatAdminRights.from_tl(CREATOR_RIGHTS)
 
-    if user.id != peer.channel.creator_id:
+    if user.id != channel.creator_id:
         for new_right in new_admin_rights:
             if not (participant.admin_rights & new_right):
                 raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
@@ -445,11 +450,11 @@ async def edit_admin(request: EditAdmin, user: User):
 
     await target_participant.save(update_fields=update_fields)
 
-    await upd.update_channel_for_user(peer.channel, target_peer.user)
+    await upd.update_channel_for_user(channel, target_peer.peer_user(user))
     return Updates(
-        updates=[UpdateChannel(channel_id=peer.channel.make_id())],
+        updates=[UpdateChannel(channel_id=channel.make_id())],
         users=[],
-        chats=[await peer.channel.to_tl(user)],
+        chats=[await channel.to_tl(user)],
         date=int(time()),
         seq=0,
     )
@@ -754,6 +759,11 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
     if channel.creator_id != user.id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
+    participant = await ChatParticipant.get_or_none(user=user, channel=channel)
+    if participant is None:
+        # what
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
     password = await UserPassword.get_or_none(user=user)
     if password is None or password.password is None:
         raise ErrorRpc(error_code=400, error_message="PASSWORD_MISSING")
@@ -763,12 +773,18 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
     target_peer = await Peer.from_input_peer_raise(user, request.user_id)
     if target_peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
-    target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=peer.channel)
+    target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=channel)
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
+    # TODO: do this in transaction
+
     channel.creator = target_peer.user
     await channel.save(update_fields=["creator_id"])
+
+    participant.admin_rights = ChatAdminRights(0)
+    target_participant.admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
+    await ChatParticipant.bulk_update([participant, target_participant], fields=["admin_rights"])
 
     return await upd.update_channel(channel, user, send_to_users=[user.id, target_peer.user.id])
 

@@ -8,6 +8,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
     ChatInviteRequest, ChatInvite, Channel, Dialog
+from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -31,7 +32,9 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     chat = await Chat.create(name=request.title, creator=user)
     chat_peers = {user.id: await Peer.create(owner=user, chat=chat, type=PeerType.CHAT)}
 
-    participants_to_create = [ChatParticipant(user=user, chat=chat)]
+    participants_to_create = [
+        ChatParticipant(user=user, chat=chat, admin_rights=ChatAdminRights.from_tl(CREATOR_RIGHTS))
+    ]
 
     missing = []
     for invited_user in request.users:
@@ -311,7 +314,7 @@ async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
         return True
 
     if request.is_admin:
-        participant.admin_rights = ChatAdminRights.all()
+        participant.admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
     else:
         participant.admin_rights = ChatAdminRights(0)
 
@@ -409,6 +412,10 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
 
         for participant in participants:
             peers_to_create.append(Peer(owner=participant.user, type=PeerType.CHANNEL, channel=channel))
+            if chat.creator_id == participant.user_id:
+                admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
+            else:
+                admin_rights = participant.admin_rights
             participants_to_create.append(ChatParticipant(
                 user=participant.user,
                 channel=channel,
@@ -416,7 +423,7 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
                 invited_at=participant.invited_at,
                 banned_until=participant.banned_until,
                 banned_rights=participant.banned_rights,
-                admin_rights=participant.admin_rights,
+                admin_rights=admin_rights,
                 admin_rank=participant.admin_rank,
                 promoted_by_id=participant.promoted_by_id,
             ))
