@@ -463,6 +463,8 @@ class Update(Model):
                 if query is None:
                     return none_ret
 
+                users_q, chats_q, channels_q = query.message.query_users_chats(users_q, chats_q, channels_q)
+
                 return UpdateBotCallbackQuery(
                     query_id=query.id,
                     user_id=query.user_id,

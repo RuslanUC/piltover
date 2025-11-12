@@ -41,6 +41,7 @@ from piltover.utils.utils import xor
 USERNAME_MENTION_REGEX = re.compile(r'@[a-z0-9_]{5,32}')
 USERNAME_REGEX = re.compile(r'^[a-z0-9_]{5,32}$')
 USERNAME_REGEX_NO_LEN = re.compile(r'[a-z0-9_]{1,32}')
+BOT_COMMAND_REGEX = re.compile(r'/[a-zA-Z0-9_]{1,64}\b')
 
 MIME_TO_TL = {
     "image/jpeg": FileJpeg(),
@@ -275,9 +276,6 @@ async def validate_message_entities(text: str, entities: list[MessageEntityBase]
         elif isinstance(entity, MessageEntityHashtag):
             if text[entity.offset] != "#":
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
-        elif isinstance(entity, MessageEntityBotCommand):
-            if text[entity.offset] != "/":
-                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         elif isinstance(entity, MessageEntityUrl):
             if not text[entity.offset:].startswith("http"):
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
@@ -336,6 +334,7 @@ async def process_message_entities(
     entities = await validate_message_entities(text, entities, user)
 
     for mention in USERNAME_MENTION_REGEX.finditer(text):
+        await sleep(0)
         if entities is None:
             entities = []
 
@@ -343,6 +342,19 @@ async def process_message_entities(
         length = end - start
         entities.append({
             "_": MessageEntityMention.tlid(),
+            "offset": start,
+            "length": length,
+        })
+
+    for command in BOT_COMMAND_REGEX.finditer(text):
+        await sleep(0)
+        if entities is None:
+            entities = []
+
+        start, end = command.span()
+        length = end - start
+        entities.append({
+            "_": MessageEntityBotCommand.tlid(),
             "offset": start,
             "length": length,
         })

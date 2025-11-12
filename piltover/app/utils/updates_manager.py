@@ -1463,7 +1463,6 @@ async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
         related_ids=[],
     )
 
-    # TODO: add this to Update.to_tl
     rel_users, rel_chats, rel_channels = await fetch_users_chats(
         *query.message.query_users_chats(Q(id=query.user_id), Q(), Q()), {}, {}, {},
     )
