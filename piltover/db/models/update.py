@@ -15,7 +15,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
-    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -24,7 +24,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
-              | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery
+              | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone
 
 
 class Update(Model):
@@ -472,6 +472,17 @@ class Update(Model):
                     msg_id=query.message_id,
                     chat_instance=0,
                     data=query.data,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_PHONE:
+                if (update_user := await models.User.get_or_none(id=self.related_id)) is None:
+                    return none_ret
+
+                users_q |= Q(id=self.related_id)
+
+                return UpdateUserPhone(
+                    user_id=self.related_id,
+                    phone=update_user.phone_number,
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

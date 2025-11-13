@@ -17,7 +17,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage, MessageActionChatJoinedByLink, \
-    MessageActionChatJoinedByRequest, MessageActionChatAddUser
+    MessageActionChatJoinedByRequest, MessageActionChatAddUser, ChatAdminWithInvites
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
     HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_133, ExportChatInvite_134, EditExportedChatInvite
@@ -39,7 +39,7 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user: User)
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     query = Chat.query(peer.chat_or_channel) & Q(revoked=request.revoked)
-    if isinstance(request.admin_id, (InputUser, InputUserSelf)):  # TODO: ??
+    if isinstance(request.admin_id, (InputUser, InputUserSelf)):
         admin_peer = await Peer.from_input_peer_raise(user, request.admin_id, "ADMIN_ID_INVALID")
         query &= Q(user=admin_peer.peer_user(user))
 
@@ -102,7 +102,7 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
 
 @handler.on_request(GetAdminsWithInvites, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> ChatAdminsWithInvites:
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+    peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -110,11 +110,29 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> 
     if not peer.chat_or_channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    # TODO: get admins with invites
+    invites = await ChatInvite.filter(
+        **Chat.or_channel(peer.chat_or_channel),
+        user__id__in=Subquery(
+            ChatParticipant.filter(**Chat.or_channel(peer.chat_or_channel), admin_rights__gt=0).values_list("user__id")
+        )
+    ).select_related("user")
+
+    admins_tl = {}
+    users_tl = {}
+
+    for invite in invites:
+        user_id = invite.user.id
+        if user_id not in users_tl:
+            users_tl[user_id] = await invite.user.to_tl(user)
+        if user_id not in admins_tl:
+            admins_tl[user_id] = ChatAdminWithInvites(admin_id=user_id, invites_count=0, revoked_invites_count=0)
+        admins_tl[user_id].invites_count += 1
+        if invite.revoked:
+            admins_tl[user_id].revoked_invites_count += 1
 
     return ChatAdminsWithInvites(
-        admins=[],
-        users=[],
+        admins=list(admins_tl.values()),
+        users=list(users_tl.values()),
     )
 
 

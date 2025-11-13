@@ -22,7 +22,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
-    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1487,3 +1487,28 @@ async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
     )
 
     await SessionManager.send(updates, bot.id)
+
+
+async def update_user_phone(user: User) -> Updates:
+    new_pts = await State.add_pts(user, 1)
+
+    await Update.create(
+        user=user,
+        update_type=UpdateType.UPDATE_PHONE,
+        pts=new_pts,
+        pts_count=1,
+        related_id=user.id,
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdateUserPhone(
+                user_id=user.id,
+                phone=user.phone_number,
+            )
+        ],
+    )
+
+    await SessionManager.send(updates, user.id)
+
+    return updates

@@ -91,6 +91,7 @@ class UpdateType(IntEnum):
     DELETE_SCHEDULED_MESSAGE = 32
     UPDATE_HISTORY_TTL = 33
     BOT_CALLBACK_QUERY = 34
+    UPDATE_PHONE = 35
 
 
 class SecretUpdateType(IntEnum):

@@ -26,7 +26,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
-    InputMessagesFilterRoundVoice
+    InputMessagesFilterRoundVoice, InputMessagesFilterUrl
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
@@ -57,8 +57,10 @@ def message_filter_to_query(filter_: TLObject | None) -> Q | None:
         return Q(media__file__type=FileType.DOCUMENT_AUDIO)
     elif isinstance(filter_, InputMessagesFilterRoundVoice):
         return Q(media__file__type=FileType.DOCUMENT_VOICE) | Q(media__file__type=FileType.DOCUMENT_VIDEO_NOTE)
+    elif isinstance(filter_, InputMessagesFilterUrl):
+        # TODO: add `has_url` field to message that will be calculated only once time when sending/editing a message
+        return Q(message__icontains="https://") | Q(message__icontains="http://") | Q(message__icontains="t.me")
     elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
-        # TODO: InputMessagesFilterUrl
         logger.warning(f"Unsupported filter: {filter_}")
         return Q(id=0)
 
@@ -487,7 +489,7 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
         views.append(MessageViews(views=message.post_info.views))
 
         # TODO: load channel from fwd_header
-        if message.peer.channel_id is not None:
+        if message.peer.channel_id is not None and message.peer.channel.id not in channels:
             channels[message.peer.channel.id] = await message.peer.channel.to_tl(user)
 
     if incremented:

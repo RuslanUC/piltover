@@ -502,8 +502,7 @@ async def change_phone(request: ChangePhone, user: User) -> TLUser:
     user.phone_number = request.phone_number
     await user.save(update_fields=["phone_number"])
 
-    # TODO: UpdateUserPhone
-
+    await upd.update_user_phone(user)
     return await user.to_tl(user)
 
 
@@ -773,7 +772,6 @@ async def update_personal_channel(request: UpdatePersonalChannel, user: User) ->
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
 
     if not await Username.filter(channel=peer.channel).exists():
-        # TODO: check if this is valid error
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
     await UserPersonalChannel.update_or_create(user=user, defaults={"channel": peer.channel})

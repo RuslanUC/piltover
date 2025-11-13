@@ -117,7 +117,7 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> 
     if query is None:
         raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
     if query.response:
-        return True  # TODO: or raise an error?
+        return True
 
     query.response = True
     query.response_message = request.message
