@@ -4,8 +4,8 @@ from datetime import date, timedelta, datetime
 from hashlib import sha256
 from time import time
 
-from loguru import logger
 from pytz import UTC
+from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
@@ -14,7 +14,7 @@ from piltover.db.models import User, Peer, Contact, Username, Dialog
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
-    ExportedContactToken, Long, User as TLUser, TLObjectVector
+    ExportedContactToken, Long, User as TLUser, TLObjectVector, PeerUser
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken
@@ -118,14 +118,30 @@ async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice
     )
 
 
-@handler.on_request(Search, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def contacts_search():  # pragma: no cover
-    # TODO: implement Search
+@handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def contacts_search(request: Search, user: User) -> Found:
+    limit = max(1, min(100, request.limit))
+
+    contacts = await Contact.filter(
+        Q(
+            target__first_name__icontains=request.q,
+            target__last_name__icontains=request.q,
+            target__usernames__username__icontains=request.q,
+            join_type=Q.OR,
+        ),
+        owner=user,
+    ).limit(limit).select_related("target")
+
+    peers = [PeerUser(user_id=contact.target_id) for contact in contacts]
+
     return Found(
-        my_results=[],
-        results=[],
+        my_results=peers,
+        results=peers,
         chats=[],
-        users=[],
+        users=[
+            await contact.target.to_tl(user)
+            for contact in contacts
+        ],
     )
 
 
