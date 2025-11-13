@@ -113,7 +113,9 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> 
     invites = await ChatInvite.filter(
         **Chat.or_channel(peer.chat_or_channel),
         user__id__in=Subquery(
-            ChatParticipant.filter(**Chat.or_channel(peer.chat_or_channel), admin_rights__gt=0).values_list("user__id")
+            ChatParticipant.filter(
+                **Chat.or_channel(peer.chat_or_channel), admin_rights__gt=0,
+            ).values_list("user__id", flat=True)
         )
     ).select_related("user")
 

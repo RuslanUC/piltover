@@ -25,13 +25,16 @@ class Presence(Model):
     status: UserStatus = fields.IntEnumField(UserStatus, default=UserStatus.OFFLINE)
     last_seen: datetime = fields.DatetimeField(default_add=True)
 
-    async def to_tl(self, user: models.User) -> TLUserStatus:
+    user_id: int
+
+    async def to_tl(self, user: models.User | None) -> TLUserStatus:
         now = datetime.now(UTC)
         delta = now - self.last_seen
         if delta < timedelta(seconds=30):
             return UserStatusOnline(expires=int(time() + 30))
 
-        if await models.PrivacyRule.has_access_to(user, await self.user, PrivacyRuleKeyType.STATUS_TIMESTAMP):
+        if user is not None \
+                and await models.PrivacyRule.has_access_to(user, await self.user, PrivacyRuleKeyType.STATUS_TIMESTAMP):
             return UserStatusOffline(was_online=int(self.last_seen.timestamp()))
 
         if delta <= timedelta(days=3):

@@ -5,16 +5,16 @@ from hashlib import sha256
 from time import time
 
 from pytz import UTC
-from tortoise.expressions import Q
+from tortoise.expressions import Q, Subquery
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Contact, Username, Dialog
+from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
-    ExportedContactToken, Long, User as TLUser, TLObjectVector, PeerUser
+    ExportedContactToken, Long, User as TLUser, TLObjectVector, PeerUser, ContactStatus
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken
@@ -155,10 +155,16 @@ async def get_top_peers():  # pragma: no cover
     )
 
 
-@handler.on_request(GetStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_statuses():  # pragma: no cover
-    # TODO: implement GetStatuses
-    return TLObjectVector()
+@handler.on_request(GetStatuses, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_statuses(user: User) -> list[ContactStatus]:
+    statuses = await Presence.filter(user__id__in=Subquery(
+        Contact.filter(owner=user).values_list("target__id", flat=True)
+    ))
+
+    return TLObjectVector((
+        ContactStatus(user_id=status.user_id, status=await status.to_tl(None))
+        for status in statuses
+    ))
 
 
 @handler.on_request(GetBirthdays, ReqHandlerFlags.BOT_NOT_ALLOWED)
