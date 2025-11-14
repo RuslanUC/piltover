@@ -551,6 +551,7 @@ async def create_system_data(
         await _create_builtin_bots([
             ("test_bot", "Test Bot"),
             ("botfather", "BotFather"),
+            ("stickers", "Stickers"),
         ])
 
     if countries_list and args.auth_countries_file.exists():

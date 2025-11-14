@@ -243,3 +243,17 @@ BOTFATHER_STATE_TO_COMMAND_NAME = {
     BotFatherState.NEWBOT_WAIT_USERNAME: "newbot",
     None: None,
 }
+
+
+class StickersBotState(IntEnum):
+    NEWPACK_WAIT_NAME = 1
+    NEWPACK_WAIT_IMAGE = 2
+    NEWPACK_WAIT_EMOJI = 3
+
+
+STICKERS_STATE_TO_COMMAND_NAME = {
+    StickersBotState.NEWPACK_WAIT_NAME: "newpack",
+    StickersBotState.NEWPACK_WAIT_IMAGE: "newpack",
+    StickersBotState.NEWPACK_WAIT_EMOJI: "newpack",
+    None: None,
+}

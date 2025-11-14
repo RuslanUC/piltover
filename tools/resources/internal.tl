@@ -166,6 +166,12 @@ internal_benchmarking.object_to_benchmark#96be42f flags:# int32:int optional_int
 
 internal_botfather.botfather_state_newbot#bcb2c294 name:string = internal_botfather.BotFatherState;
 
+// @Stickers state
+
+internal_stickersbot.newpack_input_sticker#fe36b3bd file_id:long emoji:string = internal_stickersbot.NewpackInputSticker;
+
+internal_stickersbot.stickers_state_newpack#70a163dd name:string stickers:Vector<internal_stickersbot.NewpackInputSticker> = internal_stickersbot.StickersBotState;
+
 // Access hashes
 internal_access.access_hash_payload_user#916e7528 this_user_id:long user_id:long auth_id:long = internal_access.AccessHashPayload;
 internal_access.access_hash_payload_channel#8195bf26 this_user_id:long channel_id:long auth_id:long = internal_access.AccessHashPayload;
