@@ -38,7 +38,7 @@ Games
 /listgames - get a list of your games
 /editgame - edit a game
 /deletegame - delete an existing game
-"""
+""".strip()
 
 
 async def botfather_start_command(peer: Peer, _: Message) -> Message | None:

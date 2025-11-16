@@ -4,10 +4,10 @@ from piltover.tl import ReplyInlineMarkup
 
 text_choose_bot = """
 Choose a bot from the list below:
-"""
+""".strip()
 text_no_bots = """
 You have currently no bots
-"""
+""".strip()
 
 
 async def botfather_mybots_command(peer: Peer, _: Message) -> Message | None:

@@ -5,12 +5,12 @@ from piltover.db.models import Peer, Message, BotFatherUserState
 
 __text_no_command = """
 No active command to cancel. I wasn't doing anything anyway. Zzzzz...
-"""
+""".strip()
 __text_command_cancel = """
 The command {command} has been cancelled. Anything else I can do for you?
 
 Send /help for a list of commands. To learn more about Telegram Bots, see https://core.telegram.org/bots
-"""
+""".strip()
 
 
 async def botfather_cancel_command(peer: Peer, _: Message) -> Message | None:
