@@ -161,10 +161,10 @@ async def get_statuses(user: User) -> list[ContactStatus]:
         Contact.filter(owner=user).values_list("target__id", flat=True)
     ))
 
-    return TLObjectVector((
+    return TLObjectVector([
         ContactStatus(user_id=status.user_id, status=await status.to_tl(None))
         for status in statuses
-    ))
+    ])
 
 
 @handler.on_request(GetBirthdays, ReqHandlerFlags.BOT_NOT_ALLOWED)

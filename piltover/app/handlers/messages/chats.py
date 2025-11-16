@@ -1,3 +1,4 @@
+from datetime import datetime, UTC, timedelta
 from typing import cast
 
 from tortoise.expressions import Subquery, F
@@ -7,9 +8,10 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType
+from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType, \
+    UserStatus
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
-    ChatInviteRequest, ChatInvite, Channel, Dialog
+    ChatInviteRequest, ChatInvite, Channel, Dialog, Presence
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -17,10 +19,10 @@ from piltover.session_manager import SessionManager
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
     Long, MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom
+    MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
-    EditChatDefaultBannedRights, CreateChat_133, MigrateChat
+    EditChatDefaultBannedRights, CreateChat_133, MigrateChat, GetOnlines
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
 from piltover.worker import MessageHandler
 
@@ -474,3 +476,17 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
     updates.updates.extend(msg_updates.updates)
 
     return updates
+
+
+@handler.on_request(GetOnlines)
+async def get_onlines(request: GetOnlines, user: User) -> ChatOnlines:
+    peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
+
+    onlines = await Presence.filter(
+        status=UserStatus.ONLINE, last_seen__gt=datetime.now(UTC) - timedelta(minutes=1), user__id__in=Subquery(
+            ChatParticipant.filter(**Chat.or_channel(peer.chat_or_channel)).values_list("user__id", flat=True)
+        )
+    ).count()
+
+    return ChatOnlines(onlines=onlines)
+

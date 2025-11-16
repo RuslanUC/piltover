@@ -21,12 +21,13 @@ from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, TLObject, \
+from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, \
     InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
-    InputMessagesFilterRoundVoice, InputMessagesFilterUrl
+    InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo
+from piltover.tl.base import MessagesFilter as MessagesFilterBase
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
@@ -38,7 +39,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.history")
 
 
-def message_filter_to_query(filter_: TLObject | None) -> Q | None:
+def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | None) -> Q | None:
     if isinstance(filter_, InputMessagesFilterPinned):
         return Q(pinned=True)
     elif isinstance(filter_, InputMessagesFilterDocument):
@@ -55,12 +56,32 @@ def message_filter_to_query(filter_: TLObject | None) -> Q | None:
         return Q(media__file__type=FileType.DOCUMENT_VOICE)
     elif isinstance(filter_, InputMessagesFilterMusic):
         return Q(media__file__type=FileType.DOCUMENT_AUDIO)
-    elif isinstance(filter_, InputMessagesFilterRoundVoice):
+    elif isinstance(filter_, (InputMessagesFilterRoundVoice, InputMessagesFilterRoundVideo)):
         return Q(media__file__type=FileType.DOCUMENT_VOICE) | Q(media__file__type=FileType.DOCUMENT_VIDEO_NOTE)
     elif isinstance(filter_, InputMessagesFilterUrl):
         # TODO: add `has_url` field to message that will be calculated only once time when sending/editing a message
         return Q(message__icontains="https://") | Q(message__icontains="http://") | Q(message__icontains="t.me")
+    elif isinstance(filter_, InputMessagesFilterChatPhotos):
+        return Q(type=MessageType.SERVICE_CHAT_EDIT_PHOTO)
+    elif isinstance(filter_, InputMessagesFilterMyMentions):
+        if not isinstance(peer, Peer) or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
+            return Q(id=0)
+
+        if peer.type is PeerType.CHAT:
+            peer_q = Q(peer__chat__id=peer.chat_id)
+        elif peer.type is PeerType.CHANNEL:
+            peer_q = Q(peer__channel__id=peer.channel_id)
+        else:
+            raise Unreachable
+
+        return Q(id__in=Subquery(
+            MessageMention.filter(peer_q, peer__owner__id=peer.owner_id).values_list("message__id", flat=True)
+        ))
     elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
+        # TODO:
+        #  InputMessagesFilterContacts
+        #  InputMessagesFilterGeo
+        #  InputMessagesFilterPhoneCalls
         logger.warning(f"Unsupported filter: {filter_}")
         return Q(id=0)
 
@@ -72,16 +93,21 @@ def message_filter_to_query(filter_: TLObject | None) -> Q | None:
 async def get_messages_query_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
-        filter_: TLObject | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
+        filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
         only_mentions: bool = False,
 ) -> QuerySet[Message]:
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
     if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
         query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
 
+    has_filter = False
+    if filter_ is not None and (filter_query := message_filter_to_query(filter_, peer)) is not None:
+        query &= filter_query
+        has_filter = True
+
     if not only_mentions and filter_ is None and saved_peer is None and q is None and after_reaction_id is None:
         query &= Q(type__not=MessageType.SCHEDULED)
-    else:
+    elif not has_filter:
         query &= Q(type=MessageType.REGULAR)
 
     if q:
@@ -102,9 +128,6 @@ async def get_messages_query_internal(
 
     if isinstance(peer, Peer) and peer.type is PeerType.SELF and saved_peer is not None:
         query &= Q(fwd_header__saved_peer=saved_peer)
-
-    if filter_ is not None and (filter_query := message_filter_to_query(filter_)) is not None:
-        query &= filter_query
 
     if after_reaction_id is not None:
         user_id = peer.owner_id if isinstance(peer, Peer) else peer.id
@@ -183,7 +206,7 @@ async def get_messages_query_internal(
 async def get_messages_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
-        filter_: TLObject | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
+        filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
 ) -> list[Message]:
     query = await get_messages_query_internal(
         peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_, saved_peer,
