@@ -23,15 +23,15 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
     Long, InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
-    ReactionCustomEmoji
+    ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
-    TogglePreHistoryHidden, ToggleJoinToSend
+    TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
-from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant
+from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers
 from piltover.worker import MessageHandler
 
@@ -893,3 +893,30 @@ async def toggle_join_to_send(request: ToggleJoinToSend, user: User) -> Updates:
 
     return await upd.update_channel(channel, user)
 
+
+@handler.on_request(GetSendAs_135, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetSendAs, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_send_as(request: GetSendAs | GetSendAs_135, user: User) -> SendAsPeers:
+    peer = await Peer.from_input_peer_raise(
+        user, request.peer, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+    )
+
+    channel = peer.channel
+    if not channel.supergroup:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    if channel.creator_id != user.id:
+        return SendAsPeers(
+            peers=[SendAsPeer(peer=PeerUser(user_id=user.id))],
+            chats=[],
+            users=[await user.to_tl(user)],
+        )
+
+    return SendAsPeers(
+        peers=[
+            SendAsPeer(peer=PeerUser(user_id=user.id)),
+            SendAsPeer(peer=PeerChannel(channel_id=channel.make_id())),
+        ],
+        chats=[await channel.to_tl(user)],
+        users=[await user.to_tl(user)],
+    )

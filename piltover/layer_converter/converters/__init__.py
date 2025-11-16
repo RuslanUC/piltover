@@ -25,6 +25,7 @@ from .peersettings_downgrade import *
 from .poll_answer_downgrade import *
 from .poll_downgrade import *
 from .poll_results_downgrade import *
+from .send_as_peers_downgrade import *
 from .stickerset_downgrade import *
 from .update_delete_scheduled_messages_downgrade import *
 from .update_peer_blocked_downgrade import *
@@ -201,3 +202,6 @@ LayerConverter.register_for_downgrade(BotInfoDowngradeTo143)
 LayerConverter.register_for_downgrade(BotInfoDowngradeTo186)
 LayerConverter.register_for_downgrade(BotInfoDowngradeTo193)
 LayerConverter.register_for_downgrade(BotInfoDontDowngrade)
+
+LayerConverter.register_for_downgrade(SendAsPeersDowngradeTo135)
+LayerConverter.register_for_downgrade(SendAsPeersDontDowngrade)
