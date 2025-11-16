@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
+from io import BytesIO
 
-from piltover.db.enums import StickersBotState
+from piltover.db.enums import StickersBotState, MediaType
 from piltover.db.models import Peer, Message
 from piltover.db.models.stickers_state import StickersBotUserState
 from piltover.tl.types.internal_stickersbot import StickersStateNewpack
@@ -11,6 +12,7 @@ Alright! Now send me the sticker. The image file should be in PNG or WEBP format
 I recommend using Telegram for Web/Desktop when uploading stickers.
 """
 __newpack_invalid_name = "Sorry, this title is unacceptable."
+__newpack_invalid_file = "Please send me your sticker image as a file."
 __newpack_send_emoji = """
 Thanks! Now send me an emoji that corresponds to your first sticker.
 
@@ -36,3 +38,17 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
         messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__newpack_send_sticker)
         return messages[peer]
+
+    if state.state is StickersBotState.NEWPACK_WAIT_IMAGE:
+        if message.media is None:
+            messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__newpack_invalid_file)
+            return messages[peer]
+        if message.media.type is not MediaType.DOCUMENT:
+            messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__newpack_invalid_file)
+            return messages[peer]
+
+        state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
+        if state_data.stickers:
+            ...
+        else:
+            ...
