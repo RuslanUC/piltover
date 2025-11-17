@@ -91,6 +91,7 @@ class Message(Model):
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
     random_id: str = fields.CharField(max_length=24, null=True, default=None)
+    # TODO: use tl for entities
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
     extra_info: bytes | None = fields.BinaryField(null=True, default=None)
     version: int = fields.IntField(default=0)
@@ -448,7 +449,10 @@ class Message(Model):
 
         reply = None
         if reply_to_message_id:
-            peer_filter = {"peer__channel": peer.channel} if peer.type is PeerType.CHANNEL else {"peer": peer}
+            if peer.type is PeerType.CHANNEL:
+                peer_filter = {"peer__channel": peer.channel, "peer__owner": None}
+            else:
+                peer_filter = {"peer": peer}
             reply = await Message.get_or_none(id=reply_to_message_id, **peer_filter)
             if reply is None:
                 raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")

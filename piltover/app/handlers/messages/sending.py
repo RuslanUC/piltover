@@ -27,7 +27,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
-    ForwardMessages_176, SaveDraft_166, ClearAllDrafts
+    ForwardMessages_176, SaveDraft_166, ClearAllDrafts, SaveDraft_148, SaveDraft_133
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -210,17 +210,17 @@ async def send_message_internal(
 
 
 SendMessageTypes = SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia \
-                   | SendMultiMedia_148 | SendMultiMedia
+                   | SendMultiMedia_148 | SendMultiMedia | SaveDraft | SaveDraft_133 | SaveDraft_148 | SaveDraft_166
+NEW_REPLY_TYPES = (SendMessage, SendMedia, SendMultiMedia, SendMessage_176, SendMedia_176, SaveDraft, SaveDraft_166)
+OLD_REPLY_TYPES = (SendMessage_148, SendMedia_148, SendMultiMedia_148, SaveDraft_148, SaveDraft_133)
 
 
 def _resolve_reply_id(
         request: SendMessageTypes,
 ) -> int | None:
-    if isinstance(request, (SendMessage, SendMedia, SendMultiMedia, SendMessage_176, SendMedia_176)) \
-            and request.reply_to is not None:
+    if isinstance(request, NEW_REPLY_TYPES) and request.reply_to is not None:
         return request.reply_to.reply_to_msg_id
-    elif isinstance(request, (SendMessage_148, SendMedia_148, SendMultiMedia_148)) \
-            and request.reply_to_msg_id is not None:
+    elif isinstance(request, OLD_REPLY_TYPES) and request.reply_to_msg_id is not None:
         return request.reply_to_msg_id
 
 
@@ -693,6 +693,8 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     )
 
 
+@handler.on_request(SaveDraft_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SaveDraft_148, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SaveDraft_166, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SaveDraft, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_draft(request: SaveDraft, user: User):
@@ -700,12 +702,27 @@ async def save_draft(request: SaveDraft, user: User):
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         await peer.chat_or_channel.get_participant_raise(user)
 
+    reply_to_message_id = _resolve_reply_id(request)
+    reply_to = None
+    if reply_to_message_id:
+        peer_filter = Q(peer__channel=peer.channel, peer__owner=None) if peer.type is PeerType.CHANNEL else Q(peer=peer)
+        reply_to = await Message.get_or_none(peer_filter, id=reply_to_message_id)
+
+    entities = await process_message_entities(request.message, request.entities, user)
+
     # TODO: media
 
     dialog = await Dialog.create_or_unhide(peer)
-    draft, _ = await MessageDraft.get_or_create(
+    draft, _ = await MessageDraft.update_or_create(
         dialog=dialog,
-        defaults={"message": request.message, "date": datetime.now()}
+        defaults={
+            "message": request.message,
+            "date": datetime.now(),
+            "reply_to": reply_to,
+            "no_webpage": request.no_webpage,
+            "invert_media": request.invert_media if isinstance(request, (SaveDraft, SaveDraft_166)) else False,
+            "entities": entities,
+        }
     )
 
     await upd.update_draft(user, peer, draft)
