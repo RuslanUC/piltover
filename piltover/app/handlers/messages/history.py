@@ -572,7 +572,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     if peer.type is PeerType.SELF and not isinstance(request, GetSearchResultsCalendar_134) and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
 
-    if (filter_query := message_filter_to_query(request.filter)) is None:
+    if (filter_query := message_filter_to_query(request.filter, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
 
     query = Q(peer=peer) & filter_query

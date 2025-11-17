@@ -8,6 +8,7 @@ from loguru import logger
 from mtproto.packets import DecryptedMessagePacket
 
 from piltover.db.models import UserAuthorization, Channel, User, Message as DbMessage, Chat, EncryptedChat
+from piltover.exceptions import Disconnection
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates, Vector
 from piltover.tl.core_types import Message, MsgContainer
@@ -229,6 +230,8 @@ class Session:
         try:
             await self.client.send(obj, self, need_auth_refresh=self.need_auth_refresh)
             self.need_auth_refresh = False
+        except Disconnection:
+            self.destroy()
         except Exception as e:
             logger.opt(exception=e).warning(f"Failed to send {obj} to {self.client}")
 

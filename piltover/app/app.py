@@ -18,6 +18,7 @@ from piltover.app.handlers import register_handlers
 from piltover.app.utils.app_create_system_data import create_system_data
 from piltover.cache import Cache
 from piltover.gateway import Gateway
+from piltover.session_manager import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 
 
@@ -209,6 +210,7 @@ class PiltoverApp:
         await self._gateway.broker.shutdown()
         await connections.close_all(True)
         await Cache.obj.clear()
+        SessionManager.sessions.clear()
 
 
 # TODO: add host and port to arguments

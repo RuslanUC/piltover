@@ -208,10 +208,19 @@ class Client:
 
         return packet
 
-    async def _write(self, packet: BasePacket) -> None:
+    async def _write(self, packet: BasePacket, ignore_errors: bool = False) -> None:
         to_send = self.conn.send(packet)
-        self.writer.write(to_send)
-        await self.writer.drain()
+        try:
+            self.writer.write(to_send)
+            await self.writer.drain()
+        except ConnectionResetError:
+            if ignore_errors:
+                return
+            raise Disconnection()
+        except Exception as e:
+            if ignore_errors:
+                return
+            raise Disconnection() from e
 
     async def _send_raw(self, message: Message, session: Session) -> None:
         if not self.auth_data or self.auth_data.auth_key is None or self.auth_data.auth_key_id is None:
@@ -223,7 +232,7 @@ class Client:
         auth, _ = self.authorization
         auth_id = auth.id if auth is not None else None
         user_id = auth.user_id if auth is not None else None
-        logger.trace(f"SerializationContext: {user_id=}, {auth_id=}")
+        logger.debug(f"SerializationContext ({self.peername}): {user_id=}, {auth_id=}")
         ctx_token = serialization_ctx.set(SerializationContext(
             auth_id=auth_id,
             user_id=user_id,
@@ -572,7 +581,7 @@ class Client:
                 await self._worker_loop()
         except Disconnection as err:
             if err.transport_error is not None:
-                await self._write(ErrorPacket(err.transport_error))
+                await self._write(ErrorPacket(err.transport_error), ignore_errors=True)
         except TimeoutError:
             logger.debug("Client disconnected because of expired timeout")
         finally:

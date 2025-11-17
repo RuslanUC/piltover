@@ -27,7 +27,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
-    ForwardMessages_176
+    ForwardMessages_176, SaveDraft_166, ClearAllDrafts
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -693,11 +693,14 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     )
 
 
+@handler.on_request(SaveDraft_166, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SaveDraft, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_draft(request: SaveDraft, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         await peer.chat_or_channel.get_participant_raise(user)
+
+    # TODO: media
 
     dialog = await Dialog.create_or_unhide(peer)
     draft, _ = await MessageDraft.get_or_create(
@@ -995,3 +998,8 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
             await upd.update_chat(peer.chat, user)
 
     return AffectedHistory(pts=pts, pts_count=len(messages[user]), offset=offset_id)
+
+
+@handler.on_request(ClearAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def clear_all_drafts(user: User) -> bool:
+    ...  # TODO
