@@ -231,7 +231,8 @@ class Session:
             await self.client.send(obj, self, need_auth_refresh=self.need_auth_refresh)
             self.need_auth_refresh = False
         except Disconnection:
-            self.destroy()
+            if self.auth_key is not None:
+                self.destroy()
         except Exception as e:
             logger.opt(exception=e).warning(f"Failed to send {obj} to {self.client}")
 

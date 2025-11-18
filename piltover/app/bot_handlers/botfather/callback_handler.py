@@ -15,6 +15,8 @@ __text_bot_token_revoked = "Token for the bot {name} @{username} has been revoke
 
 
 async def botfather_callback_query_handler(peer: Peer, message: Message, data: bytes) -> BotCallbackAnswer | None:
+    logger.trace(data)
+
     if data.startswith(b"mybots/page/"):
         try:
             page = int(data[12:])
@@ -44,14 +46,14 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot__id=bot_id).select_related("bot", "bot__usernames")
         if bot is None:
             return None
 
         message.message = __text_bot_selected.format(name=bot.bot.first_name, username=bot.bot.usernames.username)
         message.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"TODO API Token", data=f"bots-token/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"API Token", data=f"bots-token/{bot.bot_id}".encode("latin1")),
                 KeyboardButtonCallback(text=f"TODO Edit Bot", data=f"bots-edit/{bot.bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
@@ -95,7 +97,7 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot__id=bot_id).select_related("bot", "bot__usernames")
         if bot is None:
             return None
 
@@ -120,11 +122,11 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
 
     if data.startswith(b"bots-revoke/"):
         try:
-            bot_id = int(data[11:])
+            bot_id = int(data[12:])
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot__id=bot_id).select_related("bot", "bot__usernames")
         if bot is None:
             return None
 
