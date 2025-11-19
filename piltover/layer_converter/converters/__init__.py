@@ -10,6 +10,7 @@ from .chat_invite_exported_downgrade import *
 from .dialog_filter_downgrade import *
 from .dialog_filters_downgrade import *
 from .document_attribute_video_downgrade import *
+from .draft_message_downgrade import *
 from .global_privacy_settings_downgrade import *
 from .invited_users_downgrade import *
 from .message_downgrade import *
@@ -205,3 +206,7 @@ LayerConverter.register_for_downgrade(BotInfoDontDowngrade)
 
 LayerConverter.register_for_downgrade(SendAsPeersDowngradeTo135)
 LayerConverter.register_for_downgrade(SendAsPeersDontDowngrade)
+
+LayerConverter.register_for_downgrade(DraftMessageDowngradeTo133)
+LayerConverter.register_for_downgrade(DraftMessageDowngradeTo166)
+LayerConverter.register_for_downgrade(DraftMessageDontDowngrade)
