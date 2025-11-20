@@ -9,7 +9,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
-    Stickerset, ChatWallpaper, CallbackQuery
+    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -22,7 +22,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
-    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
+    UpdateNotifySettings, NotifyPeer
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1505,6 +1506,29 @@ async def update_user_phone(user: User) -> Updates:
             UpdateUserPhone(
                 user_id=user.id,
                 phone=user.phone_number,
+            )
+        ],
+    )
+
+    await SessionManager.send(updates, user.id)
+
+    return updates
+
+
+async def update_peer_notify_settings(user: User, peer: Peer, settings: PeerNotifySettings) -> Updates:
+    await Update.create(
+        user=user,
+        update_type=UpdateType.UPDATE_PEER_NOTIFY_SETTINGS,
+        pts=await State.add_pts(user, 1),
+        pts_count=1,
+        related_id=peer.id,
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdateNotifySettings(
+                peer=NotifyPeer(peer=peer.to_tl()),
+                notify_settings=settings.to_tl(),
             )
         ],
     )

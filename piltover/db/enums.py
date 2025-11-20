@@ -92,6 +92,7 @@ class UpdateType(IntEnum):
     UPDATE_HISTORY_TTL = 33
     BOT_CALLBACK_QUERY = 34
     UPDATE_PHONE = 35
+    UPDATE_PEER_NOTIFY_SETTINGS = 36
 
 
 class SecretUpdateType(IntEnum):

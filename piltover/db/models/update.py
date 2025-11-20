@@ -15,7 +15,8 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
-    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
+    NotifyPeer
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -24,7 +25,8 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateMessagePoll | UpdateDialogFilter | UpdateDialogFilterOrder | UpdateEncryption | UpdateConfig \
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
-              | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone
+              | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
+              | UpdateNotifySettings
 
 
 class Update(Model):
@@ -483,6 +485,20 @@ class Update(Model):
                 return UpdateUserPhone(
                     user_id=self.related_id,
                     phone=update_user.phone_number,
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_PEER_NOTIFY_SETTINGS:
+                settings = await models.PeerNotifySettings.get_or_none(
+                    peer__owner=user, peer__id=self.related_id,
+                ).select_related("peer")
+                if settings is None:
+                    return none_ret
+
+                users_q, chats_q, channels_q = settings.peer.query_users_chats(users_q, chats_q, channels_q)
+
+                return UpdateNotifySettings(
+                    peer=NotifyPeer(peer=settings.peer.to_tl()),
+                    notify_settings=settings.to_tl(),
                 ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

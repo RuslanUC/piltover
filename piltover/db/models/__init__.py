@@ -68,3 +68,4 @@ from .language import Language
 from .language_string import LanguageString
 from .callback_query import CallbackQuery
 from .stickers_state import StickersBotUserState
+from .peer_notify_settings import PeerNotifySettings

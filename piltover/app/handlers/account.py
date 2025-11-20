@@ -12,14 +12,15 @@ from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
-    InstalledWallpaper, PeerColorOption, UserPersonalChannel
+    InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
-from piltover.tl import PeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, AutoDownloadSettings, \
-    PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, UpdatesTooLong, \
-    WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty
+from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
+    AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, \
+    UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
+    InputNotifyPeer
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
@@ -29,7 +30,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
     SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis, \
-    UpdatePersonalChannel
+    UpdatePersonalChannel, UpdateNotifySettings
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -262,12 +263,18 @@ async def update_profile(request: UpdateProfile, user: User):
     return await user.to_tl(user)
 
 
-@handler.on_request(GetNotifySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_notify_settings():  # pragma: no cover
-    return PeerNotifySettings(
-        show_previews=True,
-        silent=False,
-    )
+@handler.on_request(GetNotifySettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_notify_settings(request: GetNotifySettings, user: User) -> TLPeerNotifySettings:
+    if not isinstance(request.peer, InputNotifyPeer):
+        return PeerNotifySettings(
+            show_previews=True,
+            silent=False,
+        )
+
+    peer = await Peer.from_input_peer_raise(user, request.peer.peer)
+    settings, _ = await PeerNotifySettings.get_or_create(peer=peer)
+
+    return settings.to_tl()
 
 
 @handler.on_request(GetDefaultEmojiStatuses, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -779,3 +786,24 @@ async def update_personal_channel(request: UpdatePersonalChannel, user: User) ->
     await upd.update_user(user)
     return True
 
+
+@handler.on_request(UpdateNotifySettings)
+async def update_notify_settings(request: UpdateNotifySettings, user: User) -> bool:
+    if not isinstance(request.peer, InputNotifyPeer):
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
+
+    peer = await Peer.from_input_peer_raise(user, request.peer.peer)
+
+    if request.settings.mute_until:
+        muted_until = datetime.fromtimestamp(request.settings.mute_until, UTC)
+    else:
+        muted_until = None
+
+    settings, _ = await PeerNotifySettings.update_or_create(peer=peer, defaults={
+        "show_previews": request.settings.show_previews,
+        "muted": request.settings.silent,
+        "muted_until": muted_until,
+    })
+
+    await upd.update_peer_notify_settings(user, peer, settings)
+    return True
