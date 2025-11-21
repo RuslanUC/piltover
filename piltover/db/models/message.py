@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum, auto
 from io import BytesIO
 from os import environ
-from typing import Callable, Awaitable, cast
+from typing import cast
 
 from loguru import logger
 from pytz import UTC
@@ -16,27 +16,14 @@ from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.exceptions import Error, ErrorRpc, Unreachable
-from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects, Long, TLObject
+from piltover.tl import MessageReplyHeader, MessageService, objects, TLObject
 from piltover.tl.base import MessageActionInst, MessageAction, ReplyMarkupInst, ReplyMarkup
 from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageActionNeedsProcessing
-from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
+from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, WallPaperNoFile, \
     MessageActionSetChatWallPaper, MessageEntityMentionName
 from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
 from piltover.utils.snowflake import Snowflake
-
-
-# TODO: remove when file references will be calculated dynamically
-async def _service_edit_chat_photo(message: Message, user: models.User) -> MessageActionChatEditPhoto:
-    if not message.extra_info:
-        return MessageActionChatEditPhoto(photo=PhotoEmpty(id=0))
-
-    photo_id = Long.read_bytes(message.extra_info)
-
-    if photo_id > 0 and (file := await models.File.get_or_none(id=photo_id)) is not None:
-        return MessageActionChatEditPhoto(photo=file.to_tl_photo())
-
-    return MessageActionChatEditPhoto(photo=PhotoEmpty(id=photo_id))
 
 
 # TODO: remove when file references and wallpaper.creator will be calculated dynamically
@@ -57,11 +44,6 @@ async def _process_service_message_action(
     else:
         logger.warning(f"Got unknown message action to process: {action!r}")
         return MessageActionEmpty(), False
-
-
-MESSAGE_TYPE_TO_SERVICE_ACTION: dict[MessageType, Callable[[Message, models.User], Awaitable[...]]] = {
-    MessageType.SERVICE_CHAT_EDIT_PHOTO: _service_edit_chat_photo,
-}
 
 
 class _SomethingMissing(Enum):
@@ -165,22 +147,18 @@ class Message(Model):
             self.reply_to = await self.reply_to
         return MessageReplyHeader(reply_to_msg_id=self.reply_to.id) if self.reply_to is not None else None
 
-    # NOTE: keep in mind when implementing service messages caching:
-    #  file references and access hashes must also be properly refreshed
     async def _to_tl_service(self, user: models.User) -> MessageService:
-        if self.type in (MessageType.SERVICE_CHAT_EDIT_PHOTO,):
-            action = await MESSAGE_TYPE_TO_SERVICE_ACTION[self.type](self, user)
-        else:
-            action = TLObject.read(BytesIO(self.extra_info))
-            if not isinstance(action, AllowedMessageActions):
-                logger.error(
-                    f"Expected service message action to "
-                    f"be any of this types: {AllowedMessageActions}, got {action=!r}"
-                )
-                action = MessageActionEmpty()
+        action = TLObject.read(BytesIO(self.extra_info))
+        if not isinstance(action, AllowedMessageActions):
+            logger.error(
+                f"Expected service message action to "
+                f"be any of this types: {AllowedMessageActions}, got {action=!r}"
+            )
+            action = MessageActionEmpty()
 
         if isinstance(action, MessageActionNeedsProcessingInst):
             logger.trace(f"Initial processing of message action {action!r}")
+            action = cast(MessageActionNeedsProcessing, action)
             action, save = await _process_service_message_action(action, self, user)
             if not isinstance(action, MessageActionEmpty) and save:
                 logger.trace(f"Saving processed action: {action!r}")

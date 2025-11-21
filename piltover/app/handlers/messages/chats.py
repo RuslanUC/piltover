@@ -19,7 +19,8 @@ from piltover.session_manager import SessionManager
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
     Long, MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines
+    MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines, \
+    MessageActionChatEditPhoto
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
     EditChatDefaultBannedRights, CreateChat_133, MigrateChat, GetOnlines
@@ -204,7 +205,9 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
     return await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO,
-        extra_info=Long.write(chat.photo.id if chat.photo else 0),
+        extra_info=MessageActionChatEditPhoto(
+            photo=chat.photo.to_tl_photo() if chat.photo else PhotoEmpty(id=0),
+        ).write(),
     )
 
 

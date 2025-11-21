@@ -23,7 +23,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
     Long, InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
-    ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel
+    ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
@@ -310,7 +310,9 @@ async def edit_channel_photo(request: EditPhoto, user: User):
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO,
-        extra_info=Long.write(channel.photo.id if channel.photo else 0),
+        extra_info=MessageActionChatEditPhoto(
+            photo=channel.photo.to_tl_photo() if channel.photo else PhotoEmpty(id=0),
+        ).write(),
     )
     updates.updates.extend(updates_msg.updates)
     updates.users.extend(updates_msg.users)
