@@ -23,6 +23,8 @@ class RabbitMqMessageBroker(BaseMessageBroker):
         self._read_channel: AbstractChannel | None = None
 
     async def startup(self) -> None:
+        await super().startup()
+
         if BrokerType.WRITE in self.broker_type:
             self._write_conn = await connect_robust(self._url)
             self._write_channel = await self._write_conn.channel()
@@ -45,6 +47,8 @@ class RabbitMqMessageBroker(BaseMessageBroker):
 
         if self._listen_task:
             self._listen_task.cancel()
+
+        await super().shutdown()
 
     async def send(self, message: InternalMessages) -> None:
         if BrokerType.WRITE not in self.broker_type:

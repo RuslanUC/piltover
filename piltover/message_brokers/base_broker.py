@@ -33,11 +33,18 @@ class BaseMessageBroker(ABC):
         self.subscribed_auths: dict[int, set[Session]] = {}
         self.subscribed_channels: dict[int, set[Session]] = {}
 
-    @abstractmethod
-    async def startup(self) -> None: ...
+    def _cleanup(self) -> None:
+        self.subscribed_users.clear()
+        self.subscribed_sessions.clear()
+        self.subscribed_keys.clear()
+        self.subscribed_auths.clear()
+        self.subscribed_channels.clear()
 
-    @abstractmethod
-    async def shutdown(self) -> None: ...
+    async def startup(self) -> None:
+        self._cleanup()
+
+    async def shutdown(self) -> None:
+        self._cleanup()
 
     @abstractmethod
     async def send(self, message: InternalMessages) -> None: ...
