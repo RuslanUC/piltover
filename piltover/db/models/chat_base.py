@@ -88,7 +88,7 @@ class ChatBase(Model):
         if not self.photo_id:
             return PhotoEmpty(id=0)
         self.photo = await self.photo
-        return await self.photo.to_tl_photo(user)
+        return self.photo.to_tl_photo(user)
 
     async def to_tl_chat_photo(self) -> ChatPhoto | ChatPhotoEmpty:
         if not self.photo_id:

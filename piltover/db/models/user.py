@@ -70,18 +70,19 @@ class User(Model):
         photo = UserProfilePhotoEmpty() if profile_photo else PhotoEmpty(id=0)
         if not await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PROFILE_PHOTO):
             return photo
-        if not await models.UserPhoto.filter(user=self).exists():
-            return photo
 
-        photo = (await models.UserPhoto.get_or_none(user=self, current=True).select_related("file") or
-                 await models.UserPhoto.filter(user=self).select_related("file").order_by("-id").first())
+        photo = await models.UserPhoto.filter(
+            user=self
+        ).order_by("current", "-id").select_related("file").first()
+        if photo is None:
+            return photo
 
         if profile_photo:
             photo = UserProfilePhoto(
                 has_video=False, photo_id=photo.id, dc_id=2, stripped_thumb=photo.file.photo_stripped,
             )
         else:
-            photo = await photo.to_tl(current_user)
+            photo = photo.to_tl(current_user)
 
         return photo
 

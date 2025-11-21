@@ -223,8 +223,7 @@ class File(Model):
             thumbs=self._to_tl_thumbs(),
         )
 
-    # TODO: remove async
-    async def to_tl_photo(self, user: models.User) -> TLPhoto:
+    def to_tl_photo(self, user: models.User) -> TLPhoto:
         if self.constant_access_hash is None or self.constant_file_ref is None:
             access_hash = -1
             file_ref = self.create_file_ref(user)

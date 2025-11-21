@@ -23,7 +23,7 @@ async def get_user_photos(request: GetUserPhotos, user: User):
     photos = await UserPhoto.filter(user=peer_user).select_related("file").order_by("-id")
 
     return Photos(
-        photos=[await photo.to_tl(user) for photo in photos],
+        photos=[photo.to_tl(user) for photo in photos],
         users=[await peer_user.to_tl(user)],
     )
 
@@ -63,7 +63,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     await upd.update_user(target_user)
 
     return PhotosPhoto(
-        photo=await photo.to_tl(user),
+        photo=photo.to_tl(user),
         users=[],  # [await user.to_tl(user)],
     )
 
@@ -102,6 +102,6 @@ async def update_profile_photo(request: UpdateProfilePhoto, user: User):
     await upd.update_user(target_user)
 
     return PhotosPhoto(
-        photo=await photo.to_tl(user) if photo else PhotoEmpty(id=0),
+        photo=photo.to_tl(user) if photo else PhotoEmpty(id=0),
         users=[],  # [await user.to_tl(user)],
     )

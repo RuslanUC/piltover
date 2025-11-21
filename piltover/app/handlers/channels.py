@@ -179,7 +179,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     photo = PhotoEmpty(id=0)
     if channel.photo_id:
         channel.photo = await channel.photo
-        photo = await channel.photo.to_tl_photo(user)
+        photo = channel.photo.to_tl_photo(user)
 
     invite = None
     participant = await ChatParticipant.get_or_none(channel=channel, user=user)

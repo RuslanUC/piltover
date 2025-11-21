@@ -33,7 +33,7 @@ class MessageMedia(Model):
         elif self.type is MediaType.PHOTO:
             return MessageMediaPhoto(
                 spoiler=self.spoiler,
-                photo=await self.file.to_tl_photo(user),
+                photo=self.file.to_tl_photo(user),
             )
         elif self.type is MediaType.POLL:
             return MessageMediaPoll(

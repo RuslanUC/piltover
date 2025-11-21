@@ -27,6 +27,7 @@ from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
 from piltover.utils.snowflake import Snowflake
 
 
+# TODO: remove when file references will be calculated dynamically
 async def _service_edit_chat_photo(message: Message, user: models.User) -> MessageActionChatEditPhoto:
     if not message.extra_info:
         return MessageActionChatEditPhoto(photo=PhotoEmpty(id=0))
@@ -34,11 +35,12 @@ async def _service_edit_chat_photo(message: Message, user: models.User) -> Messa
     photo_id = Long.read_bytes(message.extra_info)
 
     if photo_id > 0 and (file := await models.File.get_or_none(id=photo_id)) is not None:
-        return MessageActionChatEditPhoto(photo=await file.to_tl_photo(user))
+        return MessageActionChatEditPhoto(photo=file.to_tl_photo(user))
 
     return MessageActionChatEditPhoto(photo=PhotoEmpty(id=photo_id))
 
 
+# TODO: remove when file references and wallpaper.creator will be calculated dynamically
 async def _process_service_message_action(
         action: MessageActionNeedsProcessing, _: Message, user: models.User,
 ) -> tuple[MessageAction, bool]:
