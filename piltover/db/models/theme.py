@@ -33,7 +33,7 @@ class Theme(Model):
             access_hash=-1,
             slug=self.slug,
             title=self.title,
-            document=await self.document.to_tl_document(user) if self.document is not None else None,
+            document=await self.document.to_tl_document() if self.document is not None else None,
             settings=[
                 await settings.to_tl(user)
                 for settings in await models.ThemeSettings.filter(theme=self).select_related(

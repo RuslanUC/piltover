@@ -456,7 +456,7 @@ async def _make_covered_list(sets: list[Stickerset], user: User) -> list[Sticker
         if stickerset.id in covers:
             result.append(StickerSetCovered(
                 set=await stickerset.to_tl(user),
-                cover=await covers[stickerset.id].to_tl_document(user),
+                cover=await covers[stickerset.id].to_tl_document(),
             ))
         else:
             result.append(StickerSetNoCovered(

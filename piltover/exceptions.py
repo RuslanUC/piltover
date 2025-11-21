@@ -34,5 +34,5 @@ class InvalidConstructorException(Error):
 
 
 class Unreachable(RuntimeError):
-    def __init__(self, message: str = "Unreachable") -> None:
-        super().__init__(message)
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(f"Unreachable: {message}" if message is not None else "Unreachable")

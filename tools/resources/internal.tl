@@ -181,6 +181,8 @@ internal_access.access_hash_payload_stickerset#8009da5b this_user_id:long set_id
 internal_access.access_hash_payload_wallpaper#cb83392e this_user_id:long wallpaper_id:long auth_id:long = internal_access.AccessHashPayload;
 internal_access.access_hash_payload_theme#1c9a2a19 this_user_id:long theme_id:long auth_id:long = internal_access.AccessHashPayload;
 
+internal_access.file_reference_payload#af4f0049 file_id:long created_at:int = internal_access.FileReferencePayload;
+
 ---functions---
 
 // For my.telegram.org alternative page

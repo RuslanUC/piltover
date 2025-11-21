@@ -14,6 +14,7 @@ from tortoise import fields, Model
 from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.db.enums import FileType
+from piltover.exceptions import Unreachable
 from piltover.storage import BaseStorage
 from piltover.storage.base import StorageBuffer, StorageType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
@@ -21,7 +22,7 @@ from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, D
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords, \
     DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int
 from piltover.tl.base import PhotoSizeInst
-from piltover.tl.types.internal_access import AccessHashPayloadFile
+from piltover.tl.types.internal_access import AccessHashPayloadFile, FileReferencePayload
 
 VIDEO_ATTRIBUTES = (
     DocumentAttributeVideo, DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185,
@@ -199,10 +200,10 @@ class File(Model):
 
         return sizes
 
-    async def to_tl_document(self, user: models.User) -> TLDocument:
+    async def to_tl_document(self) -> TLDocument:
         if self.constant_access_hash is None or self.constant_file_ref is None:
             access_hash = -1
-            file_ref = self.create_file_ref(user)
+            file_ref = FileReferencePayload(file_id=self.id, created_at=0).write()
         else:
             access_hash = self.constant_access_hash
             file_ref = self.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
@@ -223,10 +224,10 @@ class File(Model):
             thumbs=self._to_tl_thumbs(),
         )
 
-    def to_tl_photo(self, user: models.User) -> TLPhoto:
+    def to_tl_photo(self) -> TLPhoto:
         if self.constant_access_hash is None or self.constant_file_ref is None:
             access_hash = -1
-            file_ref = self.create_file_ref(user)
+            file_ref = FileReferencePayload(file_id=self.id, created_at=0).write()
         else:
             access_hash = self.constant_access_hash
             file_ref = self.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
@@ -244,15 +245,13 @@ class File(Model):
     # constantFileReference file_id:long file_ref:bytes = ConstantFileReference
     CONST_FILE_REF_ID = 0x51a32644
     CONST_FILE_REF_ID_BYTES = Int.write(CONST_FILE_REF_ID, signed=False)
-
-    def create_file_ref(self, user: models.User) -> bytes:
-        created_at = Int.write(int(time() // 60))
-        payload = Long.write(user.id) + Long.write(self.id) + created_at
-
-        return created_at + hmac.new(AppConfig.HMAC_KEY, payload, hashlib.sha256).digest()
+    PLACEHOLDER_FILE_REF_ID_BYTES = Int.write(FileReferencePayload.tlid(), signed=False)
 
     @staticmethod
     def is_file_ref_valid(file_ref: bytes, user_id: int | None = None, file_id: int | None = None) -> tuple[bool, bool]:
+        if file_ref.startswith(File.PLACEHOLDER_FILE_REF_ID_BYTES):
+            raise Unreachable("Placeholder file_reference was not replaced and client got it")
+
         if len(file_ref) == (4 + 8 + 16) and file_ref.startswith(File.CONST_FILE_REF_ID_BYTES):
             valid = file_ref[4:12] == Long.write(file_id)
             return valid, valid
@@ -282,3 +281,9 @@ class File(Model):
     @staticmethod
     def check_access_hash(user: int, auth: int, file: int, access_hash: int) -> bool:
         return File.make_access_hash(user, auth, file) == access_hash
+
+    @staticmethod
+    def make_file_reference(user: int, file: int, created_at: int) -> bytes:
+        created_at = Int.write(created_at)
+        payload = Long.write(user) + Long.write(file) + created_at
+        return created_at + hmac.new(AppConfig.HMAC_KEY, payload, hashlib.sha256).digest()

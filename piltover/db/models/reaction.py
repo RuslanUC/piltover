@@ -31,15 +31,15 @@ class Reaction(Model):
     def q_from_reaction(cls, reaction: str) -> Q:
         return Q(reaction_id=cls.reaction_to_uuid(reaction))
 
-    async def to_tl_available_reaction(self, user: models.User) -> AvailableReaction:
+    async def to_tl_available_reaction(self) -> AvailableReaction:
         return AvailableReaction(
             reaction=self.reaction,
             title=self.title,
-            static_icon=await self.static_icon.to_tl_document(user),
-            appear_animation=await self.appear_animation.to_tl_document(user),
-            select_animation=await self.select_animation.to_tl_document(user),
-            activate_animation=await self.activate_animation.to_tl_document(user),
-            effect_animation=await self.effect_animation.to_tl_document(user),
-            around_animation=await self.around_animation.to_tl_document(user) if self.around_animation is not None else None,
-            center_icon=await self.center_icon.to_tl_document(user) if self.center_icon is not None else None,
+            static_icon=await self.static_icon.to_tl_document(),
+            appear_animation=await self.appear_animation.to_tl_document(),
+            select_animation=await self.select_animation.to_tl_document(),
+            activate_animation=await self.activate_animation.to_tl_document(),
+            effect_animation=await self.effect_animation.to_tl_document(),
+            around_animation=await self.around_animation.to_tl_document() if self.around_animation is not None else None,
+            center_icon=await self.center_icon.to_tl_document() if self.center_icon is not None else None,
         )

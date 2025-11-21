@@ -13,9 +13,7 @@ class EncryptedFile(Model):
 
     file_id: int
 
-    # TODO: remove user
-    # TODO: remove async
-    async def to_tl(self, user: models.User) -> TLEncryptedFile:
+    def to_tl(self) -> TLEncryptedFile:
         return TLEncryptedFile(
             id=self.file.id,
             access_hash=-1,

@@ -50,7 +50,7 @@ class Wallpaper(Model):
             dark=self.dark,
             access_hash=-1,
             slug=self.slug,
-            document=await self.document.to_tl_document(user),
+            document=await self.document.to_tl_document(),
             settings=settings.to_tl() if settings is not None else None,
         )
 

@@ -82,7 +82,7 @@ class User(Model):
                 has_video=False, photo_id=photo.id, dc_id=2, stripped_thumb=photo.file.photo_stripped,
             )
         else:
-            photo = photo.to_tl(current_user)
+            photo = photo.to_tl()
 
         return photo
 

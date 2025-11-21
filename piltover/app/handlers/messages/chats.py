@@ -98,7 +98,7 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
     photo = PhotoEmpty(id=0)
     if chat.photo_id:
         await chat.fetch_related("photo")
-        photo = chat.photo.to_tl_photo(user)
+        photo = chat.photo.to_tl_photo()
 
     invite = None
     participant = await ChatParticipant.get_or_none(chat=chat, user=user)

@@ -12,7 +12,7 @@ class UserPhoto(Model):
     file: models.File = fields.ForeignKeyField("models.File", on_delete=fields.CASCADE)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
-    def to_tl(self, user: models.User) -> TLPhoto:
-        photo = self.file.to_tl_photo(user)
+    def to_tl(self) -> TLPhoto:
+        photo = self.file.to_tl_photo()
         photo.id = self.id
         return photo

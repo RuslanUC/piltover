@@ -341,7 +341,7 @@ async def check_chat_invite(request: CheckChatInvite, user: User) -> TLChatInvit
         request_needed=invite.request_needed,
         title=invite.chat_or_channel.name,
         about=invite.chat_or_channel.description,
-        photo=await invite.chat_or_channel.to_tl_photo(user),
+        photo=await invite.chat_or_channel.to_tl_photo(),
         participants_count=await ChatParticipant.filter(Chat.query(invite.chat_or_channel)).count(),
         color=1 if channel is None or channel.accent_color_id is None else channel.accent_color_id,
     )

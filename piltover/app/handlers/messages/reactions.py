@@ -22,9 +22,7 @@ handler = MessageHandler("messages.reactions")
 
 
 @handler.on_request(GetAvailableReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_available_reactions(
-        request: GetAvailableReactions, user: User,
-) -> AvailableReactions | AvailableReactionsNotModified:
+async def get_available_reactions(request: GetAvailableReactions) -> AvailableReactions | AvailableReactionsNotModified:
     ids = await Reaction.all().order_by("id").values_list("id", flat=True)
 
     reactions_hash = telegram_hash(ids, 32)
@@ -34,7 +32,7 @@ async def get_available_reactions(
     return AvailableReactions(
         hash=reactions_hash,
         reactions=[
-            await reaction.to_tl_available_reaction(user)
+            await reaction.to_tl_available_reaction()
             for reaction in await Reaction.all().select_related(
                 "static_icon", "appear_animation", "select_animation", "activate_animation", "effect_animation",
                 "around_animation", "center_icon",

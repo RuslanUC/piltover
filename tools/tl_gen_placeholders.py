@@ -3,6 +3,15 @@ access_hash_calc = {
         "self.access_hash == -1": "_calc",
     },
 }
+access_hash_and_file_ref_calc = {
+    "access_hash": {
+        "self.access_hash == -1": "_calc",
+    },
+    "file_reference": {
+        "self.file_reference.startswith(b\"I\\x00O\\xaf\")": "_calc",
+    },
+}
+
 
 PLACEHOLDERS = {
     # ChannelForbidden
@@ -57,19 +66,19 @@ PLACEHOLDERS = {
     0x27bcbbfc: access_hash_calc,
 
     # InputPhoto
-    0x3bb3b94a: access_hash_calc,
+    0x3bb3b94a: access_hash_and_file_ref_calc,
 
     # InputEncryptedFileLocation
     0xf5235d55: access_hash_calc,
     # InputDocumentFileLocation
-    0xbad07584: access_hash_calc,
+    0xbad07584: access_hash_and_file_ref_calc,
     # InputSecureFileLocation
     0xcbc7ee28: access_hash_calc,
     # InputPhotoFileLocation
-    0x40181ffe: access_hash_calc,
+    0x40181ffe: access_hash_and_file_ref_calc,
 
     # Photo
-    0xfb197a65: access_hash_calc,
+    0xfb197a65: access_hash_and_file_ref_calc,
 
     # WallPaper
     0xa437c3ed: access_hash_calc,
@@ -89,9 +98,9 @@ PLACEHOLDERS = {
     0x4a70994c: access_hash_calc,
 
     # Document
-    0x8fd4c4d8: access_hash_calc,
+    0x8fd4c4d8: access_hash_and_file_ref_calc,
     # Document_133
-    0x1e87342b: access_hash_calc,
+    0x1e87342b: access_hash_and_file_ref_calc,
 
     # StickerSet
     0x2dd14edc: access_hash_calc,

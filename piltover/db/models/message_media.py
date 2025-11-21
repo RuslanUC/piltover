@@ -28,12 +28,12 @@ class MessageMedia(Model):
         if self.type is MediaType.DOCUMENT:
             return MessageMediaDocument(
                 spoiler=self.spoiler,
-                document=await self.file.to_tl_document(user),
+                document=await self.file.to_tl_document(),
             )
         elif self.type is MediaType.PHOTO:
             return MessageMediaPhoto(
                 spoiler=self.spoiler,
-                photo=self.file.to_tl_photo(user),
+                photo=self.file.to_tl_photo(),
             )
         elif self.type is MediaType.POLL:
             return MessageMediaPoll(

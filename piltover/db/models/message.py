@@ -20,8 +20,7 @@ from piltover.tl import MessageReplyHeader, MessageService, PhotoEmpty, objects,
 from piltover.tl.base import MessageActionInst, MessageAction, ReplyMarkupInst, ReplyMarkup
 from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageActionNeedsProcessing
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatEditPhoto, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser, MessageReactions, ReactionCount, \
-    ReactionEmoji, MessageMediaDocument, MessageMediaPhoto, MessageActionEmpty, WallPaperNoFile, \
+    MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, WallPaperNoFile, \
     MessageActionSetChatWallPaper, MessageEntityMentionName
 from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
 from piltover.utils.snowflake import Snowflake
@@ -35,7 +34,7 @@ async def _service_edit_chat_photo(message: Message, user: models.User) -> Messa
     photo_id = Long.read_bytes(message.extra_info)
 
     if photo_id > 0 and (file := await models.File.get_or_none(id=photo_id)) is not None:
-        return MessageActionChatEditPhoto(photo=file.to_tl_photo(user))
+        return MessageActionChatEditPhoto(photo=file.to_tl_photo())
 
     return MessageActionChatEditPhoto(photo=PhotoEmpty(id=photo_id))
 
@@ -207,23 +206,6 @@ class Message(Model):
 
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessage | MessageService:
         if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None and not with_reactions:
-            file_ref_obj = None
-            if isinstance(cached.media, MessageMediaDocument):
-                file_ref_obj = cached.media.document
-            elif isinstance(cached.media, MessageMediaPhoto):
-                file_ref_obj = cached.media.photo
-
-            if self.media_id is not None \
-                    and file_ref_obj is not None \
-                    and not models.File.is_file_ref_valid(file_ref_obj.file_reference)[0]:
-                file = await models.File.get_or_none(messagemedias__messages__id=self.id)
-                if file is None:
-                    return cached
-
-                file_ref_obj.file_reference = file.create_file_ref(current_user)
-
-                await Cache.obj.set(self._cache_key(current_user), cached)
-
             return cached
 
         if self.type not in (MessageType.REGULAR, MessageType.SCHEDULED):

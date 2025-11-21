@@ -214,7 +214,7 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEnc
         if file is None:
             resp_file = EncryptedFileEmpty()
         else:
-            resp_file = await file.to_tl(user)
+            resp_file = file.to_tl()
         return SentEncryptedFile(date=int(update.date.timestamp()), file=resp_file)
     else:
         return SentEncryptedMessage(date=int(update.date.timestamp()))
