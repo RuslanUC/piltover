@@ -23,7 +23,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
-    UpdateNotifySettings
+    UpdateNotifySettings, UpdateSavedGifs
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1535,6 +1535,22 @@ async def update_peer_notify_settings(
             )
         ],
     )
+
+    await SessionManager.send(updates, user.id)
+
+    return updates
+
+
+async def update_saved_gifs(user: User) -> Updates:
+    await Update.create(
+        user=user,
+        update_type=UpdateType.SAVED_GIFS,
+        pts=await State.add_pts(user, 1),
+        pts_count=1,
+        related_id=None,
+    )
+
+    updates = UpdatesWithDefaults(updates=[UpdateSavedGifs()])
 
     await SessionManager.send(updates, user.id)
 

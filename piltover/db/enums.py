@@ -93,6 +93,7 @@ class UpdateType(IntEnum):
     BOT_CALLBACK_QUERY = 34
     UPDATE_PHONE = 35
     UPDATE_PEER_NOTIFY_SETTINGS = 36
+    SAVED_GIFS = 37
 
 
 class SecretUpdateType(IntEnum):

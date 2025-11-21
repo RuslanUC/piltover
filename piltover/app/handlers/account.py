@@ -797,3 +797,7 @@ async def update_notify_settings(request: UpdateNotifySettings, user: User) -> b
 
     await upd.update_peer_notify_settings(user, peer, not_peer, settings)
     return True
+
+
+# TODO: GetNotifyExceptions
+# TODO: ResetNotifySettings

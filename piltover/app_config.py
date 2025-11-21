@@ -64,6 +64,7 @@ class AppConfig:
     # TODO: add dialog filters (folders) limits
     PINNED_DIALOGS_LIMIT = int(environ.get("PINNED_DIALOGS_LIMIT", 5))
     FAVED_STICKERS_LIMIT = int(environ.get("FAVED_STICKERS_LIMIT", 15))
+    SAVED_GIFS_LIMIT = int(environ.get("SAVED_GIFS_LIMIT", 100))
 
     MAX_USER_ABOUT_LENGTH = 100  # Telegram uses 70 for regular users and 140 for premium
 
