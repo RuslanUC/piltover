@@ -6,7 +6,7 @@ from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx
-from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType
+from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
     Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings
@@ -23,7 +23,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
-    UpdateNotifySettings, NotifyPeer
+    UpdateNotifySettings
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1515,19 +1515,22 @@ async def update_user_phone(user: User) -> Updates:
     return updates
 
 
-async def update_peer_notify_settings(user: User, peer: Peer, settings: PeerNotifySettings) -> Updates:
+async def update_peer_notify_settings(
+        user: User, peer: Peer | None, not_peer: NotifySettingsNotPeerType | None, settings: PeerNotifySettings,
+) -> Updates:
     await Update.create(
         user=user,
         update_type=UpdateType.UPDATE_PEER_NOTIFY_SETTINGS,
         pts=await State.add_pts(user, 1),
         pts_count=1,
-        related_id=peer.id,
+        related_id=peer.id if peer is not None else None,
+        additional_data=[not_peer.value] if not_peer else None,
     )
 
     updates = UpdatesWithDefaults(
         updates=[
             UpdateNotifySettings(
-                peer=NotifyPeer(peer=peer.to_tl()),
+                peer=PeerNotifySettings.peer_to_tl(peer, not_peer),
                 notify_settings=settings.to_tl(),
             )
         ],

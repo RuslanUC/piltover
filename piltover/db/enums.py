@@ -258,3 +258,9 @@ STICKERS_STATE_TO_COMMAND_NAME = {
     StickersBotState.NEWPACK_WAIT_EMOJI: "newpack",
     None: None,
 }
+
+
+class NotifySettingsNotPeerType(IntEnum):
+    USERS = 0
+    CHATS = 1
+    CHANNELS = 2

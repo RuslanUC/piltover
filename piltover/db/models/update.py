@@ -6,7 +6,7 @@ from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.db import models
-from piltover.db.enums import UpdateType, PeerType, MessageType
+from piltover.db.enums import UpdateType, PeerType, MessageType, NotifySettingsNotPeerType
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
     UpdateDialogFilterOrder, UpdateRecentReactions, UpdateNewScheduledMessage
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
@@ -15,8 +15,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
-    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
-    NotifyPeer
+    UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -488,16 +487,27 @@ class Update(Model):
                 ), users_q, chats_q, channels_q
 
             case UpdateType.UPDATE_PEER_NOTIFY_SETTINGS:
-                settings = await models.PeerNotifySettings.get_or_none(
-                    peer__owner=user, peer__id=self.related_id,
-                ).select_related("peer")
+                peer = not_peer = None
+                if self.related_id is not None:
+                    settings = await models.PeerNotifySettings.get_or_none(
+                        user=user, peer__owner=user, peer__id=self.related_id,
+                    ).select_related("peer")
+                    if settings is not None and settings.peer is not None:
+                        peer = settings.peer
+                        users_q, chats_q, channels_q = settings.peer.query_users_chats(users_q, chats_q, channels_q)
+                elif self.additional_data and self.additional_data[0] in NotifySettingsNotPeerType._value2member_map_:
+                    settings = await models.PeerNotifySettings.get_or_none(
+                        user=user, peer=None, not_peer=NotifySettingsNotPeerType(self.additional_data[0]),
+                    ).select_related("peer")
+                    not_peer = settings.not_peer
+                else:
+                    return none_ret
+
                 if settings is None:
                     return none_ret
 
-                users_q, chats_q, channels_q = settings.peer.query_users_chats(users_q, chats_q, channels_q)
-
                 return UpdateNotifySettings(
-                    peer=NotifyPeer(peer=settings.peer.to_tl()),
+                    peer=models.PeerNotifySettings.peer_to_tl(peer, not_peer),
                     notify_settings=settings.to_tl(),
                 ), users_q, chats_q, channels_q
 

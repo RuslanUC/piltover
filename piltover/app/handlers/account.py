@@ -19,8 +19,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, \
-    UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
-    InputNotifyPeer
+    UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
@@ -265,14 +264,8 @@ async def update_profile(request: UpdateProfile, user: User):
 
 @handler.on_request(GetNotifySettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_notify_settings(request: GetNotifySettings, user: User) -> TLPeerNotifySettings:
-    if not isinstance(request.peer, InputNotifyPeer):
-        return PeerNotifySettings(
-            show_previews=True,
-            silent=False,
-        )
-
-    peer = await Peer.from_input_peer_raise(user, request.peer.peer)
-    settings, _ = await PeerNotifySettings.get_or_create(peer=peer)
+    peer, not_peer = await PeerNotifySettings.peer_from_tl(user, request.peer)
+    settings, _ = await PeerNotifySettings.get_or_create(user=user, peer=peer, not_peer=not_peer)
 
     return settings.to_tl()
 
@@ -789,21 +782,18 @@ async def update_personal_channel(request: UpdatePersonalChannel, user: User) ->
 
 @handler.on_request(UpdateNotifySettings)
 async def update_notify_settings(request: UpdateNotifySettings, user: User) -> bool:
-    if not isinstance(request.peer, InputNotifyPeer):
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
-
-    peer = await Peer.from_input_peer_raise(user, request.peer.peer)
+    peer, not_peer = await PeerNotifySettings.peer_from_tl(user, request.peer)
 
     if request.settings.mute_until:
         muted_until = datetime.fromtimestamp(request.settings.mute_until, UTC)
     else:
         muted_until = None
 
-    settings, _ = await PeerNotifySettings.update_or_create(peer=peer, defaults={
+    settings, _ = await PeerNotifySettings.update_or_create(user=user, peer=peer, not_peer=not_peer, defaults={
         "show_previews": request.settings.show_previews,
-        "muted": request.settings.silent,
+        "muted": request.settings.silent if request.settings.silent is not None else False,
         "muted_until": muted_until,
     })
 
-    await upd.update_peer_notify_settings(user, peer, settings)
+    await upd.update_peer_notify_settings(user, peer, not_peer, settings)
     return True
