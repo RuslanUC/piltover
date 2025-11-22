@@ -23,7 +23,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
-    UpdateNotifySettings, UpdateSavedGifs
+    UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1555,3 +1555,31 @@ async def update_saved_gifs(user: User) -> Updates:
     await SessionManager.send(updates, user.id)
 
     return updates
+
+
+async def bot_inline_query(bot: User, query: CallbackQuery) -> None:
+    new_pts = await State.add_pts(bot, 1)
+
+    await Update.create(
+        user=bot,
+        update_type=UpdateType.BOT_INLINE_QUERY,
+        pts=new_pts,
+        pts_count=1,
+        related_id=query.id,
+        related_ids=[],
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdateBotInlineQuery(
+                query_id=query.id,
+                user_id=query.user_id,
+                query=query.data.decode("utf8"),
+                peer_type=CallbackQuery.INLINE_PEER_TO_TL[query.inline_peer],
+                offset=query.offset,
+            )
+        ],
+        users=[await query.user.to_tl(bot)],
+    )
+
+    await SessionManager.send(updates, bot.id)

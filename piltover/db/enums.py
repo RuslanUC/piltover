@@ -94,6 +94,7 @@ class UpdateType(IntEnum):
     UPDATE_PHONE = 35
     UPDATE_PEER_NOTIFY_SETTINGS = 36
     SAVED_GIFS = 37
+    BOT_INLINE_QUERY = 38
 
 
 class SecretUpdateType(IntEnum):
@@ -265,3 +266,13 @@ class NotifySettingsNotPeerType(IntEnum):
     USERS = 0
     CHATS = 1
     CHANNELS = 2
+
+
+class InlineQueryPeer(IntEnum):
+    UNKNOWN = 0
+    USER = 1
+    BOT = 2
+    SAME_BOT = 3
+    CHAT = 4
+    CHANNEL = 5
+    SUPERGROUP = 6

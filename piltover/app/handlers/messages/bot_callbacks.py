@@ -9,13 +9,13 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.bots import process_callback_query
 from piltover.app.utils.utils import check_password_internal
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType, ChatBannedRights
+from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer
 from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc, InvalidConstructorException
-from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup
-from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer
-from piltover.tl.types.messages import BotCallbackAnswer
+from piltover.exceptions import ErrorRpc, InvalidConstructorException, Unreachable
+from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty
+from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer, GetInlineBotResults
+from piltover.tl.types.messages import BotCallbackAnswer, BotResults
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.bot_callbacks")
@@ -87,10 +87,11 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
 
         query = await CallbackQuery.create(user=user, message=message_for_bot, data=request.data)
 
-        await pubsub.listen(f"bot-callback-query/{query.id}", None)
+        topic = f"bot-callback-query/{query.id}"
+        await pubsub.listen(topic, None)
         await upd.bot_callback_query(message_for_bot.author, query)
 
-        result = await pubsub.listen(f"bot-callback-query/{query.id}", 15)
+        result = await pubsub.listen(topic, 15)
         if result is None:
             await query.delete()
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
@@ -114,6 +115,7 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> 
     async with in_transaction():
         query = await CallbackQuery.select_for_update(no_key=True).get_or_none(
             message__author=user, id=request.query_id, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
+            inline=False,
         )
         if query is None:
             raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
@@ -133,3 +135,70 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> 
         await query.delete()
 
     return True
+
+
+@handler.on_request(GetInlineBotResults, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> BotResults:
+    bot = await Peer.from_input_peer_raise(user, request.bot)
+    if bot.type is not PeerType.USER or not bot.user.bot:
+        raise ErrorRpc(error_code=400, error_message="BOT_INVALID")
+
+    if isinstance(request.peer, InputPeerEmpty):
+        query_peer = None
+    else:
+        peer = await Peer.from_input_peer_raise(user, request.peer)
+        if peer.type is PeerType.SELF:
+            query_peer = InlineQueryPeer.USER
+        elif peer.type is PeerType.USER and peer.user.bot and peer.user_id == bot.user_id:
+            query_peer = InlineQueryPeer.SAME_BOT
+        elif peer.type is PeerType.USER and peer.user.bot:
+            query_peer = InlineQueryPeer.BOT
+        elif peer.type is PeerType.USER:
+            query_peer = InlineQueryPeer.USER
+        elif peer.type is PeerType.CHAT:
+            query_peer = InlineQueryPeer.CHAT
+        elif peer.type is PeerType.CHANNEL and peer.channel.channel:
+            query_peer = InlineQueryPeer.CHANNEL
+        elif peer.type is PeerType.CHANNEL and peer.channel.supergroup:
+            query_peer = InlineQueryPeer.SUPERGROUP
+        else:
+            query_peer = None
+
+    if bot.user.system:
+        ...  # TODO: process inline query by builtin bot
+        # resp = await process_callback_query(peer, message, request.data)
+        # if resp is None:
+        #    raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+        #return resp
+        raise Unreachable
+    else:
+        ctx = request_ctx.get()
+        pubsub = ctx.worker.pubsub
+
+        query = await CallbackQuery.create(
+            user=user,
+            inline=True,
+            data=request.query.encode("utf8"),
+            offset=request.offset[:64],
+            inline_peer=query_peer,
+        )
+
+        topic = f"bot-inline-query/{query.id}"
+        await pubsub.listen(topic, None)
+        await upd.bot_inline_query(bot.user, query)
+
+        result = await pubsub.listen(topic, 15)
+        if result is None:
+            await query.delete()
+            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+
+        try:
+            results = BotResults.read(BytesIO(result))
+        except InvalidConstructorException as e:
+            logger.opt(exception=e).warning("Failed to read bot inline answer")
+            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+
+        return results
+
+
+# TODO: SetInlineBotResults

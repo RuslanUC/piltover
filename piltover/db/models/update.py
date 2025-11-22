@@ -16,7 +16,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
-    UpdateSavedGifs
+    UpdateSavedGifs, UpdateBotInlineQuery
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -26,7 +26,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
-              | UpdateNotifySettings | UpdateSavedGifs
+              | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery
 
 
 class Update(Model):
@@ -459,7 +459,7 @@ class Update(Model):
                 ), users_q, chats_q, channels_q
 
             case UpdateType.BOT_CALLBACK_QUERY:
-                query = await models.CallbackQuery.get_or_none(id=self.related_id).select_related(
+                query = await models.CallbackQuery.get_or_none(id=self.related_id, inline=False).select_related(
                     "message", "message__peer",
                 )
                 if query is None:
@@ -514,5 +514,20 @@ class Update(Model):
 
             case UpdateType.SAVED_GIFS:
                 return UpdateSavedGifs(), users_q, chats_q, channels_q
+
+            case UpdateType.BOT_INLINE_QUERY:
+                query = await models.CallbackQuery.get_or_none(id=self.related_id, inline=True)
+                if query is None:
+                    return none_ret
+
+                users_q |= Q(id=query.user_id)
+
+                return UpdateBotInlineQuery(
+                    query_id=query.id,
+                    user_id=query.user_id,
+                    query=query.data.decode("utf8"),
+                    peer_type=models.CallbackQuery.INLINE_PEER_TO_TL[query.inline_peer],
+                    offset=query.offset,
+                ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q
