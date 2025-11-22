@@ -85,7 +85,7 @@ class Stickerset(Model):
         )
 
     def documents_query(self) -> QuerySet[models.File]:
-        return models.File.filter(stickerset=self).order_by("sticker_pos")
+        return models.File.filter(stickerset=self).order_by("sticker_pos").select_related("stickerset")
 
     def gen_for_hash(self, stickers: list[models.File]) -> Generator[str | int, None, None]:
         yield self.id

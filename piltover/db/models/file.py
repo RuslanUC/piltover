@@ -208,10 +208,6 @@ class File(Model):
             access_hash = self.constant_access_hash
             file_ref = self.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
 
-        # TODO: fetch when fetching file
-        if self.stickerset is not None:
-            self.stickerset = await self.stickerset
-
         return TLDocument(
             id=self.id,
             access_hash=access_hash,

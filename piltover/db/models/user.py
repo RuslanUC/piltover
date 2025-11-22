@@ -44,17 +44,6 @@ class User(Model):
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
     is_lazy: bool = False
 
-    async def load_if_lazy(self) -> None:
-        if not self.is_lazy:
-            return
-
-        obj = await self.get(id=self.id)
-        for field in self._meta.db_fields:
-            setattr(self, field, getattr(obj, field, None))
-
-        self._saved_in_db = True
-        self.is_lazy = False
-
     async def get_username(self) -> models.Username | None:
         if self.cached_username is _USERNAME_MISSING:
             self.cached_username = await models.Username.get_or_none(user=self)
@@ -86,6 +75,7 @@ class User(Model):
 
         return photo
 
+    # TODO: remove "| None = None"
     async def to_tl(self, current_user: models.User | None = None) -> TLUser:
         # TODO: min (https://core.telegram.org/api/min)
         # TODO: add some "version" field and save tl user
