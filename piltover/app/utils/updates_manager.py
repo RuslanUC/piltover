@@ -9,7 +9,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
-    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings
+    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -1557,7 +1557,7 @@ async def update_saved_gifs(user: User) -> Updates:
     return updates
 
 
-async def bot_inline_query(bot: User, query: CallbackQuery) -> None:
+async def bot_inline_query(bot: User, query: InlineQuery) -> None:
     new_pts = await State.add_pts(bot, 1)
 
     await Update.create(
@@ -1574,8 +1574,8 @@ async def bot_inline_query(bot: User, query: CallbackQuery) -> None:
             UpdateBotInlineQuery(
                 query_id=query.id,
                 user_id=query.user_id,
-                query=query.data.decode("utf8"),
-                peer_type=CallbackQuery.INLINE_PEER_TO_TL[query.inline_peer],
+                query=query.query,
+                peer_type=InlineQuery.INLINE_PEER_TO_TL[query.inline_peer],
                 offset=query.offset,
             )
         ],

@@ -10,11 +10,13 @@ from piltover.app.bot_handlers.bots import process_callback_query
 from piltover.app.utils.utils import check_password_internal
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer
-from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery
+from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery, InlineQuery
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException, Unreachable
-from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty
-from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer, GetInlineBotResults
+from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty, InputBotInlineResult, \
+    InputBotInlineResultPhoto, InputBotInlineResultDocument, InputBotInlineMessageText, BotInlineResult
+from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer, GetInlineBotResults, \
+    SetInlineBotResults
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
 from piltover.worker import MessageHandler
 
@@ -115,7 +117,6 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> 
     async with in_transaction():
         query = await CallbackQuery.select_for_update(no_key=True).get_or_none(
             message__author=user, id=request.query_id, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
-            inline=False,
         )
         if query is None:
             raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
@@ -175,10 +176,10 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
         ctx = request_ctx.get()
         pubsub = ctx.worker.pubsub
 
-        query = await CallbackQuery.create(
+        query = await InlineQuery.create(
             user=user,
-            inline=True,
-            data=request.query.encode("utf8"),
+            bot=bot.user,
+            data=request.query[:128],
             offset=request.offset[:64],
             inline_peer=query_peer,
         )
@@ -202,3 +203,4 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
 
 
 # TODO: SetInlineBotResults
+# TODO: SendInlineBotResult

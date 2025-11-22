@@ -516,7 +516,7 @@ class Update(Model):
                 return UpdateSavedGifs(), users_q, chats_q, channels_q
 
             case UpdateType.BOT_INLINE_QUERY:
-                query = await models.CallbackQuery.get_or_none(id=self.related_id, inline=True)
+                query = await models.InlineQuery.get_or_none(id=self.related_id, bot=user)
                 if query is None:
                     return none_ret
 
@@ -525,8 +525,8 @@ class Update(Model):
                 return UpdateBotInlineQuery(
                     query_id=query.id,
                     user_id=query.user_id,
-                    query=query.data.decode("utf8"),
-                    peer_type=models.CallbackQuery.INLINE_PEER_TO_TL[query.inline_peer],
+                    query=query.query,
+                    peer_type=models.InlineQuery.INLINE_PEER_TO_TL[query.inline_peer],
                     offset=query.offset,
                 ), users_q, chats_q, channels_q
 

@@ -70,3 +70,4 @@ from .callback_query import CallbackQuery
 from .stickers_state import StickersBotUserState
 from .peer_notify_settings import PeerNotifySettings
 from .saved_gif import SavedGif
+from .inline_query import InlineQuery
