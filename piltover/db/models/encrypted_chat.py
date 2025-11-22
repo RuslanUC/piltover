@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 from datetime import datetime
 from os import urandom
 
 from tortoise import fields, Model
 
-from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.tl import Long, EncryptedChat as TLEncryptedChat, EncryptedChatWaiting, EncryptedChatRequested, \
     EncryptedChatDiscarded
-from piltover.tl.types.internal_access import AccessHashPayloadEncryptedChat
 
 
 class EncryptedChat(Model):

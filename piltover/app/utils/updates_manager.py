@@ -1290,7 +1290,7 @@ async def update_chat_wallpaper(user: User, target: User, chat_wallpaper: ChatWa
             UpdatePeerWallpaper(
                 wallpaper_overridden=chat_wallpaper.overridden if chat_wallpaper is not None else False,
                 peer=PeerUser(user_id=target.id),
-                wallpaper=await chat_wallpaper.wallpaper.to_tl(user) if chat_wallpaper is not None else None,
+                wallpaper=chat_wallpaper.wallpaper.to_tl(user) if chat_wallpaper is not None else None,
             )
         ],
         users=[await target.to_tl(user)]

@@ -46,7 +46,7 @@ class SecretUpdate(Model):
                         await self.fetch_related(
                             "authorization", "authorization__user", "message_file", "message_file__file",
                         )
-                        file = await self.message_file.to_tl(self.authorization.user)
+                        file = self.message_file.to_tl()
 
                     message = EncryptedMessage(
                         random_id=self.message_random_id,

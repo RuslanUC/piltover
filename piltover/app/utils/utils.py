@@ -15,7 +15,6 @@ import av
 from PIL.Image import Image, open as img_open
 from av import VideoFrame
 from loguru import logger
-from tortoise.expressions import Q
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType

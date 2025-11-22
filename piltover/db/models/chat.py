@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from tortoise import fields
 
-from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.db.models.chat_base import ChatBase

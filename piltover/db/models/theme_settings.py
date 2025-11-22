@@ -73,5 +73,5 @@ class ThemeSettings(Model):
             accent_color=self.accent_color,
             outbox_accent_color=self.outbox_accent_color,
             message_colors=message_colors,
-            wallpaper=await self.wallpaper.to_tl(user) if self.wallpaper is not None else None,
+            wallpaper=self.wallpaper.to_tl(user) if self.wallpaper is not None else None,
         )

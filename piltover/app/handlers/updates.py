@@ -10,7 +10,6 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType, MessageType
 from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate
 from piltover.db.models._utils import resolve_users_chats
-from piltover.exceptions import ErrorRpc
 from piltover.tl import UpdateChannelTooLong
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_133, GetChannelDifference
 from piltover.tl.types.updates import State as TLState, Difference, ChannelDifferenceEmpty, DifferenceEmpty, \

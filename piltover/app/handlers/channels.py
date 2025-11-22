@@ -21,7 +21,7 @@ from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session_manager import SessionManager
 from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
-    Long, InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
+    InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
@@ -664,7 +664,7 @@ async def toggle_signatures_136(request: ToggleSignatures_133, user: User):
 @handler.on_request(SetChatAvailableReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_chat_available_reactions(request: SetChatAvailableReactions, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+        user, request.peer, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
     channel = peer.channel

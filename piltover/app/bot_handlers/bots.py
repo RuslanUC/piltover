@@ -11,7 +11,7 @@ from piltover.app.bot_handlers.stickers.newpack_command import stickers_newpack_
 from piltover.app.bot_handlers.stickers.start_command import stickers_start_command
 from piltover.app.bot_handlers.stickers.text_handler import stickers_text_message_handler
 from piltover.app.bot_handlers.test_bot.ping_command import test_bot_ping_command
-from piltover.db.models import Peer, Message, User
+from piltover.db.models import Peer, Message
 from piltover.tl.types.messages import BotCallbackAnswer
 
 

@@ -56,7 +56,7 @@ async def get_full_user(request: GetFullUser, user: User):
             common_chats_count=0,
             birthday=await target_user.to_tl_birthday(user),
             read_dates_private=True,
-            wallpaper=await chat_wallpaper.wallpaper.to_tl(user) if chat_wallpaper is not None else None,
+            wallpaper=chat_wallpaper.wallpaper.to_tl(user) if chat_wallpaper is not None else None,
             has_scheduled=has_scheduled,
             ttl_period=bool(peer.user_ttl_period_days),
             pinned_msg_id=pinned_msg_id,

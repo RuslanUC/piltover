@@ -18,7 +18,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
-    Long, MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
+    MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines, \
     MessageActionChatEditPhoto
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
