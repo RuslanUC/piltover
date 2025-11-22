@@ -50,7 +50,7 @@ async def get_saved_gifs(request: GetSavedGifs, user: User) -> SavedGifs | Saved
     return SavedGifs(
         hash=gifs_hash,
         gifs=[
-            await gif.gif.to_tl_document()
+            gif.gif.to_tl_document()
             for gif in await query
         ]
     )

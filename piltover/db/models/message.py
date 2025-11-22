@@ -33,7 +33,7 @@ async def _process_service_message_action(
     if isinstance(action, MessageActionProcessSetChatWallpaper):
         wallpaper = await models.Wallpaper.get_or_none(id=action.wallpaper_id).select_related("document", "settings")
         if wallpaper is not None:
-            wallpaper_tl = await wallpaper.to_tl(user)
+            wallpaper_tl = wallpaper.to_tl(user)
         else:
             wallpaper_tl = WallPaperNoFile(id=0)
         return MessageActionSetChatWallPaper(

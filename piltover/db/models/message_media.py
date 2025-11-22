@@ -28,7 +28,7 @@ class MessageMedia(Model):
         if self.type is MediaType.DOCUMENT:
             return MessageMediaDocument(
                 spoiler=self.spoiler,
-                document=await self.file.to_tl_document(),
+                document=self.file.to_tl_document(),
             )
         elif self.type is MediaType.PHOTO:
             return MessageMediaPhoto(

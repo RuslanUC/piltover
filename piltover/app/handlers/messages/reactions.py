@@ -32,7 +32,7 @@ async def get_available_reactions(request: GetAvailableReactions) -> AvailableRe
     return AvailableReactions(
         hash=reactions_hash,
         reactions=[
-            await reaction.to_tl_available_reaction()
+            reaction.to_tl_available_reaction()
             for reaction in await Reaction.all().select_related(
                 "static_icon", "appear_animation", "select_animation", "activate_animation", "effect_animation",
                 "around_animation", "center_icon",

@@ -200,13 +200,17 @@ class File(Model):
 
         return sizes
 
-    async def to_tl_document(self) -> TLDocument:
+    def _make_hash_and_ref(self) -> tuple[int, bytes]:
         if self.constant_access_hash is None or self.constant_file_ref is None:
-            access_hash = -1
-            file_ref = FileReferencePayload(file_id=self.id, created_at=0).write()
+            return -1, FileReferencePayload(file_id=self.id, created_at=0).write()
         else:
-            access_hash = self.constant_access_hash
-            file_ref = self.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
+            return (
+                self.constant_access_hash,
+                self.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
+            )
+
+    def to_tl_document(self) -> TLDocument:
+        access_hash, file_ref = self._make_hash_and_ref()
 
         return TLDocument(
             id=self.id,
@@ -221,12 +225,7 @@ class File(Model):
         )
 
     def to_tl_photo(self) -> TLPhoto:
-        if self.constant_access_hash is None or self.constant_file_ref is None:
-            access_hash = -1
-            file_ref = FileReferencePayload(file_id=self.id, created_at=0).write()
-        else:
-            access_hash = self.constant_access_hash
-            file_ref = self.CONST_FILE_REF_ID_BYTES + Long.write(self.id) + self.constant_file_ref.bytes
+        access_hash, file_ref = self._make_hash_and_ref()
 
         return TLPhoto(
             id=self.id,

@@ -410,7 +410,7 @@ class Update(Model):
                 return UpdatePeerWallpaper(
                     wallpaper_overridden=chat_wallpaper.overridden if chat_wallpaper is not None else False,
                     peer=PeerUser(user_id=self.related_id),
-                    wallpaper=await wallpaper.to_tl(user) if wallpaper is not None else None,
+                    wallpaper=wallpaper.to_tl(user) if wallpaper is not None else None,
                 ), users_q, chats_q, channels_q
 
             case UpdateType.READ_MESSAGES_CONTENTS:

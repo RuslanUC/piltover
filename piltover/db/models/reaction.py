@@ -35,11 +35,11 @@ class Reaction(Model):
         return AvailableReaction(
             reaction=self.reaction,
             title=self.title,
-            static_icon=await self.static_icon.to_tl_document(),
-            appear_animation=await self.appear_animation.to_tl_document(),
-            select_animation=await self.select_animation.to_tl_document(),
-            activate_animation=await self.activate_animation.to_tl_document(),
-            effect_animation=await self.effect_animation.to_tl_document(),
-            around_animation=await self.around_animation.to_tl_document() if self.around_animation is not None else None,
-            center_icon=await self.center_icon.to_tl_document() if self.center_icon is not None else None,
+            static_icon=self.static_icon.to_tl_document(),
+            appear_animation=self.appear_animation.to_tl_document(),
+            select_animation=self.select_animation.to_tl_document(),
+            activate_animation=self.activate_animation.to_tl_document(),
+            effect_animation=self.effect_animation.to_tl_document(),
+            around_animation=self.around_animation.to_tl_document() if self.around_animation is not None else None,
+            center_icon=self.center_icon.to_tl_document() if self.center_icon is not None else None,
         )

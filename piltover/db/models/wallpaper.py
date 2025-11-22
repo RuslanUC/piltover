@@ -28,7 +28,7 @@ class Wallpaper(Model):
     document_id: int | None
     settings_id: int | None
 
-    async def to_tl(
+    def to_tl(
             self, user: models.User, settings: models.WallpaperSettings | None = None,
     ) -> WallPaper | WallPaperNoFile:
         if settings is None:
@@ -50,7 +50,7 @@ class Wallpaper(Model):
             dark=self.dark,
             access_hash=-1,
             slug=self.slug,
-            document=await self.document.to_tl_document(),
+            document=self.document.to_tl_document(),
             settings=settings.to_tl() if settings is not None else None,
         )
 

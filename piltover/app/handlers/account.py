@@ -606,7 +606,7 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
         settings=settings,
     )
 
-    return await wallpaper.to_tl(user)
+    return wallpaper.to_tl(user)
 
 
 @handler.on_request(GetWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -614,7 +614,7 @@ async def get_wallpaper(request: GetWallPaper, user: User) -> WallPaper:
     wallpaper = await Wallpaper.from_input(request.wallpaper)
     if wallpaper is None:
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
-    return await wallpaper.to_tl(user)
+    return wallpaper.to_tl(user)
 
 
 @handler.on_request(GetMultiWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -629,7 +629,7 @@ async def get_multi_wallpapers(request: GetMultiWallPapers, user: User) -> TLObj
         query &= q
 
     return TLObjectVector([
-        await wallpaper.to_tl(user)
+        wallpaper.to_tl(user)
         for wallpaper in await Wallpaper.filter(query).select_related("document", "settings")
     ])
 
@@ -709,7 +709,7 @@ async def get_wallpapers(request: GetWallPapers, user: User) -> WallPapers | Wal
     return WallPapers(
         hash=wallpapers_hash,
         wallpapers=[
-            await installed.wallpaper.to_tl(user, installed.settings)
+            installed.wallpaper.to_tl(user, installed.settings)
             for installed in await query.select_related("wallpaper", "wallpaper__document", "settings")
         ]
     )

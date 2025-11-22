@@ -102,7 +102,7 @@ class Stickerset(Model):
             packs=[],
             keywords=[],  # TODO: add support for keywords
             documents=[
-                await file.to_tl_document()
+                file.to_tl_document()
                 for file in await self.documents_query()
             ],
         )
