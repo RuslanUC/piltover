@@ -25,11 +25,6 @@ async def get_sponsored_messages() -> SponsoredMessages | SponsoredMessagesEmpty
     return SponsoredMessagesEmpty()
 
 
-@handler.on_request(GetSavedGifs)
-async def get_saved_gifs() -> SavedGifs | SavedGifsNotModified:
-    return SavedGifsNotModified()
-
-
 @handler.on_request(GetMyBoosts, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_my_boosts() -> MyBoosts:
     return MyBoosts(my_boosts=[], chats=[], users=[])

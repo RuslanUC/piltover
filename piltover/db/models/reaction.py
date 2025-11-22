@@ -31,7 +31,7 @@ class Reaction(Model):
     def q_from_reaction(cls, reaction: str) -> Q:
         return Q(reaction_id=cls.reaction_to_uuid(reaction))
 
-    async def to_tl_available_reaction(self) -> AvailableReaction:
+    def to_tl_available_reaction(self) -> AvailableReaction:
         return AvailableReaction(
             reaction=self.reaction,
             title=self.title,

@@ -15,6 +15,7 @@ from piltover.db.enums import PeerType
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.in_memory_broker import InMemoryMessageBroker
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
+from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
 from piltover.session_manager import SessionManager
 from piltover.storage import LocalFileStorage
 from piltover.tl.functions.internal import CallRpc
@@ -140,6 +141,9 @@ class Worker(MessageHandler):
             self.broker = AioPikaBroker(rabbitmq_address, result_backend=RedisAsyncResultBackend(redis_address))
             self.message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
 
+        # TODO: add RedisPubSub
+        self.pubsub = InMemoryPubSub()
+
         # self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
         self.broker.register_task(self._handle_tl_rpc_measure_time, "handle_tl_rpc")
         self.broker.register_task(self._handle_scheduled_message, "send_scheduled")
@@ -150,9 +154,11 @@ class Worker(MessageHandler):
     async def _broker_startup(self, _) -> None:
         await self.message_broker.startup()
         SessionManager.set_broker(self.message_broker)
+        await self.pubsub.startup()
 
     async def _broker_shutdown(self, _) -> None:
         await self.message_broker.shutdown()
+        await self.pubsub.startup()
 
     @classmethod
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False) -> User | None:

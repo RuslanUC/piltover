@@ -1,13 +1,18 @@
 from asyncio import sleep
 from datetime import timedelta, datetime, UTC
+from io import BytesIO
+
+from loguru import logger
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.bots import process_callback_query
 from piltover.app.utils.utils import check_password_internal
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType, ChatBannedRights
 from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup
 from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer
 from piltover.tl.types.messages import BotCallbackAnswer
@@ -77,32 +82,26 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
         return resp
     else:
+        ctx = request_ctx.get()
+        pubsub = ctx.worker.pubsub
+
         query = await CallbackQuery.create(user=user, message=message_for_bot, data=request.data)
+
+        await pubsub.listen(f"bot-callback-query/{query.id}", None)
         await upd.bot_callback_query(message_for_bot.author, query)
 
-        for _ in range(15):
-            await sleep(1)
-            await query.refresh_from_db(fields=[
-                "response",
-                "response_alert",
-                "response_message",
-                "response_url",
-                "cache_time",
-            ])
-            if query.response:
-                break
-        else:
+        result = await pubsub.listen(f"bot-callback-query/{query.id}", 15)
+        if result is None:
             await query.delete()
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
 
-        return BotCallbackAnswer(
-            alert=query.response_alert,
-            has_url=query.response_url is not None,
-            native_ui=True,
-            message=query.response_message,
-            url=query.response_url,
-            cache_time=query.cache_time,
-        )
+        try:
+            answer = BotCallbackAnswer.read(BytesIO(result))
+        except InvalidConstructorException as e:
+            logger.opt(exception=e).warning("Failed to read bot callback answer")
+            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+
+        return answer
 
 
 @handler.on_request(SetBotCallbackAnswer, ReqHandlerFlags.USER_NOT_ALLOWED)
@@ -110,26 +109,27 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> 
     if request.message and len(request.message) > 240:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
-    query = await CallbackQuery.get_or_none(
-        message__author=user, id=request.query_id, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
-    )
+    ctx = request_ctx.get()
 
-    if query is None:
-        raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
-    if query.response:
-        return True
+    async with in_transaction():
+        query = await CallbackQuery.select_for_update(no_key=True).get_or_none(
+            message__author=user, id=request.query_id, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
+        )
+        if query is None:
+            raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
 
-    query.response = True
-    query.response_message = request.message
-    query.response_url = request.url
-    query.response_alert = request.alert
-    query.cache_time = request.cache_time
-    await query.save(update_fields=[
-        "response",
-        "response_message",
-        "response_url",
-        "response_alert",
-        "cache_time",
-    ])
+        await ctx.worker.pubsub.notify(
+            topic=f"bot-callback-query/{query.id}",
+            data=BotCallbackAnswer(
+                alert=request.alert,
+                has_url=request.url is not None,
+                native_ui=True,
+                message=request.message,
+                url=request.url,
+                cache_time=request.cache_time,
+            ).write(),
+        )
+
+        await query.delete()
 
     return True
