@@ -49,6 +49,7 @@ class MediaType(IntEnum):
     DOCUMENT = 0
     PHOTO = 1
     POLL = 2
+    CONTACT = 3
 
 
 class UpdateType(IntEnum):

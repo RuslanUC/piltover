@@ -16,14 +16,14 @@ from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
-    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
+    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
-    LongVector, DocumentAttributeFilename
+    LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -528,11 +528,12 @@ async def _get_media_thumb(
 
 
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
-    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll)):
+    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll, InputMediaContact)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     file: File | None = None
     poll: Poll | None = None
+    static_data: bytes | None = None
     mime: str | None = None
     media_type: MediaType | None = None
     attributes = []
@@ -546,6 +547,8 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         media_type = MediaType.PHOTO
     elif isinstance(media, InputMediaPoll):
         media_type = MediaType.POLL
+    elif isinstance(media, InputMediaContact):
+        media_type = MediaType.CONTACT
 
     if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_133, InputMediaUploadedPhoto)):
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
@@ -641,8 +644,32 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
                 PollAnswer(poll=poll, text=answer.text, option=answer.option, correct=answer.option == correct_option)
                 for answer in media.poll.answers
             ])
+    elif isinstance(media, InputMediaContact):
+        contact_user_id = 0
+        contact_query = Contact.filter(
+            Q(target__phone_number=media.phone_number) | Q(phone_number=media.phone_number), owner=user,
+        ).first().values_list("target_id", flat=True)
 
-    return await MessageMedia.create(file=file, spoiler=getattr(media, "spoiler", False), type=media_type, poll=poll)
+        if media.phone_number == user.phone_number:
+            contact_user_id = user.id
+        elif (contact_id := await contact_query) is not None:
+            contact_user_id = contact_id
+
+        static_data = MessageMediaContact(
+            phone_number=media.phone_number,
+            first_name=media.first_name,
+            last_name=media.last_name,
+            vcard=media.vcard,
+            user_id=contact_user_id,
+        ).write()
+
+    return await MessageMedia.create(
+        file=file,
+        spoiler=getattr(media, "spoiler", False),
+        type=media_type,
+        poll=poll,
+        static_data=static_data,
+    )
 
 
 @handler.on_request(SendMedia_148)
