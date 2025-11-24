@@ -9,7 +9,7 @@ from piltover.db import models
 from piltover.db.enums import MediaType
 from piltover.exceptions import InvalidConstructorException
 from piltover.tl import MessageMediaUnsupported, MessageMediaPhoto, MessageMediaDocument, MessageMediaPoll, \
-    MessageMediaContact
+    MessageMediaContact, MessageMediaGeo
 
 MessageMediaTypes = MessageMediaUnsupported | MessageMediaPhoto | MessageMediaDocument | MessageMediaPoll \
                     | MessageMediaContact
@@ -58,5 +58,16 @@ class MessageMedia(Model):
                 return MessageMediaUnsupported()
 
             return contact
+        elif self.type is MediaType.GEOPOINT:
+            if self.static_data is None:
+                logger.warning("Expected \"static_data\" to be non-null for geo media type")
+                return MessageMediaUnsupported()
+            try:
+                geo = MessageMediaGeo.read(BytesIO(self.static_data))
+            except InvalidConstructorException as e:
+                logger.opt(exception=e).warning("Invalid \"static_data\" data for geo media type")
+                return MessageMediaUnsupported()
+
+            return geo
 
         return MessageMediaUnsupported()

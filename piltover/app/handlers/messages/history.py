@@ -26,7 +26,8 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
-    InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo
+    InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo, \
+    InputMessagesFilterContacts, InputMessagesFilterGeo
 from piltover.tl.base import MessagesFilter as MessagesFilterBase
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
@@ -77,11 +78,12 @@ def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | Non
         return Q(id__in=Subquery(
             MessageMention.filter(peer_q, peer__owner__id=peer.owner_id).values_list("message__id", flat=True)
         ))
+    elif isinstance(filter_, InputMessagesFilterContacts):
+        return Q(media__type=MediaType.CONTACT)
+    elif isinstance(filter_, InputMessagesFilterGeo):
+        return Q(media__type=MediaType.GEOPOINT)
     elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
-        # TODO:
-        #  InputMessagesFilterContacts
-        #  InputMessagesFilterGeo
-        #  InputMessagesFilterPhoneCalls
+        # TODO: InputMessagesFilterPhoneCalls
         logger.warning(f"Unsupported filter: {filter_}")
         return Q(id=0)
 

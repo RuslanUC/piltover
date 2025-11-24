@@ -23,7 +23,8 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
-    LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact
+    LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
+    GeoPoint, InputGeoPoint
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -528,7 +529,7 @@ async def _get_media_thumb(
 
 
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
-    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll, InputMediaContact)):
+    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll, InputMediaContact, InputMediaGeoPoint)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     file: File | None = None
@@ -549,6 +550,8 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         media_type = MediaType.POLL
     elif isinstance(media, InputMediaContact):
         media_type = MediaType.CONTACT
+    elif isinstance(media, InputMediaGeoPoint):
+        media_type = MediaType.GEOPOINT
 
     if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_133, InputMediaUploadedPhoto)):
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
@@ -661,6 +664,17 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             last_name=media.last_name,
             vcard=media.vcard,
             user_id=contact_user_id,
+        ).write()
+    elif isinstance(media, InputMediaGeoPoint):
+        if not isinstance(media.geo_point, InputGeoPoint):
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+        static_data = MessageMediaGeo(
+            geo=GeoPoint(
+                long=media.geo_point.long,
+                lat=media.geo_point.lat,
+                access_hash=0,  # ??
+                accuracy_radius=media.geo_point.accuracy_radius,
+            ),
         ).write()
 
     return await MessageMedia.create(

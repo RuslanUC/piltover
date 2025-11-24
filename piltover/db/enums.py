@@ -50,6 +50,7 @@ class MediaType(IntEnum):
     PHOTO = 1
     POLL = 2
     CONTACT = 3
+    GEOPOINT = 4
 
 
 class UpdateType(IntEnum):
