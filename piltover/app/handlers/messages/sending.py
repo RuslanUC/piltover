@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime, UTC, timedelta
 from time import time
 from typing import cast
+from uuid import UUID
 
 from loguru import logger
 from tortoise.expressions import Q
@@ -576,7 +577,9 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
         file_q = Q(id=media.id.id)
         if const:
-            file_q &= Q(constant_access_hash=media.id.access_hash, constant_file_ref=media.id.file_reference[12:])
+            file_q &= Q(
+                constant_access_hash=media.id.access_hash, constant_file_ref=UUID(bytes=media.id.file_reference[12:])
+            )
         else:
             ctx = request_ctx.get()
             if not File.check_access_hash(user.id, ctx.auth_id, media.id.id, media.id.access_hash):
@@ -965,7 +968,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
         media_q = Q(file__id=media_id.id)
         if const:
             file_ref = media_id.file_reference[12:]
-            media_q &= Q(file__constant_access_hash=media_id.access_hash, file__constant_file_ref=file_ref)
+            media_q &= Q(file__constant_access_hash=media_id.access_hash, file__constant_file_ref=UUID(bytes=file_ref))
         else:
             ctx = request_ctx.get()
             if not File.check_access_hash(user.id, ctx.auth_id, media_id.id, media_id.access_hash):

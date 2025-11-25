@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from uuid import UUID
 
 from tortoise.expressions import Q
 
@@ -23,7 +24,9 @@ async def save_gif(request: SaveGif, user: User) -> bool:
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
     file_q = Q(id=request.id.id)
     if const:
-        file_q &= Q(constant_access_hash=request.id.access_hash, constant_file_ref=request.id.file_reference[12:])
+        file_q &= Q(
+            constant_access_hash=request.id.access_hash, constant_file_ref=UUID(bytes=request.id.file_reference[12:])
+        )
     else:
         ctx = request_ctx.get()
         if not File.check_access_hash(user.id, ctx.auth_id, request.id.id, request.id.access_hash):

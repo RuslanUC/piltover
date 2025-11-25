@@ -20,7 +20,8 @@ from piltover.storage.base import StorageBuffer, StorageType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords, \
-    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int
+    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int, \
+    DocumentAttributeHasStickers
 from piltover.tl.base import PhotoSizeInst
 from piltover.tl.types.internal_access import AccessHashPayloadFile, FileReferencePayload
 
@@ -120,8 +121,6 @@ class File(Model):
     def attributes_to_tl(self) -> list:
         result = []
 
-        if self.filename:
-            result.append(DocumentAttributeFilename(file_name=self.filename))
         if self.type not in (FileType.DOCUMENT_VIDEO_NOTE, FileType.DOCUMENT_VIDEO) and self.width and self.height:
             result.append(DocumentAttributeImageSize(w=self.width, h=self.height))
         elif self.type in (FileType.DOCUMENT_VIDEO_NOTE, FileType.DOCUMENT_VIDEO):
@@ -134,9 +133,9 @@ class File(Model):
                 nosound=self.nosound,
                 preload_prefix_size=self.preload_prefix_size,
             ))
-        elif self.type is FileType.DOCUMENT_STICKER:
+        if self.type is FileType.DOCUMENT_STICKER:
             stickerset_ = InputStickerSetEmpty()
-            if self.stickerset is not None:
+            if self.stickerset_id is not None:
                 stickerset_ = InputStickerSetID(id=self.stickerset.id, access_hash=self.stickerset.access_hash)
             result.append(DocumentAttributeSticker(
                 alt=self.sticker_alt or "",
@@ -154,6 +153,8 @@ class File(Model):
                 performer=self.performer,
                 waveform=self.waveform,
             ))
+        if self.filename:
+            result.append(DocumentAttributeFilename(file_name=self.filename))
 
         return result
 

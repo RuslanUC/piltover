@@ -171,7 +171,7 @@ async def _get_sticker_files(
         )
         if const:
             files_q |= base_q & Q(
-                constant_access_hash=input_doc.access_hash, constant_file_ref=input_doc.file_reference,
+                constant_access_hash=input_doc.access_hash, constant_file_ref=UUID(bytes=input_doc.file_reference),
             )
         else:
             ctx = request_ctx.get()
@@ -223,7 +223,7 @@ async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: Sti
     )
     if const:
         file_q |= base_q & Q(
-            constant_access_hash=input_doc.access_hash, constant_file_ref=input_doc.file_reference,
+            constant_access_hash=input_doc.access_hash, constant_file_ref=UUID(bytes=input_doc.file_reference),
         )
     else:
         ctx = request_ctx.get()
@@ -371,7 +371,7 @@ async def _get_sticker_with_set(sticker: InputDocument, user: User) -> tuple[Fil
         raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
 
     file = await File.get_or_none(
-        id=sticker.id, constant_access_hash=sticker.access_hash, constant_file_ref=sticker.file_reference,
+        id=sticker.id, constant_access_hash=sticker.access_hash, constant_file_ref=UUID(bytes=sticker.file_reference),
         stickerset__owner=user,
     ).select_related("stickerset")
 

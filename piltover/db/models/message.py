@@ -192,7 +192,7 @@ class Message(Model):
 
         media = None
         if self.media is not None:
-            self.media = await self.media
+            await self.fetch_related("media", "media__file", "media__file__stickerset")
             media = await self.media.to_tl(current_user) if self.media is not None else None
 
         if self.fwd_header is not None:
