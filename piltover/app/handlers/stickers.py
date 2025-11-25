@@ -68,7 +68,7 @@ async def check_stickerset_short_name(request: CheckShortName, prefix: str = "")
 # https://core.telegram.org/stickers
 
 
-async def _validate_png_webp(file: File) -> None:
+async def validate_png_webp(file: File) -> None:
     if file.size > 512 * 1024:
         raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
@@ -199,7 +199,7 @@ async def _get_sticker_files(
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
         if file.mime_type in ("image/png", "image/webp"):
-            await _validate_png_webp(file)
+            await validate_png_webp(file)
         elif file.mime_type == "video/webm":
             # TODO: support video stickers
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
@@ -237,7 +237,7 @@ async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: Sti
         raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
 
     if file.mime_type in ("image/png", "image/webp"):
-        await _validate_png_webp(file)
+        await validate_png_webp(file)
     elif file.mime_type == "video/webm":
         # TODO: support video stickers
         raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
@@ -249,7 +249,7 @@ async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: Sti
     return file
 
 
-async def _make_sticker_from_file(
+async def make_sticker_from_file(
         file: File, stickerset: Stickerset, pos: int, alt: str, mask: bool, mask_coords: MaskCoords | None,
         create: bool = True,
 ) -> File:
@@ -317,7 +317,6 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
         set_type = StickerSetType.EMOJIS
 
     files, set_type = await _get_sticker_files(request.stickers, user, set_type)
-    files_to_create = []
 
     files_to_save = [file for file in files.values() if file.needs_save]
     if files_to_save:
@@ -340,10 +339,11 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
         thumb_new_file = await _make_stickerset_thumb_from_file(thumb_file)
         await StickersetThumb.create(set=stickerset, file=thumb_new_file)
 
+    files_to_create = []
     for idx, input_sticker in enumerate(request.stickers):
         file = files[input_sticker.document.id]
         files_to_create.append(
-            await _make_sticker_from_file(
+            await make_sticker_from_file(
                 file, stickerset, idx, input_sticker.emoji, request.masks, input_sticker.mask_coords, False,
             )
         )
@@ -559,7 +559,7 @@ async def add_sticker_to_set(request: AddStickerToSet, user: User) -> MessagesSt
     if count >= 120:
         raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")
 
-    await _make_sticker_from_file(
+    await make_sticker_from_file(
         file, stickerset, count, request.sticker.emoji, stickerset.type is StickerSetType.MASKS,
         request.sticker.mask_coords,
     )
@@ -581,7 +581,7 @@ async def replace_sticker(request: ReplaceSticker, user: User) -> MessagesSticke
     old_file.sticker_pos = None
     await old_file.save(update_fields=["stickerset_id", "sticker_pos"])
 
-    await _make_sticker_from_file(
+    await make_sticker_from_file(
         file, stickerset, old_file.sticker_pos, request.new_sticker.emoji, stickerset.type is StickerSetType.MASKS,
         request.new_sticker.mask_coords
     )

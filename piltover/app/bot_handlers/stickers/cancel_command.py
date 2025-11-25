@@ -1,6 +1,6 @@
 from typing import cast
 
-from piltover.db.enums import BOTFATHER_STATE_TO_COMMAND_NAME, StickersBotState
+from piltover.db.enums import BOTFATHER_STATE_TO_COMMAND_NAME, StickersBotState, STICKERS_STATE_TO_COMMAND_NAME
 from piltover.db.models import Peer, Message
 from piltover.db.models.stickers_state import StickersBotUserState
 
@@ -21,7 +21,7 @@ async def stickers_cancel_command(peer: Peer, _: Message) -> Message | None:
     )
     await StickersBotUserState.filter(user=peer.owner).delete()
 
-    command = BOTFATHER_STATE_TO_COMMAND_NAME[state]
+    command = STICKERS_STATE_TO_COMMAND_NAME[state]
     if command is None:
         text = __text_no_command
     else:

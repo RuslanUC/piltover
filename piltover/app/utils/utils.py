@@ -107,7 +107,7 @@ def _resize_image_internal(location: str, to_size: int) -> tuple[BytesIO, int, i
         height = to_size
 
     out = BytesIO()
-    img.resize((width, height)).save(out, format="JPEG")
+    img.resize((width, height)).save(out, format="PNG" if img.mode == "RGBA" else "JPEG")
     return out, width, height
 
 

@@ -33,7 +33,7 @@ Stats
 /packusagetop – get usage stats for your set
 
 /cancel – cancel the current operation
-"""
+""".strip()
 
 
 async def stickers_start_command(peer: Peer, _: Message) -> Message | None:
