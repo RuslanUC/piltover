@@ -256,7 +256,7 @@ async def make_sticker_from_file(
     new_file = File(
         physical_id=file.physical_id,
         created_at=file.created_at,
-        mime_type=file.mime_type,
+        mime_type="image/webp" if file.mime_type == "image/png" else file.mime_type,
         size=file.size,
         type=FileType.DOCUMENT_STICKER,
         constant_access_hash=Long.read_bytes(xorshift128plus_bytes(8)),
@@ -266,6 +266,9 @@ async def make_sticker_from_file(
         height=file.height,
         duration=file.duration,
         nosound=file.nosound,
+        photo_sizes=file.photo_sizes,
+        photo_stripped=file.photo_stripped,
+        photo_path=file.photo_path,
         stickerset=stickerset,
         sticker_pos=pos,
         sticker_alt=alt.strip(),
@@ -512,7 +515,7 @@ async def get_stickerset(request: GetStickerSet, user: User) -> MessagesStickerS
     if isinstance(request.stickerset, InputStickerSetAnimatedEmoji):
         return MessagesStickerSet(
             set=StickerSet(
-                id=1,
+                id=10000000000,
                 access_hash=1,
                 title="Telegram For Android, stfu",
                 short_name="animatedemojiorwhatever",

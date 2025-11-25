@@ -20,8 +20,7 @@ from piltover.storage.base import StorageBuffer, StorageType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords, \
-    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int, \
-    DocumentAttributeHasStickers
+    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int
 from piltover.tl.base import PhotoSizeInst
 from piltover.tl.types.internal_access import AccessHashPayloadFile, FileReferencePayload
 

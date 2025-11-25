@@ -147,5 +147,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
             await InstalledStickerset.create(set=stickerset, user=peer.owner)
 
+            await state.delete()
+
         await upd.new_stickerset(peer.owner, stickerset)
         return await send_bot_message(peer, __text_published.format(short_name=short_name))
