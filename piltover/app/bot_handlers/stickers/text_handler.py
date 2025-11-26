@@ -1,18 +1,18 @@
 from io import BytesIO
 
-from loguru import logger
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app.bot_handlers.stickers.utils import send_bot_message
+from piltover.app.bot_handlers.stickers.utils import send_bot_message, get_stickerset_selection_keyboard
 from piltover.app.handlers.stickers import validate_png_webp, check_stickerset_short_name, make_sticker_from_file
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import StickersBotState, MediaType, StickerSetType
 from piltover.db.models import Peer, Message, Stickerset, File, InstalledStickerset
 from piltover.db.models.stickers_state import StickersBotUserState
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
+from piltover.tl import ReplyKeyboardMarkup
 from piltover.tl.functions.stickers import CheckShortName
-from piltover.tl.types.internal_stickersbot import StickersStateNewpack, NewpackInputSticker
+from piltover.tl.types.internal_stickersbot import StickersStateNewpack, NewpackInputSticker, StickersStateAddsticker
 from piltover.utils.emoji import purely_emoji
 
 __newpack_send_sticker = """
@@ -27,6 +27,7 @@ Thanks! Now send me an emoji that corresponds to your first sticker.
 
 You can list several emoji in one message, but I recommend using no more than two per sticker.
 """.strip()
+__newpack_send_emoji_invalid = "Please send us an emoji that best describes your sticker."
 __newpack_sticker_added = """
 Congratulations. Stickers in the set: {num}. To add another sticker, send me the next sticker as a .PNG or .WEBP file.
 
@@ -43,6 +44,13 @@ __text_published = """
 Kaboom! I've just published your sticker set. Here's your link: https://t.me/addstickers/{short_name}
 
 You can share it with other Telegram users — they'll be able to add your stickers to their sticker panel by following the link. Just make sure they're using an up to date version of the app.
+""".strip()
+__addsticker_shortname_invalid = "Invalid set selected."
+__addsticker_sticker_added = """
+There we go. I've added your sticker to the set, it will become available to all Telegram users within an hour. 
+
+To add another sticker, send me the next sticker.
+When you're done, simply send the /done command.
 """.strip()
 
 
@@ -63,7 +71,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
         return await send_bot_message(peer, __newpack_send_sticker)
 
-    if state.state is StickersBotState.NEWPACK_WAIT_IMAGE:
+    if state.state in (StickersBotState.NEWPACK_WAIT_IMAGE, StickersBotState.ADDSTICKER_WAIT_IMAGE):
         if message.media is None:
             return await send_bot_message(peer, __newpack_invalid_file)
         if message.media.type is not MediaType.DOCUMENT:
@@ -77,30 +85,43 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         if message.media.file.needs_save:
             await message.media.file.save(update_fields=["width", "height"])
 
-        state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
-        state_data.stickers.append(NewpackInputSticker(file_id=message.media.file.id, emoji=""))
-
-        await state.update_state(
-            StickersBotState.NEWPACK_WAIT_EMOJI,
-            state_data.serialize(),
-        )
+        if state.state is StickersBotState.NEWPACK_WAIT_IMAGE:
+            state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
+            state_data.stickers.append(NewpackInputSticker(file_id=message.media.file.id, emoji=""))
+            await state.update_state(
+                StickersBotState.NEWPACK_WAIT_EMOJI,
+                state_data.serialize(),
+            )
+        elif state.state is StickersBotState.ADDSTICKER_WAIT_IMAGE:
+            state_data = StickersStateAddsticker.deserialize(BytesIO(state.data))
+            state_data.file_id = message.media.file.id
+            await state.update_state(
+                StickersBotState.ADDSTICKER_WAIT_EMOJI,
+                state_data.serialize(),
+            )
+        else:
+            raise Unreachable
 
         return await send_bot_message(peer, __newpack_send_emoji)
 
-    if state.state is StickersBotState.NEWPACK_WAIT_EMOJI:
+    if state.state in (StickersBotState.NEWPACK_WAIT_EMOJI, StickersBotState.ADDSTICKER_WAIT_EMOJI):
         emoji = message.message.strip()
         if not emoji or not purely_emoji(emoji) or len(emoji) > 4:
-            return await send_bot_message(peer, "Send emoji")  # TODO: correct text
+            return await send_bot_message(peer, __newpack_send_emoji_invalid)
 
-        state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
-        state_data.stickers[-1].emoji = emoji
-
-        await state.update_state(
-            StickersBotState.NEWPACK_WAIT_IMAGE,
-            state_data.serialize(),
-        )
-
-        return await send_bot_message(peer, __newpack_sticker_added.format(num=len(state_data.stickers)))
+        if state.state is StickersBotState.NEWPACK_WAIT_IMAGE:
+            state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
+            state_data.stickers[-1].emoji = emoji
+            await state.update_state(
+                StickersBotState.NEWPACK_WAIT_IMAGE,
+                state_data.serialize(),
+            )
+            return await send_bot_message(peer, __newpack_sticker_added.format(num=len(state_data.stickers)))
+        elif state.state is StickersBotState.ADDSTICKER_WAIT_EMOJI:
+            ...  # TODO: add sticker to set
+            return await send_bot_message(peer, __addsticker_sticker_added)
+        else:
+            raise Unreachable
 
     if state.state is StickersBotState.NEWPACK_WAIT_ICON:
         await state.update_state(StickersBotState.NEWPACK_WAIT_SHORT_NAME, None)
@@ -151,3 +172,23 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
         await upd.new_stickerset(peer.owner, stickerset)
         return await send_bot_message(peer, __text_published.format(short_name=short_name))
+
+    if state.state is StickersBotState.ADDSTICKER_WAIT_PACK:
+        sel_short_name = message.message.strip()
+        if not sel_short_name:
+            keyboard_rows = await get_stickerset_selection_keyboard(peer.owner)
+            keyboard = ReplyKeyboardMarkup(rows=keyboard_rows, single_use=True) if keyboard_rows else None
+            return await send_bot_message(peer, __addsticker_shortname_invalid, keyboard)
+
+        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
+        if stickerset is None:
+            keyboard_rows = await get_stickerset_selection_keyboard(peer.owner)
+            keyboard = ReplyKeyboardMarkup(rows=keyboard_rows, single_use=True) if keyboard_rows else None
+            return await send_bot_message(peer, __addsticker_shortname_invalid, keyboard)
+
+        await state.update_state(
+            StickersBotState.ADDSTICKER_WAIT_IMAGE,
+            StickersStateAddsticker(set_id=stickerset.id, file_id=-1).serialize(),
+        )
+
+        return await send_bot_message(peer, __newpack_send_sticker)

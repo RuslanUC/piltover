@@ -1,42 +1,27 @@
-from tortoise.expressions import Subquery
-
-from piltover.db.models import Username, User, Bot, Peer, Message
-from piltover.tl import KeyboardButtonRow, KeyboardButtonCallback
+from piltover.db.models import User, Peer, Message, Stickerset
+from piltover.tl import KeyboardButtonRow, KeyboardButton, ReplyInlineMarkup, ReplyKeyboardMarkup
 
 
-async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[KeyboardButtonRow] | None:
-    user_bots = await Username.filter(
-        user__bot=True, user__id__in=Subquery(
-            Bot.filter(owner=user).order_by("-bot__id").limit(7).offset(page * 6).values_list("bot__id")
-        ),
-    ).order_by("-user__id").values_list("username", "user__id")
+async def get_stickerset_selection_keyboard(user: User) -> list[KeyboardButtonRow] | None:
+    stickersets = await Stickerset.filter(owner=user).order_by("-id").values_list("short_name")
 
-    if not user_bots and not page:
+    if not stickersets:
         return None
 
-    has_prev_page = page > 0
-    has_next_page = len(user_bots) == 7
-    user_bots = user_bots[:6]
-
     rows = []
-    for idx, (username, bot_id) in enumerate(user_bots):
+    for idx, short_name in enumerate(stickersets):
         if idx % 2 == 0:
             rows.append(KeyboardButtonRow(buttons=[]))
-        rows[-1].buttons.append(KeyboardButtonCallback(
-            text=f"@{username}",
-            data=f"bots/{bot_id}".encode("latin1"),
-        ))
-
-    if has_prev_page or has_next_page:
-        rows.append(KeyboardButtonRow(buttons=[]))
-    if has_prev_page:
-        rows[-1].buttons.append(KeyboardButtonCallback(text=f"<-", data=f"mybots/page/{page - 1}".encode("latin1")))
-    if has_next_page:
-        rows[-1].buttons.append(KeyboardButtonCallback(text=f"->", data=f"mybots/page/{page + 1}".encode("latin1")))
+        rows[-1].buttons.append(KeyboardButton(text=short_name))
 
     return rows
 
 
-async def send_bot_message(peer: Peer, text: str) -> Message:
-    messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=text)
+async def send_bot_message(
+        peer: Peer, text: str, keyboard: ReplyInlineMarkup | ReplyKeyboardMarkup | None = None
+) -> Message:
+    messages = await Message.create_for_peer(
+        peer, None, None, peer.user, False,
+        message=text, reply_markup=keyboard.write() if keyboard else None,
+    )
     return messages[peer]

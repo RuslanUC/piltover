@@ -256,6 +256,9 @@ class StickersBotState(IntEnum):
     NEWPACK_WAIT_EMOJI = 3
     NEWPACK_WAIT_ICON = 4
     NEWPACK_WAIT_SHORT_NAME = 5
+    ADDSTICKER_WAIT_PACK = 6
+    ADDSTICKER_WAIT_IMAGE = 7
+    ADDSTICKER_WAIT_EMOJI = 8
 
 
 STICKERS_STATE_TO_COMMAND_NAME = {
@@ -264,6 +267,9 @@ STICKERS_STATE_TO_COMMAND_NAME = {
     StickersBotState.NEWPACK_WAIT_EMOJI: "newpack",
     StickersBotState.NEWPACK_WAIT_ICON: "newpack",
     StickersBotState.NEWPACK_WAIT_SHORT_NAME: "newpack",
+    StickersBotState.ADDSTICKER_WAIT_PACK: "addsticker",
+    StickersBotState.ADDSTICKER_WAIT_IMAGE: "addsticker",
+    StickersBotState.ADDSTICKER_WAIT_EMOJI: "addsticker",
     None: None,
 }
 
