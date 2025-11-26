@@ -118,7 +118,26 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             )
             return await send_bot_message(peer, __newpack_sticker_added.format(num=len(state_data.stickers)))
         elif state.state is StickersBotState.ADDSTICKER_WAIT_EMOJI:
-            ...  # TODO: add sticker to set
+            state_data = StickersStateAddsticker.deserialize(BytesIO(state.data))
+
+            stickerset = await Stickerset.get_or_none(owner=peer.owner, id=state_data.set_id)
+            if stickerset is None:
+                return await send_bot_message(peer, "This stickerset does not exist.")
+            file = await File.get_or_none(id=state_data.file_id)
+            if file is None:
+                return await send_bot_message(peer, "This file does not exist.")
+
+            count = await File.filter(stickerset=stickerset).count()
+
+            await make_sticker_from_file(file, stickerset, count, emoji, False, None)
+            stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+            await stickerset.save(update_fields=["hash"])
+
+            await state.update_state(
+                StickersBotState.ADDSTICKER_WAIT_IMAGE,
+                StickersStateAddsticker(set_id=stickerset.id, file_id=0).serialize(),
+            )
+
             return await send_bot_message(peer, __addsticker_sticker_added)
         else:
             raise Unreachable
@@ -188,7 +207,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
         await state.update_state(
             StickersBotState.ADDSTICKER_WAIT_IMAGE,
-            StickersStateAddsticker(set_id=stickerset.id, file_id=-1).serialize(),
+            StickersStateAddsticker(set_id=stickerset.id, file_id=0).serialize(),
         )
 
         return await send_bot_message(peer, __newpack_send_sticker)

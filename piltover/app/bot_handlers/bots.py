@@ -44,6 +44,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
         "publish": stickers_publish_command,
         "skip": stickers_skip_command,
         "addsticker": stickers_addsticker_command,
+        "done": stickers_addsticker_command,
     }
 }
 CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, Message, bytes], Awaitable[BotCallbackAnswer | None]]] = {
