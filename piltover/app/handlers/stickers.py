@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
 from loguru import logger
-from tortoise.expressions import Q, F
+from tortoise.expressions import Q, F, Subquery
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -810,6 +810,7 @@ async def clear_recent_stickers(request: ClearRecentStickers, user: User) -> boo
         return True
 
     await RecentSticker.filter(user=user).delete()
+    await upd.update_stickersets(user)
 
     return True
 
@@ -820,7 +821,9 @@ async def save_recent_stickers(request: SaveRecentSticker, user: User) -> bool:
         return True
 
     if request.unsave:
-        await RecentSticker.filter(user=user, sticker__id=request.id.id).delete()
+        await RecentSticker.filter(id__in=Subquery(
+            RecentSticker.filter(user=user, sticker__id=request.id.id).values_list("id", flat=True)
+        )).delete()
         return True
 
     doc = request.id
@@ -833,6 +836,7 @@ async def save_recent_stickers(request: SaveRecentSticker, user: User) -> bool:
         raise ErrorRpc(error_code=400, error_message="STICKER_ID_INVALID")
 
     await RecentSticker.update_time_or_create(user, sticker)
+    await upd.update_stickersets(user)
 
     return True
 

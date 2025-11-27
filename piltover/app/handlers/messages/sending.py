@@ -17,7 +17,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
-    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact
+    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -726,6 +726,10 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     reply_to_message_id = _resolve_reply_id(request)
     is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
     reply_markup = await process_reply_markup(request.reply_markup, user)
+
+    if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
+        await RecentSticker.update_time_or_create(user, media.file)
+        await upd.update_stickersets(user)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,

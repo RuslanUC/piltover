@@ -16,7 +16,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
-    UpdateSavedGifs, UpdateBotInlineQuery
+    UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -26,7 +26,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
-              | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery
+              | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers
 
 
 class Update(Model):
@@ -529,5 +529,8 @@ class Update(Model):
                     peer_type=models.InlineQuery.INLINE_PEER_TO_TL[query.inline_peer],
                     offset=query.offset,
                 ), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_RECENT_STICKERS:
+                return UpdateRecentStickers(), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

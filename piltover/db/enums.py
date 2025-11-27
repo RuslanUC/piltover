@@ -97,6 +97,7 @@ class UpdateType(IntEnum):
     UPDATE_PEER_NOTIFY_SETTINGS = 36
     SAVED_GIFS = 37
     BOT_INLINE_QUERY = 38
+    UPDATE_RECENT_STICKERS = 39
 
 
 class SecretUpdateType(IntEnum):
