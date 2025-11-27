@@ -6,12 +6,15 @@ from base64 import b85encode, b85decode
 from datetime import datetime
 from io import BytesIO
 from time import time
+from typing import Self
 from uuid import UUID, uuid4
 
 from PIL import UnidentifiedImageError
 from tortoise import fields, Model
+from tortoise.expressions import Q
 
 from piltover.app_config import AppConfig
+from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.exceptions import Unreachable
@@ -282,3 +285,32 @@ class File(Model):
         created_at = Int.write(created_at)
         payload = Long.write(user) + Long.write(file) + created_at
         return created_at + hmac.new(AppConfig.HMAC_KEY, payload, hashlib.sha256).digest()
+
+    @classmethod
+    async def from_input(
+            cls, user_id: int, file_id: int, access_hash: int, file_reference: bytes,
+            type_: FileType | None = None, mimes: list[str] | None = None, add_query: Q | None = None,
+    ) -> Self | None:
+        valid, const = File.is_file_ref_valid(file_reference, user_id, file_id)
+        if not valid:
+            return None
+
+        file_q = Q(id=file_id)
+        if type_ is not None:
+            file_q &= Q(type=type_)
+        if mimes is not None:
+            file_q &= Q(mime_type__in=mimes)
+        if add_query is not None:
+            file_q &= add_query
+
+        if const:
+            file_q &= Q(
+                constant_access_hash=access_hash,
+                constant_file_ref=UUID(bytes=file_reference[12:]),
+            )
+        else:
+            ctx = request_ctx.get()
+            if not File.check_access_hash(user_id, ctx.auth_id, file_id, access_hash):
+                return None
+
+        return await File.get_or_none(file_q)

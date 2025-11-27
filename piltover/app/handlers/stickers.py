@@ -11,21 +11,23 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash, get_image_dims
+from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import FileType, StickerSetType
-from piltover.db.models import User, Stickerset, File, InstalledStickerset, StickersetThumb
+from piltover.db.models import User, Stickerset, File, InstalledStickerset, StickersetThumb, RecentSticker
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
     InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty, \
     InputStickerSetAnimatedEmoji, StickerSet
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
-    UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets
+    UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets, GetRecentStickers, \
+    ClearRecentStickers, SaveRecentSticker
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet, SetStickerSetThumb
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, \
     AllStickers, AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive, \
-    ArchivedStickers
+    ArchivedStickers, RecentStickers, RecentStickersNotModified
 from piltover.utils.emoji import purely_emoji
 from piltover.worker import MessageHandler
 
@@ -212,26 +214,13 @@ async def _get_sticker_files(
 
 
 async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: StickerSetType) -> File:
-    file_q = Q()
-
-    valid, const = File.is_file_ref_valid(input_doc.file_reference, user.id, input_doc.id)
-    if not valid:
-        raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
-
-    base_q = Q(
-        id=input_doc.id, type=FileType.DOCUMENT, mime_type__in=allowed_mimes, stickerset=None,
+    file = await File.from_input(
+        user.id, input_doc.id, input_doc.access_hash, input_doc.file_reference, FileType.DOCUMENT, allowed_mimes,
+        Q(stickerset=None),
     )
-    if const:
-        file_q |= base_q & Q(
-            constant_access_hash=input_doc.access_hash, constant_file_ref=UUID(bytes=input_doc.file_reference),
-        )
-    else:
-        ctx = request_ctx.get()
-        if not File.check_access_hash(user.id, ctx.auth_id, input_doc.id, input_doc.access_hash):
-            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-    if (file := await File.get_or_none(file_q)) is None:
-        raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
+    if file is None:
+        raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
     if file.mime_type not in set_types_to_mimes[set_type]:
         raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
@@ -369,14 +358,10 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
 
 
 async def _get_sticker_with_set(sticker: InputDocument, user: User) -> tuple[File, Stickerset]:
-    valid, const = File.is_file_ref_valid(sticker.file_reference, user.id, sticker.id)
-    if not valid or not const:
-        raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
-
-    file = await File.get_or_none(
-        id=sticker.id, constant_access_hash=sticker.access_hash, constant_file_ref=UUID(bytes=sticker.file_reference),
-        stickerset__owner=user,
-    ).select_related("stickerset")
+    file = await File.from_input(
+        user.id, sticker.id, sticker.access_hash, sticker.file_reference, FileType.DOCUMENT_STICKER,
+        add_query=Q(stickerset__owner=user),
+    )
 
     if file is None:
         raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
@@ -790,13 +775,70 @@ async def set_stickerset_thumb(request: SetStickerSetThumb, user: User) -> Messa
     return await stickerset.to_tl_messages(user)
 
 
+@handler.on_request(GetRecentStickers)
+async def get_recent_stickers(request: GetRecentStickers, user: User) -> RecentStickers | RecentStickersNotModified:
+    if request.attached:
+        return RecentStickers(hash=0, packs=[], stickers=[], dates=[])
+
+    query = RecentSticker.filter(
+        user=user,
+    ).order_by("-used_at").limit(AppConfig.RECENT_STICKERS_LIMIT).select_related("sticker", "sticker__stickerset")
+    ids = await query.values_list("id", flat=True)
+
+    stickers_hash = telegram_hash(ids, 64)
+    if stickers_hash and request.hash and stickers_hash == request.hash:
+        return RecentStickersNotModified()
+
+    stickers = []
+    dates = []
+
+    for recent in await query:
+        stickers.append(recent.sticker.to_tl_document())
+        dates.append(int(recent.used_at.timestamp()))
+
+    return RecentStickers(
+        hash=stickers_hash,
+        packs=[],
+        stickers=stickers,
+        dates=dates,
+    )
+
+
+@handler.on_request(ClearRecentStickers)
+async def clear_recent_stickers(request: ClearRecentStickers, user: User) -> bool:
+    if request.attached:
+        return True
+
+    await RecentSticker.filter(user=user).delete()
+
+    return True
+
+
+@handler.on_request(SaveRecentSticker)
+async def save_recent_stickers(request: SaveRecentSticker, user: User) -> bool:
+    if request.attached:
+        return True
+
+    if request.unsave:
+        await RecentSticker.filter(user=user, sticker__id=request.id.id).delete()
+        return True
+
+    doc = request.id
+    sticker = await File.from_input(
+        user.id, doc.id, doc.access_hash, doc.file_reference, FileType.DOCUMENT_STICKER,
+        add_query=Q(stickerset__not=None),
+    )
+
+    if sticker is None:
+        raise ErrorRpc(error_code=400, error_message="STICKER_ID_INVALID")
+
+    await RecentSticker.update_time_or_create(user, sticker)
+
+    return True
+
+
 # working with stickersets:
 # TODO: GetStickers
-
-# working with recent stickers:
-# TODO: GetRecentStickers
-# TODO: ClearRecentStickers
-# TODO: SaveRecentSticker
 
 # working with faved stickers:
 # TODO: FaveSticker

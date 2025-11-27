@@ -7,6 +7,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
+from piltover.db.enums import FileType
 from piltover.db.models import User, SavedGif, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -19,19 +20,10 @@ handler = MessageHandler("messages.gifs")
 
 @handler.on_request(SaveGif, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_gif(request: SaveGif, user: User) -> bool:
-    valid, const = File.is_file_ref_valid(request.id.file_reference, user.id, request.id.id)
-    if not valid:
-        raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
-    file_q = Q(id=request.id.id)
-    if const:
-        file_q &= Q(
-            constant_access_hash=request.id.access_hash, constant_file_ref=UUID(bytes=request.id.file_reference[12:])
-        )
-    else:
-        ctx = request_ctx.get()
-        if not File.check_access_hash(user.id, ctx.auth_id, request.id.id, request.id.access_hash):
-            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="access_hash is invalid")
-    file = await File.get_or_none(file_q)
+    doc = request.id
+    file = await File.from_input(user.id, doc.id, doc.access_hash, doc.file_reference, FileType.DOCUMENT_GIF)
+    if file is None:
+        raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     await SavedGif.update_or_create(user=user, file=file, defaults={
         "last_access": datetime.now(UTC)
