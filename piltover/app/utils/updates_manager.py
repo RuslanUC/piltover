@@ -23,7 +23,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
-    UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers
+    UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1595,6 +1595,24 @@ async def update_recent_stickers(user: User) -> Updates:
     )
 
     updates = UpdatesWithDefaults(updates=[UpdateRecentStickers()])
+
+    await SessionManager.send(updates, user.id)
+
+    return updates
+
+
+async def update_faved_stickers(user: User) -> Updates:
+    new_pts = await State.add_pts(user, 1)
+
+    await Update.create(
+        user=user,
+        update_type=UpdateType.UPDATE_FAVED_STICKERS,
+        pts=new_pts,
+        pts_count=1,
+        related_id=None,
+    )
+
+    updates = UpdatesWithDefaults(updates=[UpdateFavedStickers()])
 
     await SessionManager.send(updates, user.id)
 

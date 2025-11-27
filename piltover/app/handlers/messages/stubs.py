@@ -76,15 +76,6 @@ async def get_featured_stickers():  # pragma: no cover
     )
 
 
-@handler.on_request(GetFavedStickers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_faved_stickers():  # pragma: no cover
-    return FavedStickers(
-        hash=0,
-        packs=[],
-        stickers=[],
-    )
-
-
 @handler.on_request(GetCustomEmojiDocuments, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_custom_emoji_documents(request: GetCustomEmojiDocuments):  # pragma: no cover
     return TLObjectVector([DocumentEmpty(id=doc) for doc in request.document_id])

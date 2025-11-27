@@ -729,7 +729,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
 
     if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
         await RecentSticker.update_time_or_create(user, media.file)
-        await upd.update_stickersets(user)
+        await upd.update_recent_stickers(user)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,

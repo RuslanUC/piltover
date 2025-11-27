@@ -14,7 +14,7 @@ from piltover.app.utils.utils import telegram_hash, get_image_dims
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import FileType, StickerSetType
-from piltover.db.models import User, Stickerset, File, InstalledStickerset, StickersetThumb, RecentSticker
+from piltover.db.models import User, Stickerset, File, InstalledStickerset, StickersetThumb, RecentSticker, FavedSticker
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
@@ -22,12 +22,12 @@ from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStick
     InputStickerSetAnimatedEmoji, StickerSet
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets, GetRecentStickers, \
-    ClearRecentStickers, SaveRecentSticker
+    ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet, SetStickerSetThumb
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, \
     AllStickers, AllStickersNotModified, StickerSetInstallResultSuccess, StickerSetInstallResultArchive, \
-    ArchivedStickers, RecentStickers, RecentStickersNotModified
+    ArchivedStickers, RecentStickers, RecentStickersNotModified, FavedStickers, FavedStickersNotModified
 from piltover.utils.emoji import purely_emoji
 from piltover.worker import MessageHandler
 
@@ -824,6 +824,7 @@ async def save_recent_stickers(request: SaveRecentSticker, user: User) -> bool:
         await RecentSticker.filter(id__in=Subquery(
             RecentSticker.filter(user=user, sticker__id=request.id.id).values_list("id", flat=True)
         )).delete()
+        await upd.update_recent_stickers(user)
         return True
 
     doc = request.id
@@ -836,14 +837,55 @@ async def save_recent_stickers(request: SaveRecentSticker, user: User) -> bool:
         raise ErrorRpc(error_code=400, error_message="STICKER_ID_INVALID")
 
     await RecentSticker.update_time_or_create(user, sticker)
-    await upd.update_stickersets(user)
+    await upd.update_recent_stickers(user)
 
     return True
 
 
+@handler.on_request(FaveSticker)
+async def fave_sticker(request: FaveSticker, user: User) -> bool:
+    if request.unfave:
+        await FavedSticker.filter(id__in=Subquery(
+            FavedSticker.filter(user=user, sticker__id=request.id.id).values_list("id", flat=True)
+        )).delete()
+        await upd.update_faved_stickers(user)
+        return True
+
+    doc = request.id
+    sticker = await File.from_input(
+        user.id, doc.id, doc.access_hash, doc.file_reference, FileType.DOCUMENT_STICKER,
+        add_query=Q(stickerset__not=None),
+    )
+
+    if sticker is None:
+        raise ErrorRpc(error_code=400, error_message="STICKER_ID_INVALID")
+
+    await FavedSticker.update_time_or_create(user, sticker)
+    await upd.update_faved_stickers(user)
+
+    return True
+
+
+@handler.on_request(GetFavedStickers)
+async def get_faved_stickers(request: GetFavedStickers, user: User) -> FavedStickers | FavedStickersNotModified:
+    query = FavedSticker.filter(
+        user=user,
+    ).order_by("-faved_at").limit(AppConfig.FAVED_STICKERS_LIMIT).select_related("sticker", "sticker__stickerset")
+    ids = await query.values_list("id", flat=True)
+
+    stickers_hash = telegram_hash(ids, 64)
+    if stickers_hash and request.hash and stickers_hash == request.hash:
+        return FavedStickersNotModified()
+
+    return FavedStickers(
+        hash=stickers_hash,
+        packs=[],
+        stickers=[
+            faved.sticker.to_tl_document()
+            for faved in await query
+        ],
+    )
+
+
 # working with stickersets:
 # TODO: GetStickers
-
-# working with faved stickers:
-# TODO: FaveSticker
-# TODO: GetFavedStickers

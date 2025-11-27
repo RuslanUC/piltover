@@ -16,7 +16,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
-    UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers
+    UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -26,7 +26,8 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateRecentReactions | UpdateNewAuthorization | UpdateNewStickerSet | UpdateStickerSets \
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
-              | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers
+              | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers \
+              | UpdateFavedStickers
 
 
 class Update(Model):
@@ -532,5 +533,8 @@ class Update(Model):
 
             case UpdateType.UPDATE_RECENT_STICKERS:
                 return UpdateRecentStickers(), users_q, chats_q, channels_q
+
+            case UpdateType.UPDATE_FAVED_STICKERS:
+                return UpdateFavedStickers(), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

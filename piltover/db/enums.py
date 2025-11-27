@@ -98,6 +98,7 @@ class UpdateType(IntEnum):
     SAVED_GIFS = 37
     BOT_INLINE_QUERY = 38
     UPDATE_RECENT_STICKERS = 39
+    UPDATE_FAVED_STICKERS = 40
 
 
 class SecretUpdateType(IntEnum):

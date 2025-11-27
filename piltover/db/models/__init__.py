@@ -72,3 +72,4 @@ from .peer_notify_settings import PeerNotifySettings
 from .saved_gif import SavedGif
 from .inline_query import InlineQuery
 from .recent_sticker import RecentSticker
+from .faved_sticker import FavedSticker
