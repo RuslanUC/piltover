@@ -8,6 +8,7 @@ from piltover.app.bot_handlers.botfather.start_command import botfather_start_co
 from piltover.app.bot_handlers.botfather.text_handler import botfather_text_message_handler
 from piltover.app.bot_handlers.stickers.addsticker_command import stickers_addsticker_command
 from piltover.app.bot_handlers.stickers.cancel_command import stickers_cancel_command
+from piltover.app.bot_handlers.stickers.editsticker_command import stickers_editsticker_command
 from piltover.app.bot_handlers.stickers.newpack_command import stickers_newpack_command
 from piltover.app.bot_handlers.stickers.publish_command import stickers_publish_command
 from piltover.app.bot_handlers.stickers.skip_command import stickers_skip_command
@@ -45,6 +46,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
         "skip": stickers_skip_command,
         "addsticker": stickers_addsticker_command,
         "done": stickers_addsticker_command,
+        "editsticker": stickers_editsticker_command,
     }
 }
 CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, Message, bytes], Awaitable[BotCallbackAnswer | None]]] = {

@@ -6,13 +6,14 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.stickers.utils import send_bot_message, get_stickerset_selection_keyboard
 from piltover.app.handlers.stickers import validate_png_webp, check_stickerset_short_name, make_sticker_from_file
 from piltover.app.utils.utils import telegram_hash
-from piltover.db.enums import StickersBotState, MediaType, StickerSetType
+from piltover.db.enums import StickersBotState, MediaType, StickerSetType, FileType
 from piltover.db.models import Peer, Message, Stickerset, File, InstalledStickerset
 from piltover.db.models.stickers_state import StickersBotUserState
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ReplyKeyboardMarkup
 from piltover.tl.functions.stickers import CheckShortName
-from piltover.tl.types.internal_stickersbot import StickersStateNewpack, NewpackInputSticker, StickersStateAddsticker
+from piltover.tl.types.internal_stickersbot import StickersStateNewpack, NewpackInputSticker, StickersStateAddsticker, \
+    StickersStateEditsticker
 from piltover.utils.emoji import purely_emoji
 
 __newpack_send_sticker = """
@@ -52,6 +53,22 @@ There we go. I've added your sticker to the set, it will become available to all
 To add another sticker, send me the next sticker.
 When you're done, simply send the /done command.
 """.strip()
+__editsticker_send_sticker = "Please send me the sticker you want to edit."
+__editsticker_now_owner = "Sorry, I can't do this. Looks like you are not the owner of the relevant set."
+__editsticker_send_emoji = """
+Current emoji: {current}
+Please send me some new emoji that correspond to this sticker.
+
+You can list several emoji in one message, but I recommend using no more than two per sticker. Send /cancel to keep the current emoji.
+""".strip()
+__editsticker_send_sticker_invalid = "Please send me the sticker."
+__editsticker_saved = "I edited your sticker. Hope you like it better this way."
+
+
+async def _invalid_set_selected(peer: Peer) -> Message:
+    keyboard_rows = await get_stickerset_selection_keyboard(peer.owner)
+    keyboard = ReplyKeyboardMarkup(rows=keyboard_rows, single_use=True) if keyboard_rows else None
+    return await send_bot_message(peer, __addsticker_shortname_invalid, keyboard)
 
 
 async def stickers_text_message_handler(peer: Peer, message: Message) -> Message | None:
@@ -104,12 +121,15 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
         return await send_bot_message(peer, __newpack_send_emoji)
 
-    if state.state in (StickersBotState.NEWPACK_WAIT_EMOJI, StickersBotState.ADDSTICKER_WAIT_EMOJI):
+    if state.state in (
+            StickersBotState.NEWPACK_WAIT_EMOJI, StickersBotState.ADDSTICKER_WAIT_EMOJI,
+            StickersBotState.EDITSTICKER_WAIT_EMOJI,
+    ):
         emoji = message.message.strip()
         if not emoji or not purely_emoji(emoji) or len(emoji) > 4:
             return await send_bot_message(peer, __newpack_send_emoji_invalid)
 
-        if state.state is StickersBotState.NEWPACK_WAIT_IMAGE:
+        if state.state is StickersBotState.NEWPACK_WAIT_EMOJI:
             state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
             state_data.stickers[-1].emoji = emoji
             await state.update_state(
@@ -139,6 +159,15 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             )
 
             return await send_bot_message(peer, __addsticker_sticker_added)
+        elif state.state is StickersBotState.EDITSTICKER_WAIT_EMOJI:
+            state_data = StickersStateEditsticker.deserialize(BytesIO(state.data))
+            file = await File.get_or_none(id=state_data.file_id)
+            if file is None:
+                return await send_bot_message(peer, "This file does not exist (???).")
+            file.sticker_alt = emoji
+            await file.save(update_fields=["sticker_alt"])
+            await state.delete()
+            return await send_bot_message(peer, __editsticker_saved)
         else:
             raise Unreachable
 
@@ -192,22 +221,53 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         await upd.new_stickerset(peer.owner, stickerset)
         return await send_bot_message(peer, __text_published.format(short_name=short_name))
 
-    if state.state is StickersBotState.ADDSTICKER_WAIT_PACK:
+    if state.state in (StickersBotState.ADDSTICKER_WAIT_PACK, StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER):
+        editsticker = state.state is StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER
+        if editsticker and message.media and message.media.file and message.media.file.type is FileType.DOCUMENT_STICKER:
+            sticker = message.media.file
+            if sticker.stickerset.owner_id != peer.owner_id:
+                return await send_bot_message(peer, __editsticker_now_owner)
+            await state.update_state(
+                StickersBotState.EDITSTICKER_WAIT_EMOJI,
+                StickersStateEditsticker(set_id=None, file_id=sticker.id).serialize(),
+            )
+            return await send_bot_message(peer, __editsticker_send_emoji.format(current=sticker.sticker_alt))
+        elif editsticker and message.media:
+            return await _invalid_set_selected(peer)
+
         sel_short_name = message.message.strip()
         if not sel_short_name:
-            keyboard_rows = await get_stickerset_selection_keyboard(peer.owner)
-            keyboard = ReplyKeyboardMarkup(rows=keyboard_rows, single_use=True) if keyboard_rows else None
-            return await send_bot_message(peer, __addsticker_shortname_invalid, keyboard)
+            return await _invalid_set_selected(peer)
 
         stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
         if stickerset is None:
-            keyboard_rows = await get_stickerset_selection_keyboard(peer.owner)
-            keyboard = ReplyKeyboardMarkup(rows=keyboard_rows, single_use=True) if keyboard_rows else None
-            return await send_bot_message(peer, __addsticker_shortname_invalid, keyboard)
+            return await _invalid_set_selected(peer)
 
+        if state.state is StickersBotState.ADDSTICKER_WAIT_PACK:
+            await state.update_state(
+                StickersBotState.ADDSTICKER_WAIT_IMAGE,
+                StickersStateAddsticker(set_id=stickerset.id, file_id=0).serialize(),
+            )
+            return await send_bot_message(peer, __newpack_send_sticker)
+        elif state.state is StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER:
+            await state.update_state(
+                StickersBotState.EDITSTICKER_WAIT_STICKER,
+                StickersStateEditsticker(set_id=stickerset.id, file_id=None).serialize(),
+            )
+            return await send_bot_message(peer, __editsticker_send_sticker)
+        else:
+            raise Unreachable
+
+    if state.state is StickersBotState.EDITSTICKER_WAIT_STICKER:
+        if not message.media or not message.media.file or message.media.file.type is not FileType.DOCUMENT_STICKER:
+            return await send_bot_message(peer, __editsticker_send_sticker_invalid)
+
+        sticker = message.media.file
+        if sticker.stickerset.owner_id != peer.owner_id:
+            return await send_bot_message(peer, __editsticker_now_owner)
         await state.update_state(
-            StickersBotState.ADDSTICKER_WAIT_IMAGE,
-            StickersStateAddsticker(set_id=stickerset.id, file_id=0).serialize(),
+            StickersBotState.EDITSTICKER_WAIT_EMOJI,
+            StickersStateEditsticker(set_id=None, file_id=sticker.id).serialize(),
         )
+        return await send_bot_message(peer, __editsticker_send_emoji.format(current=sticker.sticker_alt))
 
-        return await send_bot_message(peer, __newpack_send_sticker)
