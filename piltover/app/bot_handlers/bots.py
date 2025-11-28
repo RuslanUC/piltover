@@ -12,6 +12,7 @@ from piltover.app.bot_handlers.stickers.delpack_command import stickers_delpack_
 from piltover.app.bot_handlers.stickers.editsticker_command import stickers_editsticker_command
 from piltover.app.bot_handlers.stickers.newpack_command import stickers_newpack_command
 from piltover.app.bot_handlers.stickers.publish_command import stickers_publish_command
+from piltover.app.bot_handlers.stickers.renamepack_command import stickers_renamepack_command
 from piltover.app.bot_handlers.stickers.skip_command import stickers_skip_command
 from piltover.app.bot_handlers.stickers.start_command import stickers_start_command
 from piltover.app.bot_handlers.stickers.text_handler import stickers_text_message_handler
@@ -49,6 +50,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
         "done": stickers_addsticker_command,
         "editsticker": stickers_editsticker_command,
         "delpack": stickers_delpack_command,
+        "renamepack": stickers_renamepack_command,
     }
 }
 CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, Message, bytes], Awaitable[BotCallbackAnswer | None]]] = {
