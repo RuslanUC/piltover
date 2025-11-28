@@ -378,7 +378,7 @@ class Update(Model):
                 ), users_q, chats_q, channels_q
 
             case UpdateType.NEW_STICKERSET:
-                if (stickerset := await models.Stickerset.get_or_none(id=self.related_id)) is None:
+                if (stickerset := await models.Stickerset.get_or_none(id=self.related_id, deleted=False)) is None:
                     return none_ret
 
                 return UpdateNewStickerSet(

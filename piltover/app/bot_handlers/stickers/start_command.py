@@ -17,11 +17,11 @@ Stickers & Masks
 
 /addsticker – add a sticker to an existing set
 /editsticker – change emoji or coordinates
-/replacesticker – replace stickers in a set
-/ordersticker – reorder stickers in a set
-/delsticker – remove a sticker from an existing set
-/setpackicon – set a sticker set icon
-/renamepack – rename a set
+/replacesticker – replace stickers in a set - TODO
+/ordersticker – reorder stickers in a set - TODO
+/delsticker – remove a sticker from an existing set - TODO
+/setpackicon – set a sticker set icon - TODO
+/renamepack – rename a set - TODO
 /delpack – delete a set
 
 Stats

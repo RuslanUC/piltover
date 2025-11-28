@@ -137,7 +137,7 @@ class File(Model):
             ))
         if self.type is FileType.DOCUMENT_STICKER:
             stickerset_ = InputStickerSetEmpty()
-            if self.stickerset_id is not None:
+            if self.stickerset_id is not None and not self.stickerset.deleted:
                 stickerset_ = InputStickerSetID(id=self.stickerset.id, access_hash=self.stickerset.access_hash)
             result.append(DocumentAttributeSticker(
                 alt=self.sticker_alt or "",

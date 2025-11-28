@@ -16,12 +16,13 @@ from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 class Stickerset(Model):
     id: int = fields.BigIntField(pk=True)
     title: str = fields.CharField(max_length=64)
-    short_name: str = fields.CharField(max_length=64, unique=True)
+    short_name: str | None = fields.CharField(max_length=64, unique=True, null=True)
     access_hash: int = fields.BigIntField(default=lambda: Long.read_bytes(urandom(8)))
     owner: models.User | None = fields.ForeignKeyField("models.User", null=True)
     official: bool = fields.BooleanField(default=False)
     hash: int = fields.IntField(default=0)
     type: StickerSetType = fields.IntEnumField(StickerSetType)
+    deleted: bool = fields.BooleanField(default=False)
 
     owner_id: int | None
 
@@ -34,9 +35,11 @@ class Stickerset(Model):
         if input_set is None or isinstance(input_set, InputStickerSetEmpty):
             return None
         elif isinstance(input_set, InputStickerSetID):
-            return Q(**{f"{prefix}id": input_set.id, f"{prefix}access_hash": input_set.access_hash})
+            return Q(**{
+                f"{prefix}id": input_set.id, f"{prefix}access_hash": input_set.access_hash, "deleted": False,
+            })
         elif isinstance(input_set, InputStickerSetShortName):
-            return Q(**{f"{prefix}short_name": input_set.short_name})
+            return Q(**{f"{prefix}short_name": input_set.short_name, "deleted": False})
 
         # TODO: support InputStickerSetAnimatedEmoji
         # TODO: support InputStickerSetDice

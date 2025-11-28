@@ -13,8 +13,10 @@ from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ReplyKeyboardMarkup
 from piltover.tl.functions.stickers import CheckShortName
 from piltover.tl.types.internal_stickersbot import StickersStateNewpack, NewpackInputSticker, StickersStateAddsticker, \
-    StickersStateEditsticker
+    StickersStateEditsticker, StickersStateDelpack
 from piltover.utils.emoji import purely_emoji
+
+DELPACK_CONFIRMATION = "Yes, I am totally sure."
 
 __newpack_send_sticker = """
 Alright! Now send me the sticker. The image file should be in PNG or WEBP format with a transparent layer and must fit into a 512x512 square (one of the sides must be 512px and the other 512px or less).
@@ -54,7 +56,7 @@ To add another sticker, send me the next sticker.
 When you're done, simply send the /done command.
 """.strip()
 __editsticker_send_sticker = "Please send me the sticker you want to edit."
-__editsticker_now_owner = "Sorry, I can't do this. Looks like you are not the owner of the relevant set."
+__editsticker_not_owner = "Sorry, I can't do this. Looks like you are not the owner of the relevant set."
 __editsticker_send_emoji = """
 Current emoji: {current}
 Please send me some new emoji that correspond to this sticker.
@@ -63,6 +65,18 @@ You can list several emoji in one message, but I recommend using no more than tw
 """.strip()
 __editsticker_send_sticker_invalid = "Please send me the sticker."
 __editsticker_saved = "I edited your sticker. Hope you like it better this way."
+__delpack_confirm = f"""
+OK, you selected the set {{name}}. Are you sure?
+
+Send `{DELPACK_CONFIRMATION}` to confirm you really want to delete this set.
+""".strip()
+__delpack_confirm_invalid = f"""
+Please enter the confirmation text exactly like this:
+`{DELPACK_CONFIRMATION}`
+
+Type /cancel to cancel the operation.
+""".strip()
+__delpack_deleted = "Done! The sticker set is gone."
 
 
 async def _invalid_set_selected(peer: Peer) -> Message:
@@ -221,12 +235,15 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         await upd.new_stickerset(peer.owner, stickerset)
         return await send_bot_message(peer, __text_published.format(short_name=short_name))
 
-    if state.state in (StickersBotState.ADDSTICKER_WAIT_PACK, StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER):
+    if state.state in (
+            StickersBotState.ADDSTICKER_WAIT_PACK, StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER,
+            StickersBotState.DELPACK_WAIT_PACK,
+    ):
         editsticker = state.state is StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER
         if editsticker and message.media and message.media.file and message.media.file.type is FileType.DOCUMENT_STICKER:
             sticker = message.media.file
             if sticker.stickerset.owner_id != peer.owner_id:
-                return await send_bot_message(peer, __editsticker_now_owner)
+                return await send_bot_message(peer, __editsticker_not_owner)
             await state.update_state(
                 StickersBotState.EDITSTICKER_WAIT_EMOJI,
                 StickersStateEditsticker(set_id=None, file_id=sticker.id).serialize(),
@@ -255,6 +272,12 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 StickersStateEditsticker(set_id=stickerset.id, file_id=None).serialize(),
             )
             return await send_bot_message(peer, __editsticker_send_sticker)
+        elif state.state is StickersBotState.DELPACK_WAIT_PACK:
+            await state.update_state(
+                StickersBotState.DELPACK_WAIT_CONFIRM,
+                StickersStateDelpack(set_id=stickerset.id).serialize(),
+            )
+            return await send_bot_message(peer, __delpack_confirm.format(name=stickerset.short_name))
         else:
             raise Unreachable
 
@@ -264,10 +287,26 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
         sticker = message.media.file
         if sticker.stickerset.owner_id != peer.owner_id:
-            return await send_bot_message(peer, __editsticker_now_owner)
+            return await send_bot_message(peer, __editsticker_not_owner)
         await state.update_state(
             StickersBotState.EDITSTICKER_WAIT_EMOJI,
             StickersStateEditsticker(set_id=None, file_id=sticker.id).serialize(),
         )
         return await send_bot_message(peer, __editsticker_send_emoji.format(current=sticker.sticker_alt))
 
+    if state.state is StickersBotState.DELPACK_WAIT_CONFIRM:
+        if message.message != DELPACK_CONFIRMATION:
+            return await send_bot_message(peer, __delpack_confirm_invalid)
+
+        state_data = StickersStateDelpack.deserialize(BytesIO(state.data))
+        stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner)
+        if stickerset is None:
+            await state.delete()
+            return await send_bot_message(peer, __editsticker_not_owner)
+
+        stickerset.deleted = True
+        stickerset.owner = None
+        stickerset.short_name = None
+        await stickerset.save(update_fields=["deleted", "owner_id", "short_name"])
+
+        return await send_bot_message(peer, __delpack_deleted)

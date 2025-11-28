@@ -430,7 +430,10 @@ async def delete_stickerset(request: DeleteStickerSet, user: User) -> bool:
     if stickerset is None or stickerset.owner_id != user.id:
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
-    await stickerset.delete()
+    stickerset.deleted = True
+    stickerset.owner = None
+    stickerset.short_name = None
+    await stickerset.save(update_fields=["deleted", "owner_id", "short_name"])
 
     return True
 
@@ -598,7 +601,7 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> 
 
 @handler.on_request(GetAllStickers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers | AllStickersNotModified:
-    sets = await InstalledStickerset.filter(user=user, archived=False)\
+    sets = await InstalledStickerset.filter(user=user, archived=False, set__deleted=False)\
         .order_by("pos", "-installed_at")\
         .select_related("set")
     sets_hash = telegram_hash((stickerset.set.id for stickerset in sets), 64)
@@ -662,8 +665,9 @@ async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool
 
 @handler.on_request(ReorderStickerSets, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reorder_sticker_sets(request: ReorderStickerSets, user: User) -> bool:
-    sets: list[InstalledStickerset | None] = await InstalledStickerset.filter(user=user, archived=False) \
-        .order_by("pos", "-installed_at").select_related("set")
+    sets: list[InstalledStickerset | None] = await InstalledStickerset.filter(
+        user=user, archived=False, set__deleted=False,
+    ).order_by("pos", "-installed_at").select_related("set")
     by_ids = {
         installed.set.id: (installed, idx)
         for idx, installed in enumerate(sets)
@@ -695,13 +699,13 @@ async def reorder_sticker_sets(request: ReorderStickerSets, user: User) -> bool:
 async def get_archived_stickers(request: GetArchivedStickers, user: User) -> ArchivedStickers:
     limit = max(1, min(50, request.limit))
     id_filter = Q(set__id__lt=request.offset_id) if request.offset_id else Q()
-    installed_sets = await InstalledStickerset.filter(id_filter, user=user, archived=True)\
+    installed_sets = await InstalledStickerset.filter(id_filter, user=user, archived=True, set__deleted=False)\
         .select_related("set")\
         .order_by("-set__id")\
         .limit(limit)
 
     return ArchivedStickers(
-        count=await InstalledStickerset.filter(user=user, archived=True).count(),
+        count=await InstalledStickerset.filter(user=user, archived=True, set__deleted=False).count(),
         sets=await _make_covered_list([installed.set for installed in installed_sets], user)
     )
 
@@ -719,9 +723,9 @@ async def toggle_sticker_sets(request: ToggleStickerSets, user: User) -> bool:
         if isinstance(input_set, InputStickerSetEmpty):
             continue
         elif isinstance(input_set, InputStickerSetID):
-            sets_q |= Q(set__id=input_set.id, set__access_hash=input_set.access_hash)
+            sets_q |= Q(set__id=input_set.id, set__access_hash=input_set.access_hash, set__deleted=False)
         elif isinstance(input_set, InputStickerSetShortName):
-            sets_q |= Q(set__short_name=input_set.short_name)
+            sets_q |= Q(set__short_name=input_set.short_name, set__deleted=False)
 
         # TODO: support other InputStickerSet* constructors
 
