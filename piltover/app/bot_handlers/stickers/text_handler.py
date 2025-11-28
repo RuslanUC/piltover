@@ -13,7 +13,7 @@ from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ReplyKeyboardMarkup
 from piltover.tl.functions.stickers import CheckShortName
 from piltover.tl.types.internal_stickersbot import StickersStateNewpack, NewpackInputSticker, StickersStateAddsticker, \
-    StickersStateEditsticker, StickersStateDelpack
+    StickersStateEditsticker, StickersStateDelpack, StickersStateRenamepack
 from piltover.utils.emoji import purely_emoji
 
 DELPACK_CONFIRMATION = "Yes, I am totally sure."
@@ -77,6 +77,11 @@ Please enter the confirmation text exactly like this:
 Type /cancel to cancel the operation.
 """.strip()
 __delpack_deleted = "Done! The sticker set is gone."
+__renamepack_send_name = """
+OK, you selected the set {name}.
+Now choose a new name for your set.
+""".strip()
+__renamepack_renamed = "Your sticker set has a new name now. Enjoy!"
 
 
 async def _invalid_set_selected(peer: Peer) -> Message:
@@ -92,7 +97,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
     if state.state is StickersBotState.NEWPACK_WAIT_NAME:
         pack_name = message.message
-        if len(pack_name) > 64:
+        if not pack_name or len(pack_name) > 64:
             return await send_bot_message(peer, __newpack_invalid_name)
 
         await state.update_state(
@@ -237,7 +242,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
     if state.state in (
             StickersBotState.ADDSTICKER_WAIT_PACK, StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER,
-            StickersBotState.DELPACK_WAIT_PACK,
+            StickersBotState.DELPACK_WAIT_PACK, StickersBotState.RENAMEPACK_WAIT_PACK,
     ):
         editsticker = state.state is StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER
         if editsticker and message.media and message.media.file and message.media.file.type is FileType.DOCUMENT_STICKER:
@@ -278,6 +283,12 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 StickersStateDelpack(set_id=stickerset.id).serialize(),
             )
             return await send_bot_message(peer, __delpack_confirm.format(name=stickerset.short_name))
+        elif state.state is StickersBotState.RENAMEPACK_WAIT_PACK:
+            await state.update_state(
+                StickersBotState.RENAMEPACK_WAIT_NAME,
+                StickersStateRenamepack(set_id=stickerset.id).serialize(),
+            )
+            return await send_bot_message(peer, __renamepack_send_name.format(name=stickerset.title))
         else:
             raise Unreachable
 
@@ -302,7 +313,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner)
         if stickerset is None:
             await state.delete()
-            return await send_bot_message(peer, __editsticker_not_owner)
+            return await send_bot_message(peer, __addsticker_shortname_invalid)
 
         stickerset.deleted = True
         stickerset.owner = None
@@ -310,3 +321,22 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         await stickerset.save(update_fields=["deleted", "owner_id", "short_name"])
 
         return await send_bot_message(peer, __delpack_deleted)
+
+    if state.state is StickersBotState.RENAMEPACK_WAIT_NAME:
+        pack_name = message.message
+        if not pack_name or len(pack_name) > 64:
+            return await send_bot_message(peer, __newpack_invalid_name)
+
+        state_data = StickersStateRenamepack.deserialize(BytesIO(state.data))
+        stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner)
+        if stickerset is None:
+            await state.delete()
+            return await send_bot_message(peer, __addsticker_shortname_invalid)
+
+        if pack_name != stickerset.title:
+            stickerset.title = pack_name
+            await stickerset.save(update_fields=["title"])
+
+        await state.delete()
+
+        return await send_bot_message(peer, __renamepack_renamed)

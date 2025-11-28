@@ -7,13 +7,13 @@ https://core.telegram.org/stickers
 Use these commands to control me:
 
 Emoji
-/newemojipack — make a set of emoji (https://core.telegram.org/stickers#custom-emoji)
+/newemojipack — make a set of emoji (https://core.telegram.org/stickers#custom-emoji) - TODO
 
 Stickers & Masks
 /newpack – make a static PNG / WEBP sticker set (https://core.telegram.org/stickers#static-stickers)
-/newvideo – make a set of WEBM video stickers (https://core.telegram.org/stickers#video-stickers)
-/newanimated – make an animated TGS sticker set (https://core.telegram.org/stickers#animated-stickers)
-/newmasks – make a static set of masks
+/newvideo – make a set of WEBM video stickers (https://core.telegram.org/stickers#video-stickers) - TODO
+/newanimated – make an animated TGS sticker set (https://core.telegram.org/stickers#animated-stickers) - TODO
+/newmasks – make a static set of masks - TODO
 
 /addsticker – add a sticker to an existing set
 /editsticker – change emoji or coordinates
@@ -21,16 +21,16 @@ Stickers & Masks
 /ordersticker – reorder stickers in a set - TODO
 /delsticker – remove a sticker from an existing set - TODO
 /setpackicon – set a sticker set icon - TODO
-/renamepack – rename a set - TODO
+/renamepack – rename a set
 /delpack – delete a set
 
 Stats
-/stats – get stats for a sticker
-/top – get top stickers
-/packstats – get stats for a sticker set
-/packtop – get top sticker sets
-/topbypack – get top stickers in a set
-/packusagetop – get usage stats for your set
+/stats – get stats for a sticker - TODO
+/top – get top stickers - TODO
+/packstats – get stats for a sticker set - TODO
+/packtop – get top sticker sets - TODO
+/topbypack – get top stickers in a set - TODO
+/packusagetop – get usage stats for your set - TODO
 
 /cancel – cancel the current operation
 """.strip()

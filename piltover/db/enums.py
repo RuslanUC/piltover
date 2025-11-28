@@ -266,6 +266,8 @@ class StickersBotState(IntEnum):
     EDITSTICKER_WAIT_EMOJI = 11
     DELPACK_WAIT_PACK = 12
     DELPACK_WAIT_CONFIRM = 13
+    RENAMEPACK_WAIT_PACK = 14
+    RENAMEPACK_WAIT_NAME = 15
 
 
 STICKERS_STATE_TO_COMMAND_NAME = {
@@ -282,6 +284,8 @@ STICKERS_STATE_TO_COMMAND_NAME = {
     StickersBotState.EDITSTICKER_WAIT_EMOJI: "editsticker",
     StickersBotState.DELPACK_WAIT_PACK: "delpack",
     StickersBotState.DELPACK_WAIT_CONFIRM: "delpack",
+    StickersBotState.RENAMEPACK_WAIT_PACK: "renamepack",
+    StickersBotState.RENAMEPACK_WAIT_NAME: "renamepack",
     None: None,
 }
 
