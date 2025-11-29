@@ -253,33 +253,6 @@ async def test_some_entities() -> None:
         assert messages[0].entities[0].length == 3
 
 
-@pytest.mark.skip("Idk how to mock time.time() without breaking pyrogram")
-@pytest.mark.asyncio
-async def test_internal_message_cache_media_renew() -> None:
-    async with TestClient(phone_number="123456789") as client:
-        messages = [msg async for msg in client.get_chat_history("me")]
-        assert len(messages) == 0
-
-        file = BytesIO(b"test document")
-        setattr(file, "name", "test.txt")
-        message = await client.send_document("me", document=file)
-
-        assert await message.download(in_memory=True)
-
-        # TODO: mock time.time to time.time() + AppConfig.FILE_REF_EXPIRE_MINUTES * 2
-
-        with pytest.raises(FileReferenceExpired):
-            await message.download(in_memory=True)
-
-        messages = [msg async for msg in client.get_chat_history("me")]
-        assert len(messages) == 1
-        assert messages[0].id == message.id
-
-        await message.download(in_memory=True)
-
-        # TODO: un-mock time.time
-
-
 @pytest.mark.asyncio
 async def test_send_media_group_to_self() -> None:
     async with TestClient(phone_number="123456789") as client:
