@@ -21,7 +21,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [x] Secret chats (https://core.telegram.org/api/end-to-end)
 - [ ] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
 - [x] Mentions read state
-- [ ] Outbox read date (messages.getOutboxReadDate) (note to self: maybe save read state as "read chunks" like ReadHistoryChunk(peer, read_msg_id)? this would make getting outbox read dates much easier: just request chunk with read_msg_id__gte=request.id, if it exists - get date from it, if not - message is not read yet)
+- [x] Outbox read date (messages.getOutboxReadDate) (note to self: maybe save read state as "read chunks" like ReadHistoryChunk(peer, read_msg_id)? this would make getting outbox read dates much easier: just request chunk with read_msg_id__gte=request.id, if it exists - get date from it, if not - message is not read yet)
 - [x] Make `access_hash`es completely offline (e.g. `hmac(current_user_id + current_session_id + target_user_id)`)
 - [ ] InstallTheme_133, InstallTheme
 - [x] InstallWallPaper

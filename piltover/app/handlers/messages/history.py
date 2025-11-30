@@ -786,7 +786,7 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
     return updates
 
 
-@handler.on_request(GetOutboxReadDate)
+@handler.on_request(GetOutboxReadDate, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_outbox_read_date(request: GetOutboxReadDate, user: User) -> OutboxReadDate:
     peer = await Peer.from_input_peer_raise(
         user, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
