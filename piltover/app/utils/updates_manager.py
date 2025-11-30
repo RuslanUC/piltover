@@ -785,10 +785,10 @@ async def update_dialog_unread_mark(user: User, dialog: Dialog) -> None:
     ), user.id)
 
 
-async def update_read_history_inbox(peer: Peer, max_id: int, read_count: int, unread_count: int) -> None:
-    pts = await State.add_pts(peer.owner, read_count)
+async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) -> int:
+    pts = await State.add_pts(peer.owner, 1)
     await Update.create(
-        user=peer.owner, update_type=UpdateType.READ_INBOX, pts=pts, pts_count=read_count, related_id=peer.id,
+        user=peer.owner, update_type=UpdateType.READ_INBOX, pts=pts, pts_count=1, related_id=peer.id,
         additional_data=[max_id, unread_count],
     )
 
@@ -802,12 +802,14 @@ async def update_read_history_inbox(peer: Peer, max_id: int, read_count: int, un
                 max_id=max_id,
                 still_unread_count=unread_count,
                 pts=pts,
-                pts_count=read_count,
+                pts_count=1,
             ),
         ],
         users=list(users.values()),
         chats=[*chats.values(), *channels.values()],
     ), peer.owner.id)
+
+    return pts
 
 
 async def update_read_history_inbox_channel(peer: Peer, max_id: int, unread_count: int) -> None:
@@ -834,13 +836,13 @@ async def update_read_history_inbox_channel(peer: Peer, max_id: int, unread_coun
     ), peer.owner.id)
 
 
-async def update_read_history_outbox(messages: dict[Peer, tuple[int, int]]) -> None:
+async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
     updates_to_create = []
 
-    for peer, (max_id, count) in messages.items():
-        pts = await State.add_pts(peer.owner, count)
+    for peer, max_id in messages.items():
+        pts = await State.add_pts(peer.owner, 1)
         updates_to_create.append(Update(
-            user=peer.owner, update_type=UpdateType.READ_OUTBOX, pts=pts, pts_count=count, related_id=peer.id,
+            user=peer.owner, update_type=UpdateType.READ_OUTBOX, pts=pts, pts_count=1, related_id=peer.id,
             additional_data=[max_id],
         ))
 
@@ -853,7 +855,7 @@ async def update_read_history_outbox(messages: dict[Peer, tuple[int, int]]) -> N
                     peer=peer.to_tl(),
                     max_id=max_id,
                     pts=pts,
-                    pts_count=count,
+                    pts_count=1,
                 ),
             ],
             users=list(users.values()),

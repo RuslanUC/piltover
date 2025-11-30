@@ -73,3 +73,4 @@ from .saved_gif import SavedGif
 from .inline_query import InlineQuery
 from .recent_sticker import RecentSticker
 from .faved_sticker import FavedSticker
+from .read_history_chunk import ReadHistoryChunk

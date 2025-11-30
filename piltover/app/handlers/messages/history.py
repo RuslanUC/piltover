@@ -1,6 +1,6 @@
 from datetime import datetime, UTC
 from time import time
-from typing import cast, Any
+from typing import Any
 
 from loguru import logger
 from pypika_tortoise import SqlContext, Dialects
@@ -16,7 +16,7 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention, \
-    ChatParticipant, Chat
+    ChatParticipant, Chat, ReadHistoryChunk
 from piltover.db.models._utils import resolve_users_chats
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -28,7 +28,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
     InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo, \
     InputMessagesFilterContacts, InputMessagesFilterGeo
-from piltover.tl.base import MessagesFilter as MessagesFilterBase
+from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDate
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
@@ -345,51 +345,64 @@ async def get_messages_57(request: GetMessages_57, user: User) -> Messages:
 
 @handler.on_request(ReadHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_history(request: ReadHistory, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.peer)
-
+    peer = await Peer.from_input_peer_raise(
+        user, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
+    )
+    read_state, created = await ReadState.get_or_create(peer=peer)
     state, _ = await State.get_or_create(user=user)
 
-    read_state, created = await ReadState.get_or_create(peer=peer)
-    if request.max_id <= read_state.last_message_id:
+    if request.max_id and request.max_id <= read_state.last_message_id:
         return AffectedMessages(
             pts=state.pts,
             pts_count=0,
         )
 
-    message_id, internal_id = await Message.filter(
-        id__lte=request.max_id, peer=peer,
-    ).order_by("-id").first().values_list("id", "internal_id")
-    if not message_id:
+    max_id = request.max_id
+    if max_id == 0:
+        query = Message.filter(peer=peer)
+    else:
+        query = Message.filter(id__lte=request.max_id, peer=peer)
+
+    max_id, internal_id = await query.order_by("-id").first().values_list("id", "internal_id")
+
+    if not max_id or max_id <= read_state.last_message_id:
         return AffectedMessages(
             pts=state.pts,
             pts_count=0,
         )
 
     old_last_message_id = read_state.last_message_id
-    messages_count = await Message.filter(id__gt=old_last_message_id, id__lte=message_id, peer=peer).count()
-    unread_count = await Message.filter(peer=peer, id__gt=message_id).count()
+    unread_count = await Message.filter(peer=peer, id__gt=max_id).count()
 
-    read_state.last_message_id = message_id
+    read_state.last_message_id = max_id
     await read_state.save(update_fields=["last_message_id"])
-    state.pts += messages_count
-    await state.save(update_fields=["pts"])
 
-    logger.info(f"Set last read message id to {message_id} for peer {peer.id} of user {user.id}")
+    await ReadHistoryChunk.create(peer=peer, read_internal_id=internal_id)
 
-    messages_out: dict[Peer, tuple[int, int]] = {}
-    for other in await peer.get_opposite():
-        count = await Message.filter(id__gt=old_last_message_id, internal_id__lte=internal_id, peer=other).count()
-        if not count:
-            continue
-        last_id = await Message.filter(peer=other, internal_id__lte=internal_id).first().values_list("id", flat=True)
-        messages_out[other] = (cast(int, last_id), count)
+    logger.info(f"Set last read message id to {max_id} for peer {peer.id} of user {user.id}")
 
-    await upd.update_read_history_inbox(peer, message_id, messages_count, unread_count)
-    await upd.update_read_history_outbox(messages_out)
+    messages_out: dict[Peer, int] = {}
+    peers = await peer.get_opposite()
+    counts = []
+    if peers:
+        counts = await Message.filter(
+            peer__in=peers, id__gt=old_last_message_id, internal_id__lte=internal_id
+        ).group_by("peer").annotate(
+            read_count=Count("id"), max_read=Max("id"),
+        ).values_list("peer__id", "read_count", "max_read")
+        counts = [(peer_id, max_read) for peer_id, read_count, max_read in counts if read_count]
+
+    peers_by_id = {peer.id: peer for peer in peers}
+    for peer_id, max_read_id in counts:
+        messages_out[peers_by_id[peer_id]] = max_read_id
+
+    pts = await upd.update_read_history_inbox(peer, max_id, unread_count)
+    if messages_out:
+        await upd.update_read_history_outbox(messages_out)
 
     return AffectedMessages(
-        pts=state.pts,
-        pts_count=messages_count,
+        pts=pts,
+        pts_count=1,
     )
 
 
@@ -632,13 +645,6 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     )
 
 
-@handler.on_request(GetOutboxReadDate)
-async def get_outbox_read_date():
-    # TODO: implement getting outbox read date
-
-    raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
-
-
 @handler.on_request(GetUnreadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(GetUnreadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Messages | MessagesSlice:
@@ -778,3 +784,32 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
     updates.chats.extend(updates_msg.chats)
 
     return updates
+
+
+@handler.on_request(GetOutboxReadDate)
+async def get_outbox_read_date(request: GetOutboxReadDate, user: User) -> OutboxReadDate:
+    peer = await Peer.from_input_peer_raise(
+        user, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
+    )
+    message = await Message.get_or_none(peer=peer, id=request.msg_id, author=user)
+    if message is None:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
+
+    if peer.type is PeerType.SELF:
+        peer_q = Q(peer=peer)
+    elif peer.type is PeerType.USER:
+        peer_q = Q(peer__owner=peer.user, peer__user=peer.owner)
+    elif peer.type is PeerType.CHAT:
+        peer_q = Q(peer__chat=peer.chat, peer__owner__not=peer.owner)
+    else:
+        raise Unreachable
+
+    chunk = await ReadHistoryChunk.filter(
+        peer_q, read_internal_id__gte=message.internal_id,
+    ).order_by("-read_at").first()
+    if chunk is None:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_READ_YET")
+
+    return OutboxReadDate(
+        date=int(chunk.read_at.timestamp()),
+    )
