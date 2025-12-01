@@ -750,10 +750,21 @@ async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> No
     assert messages[2].mentioned
 
 
-@pytest.mark.asyncio
-async def test_get_search_results_calendar(exit_stack: AsyncExitStack) -> None:
-    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+_test_get_search_results_calendar_dates = [
+    datetime(2025, 1, 1, 15, 0, tzinfo=UTC),
 
+    datetime(2025, 1, 10, 12, 0, tzinfo=UTC),
+    datetime(2025, 1, 10, 12, 30, tzinfo=UTC),
+
+    datetime(2025, 1, 20, 12, 0, tzinfo=UTC),
+
+    datetime(2025, 1, 30, 12, 0, tzinfo=UTC),
+    datetime(2025, 1, 30, 12, 1, tzinfo=UTC),
+    datetime(2025, 1, 30, 12, 2, tzinfo=UTC),
+]
+
+
+async def _make_test_get_search_results_calendar_data(client: TestClient) -> list[int]:
     photo_file = BytesIO()
     Image.new(mode="RGB", size=(256, 256), color=(255, 255, 255)).save(photo_file, format="PNG")
     setattr(photo_file, "name", "photo.png")
@@ -771,21 +782,18 @@ async def test_get_search_results_calendar(exit_stack: AsyncExitStack) -> None:
         await client.send_photo("me", photo_file),
     ]
 
-    dates = [
-        datetime(2025, 1, 1, 15, 0, tzinfo=UTC),
-
-        datetime(2025, 1, 10, 12, 0, tzinfo=UTC),
-        datetime(2025, 1, 10, 12, 30, tzinfo=UTC),
-
-        datetime(2025, 1, 20, 12, 0, tzinfo=UTC),
-
-        datetime(2025, 1, 30, 12, 0, tzinfo=UTC),
-        datetime(2025, 1, 30, 12, 1, tzinfo=UTC),
-        datetime(2025, 1, 30, 12, 2, tzinfo=UTC),
-    ]
-
-    for message, date in zip(messages, dates):
+    for message, date in zip(messages, _test_get_search_results_calendar_dates):
         await Message.filter(id=message.id).update(date=date, version=F("version") + 1)
+
+    return [message.id for message in messages]
+
+
+@pytest.mark.search_results_calendar
+@pytest.mark.asyncio
+async def test_get_search_results_calendar(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    messages = await _make_test_get_search_results_calendar_data(client)
+    dates = _test_get_search_results_calendar_dates
 
     result: SearchResultsCalendar = await client.invoke(GetSearchResultsCalendar(
         peer=await client.resolve_peer("me"),
@@ -796,20 +804,82 @@ async def test_get_search_results_calendar(exit_stack: AsyncExitStack) -> None:
 
     assert len(result.periods) == 3
     assert result.count == 4
-    assert result.min_msg_id == messages[0].id
+    assert result.min_msg_id == messages[0]
     assert result.min_date == int(dates[0].timestamp())
 
     assert result.periods[0].date == int(dates[-1].timestamp()) // 86400 * 86400
-    assert result.periods[0].min_msg_id == messages[4].id
-    assert result.periods[0].max_msg_id == messages[6].id
+    assert result.periods[0].min_msg_id == messages[4]
+    assert result.periods[0].max_msg_id == messages[6]
 
     assert result.periods[1].date == int(dates[3].timestamp()) // 86400 * 86400
-    assert result.periods[1].min_msg_id == messages[3].id
-    assert result.periods[1].max_msg_id == messages[3].id
+    assert result.periods[1].min_msg_id == messages[3]
+    assert result.periods[1].max_msg_id == messages[3]
 
     assert result.periods[2].date == int(dates[2].timestamp()) // 86400 * 86400
-    assert result.periods[2].min_msg_id == messages[2].id
-    assert result.periods[2].max_msg_id == messages[2].id
+    assert result.periods[2].min_msg_id == messages[2]
+    assert result.periods[2].max_msg_id == messages[2]
+
+
+@pytest.mark.search_results_calendar
+@pytest.mark.asyncio
+async def test_get_search_results_calendar_offset_last_media(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    messages = await _make_test_get_search_results_calendar_data(client)
+    dates = _test_get_search_results_calendar_dates
+
+    result: SearchResultsCalendar = await client.invoke(GetSearchResultsCalendar(
+        peer=await client.resolve_peer("me"),
+        filter=InputMessagesFilterPhotoVideo(),
+        offset_id=messages[6],
+        offset_date=0,
+    ))
+
+    assert len(result.periods) == 3
+    assert result.count == 4
+    assert result.offset_id_offset == 1
+    assert result.min_msg_id == messages[0]
+    assert result.min_date == int(dates[0].timestamp())
+
+    assert result.periods[0].date == int(dates[-1].timestamp()) // 86400 * 86400
+    assert result.periods[0].min_msg_id == messages[4]
+    assert result.periods[0].max_msg_id == messages[4]
+
+    assert result.periods[1].date == int(dates[3].timestamp()) // 86400 * 86400
+    assert result.periods[1].min_msg_id == messages[3]
+    assert result.periods[1].max_msg_id == messages[3]
+
+    assert result.periods[2].date == int(dates[2].timestamp()) // 86400 * 86400
+    assert result.periods[2].min_msg_id == messages[2]
+    assert result.periods[2].max_msg_id == messages[2]
+
+
+@pytest.mark.search_results_calendar
+@pytest.mark.asyncio
+async def test_get_search_results_calendar_offset_first_for_day_media(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    messages = await _make_test_get_search_results_calendar_data(client)
+    dates = _test_get_search_results_calendar_dates
+
+    result: SearchResultsCalendar = await client.invoke(GetSearchResultsCalendar(
+        peer=await client.resolve_peer("me"),
+        filter=InputMessagesFilterPhotoVideo(),
+        offset_id=messages[4],
+        offset_date=0,
+    ))
+
+    assert len(result.periods) == 2
+    assert result.count == 4
+    assert result.offset_id_offset == 2
+    assert result.min_msg_id == messages[0]
+    assert result.min_date == int(dates[0].timestamp())
+
+    assert result.periods[0].date == int(dates[3].timestamp()) // 86400 * 86400
+    assert result.periods[0].min_msg_id == messages[3]
+    assert result.periods[0].max_msg_id == messages[3]
+
+    assert result.periods[1].date == int(dates[2].timestamp()) // 86400 * 86400
+    assert result.periods[1].min_msg_id == messages[2]
+    assert result.periods[1].max_msg_id == messages[2]
 
 
 @pytest.mark.run_scheduler

@@ -599,6 +599,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     offset_id_offset = None
     if request.offset_id:
         offset_id_offset = await Message.filter(query, id__gte=request.offset_id).count()
+        query &= Q(id__lt=request.offset_id)
 
     dialect = connections.get("default").capabilities.dialect
     if not DatetimeToUnix.is_supported(dialect):
