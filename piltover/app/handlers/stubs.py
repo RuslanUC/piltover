@@ -1,8 +1,8 @@
 from piltover.enums import ReqHandlerFlags
 from piltover.tl.functions.channels import GetSponsoredMessages_133
-from piltover.tl.functions.messages import GetSponsoredMessages, GetSavedGifs
+from piltover.tl.functions.messages import GetSponsoredMessages
 from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts
-from piltover.tl.types.messages import SponsoredMessages, SponsoredMessagesEmpty, SavedGifs, SavedGifsNotModified
+from piltover.tl.types.messages import SponsoredMessages, SponsoredMessagesEmpty
 from piltover.tl.types.premium import BoostsStatus, MyBoosts
 from piltover.worker import MessageHandler
 

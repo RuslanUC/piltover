@@ -594,6 +594,12 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     if saved_peer is not None:
         query &= Q(fwd_header__saved_peer=saved_peer)
 
+    count = await Message.filter(query).count()
+    min_msg_id, min_date = await Message.filter(peer=peer).order_by("id").first().values_list("id", "date")
+    offset_id_offset = None
+    if request.offset_id:
+        offset_id_offset = await Message.filter(query, id__gte=request.offset_id).count()
+
     dialect = connections.get("default").capabilities.dialect
     if not DatetimeToUnix.is_supported(dialect):
         logger.warning(f"Dialect \"{dialect}\" is not supported in GetSearchResultsCalendar")
@@ -601,29 +607,30 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     else:
         query = Message.annotate(
             day=CombinedExpression(DatetimeToUnix("date"), Connector.div, 86400),
-            min_msg_id=Min("id"), max_msg_id=Max("id"), msg_count=Count("id")
+            min_msg_id=Min("id"), max_msg_id=Max("id"), msg_count=Count("id"),
         ).filter(
             query & Q(msg_count__gte=1)
-        ).limit(100).order_by("-day").group_by("day").values_list("day", "min_msg_id", "max_msg_id", "msg_count")
-        logger.trace(query.sql())
+        ).group_by("day").order_by("-day").limit(100).values_list("day", "min_msg_id", "max_msg_id", "msg_count")
+
+        # logger.trace(query.sql())
         periods = await query
 
     message_ids = []
     periods_tl = []
 
-    for day, min_msg_id, max_msg_id, msg_count in periods:
-        message_ids.append(min_msg_id)
-        if max_msg_id != min_msg_id:
-            message_ids.append(max_msg_id)
+    for day, min_id, max_id, msg_count in periods:
+        message_ids.append(min_id)
+        if max_id != min_id:
+            message_ids.append(max_id)
 
         periods_tl.append(SearchResultsCalendarPeriod(
             date=day * 86400,
-            min_msg_id=min_msg_id,
-            max_msg_id=max_msg_id,
+            min_msg_id=min_id,
+            max_msg_id=max_id,
             count=msg_count,
         ))
 
-    messages = await Message.filter(id__in=message_ids)
+    messages = await Message.filter(id__in=message_ids).select_related("peer")
     messages_tl = []
     users_q, chats_q, channels_q = Q(), Q(), Q()
 
@@ -634,10 +641,10 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
 
     return SearchResultsCalendar(
-        count=0,  # TODO: add count by request.filter
-        min_date=periods[-1][0] if periods else 0,
-        min_msg_id=periods[-1][1] if periods else 0,
-        offset_id_offset=None,  # TODO: add offset_id support
+        count=count,
+        min_date=int(min_date.timestamp()),
+        min_msg_id=min_msg_id,
+        offset_id_offset=offset_id_offset,
         periods=periods_tl,
         messages=messages_tl,
         chats=[*chats.values(), *channels.values()],

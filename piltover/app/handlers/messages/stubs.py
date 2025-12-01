@@ -4,10 +4,10 @@ from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSearchResultsPositions, GetSuggestedDialogFilters, GetSavedReactionTags, \
-    GetFeaturedStickers, GetFeaturedEmojiStickers, GetFavedStickers, GetCustomEmojiDocuments, GetEmojiStickers, \
+    GetFeaturedStickers, GetFeaturedEmojiStickers, GetCustomEmojiDocuments, GetEmojiStickers, \
     GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, GetEmojiKeywordsDifference
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
-    Stickers, SearchResultsPositions, AllStickers, FavedStickers, FeaturedStickers, MessageEditData, \
+    Stickers, SearchResultsPositions, AllStickers, FeaturedStickers, MessageEditData, \
     QuickReplies
 from piltover.worker import MessageHandler
 

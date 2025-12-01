@@ -1,5 +1,5 @@
 from contextlib import AsyncExitStack
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, UTC
 from io import BytesIO
 from time import time
 
@@ -13,8 +13,9 @@ from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessag
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages
-from pyrogram.raw.types.messages import Messages, AffectedHistory
+from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
 from pyrogram.types import InputMediaDocument, ChatPermissions
+from tortoise.expressions import F
 
 from piltover.db.enums import PeerType
 from piltover.db.models import Message, Peer, User
@@ -749,15 +750,6 @@ async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> No
     assert messages[2].mentioned
 
 
-class GetSearchResultsCalendarFailedManually(RuntimeError):
-    ...
-
-
-@pytest.mark.xfail(
-    True,
-    reason="Not actually testing functionality for now",
-    raises=GetSearchResultsCalendarFailedManually
-)
 @pytest.mark.asyncio
 async def test_get_search_results_calendar(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
@@ -766,18 +758,58 @@ async def test_get_search_results_calendar(exit_stack: AsyncExitStack) -> None:
     Image.new(mode="RGB", size=(256, 256), color=(255, 255, 255)).save(photo_file, format="PNG")
     setattr(photo_file, "name", "photo.png")
 
-    assert await client.send_photo("me", photo_file)
+    messages = [
+        await client.send_message("me", "test message no photo"),
 
-    result = await client.invoke(GetSearchResultsCalendar(
+        await client.send_message("me", "test message no photo 2"),
+        await client.send_photo("me", photo_file),
+
+        await client.send_photo("me", photo_file),
+
+        await client.send_photo("me", photo_file),
+        await client.send_message("me", "test message no photo 3"),
+        await client.send_photo("me", photo_file),
+    ]
+
+    dates = [
+        datetime(2025, 1, 1, 15, 0, tzinfo=UTC),
+
+        datetime(2025, 1, 10, 12, 0, tzinfo=UTC),
+        datetime(2025, 1, 10, 12, 30, tzinfo=UTC),
+
+        datetime(2025, 1, 20, 12, 0, tzinfo=UTC),
+
+        datetime(2025, 1, 30, 12, 0, tzinfo=UTC),
+        datetime(2025, 1, 30, 12, 1, tzinfo=UTC),
+        datetime(2025, 1, 30, 12, 2, tzinfo=UTC),
+    ]
+
+    for message, date in zip(messages, dates):
+        await Message.filter(id=message.id).update(date=date, version=F("version") + 1)
+
+    result: SearchResultsCalendar = await client.invoke(GetSearchResultsCalendar(
         peer=await client.resolve_peer("me"),
         filter=InputMessagesFilterPhotoVideo(),
         offset_id=0,
         offset_date=0,
     ))
 
-    _ = result
+    assert len(result.periods) == 3
+    assert result.count == 4
+    assert result.min_msg_id == messages[0].id
+    assert result.min_date == int(dates[0].timestamp())
 
-    raise GetSearchResultsCalendarFailedManually
+    assert result.periods[0].date == int(dates[-1].timestamp()) // 86400 * 86400
+    assert result.periods[0].min_msg_id == messages[4].id
+    assert result.periods[0].max_msg_id == messages[6].id
+
+    assert result.periods[1].date == int(dates[3].timestamp()) // 86400 * 86400
+    assert result.periods[1].min_msg_id == messages[3].id
+    assert result.periods[1].max_msg_id == messages[3].id
+
+    assert result.periods[2].date == int(dates[2].timestamp()) // 86400 * 86400
+    assert result.periods[2].min_msg_id == messages[2].id
+    assert result.periods[2].max_msg_id == messages[2].id
 
 
 @pytest.mark.run_scheduler
