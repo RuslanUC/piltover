@@ -16,7 +16,8 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
-    UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers
+    UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
+    UpdatePinnedSavedDialogs
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -27,7 +28,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
               | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers \
-              | UpdateFavedStickers
+              | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs
 
 
 class Update(Model):
@@ -536,5 +537,34 @@ class Update(Model):
 
             case UpdateType.UPDATE_FAVED_STICKERS:
                 return UpdateFavedStickers(), users_q, chats_q, channels_q
+
+            case UpdateType.SAVED_DIALOG_PIN:
+                saved_dialog = await models.SavedDialog.get_or_none(
+                    peer__owner=user, peer__id=self.related_id,
+                ).select_related("peer")
+                if saved_dialog is None:
+                    return none_ret
+
+                users_q, chats_q, channels_q = saved_dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+
+                return UpdateSavedDialogPinned(
+                    pinned=saved_dialog.pinned_index is not None,
+                    peer=DialogPeer(peer=saved_dialog.peer.to_tl()),
+                ), users_q, chats_q, channels_q
+
+            case UpdateType.SAVED_DIALOG_PIN_REORDER:
+                dialogs = await models.SavedDialog.filter(
+                    peer__owner=user, pinned_index__not_isnull=True,
+                ).select_related("peer")
+
+                for dialog in dialogs:
+                    users_q, chats_q, channels_q = dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+
+                return UpdatePinnedSavedDialogs(
+                    order=[
+                        DialogPeer(peer=dialog.peer.to_tl())
+                        for dialog in dialogs
+                    ],
+                ), users_q, chats_q, channels_q
 
         return None, users_q, chats_q, channels_q

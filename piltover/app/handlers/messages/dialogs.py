@@ -197,14 +197,18 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
             or (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
 
-    if dialog.pinned_index:
-        dialog.pinned_index = None
-    else:
+    if bool(dialog.pinned_index) == request.pinned:
+        return True
+
+    if request.pinned:
+        # TODO: set pinned index to Max("pinned_index") + 1 instead of whatever this is
         dialog.pinned_index = await Dialog.filter(
             peer=peer, pinned_index__not_isnull=True, folder_id=dialog.folder_id, visible=True,
         ).count()
         if dialog.pinned_index > 10:
             raise ErrorRpc(error_code=400, error_message="PINNED_DIALOGS_TOO_MUCH")
+    else:
+        dialog.pinned_index = None
 
     await dialog.save(update_fields=["pinned_index"])
     await upd.pin_dialog(user, peer)

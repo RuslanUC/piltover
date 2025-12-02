@@ -9,7 +9,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
-    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery
+    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog
 from piltover.db.models._utils import resolve_users_chats, fetch_users_chats
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
@@ -23,7 +23,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
-    UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers
+    UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
+    UpdateSavedDialogPinned, UpdatePinnedSavedDialogs
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 
@@ -1619,3 +1620,61 @@ async def update_faved_stickers(user: User) -> Updates:
     await SessionManager.send(updates, user.id)
 
     return updates
+
+
+async def pin_saved_dialog(user: User, dialog: SavedDialog) -> None:
+    new_pts = await State.add_pts(user, 1)
+    await Update.create(
+        user=user,
+        update_type=UpdateType.SAVED_DIALOG_PIN,
+        pts=new_pts,
+        related_id=dialog.peer_id,
+    )
+
+    users_q, *_ = dialog.peer.query_users_chats(Q())
+    users_q &= Q(id__not=user.id)
+
+    users, *_ = await resolve_users_chats(user, users_q, None, None, {}, None, None)
+    users[user.id] = user
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdateSavedDialogPinned(
+                pinned=dialog.pinned_index is not None,
+                peer=DialogPeer(peer=dialog.peer.to_tl()),
+            ),
+        ],
+        users=[await other.to_tl(user) for other in users.values()],
+        chats=[],
+    )
+
+    await SessionManager.send(updates, user.id)
+
+
+async def reorder_pinned_saved_dialogs(user: User, dialogs: list[SavedDialog]) -> None:
+    new_pts = await State.add_pts(user, 1)
+
+    await Update.create(
+        user=user,
+        update_type=UpdateType.SAVED_DIALOG_PIN_REORDER,
+        pts=new_pts,
+        related_id=None,
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdatePinnedSavedDialogs(
+                order=[
+                    DialogPeer(peer=dialog.peer.to_tl())
+                    for dialog in dialogs
+                ],
+            )
+        ],
+        users=[
+            await user.to_tl(user),
+            *(await dialog.peer.user.to_tl(user) for dialog in dialogs if dialog.peer.type is PeerType.USER),
+        ],
+        chats=[],
+    )
+
+    await SessionManager.send(updates, user.id)

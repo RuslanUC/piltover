@@ -99,6 +99,8 @@ class UpdateType(IntEnum):
     BOT_INLINE_QUERY = 38
     UPDATE_RECENT_STICKERS = 39
     UPDATE_FAVED_STICKERS = 40
+    SAVED_DIALOG_PIN = 41
+    SAVED_DIALOG_PIN_REORDER = 42
 
 
 class SecretUpdateType(IntEnum):
