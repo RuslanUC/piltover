@@ -27,14 +27,14 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
     InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo, \
-    InputMessagesFilterContacts, InputMessagesFilterGeo
+    InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition
 from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDate
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
-    ReadMessageContents, SetHistoryTTL
+    ReadMessageContents, SetHistoryTTL, GetSearchResultsPositions, GetSearchResultsPositions_134
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
-    MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory
+    MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory, SearchResultsPositions
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.history")
@@ -820,4 +820,46 @@ async def get_outbox_read_date(request: GetOutboxReadDate, user: User) -> Outbox
 
     return OutboxReadDate(
         date=int(chunk.read_at.timestamp()),
+    )
+
+
+@handler.on_request(GetSearchResultsPositions_134, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetSearchResultsPositions, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_search_results_positions(request: GetSearchResultsPositions, user: User) -> SearchResultsPositions:
+    if isinstance(request.filter, (InputMessagesFilterEmpty, InputMessagesFilterMyMentions)):
+        raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
+
+    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+    saved_peer = None
+    if peer.type is PeerType.SELF and not isinstance(request, GetSearchResultsPositions_134) and request.saved_peer_id:
+        saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
+
+    if (filter_query := message_filter_to_query(request.filter, peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
+
+    query = Q(peer=peer) & filter_query
+    if saved_peer is not None:
+        query &= Q(fwd_header__saved_peer=saved_peer)
+
+    count = await Message.filter(query).count()
+    offset_id_offset = 0
+    if request.offset_id:
+        offset_id_offset = await Message.filter(query, id__gte=request.offset_id).count()
+        query &= Q(id__lt=request.offset_id)
+
+    limit = min(1, max(100, request.limit))
+
+    messages = await Message.filter(query).order_by("-id").limit(limit).values_list("id", "date")
+    positions = []
+
+    for idx, (msg_id, msg_date) in enumerate(messages):
+        positions.append(SearchResultPosition(
+            msg_id=msg_id,
+            date=int(msg_date.timestamp()),
+            offset=offset_id_offset + idx,
+        ))
+
+    return SearchResultsPositions(
+        count=count,
+        positions=positions,
     )

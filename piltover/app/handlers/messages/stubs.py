@@ -3,11 +3,11 @@ from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
     DocumentEmpty, PeerSettings, TLObjectVector
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
-    GetStickers, GetSearchResultsPositions, GetSuggestedDialogFilters, GetSavedReactionTags, \
+    GetStickers, GetSuggestedDialogFilters, GetSavedReactionTags, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetCustomEmojiDocuments, GetEmojiStickers, \
     GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, GetEmojiKeywordsDifference
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
-    Stickers, SearchResultsPositions, AllStickers, FeaturedStickers, MessageEditData, \
+    Stickers, AllStickers, FeaturedStickers, MessageEditData, \
     QuickReplies
 from piltover.worker import MessageHandler
 
@@ -50,14 +50,6 @@ async def get_attach_menu_bots():  # pragma: no cover
 @handler.on_request(GetStickers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_stickers():  # pragma: no cover
     return Stickers(hash=0, stickers=[])
-
-
-@handler.on_request(GetSearchResultsPositions, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_search_results_positions():  # pragma: no cover
-    return SearchResultsPositions(
-        count=0,
-        positions=[],
-    )
 
 
 @handler.on_request(GetSuggestedDialogFilters, ReqHandlerFlags.AUTH_NOT_REQUIRED)
