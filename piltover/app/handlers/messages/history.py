@@ -799,6 +799,11 @@ async def get_outbox_read_date(request: GetOutboxReadDate, user: User) -> Outbox
     peer = await Peer.from_input_peer_raise(
         user, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
     )
+    if peer.type is PeerType.USER and user.read_dates_private:
+        raise ErrorRpc(error_code=403, error_message="YOUR_PRIVACY_RESTRICTED")
+    if peer.type is PeerType.USER and peer.user.read_dates_private:
+        raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
+
     message = await Message.get_or_none(peer=peer, id=request.msg_id, author=user)
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")

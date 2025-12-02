@@ -37,6 +37,7 @@ class User(Model):
     accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="accent")
     profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="profile")
     history_ttl_days: int = fields.SmallIntField(default=0)
+    read_dates_private: bool = fields.BooleanField(default=False)
 
     accent_color_id: int | None
     profile_color_id: int | None

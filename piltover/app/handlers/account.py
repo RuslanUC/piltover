@@ -29,7 +29,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
     SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis, \
-    UpdatePersonalChannel, UpdateNotifySettings
+    UpdatePersonalChannel, UpdateNotifySettings, SetGlobalPrivacySettings
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -217,9 +217,21 @@ async def get_themes():  # pragma: no cover
     return Themes(hash=0, themes=[])
 
 
-@handler.on_request(GetGlobalPrivacySettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_global_privacy_settings():  # pragma: no cover
-    return GlobalPrivacySettings(archive_and_mute_new_noncontact_peers=True)
+@handler.on_request(GetGlobalPrivacySettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_global_privacy_settings(user: User) -> GlobalPrivacySettings:
+    return GlobalPrivacySettings(
+        archive_and_mute_new_noncontact_peers=True,
+        hide_read_marks=user.read_dates_private,
+    )
+
+
+@handler.on_request(SetGlobalPrivacySettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def set_global_privacy_settings(request: SetGlobalPrivacySettings, user: User):
+    if user.read_dates_private != request.settings.hide_read_marks:
+        user.read_dates_private = request.settings.hide_read_marks
+        await user.save(update_fields=["read_dates_private"])
+
+    return await get_global_privacy_settings(user)
 
 
 @handler.on_request(GetContentSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
