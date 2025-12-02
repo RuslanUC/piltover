@@ -69,7 +69,7 @@ async def get_full_user(request: GetFullUser, user: User):
             # video_calls_available=True,
         ),
         chats=[await personal_channel.to_tl(user)] if personal_channel is not None else [],
-        users=[await target_user.to_tl(user)],
+        users=[await target_user.to_tl(user, peer)],
     )
 
 

@@ -3,6 +3,7 @@ from io import BytesIO
 
 from tortoise.transactions import in_transaction
 
+from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import is_username_valid
 from piltover.db.enums import BotFatherState
 from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot
@@ -14,15 +15,15 @@ __bot_wait_username = ("Good. Now let's choose a username for your bot. It must 
 __bot_username_invalid = "Sorry, this username is invalid."
 __bot_username_ends_bot = "Sorry, the username must end in `bot`. E.g. Tetris_bot or Tetrisbot."
 __bot_username_taken = "Sorry, this username is already taken. Please try something different."
-__bot_created = """
-Done! Congratulations on your new bot. You will find it at t.me/{username}. You can now add a description, about section and profile picture for your bot, see /help for a list of commands. By the way, when you've finished creating your cool bot, ping our Bot Support if you want a better username for it. Just make sure the bot is fully operational before you do this.
+__bot_created = FormatableTextWithEntities("""
+Done! Congratulations on your new bot. You will find it at <a>t.me/{username}</a>. You can now add a description, about section and profile picture for your bot, see <c>/help</c> for a list of commands. By the way, when you've finished creating your cool bot, ping our Bot Support if you want a better username for it. Just make sure the bot is fully operational before you do this.
 
 Use this token to access the HTTP API:
-{token}
+`{token}`
 Keep your token secure and store it safely, it can be used by anyone to control your bot.
 
-For a description of the Bot API, see this page: https://core.telegram.org/bots/api
-""".strip()
+For a description of the Bot API, see this page: <a>https://core.telegram.org/bots/api</a>
+""".strip())
 
 
 async def botfather_text_message_handler(peer: Peer, message: Message) -> Message | None:
@@ -69,7 +70,6 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             bot = await Bot.create(owner=peer.owner, bot=bot_user)
             await state.delete()
 
-        messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__bot_created.format(
-            username=username, token=f"{bot_user.id}:{bot.token_nonce}"
-        ))
+        text, entities = __bot_created.format(username=username, token=f"{bot_user.id}:{bot.token_nonce}")
+        messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=text, entities=entities)
         return messages[peer]

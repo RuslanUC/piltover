@@ -10,6 +10,7 @@ from pytz import UTC
 from tortoise.expressions import Q, Subquery
 
 import piltover.app.utils.updates_manager as upd
+from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import check_password_internal
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
@@ -30,11 +31,12 @@ from piltover.worker import MessageHandler
 
 handler = MessageHandler("auth")
 
-LOGIN_MESSAGE_FMT = (
-    f"Login code: {{code}}. Do not give this code to anyone, even if they say they are from {AppConfig.NAME}!\n\n"
+LOGIN_MESSAGE_FMT = FormatableTextWithEntities((
+    f"**Login code**: ||{{code}}||. "
+    f"Do not give this code to anyone, even if they say they are from {AppConfig.NAME}!\n\n"
     f"❗️This code can be used to log in to your {AppConfig.NAME} account. We never ask it for anything else.\n\n"
     "If you didn't request this code by trying to log in on another device, simply ignore this message."
-)
+))
 
 
 def _validate_phone(phone_number: str) -> None:
@@ -80,9 +82,12 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
 
     peer_system, _ = await Peer.get_or_create(owner=user, user=system_user, type=PeerType.USER)
     await Dialog.create_or_unhide(peer_system)
+
+    text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
     message = await Message.create(
         internal_id=Snowflake.make_id(),
-        message=LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5)),
+        message=text,
+        entities=entities,
         author=system_user,
         peer=peer_system,
     )

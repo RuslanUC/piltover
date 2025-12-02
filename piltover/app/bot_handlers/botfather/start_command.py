@@ -1,46 +1,47 @@
+from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.models import Peer, Message
 
-__text = """
-I can help you create and manage Telegram bots. If you're new to the Bot API, please see the manual (https://core.telegram.org/bots).
+__text, __entities = FormatableTextWithEntities("""
+I can help you create and manage Telegram bots. If you're new to the Bot API, please see the manual (<a>https://core.telegram.org/bots</a>).
 
 You can control me by sending these commands:
 
-/newbot - create a new bot
-/mybots - edit your bots
+<c>/newbot</c> - create a new bot
+<c>/mybots</c> - edit your bots
 
 Edit Bots
-/setname - change a bot's name
-/setdescription - change bot description
-/setabouttext - change bot about info
-/setuserpic - change bot profile photo
-/setcommands - change the list of commands
-/deletebot - delete a bot
+<c>/setname</c> - change a bot's name
+<c>/setdescription</c> - change bot description
+<c>/setabouttext</c> - change bot about info
+<c>/setuserpic</c> - change bot profile photo
+<c>/setcommands</c> - change the list of commands
+<c>/deletebot</c> - delete a bot
 
 Bot Settings
-/token - get authorization token
-/revoke - revoke bot access token
-/setinline - toggle inline mode (https://core.telegram.org/bots/inline)
-/setinlinegeo - toggle inline location requests (https://core.telegram.org/bots/inline#location-based-results)
-/setinlinefeedback - change inline feedback (https://core.telegram.org/bots/inline#collecting-feedback) settings
-/setjoingroups - can your bot be added to groups?
-/setprivacy - toggle privacy mode (https://core.telegram.org/bots/features#privacy-mode) in groups
+<c>/token</c> - get authorization token
+<c>/revoke</c> - revoke bot access token
+<c>/setinline</c> - toggle inline mode (<a>https://core.telegram.org/bots/inline</a>)
+<c>/setinlinegeo</c> - toggle inline location requests (<a>https://core.telegram.org/bots/inline#location-based-results</a>)
+<c>/setinlinefeedback</c> - change inline feedback (<a>https://core.telegram.org/bots/inline#collecting-feedback</a>) settings
+<c>/setjoingroups</c> - can your bot be added to groups?
+<c>/setprivacy</c> - toggle privacy mode (<a>https://core.telegram.org/bots/features#privacy-mode</a>) in groups
 
 Web Apps
-/myapps - edit your web apps (https://core.telegram.org/bots/webapps)
-/newapp - create a new web app (https://core.telegram.org/bots/webapps)
-/listapps - get a list of your web apps
-/editapp - edit a web app
-/deleteapp - delete an existing web app
+<c>/myapps</c> - edit your web apps (<a>https://core.telegram.org/bots/webapps</a>)
+<c>/newapp</c> - create a new web app (<a>https://core.telegram.org/bots/webapps</a>)
+<c>/listapps</c> - get a list of your web apps
+<c>/editapp</c> - edit a web app
+<c>/deleteapp</c> - delete an existing web app
 
 Games
-/mygames - edit your games (https://core.telegram.org/bots/games)
-/newgame - create a new game (https://core.telegram.org/bots/games)
-/listgames - get a list of your games
-/editgame - edit a game
-/deletegame - delete an existing game
-""".strip()
+<c>/mygames</c> - edit your games (<a>https://core.telegram.org/bots/games</a>)
+<c>/newgame</c> - create a new game (<a>https://core.telegram.org/bots/games</a>)
+<c>/listgames</c> - get a list of your games
+<c>/editgame</c> - edit a game
+<c>/deletegame</c> - delete an existing game
+""".strip()).format()
 
 
 async def botfather_start_command(peer: Peer, _: Message) -> Message | None:
-    messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__text)
+    messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__text, entities=__entities)
     return messages[peer]

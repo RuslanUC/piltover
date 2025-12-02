@@ -2,7 +2,8 @@ from collections import defaultdict
 from typing import Any
 
 from piltover.tl import MessageEntityBold, MessageEntityItalic, MessageEntityUnderline, MessageEntityStrike, \
-    MessageEntitySpoiler, MessageEntityCode, MessageEntityPre, MessageEntityUrl, MessageEntityBotCommand
+    MessageEntitySpoiler, MessageEntityCode, MessageEntityPre, MessageEntityUrl, MessageEntityBotCommand, \
+    MessageEntityMention
 
 BOLD_DELIM = "**"
 ITALIC_DELIM = "__"
@@ -15,6 +16,8 @@ URL_START = "<a>"
 URL_END = "</a>"
 COMMAND_START = "<c>"
 COMMAND_END = "</c>"
+USERNAME_START = "<u>"
+USERNAME_END = "</u>"
 
 DELIMS = [
     (BOLD_DELIM, BOLD_DELIM),
@@ -26,6 +29,7 @@ DELIMS = [
     (CODE_DELIM, CODE_DELIM),
     (URL_START, URL_END),
     (COMMAND_START, COMMAND_END),
+    (USERNAME_START, USERNAME_END),
 ]
 TYPES = {
     BOLD_DELIM: MessageEntityBold.tlid(),
@@ -37,6 +41,7 @@ TYPES = {
     PRE_DELIM: MessageEntityPre.tlid(),
     URL_START: MessageEntityUrl.tlid(),
     COMMAND_START: MessageEntityBotCommand.tlid(),
+    USERNAME_START: MessageEntityMention.tlid(),
 }
 
 
