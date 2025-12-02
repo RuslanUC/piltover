@@ -76,8 +76,7 @@ class User(Model):
 
         return photo
 
-    # TODO: remove "| None = None"
-    async def to_tl(self, current_user: models.User | None = None) -> TLUser:
+    async def to_tl(self, current_user: models.User, peer: models.Peer | None = None) -> TLUser:
         # TODO: min (https://core.telegram.org/api/min)
         # TODO: add some "version" field and save tl user
         #  in some cache with key f"{self.id}:{current_user.id}:{version}"
@@ -96,7 +95,11 @@ class User(Model):
             "attach_menu_enabled": False,
         }
 
-        peer_exists = await models.Peer.filter(owner=current_user, user__id=self.id).exists()
+        if peer is None:
+            peer_exists = await models.Peer.filter(owner=current_user, user__id=self.id).exists()
+        else:
+            peer_exists = True
+
         contact = await models.Contact.get_or_none(owner=current_user, target=self)
 
         phone_number = None

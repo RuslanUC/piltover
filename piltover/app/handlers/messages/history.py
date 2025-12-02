@@ -383,11 +383,12 @@ async def read_history(request: ReadHistory, user: User):
 
     messages_out: dict[Peer, int] = {}
     peers = await peer.get_opposite()
+    peers_by_id = {peer.id: peer for peer in peers}
     counts = []
     if peers:
         counts = await Message.filter(
-            peer__in=peers, id__gt=old_last_message_id, internal_id__lte=internal_id
-        ).group_by("peer").annotate(
+            peer__id__in=list(peers_by_id), id__gt=old_last_message_id, internal_id__lte=internal_id
+        ).group_by("peer__id").annotate(
             read_count=Count("id"), max_read=Max("id"),
         ).values_list("peer__id", "read_count", "max_read")
         counts = [(peer_id, max_read) for peer_id, read_count, max_read in counts if read_count]
