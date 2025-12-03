@@ -3,18 +3,21 @@ from datetime import timedelta, datetime, UTC
 from io import BytesIO
 
 from loguru import logger
+from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.bots import process_callback_query
-from piltover.app.utils.utils import check_password_internal
+from piltover.app.utils.utils import check_password_internal, process_message_entities
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer
 from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery, InlineQuery
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException, Unreachable
 from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty, InputBotInlineResult, \
-    InputBotInlineResultPhoto, InputBotInlineResultDocument, InputBotInlineMessageText, BotInlineResult
+    InputBotInlineResultPhoto, InputBotInlineResultDocument, InputBotInlineMessageText, BotInlineResult, \
+    BotInlineMessageText, objects, InputBotInlineMessageMediaAuto, BotInlineMessageMediaAuto
+from piltover.tl.base import BotInlineMessage
 from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer, GetInlineBotResults, \
     SetInlineBotResults
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
@@ -165,6 +168,24 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
         else:
             query_peer = None
 
+    cached = await InlineQuery.filter(
+        Q(user=user, private=True) | Q(private=False),
+        query=request.query,
+        offset=request.offset[:64],
+        bot=bot,
+        inline_peer=query_peer,
+        cached_until__gte=datetime.now(UTC),
+        cached_data__not_isnull=True,
+    ).order_by("-id").first()
+
+    if cached is not None:
+        try:
+            cached_result = BotResults.read(BytesIO(cached.cached_data))
+        except InvalidConstructorException as e:
+            logger.opt(exception=e).warning("Failed to read cached bot inline answer")
+        else:
+            return cached_result
+
     if bot.user.system:
         ...  # TODO: process inline query by builtin bot
         # resp = await process_callback_query(peer, message, request.data)
@@ -202,5 +223,90 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
         return results
 
 
-# TODO: SetInlineBotResults
+async def _process_entities_tl(text: str, entities: list[...], user: User) -> list[...] | None:
+    entities_dict = await process_message_entities(text, entities, user)
+    result = []
+    for entity in entities_dict:
+        tl_id = entity.pop("_")
+        result.append(objects[tl_id](**entity))
+
+    return result or None
+
+
+@handler.on_request(SetInlineBotResults, ReqHandlerFlags.USER_NOT_ALLOWED)
+async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bool:
+    ctx = request_ctx.get()
+    cache_time = 300 if request.cache_time <= 0 else request.cache_time
+    cache_until = datetime.now(UTC) + timedelta(seconds=cache_time)
+
+    async with in_transaction():
+        query = await InlineQuery.select_for_update(no_key=True).get_or_none(
+            id=request.query_id, bot=user, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
+        )
+        if query is None:
+            raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
+
+        results = []
+        for result in request.results:
+            if not isinstance(result, InputBotInlineResult):
+                raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
+
+            # TODO: validate result.type_
+
+            message = result.send_message
+            if isinstance(message, InputBotInlineMessageText):
+                send_message = BotInlineMessageText(
+                    no_webpage=message.no_webpage,
+                    invert_media=message.invert_media,
+                    message=message.message,
+                    entities=await _process_entities_tl(message.message, message.entities, user),
+                    reply_markup=None,  # TODO: support reply markup in inline results
+                )
+            elif isinstance(message, InputBotInlineMessageMediaAuto):
+                send_message = BotInlineMessageMediaAuto(
+                    invert_media=message.invert_media,
+                    message=message.message,
+                    entities=await _process_entities_tl(message.message, message.entities, user),
+                    reply_markup=None,  # TODO: support reply markup in inline results
+                )
+            else:
+                # TODO: proper error
+                # TODO: add other message types and replace with `Unreachable`
+                raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
+
+            # TODO: download thumb and content in worker or something
+            results.append(BotInlineResult(
+                id=result.id,
+                type_=result.type_,
+                title=result.title,
+                description=result.description,
+                url=result.url,
+                thumb=None,
+                content=None,
+                send_message=send_message,
+            ))
+
+        bot_result = BotResults(
+            query_id=request.query_id,
+            results=results,
+            cache_time=cache_time,
+            users=[],
+            gallery=request.gallery,
+            next_offset=request.next_offset[:64] if request.next_offset is not None else None,
+            switch_pm=None,  # TODO: implement switch_pm
+            switch_webview=None,
+        ).write()
+
+        query.cached_data = bot_result
+        query.cache_until = cache_until
+        query.cache_private = request.private
+        await query.save(update_fields=["cached_data", "cache_until", "cache_private"])
+
+        await ctx.worker.pubsub.notify(
+            topic=f"bot-inline-query/{query.id}",
+            data=bot_result,
+        )
+
+    return True
+
 # TODO: SendInlineBotResult
