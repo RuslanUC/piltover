@@ -17,8 +17,8 @@ from av import VideoFrame
 from loguru import logger
 
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import UserPassword, SrpSession, User, Peer, PrivacyRule
+from piltover.db.enums import PeerType, PrivacyRuleKeyType, FileType
+from piltover.db.models import UserPassword, SrpSession, User, Peer, PrivacyRule, File
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.storage.base import BaseStorage, StorageType
 from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEntityMention, \
@@ -29,7 +29,7 @@ from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEn
     InputUserFromMessage, ReplyKeyboardHide, ReplyKeyboardForceReply, ReplyKeyboardMarkup, ReplyInlineMarkup, \
     KeyboardButtonUrl, KeyboardButtonCallback, InputKeyboardButtonUserProfile, KeyboardButtonCopy, \
     KeyboardButtonRequestPhone, KeyboardButtonRequestPoll, InputKeyboardButtonRequestPeer, KeyboardButton, \
-    KeyboardButtonUserProfile, KeyboardButtonRow, KeyboardButtonRequestPeer
+    KeyboardButtonUserProfile, KeyboardButtonRow, KeyboardButtonRequestPeer, MessageEntityCustomEmoji
 from piltover.tl.base import InputCheckPasswordSRP as InputCheckPasswordSRPBase, InputUser as InputUserBase, \
     MessageEntity as MessageEntityBase, ReplyMarkup
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
@@ -259,6 +259,7 @@ async def validate_message_entities(text: str, entities: list[MessageEntityBase]
         raise ErrorRpc(error_code=400, error_message="ENTITIES_TOO_LONG")
 
     fetch_users: list[tuple[InputUserBase, int]] = []
+    check_emojis: list[tuple[int, int]] = []
 
     result = []
     for idx, entity in enumerate(entities):
@@ -291,6 +292,8 @@ async def validate_message_entities(text: str, entities: list[MessageEntityBase]
         elif isinstance(entity, InputMessageEntityMentionName):
             fetch_users.append((entity.user_id, len(result)))
             entity = MessageEntityMentionName(offset=entity.offset, length=entity.length, user_id=0)
+        elif isinstance(entity, MessageEntityCustomEmoji):
+            check_emojis.append((entity.document_id, len(result)))
         elif not isinstance(entity, VALID_ENTITIES):
             continue
 
@@ -320,6 +323,24 @@ async def validate_message_entities(text: str, entities: list[MessageEntityBase]
                     entity["user_id"] = input_user.user_id
                 else:
                     del result[idx]
+
+    if check_emojis:
+        ids = {check_id for check_id, _ in check_emojis}
+        files = {
+            file.id: file
+            for file in await File.filter(id__in=ids, type=FileType.DOCUMENT_EMOJI).select_related("stickerset")
+        }
+
+        for check_id, idx in reversed(check_emojis):
+            off = result[idx]["offset"]
+            ln = result[idx]["length"]
+
+            if check_id not in files \
+                    or files[check_id].stickerset_id is None \
+                    or files[check_id].stickerset.deleted\
+                    or files[check_id].sticker_alt != text[off:off+ln]:
+                del result[idx]
+                continue
 
     return result or None
 

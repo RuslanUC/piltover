@@ -78,7 +78,7 @@ class Stickerset(Model):
             archived=installed is not None and installed.archived,
             count=await self.documents_query().count(),
             hash=self.hash,
-            masks=False,
+            masks=self.masks,
             emojis=self.emoji,
 
             thumbs=[PhotoSize(type_="s", w=100, h=100, size=thumb.file.size)] if thumb is not None else None,
