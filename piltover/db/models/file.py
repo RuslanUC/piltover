@@ -23,7 +23,8 @@ from piltover.storage.base import StorageBuffer, StorageType
 from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, DocumentAttributeVideo, TLObject, \
     DocumentAttributeAudio, DocumentAttributeFilename, Document as TLDocument, Photo as TLPhoto, PhotoStrippedSize, \
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords, \
-    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int
+    DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int, \
+    DocumentAttributeCustomEmoji
 from piltover.tl.base import PhotoSizeInst
 from piltover.tl.types.internal_access import AccessHashPayloadFile, FileReferencePayload
 
@@ -64,7 +65,7 @@ class File(Model):
     photo_stripped: bytes | None = fields.BinaryField(null=True, default=None)
     photo_path: bytes | None = fields.BinaryField(null=True, default=None)
 
-    # DocumentAttributeSticker
+    # DocumentAttributeSticker, DocumentAttributeCustomEmoji
     stickerset: models.Stickerset | None = fields.ForeignKeyField("models.Stickerset", null=True, default=None, on_delete=fields.SET_NULL)
     sticker_pos: int | None = fields.IntField(null=True, default=None)
     sticker_alt: str | None = fields.CharField(max_length=32, null=True, default=None)
@@ -110,6 +111,8 @@ class File(Model):
                 else:
                     self.title = attribute.title
                     self.performer = attribute.performer
+            # TODO: remove this since sticker attributes are set when sticker is created?
+            #  Or just dont set `stickerset`?
             elif isinstance(attribute, DocumentAttributeSticker):
                 self.type = FileType.DOCUMENT_STICKER
                 self.stickerset = await models.Stickerset.from_input(attribute.stickerset)
@@ -144,6 +147,15 @@ class File(Model):
                 stickerset=stickerset_,
                 mask=self.sticker_is_mask,
                 mask_coords=self.sticker_mask_coords_tl,
+            ))
+        if self.type is FileType.DOCUMENT_EMOJI:
+            stickerset_ = InputStickerSetEmpty()
+            if self.stickerset_id is not None and not self.stickerset.deleted:
+                stickerset_ = InputStickerSetID(id=self.stickerset.id, access_hash=self.stickerset.access_hash)
+            result.append(DocumentAttributeCustomEmoji(
+                alt=self.sticker_alt or "",
+                stickerset=stickerset_,
+                free=True,
             ))
         if self.type is FileType.DOCUMENT_GIF:
             result.append(DocumentAttributeAnimated())

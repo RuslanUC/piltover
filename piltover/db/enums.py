@@ -41,6 +41,7 @@ class FileType(IntEnum):
     DOCUMENT_VOICE = 6
     DOCUMENT_VIDEO_NOTE = 7
     DOCUMENT_STICKER = 8
+    DOCUMENT_EMOJI = 9
 
     ENCRYPTED = 9
 
@@ -238,8 +239,6 @@ class StickerSetType(IntEnum):
     STATIC = 0
     ANIMATED = 1
     VIDEO = 2
-    EMOJIS = 3
-    MASKS = 4
 
 
 class BotFatherState(IntEnum):

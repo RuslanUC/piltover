@@ -9,7 +9,8 @@ from tortoise.queryset import QuerySet
 
 from piltover.db import models
 from piltover.db.enums import StickerSetType
-from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize
+from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize, \
+    StickerPack
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 
 
@@ -23,6 +24,8 @@ class Stickerset(Model):
     hash: int = fields.IntField(default=0)
     type: StickerSetType = fields.IntEnumField(StickerSetType)
     deleted: bool = fields.BooleanField(default=False)
+    emoji: bool = fields.BooleanField(default=False)
+    masks: bool = fields.BooleanField(default=False)
 
     owner_id: int | None
 
@@ -75,8 +78,8 @@ class Stickerset(Model):
             archived=installed is not None and installed.archived,
             count=await self.documents_query().count(),
             hash=self.hash,
-            masks=self.type is StickerSetType.MASKS,
-            emojis=self.type is StickerSetType.EMOJIS,
+            masks=False,
+            emojis=self.emoji,
 
             thumbs=[PhotoSize(type_="s", w=100, h=100, size=thumb.file.size)] if thumb is not None else None,
             thumb_dc_id=2 if thumb is not None else None,
@@ -100,12 +103,22 @@ class Stickerset(Model):
             yield sticker.sticker_alt
 
     async def to_tl_messages(self, user: models.User) -> MessagesStickerSet:
+        files = await self.documents_query()
+
+        documents = []
+        packs: dict[str, StickerPack] = {}
+
+        for file in files:
+            documents.append(file.to_tl_document())
+            if not self.emoji:
+                continue
+            if file.sticker_alt not in packs:
+                packs[file.sticker_alt] = StickerPack(emoticon=file.sticker_alt, documents=[])
+            packs[file.sticker_alt].documents.append(file.id)
+
         return MessagesStickerSet(
             set=await self.to_tl(user),
-            packs=[],
+            packs=list(packs.values()),
             keywords=[],  # TODO: add support for keywords
-            documents=[
-                file.to_tl_document()
-                for file in await self.documents_query()
-            ],
+            documents=documents,
         )

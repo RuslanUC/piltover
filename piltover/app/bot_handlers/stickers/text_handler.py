@@ -123,7 +123,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             return await send_bot_message(peer, __newpack_invalid_file)
 
         try:
-            await validate_png_webp(message.media.file)
+            await validate_png_webp(message.media.file, False)
         except ErrorRpc:
             return await send_bot_message(peer, __newpack_invalid_file)
 
