@@ -18,7 +18,7 @@ Stickers & Masks
 
 <c>/addsticker</c> – add a sticker to an existing set
 <c>/editsticker</c> – change emoji or coordinates
-<c>/replacesticker</c> – replace stickers in a set - TODO
+<c>/replacesticker</c> – replace stickers in a set
 <c>/ordersticker</c> – reorder stickers in a set - TODO
 <c>/delsticker</c> – remove a sticker from an existing set - TODO
 <c>/setpackicon</c> – set a sticker set icon - TODO
