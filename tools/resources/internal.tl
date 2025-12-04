@@ -170,12 +170,17 @@ internal_botfather.botfather_state_newbot#bcb2c294 name:string = internal_botfat
 
 internal_stickersbot.newpack_input_sticker#fe36b3bd file_id:long emoji:string = internal_stickersbot.NewpackInputSticker;
 
+internal_stickersbot.emoji_pack_type_static#371ef88f = internal_stickersbot.EmojiPackType;
+internal_stickersbot.emoji_pack_type_video#be690159 = internal_stickersbot.EmojiPackType;
+internal_stickersbot.emoji_pack_type_animated#100a52c = internal_stickersbot.EmojiPackType;
+
 internal_stickersbot.stickers_state_newpack#70a163dd name:string stickers:Vector<internal_stickersbot.NewpackInputSticker> = internal_stickersbot.StickersBotState;
 internal_stickersbot.stickers_state_addsticker#adc6611f set_id:long file_id:long = internal_stickersbot.StickersBotState;
 internal_stickersbot.stickers_state_editsticker#d3add072 flags:# set_id:flags.0?long file_id:flags.1?long = internal_stickersbot.StickersBotState;
 internal_stickersbot.stickers_state_delpack#1852c118 set_id:long = internal_stickersbot.StickersBotState;
 internal_stickersbot.stickers_state_renamepack#b4b529e2 set_id:long = internal_stickersbot.StickersBotState;
 internal_stickersbot.stickers_state_replacesticker#dce7b0f5 flags:# set_id:flags.0?long file_id:flags.1?long = internal_stickersbot.StickersBotState;
+internal_stickersbot.stickers_state_newemojipack#3d1302b7 flags:# type:internal_stickersbot.EmojiPackType name:flags.0?string stickers:flags.1?Vector<internal_stickersbot.NewpackInputSticker> = internal_stickersbot.StickersBotState;
 
 // Access hashes
 internal_access.access_hash_payload_user#916e7528 this_user_id:long user_id:long auth_id:long = internal_access.AccessHashPayload;

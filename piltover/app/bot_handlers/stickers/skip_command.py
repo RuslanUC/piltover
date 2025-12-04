@@ -8,6 +8,11 @@ Please provide a short name for your set. I'll use it to create a link that you 
 
 For example, this set has the short name 'Animals': https://telegram.me/addstickers/Animals
 """.strip()
+__text_icon_skipped_emoji = """
+Please provide a short name for your emoji set. I'll use it to create a link that you can share with friends and followers.
+
+For example, this set has the short name 'DuckEmoji': https://telegram.me/addemoji/DuckEmoji
+""".strip()
 
 
 async def stickers_skip_command(peer: Peer, _: Message) -> Message | None:
@@ -18,5 +23,9 @@ async def stickers_skip_command(peer: Peer, _: Message) -> Message | None:
     if state.state is StickersBotState.NEWPACK_WAIT_ICON:
         await state.update_state(StickersBotState.NEWPACK_WAIT_SHORT_NAME, None)
         return await send_bot_message(peer, __text_icon_skipped)
+
+    if state.state is StickersBotState.NEWEMOJIPACK_WAIT_ICON:
+        await state.update_state(StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME, None)
+        return await send_bot_message(peer, __text_icon_skipped_emoji)
 
     return await send_bot_message(peer, __text_no_skip)

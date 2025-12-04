@@ -18,10 +18,26 @@ async def get_stickerset_selection_keyboard(user: User) -> list[KeyboardButtonRo
 
 
 async def send_bot_message(
-        peer: Peer, text: str, keyboard: ReplyInlineMarkup | ReplyKeyboardMarkup | None = None
+        peer: Peer, text: str, keyboard: ReplyInlineMarkup | ReplyKeyboardMarkup | None = None,
+        entities: list[dict[str, str | int]] | None = None,
 ) -> Message:
     messages = await Message.create_for_peer(
         peer, None, None, peer.user, False,
-        message=text, reply_markup=keyboard.write() if keyboard else None,
+        message=text, reply_markup=keyboard.write() if keyboard else None, entities=entities,
     )
     return messages[peer]
+
+
+EMOJI_PACK_TYPES_KEYBOARD = ReplyKeyboardMarkup(
+    rows=[
+        KeyboardButtonRow(
+            buttons=[KeyboardButton(text="Animated emoji")],
+        ),
+        KeyboardButtonRow(
+            buttons=[KeyboardButton(text="Video emoji")],
+        ),
+        KeyboardButtonRow(
+            buttons=[KeyboardButton(text="Static emoji")],
+        ),
+    ]
+)

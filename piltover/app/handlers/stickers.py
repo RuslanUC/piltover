@@ -67,7 +67,7 @@ async def check_stickerset_short_name(request: CheckShortName, prefix: str = "")
 
 # https://core.telegram.org/stickers
 
-async def validate_png_webp(file: File, emoji: bool) -> None:
+async def validate_png_webp(file: File, is_emoji: bool) -> None:
     if file.size > 512 * 1024:
         raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
@@ -81,6 +81,12 @@ async def validate_png_webp(file: File, emoji: bool) -> None:
             file.needs_save = True
 
     dims = (file.width, file.height)
+
+    if is_emoji:
+        if dims != (100, 100):
+            raise ErrorRpc(error_code=400, error_message="STICKER_PNG_DIMENSIONS")
+        return
+
     if 512 not in dims or any(dim > 512 for dim in dims):
         raise ErrorRpc(error_code=400, error_message="STICKER_PNG_DIMENSIONS")
 
