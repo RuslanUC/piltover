@@ -4,10 +4,11 @@ from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSuggestedDialogFilters, GetSavedReactionTags, \
-    GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, GetEmojiKeywordsDifference
+    GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
+    GetEmojiKeywordsDifference, GetEmojiStickerGroups, GetEmojiGroups
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
     Stickers, FeaturedStickers, MessageEditData, \
-    QuickReplies
+    QuickReplies, EmojiGroups
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
@@ -118,3 +119,9 @@ async def get_emoji_keywords_difference(
         version=request.from_version,
         keywords=[],
     )
+
+
+#@handler.on_request(GetEmojiStickerGroups, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+#@handler.on_request(GetEmojiGroups, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+#async def get_emoji_groups(request: GetEmojiGroups | GetEmojiStickerGroups) -> EmojiGroups:  # pragma: no cover
+#    return EmojiGroups(hash=0, groups=[])
