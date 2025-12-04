@@ -4,7 +4,7 @@ from piltover.app.bot_handlers.stickers.utils import send_bot_message
 from piltover.db.enums import StickersBotState
 from piltover.db.models import Peer, Message, StickersBotUserState
 from piltover.exceptions import Unreachable
-from piltover.tl.types.internal_stickersbot import StickersStateNewpack
+from piltover.tl.types.internal_stickersbot import StickersStateNewpack, StickersStateNewemojipack
 
 __text_no_publish = "You don't have any sticker sets yet. Use the /newpack command to create a new set first."
 __text_set_icon = """
@@ -38,7 +38,7 @@ async def stickers_publish_command(peer: Peer, _: Message) -> Message | None:
 
         return await send_bot_message(peer, __text_set_icon)
     elif state.state in (StickersBotState.NEWEMOJIPACK_WAIT_IMAGE, StickersBotState.NEWEMOJIPACK_WAIT_EMOJI):
-        state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
+        state_data = StickersStateNewemojipack.deserialize(BytesIO(state.data))
         if not state_data.stickers or (len(state_data.stickers) == 1 and not state_data.stickers[0].emoji):
             return await send_bot_message(peer, __text_no_publish)
 

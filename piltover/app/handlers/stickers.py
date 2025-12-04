@@ -19,10 +19,10 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
     InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty, \
-    InputStickerSetAnimatedEmoji, StickerSet
+    InputStickerSetAnimatedEmoji, StickerSet, Document, TLObjectVector
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets, GetRecentStickers, \
-    ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers
+    ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers, GetCustomEmojiDocuments
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet, SetStickerSetThumb
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, \
@@ -887,6 +887,16 @@ async def get_faved_stickers(request: GetFavedStickers, user: User) -> FavedStic
             faved.sticker.to_tl_document()
             for faved in await query
         ],
+    )
+
+
+@handler.on_request(GetCustomEmojiDocuments, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_custom_emoji_documents(request: GetCustomEmojiDocuments) -> list[Document]:
+    # TODO: add limit?
+    files = await File.filter(id__in=request.document_id, type=FileType.DOCUMENT_EMOJI).select_related("stickerset")
+    return TLObjectVector(
+        file.to_tl_document()
+        for file in files
     )
 
 

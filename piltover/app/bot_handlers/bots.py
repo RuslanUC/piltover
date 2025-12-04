@@ -10,6 +10,7 @@ from piltover.app.bot_handlers.stickers.addsticker_command import stickers_addst
 from piltover.app.bot_handlers.stickers.cancel_command import stickers_cancel_command
 from piltover.app.bot_handlers.stickers.delpack_command import stickers_delpack_command
 from piltover.app.bot_handlers.stickers.editsticker_command import stickers_editsticker_command
+from piltover.app.bot_handlers.stickers.newemojipack_command import stickers_newemojipack_command
 from piltover.app.bot_handlers.stickers.newpack_command import stickers_newpack_command
 from piltover.app.bot_handlers.stickers.publish_command import stickers_publish_command
 from piltover.app.bot_handlers.stickers.renamepack_command import stickers_renamepack_command
@@ -53,6 +54,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
         "delpack": stickers_delpack_command,
         "renamepack": stickers_renamepack_command,
         "replacesticker": stickers_replacesticker_command,
+        "newemojipack": stickers_newemojipack_command,
     }
 }
 CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, Message, bytes], Awaitable[BotCallbackAnswer | None]]] = {

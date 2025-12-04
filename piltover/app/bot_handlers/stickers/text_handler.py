@@ -208,6 +208,8 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             return await send_bot_message(peer, __replacesticker_replaced)
         elif state.state is StickersBotState.NEWEMOJIPACK_WAIT_IMAGE:
             state_data = StickersStateNewemojipack.deserialize(BytesIO(state.data))
+            if state_data.stickers is None:
+                state_data.stickers = []
             state_data.stickers.append(NewpackInputSticker(file_id=message.media.file.id, emoji=""))
             await state.update_state(StickersBotState.NEWEMOJIPACK_WAIT_EMOJI, state_data.serialize())
             return await send_bot_message(peer, __newemojipack_send_emoji)
