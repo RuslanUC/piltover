@@ -1,13 +1,12 @@
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
-    DocumentEmpty, PeerSettings, TLObjectVector
+    PeerSettings, TLObjectVector
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSuggestedDialogFilters, GetSavedReactionTags, \
-    GetFeaturedStickers, GetFeaturedEmojiStickers, GetCustomEmojiDocuments, GetEmojiStickers, \
-    GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, GetEmojiKeywordsDifference
+    GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, GetEmojiKeywordsDifference
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
-    Stickers, AllStickers, FeaturedStickers, MessageEditData, \
+    Stickers, FeaturedStickers, MessageEditData, \
     QuickReplies
 from piltover.worker import MessageHandler
 
@@ -66,11 +65,6 @@ async def get_featured_stickers():  # pragma: no cover
         sets=[],
         unread=[],
     )
-
-
-@handler.on_request(GetEmojiStickers, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_emoji_stickers(request: GetEmojiStickers):  # pragma: no cover
-    return AllStickers(hash=request.hash, sets=[])
 
 
 @handler.on_request(GetEmojiKeywords, ReqHandlerFlags.AUTH_NOT_REQUIRED)

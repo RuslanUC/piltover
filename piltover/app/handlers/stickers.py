@@ -22,7 +22,7 @@ from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStick
     InputStickerSetAnimatedEmoji, StickerSet, Document, TLObjectVector
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets, GetRecentStickers, \
-    ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers, GetCustomEmojiDocuments
+    ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers, GetCustomEmojiDocuments, GetEmojiStickers
 from piltover.tl.functions.stickers import CreateStickerSet, CheckShortName, ChangeStickerPosition, RenameStickerSet, \
     DeleteStickerSet, ChangeSticker, AddStickerToSet, ReplaceSticker, RemoveStickerFromSet, SetStickerSetThumb
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet, MyStickers, StickerSetNotModified, \
@@ -600,7 +600,7 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> 
 
 @handler.on_request(GetAllStickers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers | AllStickersNotModified:
-    sets = await InstalledStickerset.filter(user=user, archived=False, set__deleted=False)\
+    sets = await InstalledStickerset.filter(user=user, archived=False, set__deleted=False, set__emoji=False)\
         .order_by("pos", "-installed_at")\
         .select_related("set")
     sets_hash = telegram_hash((stickerset.set.id for stickerset in sets), 64)
@@ -897,6 +897,25 @@ async def get_custom_emoji_documents(request: GetCustomEmojiDocuments) -> list[D
     return TLObjectVector(
         file.to_tl_document()
         for file in files
+    )
+
+
+@handler.on_request(GetEmojiStickers, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_emoji_stickers(request: GetEmojiStickers, user: User) -> AllStickers | AllStickersNotModified:
+    sets = await InstalledStickerset.filter(user=user, archived=False, set__deleted=False, set__emoji=True)\
+        .order_by("pos", "-installed_at")\
+        .select_related("set")
+    sets_hash = telegram_hash((stickerset.set.id for stickerset in sets), 64)
+
+    if sets_hash == request.hash:
+        return AllStickersNotModified()
+
+    return AllStickers(
+        hash=sets_hash,
+        sets=[
+            await stickerset.set.to_tl(user)
+            for stickerset in sets
+        ]
     )
 
 
