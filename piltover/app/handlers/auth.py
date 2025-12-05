@@ -39,16 +39,20 @@ LOGIN_MESSAGE_FMT = FormatableTextWithEntities((
 ))
 
 
-def _validate_phone(phone_number: str) -> None:
+def _validate_phone(phone_number: str) -> str:
+    phone_number = "".join(filter(lambda ch: ch.isdigit(), phone_number))
+
     try:
         if int(phone_number) < 100000:
             raise ValueError
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
+    return phone_number
+
 
 async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSentCode:
-    _validate_phone(phone_number)
+    phone_number = _validate_phone(phone_number)
 
     if code_hash is None:
         code = await SentCode.create(phone_number=phone_number, purpose=PhoneCodePurpose.SIGNIN)
@@ -64,6 +68,9 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
         code.expires_at = SentCode.gen_expires_at()
         await code.save(update_fields=["code", "hash", "expires_at"])
 
+    logger.trace(
+        f"Code info: id={code.id!r}, phone_number={code.phone_number!r}, code={code.code!r}, hash={code.hash!r}"
+    )
     print(f"Code: {code.code}")
 
     resp = TLSentCode(
@@ -106,16 +113,16 @@ async def send_code(request: SendCode):
 @handler.on_request(SignIn, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
 async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpRequired:
     if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
-        raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
+        raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID", reason="Invalid phone code hash")
     if request.phone_code is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EMPTY")
-    _validate_phone(request.phone_number)
+    phone_number = _validate_phone(request.phone_number)
     try:
         int(request.phone_code)
     except ValueError:
-        raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID")
+        raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID", reason="Invalid phone code")
 
-    code = await SentCode.get_(request.phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNIN)
+    code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNIN)
     await SentCode.check_raise_cls(code, request.phone_code)
 
     code.used = False
@@ -123,7 +130,7 @@ async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpReq
     code.purpose = PhoneCodePurpose.SIGNUP
     await code.save(update_fields=["used", "expires_at", "purpose"])
 
-    if (user := await User.get_or_none(phone_number=request.phone_number)) is None:
+    if (user := await User.get_or_none(phone_number=phone_number)) is None:
         return AuthorizationSignUpRequired()
 
     password, _ = await UserPassword.get_or_create(user=user)
@@ -145,15 +152,15 @@ async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpReq
 async def sign_up(request: SignUp | SignUp_133):
     if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
-    _validate_phone(request.phone_number)
+    phone_number = _validate_phone(request.phone_number)
 
-    code = await SentCode.get_(request.phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNUP)
+    code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNUP)
     await SentCode.check_raise_cls(code, None)
 
     code.used = True
     await code.save(update_fields=["used"])
 
-    if await User.filter(phone_number=request.phone_number).exists():
+    if await User.filter(phone_number=phone_number).exists():
         raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")
 
     if not request.first_name or len(request.first_name) > 128:
@@ -162,7 +169,7 @@ async def sign_up(request: SignUp | SignUp_133):
         raise ErrorRpc(error_code=400, error_message="LASTNAME_INVALID")
 
     user = await User.create(
-        phone_number=request.phone_number,
+        phone_number=phone_number,
         first_name=request.first_name,
         last_name=request.last_name
     )
@@ -245,14 +252,14 @@ async def export_login_token():  # TODO: test
 
     login_q = Q(key__id=ctx.perm_auth_key_id) & (
         Q(created_at__gt=datetime.now(UTC) - timedelta(seconds=QrLogin.EXPIRE_TIME))
-        | Q(auth__not=None)
+        | Q(auth__id__not=None)
     )
 
     login = await QrLogin.get_or_none(login_q).select_related("auth", "auth__user")
     if login is None:
         login = await QrLogin.create(key=await AuthKey.get(id=ctx.perm_auth_key_id))
 
-    if login.auth is not None:
+    if login.auth_id is not None:
         if login.auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         user = login.auth.user
@@ -320,11 +327,11 @@ async def resend_code(request: ResendCode) -> TLSentCode:
 
 @handler.on_request(CancelCode, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def cancel_code(request: CancelCode) -> bool:
-    _validate_phone(request.phone_number)
+    phone_number = _validate_phone(request.phone_number)
     if len(request.phone_code_hash) != SentCode.CODE_HASH_SIZE:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
 
-    code = await SentCode.get_(request.phone_number, request.phone_code_hash, None)
+    code = await SentCode.get_(phone_number, request.phone_code_hash, None)
     await SentCode.check_raise_cls(code, None)
     await code.delete()
 

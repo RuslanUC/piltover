@@ -274,6 +274,9 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                 # TODO: add other message types and replace with `Unreachable`
                 raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
 
+            if result.content is not None:
+                ...
+
             # TODO: use BotInlineMediaResult if thumb or content is set
             # TODO: download thumb and content in worker or something
             results.append(BotInlineResult(

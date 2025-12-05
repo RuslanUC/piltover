@@ -5,6 +5,7 @@ from random import randint
 from time import time
 from uuid import UUID, uuid4
 
+from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
 
@@ -48,6 +49,10 @@ class SentCode(Model):
         code_id = Long.read_bytes(bytes.fromhex(code_hash[:16]))
         code_hash = UUID(code_hash[16:])
 
+        logger.trace(
+            f"Query code info: id={code_id!r}, phone_number={number!r}, hash={code_hash!r}"
+        )
+
         query = Q(id=code_id, hash=code_hash, phone_number=number, used=False)
         if purpose is not None:
             query &= Q(purpose=purpose)
@@ -56,7 +61,10 @@ class SentCode(Model):
 
     async def check_raise(self, code: str | None) -> None:
         if code is not None and self.code != int(code):
-            raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
+            raise ErrorRpc(
+                error_code=400, error_message="PHONE_CODE_INVALID",
+                reason=f"code is None or code != self.code ({code=}, {self.code=})"
+            )
         if self.expires_at < time():
             await self.delete()
             raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EXPIRED")
@@ -64,5 +72,5 @@ class SentCode(Model):
     @classmethod
     async def check_raise_cls(cls, sent_code: SentCode | None, code: str | None) -> None:
         if sent_code is None:
-            raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
+            raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID", reason="sent_code is None")
         await sent_code.check_raise(code)

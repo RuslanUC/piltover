@@ -6,6 +6,7 @@ from pytz import UTC
 from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
+from piltover.app.handlers.auth import _validate_phone
 from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
@@ -502,7 +503,8 @@ async def send_change_phone_code(request: SendChangePhoneCode, user: User) -> TL
 
 @handler.on_request(ChangePhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def change_phone(request: ChangePhone, user: User) -> TLUser:
-    code = await SentCode.get_(request.phone_number, request.phone_code_hash, PhoneCodePurpose.CHANGE_NUMBER)
+    phone_number = _validate_phone(request.phone_number)
+    code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.CHANGE_NUMBER)
     await SentCode.check_raise_cls(code, request.phone_code)
 
     code.used = True

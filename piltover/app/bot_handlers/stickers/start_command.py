@@ -8,7 +8,7 @@ Hello, I'm the Sticker Bot! I can create sticker sets and emoji packs from pictu
 Use these commands to control me:
 
 Emoji
-<c>/newemojipack</c> — make a set of emoji (<a>https://core.telegram.org/stickers#custom-emoji</a>) - TODO
+<c>/newemojipack</c> — make a set of emoji (<a>https://core.telegram.org/stickers#custom-emoji</a>)
 
 Stickers & Masks
 <c>/newpack</c> – make a static PNG / WEBP sticker set (<a>https://core.telegram.org/stickers#static-stickers</a>)

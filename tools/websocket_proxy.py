@@ -2,7 +2,6 @@ import asyncio
 import os
 import signal
 
-import websockets
 from loguru import logger
 from websockets import ConnectionClosedOK
 from websockets.server import WebSocketServerProtocol, serve
