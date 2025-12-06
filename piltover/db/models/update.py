@@ -370,12 +370,13 @@ class Update(Model):
                 if (auth := await models.UserAuthorization.get_or_none(id=self.related_id)) is None:
                     return none_ret
 
+                unconfirmed = not auth.confirmed
                 return UpdateNewAuthorization(
-                    unconfirmed=not auth.confirmed,
+                    unconfirmed=unconfirmed,
                     hash=auth.tl_hash,
-                    date=int(auth.created_at.timestamp()),
-                    device=auth.device_model if auth.device_model != "Unknown" else None,
-                    location=auth.ip,
+                    date=int(auth.created_at.timestamp()) if unconfirmed else None,
+                    device=auth.device_model if unconfirmed else None,
+                    location=auth.ip if unconfirmed else None,
                 ), users_q, chats_q, channels_q
 
             case UpdateType.NEW_STICKERSET:

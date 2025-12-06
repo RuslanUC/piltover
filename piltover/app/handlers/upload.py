@@ -112,7 +112,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     else:
         valid, const = File.is_file_ref_valid(location.file_reference, user.id, location.id)
         if not valid:
-            raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
+            raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED", reason="file ref is invalid")
 
         if const:
             q = {
@@ -132,7 +132,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
         file = await File.get_or_none(**q)
 
     if file is None:
-        raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED")
+        raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED", reason="file is None")
 
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")

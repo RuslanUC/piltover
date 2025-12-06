@@ -15,6 +15,13 @@ class SendAsPeersDowngradeTo135(BaseDowngrader):
         )
 
 
+class SendAsPeersDontDowngrade145(AutoDowngrader):
+    BASE_TYPE = SendAsPeers
+    TARGET_TYPE = SendAsPeers
+    TARGET_LAYER = 145
+    REMOVE_FIELDS = set()
+
+
 class SendAsPeersDontDowngrade(AutoDowngrader):
     BASE_TYPE = SendAsPeers
     TARGET_TYPE = SendAsPeers

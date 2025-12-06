@@ -91,7 +91,10 @@ class User(Model):
             "apply_min_photo": False,
             "fake": False,
             "bot_attach_menu": False,
-            "premium": False,
+            # TODO: this is True only because custom emojis are not available (like at all, missing in emoji list)
+            #  for non-premium users.
+            #  Need to figure out how official telegram allows custom emojis to be visible to non-premium users.
+            "premium": True,
             "attach_menu_enabled": False,
         }
 

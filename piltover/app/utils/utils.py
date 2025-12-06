@@ -252,7 +252,7 @@ VALID_ENTITIES = (
 )
 
 
-async def validate_message_entities(text: str, entities: list[MessageEntityBase], user: User) -> list[dict] | None:
+async def _validate_message_entities(text: str, entities: list[MessageEntityBase], user: User) -> list[dict] | None:
     if not entities:
         return None
     if len(entities) > 1024:
@@ -261,33 +261,38 @@ async def validate_message_entities(text: str, entities: list[MessageEntityBase]
     fetch_users: list[tuple[InputUserBase, int]] = []
     check_emojis: list[tuple[int, int]] = []
 
+    u16text = text.encode("utf-16le")
+
     result = []
     for idx, entity in enumerate(entities):
         if (idx % 64) == 0:
             await asyncio.sleep(0)
 
-        if entity.offset < 0 or entity.offset > len(text) or (entity.offset + entity.length) > len(text):
+        u16off = entity.offset * 2
+        u16len = entity.length * 2
+
+        if u16off < 0 or u16off > len(u16text) or (u16off + u16len) > len(u16text):
             raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         if isinstance(entity, MessageEntityMention):
-            if text[entity.offset] != "@":
+            if u16text[u16off] != ord(b"@"):
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
-            if not USERNAME_REGEX.match(text[entity.offset+1:entity.offset+entity.length]):
+            if not USERNAME_REGEX.match(u16text[u16off+2:u16off+u16len].decode("utf-16le")):
                 raise ErrorRpc(error_code=400, error_message="ENTITY_MENTION_USER_INVALID")
         elif isinstance(entity, MessageEntityHashtag):
-            if text[entity.offset] != "#":
+            if u16text[u16off] != ord(b"#"):
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         elif isinstance(entity, MessageEntityUrl):
-            if not text[entity.offset:].startswith("http"):
+            if not u16text[u16off:].startswith("http".encode("utf-16le")):
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         elif isinstance(entity, MessageEntityEmail):
-            email = text[entity.offset+1:entity.offset+entity.length]
-            if "@" not in email:
+            email = u16text[u16off+2:u16off+u16len]
+            if "@".encode("utf-16le") not in email:
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         elif isinstance(entity, MessageEntityPhone):
-            if text[entity.offset] != "+":
+            if u16text[u16off] != ord(b"+"):
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         elif isinstance(entity, MessageEntityCashtag):
-            if text[entity.offset] != "$":
+            if u16text[u16off] != ord(b"$"):
                 raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         elif isinstance(entity, InputMessageEntityMentionName):
             fetch_users.append((entity.user_id, len(result)))
@@ -332,13 +337,13 @@ async def validate_message_entities(text: str, entities: list[MessageEntityBase]
         }
 
         for check_id, idx in reversed(check_emojis):
-            off = result[idx]["offset"]
-            ln = result[idx]["length"]
+            off = result[idx]["offset"] * 2
+            ln = result[idx]["length"] * 2
 
             if check_id not in files \
                     or files[check_id].stickerset_id is None \
                     or files[check_id].stickerset.deleted\
-                    or files[check_id].sticker_alt != text[off:off+ln]:
+                    or files[check_id].sticker_alt != u16text[off:off+ln].decode("utf-16le"):
                 del result[idx]
                 continue
 
@@ -351,7 +356,19 @@ async def process_message_entities(
     if not text:
         return None
 
-    entities = await validate_message_entities(text, entities, user)
+    entities = await _validate_message_entities(text, entities, user)
+
+    # TODO: calculate this properly:
+    #  dont use utf16 at all,
+    #  dont use regex,
+    #  count lengths and offsets from utf8, like in https://core.telegram.org/api/entities#computing-entity-length
+
+    u8_to_u16 = {}
+    last_len = 0
+    for pos, char in enumerate(text):
+        last = u8_to_u16[pos - 1] if pos else 0
+        u8_to_u16[pos] = last + last_len
+        last_len = len(char.encode("utf-16le")) // 2
 
     for mention in USERNAME_MENTION_REGEX.finditer(text):
         await sleep(0)
@@ -359,10 +376,13 @@ async def process_message_entities(
             entities = []
 
         start, end = mention.span()
-        length = end - start
+        u16start = u8_to_u16[start]
+        u16end = u8_to_u16[end]
+        length = u16end - u16start
+
         entities.append({
             "_": MessageEntityMention.tlid(),
-            "offset": start,
+            "offset": u16start,
             "length": length,
         })
 
@@ -372,10 +392,13 @@ async def process_message_entities(
             entities = []
 
         start, end = command.span()
-        length = end - start
+        u16start = u8_to_u16[start]
+        u16end = u8_to_u16[end]
+        length = u16end - u16start
+
         entities.append({
             "_": MessageEntityBotCommand.tlid(),
-            "offset": start,
+            "offset": u16start,
             "length": length,
         })
 

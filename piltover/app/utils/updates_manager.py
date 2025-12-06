@@ -1182,14 +1182,15 @@ async def new_auth(user: User, auth: UserAuthorization) -> Updates:
         related_id=auth.id,
     )
 
+    unconfirmed = not auth.confirmed
     updates = UpdatesWithDefaults(
         updates=[
             UpdateNewAuthorization(
-                unconfirmed=not auth.confirmed,
+                unconfirmed=unconfirmed,
                 hash=auth.tl_hash,
-                date=int(auth.created_at.timestamp()),
-                device=auth.device_model if auth.device_model != "Unknown" else None,
-                location=auth.ip,
+                date=int(auth.created_at.timestamp()) if unconfirmed else None,
+                device=auth.device_model if unconfirmed else None,
+                location=auth.ip if unconfirmed else None,
             ),
         ],
     )

@@ -205,6 +205,7 @@ LayerConverter.register_for_downgrade(BotInfoDowngradeTo193)
 LayerConverter.register_for_downgrade(BotInfoDontDowngrade)
 
 LayerConverter.register_for_downgrade(SendAsPeersDowngradeTo135)
+LayerConverter.register_for_downgrade(SendAsPeersDontDowngrade145)
 LayerConverter.register_for_downgrade(SendAsPeersDontDowngrade)
 
 LayerConverter.register_for_downgrade(DraftMessageDowngradeTo133)
