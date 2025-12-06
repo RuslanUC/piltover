@@ -5,10 +5,10 @@ from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, Get
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSuggestedDialogFilters, GetSavedReactionTags, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
-    GetEmojiKeywordsDifference, GetEmojiStickerGroups, GetEmojiGroups
+    GetEmojiKeywordsDifference
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
     Stickers, FeaturedStickers, MessageEditData, \
-    QuickReplies, EmojiGroups
+    QuickReplies
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")

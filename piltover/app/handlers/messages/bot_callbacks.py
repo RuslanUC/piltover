@@ -15,9 +15,8 @@ from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery,
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException, Unreachable
 from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty, InputBotInlineResult, \
-    InputBotInlineResultPhoto, InputBotInlineResultDocument, InputBotInlineMessageText, BotInlineResult, \
-    BotInlineMessageText, objects, InputBotInlineMessageMediaAuto, BotInlineMessageMediaAuto
-from piltover.tl.base import BotInlineMessage
+    InputBotInlineMessageText, BotInlineResult, BotInlineMessageText, objects, InputBotInlineMessageMediaAuto, \
+    BotInlineMessageMediaAuto
 from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer, GetInlineBotResults, \
     SetInlineBotResults
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
@@ -275,10 +274,10 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                 raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
 
             if result.content is not None:
+                # TODO: download content in worker or something
                 ...
 
-            # TODO: use BotInlineMediaResult if thumb or content is set
-            # TODO: download thumb and content in worker or something
+            # TODO: use BotInlineMediaResult if content is set
             results.append(BotInlineResult(
                 id=result.id,
                 type_=result.type_,

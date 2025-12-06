@@ -40,7 +40,7 @@ from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatPart
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
-    ReqPqMulti
+    ReqPqMulti, PingDelayDisconnect
 from piltover.tl.core_types import MsgContainer, Message, RpcResult, GzipPacked
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
@@ -297,6 +297,9 @@ class Client:
             return
 
         temp_key = await TempAuthKey.get_or_none(id=auth_key_id).select_related("perm_key")
+        if temp_key is None:
+            return
+
         self.auth_data.perm_auth_key_id = temp_key.perm_key.id if temp_key.perm_key else None
 
     async def _refresh_session_maybe(self, session: Session, force_refresh_auth: bool = False) -> None:
@@ -486,7 +489,10 @@ class Client:
             # For some reason some clients cant process BadServerSalt response to BindTempAuthKey request
             check_salt = decrypted.data[:4] != Int.write(BindTempAuthKey.tlid(), False)
             # Is GzipPacked content-related? idk
-            check_seq_no = decrypted.data[:4] != Int.write(GzipPacked.tlid(), False)
+            # Either webk does not care about seq_no being even/odd (and so should i?), or i am doing something wrong
+            #  Upd: apparently, PingDelayDisconnect can both have even and odd seq_no, wtf???
+            check_seq_no = (decrypted.data[:4] != Int.write(GzipPacked.tlid(), False)
+                            and decrypted.data[:4] != Int.write(PingDelayDisconnect.tlid(), False))
             if await self._is_message_bad(decrypted, check_salt, check_seq_no):
                 return
 
