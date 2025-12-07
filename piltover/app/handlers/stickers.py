@@ -10,7 +10,7 @@ from tortoise.expressions import Q, F, Subquery
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app.utils.utils import telegram_hash, get_image_dims
+from piltover.app.utils.utils import telegram_hash, get_image_dims, resize_photo
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import FileType, StickerSetType
@@ -160,6 +160,8 @@ async def _get_sticker_files(
         stickers: list[InputStickerSetItem], user: User, set_type: StickerSetType | None, is_emoji: bool,
 ) -> tuple[dict[int, File], StickerSetType]:
     files_q = Q()
+    base_q = Q(type__in=[FileType.DOCUMENT_STICKER, FileType.DOCUMENT], mime_type__in=allowed_mimes, stickerset=None)
+    ids = set()
 
     for input_sticker in stickers:
         emoji = input_sticker.emoji.strip()
@@ -171,20 +173,22 @@ async def _get_sticker_files(
         if not valid:
             raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
 
-        base_q = Q(
-            id=input_doc.id, type__in=[FileType.DOCUMENT_STICKER, FileType.DOCUMENT], mime_type__in=allowed_mimes,
-            stickerset=None,
-        )
         if const:
-            files_q |= base_q & Q(
-                constant_access_hash=input_doc.access_hash, constant_file_ref=UUID(bytes=input_doc.file_reference),
+            files_q |= Q(
+                id=input_doc.id,
+                constant_access_hash=input_doc.access_hash,
+                constant_file_ref=UUID(bytes=input_doc.file_reference),
             )
         else:
             ctx = request_ctx.get()
             if not File.check_access_hash(user.id, ctx.auth_id, input_doc.id, input_doc.access_hash):
                 raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+            ids.add(input_doc.id)
 
-    files = {file.id: file for file in await File.filter(files_q)}
+    if ids:
+        files_q |= Q(id__in=ids)
+
+    files = {file.id: file for file in await File.filter(base_q & files_q)}
 
     for input_sticker in stickers:
         file = files.get(input_sticker.document.id)
@@ -246,21 +250,38 @@ async def make_sticker_from_file(
         file: File, stickerset: Stickerset, pos: int, alt: str, mask: bool, mask_coords: MaskCoords | None,
         create: bool = True,
 ) -> File:
+    photo_sizes = file.photo_sizes
+    mime_type = file.mime_type
+    filename = file.filename
+    if stickerset.type is StickerSetType.STATIC:
+        mime_type = "image/webp"
+        storage = request_ctx.get().storage
+        photo_sizes = await resize_photo(
+            storage, file.physical_id, is_document=True,
+            sizes="m", out_format="WEBP", force_sizes=(100,) if stickerset.emoji else None,
+        )
+        if filename is not None:
+            filename += ".webp"
+        else:
+            filename = "sticker.webp"
+
+    # TODO: generate photo_path
+
     has_coords = mask and not stickerset.emoji and mask_coords
     new_file = File(
         physical_id=file.physical_id,
         created_at=file.created_at,
-        mime_type="image/webp" if file.mime_type == "image/png" else file.mime_type,
+        mime_type=mime_type,
         size=file.size,
         type=FileType.DOCUMENT_STICKER if not stickerset.emoji else FileType.DOCUMENT_EMOJI,
         constant_access_hash=Long.read_bytes(xorshift128plus_bytes(8)),
         constant_file_ref=UUID(bytes=xorshift128plus_bytes(16)),
-        filename=file.filename,
+        filename=filename,
         width=file.width,
         height=file.height,
         duration=file.duration,
         nosound=file.nosound,
-        photo_sizes=file.photo_sizes,
+        photo_sizes=photo_sizes,
         photo_stripped=file.photo_stripped,
         photo_path=file.photo_path,
         stickerset=stickerset,

@@ -572,22 +572,17 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             attributes.insert(0, DocumentAttributeFilename(file_name=media.file.name))
         file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
-        valid, const = File.is_file_ref_valid(media.id.file_reference, user.id, media.id.id)
-        if not valid:
-            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
-        file_q = Q(id=media.id.id)
-        if const:
-            file_q &= Q(
-                constant_access_hash=media.id.access_hash, constant_file_ref=UUID(bytes=media.id.file_reference[12:])
-            )
+        file_type = FileType.PHOTO if isinstance(media, InputMediaPhoto) else None
+        if isinstance(media, InputMediaPhoto):
+            add_query = Q(mime_type__startswith="image/")
         else:
-            ctx = request_ctx.get()
-            if not File.check_access_hash(user.id, ctx.auth_id, media.id.id, media.id.access_hash):
-                raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="access_hash is invalid")
-        file = await File.get_or_none(file_q)
-        if file is None \
-                or (not file.mime_type.startswith("image/") and isinstance(media, InputMediaPhoto)) \
-                or (file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
+            add_query = Q(type__not=FileType.PHOTO)
+        file = await File.from_input(
+            user.id, media.id.id, media.id.access_hash, media.id.file_reference, file_type, add_query=add_query,
+        )
+        if file is None:
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
+        if file is None or (file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
             raise ErrorRpc(
                 error_code=400, error_message="MEDIA_INVALID", reason="file is None, or invalid mime, or no photo sizes"
             )

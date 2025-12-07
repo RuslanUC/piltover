@@ -93,7 +93,7 @@ image_executor = ThreadPoolExecutor(thread_name_prefix="ImageResizeWorker")
 video_executor = ThreadPoolExecutor(thread_name_prefix="VideoMetadataWorker")
 
 
-def _resize_image_internal(location: str, to_size: int) -> tuple[BytesIO, int, int]:
+def _resize_image_internal(location: str, to_size: int, out_format: str | None) -> tuple[BytesIO, int, int]:
     img = img_open(location)
     img.load()
 
@@ -106,13 +106,17 @@ def _resize_image_internal(location: str, to_size: int) -> tuple[BytesIO, int, i
         width = int(width * factor)
         height = to_size
 
+    if out_format is None:
+        out_format = "PNG" if img.mode == "RGBA" else "JPEG"
+
     out = BytesIO()
-    img.resize((width, height)).save(out, format="PNG" if img.mode == "RGBA" else "JPEG")
+    img.resize((width, height)).save(out, format=out_format)
     return out, width, height
 
 
 async def resize_photo(
         storage: BaseStorage, file_id: UUID, sizes: str = "abc", suffix: str | None = None, is_document: bool = False,
+        out_format: str | None = None, force_sizes: tuple[int] | None = None,
 ) -> list[dict[str, int | str]]:
     if is_document:
         location = await storage.documents.get_location(file_id, suffix)
@@ -122,9 +126,9 @@ async def resize_photo(
     tasks = [
         get_event_loop().run_in_executor(
             image_executor, _resize_image_internal,
-            location, PHOTOSIZE_TO_INT[size],
+            location, PHOTOSIZE_TO_INT[size] if force_sizes is None else force_sizes[idx], out_format,
         )
-        for size in sizes
+        for idx, size in enumerate(sizes)
     ]
     res: list[tuple[BytesIO, int, int]] = await gather(*tasks)
 
@@ -369,6 +373,8 @@ async def process_message_entities(
         last = u8_to_u16[pos - 1] if pos else 0
         u8_to_u16[pos] = last + last_len
         last_len = len(char.encode("utf-16le")) // 2
+        if pos == len(text) - 1:
+            u8_to_u16[pos + 1] = u8_to_u16[pos] + last_len
 
     for mention in USERNAME_MENTION_REGEX.finditer(text):
         await sleep(0)
