@@ -209,7 +209,7 @@ class File(Model):
         sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
         sizes = [PhotoSize(**size) for size in self.photo_sizes] if self.photo_sizes else []
         if self.photo_stripped:
-            sizes.insert(0, PhotoStrippedSize(type_="i", bytes_=self.photo_stripped))
+            sizes.insert(0, PhotoStrippedSize(type_="i", bytes_=b"\x01\x08\x08" + self.photo_stripped))
         if self.photo_path:
             sizes.insert(0, PhotoPathSize(type_="j", bytes_=self.photo_path))
 
