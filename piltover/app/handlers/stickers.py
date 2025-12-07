@@ -2,6 +2,7 @@ import gzip
 import json
 from asyncio import sleep
 from base64 import b85encode
+from time import time
 from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
@@ -253,13 +254,17 @@ async def make_sticker_from_file(
     photo_sizes = file.photo_sizes
     mime_type = file.mime_type
     filename = file.filename
+    file_id = file.physical_id
+    file_size = file.size
     if stickerset.type is StickerSetType.STATIC:
         mime_type = "image/webp"
         storage = request_ctx.get().storage
+        file_id = UUID(bytes=xorshift128plus_bytes(16))
         photo_sizes = await resize_photo(
-            storage, file.physical_id, is_document=True,
-            sizes="m", out_format="WEBP", force_sizes=(100,) if stickerset.emoji else None,
+            storage, file.physical_id, is_document=True, sizes="m", out_format="WEBP",
+            force_sizes=(100,) if stickerset.emoji else None, new_file_id=file_id, new_as_document=True,
         )
+        file_size = photo_sizes[0]["size"]
         if filename is not None:
             filename += ".webp"
         else:
@@ -269,10 +274,10 @@ async def make_sticker_from_file(
 
     has_coords = mask and not stickerset.emoji and mask_coords
     new_file = File(
-        physical_id=file.physical_id,
-        created_at=file.created_at,
+        physical_id=file_id,
+        created_at=int(time()),
         mime_type=mime_type,
-        size=file.size,
+        size=file_size,
         type=FileType.DOCUMENT_STICKER if not stickerset.emoji else FileType.DOCUMENT_EMOJI,
         constant_access_hash=Long.read_bytes(xorshift128plus_bytes(8)),
         constant_file_ref=UUID(bytes=xorshift128plus_bytes(16)),
@@ -282,7 +287,7 @@ async def make_sticker_from_file(
         duration=file.duration,
         nosound=file.nosound,
         photo_sizes=photo_sizes,
-        photo_stripped=file.photo_stripped,
+        photo_stripped=None,
         photo_path=file.photo_path,
         stickerset=stickerset,
         sticker_pos=pos,

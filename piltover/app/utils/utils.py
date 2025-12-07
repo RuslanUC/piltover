@@ -116,7 +116,8 @@ def _resize_image_internal(location: str, to_size: int, out_format: str | None) 
 
 async def resize_photo(
         storage: BaseStorage, file_id: UUID, sizes: str = "abc", suffix: str | None = None, is_document: bool = False,
-        out_format: str | None = None, force_sizes: tuple[int] | None = None,
+        out_format: str | None = None, force_sizes: tuple[int] | None = None, new_file_id: UUID | None = None,
+        new_as_document: bool = False,
 ) -> list[dict[str, int | str]]:
     if is_document:
         location = await storage.documents.get_location(file_id, suffix)
@@ -141,8 +142,13 @@ async def resize_photo(
         file_size = resized.tell()
         resized.seek(0)
 
-        await storage.save_part(file_id, 0, resized.getbuffer(), True, str(width))
-        await storage.finalize_upload_as(file_id, StorageType.PHOTO, 0, str(width))
+        save_file_id = file_id if new_file_id is None else new_file_id
+        if new_file_id is not None and new_as_document:
+            await storage.save_part(new_file_id, 0, resized.getbuffer(), True)
+            await storage.finalize_upload_as(new_file_id, StorageType.DOCUMENT, 0)
+
+        await storage.save_part(save_file_id, 0, resized.getbuffer(), True, str(width))
+        await storage.finalize_upload_as(save_file_id, StorageType.PHOTO, 0, str(width))
 
         result.append({
             "type_": sizes[idx],

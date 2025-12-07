@@ -173,4 +173,4 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     else:
         file_type = MIME_TO_TL.get(file.mime_type, FileUnknown())
 
-    return TLFile(type_=file_type, mtime=int(time()), bytes_=data)
+    return TLFile(type_=file_type, mtime=int(file.created_at.timestamp()), bytes_=data)

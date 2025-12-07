@@ -43,7 +43,7 @@ class FileType(IntEnum):
     DOCUMENT_STICKER = 8
     DOCUMENT_EMOJI = 9
 
-    ENCRYPTED = 9
+    ENCRYPTED = 100
 
 
 class MediaType(IntEnum):
