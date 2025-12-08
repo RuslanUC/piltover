@@ -738,29 +738,43 @@ async def reset_wallpapers(user: User) -> bool:
 
 @handler.on_request(UpdateColor, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_color(request: UpdateColor, user: User) -> bool:
-    if request.color is None:
-        if request.for_profile and user.profile_color is not None:
-            user.profile_color = None
-            await user.save(update_fields="profile_color_id")
-        elif not request.for_profile and user.accent_color is not None:
-            user.accent_color = None
-            await user.save(update_fields="accent_color_id")
+    changed = []
+
+    if request.color is None and request.for_profile and user.profile_color_id is not None:
+        user.profile_color = None
+        changed.append("profile_color_id")
+    elif request.color is None and not request.for_profile and user.accent_color_id is not None:
+        user.accent_color = None
+        changed.append("accent_color_id")
+    elif request.color is not None:
+        if (peer_color := await PeerColorOption.get_or_none(id=request.color, is_profile=request.for_profile)) is None:
+            raise ErrorRpc(error_code=400, error_message="COLOR_INVALID")
+        if request.for_profile:
+            user.profile_color = peer_color
+            changed.append("profile_color_id")
         else:
-            return True
+            user.accent_color = peer_color
+            changed.append("accent_color_id")
 
-        await upd.update_user(user)
-        return True
+    if request.background_emoji_id is None and request.for_profile and user.profile_emoji_id is not None:
+        user.profile_emoji = None
+        changed.append("profile_emoji_id")
+    elif request.background_emoji_id is None and not request.for_profile and user.accent_emoji_id is not None:
+        user.accent_emoji = None
+        changed.append("accent_emoji_id")
+    elif request.background_emoji_id is not None:
+        emoji = await File.get_or_none(id=request.background_emoji_id, stickerset__installedstickersets__user=user)
+        if emoji is None:
+            raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
+        if request.for_profile:
+            user.profile_emoji = emoji
+            changed.append("profile_emoji_id")
+        else:
+            user.accent_emoji = emoji
+            changed.append("accent_emoji_id")
 
-    peer_color = await PeerColorOption.get_or_none(id=request.color, is_profile=request.for_profile)
-    if peer_color is None:
-        raise ErrorRpc(error_code=400, error_message="COLOR_INVALID")
-
-    if request.for_profile:
-        user.profile_color = peer_color
-        await user.save(update_fields="profile_color_id")
-    else:
-        user.accent_color = peer_color
-        await user.save(update_fields="accent_color_id")
+    if changed:
+        await user.save(update_fields=changed)
 
     await upd.update_user(user)
     return True

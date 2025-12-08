@@ -36,11 +36,15 @@ class User(Model):
     deleted: bool = fields.BooleanField(default=False)
     accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="accent")
     profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="profile")
+    accent_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="accent_emoji")
+    profile_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="profile_emoji")
     history_ttl_days: int = fields.SmallIntField(default=0)
     read_dates_private: bool = fields.BooleanField(default=False)
 
     accent_color_id: int | None
     profile_color_id: int | None
+    accent_emoji_id: int | None
+    profile_emoji_id: int | None
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
     is_lazy: bool = False
@@ -111,6 +115,13 @@ class User(Model):
 
         username = await self.get_username()
 
+        color = None
+        profile_color = None
+        if self.accent_color_id is not None or self.accent_emoji_id is not None:
+            color = PeerColor(color=self.accent_color_id, background_emoji_id=self.accent_emoji_id)
+        if self.profile_color_id is not None or self.profile_emoji_id is not None:
+            profile_color = PeerColor(color=self.profile_color_id, background_emoji_id=self.profile_emoji_id)
+
         return TLUser(
             **defaults,
             id=self.id,
@@ -126,8 +137,8 @@ class User(Model):
             contact=contact is not None,
             bot=self.bot,
             bot_info_version=1 if self.bot else None,
-            color=PeerColor(color=self.accent_color_id) if self.accent_color is not None else None,
-            profile_color=PeerColor(color=self.profile_color_id) if self.profile_color is not None else None,
+            color=color,
+            profile_color=profile_color,
             deleted=self.deleted,
         )
 
