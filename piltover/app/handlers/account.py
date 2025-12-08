@@ -13,14 +13,15 @@ from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
-    InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings
+    InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, \
-    UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty
+    UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
+    EmojiListNotModified
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
@@ -765,9 +766,19 @@ async def update_color(request: UpdateColor, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetDefaultBackgroundEmojis, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_default_background_emojis() -> EmojiList:
-    return EmojiList(hash=0, document_id=[])
+@handler.on_request(GetDefaultBackgroundEmojis, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_default_background_emojis(
+        request: GetDefaultBackgroundEmojis, user: User,
+) -> EmojiList | EmojiListNotModified:
+    ids = await File.filter(
+        stickerset__installedstickersets__user=user,
+    ).order_by("-stickerset__installedstickersets__installed_at", "id").values_list("id", flat=True)
+
+    emojis_hash = telegram_hash(ids, 64)
+    if emojis_hash == request.hash:
+        return EmojiListNotModified()
+
+    return EmojiList(hash=emojis_hash, document_id=ids)
 
 
 @handler.on_request(UpdatePersonalChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
