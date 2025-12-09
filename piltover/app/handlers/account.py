@@ -13,7 +13,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
-    InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File
+    InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis
 from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -756,25 +756,27 @@ async def update_color(request: UpdateColor, user: User) -> bool:
             user.accent_color = peer_color
             changed.append("accent_color_id")
 
-    if request.background_emoji_id is None and request.for_profile and user.profile_emoji_id is not None:
-        user.profile_emoji = None
-        changed.append("profile_emoji_id")
-    elif request.background_emoji_id is None and not request.for_profile and user.accent_emoji_id is not None:
-        user.accent_emoji = None
-        changed.append("accent_emoji_id")
-    elif request.background_emoji_id is not None:
+    profile_emoji = None
+    accent_emoji = None
+
+    if request.background_emoji_id is not None:
         emoji = await File.get_or_none(id=request.background_emoji_id, stickerset__installedstickersets__user=user)
         if emoji is None:
             raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
         if request.for_profile:
-            user.profile_emoji = emoji
-            changed.append("profile_emoji_id")
+            profile_emoji = emoji
         else:
-            user.accent_emoji = emoji
-            changed.append("accent_emoji_id")
+            accent_emoji = emoji
 
     if changed:
         await user.save(update_fields=changed)
+    if profile_emoji is None and accent_emoji is None:
+        await UserBackgroundEmojis.filter(user=user).delete()
+    else:
+        await UserBackgroundEmojis.update_or_create(user=user, defaults={
+            "profile_emoji": profile_emoji,
+            "accent_emoji": accent_emoji,
+        })
 
     await upd.update_user(user)
     return True
