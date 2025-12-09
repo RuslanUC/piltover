@@ -181,6 +181,7 @@ internal_stickersbot.stickers_state_delpack#1852c118 set_id:long = internal_stic
 internal_stickersbot.stickers_state_renamepack#b4b529e2 set_id:long = internal_stickersbot.StickersBotState;
 internal_stickersbot.stickers_state_replacesticker#dce7b0f5 flags:# set_id:flags.0?long file_id:flags.1?long = internal_stickersbot.StickersBotState;
 internal_stickersbot.stickers_state_newemojipack#3d1302b7 flags:# type:internal_stickersbot.EmojiPackType name:flags.0?string stickers:flags.1?Vector<internal_stickersbot.NewpackInputSticker> = internal_stickersbot.StickersBotState;
+internal_stickersbot.stickers_state_addemoji#c7087987 set_id:long file_id:long = internal_stickersbot.StickersBotState;
 
 // Access hashes
 internal_access.access_hash_payload_user#916e7528 this_user_id:long user_id:long auth_id:long = internal_access.AccessHashPayload;

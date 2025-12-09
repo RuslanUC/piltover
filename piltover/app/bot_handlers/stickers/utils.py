@@ -2,8 +2,8 @@ from piltover.db.models import User, Peer, Message, Stickerset
 from piltover.tl import KeyboardButtonRow, KeyboardButton, ReplyInlineMarkup, ReplyKeyboardMarkup
 
 
-async def get_stickerset_selection_keyboard(user: User) -> list[KeyboardButtonRow] | None:
-    stickersets = await Stickerset.filter(owner=user).order_by("-id").values_list("short_name")
+async def get_stickerset_selection_keyboard(user: User, emoji: bool = False) -> list[KeyboardButtonRow] | None:
+    stickersets = await Stickerset.filter(owner=user, emoji=emoji).order_by("-id").values_list("short_name")
 
     if not stickersets:
         return None

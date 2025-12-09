@@ -6,6 +6,7 @@ from piltover.app.bot_handlers.botfather.mybots_command import botfather_mybots_
 from piltover.app.bot_handlers.botfather.newbot_command import botfather_newbot_command
 from piltover.app.bot_handlers.botfather.start_command import botfather_start_command
 from piltover.app.bot_handlers.botfather.text_handler import botfather_text_message_handler
+from piltover.app.bot_handlers.stickers.addemoji_command import stickers_addemoji_command
 from piltover.app.bot_handlers.stickers.addsticker_command import stickers_addsticker_command
 from piltover.app.bot_handlers.stickers.cancel_command import stickers_cancel_command
 from piltover.app.bot_handlers.stickers.delpack_command import stickers_delpack_command
@@ -55,6 +56,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
         "renamepack": stickers_renamepack_command,
         "replacesticker": stickers_replacesticker_command,
         "newemojipack": stickers_newemojipack_command,
+        "addemoji": stickers_addemoji_command,
     }
 }
 CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, Message, bytes], Awaitable[BotCallbackAnswer | None]]] = {

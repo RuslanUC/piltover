@@ -272,13 +272,15 @@ class StickersBotState(IntEnum):
     REPLACESTICKER_WAIT_PACK_OR_STICKER = 16
     REPLACESTICKER_WAIT_STICKER = 17
     REPLACESTICKER_WAIT_IMAGE = 18
-
     NEWEMOJIPACK_WAIT_TYPE = 19
     NEWEMOJIPACK_WAIT_NAME = 20
     NEWEMOJIPACK_WAIT_IMAGE = 21
     NEWEMOJIPACK_WAIT_EMOJI = 22
     NEWEMOJIPACK_WAIT_ICON = 23
     NEWEMOJIPACK_WAIT_SHORT_NAME = 24
+    ADDEMOJI_WAIT_PACK = 25
+    ADDEMOJI_WAIT_IMAGE = 26
+    ADDEMOJI_WAIT_EMOJI = 27
 
 
 STICKERS_STATE_TO_COMMAND_NAME = {
@@ -297,6 +299,18 @@ STICKERS_STATE_TO_COMMAND_NAME = {
     StickersBotState.DELPACK_WAIT_CONFIRM: "delpack",
     StickersBotState.RENAMEPACK_WAIT_PACK: "renamepack",
     StickersBotState.RENAMEPACK_WAIT_NAME: "renamepack",
+    StickersBotState.REPLACESTICKER_WAIT_PACK_OR_STICKER: "replacesticker",
+    StickersBotState.REPLACESTICKER_WAIT_STICKER: "replacesticker",
+    StickersBotState.REPLACESTICKER_WAIT_IMAGE: "replacesticker",
+    StickersBotState.NEWEMOJIPACK_WAIT_TYPE: "newemojipack",
+    StickersBotState.NEWEMOJIPACK_WAIT_NAME: "newemojipack",
+    StickersBotState.NEWEMOJIPACK_WAIT_IMAGE: "newemojipack",
+    StickersBotState.NEWEMOJIPACK_WAIT_EMOJI: "newemojipack",
+    StickersBotState.NEWEMOJIPACK_WAIT_ICON: "newemojipack",
+    StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME: "newemojipack",
+    StickersBotState.ADDEMOJI_WAIT_PACK: "addemoji",
+    StickersBotState.ADDEMOJI_WAIT_IMAGE: "addemoji",
+    StickersBotState.ADDEMOJI_WAIT_EMOJI: "addemoji",
     None: None,
 }
 
