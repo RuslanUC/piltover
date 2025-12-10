@@ -126,6 +126,11 @@ class User(Model):
                 background_emoji_id=emojis.profile_emoji_id if emojis is not None else None,
             )
 
+        bot_info_version = None
+        if self.bot:
+            bot_info_version = await models.BotInfo.filter(user=self).first().values_list("version", flat=True)
+            bot_info_version = bot_info_version or 1
+
         return TLUser(
             **defaults,
             id=self.id,
@@ -140,7 +145,7 @@ class User(Model):
             status=await models.Presence.to_tl_or_empty(self, current_user),
             contact=contact is not None,
             bot=self.bot,
-            bot_info_version=1 if self.bot else None,
+            bot_info_version=bot_info_version,
             color=color,
             profile_color=profile_color,
             deleted=self.deleted,

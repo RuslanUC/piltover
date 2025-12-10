@@ -55,8 +55,6 @@ PLACEHOLDERS = {
     # User_196
     0x4b46c37e: access_hash_calc,
 
-    # TODO: make actual functions
-
     # InputPeerUser
     0xdde8a54c: access_hash_calc,
     # InputUser

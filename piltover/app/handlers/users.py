@@ -1,11 +1,11 @@
 from typing import cast
 
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel
+from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel, BotInfo
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
-from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo
+from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo
 from piltover.tl.types.users import UserFull
 from piltover.worker import MessageHandler
 
@@ -45,6 +45,14 @@ async def get_full_user(request: GetFullUser, user: User):
     if personal_channel is not None:
         await Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=personal_channel)
 
+    bot_info = None
+    if target_user.bot:
+        bot_info = await BotInfo.get_or_none(user=target_user)
+        if bot_info is None:
+            bot_info = TLBotInfo()
+        else:
+            bot_info = bot_info.to_tl()
+
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
@@ -62,7 +70,7 @@ async def get_full_user(request: GetFullUser, user: User):
             pinned_msg_id=pinned_msg_id,
             personal_channel_id=personal_channel.make_id() if personal_channel is not None else None,
             personal_channel_message=personal_channel_msg_id,
-            bot_info=BotInfo() if target_user.bot else None,
+            bot_info=bot_info,
             blocked=peer.blocked_at is not None,
             phone_calls_available=True,
             phone_calls_private=False,

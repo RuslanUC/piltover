@@ -26,7 +26,7 @@ from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
 from piltover.utils.snowflake import Snowflake
 
 
-# TODO: remove when file references and wallpaper.creator will be calculated dynamically
+# TODO: remove when wallpaper.creator will be calculated dynamically
 async def _process_service_message_action(
         action: MessageActionNeedsProcessing, _: Message, user: models.User,
 ) -> tuple[MessageAction, bool]:
