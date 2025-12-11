@@ -165,6 +165,7 @@ internal_benchmarking.object_to_benchmark#96be42f flags:# int32:int optional_int
 // BotFather state
 
 internal_botfather.botfather_state_newbot#bcb2c294 name:string = internal_botfather.BotFatherState;
+internal_botfather.botfather_state_editbot#ad2641a6 bot_id:long = internal_botfather.BotFatherState;
 
 // @Stickers state
 

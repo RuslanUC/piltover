@@ -45,7 +45,7 @@ class UpdatesWithDefaults(Updates):
 
 # TODO: move this module to separate worker
 
-async def send_message(user: User, messages: dict[Peer, Message], ignore_current: bool = True) -> Updates:
+async def send_message(user: User | None, messages: dict[Peer, Message], ignore_current: bool = True) -> Updates:
     result = None
 
     for peer, message in messages.items():

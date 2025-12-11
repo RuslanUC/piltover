@@ -1,7 +1,7 @@
 from tortoise.expressions import Subquery
 
-from piltover.db.models import Username, User, Bot
-from piltover.tl import KeyboardButtonRow, KeyboardButtonCallback
+from piltover.db.models import Username, User, Bot, Peer, Message
+from piltover.tl import KeyboardButtonRow, KeyboardButtonCallback, ReplyInlineMarkup, ReplyKeyboardMarkup
 
 
 async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[KeyboardButtonRow] | None:
@@ -35,3 +35,14 @@ async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[Keybo
         rows[-1].buttons.append(KeyboardButtonCallback(text=f"->", data=f"mybots/page/{page + 1}".encode("latin1")))
 
     return rows
+
+
+async def send_bot_message(
+        peer: Peer, text: str, keyboard: ReplyInlineMarkup | ReplyKeyboardMarkup | None = None,
+        entities: list[dict[str, str | int]] | None = None,
+) -> Message:
+    messages = await Message.create_for_peer(
+        peer, None, None, peer.user, False,
+        message=text, reply_markup=keyboard.write() if keyboard else None, entities=entities,
+    )
+    return messages[peer]

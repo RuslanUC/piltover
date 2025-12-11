@@ -244,11 +244,13 @@ class StickerSetType(IntEnum):
 class BotFatherState(IntEnum):
     NEWBOT_WAIT_NAME = 1
     NEWBOT_WAIT_USERNAME = 2
+    EDITBOT_WAIT_NAME = 3
 
 
 BOTFATHER_STATE_TO_COMMAND_NAME = {
     BotFatherState.NEWBOT_WAIT_NAME: "newbot",
     BotFatherState.NEWBOT_WAIT_USERNAME: "newbot",
+    BotFatherState.EDITBOT_WAIT_NAME: "mybots",
     None: None,
 }
 

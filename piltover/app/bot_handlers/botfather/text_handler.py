@@ -1,13 +1,13 @@
-from datetime import datetime, UTC
 from io import BytesIO
 
 from tortoise.transactions import in_transaction
 
+from piltover.app.bot_handlers.botfather.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import is_username_valid
 from piltover.db.enums import BotFatherState
 from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot
-from piltover.tl.types.internal_botfather import BotfatherStateNewbot
+from piltover.tl.types.internal_botfather import BotfatherStateNewbot, BotfatherStateEditbot
 
 __bot_name_invalid = "Sorry, this isn't a proper name for a bot."
 __bot_wait_username = ("Good. Now let's choose a username for your bot. It must end in `bot`. "
@@ -24,6 +24,9 @@ Keep your token secure and store it safely, it can be used by anyone to control 
 
 For a description of the Bot API, see this page: <a>https://core.telegram.org/bots/api</a>
 """.strip())
+__bot_name_updated, __bot_name_updated_entities = FormatableTextWithEntities(
+    "Success! Name updated. <c>/help</c>",
+).format()
 
 
 async def botfather_text_message_handler(peer: Peer, message: Message) -> Message | None:
@@ -34,33 +37,20 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
     if state.state is BotFatherState.NEWBOT_WAIT_NAME:
         first_name = message.message
         if len(first_name) > 64:
-            messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__bot_name_invalid)
-            return messages[peer]
+            return await send_bot_message(peer, __bot_name_invalid)
 
-        state.state = BotFatherState.NEWBOT_WAIT_USERNAME
-        state.data = BotfatherStateNewbot(name=first_name).serialize()
-        state.last_access = datetime.now(UTC)
-        await state.save(update_fields=["state", "data", "last_access"])
+        await state.update_state(BotFatherState.NEWBOT_WAIT_USERNAME, BotfatherStateNewbot(name=first_name).serialize())
 
-        messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__bot_wait_username)
-        return messages[peer]
-    elif state.state is BotFatherState.NEWBOT_WAIT_USERNAME:
+        return await send_bot_message(peer, __bot_wait_username)
+
+    if state.state is BotFatherState.NEWBOT_WAIT_USERNAME:
         username = message.message
         if not is_username_valid(username):
-            messages = await Message.create_for_peer(
-                peer, None, None, peer.user, False, message=__bot_username_invalid,
-            )
-            return messages[peer]
+            return await send_bot_message(peer, __bot_username_invalid)
         if not username.endswith("bot"):
-            messages = await Message.create_for_peer(
-                peer, None, None, peer.user, False, message=__bot_username_ends_bot,
-            )
-            return messages[peer]
+            return await send_bot_message(peer, __bot_username_ends_bot)
         if await Username.filter(username=username).exists():
-            messages = await Message.create_for_peer(
-                peer, None, None, peer.user, False, message=__bot_username_taken,
-            )
-            return messages[peer]
+            return await send_bot_message(peer, __bot_username_taken)
 
         state_data = BotfatherStateNewbot.deserialize(BytesIO(state.data))
 
@@ -71,5 +61,20 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             await state.delete()
 
         text, entities = __bot_created.format(username=username, token=f"{bot_user.id}:{bot.token_nonce}")
-        messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=text, entities=entities)
-        return messages[peer]
+        return await send_bot_message(peer, text, entities=entities)
+
+    if state.state is BotFatherState.EDITBOT_WAIT_NAME:
+        first_name = message.message
+        if len(first_name) > 64:
+            return await send_bot_message(peer, __bot_name_invalid)
+
+        state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
+        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        if bot is None:
+            return await send_bot_message(peer, "Bot does not exist (?)")
+
+        bot.bot.first_name = first_name
+        await bot.bot.save(update_fields=["first_name"])
+        await state.delete()
+
+        return await send_bot_message(peer, __bot_name_updated, entities=__bot_name_updated_entities)
