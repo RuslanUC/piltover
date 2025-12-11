@@ -11,7 +11,6 @@ from piltover.tl import ReplyInlineMarkup, KeyboardButtonRow, KeyboardButtonCall
 from piltover.tl.types.internal_botfather import BotfatherStateEditbot
 from piltover.tl.types.messages import BotCallbackAnswer
 
-
 __text_bot_selected = FormatableTextWithEntities(
     "Here it is: {name} <u>@{username}</u>.\nWhat do you want to do with the bot?"
 )
@@ -33,6 +32,15 @@ Edit <u>@{username}</u> info.
 **Privacy Policy**: {privacy_policy}
 """.strip())
 __editbot_name = "OK. Send me the new name for your bot."
+__editbot_about = (
+    "OK. Send me the new 'About' text. "
+    "People will see this text on the bot's profile page and it will be sent together with a link "
+    "to your bot when they share it with someone."
+)
+__editbot_desc = (
+    "OK. Send me the new description for the bot. "
+    "People will see this description when they open a chat with your bot, in a block titled 'What can this bot do?'."
+)
 
 
 async def botfather_callback_query_handler(peer: Peer, message: Message, data: bytes) -> BotCallbackAnswer | None:
@@ -199,10 +207,10 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         message.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"Edit Name", data=f"bots-edit-name/{bot.bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"🚫 Edit About", data=f"bots-edit-about/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"Edit About", data=f"bots-edit-about/{bot.bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"🚫 Edit Description", data=f"bots-edit-desc/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"Edit Description", data=f"bots-edit-desc/{bot.bot_id}".encode("latin1")),
                 KeyboardButtonCallback(text=f"🚫 Edit Description Picture", data=f"bots-edit-descpic/{bot.bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
@@ -238,6 +246,41 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             peer.owner, BotFatherState.EDITBOT_WAIT_NAME, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         message = await send_bot_message(peer, __editbot_name)
+        await upd.send_message(None, {peer: message}, False)
+
+        return BotCallbackAnswer(cache_time=0)
+
+    if data.startswith(b"bots-edit-about/"):
+        try:
+            bot_id = int(data[16:])
+        except ValueError:
+            return None
+
+        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+            return None
+
+        await BotFatherUserState.set_state(
+            peer.owner, BotFatherState.EDITBOT_WAIT_ABOUT, BotfatherStateEditbot(bot_id=bot_id).serialize()
+        )
+        message = await send_bot_message(peer, __editbot_about)
+        await upd.send_message(None, {peer: message}, False)
+
+        return BotCallbackAnswer(cache_time=0)
+
+    if data.startswith(b"bots-edit-desc/"):
+        try:
+            bot_id = int(data[15:])
+        except ValueError:
+            return None
+
+        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+            return None
+
+        await BotFatherUserState.set_state(
+            peer.owner, BotFatherState.EDITBOT_WAIT_DESCRIPTION,
+            BotfatherStateEditbot(bot_id=bot_id).serialize()
+        )
+        message = await send_bot_message(peer, __editbot_desc)
         await upd.send_message(None, {peer: message}, False)
 
         return BotCallbackAnswer(cache_time=0)

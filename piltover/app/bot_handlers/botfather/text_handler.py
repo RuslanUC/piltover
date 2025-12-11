@@ -6,7 +6,7 @@ from piltover.app.bot_handlers.botfather.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import is_username_valid
 from piltover.db.enums import BotFatherState
-from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot
+from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot, BotInfo
 from piltover.tl.types.internal_botfather import BotfatherStateNewbot, BotfatherStateEditbot
 
 __bot_name_invalid = "Sorry, this isn't a proper name for a bot."
@@ -26,6 +26,17 @@ For a description of the Bot API, see this page: <a>https://core.telegram.org/bo
 """.strip())
 __bot_name_updated, __bot_name_updated_entities = FormatableTextWithEntities(
     "Success! Name updated. <c>/help</c>",
+).format()
+__bot_about_invalid = "Sorry, the about info you provided is invalid. It must not exceed 120 characters."
+__bot_about_updated, __bot_about_updated_entities = FormatableTextWithEntities(
+    "Success! About section updated. <c>/help</c>",
+).format()
+__bot_desc_invalid = (
+    "Sorry the description you provided is invalid. "
+    "A description may not exceed 120 characters (line breaks included)."
+)
+__bot_desc_updated, __bot_desc_updated_entities = FormatableTextWithEntities(
+    "Success! Description updated. You will be able to see the changes within a few minutes. <c>/help</c>",
 ).format()
 
 
@@ -78,3 +89,36 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         await state.delete()
 
         return await send_bot_message(peer, __bot_name_updated, entities=__bot_name_updated_entities)
+
+    if state.state is BotFatherState.EDITBOT_WAIT_ABOUT:
+        about = message.message
+        if len(about) > 120:
+            return await send_bot_message(peer, __bot_about_invalid)
+
+        state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
+        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        if bot is None:
+            return await send_bot_message(peer, "Bot does not exist (?)")
+
+        bot.bot.about = about
+        await bot.bot.save(update_fields=["about"])
+        await state.delete()
+
+        return await send_bot_message(peer, __bot_about_updated, entities=__bot_about_updated_entities)
+
+    if state.state is BotFatherState.EDITBOT_WAIT_DESCRIPTION:
+        description = message.message
+        if len(description) > 120:
+            return await send_bot_message(peer, __bot_desc_invalid)
+
+        state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
+        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        if bot is None:
+            return await send_bot_message(peer, "Bot does not exist (?)")
+
+        await BotInfo.update_or_create(user=bot.bot, defaults={
+            "description": description,
+        })
+        await state.delete()
+
+        return await send_bot_message(peer, __bot_desc_updated, entities=__bot_desc_updated_entities)
