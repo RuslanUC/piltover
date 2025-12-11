@@ -1,5 +1,5 @@
 from __future__ import annotations
-from enum import IntEnum, IntFlag
+from enum import IntEnum, IntFlag, StrEnum
 from io import BytesIO
 
 from piltover.tl import ChatBannedRights as TLChatBannedRights, Int, ChatAdminRights as TLChatAdminRights
@@ -329,3 +329,18 @@ class InlineQueryPeer(IntEnum):
     CHAT = 4
     CHANNEL = 5
     SUPERGROUP = 6
+
+
+class InlineQueryResultType(StrEnum):
+    PHOTO = "photo"
+    STICKER = "sticker"
+    GIF = "gif"
+    VOICE = "voice"
+    VENUE = "venue"
+    VIDEO = "video"
+    CONTACT = "contact"
+    AUDIO = "audio"
+    LOCATION = "location"
+    ARTICLE = "article"
+    FILE = "file"
+
