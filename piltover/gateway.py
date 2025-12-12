@@ -21,7 +21,7 @@ from piltover.cache import Cache
 from piltover.context import serialization_ctx, SerializationContext
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
-from piltover.tl.utils import is_id_content_related
+from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
 from piltover.utils.utils import run_coro_with_additional_return
 
@@ -40,8 +40,8 @@ from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatPart
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
-    ReqPqMulti, PingDelayDisconnect
-from piltover.tl.core_types import MsgContainer, Message, RpcResult, GzipPacked
+    ReqPqMulti
+from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
 from piltover.tl.functions.internal import CallRpc
@@ -417,7 +417,7 @@ class Client:
         await self.send(result, session, originating_request=req_message)
 
     # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
-    async def _is_message_bad(self, packet: DecryptedMessagePacket, check_salt: bool, check_seq_no: bool) -> bool:
+    async def _is_message_bad(self, packet: DecryptedMessagePacket, check_salt: bool) -> bool:
         error_code = 0
         inner_id = Int.read_bytes(packet.data[:4], False)
 
@@ -433,11 +433,11 @@ class Client:
             # 17: msg_id too high
             logger.debug(f"Client sent message id which is too low")
             error_code = 17
-        elif check_seq_no and (packet.seq_no & 1) == 1 and not is_id_content_related(inner_id):
+        elif (packet.seq_no & 1) == 1 and is_id_strictly_not_content_related(inner_id):
             # 34: an even msg_seqno expected (irrelevant message), but odd received
             logger.debug(f"Client sent odd seq_no for content-related message ({hex(inner_id)[2:]})")
             error_code = 34
-        elif check_seq_no and (packet.seq_no & 1) == 0 and is_id_content_related(inner_id):
+        elif (packet.seq_no & 1) == 0 and is_id_strictly_content_related(inner_id):
             # 35: odd msg_seqno expected (relevant message), but even received
             logger.debug(f"Client sent even seq_no for not content-related message ({hex(inner_id)[2:]})")
             error_code = 35
@@ -488,12 +488,7 @@ class Client:
 
             # For some reason some clients cant process BadServerSalt response to BindTempAuthKey request
             check_salt = decrypted.data[:4] != Int.write(BindTempAuthKey.tlid(), False)
-            # Is GzipPacked content-related? idk
-            # Either webk does not care about seq_no being even/odd (and so should i?), or i am doing something wrong
-            #  Upd: apparently, PingDelayDisconnect can both have even and odd seq_no, wtf???
-            check_seq_no = (decrypted.data[:4] != Int.write(GzipPacked.tlid(), False)
-                            and decrypted.data[:4] != Int.write(PingDelayDisconnect.tlid(), False))
-            if await self._is_message_bad(decrypted, check_salt, check_seq_no):
+            if await self._is_message_bad(decrypted, check_salt):
                 return
 
             message = Message(

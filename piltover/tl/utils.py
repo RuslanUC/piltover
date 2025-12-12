@@ -7,12 +7,17 @@ if TYPE_CHECKING:
 
 
 def is_content_related(obj: TLObject) -> bool:
-    return is_id_content_related(obj.tlid())
+    return not is_id_strictly_not_content_related(obj.tlid())
 
 
-def is_id_content_related(obj_id: int) -> bool:
-    from . import core_types, Ping, Pong, HttpWait, MsgsAck, PingDelayDisconnect, MsgResendReq, DestroySession
-    return obj_id not in {
-        Ping.tlid(), PingDelayDisconnect.tlid(), Pong.tlid(), HttpWait.tlid(), MsgsAck.tlid(), MsgResendReq.tlid(),
-        core_types.MsgContainer.tlid(), core_types.GzipPacked.tlid(), DestroySession.tlid(),
+def is_id_strictly_not_content_related(obj_id: int) -> bool:
+    from . import core_types, MsgsAck
+    # TODO: msg_copy#e06046b2
+    return obj_id in {
+        MsgsAck.tlid(), core_types.MsgContainer.tlid(), core_types.GzipPacked.tlid(),
     }
+
+
+def is_id_strictly_content_related(obj_id: int) -> bool:
+    from .core_types import RpcResult
+    return obj_id == RpcResult.tlid()
