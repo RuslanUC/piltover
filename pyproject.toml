@@ -42,6 +42,8 @@ fastrand = {git = "https://github.com/RuslanUC/fastrand.git", rev = "feat/add-fu
 python-magic = "^0.4.27"
 av = "^16.0.1"
 httpx = "^0.28.1"
+# TODO: update tortoise-orm because it's current version has issues with aiosqlite >= 0.22.0
+aiosqlite = "0.21.0"
 
 
 [tool.poetry.group.dev.dependencies]

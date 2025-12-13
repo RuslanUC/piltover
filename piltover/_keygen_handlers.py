@@ -102,7 +102,7 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
 
     new_nonce = Int256.write(p_q_inner_data.new_nonce)
     auth_data.new_nonce = new_nonce
-    # TODO: set server salt to server_nonce
+    # TODO: set server_nonce to server salt somehow
 
     logger.info("Generating safe prime...")
     dh_prime, g = gen_safe_prime(2048)

@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
 
-from piltover.db.models import UserAuthorization, ServerSalt, AuthKey
+from piltover.db.models import UserAuthorization, AuthKey
 from piltover.session_manager import Session
 from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
-    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts
+    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts, FutureSalt, \
+    Long
 from piltover.tl.core_types import Message, RpcResult, FutureSalts
 
 if TYPE_CHECKING:
@@ -92,24 +93,21 @@ async def rpc_drop_answer(client: Client, request: Message[RpcDropAnswer], sessi
     return RpcResult(req_msg_id=request.message_id, result=RpcAnswerUnknown())
 
 
-async def get_future_salts(_1: Client, request: Message[GetFutureSalts], _2: Session) -> FutureSalts:
+async def get_future_salts(client: Client, request: Message[GetFutureSalts], _2: Session) -> FutureSalts:
     limit = max(min(request.obj.num, 1), 64)
-    base_id = int(time() // (60 * 60))
-
-    exists = set(await ServerSalt.filter(id__gt=base_id).limit(limit).values_list("id", flat=True))
-    to_create = set(range(base_id + 1, base_id + limit + 1)) - exists
-    if to_create:
-        await ServerSalt.bulk_create([
-            ServerSalt(id=create_id, ignore_conflicts=True)
-            for create_id in to_create
-        ])
-
-    salts = await ServerSalt.filter(id__gt=base_id).limit(limit)
+    base_timestamp = int(time() // (30 * 60))
 
     return FutureSalts(
         req_msg_id=request.message_id,
         now=int(time()),
-        salts=[salt.to_tl() for salt in salts]
+        salts=[
+            FutureSalt(
+                valid_since=(base_timestamp + salt_offset) * 30 * 60,
+                valid_until=(base_timestamp + salt_offset + 1) * 30 * 60,
+                salt=Long.read_bytes(client.make_salt(client.auth_data.auth_key_id, base_timestamp + salt_offset)),
+            )
+            for salt_offset in range(limit)
+        ]
     )
 
 

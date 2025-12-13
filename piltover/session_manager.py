@@ -51,7 +51,6 @@ class Session:
     auth_id: int | None = None
     need_auth_refresh: bool = False
 
-    incoming_content_related_msgs = 0
     outgoing_content_related_msgs = 0
 
     def msg_id(self, in_reply: bool) -> int:
@@ -67,14 +66,6 @@ class Session:
         assert msg_id % 4 in [1, 3], f"Invalid server msg_id: {msg_id}"
         return msg_id
 
-    def update_incoming_content_related_msgs(self, obj: TLObject, seq_no: int):
-        expected = self.incoming_content_related_msgs * 2
-        if is_content_related(obj):
-            self.incoming_content_related_msgs += 1
-            expected += 1
-
-    # TODO: this is wrong (probably)
-    #  https://core.telegram.org/mtproto/description#message-sequence-number-msg-seqno
     def get_outgoing_seq_no(self, obj: TLObject) -> int:
         ret = self.outgoing_content_related_msgs * 2
         if is_content_related(obj):

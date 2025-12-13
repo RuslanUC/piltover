@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import os
 from asyncio import sleep
 from io import BytesIO
 from os import environ
@@ -36,7 +40,7 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.auth_data import AuthData, GenAuthData
-from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, ServerSalt
+from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
@@ -62,6 +66,7 @@ class Gateway:
     def __init__(
             self, data_dir: Path, host: str = HOST, port: int = PORT, server_keys: Keys | None = None,
             rabbitmq_address: str | None = RMQ_HOST, redis_address: str | None = REDIS_HOST,
+            salt_key: bytes | None = None,
     ):
         self.data_dir = data_dir
 
@@ -80,8 +85,11 @@ class Gateway:
 
         self.clients: dict[str, Client] = {}
 
-        self.salt_id = 0
-        self.salt = b"\x00" * 8
+        if salt_key is None:
+            salt_key = os.urandom(32)
+            logger.info(f"Salt key is None, generating new one: {base64.b64encode(salt_key).decode('latin1')}")
+
+        self.salt_key = salt_key
 
         self.worker: Worker | None
         self.broker: AsyncBroker | None
@@ -133,16 +141,6 @@ class Gateway:
         if temp_key is not None:
             return temp_key.id, temp_key.auth_key, temp_key.perm_key.id if temp_key.perm_key else None
 
-    async def get_current_salt(self) -> bytes:
-        current_id = int(time() // (60 * 60))
-        if self.salt_id != current_id:
-            logger.debug("Current salt is expired, fetching new one")
-            salt, _ = await ServerSalt.get_or_create(id=current_id)
-            self.salt_id = salt.id
-            self.salt = Long.write(salt.salt)
-
-        return self.salt
-
 
 _check_req_pq_tlid = (Int.write(ReqPq.tlid(), False), Int.write(ReqPqMulti.tlid(), False))
 
@@ -150,7 +148,7 @@ _check_req_pq_tlid = (Int.write(ReqPq.tlid(), False), Int.write(ReqPqMulti.tlid(
 class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "auth_data", "empty_session", "session", "no_updates",
-        "layer", "authorization", "disconnect_timeout", "channels_loaded_at", "msg_id_values",
+        "layer", "authorization", "disconnect_timeout", "channels_loaded_at", "msg_id_values", "salt_now", "salt_prev",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -167,6 +165,9 @@ class Client:
         self.msg_id_values = MsgIdValues()
         self.authorization: tuple[UserAuthorization | None, int | float] = (None, 0)
         self.channels_loaded_at = 0.0
+
+        self.salt_now = (b"\x00" * 8, 0)
+        self.salt_prev = (b"\x00" * 8, 0)
 
         self.no_updates = False
         self.layer = 133
@@ -251,8 +252,10 @@ class Client:
                     "or Vector because when serialized, it doesn't have any type information)"
                 )
 
+        self._update_salts_maybe()
+
         encrypted = DecryptedMessagePacket(
-            salt=await self.server.get_current_salt(),
+            salt=self.salt_now[0],
             session_id=session.session_id,
             message_id=message.message_id,
             seq_no=message.seq_no,
@@ -355,7 +358,7 @@ class Client:
         user_id = auth.user.id if auth is not None else None
         is_bot = auth.user.bot if auth is not None else False
 
-        # TODO: dont do .write.hex(), RpcResponse somehow dont need encoding it manually, check how exactly
+        # TODO: dont do .write.hex(), RpcResponse somehow doesn't need encoding it manually, check how exactly
         return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(CallRpc(
             obj=obj,
             layer=self.layer,
@@ -380,17 +383,6 @@ class Client:
             raise
         except Exception as e:
             logger.opt(exception=e).warning(f"Error while processing {obj.tlname()}")
-
-        #if not isinstance(obj, (ReqPqMulti, ReqPq, ReqDHParams, SetClientDHParams, MsgsAck)):
-        #    logger.debug(f"Received unexpected unencrypted message: {obj}")
-        #    raise Disconnection(404)
-
-        #task = await self._kiq(obj)
-        #result: RpcResponse = await task.wait_result(timeout=5)
-        #if result.transport_error is not None:
-        #    raise Disconnection(result.transport_error or None)
-        #if result.obj is not None:
-        #    await self.send_unencrypted(result.obj)
 
     async def handle_encrypted_message(self, req_message: Message, session: Session):
         if isinstance(req_message.obj, MsgContainer):
@@ -429,7 +421,7 @@ class Client:
             # 16: msg_id too low
             logger.debug(f"Client sent message id which is too low")
             error_code = 16
-        elif (packet.message_id >> 32) < (time() - 300):
+        elif (packet.message_id >> 32) > (time() + 30):
             # 17: msg_id too high
             logger.debug(f"Client sent message id which is too low")
             error_code = 17
@@ -459,7 +451,7 @@ class Client:
 
         # 48: incorrect server salt (in this case, the bad_server_salt response is received with the correct salt,
         # and the message is to be re-sent with it)
-        if check_salt and packet.salt != await self.server.get_current_salt():
+        if check_salt and packet.salt not in (self.salt_now[0], self.salt_prev[0]):
             logger.debug(
                 f"Client sent bad salt ({int.from_bytes(packet.salt, 'little')}) "
                 f"in message {packet.message_id}, sending correct salt"
@@ -469,7 +461,7 @@ class Client:
                     bad_msg_id=packet.message_id,
                     bad_msg_seqno=packet.seq_no,
                     error_code=48,
-                    new_server_salt=Long.read_bytes(await self.server.get_current_salt()),
+                    new_server_salt=Long.read_bytes(self.salt_now[0]),
                 ),
                 Session(self, packet.session_id, self.msg_id_values),
                 packet,
@@ -486,6 +478,8 @@ class Client:
             if packet.needs_quick_ack:
                 await self._write(self._create_quick_ack(decrypted))
 
+            self._update_salts_maybe()
+
             # For some reason some clients cant process BadServerSalt response to BindTempAuthKey request
             check_salt = decrypted.data[:4] != Int.write(BindTempAuthKey.tlid(), False)
             if await self._is_message_bad(decrypted, check_salt):
@@ -498,14 +492,13 @@ class Client:
             )
 
             session, created = self._get_session(decrypted.session_id)
-            session.update_incoming_content_related_msgs(message.obj, message.seq_no)
             if created:
                 logger.info(f"({self.peername}) Created session {session.session_id}")
                 await self.send(
                     NewSessionCreated(
                         first_msg_id=message.message_id,
                         unique_id=session.session_id,
-                        server_salt=Long.read_bytes(await self.server.get_current_salt()),
+                        server_salt=Long.read_bytes(self.salt_now[0]),
                     ),
                     session,
                 )
@@ -546,6 +539,23 @@ class Client:
                     raise Disconnection(404)
 
                 self.layer = perm_key.layer
+
+            self._update_salts_maybe(True)
+
+    def make_salt(self, auth_key_id: int, timestamp: int) -> bytes:
+        return hmac.new(self.server.salt_key, Long.write(auth_key_id) + Int.write(timestamp), hashlib.sha1).digest()[:8]
+
+    def _update_salts_maybe(self, force: bool = False) -> None:
+        if self.auth_data is None or self.auth_data.auth_key_id is None:
+            self.salt_now = self.salt_prev = (b"\x00" * 8, 0)
+            return
+
+        now = int(time() // (30 * 60))
+        if self.salt_now[1] == now and not force:
+            return
+
+        self.salt_now = self.make_salt(self.auth_data.auth_key_id, now), now
+        self.salt_prev = self.make_salt(self.auth_data.auth_key_id, now - 1), now - 1
 
     def _create_quick_ack(self, message: DecryptedMessagePacket) -> QuickAckPacket:
         return message.quick_ack_response(self.auth_data.auth_key, ConnectionRole.CLIENT)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import os
 from contextlib import asynccontextmanager
 from os import getenv
 from pathlib import Path
@@ -97,7 +99,7 @@ async def migrate():
 class PiltoverApp:
     def __init__(
             self, data_dir: Path, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int = 4430,
-            rabbitmq_address: str | None = None, redis_address: str | None = None,
+            rabbitmq_address: str | None = None, redis_address: str | None = None, salt_key: str | None = None,
     ):
         self._host = host
         self._port = port
@@ -125,6 +127,7 @@ class PiltoverApp:
             ),
             rabbitmq_address=rabbitmq_address,
             redis_address=redis_address,
+            salt_key=base64.b64decode(salt_key) if salt_key is not None else None,
         )
 
         if self._gateway.worker is not None:
@@ -304,6 +307,8 @@ app = PiltoverApp(
     pubkey=args.pubkey_file,
     rabbitmq_address=args.rabbitmq_address,
     redis_address=args.redis_address,
+    # TODO: set via arg or store in "secrets" directory
+    salt_key=os.environ.get("SALT_KEY", None),
 )
 
 
