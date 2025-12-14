@@ -21,9 +21,9 @@ class MessageFwdHeader(Model):
     saved_name: str = fields.CharField(max_length=64, null=True, default=None)
     saved_date: datetime = fields.DatetimeField(null=True, default=None)
 
-    from_user_id: int
-    saved_peer_id: int
-    saved_from_id: int
+    from_user_id: int | None
+    saved_peer_id: int | None
+    saved_from_id: int | None
 
     async def to_tl(self) -> TLMessageFwdHeader:
         if self.saved_peer is not None:

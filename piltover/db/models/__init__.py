@@ -75,3 +75,4 @@ from .faved_sticker import FavedSticker
 from .read_history_chunk import ReadHistoryChunk
 from .user_background_emojis import UserBackgroundEmojis
 from .bot_info import BotInfo
+from .message_related import MessageRelated

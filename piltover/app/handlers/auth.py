@@ -15,8 +15,8 @@ from piltover.app.utils.utils import check_password_internal
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
-from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Dialog, Message, TempAuthKey, SentCode, \
-    User, QrLogin, PhoneCodePurpose, Bot
+from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Message, TempAuthKey, SentCode, User, \
+    QrLogin, PhoneCodePurpose, Bot
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -25,7 +25,6 @@ from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, Export
     SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode, ImportBotAuthorization
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
     LoginToken, AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut, LoginTokenSuccess
-from piltover.utils.snowflake import Snowflake
 from piltover.utils.utils import sec_check
 from piltover.worker import MessageHandler
 
@@ -88,18 +87,14 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
         return resp
 
     peer_system, _ = await Peer.get_or_create(owner=user, user=system_user, type=PeerType.USER)
-    await Dialog.create_or_unhide(peer_system)
 
     text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
-    message = await Message.create(
-        internal_id=Snowflake.make_id(),
-        message=text,
-        entities=entities,
-        author=system_user,
-        peer=peer_system,
+    message = await Message.create_for_peer(
+        peer_system, None, None, system_user, False, True,
+        message=text, entities=entities,
     )
 
-    await upd.send_message(user, {peer_system: message}, False)
+    await upd.send_message(user, message, False)
 
     resp.type_ = SentCodeTypeApp(length=5)
     return resp

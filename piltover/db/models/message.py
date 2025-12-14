@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum, auto
 from io import BytesIO
 from os import environ
-from typing import cast
+from typing import cast, Iterable
 
 from loguru import logger
 from pytz import UTC
@@ -15,7 +15,7 @@ from tortoise.functions import Count
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
-from piltover.exceptions import Error, ErrorRpc, Unreachable
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, MessageService, objects, TLObject
 from piltover.tl.base import MessageActionInst, MessageAction, ReplyMarkupInst, ReplyMarkup
 from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageActionNeedsProcessing
@@ -100,6 +100,7 @@ class Message(Model):
     author_id: int | None
     media_id: int | None
     reply_to_id: int | None
+    fwd_header_id: int | None
     post_info_id: int | None
 
     TTL_MULT = 86400
@@ -317,6 +318,9 @@ class Message(Model):
                 ttl_period_days=self.ttl_period_days,
             )
 
+        related_users, related_chats, related_channels = await models.MessageRelated.get_for_message(self)
+        await self._create_related(messages.values(), related_users, related_chats, related_channels)
+
         return messages
 
     async def clone_for_peer(
@@ -346,7 +350,7 @@ class Message(Model):
         if not drop_author and self.post_info is not None:
             self.post_info = await self.post_info
 
-        return await Message.create(
+        message = await Message.create(
             internal_id=internal_id or Snowflake.make_id(),
             message=self.message if self.media is None or not drop_captions else None,
             pinned=self.pinned,
@@ -366,6 +370,14 @@ class Message(Model):
             post_info=self.post_info if not drop_author else None,
             no_forwards=no_forwards,
         )
+
+        related_user_ids = set()
+        related_chat_ids = set()
+        related_channel_ids = set()
+        message._fill_related(related_user_ids, related_chat_ids, related_channel_ids)
+        await self._create_related_from_ids((message,), related_user_ids, related_chat_ids, related_channel_ids)
+
+        return message
 
     async def create_fwd_header(self, peer: models.Peer) -> models.MessageFwdHeader | None:
         if self.fwd_header is not None:
@@ -427,6 +439,10 @@ class Message(Model):
             peers = [await models.Peer.get_or_none(owner=None, channel=peer.channel, type=PeerType.CHANNEL)]
         messages: dict[models.Peer, Message] = {}
 
+        related_user_ids: set[int] = set()
+        related_chat_ids: set[int] = set()
+        related_channel_ids: set[int] = set()
+
         internal_id = Snowflake.make_id()
         for to_peer in peers:
             await to_peer.fetch_related("owner", "user")
@@ -434,7 +450,7 @@ class Message(Model):
                 await models.Dialog.create_or_unhide(to_peer)
             if to_peer == peer and random_id is not None:
                 message_kwargs["random_id"] = str(random_id)
-            messages[to_peer] = await Message.create(
+            messages[to_peer] = message = await Message.create(
                 internal_id=internal_id,
                 peer=to_peer,
                 reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
@@ -442,8 +458,97 @@ class Message(Model):
                 **message_kwargs
             )
             message_kwargs.pop("random_id", None)
+            message._fill_related(related_user_ids, related_chat_ids, related_channel_ids)
+
+        await cls._create_related_from_ids(messages.values(), related_user_ids, related_chat_ids, related_channel_ids)
 
         return messages
+
+    @staticmethod
+    def _fill_related_peer(peer: models.Peer, user_ids: set[int], chat_ids: set[int], channel_ids: set[int]) -> None:
+        if peer.user_id is not None:
+            user_ids.add(peer.user_id)
+        if peer.owner_id is not None:
+            user_ids.add(peer.owner_id)
+        if peer.chat_id is not None:
+            chat_ids.add(peer.chat_id)
+        if peer.channel_id is not None:
+            channel_ids.add(peer.channel_id)
+
+    def _fill_related(
+            self, user_ids: set[int], chat_ids: set[int], channel_ids: set[int],
+    ) -> None:
+        self._fill_related_peer(self.peer, user_ids, chat_ids, channel_ids)
+
+        if not self.channel_post and self.author_id is not None:
+            user_ids.add(self.author_id)
+
+        if self.type is MessageType.SERVICE_CHAT_USER_ADD:
+            data = MessageActionChatAddUser.read(BytesIO(self.extra_info))
+            user_ids.update(data.users)
+        elif self.type is MessageType.SERVICE_CHAT_USER_DEL:
+            data = MessageActionChatDeleteUser.read(BytesIO(self.extra_info))
+            user_ids.add(data.user_id)
+
+        # TODO: SERVICE_CHAT_MIGRATE_FROM / SERVICE_CHAT_MIGRATE_TO ?
+
+        if self.entities:
+            for entity in self.entities:
+                if entity["_"] != MessageEntityMentionName.tlid():
+                    continue
+                user_ids.add(entity["user_id"])
+
+        if self.fwd_header_id is not None:
+            if self.fwd_header.from_user_id is not None:
+                user_ids.add(self.fwd_header.from_user_id)
+            if self.fwd_header.saved_peer_id is not None:
+                self._fill_related_peer(self.fwd_header.saved_peer, user_ids, chat_ids, channel_ids)
+            if self.fwd_header.saved_from_id is not None:
+                user_ids.add(self.fwd_header.saved_from_id)
+
+    @classmethod
+    async def _create_related_from_ids(
+            cls, messages: Iterable[Message],
+            user_ids: Iterable[int], chat_ids: Iterable[int], channel_ids: Iterable[int],
+    ) -> None:
+        related_users = []
+        related_chats = []
+        related_channels = []
+
+        if user_ids:
+            related_users = await models.User.filter(id__in=user_ids)
+        if chat_ids:
+            related_chats = await models.Chat.filter(id__in=chat_ids)
+        if channel_ids:
+            related_channels = await models.Channel.filter(id__in=channel_ids)
+
+        await cls._create_related(messages, related_users, related_chats, related_channels)
+
+    @staticmethod
+    async def _create_related(
+            messages: Iterable[Message],
+            users: Iterable[models.User], chats: Iterable[models.Chat], channels: Iterable[models.Channel],
+    ) -> None:
+        related_to_create = [
+            *(
+                models.MessageRelated(message=message, user=rel)
+                for message in messages
+                for rel in users
+            ),
+            *(
+                models.MessageRelated(message=message, chat=rel)
+                for message in messages
+                for rel in chats
+            ),
+            *(
+                models.MessageRelated(message=message, channel=rel)
+                for message in messages
+                for rel in channels
+            ),
+        ]
+
+        if related_to_create:
+            await models.MessageRelated.bulk_create(related_to_create)
 
     def query_users_chats(
             self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
@@ -452,24 +557,12 @@ class Message(Model):
             users |= Q(id=self.author_id)
         if (users is not None or chats is not None or channels is not None) and self.peer_id is not None:
             users, chats, channels = models.Peer.query_users_chats_cls(self.peer_id, users, chats, channels)
-        if users is not None \
-                and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL) \
-                and self.extra_info:
-            try:
-                if self.type is MessageType.SERVICE_CHAT_USER_ADD:
-                    user_ids = MessageActionChatAddUser.read(BytesIO(self.extra_info), True).users
-                else:
-                    user_ids = [MessageActionChatDeleteUser.read(BytesIO(self.extra_info), True).user_id]
-            except Error:
-                return users, chats, channels
-            users |= Q(id__in=user_ids)
-        if users is not None and self.entities:
-            for entity in self.entities:
-                if entity["_"] != MessageEntityMentionName.tlid():
-                    continue
-                users |= Q(id=entity["user_id"])
-
-        # TODO: add users and chats from fwd_header
+        if users is not None:
+            users |= Q(messagerelateds__message__id=self.id)
+        if chats is not None:
+            chats |= Q(messagerelateds__message__id=self.id)
+        if channels is not None:
+            channels |= Q(messagerelateds__message__id=self.id)
 
         return users, chats, channels
 

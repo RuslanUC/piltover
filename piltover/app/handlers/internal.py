@@ -5,13 +5,12 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
-from piltover.db.models import Peer, Dialog, Message, ApiApplication, User, WebAuthorization
+from piltover.db.models import Peer, Message, ApiApplication, User, WebAuthorization
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.tl import Long
 from piltover.tl.functions.internal import SendCode, SignIn, GetUserApp, EditUserApp, GetAvailableServers
 from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers, \
     AvailableServer, PublicKey
-from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("internal")
@@ -48,15 +47,12 @@ async def send_code(request: SendCode, user: User) -> SentCode:
     print(f"Password: {webauth.password}")
 
     peer_system, _ = await Peer.get_or_create(owner=target_user, user=user, type=PeerType.USER)
-    await Dialog.create_or_unhide(peer_system)
-    message = await Message.create(
-        internal_id=Snowflake.make_id(),
+    message = await Message.create_for_peer(
+        peer_system, None, None, user, False, True,
         message=LOGIN_MESSAGE_FMT.format(code=webauth.password, name=target_user.first_name),
-        author=user,
-        peer=peer_system,
     )
 
-    await upd.send_message(target_user, {peer_system: message}, False)
+    await upd.send_message(target_user, message, False)
     return resp
 
 
