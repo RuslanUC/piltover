@@ -51,10 +51,6 @@ internal.tagged_bytes_vector#8d538c0f vec:Vector<bytes> = internal.TaggedVector;
 internal.tagged_string_vector#492bec2d vec:Vector<string> = internal.TaggedVector;
 internal.tagged_object_vector#b002bb63 vec:Vector<Object> = internal.TaggedVector;
 
-// Service messages
-
-internal.message_action_process_set_chat_wallpaper#ba5f701a flags:# same:flags.0?true for_both:flags.1?true wallpaper_id:long = internal.MessageActionNeedsProcessing;
-
 // For benchmarking only
 
 internal_benchmarking.nested_object#d5525aa8 some_int:int some_long:long = internal_benchmarking.NestedObject;
@@ -194,6 +190,10 @@ internal_access.access_hash_payload_wallpaper#cb83392e this_user_id:long wallpap
 internal_access.access_hash_payload_theme#1c9a2a19 this_user_id:long theme_id:long auth_id:long = internal_access.AccessHashPayload;
 
 internal_access.file_reference_payload#af4f0049 file_id:long created_at:int = internal_access.FileReferencePayload;
+
+// Generated "*ToFormat" constructors
+
+wallPaperToFormatInternal#68dda86b flags:# id:long creator_id:long pattern:flags.0?true dark:flags.1?true slug:string document:Document settings:flags.2?WallPaperSettings = WallPaper;
 
 ---functions---
 

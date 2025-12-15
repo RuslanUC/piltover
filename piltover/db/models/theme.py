@@ -35,7 +35,7 @@ class Theme(Model):
             title=self.title,
             document=self.document.to_tl_document() if self.document is not None else None,
             settings=[
-                await settings.to_tl(user)
+                settings.to_tl()
                 for settings in await models.ThemeSettings.filter(theme=self).select_related(
                     "wallpaper", "wallpaper__document", "wallpaper__settings",
                 )

@@ -11,6 +11,7 @@ from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.exceptions import Unreachable
 from piltover.tl import Long, base
+from piltover.tl.to_format import WallPaperToFormat
 from piltover.tl.types import WallPaper, WallPaperNoFile, InputWallPaper, InputWallPaperSlug, InputWallPaperNoFile
 from piltover.tl.types.internal_access import AccessHashPayloadWallpaper
 
@@ -29,8 +30,8 @@ class Wallpaper(Model):
     settings_id: int | None
 
     def to_tl(
-            self, user: models.User, settings: models.WallpaperSettings | None = None,
-    ) -> WallPaper | WallPaperNoFile:
+            self, settings: models.WallpaperSettings | None = None,
+    ) -> WallPaper | WallPaperNoFile | WallPaperToFormat:
         if settings is None:
             settings = self.settings
 
@@ -42,13 +43,11 @@ class Wallpaper(Model):
                 settings=settings.to_tl() if settings is not None else None,
             )
 
-        return WallPaper(
+        return WallPaperToFormat(
             id=self.id,
-            creator=self.creator_id == user.id,
-            default=False,
+            creator_id=self.creator_id,
             pattern=self.pattern,
             dark=self.dark,
-            access_hash=-1,
             slug=self.slug,
             document=self.document.to_tl_document(),
             settings=settings.to_tl() if settings is not None else None,

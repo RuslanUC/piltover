@@ -17,33 +17,11 @@ from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, MessageService, objects, TLObject
-from piltover.tl.base import MessageActionInst, MessageAction, ReplyMarkupInst, ReplyMarkup
-from piltover.tl.base.internal import MessageActionNeedsProcessingInst, MessageActionNeedsProcessing
+from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, WallPaperNoFile, \
-    MessageActionSetChatWallPaper, MessageEntityMentionName
-from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
+    MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
+    MessageEntityMentionName
 from piltover.utils.snowflake import Snowflake
-
-
-# TODO: remove when wallpaper.creator will be calculated dynamically
-async def _process_service_message_action(
-        action: MessageActionNeedsProcessing, _: Message, user: models.User,
-) -> tuple[MessageAction, bool]:
-    if isinstance(action, MessageActionProcessSetChatWallpaper):
-        wallpaper = await models.Wallpaper.get_or_none(id=action.wallpaper_id).select_related("document", "settings")
-        if wallpaper is not None:
-            wallpaper_tl = wallpaper.to_tl(user)
-        else:
-            wallpaper_tl = WallPaperNoFile(id=0)
-        return MessageActionSetChatWallPaper(
-            same=action.same,
-            for_both=action.for_both,
-            wallpaper=wallpaper_tl,
-        ), False
-    else:
-        logger.warning(f"Got unknown message action to process: {action!r}")
-        return MessageActionEmpty(), False
 
 
 class _SomethingMissing(Enum):
@@ -51,7 +29,6 @@ class _SomethingMissing(Enum):
 
 
 _SMTH_MISSING = _SomethingMissing.MISSING
-AllowedMessageActions = (*MessageActionInst, *MessageActionNeedsProcessingInst)
 
 
 async def append_channel_min_message_id_to_query_maybe(
@@ -151,21 +128,12 @@ class Message(Model):
 
     async def _to_tl_service(self, user: models.User) -> MessageService:
         action = TLObject.read(BytesIO(self.extra_info))
-        if not isinstance(action, AllowedMessageActions):
+        if not isinstance(action, MessageActionInst):
             logger.error(
                 f"Expected service message action to "
-                f"be any of this types: {AllowedMessageActions}, got {action=!r}"
+                f"be any of this types: {MessageActionInst}, got {action=!r}"
             )
             action = MessageActionEmpty()
-
-        if isinstance(action, MessageActionNeedsProcessingInst):
-            logger.trace(f"Initial processing of message action {action!r}")
-            action = cast(MessageActionNeedsProcessing, action)
-            action, save = await _process_service_message_action(action, self, user)
-            if not isinstance(action, MessageActionEmpty) and save:
-                logger.trace(f"Saving processed action: {action!r}")
-                self.extra_info = action.write()
-                await self.save(update_fields=["extra_info"])
 
         from_id = None
         if not self.channel_post:

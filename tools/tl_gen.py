@@ -28,6 +28,7 @@ from typing import Literal, TextIO
 from tqdm import tqdm
 
 from tl_gen_placeholders import PLACEHOLDERS
+from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS
 
 
 DRY_RUN = False
@@ -484,7 +485,10 @@ def start():
                         empty_condition = " is not None"
 
                     serialize_body.append(f"if {write_var_name}{empty_condition}:")
-                    serialize_body.append(f"    result += {type_name}.write({write_var_name})")
+                    if type_name == "TLObject":
+                        serialize_body.append(f"    result += {write_var_name}.write()")
+                    else:
+                        serialize_body.append(f"    result += {type_name}.write({write_var_name})")
                     deserialize_body.append(
                         f"{field.name} = {type_name}.read(stream) "
                         f"if (flags{field.flag_num} & (1 << {field.flag_bit})) == (1 << {field.flag_bit}) else None"
@@ -496,7 +500,10 @@ def start():
 
                 continue
 
-            serialize_body.append(f"result += {type_name}.write({write_var_name})")
+            if type_name == "TLObject":
+                serialize_body.append(f"result += {write_var_name}.write()")
+            else:
+                serialize_body.append(f"result += {type_name}.write({write_var_name})")
             deserialize_body.append(f"{field.name} = {type_name}.read(stream)")
 
         imports = [
@@ -635,13 +642,17 @@ def start():
 
     with open(DESTINATION_PATH / "all.py", "w") as f:
         f.write(WARNING + "\n\n")
-        f.write(f"from . import core_types, types, functions\n\n")
+        f.write(f"from . import core_types, types, functions, to_format\n\n")
         f.write(f"min_layer = {min(all_layers)}\n")
         f.write(f"layer = {layer}\n\n")
         f.write("objects = {")
 
         for c in combinators:
-            f.write(f"\n    {c.id}: {c.section}.{c.qualname},")
+            id_int = int(c.id[2:], 16)
+            if id_int in REPLACE_CONSTRUCTORS:
+                f.write(f"\n    {c.id}: {REPLACE_CONSTRUCTORS[id_int]},")
+            else:
+                f.write(f"\n    {c.id}: {c.section}.{c.qualname},")
 
         f.write(f"\n    0x5bb8e511: core_types.Message,")
         f.write(f"\n    0x73f1f8dc: core_types.MsgContainer,")

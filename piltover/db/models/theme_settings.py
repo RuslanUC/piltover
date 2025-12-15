@@ -58,7 +58,7 @@ class ThemeSettings(Model):
             ("theme", "base_theme"),
         )
 
-    async def to_tl(self, user: models.User) -> TLThemeSettings:
+    def to_tl(self) -> TLThemeSettings:
         message_colors = None if self.message_color_1 is None else [self.message_color_1]
         if self.message_color_2 is not None:
             message_colors.append(self.message_color_2)
@@ -73,5 +73,5 @@ class ThemeSettings(Model):
             accent_color=self.accent_color,
             outbox_accent_color=self.outbox_accent_color,
             message_colors=message_colors,
-            wallpaper=self.wallpaper.to_tl(user) if self.wallpaper is not None else None,
+            wallpaper=self.wallpaper.to_tl() if self.wallpaper is not None else None,
         )

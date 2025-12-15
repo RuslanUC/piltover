@@ -8,7 +8,6 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable, Error
 from piltover.tl import Updates, InputPeerUser, InputUser, TLObject, MessageActionSetChatWallPaper
 from piltover.tl.functions.messages import SetChatWallPaper
-from piltover.tl.types.internal import MessageActionProcessSetChatWallpaper
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("wallpaper")
@@ -48,8 +47,6 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user: User) -> Updates:
 
         if isinstance(action, MessageActionSetChatWallPaper):
             wallpaper_id = action.wallpaper.id
-        elif isinstance(action, MessageActionProcessSetChatWallpaper):
-            wallpaper_id = action.wallpaper_id
         else:
             raise ErrorRpc(error_code=400, error_message="WALLPAPER_NOT_FOUND")
 
@@ -79,8 +76,10 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user: User) -> Updates:
     if create_svc_message:
         message_updates = await send_message_internal(
             user, peer, None, None, False, author=user, type=MessageType.SERVICE_CHAT_UPDATE_WALLPAPER,
-            extra_info=MessageActionProcessSetChatWallpaper(
-                same=False, for_both=False, wallpaper_id=set_wallpaper.id,
+            extra_info=MessageActionSetChatWallPaper(
+                same=False,
+                for_both=False,
+                wallpaper=set_wallpaper.to_tl(),
             ).write(),
         )
         updates.updates.extend(message_updates.updates)

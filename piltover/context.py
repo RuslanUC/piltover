@@ -65,11 +65,12 @@ request_ctx: ContextVar[RequestContext] = ContextVar("request_ctx")
 
 
 class SerializationContext(Generic[T]):
-    __slots__ = ("auth_id", "user_id", "layer", "worker")
+    __slots__ = ("auth_id", "user_id", "dont_format",)
 
-    def __init__(self, auth_id: int | None, user_id: int | None):
+    def __init__(self, auth_id: int | None, user_id: int | None, dont_format: bool = False):
         self.auth_id = auth_id
         self.user_id = user_id
+        self.dont_format = dont_format
 
 
 serialization_ctx: ContextVar[SerializationContext | None] = ContextVar("serialization_ctx", default=None)
