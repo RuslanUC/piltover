@@ -23,7 +23,6 @@ from piltover.gateway import Gateway
 from piltover.session_manager import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 
-
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
 
 

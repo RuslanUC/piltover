@@ -27,7 +27,7 @@ tgcrypto = "^1.2.5"
 uvloop = { version = "^0.22.1", markers = "sys_platform != 'win32'" }
 loguru = "^0.7.3"
 # branch "allow-joining-same-table-twice"
-tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", extras = ["asyncmy", "accel"], rev = "1071b2d06da4419219c0b3e33acb298a0936e66c"}
+tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", extras = ["asyncmy", "accel"], rev = "20db3bd3b0379c954d872088fb08503ccad53746"}
 aerich = "^0.9.2"
 pillow = "^12.0.0"
 # TODO: upgrade to 0.2.x and use Session from mtproto in Gateway from piltover
@@ -43,8 +43,6 @@ fastrand = {git = "https://github.com/RuslanUC/fastrand.git", rev = "feat/add-fu
 python-magic = "^0.4.27"
 av = "^16.0.1"
 httpx = "^0.28.1"
-# TODO: update tortoise-orm because it's current version has issues with aiosqlite >= 0.22.0
-aiosqlite = "0.21.0"
 
 
 [tool.poetry.group.dev.dependencies]

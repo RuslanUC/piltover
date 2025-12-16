@@ -19,3 +19,5 @@ package.json
 /*.coverage
 
 /unknown_errors.txt
+.env
+.env.sh

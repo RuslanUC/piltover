@@ -2924,7 +2924,7 @@ files = [
 
 [[package]]
 name = "tortoise-orm"
-version = "0.25.1"
+version = "0.25.2"
 description = "Easy async ORM for python, built with relations in mind"
 optional = false
 python-versions = ">=3.9"
@@ -2937,7 +2937,7 @@ asyncmy = {version = ">=0.2.8,<1.0.0", optional = true, markers = "python_versio
 ciso8601 = {version = "*", optional = true, markers = "sys_platform != \"win32\" and implementation_name == \"cpython\" and extra == \"accel\""}
 iso8601 = {version = ">=2.1.0,<3.0.0", markers = "python_version < \"4.0\""}
 orjson = {version = "*", optional = true, markers = "extra == \"accel\""}
-pypika-tortoise = ">=0.6.1,<1.0.0"
+pypika-tortoise = ">=0.6.3,<1.0.0"
 pytz = "*"
 uvloop = {version = "*", optional = true, markers = "sys_platform != \"win32\" and implementation_name == \"cpython\" and extra == \"accel\""}
 
@@ -2952,8 +2952,8 @@ psycopg = ["psycopg[binary,pool] (>=3.0.12,<4.0.0)"]
 [package.source]
 type = "git"
 url = "https://github.com/RuslanUC/tortoise-orm.git"
-reference = "1071b2d06da4419219c0b3e33acb298a0936e66c"
-resolved_reference = "1071b2d06da4419219c0b3e33acb298a0936e66c"
+reference = "20db3bd3b0379c954d872088fb08503ccad53746"
+resolved_reference = "20db3bd3b0379c954d872088fb08503ccad53746"
 
 [[package]]
 name = "tqdm"
@@ -3464,4 +3464,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11.1"
-content-hash = "c529d2045bf0fffddb98b879e43536698e548cfb0f3a752bff8cf125ff898a2c"
+content-hash = "d31da700e04825ebe6e00f9a04a15839ced0eb9372632c55ce42d5ae2b73188b"

@@ -350,3 +350,6 @@ class InlineQueryResultType(StrEnum):
     ARTICLE = "article"
     FILE = "file"
 
+
+class AdminLogEntryAction(IntEnum):
+    CHANGE_TITLE = 0

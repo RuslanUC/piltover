@@ -68,15 +68,15 @@ async def fetch_users_chats(
     if users_q is not None and users_q != Q_EMPTY:
         if users:
             users_q &= Q(id__not_in=list(users.keys()))
-        users_out = {user.id: user async for user in models.User.filter(users_q)}
+        users_out = {user.id: user for user in await models.User.filter(users_q)}
     if chats_q is not None and chats_q != Q_EMPTY:
         if chats:
             chats_q &= Q(id__not_in=list(chats.keys()))
-        chats_out = {chat.id: chat async for chat in models.Chat.filter(chats_q)}
+        chats_out = {chat.id: chat for chat in await models.Chat.filter(chats_q)}
     if channels_q is not None and channels_q != Q_EMPTY:
         if channels:
             channels_q &= Q(id__not_in=list(channels.keys()))
-        channels_out = {channel.id: channel async for channel in models.Channel.filter(channels_q)}
+        channels_out = {channel.id: channel for channel in await models.Channel.filter(channels_q)}
 
     return users_out, chats_out, channels_out
 
