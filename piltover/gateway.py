@@ -237,6 +237,7 @@ class Client:
         ctx_token = serialization_ctx.set(SerializationContext(
             auth_id=auth_id,
             user_id=user_id,
+            layer=self.layer,
         ))
 
         if self.server.TL_CHECK_RESPONSES:

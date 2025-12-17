@@ -1,10 +1,9 @@
-from loguru import logger
-
 from piltover.context import serialization_ctx
-from piltover.tl import types, Int, WallPaperToFormatInternal
+from piltover.layer_converter.manager import LayerConverter
+from piltover.tl import types, Int
 
 
-class WallPaperToFormat(WallPaperToFormatInternal):
+class WallPaperToFormat(types.WallPaperToFormatInternal):
     __tl_result_id__ = 0xa437c3ed
 
     def serialize(self) -> bytes:
@@ -25,9 +24,33 @@ class WallPaperToFormat(WallPaperToFormatInternal):
         ).serialize()
 
     def write(self) -> bytes:
-        logger.info(f"???")
         ctx = serialization_ctx.get()
         if ctx is None or ctx.dont_format:
-            logger.info(f"WHAT??? {ctx!r}")
             return super().write()
         return Int.write(self.__tl_result_id__, False) + self.serialize()
+
+
+class MessageServiceToFormat(types.MessageServiceToFormatInternal):
+    def _write(self) -> bytes:
+        ctx = serialization_ctx.get()
+        return LayerConverter.downgrade(
+            obj=types.MessageService(
+                id=self.id,
+                peer_id=self.peer_id,
+                date=self.date,
+                action=self.action,
+                out=self.author_id == ctx.user_id,
+                reply_to=self.reply_to,
+                from_id=self.from_id,
+                mentioned=False,
+                media_unread=False,
+                ttl_period=self.ttl_period,
+            ),
+            to_layer=ctx.layer,
+        ).write()
+
+    def write(self) -> bytes:
+        ctx = serialization_ctx.get()
+        if ctx is None or ctx.dont_format:
+            return super().write()
+        return self._write()

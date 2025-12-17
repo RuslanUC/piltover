@@ -25,8 +25,6 @@ class Poll(Model):
         return self.closed or (self.ends_at is not None and datetime.now(UTC) > self.ends_at)
 
     async def to_tl(self) -> TLPoll:
-        answer: models.PollAnswer
-
         return TLPoll(
             id=self.id,
             closed=self.is_closed_fr,
@@ -36,7 +34,7 @@ class Poll(Model):
             question=TextWithEntities(text=self.question, entities=[]),
             answers=[
                 answer.to_tl()
-                async for answer in self.pollanswers.all()
+                for answer in await self.pollanswers.all()
             ],
             close_date=int(self.ends_at.timestamp()) if self.ends_at else None,
         )
@@ -51,7 +49,7 @@ class Poll(Model):
 
         answers = []
         answer: models.PollAnswer
-        async for answer in self.pollanswers.all():
+        for answer in await self.pollanswers.all():
             answers.append(PollAnswerVoters(
                 chosen=answer.option in chosen,
                 correct=self.quiz and answer.correct,

@@ -194,6 +194,7 @@ internal_access.file_reference_payload#af4f0049 file_id:long created_at:int = in
 // Generated "*ToFormat" constructors
 
 wallPaperToFormatInternal#68dda86b flags:# id:long creator_id:long pattern:flags.0?true dark:flags.1?true slug:string document:Document settings:flags.2?WallPaperSettings = WallPaper;
+messageServiceToFormatInternal#efce62cb flags:# author_id:long id:int from_id:flags.0?Peer peer_id:Peer reply_to:flags.1?MessageReplyHeader date:int action:MessageAction ttl_period:flags.2?int = Message;
 
 ---functions---
 

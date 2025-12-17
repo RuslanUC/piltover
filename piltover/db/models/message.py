@@ -16,8 +16,9 @@ from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.exceptions import ErrorRpc, Unreachable, Error
-from piltover.tl import MessageReplyHeader, MessageService, objects, TLObject
-from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup
+from piltover.tl import MessageReplyHeader, objects, TLObject
+from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase
+from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
     MessageEntityMentionName
@@ -121,12 +122,10 @@ class Message(Model):
 
         return await Message.filter(query).select_related("peer", "author", "media")
 
-    async def _make_reply_to_header(self) -> MessageReplyHeader:
-        if self.reply_to is not None:
-            self.reply_to = await self.reply_to
-        return MessageReplyHeader(reply_to_msg_id=self.reply_to.id) if self.reply_to is not None else None
+    def _make_reply_to_header(self) -> MessageReplyHeader:
+        return MessageReplyHeader(reply_to_msg_id=self.reply_to_id) if self.reply_to_id is not None else None
 
-    async def _to_tl_service(self, user: models.User) -> MessageService:
+    def _to_tl_service(self) -> MessageServiceToFormat:
         action = TLObject.read(BytesIO(self.extra_info))
         if not isinstance(action, MessageActionInst):
             logger.error(
@@ -135,29 +134,30 @@ class Message(Model):
             )
             action = MessageActionEmpty()
 
-        from_id = None
-        if not self.channel_post:
-            from_id = PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0)
-
-        return MessageService(
+        # NOTE: this is first step to making messages cachable for not-defined amount of time for all users.
+        #  But we need to keep in mind that:
+        #   1. Messages should be cached based on `internal_id` not actual message `id`
+        #    (or whole id system should be reworked and rewritten).
+        #   2. Fields such as `peer_id` or `reply_to` are NOT cachable based in internal id in private chats:
+        #    `peer_id` can be specified as PeerPrivate(user1_id=..., user2_id=...),
+        #    but `reply_to` is unknown for user users for private chats in this method.
+        return MessageServiceToFormat(
             id=self.id,
             peer_id=self.peer.to_tl(),
             date=int(self.date.timestamp()),
-            action=action,  # type: ignore
-            out=user.id == self.author_id,
-            reply_to=await self._make_reply_to_header(),
-            from_id=from_id,
-            mentioned=False,
-            media_unread=False,
+            action=action,
+            author_id=self.author_id,
+            reply_to=self._make_reply_to_header(),
+            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
-    async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessage | MessageService:
+    async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessageBase:
         if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None and not with_reactions:
             return cached
 
         if self.type not in (MessageType.REGULAR, MessageType.SCHEDULED):
-            return await self._to_tl_service(current_user)
+            return self._to_tl_service()
 
         media = None
         if self.media is not None:
@@ -172,11 +172,6 @@ class Message(Model):
             tl_id = entity.pop("_")
             entities.append(objects[tl_id](**entity))
             entity["_"] = tl_id
-
-        from_id = None
-        if not self.channel_post:
-            # TODO: PeerChannel?
-            from_id = PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0)
 
         post_info = None
         if self.channel_post and self.post_info_id is not None:
@@ -211,9 +206,9 @@ class Message(Model):
             out=current_user.id == self.author_id,
             media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
-            reply_to=await self._make_reply_to_header(),
+            reply_to=self._make_reply_to_header(),
             fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
-            from_id=from_id,
+            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
             entities=entities,
             grouped_id=self.media_group_id,
             post=self.channel_post,
@@ -483,6 +478,10 @@ class Message(Model):
         if self.fwd_header_id is not None:
             if self.fwd_header.from_user_id is not None:
                 user_ids.add(self.fwd_header.from_user_id)
+            if self.fwd_header.from_chat_id is not None:
+                chat_ids.add(self.fwd_header.from_chat_id)
+            if self.fwd_header.from_channel_id is not None:
+                channel_ids.add(self.fwd_header.from_channel_id)
             if self.fwd_header.saved_peer_id is not None:
                 self._fill_related_peer(self.fwd_header.saved_peer, user_ids, chat_ids, channel_ids)
             if self.fwd_header.saved_from_id is not None:

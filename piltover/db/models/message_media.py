@@ -12,7 +12,7 @@ from piltover.tl import MessageMediaUnsupported, MessageMediaPhoto, MessageMedia
     MessageMediaContact, MessageMediaGeo
 
 MessageMediaTypes = MessageMediaUnsupported | MessageMediaPhoto | MessageMediaDocument | MessageMediaPoll \
-                    | MessageMediaContact
+                    | MessageMediaContact | MessageMediaGeo
 
 
 class MessageMedia(Model):
