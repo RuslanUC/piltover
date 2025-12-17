@@ -6,7 +6,7 @@ from tortoise import Model, fields
 
 from piltover.db import models
 from piltover.db.enums import AdminLogEntryAction
-from piltover.tl import ChannelAdminLogEventActionChangeTitle
+from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEventActionChangeAbout
 from piltover.tl.base import ChannelAdminLogEvent
 
 
@@ -26,6 +26,11 @@ class AdminLogEntry(Model):
         action = None
         if self.action is AdminLogEntryAction.CHANGE_TITLE:
             action = ChannelAdminLogEventActionChangeTitle(
+                prev_value=self.prev.decode("utf8"),
+                new_value=self.new.decode("utf8"),
+            )
+        elif self.action is AdminLogEntryAction.CHANGE_ABOUT:
+            action = ChannelAdminLogEventActionChangeAbout(
                 prev_value=self.prev.decode("utf8"),
                 new_value=self.new.decode("utf8"),
             )

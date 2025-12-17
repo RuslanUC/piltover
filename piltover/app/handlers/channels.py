@@ -954,7 +954,7 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
     if request.events_filter is not None:
         actions_q = Q()
         if request.events_filter.info:
-            actions_q |= Q(action=AdminLogEntryAction.CHANGE_TITLE)
+            actions_q |= Q(action=AdminLogEntryAction.CHANGE_TITLE) | Q(action=AdminLogEntryAction.CHANGE_ABOUT)
 
         if not actions_q.filters and not actions_q.children:
             return AdminLogResults(events=[], users=[], chats=[])

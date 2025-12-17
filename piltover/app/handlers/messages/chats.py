@@ -9,12 +9,12 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType, \
-    UserStatus
+    UserStatus, AdminLogEntryAction
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
-    ChatInviteRequest, ChatInvite, Channel, Dialog, Presence
+    ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session_manager import SessionManager
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
@@ -148,17 +148,29 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
 
 @handler.on_request(EditChatAbout)
 async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
-    if peer.type is not PeerType.CHAT:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
-    participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
-    if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
+    participant = await ChatParticipant.get_or_none(**Chat.or_channel(peer.chat_or_channel), user=user)
+    if participant is None or not (participant.is_admin or peer.chat_or_channel.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    chat = peer.chat
-    await chat.update(description=request.about)
-    await upd.update_chat(chat)
+    chat_or_channel = peer.chat_or_channel
+    old_about = chat_or_channel.description
+    await chat_or_channel.update(description=request.about)
+
+    if isinstance(chat_or_channel, Chat):
+        await upd.update_chat(chat_or_channel)
+    elif isinstance(chat_or_channel, Channel):
+        await AdminLogEntry.create(
+            channel=peer.channel,
+            user=user,
+            action=AdminLogEntryAction.CHANGE_ABOUT,
+            prev=old_about.encode("utf8"),
+            new=chat_or_channel.description.encode("utf8"),
+        )
+        await upd.update_channel(chat_or_channel, user)
+    else:
+        raise Unreachable
 
     return True
 
