@@ -64,11 +64,11 @@ class Entity:
             }
 
         add_offset = sum(
-            len(fmt_options[fmt_name]) * count - (len(fmt_name) + 2) * count
+            len(fmt_options[fmt_name].encode("utf-16le")) // 2 * count - (len(fmt_name) + 2) * count
             for fmt_name, count in self.offset_depends.items()
         )
         add_length = sum(
-            len(fmt_options[fmt_name]) * count - (len(fmt_name) + 2) * count
+            len(fmt_options[fmt_name].encode("utf-16le")) // 2 * count - (len(fmt_name) + 2) * count
             for fmt_name, count in self.length_depends.items()
         )
 

@@ -1,4 +1,5 @@
 import asyncio
+import bisect
 import ctypes
 import os
 import re
@@ -262,9 +263,9 @@ VALID_ENTITIES = (
 )
 
 
-async def _validate_message_entities(text: str, entities: list[MessageEntityBase], user: User) -> list[dict] | None:
+async def _validate_message_entities(text: str, entities: list[MessageEntityBase], user: User) -> list[dict]:
     if not entities:
-        return None
+        return []
     if len(entities) > 1024:
         raise ErrorRpc(error_code=400, error_message="ENTITIES_TOO_LONG")
 
@@ -357,7 +358,31 @@ async def _validate_message_entities(text: str, entities: list[MessageEntityBase
                 del result[idx]
                 continue
 
-    return result or None
+    return result
+
+
+def _span_to_offset_length(span: tuple[int, int], u8u16: dict[int, int]) -> tuple[int, int, int]:
+    start, end = span
+    u16start = u8u16[start]
+    u16end = u8u16[end]
+    length = u16end - u16start
+    return u16start, u16end, length
+
+
+def _check_entity_inside_entity(entities: list[dict], u16start: int, u16end: int) -> bool:
+    last = bisect.bisect_right(entities, u16start, key=lambda e: e["offset"])
+    if last > 0:
+        last_entity = entities[last - 1]
+        if last_entity["offset"] + last_entity["length"] > u16start:
+            return True
+
+    next_ = bisect.bisect_left(entities, u16start, key=lambda e: e["offset"])
+    if next_ < len(entities) - 1:
+        next_entity = entities[next_ + 1]
+        if u16end > next_entity["offset"]:
+            return True
+
+    return False
 
 
 async def process_message_entities(
@@ -382,37 +407,37 @@ async def process_message_entities(
         if pos == len(text) - 1:
             u8_to_u16[pos + 1] = u8_to_u16[pos] + last_len
 
+    entities.sort(key=lambda e: e["offset"])
+
     for mention in USERNAME_MENTION_REGEX.finditer(text):
         await sleep(0)
-        if entities is None:
-            entities = []
 
-        start, end = mention.span()
-        u16start = u8_to_u16[start]
-        u16end = u8_to_u16[end]
-        length = u16end - u16start
+        u16start, u16end, length = _span_to_offset_length(mention.span(), u8_to_u16)
 
-        entities.append({
+        if _check_entity_inside_entity(entities, u16start, u16end):
+            continue
+
+        entity = {
             "_": MessageEntityMention.tlid(),
             "offset": u16start,
             "length": length,
-        })
+        }
+        bisect.insort(entities, entity, key=lambda e: e["offset"])
 
     for command in BOT_COMMAND_REGEX.finditer(text):
         await sleep(0)
-        if entities is None:
-            entities = []
 
-        start, end = command.span()
-        u16start = u8_to_u16[start]
-        u16end = u8_to_u16[end]
-        length = u16end - u16start
+        u16start, u16end, length = _span_to_offset_length(command.span(), u8_to_u16)
 
-        entities.append({
+        if _check_entity_inside_entity(entities, u16start, u16end):
+            continue
+
+        entity = {
             "_": MessageEntityBotCommand.tlid(),
             "offset": u16start,
             "length": length,
-        })
+        }
+        bisect.insort(entities, entity, key=lambda e: e["offset"])
 
     return entities
 
