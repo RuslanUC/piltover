@@ -354,3 +354,5 @@ class InlineQueryResultType(StrEnum):
 class AdminLogEntryAction(IntEnum):
     CHANGE_TITLE = 0
     CHANGE_ABOUT = 1
+    CHANGE_USERNAME = 2
+    TOGGLE_SIGNATURES = 3

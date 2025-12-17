@@ -78,7 +78,11 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
         if await Username.filter(username__iexact=request.username).exists():
             raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
 
+    old_username = ""
+    new_username = request.username
+
     if current_username is not None:
+        old_username = current_username.username
         if not request.username:
             await current_username.delete()
             await UserPersonalChannel.filter(channel=channel).delete()
@@ -88,6 +92,14 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
             await current_username.save(update_fields=["username"])
     else:
         channel.cached_username = await Username.create(channel=channel, username=request.username)
+
+    await AdminLogEntry.create(
+        channel=peer.channel,
+        user=user,
+        action=AdminLogEntryAction.CHANGE_USERNAME,
+        prev=old_username.encode("utf8"),
+        new=new_username.encode("utf8"),
+    )
 
     if channel.cached_username is not None and channel.hidden_prehistory:
         channel.min_available_id = cast(
@@ -658,6 +670,14 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
     channel.version += 1
     await channel.save(update_fields=["signatures", "version"])
 
+    await AdminLogEntry.create(
+        channel=peer.channel,
+        user=user,
+        action=AdminLogEntryAction.TOGGLE_SIGNATURES,
+        prev=None,
+        new=b"\x01" if request.signatures_enabled else b"\x00",
+    )
+
     return await upd.update_channel(channel, user)
 
 
@@ -954,7 +974,9 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
     if request.events_filter is not None:
         actions_q = Q()
         if request.events_filter.info:
-            actions_q |= Q(action=AdminLogEntryAction.CHANGE_TITLE) | Q(action=AdminLogEntryAction.CHANGE_ABOUT)
+            actions_q |= Q(action=AdminLogEntryAction.CHANGE_TITLE) \
+                         | Q(action=AdminLogEntryAction.CHANGE_ABOUT) \
+                         | Q(action=AdminLogEntryAction.CHANGE_USERNAME)
 
         if not actions_q.filters and not actions_q.children:
             return AdminLogResults(events=[], users=[], chats=[])
