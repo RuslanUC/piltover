@@ -175,6 +175,7 @@ class Message(Model):
 
         from_id = None
         if not self.channel_post:
+            # TODO: PeerChannel?
             from_id = PeerUser(user_id=self.author_id) if self.author_id else PeerUser(user_id=0)
 
         post_info = None
@@ -349,20 +350,28 @@ class Message(Model):
 
     async def create_fwd_header(self, peer: models.Peer) -> models.MessageFwdHeader | None:
         if self.fwd_header is not None:
-            self.fwd_header = await self.fwd_header
-
-        fwd_header = self.fwd_header
-        self.author = await self.author
-        if peer.type is PeerType.SELF and self.peer is not None or True:
-            self.peer = await self.peer
-
-        if fwd_header is not None:
-            fwd_header.from_user = await fwd_header.from_user
-
-        from_user = fwd_header.from_user if fwd_header else None
-        if from_user is None and not self.channel_post:
-            if await models.PrivacyRule.has_access_to(self.peer.owner_id, self.author, PrivacyRuleKeyType.FORWARDS):
-                from_user = self.author
+            from_user = self.fwd_header.from_user
+            from_chat = self.fwd_header.from_chat
+            from_channel = self.fwd_header.from_channel
+            from_name = self.fwd_header.from_name
+            channel_post_id = self.fwd_header.channel_post_id
+            channel_post_author = self.fwd_header.channel_post_author
+        else:
+            from_user = None
+            from_chat = None
+            from_channel = None
+            channel_post_id = None
+            channel_post_author = None
+            if self.channel_post:
+                from_channel = self.peer.channel
+                from_name = from_channel.name
+                channel_post_id = self.id
+                channel_post_author = self.post_author
+            else:
+                # TODO: handle anonymous admins in chats and channels
+                if await models.PrivacyRule.has_access_to(self.peer.owner_id, self.author, PrivacyRuleKeyType.FORWARDS):
+                    from_user = self.author
+                from_name = self.author.first_name
 
         saved_peer = self.peer if peer.type == PeerType.SELF else None
         if saved_peer is not None and peer.type is PeerType.USER:
@@ -372,8 +381,13 @@ class Message(Model):
 
         return await models.MessageFwdHeader.create(
             from_user=from_user,
-            from_name=fwd_header.from_name if fwd_header else self.author.first_name,
-            date=fwd_header.date if fwd_header else self.date,
+            from_chat=from_chat,
+            from_channel=from_channel,
+            from_name=from_name,
+            date=self.fwd_header.date if self.fwd_header else self.date,
+
+            channel_post_id=channel_post_id,
+            channel_post_author=channel_post_author,
 
             saved_peer=saved_peer,
             saved_id=self.id if peer.type == PeerType.SELF else None,
