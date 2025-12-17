@@ -84,6 +84,8 @@ async def get_full_user(request: GetFullUser, user: User):
 @handler.on_request(GetUsers)
 async def get_users(request: GetUsers, user: User):
     result = TLObjectVector()
+
+    # TODO: fetch in single query
     for peer in request.id:
         if isinstance(peer, InputUser) and peer.access_hash == 0:
             contact = await Contact.get_or_none(owner=user, target__id=peer.user_id).select_related("target")

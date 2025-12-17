@@ -1,3 +1,5 @@
+from tortoise.transactions import in_transaction
+
 import piltover.app.utils.updates_manager as upd
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType
@@ -72,17 +74,25 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
 async def delete_photos(request: DeletePhotos, user: User):
     deleted = LongVector()
 
+    ids = []
+
     for photo in request.id:
         if not isinstance(photo, InputPhoto):
             continue
-        if not (photo := await UserPhoto.get_or_none(id=photo.id, user=user)):
-            continue
+        ids.append(photo.id)
 
-        await photo.delete()
-        deleted.append(photo.id)
+    if not ids:
+        return deleted
 
-    if deleted:
-        await upd.update_user(user)
+    async with in_transaction():
+        actual_ids = await UserPhoto.select_for_update().filter(user=user, id__in=ids,).values_list("id", flat=True)
+        if not actual_ids:
+            return deleted
+
+        await UserPhoto.filter(id__in=actual_ids).delete()
+
+    deleted.extend(actual_ids)
+    await upd.update_user(user)
 
     return deleted
 

@@ -247,6 +247,7 @@ class BotFatherState(IntEnum):
     EDITBOT_WAIT_NAME = 3
     EDITBOT_WAIT_ABOUT = 4
     EDITBOT_WAIT_DESCRIPTION = 5
+    EDITBOT_WAIT_PHOTO = 6
 
 
 BOTFATHER_STATE_TO_COMMAND_NAME = {
@@ -255,6 +256,7 @@ BOTFATHER_STATE_TO_COMMAND_NAME = {
     BotFatherState.EDITBOT_WAIT_NAME: "mybots",
     BotFatherState.EDITBOT_WAIT_ABOUT: "mybots",
     BotFatherState.EDITBOT_WAIT_DESCRIPTION: "mybots",
+    BotFatherState.EDITBOT_WAIT_PHOTO: "mybots",
     None: None,
 }
 

@@ -854,8 +854,11 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
     await participant.delete()
     await ChatInvite.filter(channel=peer.channel, user=user).update(revoked=True)
     await Dialog.hide(peer)
-
-    # TODO: remove scheduled messages, if any
+    await Message.filter(id__in=Subquery(
+        Message.filter(
+            peer__channel=peer.channel, peer__owner=user, type=MessageType.SCHEDULED,
+        ).values_list("id", flat=True)
+    )).delete()
 
     return await upd.update_channel_for_user(peer.channel, user)
 

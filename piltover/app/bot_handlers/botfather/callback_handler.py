@@ -5,7 +5,7 @@ from piltover.app.bot_handlers.botfather.mybots_command import text_no_bots, tex
 from piltover.app.bot_handlers.botfather.utils import get_bot_selection_inline_keyboard, send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import BotFatherState
-from piltover.db.models import Peer, Message, Bot, BotInfo, BotFatherUserState
+from piltover.db.models import Peer, Message, Bot, BotInfo, BotFatherUserState, UserPhoto
 from piltover.db.models.bot import gen_bot_token
 from piltover.tl import ReplyInlineMarkup, KeyboardButtonRow, KeyboardButtonCallback
 from piltover.tl.types.internal_botfather import BotfatherStateEditbot
@@ -41,6 +41,7 @@ __editbot_desc = (
     "OK. Send me the new description for the bot. "
     "People will see this description when they open a chat with your bot, in a block titled 'What can this bot do?'."
 )
+__editbot_photo = "OK. Send me the new profile photo for the bot."
 
 
 async def botfather_callback_query_handler(peer: Peer, message: Message, data: bytes) -> BotCallbackAnswer | None:
@@ -191,6 +192,7 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             return None
 
         bot_info, _ = await BotInfo.get_or_create(user=bot.bot)
+        has_photo = await UserPhoto.filter(user=bot.bot).exists()
 
         message.message, message.entities = __text_bot_edit_info.format(
             username=bot.bot.usernames.username,
@@ -198,8 +200,7 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             about=bot.bot.about if bot.bot.about else "🚫",
             description=bot_info.description if bot_info.description else "🚫",
             picture="has description picture" if bot_info.description_photo else "🚫 no description picture",
-            # TODO: profile picture
-            profile_picture="🚫 no botpic",
+            profile_picture="🖼 has a botpic" if has_photo else "🚫 no botpic",
             # TODO: commands
             commands="no commands yet",
             privacy_policy=bot_info.privacy_policy_url if bot_info.privacy_policy_url else "🚫",
@@ -277,10 +278,26 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             return None
 
         await BotFatherUserState.set_state(
-            peer.owner, BotFatherState.EDITBOT_WAIT_DESCRIPTION,
-            BotfatherStateEditbot(bot_id=bot_id).serialize()
+            peer.owner, BotFatherState.EDITBOT_WAIT_DESCRIPTION, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         message = await send_bot_message(peer, __editbot_desc)
+        await upd.send_message(None, {peer: message}, False)
+
+        return BotCallbackAnswer(cache_time=0)
+
+    if data.startswith(b"bots-edit-pic/"):
+        try:
+            bot_id = int(data[14:])
+        except ValueError:
+            return None
+
+        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+            return None
+
+        await BotFatherUserState.set_state(
+            peer.owner, BotFatherState.EDITBOT_WAIT_PHOTO, BotfatherStateEditbot(bot_id=bot_id).serialize()
+        )
+        message = await send_bot_message(peer, __editbot_photo)
         await upd.send_message(None, {peer: message}, False)
 
         return BotCallbackAnswer(cache_time=0)

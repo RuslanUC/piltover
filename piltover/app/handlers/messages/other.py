@@ -10,6 +10,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateUserTyping, DefaultHistoryTTL
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL
+from piltover.tl.types.internal import LazyUser, LazyChat
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
@@ -25,16 +26,16 @@ async def set_typing(request: SetTyping, user: User):
         return True
 
     chat = peer.chat if peer.type is PeerType.CHAT else None
+    updates = Updates(
+        updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
+        users=[LazyUser(user_id=user.id)],
+        chats=[] if chat is None else [LazyChat(chat_id=chat.id)],
+        date=int(time()),
+        seq=0,
+    )
+
     peers = await peer.get_opposite()
     for other in peers:
-        chats = [] if chat is None else [await chat.to_tl(other.owner)]
-        updates = Updates(
-            updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
-            users=[await user.to_tl(other.owner)],
-            chats=chats,
-            date=int(time()),
-            seq=0,
-        )
         await SessionManager.send(updates, other.id)
 
     if not user.bot:
