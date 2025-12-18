@@ -245,6 +245,8 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
     cache_time = 300 if request.cache_time <= 0 else request.cache_time
     cache_until = datetime.now(UTC) + timedelta(seconds=cache_time)
 
+    # TODO: validate request.gallery ?
+
     async with in_transaction():
         query = await InlineQuery.select_for_update(no_key=True).get_or_none(
             id=request.query_id, bot=user, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
@@ -280,12 +282,15 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                     reply_markup=None,  # TODO: support reply markup in inline results
                 )
             else:
-                # TODO: add other message types and replace with `Unreachable`
+                # TODO: InputBotInlineMessageMediaGeo
+                # TODO: InputBotInlineMessageMediaVenue
+                # TODO: InputBotInlineMessageMediaContact
+                # TODO: replace with `Unreachable`
                 raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
 
             if isinstance(result, InputBotInlineResult):
                 if result.content is not None:
-                    # TODO: download content in worker or something
+                    # TODO: download content in worker or return WebDocument
                     raise ErrorRpc(error_code=501, error_message="NOT_IMPLEMENTED")
 
                 results.append(BotInlineResult(
