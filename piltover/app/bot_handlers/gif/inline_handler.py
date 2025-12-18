@@ -95,12 +95,14 @@ async def gif_inline_query_handler(inline_query: InlineQuery) -> tuple[BotResult
     url = _TENOR_SEARCH if inline_query.query else _TENOR_FEATURED
     params = {
         "key": AppConfig.TENOR_KEY,
-        "limit": "10",
+        "limit": "32",
         "media_filter": "mp4",
-        # TODO: pos
     }
     if inline_query.query:
         params["q"] = inline_query.query
+    # TODO: validate offset
+    if inline_query.offset:
+        params["pos"] = inline_query.offset
 
     async with AsyncClient() as cl:
         resp = await cl.get(url, params=params)
@@ -115,7 +117,7 @@ async def gif_inline_query_handler(inline_query: InlineQuery) -> tuple[BotResult
         if not data["results"]:
             return _empty(inline_query)
 
-        next_offset = data["next"] or None
+        next_offset = str(data["next"]) if data["next"] else None
         coros = []
 
         for gif in data["results"]:
@@ -143,7 +145,8 @@ async def gif_inline_query_handler(inline_query: InlineQuery) -> tuple[BotResult
     results = BotResults(
         gallery=True,
         query_id=0,
-        next_offset=None,  # TODO: support next offset
+        # TODO: sign offset or store it in database (like Telegram does)
+        next_offset=next_offset,
         switch_pm=None,
         switch_webview=None,
         results=[],
