@@ -78,6 +78,8 @@ class AppConfig:
     SRP_PASSWORD_RESET_WAIT_SECONDS = 86400 * 7
     SCHEDULED_INSTANT_SEND_THRESHOLD = 30
 
+    TENOR_KEY = environ.get("TENOR_API_KEY", None)
+
 
 if "HMAC_KEY" not in environ:
     logger.info(f"Generated key for signing file references: {b64encode(AppConfig.HMAC_KEY).decode('utf8')}")

@@ -77,3 +77,4 @@ from .user_background_emojis import UserBackgroundEmojis
 from .bot_info import BotInfo
 from .message_related import MessageRelated
 from .admin_log_entry import AdminLogEntry
+from .gif_bot_file import GifBotFile

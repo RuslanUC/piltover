@@ -7,13 +7,13 @@ from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app.bot_handlers.bots import process_callback_query
+from piltover.app.bot_handlers.bots import process_callback_query, process_inline_query
 from piltover.app.utils.utils import check_password_internal, process_message_entities
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer, FileType, InlineQueryResultType
 from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery, InlineQuery, File
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc, InvalidConstructorException, Unreachable
+from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty, InputBotInlineResult, \
     InputBotInlineMessageText, BotInlineResult, BotInlineMessageText, objects, InputBotInlineMessageMediaAuto, \
     BotInlineMessageMediaAuto, InputBotInlineResultPhoto, InputBotInlineResultDocument, BotInlineMediaResult, \
@@ -169,12 +169,12 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
             query_peer = None
 
     cached = await InlineQuery.filter(
-        Q(user=user, private=True) | Q(private=False),
+        Q(user=user, cache_private=True) | Q(cache_private=False),
         query=request.query,
         offset=request.offset[:64],
         bot=bot,
         inline_peer=query_peer,
-        cached_until__gte=datetime.now(UTC),
+        cache_until__gte=datetime.now(UTC),
         cached_data__not_isnull=True,
     ).order_by("-id").first()
 
@@ -184,34 +184,40 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
         except InvalidConstructorException as e:
             logger.opt(exception=e).warning("Failed to read cached bot inline answer")
         else:
+            cached_result.query_id = cached.id
             return cached_result
 
+    inline_query = InlineQuery(
+        user=user,
+        bot=bot.user,
+        query=request.query[:128],
+        offset=request.offset[:64],
+        inline_peer=query_peer,
+    )
+
     if bot.user.system:
-        ...  # TODO: process inline query by builtin bot
-        # resp = await process_callback_query(peer, message, request.data)
-        # if resp is None:
-        #    raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
-        #return resp
-        raise Unreachable
+        resp = await process_inline_query(inline_query)
+        if resp is None:
+            raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
+        results, cache = resp
+        if cache:
+            inline_query.cached_data = results.write()
+            await inline_query.save()
+        results.query_id = inline_query.id
+        return results
     else:
         ctx = request_ctx.get()
         pubsub = ctx.worker.pubsub
 
-        query = await InlineQuery.create(
-            user=user,
-            bot=bot.user,
-            data=request.query[:128],
-            offset=request.offset[:64],
-            inline_peer=query_peer,
-        )
+        await inline_query.save()
 
-        topic = f"bot-inline-query/{query.id}"
+        topic = f"bot-inline-query/{inline_query.id}"
         await pubsub.listen(topic, None)
-        await upd.bot_inline_query(bot.user, query)
+        await upd.bot_inline_query(bot.user, inline_query)
 
         result = await pubsub.listen(topic, 15)
         if result is None:
-            await query.delete()
+            await inline_query.delete()
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
 
         try:

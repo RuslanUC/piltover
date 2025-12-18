@@ -15,6 +15,7 @@ class InlineQuery(Model):
     user: models.User = fields.ForeignKeyField("models.User", related_name="inline_user")
     bot: models.User = fields.ForeignKeyField("models.User", related_name="inline_bot")
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
+    # TODO: add index for query and offset?
     query: str = fields.CharField(max_length=128)
     offset: str | None = fields.CharField(max_length=64, null=True, default=None)
     inline_peer: InlineQueryPeer | None = fields.IntEnumField(InlineQueryPeer, null=True, default=None)

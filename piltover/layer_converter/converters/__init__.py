@@ -1,4 +1,5 @@
 from .base import BaseDowngrader, BaseUpgrader
+from .bot_results_downgrade import *
 from .botinfo_downgrade import *
 from .channel_downgrader import *
 from .channel_full_downgrader import *
@@ -211,3 +212,7 @@ LayerConverter.register_for_downgrade(SendAsPeersDontDowngrade)
 LayerConverter.register_for_downgrade(DraftMessageDowngradeTo133)
 LayerConverter.register_for_downgrade(DraftMessageDowngradeTo166)
 LayerConverter.register_for_downgrade(DraftMessageDontDowngrade)
+
+LayerConverter.register_for_downgrade(BotResultsDowngradeTo133)
+LayerConverter.register_for_downgrade(BotResultsDontDowngrade155)
+LayerConverter.register_for_downgrade(BotResultsDontDowngrade)
