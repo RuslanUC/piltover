@@ -37,23 +37,19 @@ class Dialog(Model):
         in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = \
             await models.ReadState.get_in_out_ids_and_unread(self.peer)
 
-        logger.trace(f"Max read outbox message id is {out_read_max_id} for peer {self.peer.id} for user {self.peer.owner_id}")
-
-        defaults = {
-            "view_forum_as_messages": False,
-            "notify_settings": PeerNotifySettings(),
-        }
+        logger.trace(
+            f"Max read outbox message id is {out_read_max_id} for peer {self.peer.id} for user {self.peer.owner_id}"
+        )
 
         top_message = await self.top_message_query().values_list("id", flat=True)
         draft = await models.MessageDraft.get_or_none(dialog=self)
         draft = draft.to_tl() if draft else None
 
         return TLDialog(
-            **defaults,
             pinned=self.pinned_index is not None,
             unread_mark=self.unread_mark,
             peer=self.peer.to_tl(),
-            top_message=cast(int, top_message) or 0,
+            top_message=cast(int | None, top_message) or 0,
             draft=draft,
             read_inbox_max_id=in_read_max_id,
             read_outbox_max_id=out_read_max_id,
@@ -62,6 +58,9 @@ class Dialog(Model):
             folder_id=self.folder_id.value,
             unread_mentions_count=unread_mentions,
             ttl_period=self.peer.user_ttl_period_days * 86400 if self.peer.user_ttl_period_days else None,
+
+            view_forum_as_messages=False,
+            notify_settings=PeerNotifySettings(),
         )
 
     @classmethod

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
@@ -10,6 +12,9 @@ from piltover.db.enums import PeerType
 from piltover.tl import DialogFilter, InputPeerSelf, InputPeerUser, InputPeerChat, InputPeerChannel, TextWithEntities
 
 InputPeer = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel
+PeerTuple = tuple[PeerType, int | None, int | None, int | None]
+
+_values_to_select = ("type", "user_id", "chat_id", "channel_id")
 
 
 class DialogFolder(Model):
@@ -39,10 +44,9 @@ class DialogFolder(Model):
         )
 
     async def to_tl(self) -> DialogFilter:
-        # TODO: select only type, id
-        pinned_peers = await self.pinned_peers.all()
-        include_peers = await self.include_peers.all()
-        exclude_peers = await self.exclude_peers.all()
+        pinned_peers = cast(list[PeerTuple], await self.pinned_peers.all().values_list(*_values_to_select))
+        include_peers = cast(list[PeerTuple], await self.include_peers.all().values_list(*_values_to_select))
+        exclude_peers = cast(list[PeerTuple], await self.exclude_peers.all().values_list(*_values_to_select))
 
         return DialogFilter(
             id=self.id_for_user,
@@ -55,9 +59,9 @@ class DialogFolder(Model):
             exclude_muted=self.exclude_muted,
             exclude_read=self.exclude_read,
             exclude_archived=self.exclude_archived,
-            pinned_peers=[peer.to_input_peer(True) for peer in pinned_peers],
-            include_peers=[peer.to_input_peer(True) for peer in include_peers],
-            exclude_peers=[peer.to_input_peer(True) for peer in exclude_peers],
+            pinned_peers=[models.Peer.to_input_peer_cls(*peer, True) for peer in pinned_peers],
+            include_peers=[models.Peer.to_input_peer_cls(*peer, True) for peer in include_peers],
+            exclude_peers=[models.Peer.to_input_peer_cls(*peer, True) for peer in exclude_peers],
         )
 
     def get_difference(self, tl_filter: DialogFilter) -> list[str]:
@@ -91,12 +95,17 @@ class DialogFolder(Model):
                 ):
                     query |= Q(owner__id=self.owner_id, user__id=input_peer.user_id, type=PeerType.USER)
             elif isinstance(input_peer, InputPeerChat):
-                query |= Q(owner__id=self.owner_id, chat__id=input_peer.chat_id, type=PeerType.CHAT)
+                query |= Q(
+                    owner__id=self.owner_id, chat__id=models.Chat.norm_id(input_peer.chat_id), type=PeerType.CHAT
+                )
             elif isinstance(input_peer, InputPeerChannel):
+                channel_id = models.Channel.norm_id(input_peer.channel_id)
                 if models.Channel.check_access_hash(
-                        self.owner_id, ctx.auth_id, input_peer.channel_id, input_peer.access_hash
+                        self.owner_id, ctx.auth_id, channel_id, input_peer.access_hash
                 ):
-                    query |= Q(owner__id=self.owner_id, channel__id=input_peer.channel_id, type=PeerType.CHANNEL)
+                    query |= Q(
+                        owner__id=self.owner_id, channel__id=channel_id, type=PeerType.CHANNEL
+                    )
 
         return await models.Peer.filter(query)
 
