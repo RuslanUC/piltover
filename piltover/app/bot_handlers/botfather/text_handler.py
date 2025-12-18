@@ -1,4 +1,5 @@
 from io import BytesIO
+from urllib.parse import urlparse
 
 from tortoise.transactions import in_transaction
 
@@ -42,6 +43,10 @@ __bot_desc_updated, __bot_desc_updated_entities = FormatableTextWithEntities(
 __bot_photo_invalid = "Please send me the picture as a 'Photo', not as a 'File'."
 __bot_photo_updated, __bot_photo_updated_entities = FormatableTextWithEntities(
     "Success! Profile photo updated. <c>/help</c>",
+).format()
+__bot_privacy_invalid = "Please send me a valid URL."
+_bot_privacy_updated, _bot_privacy_updated_entities = FormatableTextWithEntities(
+    "Success! Privacy policy updated. <c>/help</c>",
 ).format()
 
 
@@ -152,3 +157,20 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         await state.delete()
 
         return await send_bot_message(peer, __bot_photo_updated, entities=__bot_photo_updated_entities)
+
+    if state.state is BotFatherState.EDITBOT_WAIT_PRIVACY:
+        parsed = urlparse(message.message)
+        if not parsed.netloc or parsed.scheme != "https" or len(message.message) > 240:
+            return await send_bot_message(peer, __bot_privacy_invalid)
+
+        state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
+        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        if bot is None:
+            return await send_bot_message(peer, "Bot does not exist (?)")
+
+        await BotInfo.update_or_create(user=bot.bot, defaults={
+            "privacy_policy_url": message.message,
+        })
+        await state.delete()
+
+        return await send_bot_message(peer, _bot_privacy_updated, entities=_bot_privacy_updated_entities)

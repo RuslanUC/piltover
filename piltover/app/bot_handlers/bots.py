@@ -2,6 +2,7 @@ from typing import cast, Callable, Awaitable
 
 from piltover.app.bot_handlers.botfather.callback_handler import botfather_callback_query_handler
 from piltover.app.bot_handlers.botfather.cancel_command import botfather_cancel_command
+from piltover.app.bot_handlers.botfather.empty_command import botfather_empty_command
 from piltover.app.bot_handlers.botfather.mybots_command import botfather_mybots_command
 from piltover.app.bot_handlers.botfather.newbot_command import botfather_newbot_command
 from piltover.app.bot_handlers.botfather.start_command import botfather_start_command
@@ -40,6 +41,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
         "newbot": botfather_newbot_command,
         "cancel": botfather_cancel_command,
         "mybots": botfather_mybots_command,
+        "empty": botfather_empty_command,
     },
     "stickers": {
         "__text": stickers_text_message_handler,

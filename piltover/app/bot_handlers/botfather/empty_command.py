@@ -1,0 +1,26 @@
+from io import BytesIO
+
+from piltover.app.bot_handlers.botfather.text_handler import _bot_privacy_updated, _bot_privacy_updated_entities
+from piltover.app.bot_handlers.botfather.utils import send_bot_message
+from piltover.db.enums import BotFatherState
+from piltover.db.models import Peer, Message, BotFatherUserState, Bot, BotInfo
+from piltover.tl.types.internal_botfather import BotfatherStateEditbot
+
+__text_no_command = "Unrecognized command. Say what?"
+
+
+async def botfather_empty_command(peer: Peer, _: Message) -> Message | None:
+    state = await BotFatherUserState.get_or_none(user=peer.owner)
+
+    if state is not None and state.state is BotFatherState.EDITBOT_WAIT_PRIVACY:
+        state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
+        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        if bot is None:
+            return await send_bot_message(peer, "Bot does not exist (?)")
+
+        await BotInfo.update_or_create(user=bot.bot, defaults={"privacy_policy_url": None})
+        await state.delete()
+
+        return await send_bot_message(peer, _bot_privacy_updated, entities=_bot_privacy_updated_entities)
+
+    return await send_bot_message(peer, __text_no_command)

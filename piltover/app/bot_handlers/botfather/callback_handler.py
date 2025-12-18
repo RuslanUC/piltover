@@ -42,6 +42,11 @@ __editbot_desc = (
     "People will see this description when they open a chat with your bot, in a block titled 'What can this bot do?'."
 )
 __editbot_photo = "OK. Send me the new profile photo for the bot."
+__editbot_privacy, __editbot_privacy_entities = FormatableTextWithEntities("""
+Send me a public URL to the new Privacy Policy for the bot or use <c>/empty</c> to remove the current one.
+
+If you don't specify a Privacy Policy, the Standard Privacy Policy for Bots and Mini Apps will apply.
+""".strip()).format()
 
 
 async def botfather_callback_query_handler(peer: Peer, message: Message, data: bytes) -> BotCallbackAnswer | None:
@@ -215,12 +220,12 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
                 KeyboardButtonCallback(text=f"🚫 Edit Description Picture", data=f"bots-edit-descpic/{bot.bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"🚫 Edit Botpic", data=f"bots-edit-pic/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"Edit Botpic", data=f"bots-edit-pic/{bot.bot_id}".encode("latin1")),
                 KeyboardButtonCallback(text=f"🚫 Edit Commands", data=f"bots-edit-commands/{bot.bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"🚫 Edit Inline Placeholder", data=f"bots-edit-inline-placeholder/{bot.bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"🚫 Edit Privacy Policy", data=f"bots-edit-privacy/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"Edit Privacy Policy", data=f"bots-edit-privacy/{bot.bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot.bot_id}".encode("latin1")),
@@ -298,6 +303,23 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             peer.owner, BotFatherState.EDITBOT_WAIT_PHOTO, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         message = await send_bot_message(peer, __editbot_photo)
+        await upd.send_message(None, {peer: message}, False)
+
+        return BotCallbackAnswer(cache_time=0)
+
+    if data.startswith(b"bots-edit-privacy/"):
+        try:
+            bot_id = int(data[18:])
+        except ValueError:
+            return None
+
+        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+            return None
+
+        await BotFatherUserState.set_state(
+            peer.owner, BotFatherState.EDITBOT_WAIT_PRIVACY, BotfatherStateEditbot(bot_id=bot_id).serialize()
+        )
+        message = await send_bot_message(peer, __editbot_privacy, entities=__editbot_privacy_entities)
         await upd.send_message(None, {peer: message}, False)
 
         return BotCallbackAnswer(cache_time=0)
