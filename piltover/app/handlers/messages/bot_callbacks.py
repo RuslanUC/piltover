@@ -271,6 +271,8 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
 
             result_type = InlineQueryResultType(type_)
 
+            # TODO: validate that at least media or text is not empty
+
             message = result.send_message
             if isinstance(message, InputBotInlineMessageText):
                 send_message = BotInlineMessageText(
@@ -372,4 +374,3 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
 
     return True
 
-# TODO: SendInlineBotResult

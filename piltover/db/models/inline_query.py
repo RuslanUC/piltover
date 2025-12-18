@@ -10,6 +10,7 @@ from piltover.tl import InlineQueryPeerTypePM, InlineQueryPeerTypeBotPM, InlineQ
     InlineQueryPeerTypeChat, InlineQueryPeerTypeBroadcast, InlineQueryPeerTypeMegagroup
 
 
+# TODO: store results in another table, not in cached_data
 class InlineQuery(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.ForeignKeyField("models.User", related_name="inline_user")

@@ -1,6 +1,7 @@
 from array import array
 from collections import defaultdict
 from datetime import datetime, UTC, timedelta
+from io import BytesIO
 from time import time
 from typing import cast
 from uuid import UUID
@@ -17,20 +18,23 @@ from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
-    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker
+    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQuery
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
     LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
-    GeoPoint, InputGeoPoint
+    GeoPoint, InputGeoPoint, BotInlineMediaResult
+from piltover.tl.base import BotInlineResult
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
-    ForwardMessages_176, SaveDraft_166, ClearAllDrafts, SaveDraft_148, SaveDraft_133
-from piltover.tl.types.messages import AffectedMessages, AffectedHistory
+    ForwardMessages_176, SaveDraft_166, ClearAllDrafts, SaveDraft_148, SaveDraft_133, SendInlineBotResult_133, \
+    SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
+    SendInlineBotResult
+from piltover.tl.types.messages import AffectedMessages, AffectedHistory, BotResults
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
 
@@ -212,9 +216,17 @@ async def send_message_internal(
 
 
 SendMessageTypes = SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia \
-                   | SendMultiMedia_148 | SendMultiMedia | SaveDraft | SaveDraft_133 | SaveDraft_148 | SaveDraft_166
-NEW_REPLY_TYPES = (SendMessage, SendMedia, SendMultiMedia, SendMessage_176, SendMedia_176, SaveDraft, SaveDraft_166)
-OLD_REPLY_TYPES = (SendMessage_148, SendMedia_148, SendMultiMedia_148, SaveDraft_148, SaveDraft_133)
+                   | SendMultiMedia_148 | SendMultiMedia | SaveDraft | SaveDraft_133 | SaveDraft_148 | SaveDraft_166 \
+                   | SendInlineBotResult_133 | SendInlineBotResult_135 | SendInlineBotResult_148 \
+                   | SendInlineBotResult_160 | SendInlineBotResult_176 | SendInlineBotResult
+NEW_REPLY_TYPES = (
+    SendMessage, SendMedia, SendMultiMedia, SendMessage_176, SendMedia_176, SaveDraft, SaveDraft_166,
+    SendInlineBotResult, SendInlineBotResult_176, SendInlineBotResult_160,
+)
+OLD_REPLY_TYPES = (
+    SendMessage_148, SendMedia_148, SendMultiMedia_148, SaveDraft_148, SaveDraft_133, SendInlineBotResult_148,
+    SendInlineBotResult_135, SendInlineBotResult_133,
+)
 
 
 def _resolve_reply_id(
@@ -1066,3 +1078,69 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
 @handler.on_request(ClearAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def clear_all_drafts(user: User) -> bool:
     ...  # TODO
+
+
+@handler.on_request(SendInlineBotResult_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendInlineBotResult_135, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendInlineBotResult_148, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendInlineBotResult_160, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendInlineBotResult_176, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(SendInlineBotResult, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Updates:
+    # TODO: make "via @botname" header
+
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    # TODO: validate chat/channel permissions
+
+    query = await InlineQuery.get_or_none(
+        Q(cache_private=True, user=user) | Q(cache_private=False),
+        id=request.query_id, cached_data__not_isnull=True,
+    )
+    if query is None:
+        raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")
+
+    try:
+        results = BotResults.read(BytesIO(query.cached_data))
+    except InvalidConstructorException as e:
+        logger.opt(exception=e).warning("Failed to read cached bot inline answer")
+        raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")
+
+    result: BotInlineResult | None = None
+    for res in results.results:
+        if res.id == request.id:
+            result = res
+            break
+    else:
+        raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")
+
+    reply_to_message_id = _resolve_reply_id(request)
+    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
+
+    entities = None
+    if result.send_message.entities:
+        entities = [entity.to_dict() | {"_": entity.tlid()} for entity in result.send_message.entities]
+
+    media = None
+    if isinstance(result, BotInlineMediaResult):
+        file: File | None = None
+        media_type: MediaType | None = None
+        if result.photo is not None:
+            file = await File.get_or_none(id=result.photo.id)
+            media_type = MediaType.PHOTO
+        elif result.document is not None:
+            file = await File.get_or_none(id=result.document.id)
+            media_type = MediaType.DOCUMENT
+
+        if file is not None:
+            media = await MessageMedia.create(type=media_type, file=file)
+
+    if not result.send_message.message and not media:
+        raise ErrorRpc(error_code=400, error_message="MEDIA_EMPTY")
+
+    return await send_message_internal(
+        user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
+        author=user, message=result.send_message.message, media=media, entities=entities,
+        channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
+        #reply_markup=reply_markup.write() if reply_markup else None,
+        no_forwards=_resolve_noforwards(peer, user),
+    )

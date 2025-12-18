@@ -81,6 +81,7 @@ async def _get_or_download_gif(
         await file.make_thumbs(storage, thumb_bytes, False)
 
     await file.save()
+    await GifBotFile.create(tenor_id=tenor_id, file=file)
 
     return file
 
