@@ -5,8 +5,9 @@ from tortoise.transactions import in_transaction
 from piltover.app.bot_handlers.botfather.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import is_username_valid
-from piltover.db.enums import BotFatherState
-from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot, BotInfo
+from piltover.context import request_ctx
+from piltover.db.enums import BotFatherState, MediaType
+from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto
 from piltover.tl.types.internal_botfather import BotfatherStateNewbot, BotfatherStateEditbot
 
 __bot_name_invalid = "Sorry, this isn't a proper name for a bot."
@@ -37,6 +38,10 @@ __bot_desc_invalid = (
 )
 __bot_desc_updated, __bot_desc_updated_entities = FormatableTextWithEntities(
     "Success! Description updated. You will be able to see the changes within a few minutes. <c>/help</c>",
+).format()
+__bot_photo_invalid = "Please send me the picture as a 'Photo', not as a 'File'."
+__bot_photo_updated, __bot_photo_updated_entities = FormatableTextWithEntities(
+    "Success! Profile photo updated. <c>/help</c>",
 ).format()
 
 
@@ -122,3 +127,28 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         await state.delete()
 
         return await send_bot_message(peer, __bot_desc_updated, entities=__bot_desc_updated_entities)
+
+    if state.state is BotFatherState.EDITBOT_WAIT_PHOTO:
+        if not message.media or message.media.type is not MediaType.PHOTO:
+            return await send_bot_message(peer, __bot_photo_invalid)
+
+        state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
+        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        if bot is None:
+            return await send_bot_message(peer, "Bot does not exist (?)")
+
+        storage = request_ctx.get().storage
+
+        file = message.media.file
+        photo = file.clone()
+        if not await photo.make_thumbs(storage, profile_photo=True):
+            return await send_bot_message(peer, __bot_photo_invalid)
+
+        async with in_transaction():
+            await photo.save()
+            await UserPhoto.filter(user=bot.bot).delete()
+            await UserPhoto.create(user=bot.bot, file=photo)
+
+        await state.delete()
+
+        return await send_bot_message(peer, __bot_photo_updated, entities=__bot_photo_updated_entities)

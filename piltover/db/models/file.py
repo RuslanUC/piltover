@@ -174,7 +174,7 @@ class File(Model):
 
     async def make_thumbs(
             self, storage: BaseStorage, thumb_bytes: StorageBuffer | None = None, profile_photo: bool = False,
-    ) -> None:
+    ) -> bool:
         from piltover.app.utils.utils import resize_photo, generate_stripped
 
         thumb_suffix = None
@@ -192,7 +192,7 @@ class File(Model):
             is_document = self.type is not FileType.PHOTO
 
         if not has_thumbnail:
-            return
+            return False
 
         try:
             self.photo_sizes = await resize_photo(
@@ -204,6 +204,9 @@ class File(Model):
             )
         except UnidentifiedImageError:
             self.mime_type = "application/octet-stream"
+            return False
+
+        return True
 
     def _to_tl_thumbs(self) -> list[PhotoSizeInst]:
         sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
