@@ -47,6 +47,7 @@ class UserAuthorization(Model):
         return Authorization(
             api_id=1,
             app_name="Test",
+            current=current,
             hash=0 if current else self.tl_hash,
             date_created=int(self.created_at.timestamp()),
             date_active=int(self.active_at.timestamp()),
