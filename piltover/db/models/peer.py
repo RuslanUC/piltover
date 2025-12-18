@@ -170,6 +170,7 @@ class Peer(Model):
 
         raise Unreachable
 
+    # TODO: just call to_input_peer_cls to avoid code duplication?
     def to_input_peer(
             self, self_is_user: bool = False,
     ) -> InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel:

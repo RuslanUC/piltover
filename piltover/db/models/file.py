@@ -111,15 +111,6 @@ class File(Model):
                 else:
                     self.title = attribute.title
                     self.performer = attribute.performer
-            # TODO: remove this since sticker attributes are set when sticker is created?
-            #  Or just dont set `stickerset`?
-            elif isinstance(attribute, DocumentAttributeSticker):
-                self.type = FileType.DOCUMENT_STICKER
-                self.stickerset = await models.Stickerset.from_input(attribute.stickerset)
-                self.sticker_alt = attribute.alt
-                self.sticker_is_mask = attribute.mask
-                if attribute.mask and attribute.mask_coords is not None:
-                    self.sticker_mask_coords = b85encode(attribute.mask_coords.serialize()).decode("utf8")
             elif isinstance(attribute, DocumentAttributeFilename):
                 self.filename = attribute.file_name
 

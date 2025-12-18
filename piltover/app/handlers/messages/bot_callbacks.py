@@ -10,13 +10,14 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.bots import process_callback_query
 from piltover.app.utils.utils import check_password_internal, process_message_entities
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer
-from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery, InlineQuery
+from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer, FileType, InlineQueryResultType
+from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery, InlineQuery, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException, Unreachable
 from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty, InputBotInlineResult, \
     InputBotInlineMessageText, BotInlineResult, BotInlineMessageText, objects, InputBotInlineMessageMediaAuto, \
-    BotInlineMessageMediaAuto
+    BotInlineMessageMediaAuto, InputBotInlineResultPhoto, InputBotInlineResultDocument, BotInlineMediaResult, \
+    InputPhoto, InputDocument
 from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer, GetInlineBotResults, \
     SetInlineBotResults
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
@@ -232,6 +233,12 @@ async def _process_entities_tl(text: str, entities: list[...], user: User) -> li
     return result or None
 
 
+_DOCUMENT_RESULT_TYPES = {
+    InlineQueryResultType.STICKER, InlineQueryResultType.GIF, InlineQueryResultType.VOICE,
+    InlineQueryResultType.VIDEO, InlineQueryResultType.AUDIO, InlineQueryResultType.FILE
+}
+
+
 @handler.on_request(SetInlineBotResults, ReqHandlerFlags.USER_NOT_ALLOWED)
 async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bool:
     ctx = request_ctx.get()
@@ -247,10 +254,14 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
 
         results = []
         for result in request.results:
-            if not isinstance(result, InputBotInlineResult):
+            if not isinstance(result, (InputBotInlineResult, InputBotInlineResultPhoto, InputBotInlineResultDocument)):
                 raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
 
-            # TODO: validate result.type_
+            type_ = result.type_.lower()
+            if type_ not in InlineQueryResultType._value2member_map_:
+                raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
+
+            result_type = InlineQueryResultType(type_)
 
             message = result.send_message
             if isinstance(message, InputBotInlineMessageText):
@@ -269,23 +280,63 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                     reply_markup=None,  # TODO: support reply markup in inline results
                 )
             else:
-                # TODO: proper error
                 # TODO: add other message types and replace with `Unreachable`
                 raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
 
-            if result.content is not None:
-                # TODO: download content in worker or something
-                ...
+            if isinstance(result, InputBotInlineResult):
+                if result.content is not None:
+                    # TODO: download content in worker or something
+                    raise ErrorRpc(error_code=501, error_message="NOT_IMPLEMENTED")
 
-            # TODO: use BotInlineMediaResult if content is set
-            results.append(BotInlineResult(
-                id=result.id,
-                type_=result.type_,
-                title=result.title,
-                description=result.description,
-                url=result.url,
-                send_message=send_message,
-            ))
+                results.append(BotInlineResult(
+                    id=result.id,
+                    type_=type_,
+                    title=result.title,
+                    description=result.description,
+                    url=result.url,
+                    send_message=send_message,
+                ))
+            elif isinstance(result, InputBotInlineResultPhoto):
+                if result_type is not InlineQueryResultType.PHOTO:
+                    raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
+
+                if not isinstance(result.photo, InputPhoto):
+                    raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
+
+                photo = await File.from_input(
+                    user.id, result.photo.id, result.photo.access_hash, result.photo.file_reference, FileType.PHOTO,
+                )
+                if photo is None:
+                    raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
+
+                results.append(BotInlineMediaResult(
+                    id=result.id,
+                    type_=type_,
+                    photo=photo.to_tl_photo(),
+                    send_message=send_message,
+                ))
+            elif isinstance(result, InputBotInlineResultDocument):
+                if result_type not in _DOCUMENT_RESULT_TYPES:
+                    raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
+
+                if not isinstance(result.document, InputDocument):
+                    raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
+
+                input_doc = result.document
+                doc = await File.from_input(
+                    user.id, input_doc.id, input_doc.access_hash, input_doc.file_reference, FileType.PHOTO,
+                )
+                if doc is None:
+                    raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
+
+                results.append(BotInlineMediaResult(
+                    id=result.id,
+                    type_=type_,
+                    document=doc.to_tl_document(),
+                    title=result.title,
+                    description=result.description,
+                    send_message=send_message,
+                ))
 
         bot_result = BotResults(
             query_id=request.query_id,

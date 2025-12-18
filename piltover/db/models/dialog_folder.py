@@ -77,9 +77,7 @@ class DialogFolder(Model):
 
         return updated_fields
 
-    async def _fetch_peers(
-            self, input_peers: list[InputPeer]
-    ) -> list[models.Peer]:
+    async def _fetch_peers(self, input_peers: list[InputPeer]) -> list[models.Peer]:
         if not input_peers:
             return []
 

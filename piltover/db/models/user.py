@@ -81,29 +81,13 @@ class User(Model):
         # TODO: add some "version" field and save tl user
         #  in some cache with key f"{self.id}:{current_user.id}:{version}"
 
-        defaults = {
-            "mutual_contact": False,
-            "verified": False,
-            "restricted": False,
-            "min": False,
-            "support": False,
-            "scam": False,
-            "apply_min_photo": False,
-            "fake": False,
-            "bot_attach_menu": False,
-            # TODO: this is True only because custom emojis are not available (like at all, missing in emoji list)
-            #  for non-premium users.
-            #  Need to figure out how official telegram allows custom emojis to be visible to non-premium users.
-            "premium": True,
-            "attach_menu_enabled": False,
-        }
-
         if peer is None:
             peer_exists = await models.Peer.filter(owner=current_user, user__id=self.id).exists()
         else:
             peer_exists = True
 
         contact = await models.Contact.get_or_none(owner=current_user, target=self)
+        is_contact = contact is not None
 
         phone_number = None
         if await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PHONE_NUMBER):
@@ -132,7 +116,6 @@ class User(Model):
             bot_info_version = bot_info_version or 1
 
         return TLUser(
-            **defaults,
             id=self.id,
             first_name=self.first_name if contact is None or not contact.first_name else contact.first_name,
             last_name=self.last_name if contact is None or not contact.last_name else contact.last_name,
@@ -143,12 +126,27 @@ class User(Model):
             photo=await self.get_photo(current_user, True),
             access_hash=-1 if peer_exists else 0,
             status=await models.Presence.to_tl_or_empty(self, current_user),
-            contact=contact is not None,
+            contact=is_contact,
             bot=self.bot,
             bot_info_version=bot_info_version,
             color=color,
             profile_color=profile_color,
             deleted=self.deleted,
+            mutual_contact=is_contact and await models.Contact.filter(owner=self, target=current_user).exists(),
+
+            verified=False,
+            restricted=False,
+            min=False,
+            support=False,
+            scam=False,
+            apply_min_photo=False,
+            fake=False,
+            bot_attach_menu=False,
+            # TODO: this is True only because custom emojis are not available (like at all, missing in emoji list)
+            #  for non-premium users.
+            #  Need to figure out how official telegram allows custom emojis to be visible to non-premium users.
+            premium=not self.bot,
+            attach_menu_enabled=False,
         )
 
     async def to_tl_birthday(self, user: User) -> Birthday | None:

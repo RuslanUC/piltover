@@ -43,17 +43,11 @@ class UserAuthorization(Model):
     def tl_hash(self) -> int:
         return Long.read_bytes(bytes.fromhex(self.hash[:-16]))
 
-    def to_tl(self, **kwargs) -> Authorization:
-        defaults = {
-            "official_app": True,
-            "country": "US",
-            "region": "Telegram HQ",
-        } | kwargs
-
+    def to_tl(self, current: bool = False) -> Authorization:
         return Authorization(
             api_id=1,
             app_name="Test",
-            hash=0 if kwargs.get("current", False) else self.tl_hash,
+            hash=0 if current else self.tl_hash,
             date_created=int(self.created_at.timestamp()),
             date_active=int(self.active_at.timestamp()),
             ip=self.ip,
@@ -65,5 +59,7 @@ class UserAuthorization(Model):
             encrypted_requests_disabled=self.allow_encrypted_requests,
             call_requests_disabled=self.allow_call_requests,
             unconfirmed=not self.confirmed,
-            **defaults
+            official_app=True,
+            country="US",
+            region="Idk",
         )

@@ -66,7 +66,7 @@ async def get_full_user(request: GetFullUser, user: User):
             read_dates_private=user.read_dates_private,
             wallpaper=chat_wallpaper.wallpaper.to_tl() if chat_wallpaper is not None else None,
             has_scheduled=has_scheduled,
-            ttl_period=bool(peer.user_ttl_period_days),
+            ttl_period=peer.user_ttl_period_days * 86400 if peer.user_ttl_period_days else None,
             pinned_msg_id=pinned_msg_id,
             personal_channel_id=personal_channel.make_id() if personal_channel is not None else None,
             personal_channel_message=personal_channel_msg_id,
