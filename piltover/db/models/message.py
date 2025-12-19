@@ -73,6 +73,7 @@ class Message(Model):
     reply_to: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
     fwd_header: models.MessageFwdHeader | None = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
     post_info: models.ChannelPostInfo | None = fields.ForeignKeyField("models.ChannelPostInfo", null=True, default=None)
+    via_bot: models.User | None = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True, default=None, related_name="msg_via_bot")
 
     peer_id: int
     author_id: int | None
@@ -80,6 +81,7 @@ class Message(Model):
     reply_to_id: int | None
     fwd_header_id: int | None
     post_info_id: int | None
+    via_bot_id: int | None
 
     TTL_MULT = 86400
     if (_ttl_mult := environ.get("DEBUG_MESSAGE_TTL_MULTIPLIER", "")).isdigit():
@@ -222,6 +224,7 @@ class Message(Model):
             ttl_period=ttl_period,
             reply_markup=reply_markup,
             noforwards=self.no_forwards,
+            via_bot_id=self.via_bot_id,
 
             silent=False,
             legacy=False,
@@ -294,25 +297,20 @@ class Message(Model):
             reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
     ) -> models.Message:
-        if new_author is None and self.author is not None:
-            self.author = new_author = await self.author
+        await self.fetch_related("author", "media", "reply_to", "fwd_header", "post_info", "via_bot")
 
-        if self.media_id is not None:
-            self.media = await self.media
+        if new_author is None and self.author is not None:
+            new_author = self.author
 
         reply_to = None
         if reply_to_internal_id:
             reply_to = await Message.get_or_none(peer=peer, internal_id=reply_to_internal_id)
         else:
             if self.reply_to is not None:
-                self.reply_to = await self.reply_to
-            if self.reply_to is not None:
                 reply_to = await Message.get_or_none(peer=peer, internal_id=self.reply_to.internal_id)
 
         if fwd_header is _SMTH_MISSING:
-            self.fwd_header = fwd_header = await self.fwd_header
-        if not drop_author and self.post_info is not None:
-            self.post_info = await self.post_info
+            fwd_header = await self.fwd_header
 
         message = await Message.create(
             internal_id=internal_id or Snowflake.make_id(),
@@ -333,6 +331,7 @@ class Message(Model):
             post_author=self.post_author if not drop_author else None,
             post_info=self.post_info if not drop_author else None,
             no_forwards=no_forwards,
+            via_bot=self.via_bot,
         )
 
         related_user_ids = set()
@@ -487,6 +486,9 @@ class Message(Model):
             if self.fwd_header.saved_from_id is not None:
                 user_ids.add(self.fwd_header.saved_from_id)
 
+        if self.via_bot_id is not None:
+            user_ids.add(self.via_bot_id)
+
     @classmethod
     async def _create_related_from_ids(
             cls, messages: Iterable[Message],
@@ -573,6 +575,9 @@ class Message(Model):
                 if entity["_"] != MessageEntityMentionName.tlid():
                     continue
                 users |= Q(id=entity["user_id"])
+
+        if self.via_bot_id is not None:
+            users |= Q(id=self.via_bot_id)
 
         # TODO: add users and chats from fwd_header
 

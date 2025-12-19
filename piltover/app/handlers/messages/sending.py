@@ -1087,15 +1087,13 @@ async def clear_all_drafts(user: User) -> bool:
 @handler.on_request(SendInlineBotResult_176, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SendInlineBotResult, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Updates:
-    # TODO: make "via @botname" header
-
     peer = await Peer.from_input_peer_raise(user, request.peer)
     # TODO: validate chat/channel permissions
 
     query = await InlineQuery.get_or_none(
         Q(cache_private=True, user=user) | Q(cache_private=False),
         id=request.query_id, cached_data__not_isnull=True,
-    )
+    ).select_related("bot")
     if query is None:
         raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")
 
@@ -1137,10 +1135,14 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
     if not result.send_message.message and not media:
         raise ErrorRpc(error_code=400, error_message="MEDIA_EMPTY")
 
+    via_bot = query.bot
+    if request.hide_via and via_bot.system:
+        via_bot = None
+
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, message=result.send_message.message, media=media, entities=entities,
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
         #reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user),
+        no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot,
     )
