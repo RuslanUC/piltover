@@ -11,13 +11,14 @@ from piltover.app.bot_handlers.bots import process_callback_query, process_inlin
 from piltover.app.utils.utils import check_password_internal, process_message_entities
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer, FileType, InlineQueryResultType
-from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery, InlineQuery, File
+from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery, InlineQuery, File, \
+    InlineQueryResultItem
+from piltover.db.models.inline_query_result import InlineQueryResult
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty, InputBotInlineResult, \
-    InputBotInlineMessageText, BotInlineResult, BotInlineMessageText, objects, InputBotInlineMessageMediaAuto, \
-    BotInlineMessageMediaAuto, InputBotInlineResultPhoto, InputBotInlineResultDocument, BotInlineMediaResult, \
-    InputPhoto, InputDocument
+    InputBotInlineMessageText, objects, InputBotInlineMessageMediaAuto, \
+    InputBotInlineResultPhoto, InputBotInlineResultDocument, InputPhoto, InputDocument
 from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer, GetInlineBotResults, \
     SetInlineBotResults
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
@@ -168,24 +169,17 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
         else:
             query_peer = None
 
-    cached = await InlineQuery.filter(
-        Q(user=user, cache_private=True) | Q(cache_private=False),
-        query=request.query,
-        offset=request.offset[:64],
-        bot=bot,
-        inline_peer=query_peer,
+    cached = await InlineQueryResult.filter(
+        Q(query__user=user, private=True) | Q(private=False),
+        query__query=request.query,
+        query__offset=request.offset[:64],
+        query__bot=bot,
+        query__inline_peer=query_peer,
         cache_until__gte=datetime.now(UTC),
-        cached_data__not_isnull=True,
     ).order_by("-id").first()
 
     if cached is not None:
-        try:
-            cached_result = BotResults.read(BytesIO(cached.cached_data))
-        except InvalidConstructorException as e:
-            logger.opt(exception=e).warning("Failed to read cached bot inline answer")
-        else:
-            cached_result.query_id = cached.id
-            return cached_result
+        return await cached.to_tl()
 
     inline_query = InlineQuery(
         user=user,
@@ -199,12 +193,18 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
         resp = await process_inline_query(inline_query)
         if resp is None:
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
-        results, cache = resp
-        if cache:
-            inline_query.cached_data = results.write()
+
+        result, items = resp
+        async with in_transaction():
             await inline_query.save()
-        results.query_id = inline_query.id
-        return results
+            result.query = inline_query
+            await result.save()
+            for item in items:
+                item.result = result
+            if items:
+                await InlineQueryResultItem.bulk_create(items)
+
+        return await result.to_tl(items)
     else:
         ctx = request_ctx.get()
         pubsub = ctx.worker.pubsub
@@ -260,7 +260,7 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
         if query is None:
             raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
 
-        results = []
+        result_items = []
         for result in request.results:
             if not isinstance(result, (InputBotInlineResult, InputBotInlineResultPhoto, InputBotInlineResultDocument)):
                 raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
@@ -273,22 +273,19 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
 
             # TODO: validate that at least media or text is not empty
 
+            item = InlineQueryResultItem(position=len(result_items))
+            result_items.append(item)
+
             message = result.send_message
             if isinstance(message, InputBotInlineMessageText):
-                send_message = BotInlineMessageText(
-                    no_webpage=message.no_webpage,
-                    invert_media=message.invert_media,
-                    message=message.message,
-                    entities=await _process_entities_tl(message.message, message.entities, user),
-                    reply_markup=None,  # TODO: support reply markup in inline results
-                )
+                item.send_message_no_webpage = message.no_webpage
+                item.send_message_invert_media = message.invert_media
+                item.send_message_text = message.message
+                item.send_message_entities = await process_message_entities(message.message, message.entities, user)
             elif isinstance(message, InputBotInlineMessageMediaAuto):
-                send_message = BotInlineMessageMediaAuto(
-                    invert_media=message.invert_media,
-                    message=message.message,
-                    entities=await _process_entities_tl(message.message, message.entities, user),
-                    reply_markup=None,  # TODO: support reply markup in inline results
-                )
+                item.send_message_invert_media = message.invert_media
+                item.send_message_text = message.message
+                item.send_message_entities = await process_message_entities(message.message, message.entities, user)
             else:
                 # TODO: InputBotInlineMessageMediaGeo
                 # TODO: InputBotInlineMessageMediaVenue
@@ -301,14 +298,11 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                     # TODO: download content in worker or return WebDocument
                     raise ErrorRpc(error_code=501, error_message="NOT_IMPLEMENTED")
 
-                results.append(BotInlineResult(
-                    id=result.id,
-                    type_=type_,
-                    title=result.title,
-                    description=result.description,
-                    url=result.url,
-                    send_message=send_message,
-                ))
+                item.item_id = result.id
+                item.type = result_type
+                item.title = result.title
+                item.description = result.description
+                item.url = result.url
             elif isinstance(result, InputBotInlineResultPhoto):
                 if result_type is not InlineQueryResultType.PHOTO:
                     raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
@@ -322,12 +316,9 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                 if photo is None:
                     raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
 
-                results.append(BotInlineMediaResult(
-                    id=result.id,
-                    type_=type_,
-                    photo=photo.to_tl_photo(),
-                    send_message=send_message,
-                ))
+                item.item_id = result.id
+                item.type = result_type
+                item.photo = photo
             elif isinstance(result, InputBotInlineResultDocument):
                 if result_type not in _DOCUMENT_RESULT_TYPES:
                     raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
@@ -342,18 +333,15 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                 if doc is None:
                     raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
 
-                results.append(BotInlineMediaResult(
-                    id=result.id,
-                    type_=type_,
-                    document=doc.to_tl_document(),
-                    title=result.title,
-                    description=result.description,
-                    send_message=send_message,
-                ))
+                item.item_id = result.id
+                item.type = result_type
+                item.document = doc
+                item.title = result.title
+                item.description = result.description
 
         bot_result = BotResults(
             query_id=request.query_id,
-            results=results,
+            results=[item.to_tl() for item in result_items],
             cache_time=cache_time,
             users=[],
             gallery=request.gallery,
@@ -362,10 +350,20 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
             switch_webview=None,
         ).write()
 
-        query.cached_data = bot_result
-        query.cache_until = cache_until
-        query.cache_private = request.private
-        await query.save(update_fields=["cached_data", "cache_until", "cache_private"])
+        if cache_time:
+            async with in_transaction():
+                query = await InlineQueryResult.create(
+                    query=query,
+                    next_offset=request.next_offset[:64] if request.next_offset is not None else None,
+                    cache_time=cache_time,
+                    cache_until=datetime.now(UTC) + timedelta(seconds=cache_time),
+                    gallery=request.gallery,
+                    private=request.private,
+                )
+                for item in result_items:
+                    item.query = item
+                if result_items:
+                    await InlineQueryResultItem.bulk_create(result_items)
 
         await ctx.worker.pubsub.notify(
             topic=f"bot-inline-query/{query.id}",

@@ -78,3 +78,6 @@ from .bot_info import BotInfo
 from .message_related import MessageRelated
 from .admin_log_entry import AdminLogEntry
 from .gif_bot_file import GifBotFile
+from .inline_query_result import InlineQueryResult
+from .inline_query_result_item import InlineQueryResultItem
+

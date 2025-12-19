@@ -1,7 +1,6 @@
 from array import array
 from collections import defaultdict
 from datetime import datetime, UTC, timedelta
-from io import BytesIO
 from time import time
 from typing import cast
 from uuid import UUID
@@ -18,23 +17,22 @@ from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
-    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQuery
+    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc, InvalidConstructorException
+from piltover.exceptions import ErrorRpc
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
     LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
-    GeoPoint, InputGeoPoint, BotInlineMediaResult
-from piltover.tl.base import BotInlineResult
+    GeoPoint, InputGeoPoint
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
     ForwardMessages_176, SaveDraft_166, ClearAllDrafts, SaveDraft_148, SaveDraft_133, SendInlineBotResult_133, \
     SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
     SendInlineBotResult
-from piltover.tl.types.messages import AffectedMessages, AffectedHistory, BotResults
+from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
 
@@ -1090,58 +1088,42 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
     peer = await Peer.from_input_peer_raise(user, request.peer)
     # TODO: validate chat/channel permissions
 
-    query = await InlineQuery.get_or_none(
-        Q(cache_private=True, user=user) | Q(cache_private=False),
-        id=request.query_id, cached_data__not_isnull=True,
-    ).select_related("bot")
-    if query is None:
-        raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")
-
-    try:
-        results = BotResults.read(BytesIO(query.cached_data))
-    except InvalidConstructorException as e:
-        logger.opt(exception=e).warning("Failed to read cached bot inline answer")
-        raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")
-
-    result: BotInlineResult | None = None
-    for res in results.results:
-        if res.id == request.id:
-            result = res
-            break
-    else:
+    item = await InlineQueryResultItem.get_or_none(
+        Q(result__private=True, result__query__user=user) | Q(result__private=False),
+        result__query__id=request.query_id, item_id=request.id,
+    ).select_related(
+        "photo", "document", "document__stickerset", "result", "result__query", "result__query__bot"
+    )
+    if item is None:
         raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")
 
     reply_to_message_id = _resolve_reply_id(request)
     is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
 
-    entities = None
-    if result.send_message.entities:
-        entities = [entity.to_dict() | {"_": entity.tlid()} for entity in result.send_message.entities]
-
     media = None
-    if isinstance(result, BotInlineMediaResult):
+    if item.photo_id or item.document_id:
         file: File | None = None
         media_type: MediaType | None = None
-        if result.photo is not None:
-            file = await File.get_or_none(id=result.photo.id)
+        if item.photo_id is not None:
+            file = item.photo
             media_type = MediaType.PHOTO
-        elif result.document is not None:
-            file = await File.get_or_none(id=result.document.id)
+        elif item.document_id is not None:
+            file = item.document
             media_type = MediaType.DOCUMENT
 
         if file is not None:
             media = await MessageMedia.create(type=media_type, file=file)
 
-    if not result.send_message.message and not media:
+    if not item.send_message_text and not media:
         raise ErrorRpc(error_code=400, error_message="MEDIA_EMPTY")
 
-    via_bot = query.bot
+    via_bot = item.result.query.bot
     if request.hide_via and via_bot.system:
         via_bot = None
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
-        author=user, message=result.send_message.message, media=media, entities=entities,
+        author=user, message=item.send_message_text or "", media=media, entities=item.send_message_entities,
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
         #reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot,

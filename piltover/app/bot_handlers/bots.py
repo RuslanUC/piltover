@@ -22,7 +22,7 @@ from piltover.app.bot_handlers.stickers.skip_command import stickers_skip_comman
 from piltover.app.bot_handlers.stickers.start_command import stickers_start_command
 from piltover.app.bot_handlers.stickers.text_handler import stickers_text_message_handler
 from piltover.app.bot_handlers.test_bot.ping_command import test_bot_ping_command
-from piltover.db.models import Peer, Message, InlineQuery
+from piltover.db.models import Peer, Message, InlineQuery, InlineQueryResult, InlineQueryResultItem
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
 
 
@@ -100,7 +100,9 @@ async def process_callback_query(peer: Peer, message: Message, data: bytes) -> B
     return await CALLBACK_QUERY_HANDLERS[bot_username](peer, message, data)
 
 
-async def process_inline_query(inline_query: InlineQuery) -> tuple[BotResults, bool] | None:
+async def process_inline_query(
+        inline_query: InlineQuery,
+) -> tuple[InlineQueryResult, list[InlineQueryResultItem]] | None:
     if not inline_query.bot.bot or await inline_query.bot.get_raw_username() not in INLINE_QUERY_HANDLERS:
         return None
 

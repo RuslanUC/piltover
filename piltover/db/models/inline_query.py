@@ -10,7 +10,6 @@ from piltover.tl import InlineQueryPeerTypePM, InlineQueryPeerTypeBotPM, InlineQ
     InlineQueryPeerTypeChat, InlineQueryPeerTypeBroadcast, InlineQueryPeerTypeMegagroup
 
 
-# TODO: store results in another table, not in cached_data
 class InlineQuery(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.ForeignKeyField("models.User", related_name="inline_user")
@@ -20,13 +19,9 @@ class InlineQuery(Model):
     query: str = fields.CharField(max_length=128)
     offset: str | None = fields.CharField(max_length=64, null=True, default=None)
     inline_peer: InlineQueryPeer | None = fields.IntEnumField(InlineQueryPeer, null=True, default=None)
-    cache_until: datetime = fields.DatetimeField()
-    cache_private: bool = fields.BooleanField(default=False)
-    cached_data: bytes | None = fields.BinaryField(null=True)
 
     user_id: int
     bot_id: int
-    cache_user_id: int
 
     INLINE_PEER_TO_TL = {
         InlineQueryPeer.UNKNOWN: None,

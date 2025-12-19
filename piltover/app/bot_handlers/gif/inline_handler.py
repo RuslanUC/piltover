@@ -9,33 +9,27 @@ from loguru import logger
 
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import FileType
-from piltover.db.models import InlineQuery, File, GifBotFile
+from piltover.db.enums import FileType, InlineQueryResultType
+from piltover.db.models import InlineQuery, File, GifBotFile, InlineQueryResult, InlineQueryResultItem
 from piltover.storage import BaseStorage
 from piltover.storage.base import StorageType
-from piltover.tl import Long, BotInlineMediaResult, BotInlineMessageMediaAuto
-from piltover.tl.types.messages import BotResults
+from piltover.tl import Long
 from piltover.utils.utils import run_coro_with_additional_return
-
 
 _TENOR_SEARCH = "https://tenor.googleapis.com/v2/search"
 _TENOR_FEATURED = "https://tenor.googleapis.com/v2/featured"
-_EMPTY_RESULTS = BotResults(
-    gallery=True,
-    query_id=0,
-    next_offset=None,
-    switch_pm=None,
-    switch_webview=None,
-    results=[],
-    cache_time=60 * 60,
-    users=[],
-)
 
 
-def _empty(inline_query: InlineQuery) -> tuple[BotResults, bool]:
-    inline_query.cache_private = False
-    inline_query.cache_until = datetime.now(UTC) + timedelta(hours=1)
-    return _EMPTY_RESULTS, True
+def _empty(inline_query: InlineQuery) -> tuple[InlineQueryResult, list]:
+    result = InlineQueryResult(
+        query=inline_query,
+        next_offset=None,
+        cache_time=60 * 60,
+        cache_until=datetime.now(UTC) + timedelta(hours=1),
+        gallery=True,
+        private=False,
+    )
+    return result, []
 
 
 async def _get_or_download_gif(
@@ -86,7 +80,9 @@ async def _get_or_download_gif(
     return file
 
 
-async def gif_inline_query_handler(inline_query: InlineQuery) -> tuple[BotResults, bool]:
+async def gif_inline_query_handler(
+        inline_query: InlineQuery,
+) -> tuple[InlineQueryResult, list[InlineQueryResultItem]] | None:
     if AppConfig.TENOR_KEY is None:
         logger.warning("\"TENOR_API_KEY\" environment variable is not set!")
         return _empty(inline_query)
@@ -143,27 +139,22 @@ async def gif_inline_query_handler(inline_query: InlineQuery) -> tuple[BotResult
 
         files = await asyncio.gather(*coros)
 
-    results = BotResults(
-        gallery=True,
-        query_id=0,
-        # TODO: sign offset or store it in database (like Telegram does)
+    result = InlineQueryResult(
         next_offset=next_offset,
-        switch_pm=None,
-        switch_webview=None,
-        results=[],
         cache_time=60 * 60 * 12,
-        users=[],
+        cache_until=datetime.now(UTC) + timedelta(hours=1),
+        gallery=True,
+        private=False,
     )
+    items = []
 
     for file, gif_id in files:
-        results.results.append(BotInlineMediaResult(
-            id=gif_id,
-            type_="gif",
-            document=file.to_tl_document(),
-            send_message=BotInlineMessageMediaAuto(message=""),
+        items.append(InlineQueryResultItem(
+            item_id=gif_id,
+            position=len(items),
+            type=InlineQueryResultType.GIF,
+            document=file,
+            send_message_text="",
         ))
 
-    inline_query.cache_private = False
-    inline_query.cache_until = datetime.now(UTC) + timedelta(hours=12)
-
-    return results, True
+    return result, items
