@@ -249,7 +249,6 @@ _DOCUMENT_RESULT_TYPES = {
 async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bool:
     ctx = request_ctx.get()
     cache_time = 300 if request.cache_time <= 0 else request.cache_time
-    cache_until = datetime.now(UTC) + timedelta(seconds=cache_time)
 
     # TODO: validate request.gallery ?
 
