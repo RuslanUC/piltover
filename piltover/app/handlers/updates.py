@@ -9,11 +9,11 @@ from tortoise.functions import Min
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType, MessageType
 from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate
-from piltover.db.models._utils import resolve_users_chats
 from piltover.tl import UpdateChannelTooLong
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_133, GetChannelDifference
 from piltover.tl.types.updates import State as TLState, Difference, ChannelDifferenceEmpty, DifferenceEmpty, \
     ChannelDifference
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("auth")
@@ -86,13 +86,11 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     new_messages = {}
     new_secret_messages = []
     other_updates = []
-    users_q = Q()
-    chats_q = Q()
-    channels_q = Q()
+    ucc = UsersChatsChannels()
 
     for message in new:
         new_messages[message.id] = await message.to_tl(user)
-        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+        ucc.add_message(message.id)
 
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
@@ -100,7 +98,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         if update.update_type is UpdateType.NEW_AUTHORIZATION and (update.related_id == ctx.auth_id or ctx.layer < 163):
             continue
 
-        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, users_q, chats_q, channels_q, ctx.auth_id)
+        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, ctx.auth_id, ucc)
         if update_tl is not None:
             other_updates.append(update_tl)
 
@@ -117,18 +115,19 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         channel__peers__owner=user, date__gt=date,
     ).group_by("channel__id").values_list("channel__id", "min_pts")
     for channel_id, channel_pts in channel_states:
+        # TODO: replace with UpdateChannel?
         other_updates.append(UpdateChannelTooLong(channel_id=channel_id, pts=channel_pts))
-        channels_q |= Q(id=channel_id)
+        ucc.add_channel(channel_id)
 
-    users_q |= Q(id=user.id)
-    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
+    ucc.add_user(user.id)
+    users, chats, channels = await ucc.resolve(user)
 
     return Difference(
         new_messages=list(new_messages.values()),
         new_encrypted_messages=new_secret_messages,
         other_updates=other_updates,
-        chats=[*chats.values(), *channels.values()],
-        users=list(users.values()),
+        chats=[*chats, *channels],
+        users=users,
         state=await get_state_internal(user),
     )
 
@@ -164,23 +163,21 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
 
     new_messages = {}
     other_updates = []
-    users_q = Q()
-    chats_q = Q()
-    channels_q = Q()
+    ucc = UsersChatsChannels()
 
     for message in new:
         new_messages[message.id] = await message.to_tl(user)
-        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+        ucc.add_message(message.id)
 
     for update in new_updates:
         if update.type is ChannelUpdateType.EDIT_MESSAGE and update.related_id in new_messages:
             continue
 
-        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, users_q, chats_q, channels_q)
+        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, ucc)
         if update_tl is not None:
             other_updates.append(update_tl)
 
-    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
+    users, chats, channels = await ucc.resolve(user)
 
     return ChannelDifference(
         final=not has_more,
@@ -188,6 +185,6 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
         timeout=CHANNEL_UPDATES_TIMEOUT,
         new_messages=list(new_messages.values()),
         other_updates=other_updates,
-        chats=[*chats.values(), *channels.values()],
-        users=list(users.values()),
+        chats=[*chats, *channels],
+        users=users,
     )

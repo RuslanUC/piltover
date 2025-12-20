@@ -64,18 +64,6 @@ class ChatInvite(Model):
             title=self.title,
         )
 
-    def query_users_chats(
-            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
-    ) -> tuple[Q | None, Q | None, Q | None]:
-        if users is not None and self.user_id is not None:
-            users |= Q(id=self.user_id)
-        if chats is not None and self.chat_id is not None:
-            chats |= Q(id=self.chat_id)
-        if chats is not None and self.channel_id is not None:
-            channels |= Q(id=self.channel_id)
-
-        return users, chats, channels
-
     @property
     def chat_or_channel(self) -> models.ChatBase:
         if self.chat_id is not None:

@@ -18,6 +18,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
     UpdatePinnedSavedDialogs
+from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
               | UpdatePinnedDialogs | UpdateDraftMessage | UpdatePinnedMessages | UpdateUser | UpdateChatParticipants \
@@ -47,10 +48,8 @@ class Update(Model):
     user: models.User = fields.ForeignKeyField("models.User")
 
     async def to_tl(
-            self, user: models.User, users_q: Q | None = None, chats_q: Q | None = None, channels_q: Q | None = None,
-            auth_id: int | None = None,
-    ) -> tuple[UpdateTypes | None, Q | None, Q | None, Q | None]:
-        none_ret = None, users_q, chats_q, channels_q
+            self, user: models.User, auth_id: int | None = None, ucc: UsersChatsChannels | None = None,
+    ) -> UpdateTypes | None:
 
         match self.update_type:
             case UpdateType.MESSAGE_DELETE:
@@ -58,19 +57,19 @@ class Update(Model):
                     messages=self.related_ids,
                     pts=self.pts,
                     pts_count=len(self.related_ids),
-                ), users_q, chats_q, channels_q
+                )
             case UpdateType.MESSAGE_EDIT:
                 message = await models.Message.get_or_none(id=self.related_id).select_related("peer", "author")
                 if message is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_message(message.id)
 
                 return UpdateEditMessage(
                     message=await message.to_tl(user),
                     pts=self.pts,
                     pts_count=1,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.READ_HISTORY_INBOX:
                 query = Q(owner=user)
@@ -79,9 +78,9 @@ class Update(Model):
                 else:
                     query &= Q(type=PeerType.SELF)
                 if (peer := await models.Peer.get_or_none(query)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
                 # TODO: fetch read state from db instead of related_ids
                 return UpdateReadHistoryInbox(
@@ -90,21 +89,21 @@ class Update(Model):
                     still_unread_count=self.related_ids[1],
                     pts=self.pts,
                     pts_count=1,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.DIALOG_PIN:
                 if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None \
                         or (dialog := await models.Dialog.get_or_none(peer=peer, visible=True)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
                 return UpdateDialogPinned(
                     pinned=dialog.pinned_index is not None,
                     peer=DialogPeer(
                         peer=peer.to_tl(),
                     ),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.DIALOG_PIN_REORDER:
                 dialogs = await models.Dialog.filter(
@@ -112,21 +111,21 @@ class Update(Model):
                 ).select_related("peer")
 
                 for dialog in dialogs:
-                    users_q, chats_q, channels_q = dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+                    ucc.add_peer(dialog.peer)
 
                 return UpdatePinnedDialogs(
                     order=[
                         DialogPeer(peer=dialog.peer.to_tl())
                         for dialog in dialogs
                     ],
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.DRAFT_UPDATE:
                 peer = await models.Peer.get_or_none(id=self.related_id, owner=user)
                 if peer is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
                 draft = await models.MessageDraft.get_or_none(dialog__peer=peer)
                 if isinstance(draft, models.MessageDraft):
@@ -137,16 +136,16 @@ class Update(Model):
                 return UpdateDraftMessage(
                     peer=peer.to_tl(),
                     draft=draft,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.MESSAGE_PIN_UPDATE:
                 message = await models.Message.get_or_none(
                     id=self.related_id, peer__owner=user
                 ).select_related("peer", "author")
                 if message is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_message(message.id)
 
                 return UpdatePinnedMessages(
                     pinned=message.pinned,
@@ -154,25 +153,24 @@ class Update(Model):
                     messages=[message.id],
                     pts=self.pts,
                     pts_count=1,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.USER_UPDATE:
                 if (peer := await models.Peer.from_user_id(user, self.related_id)) is None \
                         or (peer_user := peer.peer_user(user)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
                 return UpdateUser(
                     user_id=peer_user.id,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.CHAT_CREATE:
                 if (peer := await models.Peer.from_chat_id(user, self.related_id)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
-                peer.chat.creator = await peer.chat.creator
+                ucc.add_peer(peer)
 
                 user_ids = set(self.related_ids)
                 participants = []
@@ -184,26 +182,26 @@ class Update(Model):
                     user_ids.remove(participant.user_id)
 
                 for missing_id in user_ids:
-                    if missing_id == peer.chat.creator.id:
+                    if missing_id == peer.chat.creator_id:
                         participants.append(ChatParticipantCreator(user_id=missing_id))
                     else:
-                        participants.append(
-                            ChatParticipant(user_id=missing_id, inviter_id=peer.chat.creator.id, date=0)
-                        )
+                        participants.append(ChatParticipant(
+                            user_id=missing_id, inviter_id=peer.chat.creator_id, date=0,
+                        ))
 
                 return UpdateChatParticipants(
                     participants=ChatParticipants(
-                        chat_id=peer.chat.creator.id,
+                        chat_id=peer.chat_id,
                         participants=participants,
                         version=1,
                     ),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.USER_UPDATE_NAME:
                 if (peer := await models.Peer.from_user_id(user, self.related_id)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
                 peer_user = peer.peer_user(user)
                 user_username = await peer_user.get_username()
@@ -214,56 +212,56 @@ class Update(Model):
                     usernames=[
                         Username(editable=True, active=True, username=user_username.username)
                     ] if user_username else [],
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_CONTACT:
                 if (contact := await models.Contact.get_or_none(owner=user, target__id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = contact.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_user(contact.target_id)
 
                 return UpdatePeerSettings(
                     peer=PeerUser(user_id=contact.target_id),
                     settings=PeerSettings(),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_BLOCK:
                 if (peer := await models.Peer.from_user_id(user, self.related_id)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
                 return UpdatePeerBlocked(
                     peer_id=peer.to_tl(),
                     blocked=peer.blocked_at is not None,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_CHAT:
                 if (peer := await models.Peer.from_chat_id(user, self.related_id)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
-                return UpdateChat(chat_id=peer.chat.id), users_q, chats_q, channels_q
+                return UpdateChat(chat_id=peer.chat.id)
 
             case UpdateType.UPDATE_DIALOG_UNREAD_MARK:
                 if (dialog := await models.Dialog.get_or_none(id=self.related_id).select_related("peer")) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(dialog.peer)
 
                 return UpdateDialogUnreadMark(
                     peer=DialogPeer(peer=dialog.peer.to_tl()),
                     unread=dialog.unread_mark,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.READ_INBOX:
                 if not self.additional_data or len(self.additional_data) != 2:
-                    return none_ret
+                    return None
                 if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
                 if peer.type is PeerType.CHANNEL:
                     return UpdateReadChannelInbox(
@@ -271,7 +269,7 @@ class Update(Model):
                         max_id=self.additional_data[0],
                         still_unread_count=self.additional_data[1],
                         pts=self.pts,
-                    ), users_q, chats_q, channels_q
+                    )
 
                 return UpdateReadHistoryInbox(
                     peer=peer.to_tl(),
@@ -279,55 +277,54 @@ class Update(Model):
                     still_unread_count=self.additional_data[1],
                     pts=self.pts,
                     pts_count=self.pts_count,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.READ_OUTBOX:
                 if not self.additional_data or len(self.additional_data) != 1:
-                    return none_ret
+                    return None
                 if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(peer)
 
                 return UpdateReadHistoryOutbox(
                     peer=peer.to_tl(),
                     max_id=self.additional_data[0],
                     pts=self.pts,
                     pts_count=self.pts_count,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.FOLDER_PEERS:
                 folder_peers = []
-                users_q, chats_q, channels_q = Q(), Q(), Q()
 
                 dialog: models.Dialog
                 async for dialog in models.Dialog.filter(
                         peer__id__in=self.related_ids, visible=True,
                 ).select_related("peer"):
                     folder_peers.append(FolderPeer(peer=dialog.peer.to_tl(), folder_id=dialog.folder_id.value))
-                    users_q, chats_q, channels_q = dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+                    ucc.add_peer(dialog.peer)
 
                 return UpdateFolderPeers(
                     folder_peers=folder_peers,
                     pts=self.pts,
                     pts_count=self.pts_count,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_CHANNEL:
-                channels_q |= Q(id=self.related_id)
+                ucc.add_channel(self.related_id)
                 return UpdateChannel(
                     channel_id=self.related_id,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_POLL:
                 if (poll := await models.Poll.get_or_none(id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
                 return UpdateMessagePoll(
                     poll_id=poll.id,
                     poll=await poll.to_tl(),
                     results=await poll.to_tl_results(user),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_FOLDER:
                 folder_id_for_user = self.related_ids[0]
@@ -340,35 +337,35 @@ class Update(Model):
                 return UpdateDialogFilter(
                     id=folder_id_for_user,
                     filter=await folder.to_tl() if folder is not None else None,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.FOLDERS_ORDER:
-                return UpdateDialogFilterOrder(order=self.related_ids), users_q, chats_q, channels_q
+                return UpdateDialogFilterOrder(order=self.related_ids)
 
             case UpdateType.UPDATE_ENCRYPTION:
                 if auth_id is None:
-                    return none_ret
+                    return None
 
                 if (chat := await models.EncryptedChat.get_or_none(id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
                 other_user_id = chat.from_user_id if user.id == chat.to_user_id else chat.to_user_id
-                users_q |= Q(id=other_user_id)
+                ucc.add_user(other_user_id)
 
                 return UpdateEncryption(
                     chat=await chat.to_tl(user, auth_id),
                     date=int(self.date.timestamp()),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_CONFIG:
-                return UpdateConfig(), users_q, chats_q, channels_q
+                return UpdateConfig()
 
             case UpdateType.UPDATE_RECENT_REACTIONS:
-                return UpdateRecentReactions(), users_q, chats_q, channels_q
+                return UpdateRecentReactions()
 
             case UpdateType.NEW_AUTHORIZATION:
                 if (auth := await models.UserAuthorization.get_or_none(id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
                 unconfirmed = not auth.confirmed
                 return UpdateNewAuthorization(
@@ -377,26 +374,26 @@ class Update(Model):
                     date=int(auth.created_at.timestamp()) if unconfirmed else None,
                     device=auth.device_model if unconfirmed else None,
                     location=auth.ip if unconfirmed else None,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.NEW_STICKERSET:
                 if (stickerset := await models.Stickerset.get_or_none(id=self.related_id, deleted=False)) is None:
-                    return none_ret
+                    return None
 
                 return UpdateNewStickerSet(
                     stickerset=await stickerset.to_tl_messages(user),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_STICKERSETS:
-                return UpdateStickerSets(), users_q, chats_q, channels_q
+                return UpdateStickerSets()
 
             case UpdateType.UPDATE_STICKERSETS_ORDER:
                 if not self.related_ids:
-                    return none_ret
+                    return None
 
                 return UpdateStickerSetsOrder(
                     order=self.related_ids,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_CHAT_WALLPAPER:
                 if self.related_ids:
@@ -408,39 +405,39 @@ class Update(Model):
                     wallpaper = None
                     chat_wallpaper = None
 
-                users_q |= Q(id=self.related_id)
+                ucc.add_user(self.related_id)
 
                 return UpdatePeerWallpaper(
                     wallpaper_overridden=chat_wallpaper.overridden if chat_wallpaper is not None else False,
                     peer=PeerUser(user_id=self.related_id),
                     wallpaper=wallpaper.to_tl() if wallpaper is not None else None,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.READ_MESSAGES_CONTENTS:
                 if not self.related_ids:
-                    return none_ret
+                    return None
 
                 return UpdateReadMessagesContents(
                     messages=self.related_ids,
                     pts=self.pts,
                     pts_count=self.pts_count,
                     date=int(self.date.timestamp()),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.NEW_SCHEDULED_MESSAGE:
                 message = await models.Message.get_or_none(
                     id=self.related_id, type=MessageType.SCHEDULED, peer__owner=user
                 ).select_related("peer", "author")
                 if message is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_message(message.id)
 
-                return UpdateNewScheduledMessage(message=await message.to_tl(user)), users_q, chats_q, channels_q
+                return UpdateNewScheduledMessage(message=await message.to_tl(user))
 
             case UpdateType.DELETE_SCHEDULED_MESSAGE:
                 if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
                 deleted_message_ids = self.related_ids[:self.pts_count]
                 sent_message_ids = self.related_ids[self.pts_count:]
@@ -449,26 +446,26 @@ class Update(Model):
                     peer=peer.to_tl(),
                     messages=deleted_message_ids,
                     sent_messages=sent_message_ids or None,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_HISTORY_TTL:
                 if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
                 ttl_days = self.additional_data[0]
                 return UpdatePeerHistoryTTL(
                     peer=peer.to_tl(),
                     ttl_period=ttl_days * 86400 if ttl_days else None,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.BOT_CALLBACK_QUERY:
                 query = await models.CallbackQuery.get_or_none(id=self.related_id, inline=False).select_related(
                     "message", "message__peer",
                 )
                 if query is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = query.message.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_message(query.message_id)
 
                 return UpdateBotCallbackQuery(
                     query_id=query.id,
@@ -477,18 +474,18 @@ class Update(Model):
                     msg_id=query.message_id,
                     chat_instance=0,
                     data=query.data,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_PHONE:
                 if (update_user := await models.User.get_or_none(id=self.related_id)) is None:
-                    return none_ret
+                    return None
 
-                users_q |= Q(id=self.related_id)
+                ucc.add_user(self.related_id)
 
                 return UpdateUserPhone(
                     user_id=self.related_id,
                     phone=update_user.phone_number,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_PEER_NOTIFY_SETTINGS:
                 peer = not_peer = None
@@ -498,32 +495,32 @@ class Update(Model):
                     ).select_related("peer")
                     if settings is not None and settings.peer is not None:
                         peer = settings.peer
-                        users_q, chats_q, channels_q = settings.peer.query_users_chats(users_q, chats_q, channels_q)
+                        ucc.add_peer(settings.peer)
                 elif self.additional_data and self.additional_data[0] in NotifySettingsNotPeerType._value2member_map_:
                     settings = await models.PeerNotifySettings.get_or_none(
                         user=user, peer=None, not_peer=NotifySettingsNotPeerType(self.additional_data[0]),
                     ).select_related("peer")
                     not_peer = settings.not_peer
                 else:
-                    return none_ret
+                    return None
 
                 if settings is None:
-                    return none_ret
+                    return None
 
                 return UpdateNotifySettings(
                     peer=models.PeerNotifySettings.peer_to_tl(peer, not_peer),
                     notify_settings=settings.to_tl(),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.SAVED_GIFS:
-                return UpdateSavedGifs(), users_q, chats_q, channels_q
+                return UpdateSavedGifs()
 
             case UpdateType.BOT_INLINE_QUERY:
                 query = await models.InlineQuery.get_or_none(id=self.related_id, bot=user)
                 if query is None:
-                    return none_ret
+                    return None
 
-                users_q |= Q(id=query.user_id)
+                ucc.add_user(query.user_id)
 
                 return UpdateBotInlineQuery(
                     query_id=query.id,
@@ -531,27 +528,27 @@ class Update(Model):
                     query=query.query,
                     peer_type=models.InlineQuery.INLINE_PEER_TO_TL[query.inline_peer],
                     offset=query.offset,
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.UPDATE_RECENT_STICKERS:
-                return UpdateRecentStickers(), users_q, chats_q, channels_q
+                return UpdateRecentStickers()
 
             case UpdateType.UPDATE_FAVED_STICKERS:
-                return UpdateFavedStickers(), users_q, chats_q, channels_q
+                return UpdateFavedStickers()
 
             case UpdateType.SAVED_DIALOG_PIN:
                 saved_dialog = await models.SavedDialog.get_or_none(
                     peer__owner=user, peer__id=self.related_id,
                 ).select_related("peer")
                 if saved_dialog is None:
-                    return none_ret
+                    return None
 
-                users_q, chats_q, channels_q = saved_dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_peer(saved_dialog.peer)
 
                 return UpdateSavedDialogPinned(
                     pinned=saved_dialog.pinned_index is not None,
                     peer=DialogPeer(peer=saved_dialog.peer.to_tl()),
-                ), users_q, chats_q, channels_q
+                )
 
             case UpdateType.SAVED_DIALOG_PIN_REORDER:
                 dialogs = await models.SavedDialog.filter(
@@ -559,13 +556,13 @@ class Update(Model):
                 ).select_related("peer")
 
                 for dialog in dialogs:
-                    users_q, chats_q, channels_q = dialog.peer.query_users_chats(users_q, chats_q, channels_q)
+                    ucc.add_peer(dialog.peer)
 
                 return UpdatePinnedSavedDialogs(
                     order=[
                         DialogPeer(peer=dialog.peer.to_tl())
                         for dialog in dialogs
                     ],
-                ), users_q, chats_q, channels_q
+                )
 
-        return None, users_q, chats_q, channels_q
+        return None

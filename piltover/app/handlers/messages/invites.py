@@ -5,13 +5,12 @@ from urllib.parse import urlparse
 
 from tortoise.expressions import Q, Subquery
 
-from piltover.app.handlers.messages.sending import send_message_internal
 import piltover.app.utils.updates_manager as upd
+from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel, \
     Dialog, Message
-from piltover.db.models._utils import resolve_users_chats
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -23,6 +22,7 @@ from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWith
     HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_133, ExportChatInvite_134, EditExportedChatInvite
 from piltover.tl.types.messages import ExportedChatInvites, ChatAdminsWithInvites, ChatInviteImporters, \
     ExportedChatInvite
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.invites")
@@ -48,17 +48,17 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user: User)
 
     limit = max(min(100, request.limit), 1)
     invites = []
-    users_q = Q()
+    ucc = UsersChatsChannels()
     for chat_invite in await ChatInvite.filter(query).order_by("-updated_at").limit(limit):
         invites.append(await chat_invite.to_tl())
-        users_q, *_ = chat_invite.query_users_chats(users_q)
+        ucc.add_chat_invite(chat_invite)
 
-    users, *_ = await resolve_users_chats(user, users_q, None, None, {}, None, None)
+    users, *_ = await ucc.resolve(user, fetch_chats=False, fetch_channels=False)
 
     return ExportedChatInvites(
         count=await ChatInvite.filter(query).count(),
         invites=invites,
-        users=list(users.values()),
+        users=users,
     )
 
 
@@ -365,15 +365,13 @@ async def get_exported_chat_invite(request: GetExportedChatInvite, user: User) -
             & Chat.query(peer.chat_or_channel)
             & (Q(expires_at__isnull=True) | Q(expires_at__isnull=False, expires_at__gt=datetime.now(UTC)))
     )
-    invite = await ChatInvite.get_or_none(query)
+    invite = await ChatInvite.get_or_none(query).select_related("user")
     if invite is None:
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
 
-    users, *_ = await resolve_users_chats(user, *invite.query_users_chats(Q()), {}, None, None)
-
     return ExportedChatInvite(
         invite=await invite.to_tl(),
-        users=list(users.values()),
+        users=[await invite.user.to_tl(user)],
     )
 
 
@@ -540,7 +538,7 @@ async def edit_exported_chat_invite(request: EditExportedChatInvite, user: User)
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
     invite = await ChatInvite.get_or_none(
         ChatInvite.query_from_link_hash(invite_hash.strip()) & Chat.query(peer.chat_or_channel) & Q(revoked=False)
-    )
+    ).select_related("user")
     if invite is None:
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EXPIRED")
 
@@ -563,9 +561,7 @@ async def edit_exported_chat_invite(request: EditExportedChatInvite, user: User)
     if update_fields:
         await invite.save(update_fields=update_fields)
 
-    users, *_ = await resolve_users_chats(user, *invite.query_users_chats(Q()), {}, None, None)
-
     return ExportedChatInvite(
         invite=await invite.to_tl(),
-        users=list(users.values()),
+        users=[await invite.user.to_tl(user)],
     )

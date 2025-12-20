@@ -533,56 +533,6 @@ class Message(Model):
         if related_to_create:
             await models.MessageRelated.bulk_create(related_to_create)
 
-    # TODO: this has terrible performance for some reason (e.g. 70+ seconds for GetDialogs call)
-    """
-    def query_users_chats(
-            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
-    ) -> tuple[Q | None, Q | None, Q | None]:
-        if users is not None and self.author_id is not None and not self.channel_post:
-            users |= Q(id=self.author_id)
-        if (users is not None or chats is not None or channels is not None) and self.peer_id is not None:
-            users, chats, channels = models.Peer.query_users_chats_cls(self.peer_id, users, chats, channels)
-        if users is not None:
-            users |= Q(messagerelateds__message__id=self.id)
-        if chats is not None:
-            chats |= Q(messagerelateds__message__id=self.id)
-        if channels is not None:
-            channels |= Q(messagerelateds__message__id=self.id)
-
-        return users, chats, channels
-    """
-
-    def query_users_chats(
-            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
-    ) -> tuple[Q | None, Q | None, Q | None]:
-        if users is not None and self.author_id is not None and not self.channel_post:
-            users |= Q(id=self.author_id)
-        if (users is not None or chats is not None or channels is not None) and self.peer_id is not None:
-            users, chats, channels = models.Peer.query_users_chats_cls(self.peer_id, users, chats, channels)
-        if users is not None \
-                and self.type in (MessageType.SERVICE_CHAT_USER_ADD, MessageType.SERVICE_CHAT_USER_DEL) \
-                and self.extra_info:
-            try:
-                if self.type is MessageType.SERVICE_CHAT_USER_ADD:
-                    user_ids = MessageActionChatAddUser.read(BytesIO(self.extra_info), True).users
-                else:
-                    user_ids = [MessageActionChatDeleteUser.read(BytesIO(self.extra_info), True).user_id]
-            except Error:
-                return users, chats, channels
-            users |= Q(id__in=user_ids)
-        if users is not None and self.entities:
-            for entity in self.entities:
-                if entity["_"] != MessageEntityMentionName.tlid():
-                    continue
-                users |= Q(id=entity["user_id"])
-
-        if self.via_bot_id is not None:
-            users |= Q(id=self.via_bot_id)
-
-        # TODO: add users and chats from fwd_header
-
-        return users, chats, channels
-
     async def remove_from_cache(self, user: models.User) -> None:
         await Cache.obj.delete(self._cache_key(user))
 

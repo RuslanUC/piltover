@@ -16,13 +16,12 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention, \
-    ChatParticipant, Chat, ReadHistoryChunk
-from piltover.db.models._utils import resolve_users_chats
+    ChatParticipant, Chat, ReadHistoryChunk, Username
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, \
-    InputMessagesFilterPinned, User as TLUser, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
+    InputMessagesFilterPinned, InputMessageID, InputMessageReplyTo, InputMessagesFilterDocument, \
     InputMessagesFilterPhotos, InputMessagesFilterPhotoVideo, InputMessagesFilterVideo, \
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
@@ -35,6 +34,7 @@ from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCou
     ReadMessageContents, SetHistoryTTL, GetSearchResultsPositions, GetSearchResultsPositions_134
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory, SearchResultsPositions
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.history")
@@ -218,23 +218,22 @@ async def get_messages_internal(
 
 
 async def format_messages_internal(
-        user: User, messages: list[Message], add_users: dict[int, TLUser] | None = None, allow_slicing: bool = False,
+        user: User, messages: list[Message], add_users: list[int] | None = None, allow_slicing: bool = False,
         peer: Peer | None = None, saved_peer: Peer | None = None, offset_id: int | None = None,
         query: QuerySet[Message] | None = None, with_reactions: bool = False,
 ) -> Messages | MessagesSlice:
-    users_q = Q()
-    chats_q = Q()
-    channels_q = Q()
+    ucc = UsersChatsChannels()
 
     messages_tl = []
     for message in messages:
         messages_tl.append(await message.to_tl(user, with_reactions))
-        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+        ucc.add_message(message.id)
 
     if add_users:
-        users_q &= Q(id__not_in=list(add_users.keys()))
+        for add_user_id in add_users:
+            ucc.add_user(add_user_id)
 
-    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
+    users, chats, channels = await ucc.resolve(user)
 
     """
     Messages with following ids are in database:
@@ -263,14 +262,13 @@ async def format_messages_internal(
     NOTE TO MYSELF: all values are tested with only GetHistory request. Search, GetReplies, etc. were NOT tested.
     """
 
-    chats_tl = [*chats.values(), *channels.values()]
-    users_tl = list(users.values())
+    chats_tl = [*chats, *channels]
 
     if not allow_slicing or not peer:
         return Messages(
             messages=messages_tl,
             chats=chats_tl,
-            users=users_tl,
+            users=users,
         )
 
     if query is None:
@@ -284,7 +282,7 @@ async def format_messages_internal(
         return Messages(
             messages=messages_tl,
             chats=chats_tl,
-            users=users_tl,
+            users=users,
         )
 
     if offset_id:
@@ -299,7 +297,7 @@ async def format_messages_internal(
         offset_id_offset=offset_id_offset,
         messages=messages_tl,
         chats=chats_tl,
-        users=users_tl,
+        users=users,
     )
 
 
@@ -447,9 +445,7 @@ async def get_search_counters(request: GetSearchCounters, user: User):
 
 @handler.on_request(GetAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_all_drafts(user: User):
-    users_q = Q()
-    chats_q = Q()
-    channels_q = Q()
+    ucc = UsersChatsChannels()
 
     updates = []
     drafts = await MessageDraft.filter(dialog__peer__owner=user).select_related(
@@ -458,14 +454,14 @@ async def get_all_drafts(user: User):
     for draft in drafts:
         peer = draft.dialog.peer
         updates.append(UpdateDraftMessage(peer=peer.to_tl(), draft=draft.to_tl()))
-        users_q, chats_q, channels_q = peer.query_users_chats(users_q, chats_q, channels_q)
+        ucc.add_peer(peer)
 
-    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
+    users, chats, channels = await ucc.resolve(user)
 
     return Updates(
         updates=updates,
-        users=list(users.values()),
-        chats=[*chats.values(), *channels.values()],
+        users=users,
+        chats=[*chats, *channels],
         date=int(time()),
         seq=0,
     )
@@ -473,16 +469,17 @@ async def get_all_drafts(user: User):
 
 @handler.on_request(SearchGlobal, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def search_global(request: SearchGlobal, user: User):
-    users = {}
+    # TODO: whole method is probably wrong idk
+
+    users = []
 
     q = user_q = request.q
     if q.startswith("@"):
         user_q = q[1:]
     if USERNAME_REGEX_NO_LEN.match(user_q):
-        users = {
-            oth_user.id: await oth_user.to_tl(user)
-            for oth_user in await User.filter(username__istartswith=user_q).limit(10)
-        }
+        users = await Username.filter(
+            username__istartswith=user_q, user__not=None,
+        ).limit(10).values_list("user__id", flat=True)
 
     limit = max(min(request.limit, 1), 10)
 
@@ -634,13 +631,13 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
 
     messages = await Message.filter(id__in=message_ids).select_related("peer")
     messages_tl = []
-    users_q, chats_q, channels_q = Q(), Q(), Q()
+    ucc = UsersChatsChannels()
 
     for message in messages:
         messages_tl.append(await message.to_tl(user))
-        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+        ucc.add_message(message.id)
 
-    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
+    users, chats, channels = await ucc.resolve(user)
 
     return SearchResultsCalendar(
         count=count,
@@ -649,8 +646,8 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
         offset_id_offset=offset_id_offset,
         periods=periods_tl,
         messages=messages_tl,
-        chats=[*chats.values(), *channels.values()],
-        users=list(users.values()),
+        chats=[*chats, *channels],
+        users=users,
     )
 
 

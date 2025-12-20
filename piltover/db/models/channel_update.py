@@ -3,12 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from tortoise import fields, Model
-from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
 from piltover.db.models import Message
 from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage, Long
+from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMessage
 
@@ -26,26 +26,24 @@ class ChannelUpdate(Model):
     channel_id: int
 
     async def to_tl(
-            self, user: models.User, users_q: Q | None = None, chats_q: Q | None = None, channels_q: Q | None = None,
-    ) -> tuple[UpdateTypes | None, Q | None, Q | None, Q | None]:
-        none_ret = None, users_q, chats_q, channels_q
-
-        channels_q |= Q(id=self.channel_id)
+            self, user: models.User, ucc: UsersChatsChannels,
+    ) -> UpdateTypes | None:
+        ucc.add_channel(self.channel_id)
 
         match self.type:
             case ChannelUpdateType.UPDATE_CHANNEL:
-                return UpdateChannel(channel_id=self.channel_id), users_q, chats_q, channels_q
+                return UpdateChannel(channel_id=self.channel_id)
             case ChannelUpdateType.NEW_MESSAGE:
-                return none_ret
+                return None
             case ChannelUpdateType.EDIT_MESSAGE:
                 message = await Message.get(id=self.related_id, peer__channel__id=self.channel_id)
-                users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+                ucc.add_message(message.id)
 
                 return UpdateEditChannelMessage(
                     message=await message.to_tl(user),
                     pts=self.pts,
                     pts_count=1,
-                ), users_q, chats_q, channels_q
+                )
             case ChannelUpdateType.DELETE_MESSAGES:
                 message_ids = [Long.read_bytes(self.extra_data[i * 8:(i + 1) * 8]) for i in range(self.pts_count)]
 
@@ -54,6 +52,6 @@ class ChannelUpdate(Model):
                     messages=message_ids,
                     pts=self.pts,
                     pts_count=1,
-                ), users_q, chats_q, channels_q
+                )
 
-        return none_ret
+        return None

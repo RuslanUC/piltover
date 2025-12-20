@@ -15,6 +15,7 @@ from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, I
 
 InputPeers = InputPeerSelf | InputPeerUser | InputUserSelf | InputUser | InputPeerChat | InputChannel \
              | InputChannelEmpty | InputPeerChannel
+InputOnlyPeers = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel
 
 
 class Peer(Model):
@@ -170,28 +171,14 @@ class Peer(Model):
 
         raise Unreachable
 
-    # TODO: just call to_input_peer_cls to avoid code duplication?
-    def to_input_peer(
-            self, self_is_user: bool = False,
-    ) -> InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel:
-        if self.type is PeerType.SELF:
-            if self_is_user:
-                return InputPeerUser(user_id=self.owner_id, access_hash=-1)
-            return InputPeerSelf()
-        if self.type is PeerType.USER:
-            return InputPeerUser(user_id=self.user_id, access_hash=-1)
-        if self.type == PeerType.CHAT:
-            return InputPeerChat(chat_id=models.Chat.make_id_from(self.chat_id))
-        if self.type == PeerType.CHANNEL:
-            return InputPeerChannel(channel_id=models.Channel.make_id_from(self.channel_id), access_hash=-1)
-
-        raise RuntimeError("Unreachable")
+    def to_input_peer(self, self_is_user: bool = False) -> InputOnlyPeers:
+        return self.to_input_peer_cls(self.type, self.user_id, self.chat_id, self.channel_id, self_is_user)
 
     @classmethod
     def to_input_peer_cls(
             cls, type_: PeerType, user_id: int | None, chat_id: int | None, channel_id: int | None,
             self_is_user: bool = False,
-    ) -> InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel:
+    ) -> InputOnlyPeers:
         if type_ is PeerType.SELF:
             if self_is_user:
                 return InputPeerUser(user_id=user_id, access_hash=-1)
@@ -204,37 +191,6 @@ class Peer(Model):
             return InputPeerChannel(channel_id=models.Channel.make_id_from(channel_id), access_hash=-1)
 
         raise RuntimeError("Unreachable")
-
-    @classmethod
-    def query_users_chats_cls(
-            cls, peer_id: int, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
-            peer_type: PeerType | None = None
-    ) -> tuple[Q | None, Q | None, Q | None]:
-        ret = users, chats, channels
-
-        if (peer_type is PeerType.SELF and users is None) \
-                or (peer_type is PeerType.USER and users is None) \
-                or (peer_type is PeerType.CHAT and chats is None) \
-                or (peer_type is PeerType.CHANNEL and channels is None):
-            return ret
-
-        if users is not None and (peer_type is None or peer_type is PeerType.SELF):
-            users |= Q(owner__id=peer_id, owner__type=PeerType.SELF)
-        if users is not None and (peer_type is None or peer_type is PeerType.USER):
-            users |= Q(user__id=peer_id, user__type=PeerType.USER)
-        if chats is not None and (peer_type is None or peer_type is PeerType.CHAT):
-            chats |= Q(peers__id=peer_id, peers__type=PeerType.CHAT)
-            if users is not None:
-                users |= Q(chatparticipants__chat__peers__id=peer_id, chatparticipants__chat__peers__type=PeerType.CHAT)
-        if channels is not None and (peer_type is None or peer_type is PeerType.CHANNEL):
-            channels |= Q(peers__id=peer_id, peers__type=PeerType.CHANNEL)
-
-        return users, chats, channels
-
-    def query_users_chats(
-            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
-    ) -> tuple[Q | None, Q | None, Q | None]:
-        return Peer.query_users_chats_cls(self.id, users, chats, channels, self.type)
 
     @property
     def chat_or_channel(self) -> models.ChatBase:

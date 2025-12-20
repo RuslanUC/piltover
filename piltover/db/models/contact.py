@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from tortoise import fields, Model
-from tortoise.expressions import Q
 
 from piltover.db import models
 
@@ -21,12 +20,4 @@ class Contact(Model):
             ("owner", "target"),
             ("owner", "phone_number"),
         )
-
-    def query_users_chats(
-            self, users: Q | None = None, chats: Q | None = None, channels: Q | None = None,
-    ) -> tuple[Q | None, Q | None, Q | None]:
-        if users is not None and self.target_id is not None:
-            users |= Q(id=self.target_id)
-
-        return users, chats, channels
 

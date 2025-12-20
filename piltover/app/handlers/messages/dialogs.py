@@ -9,7 +9,6 @@ from piltover.app.handlers.updates import get_state_internal
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Message, Chat, Channel
-from piltover.db.models._utils import resolve_users_chats
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector, \
@@ -18,6 +17,7 @@ from piltover.tl.functions.folders import EditPeerFolders
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
 from piltover.tl.types.messages import PeerDialogs, Dialogs, DialogsSlice
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.dialogs")
@@ -30,25 +30,23 @@ async def format_dialogs(
 ) -> dict[str, list]:
     messages = []
 
-    users_q = Q()
-    chats_q = Q()
-    channels_q = Q()
+    ucc = UsersChatsChannels()
 
     for dialog in dialogs:
         message = await dialog.top_message_query()
         if message is not None:
             messages.append(await message.to_tl(user))
-            users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+            ucc.add_message(message.id)
         else:
-            users_q, chats_q, channels_q = Peer.query_users_chats_cls(dialog.peer_id, users_q, chats_q, channels_q)
+            ucc.add_peer(dialog.peer)
 
-    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
+    users, chats, channels = await ucc.resolve(user)
 
     result = {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
         "messages": messages,
-        "chats": [*chats.values(), *channels.values()],
-        "users": list(users.values()),
+        "chats": [*chats, *channels],
+        "users": users,
     }
 
     if not allow_slicing:
@@ -211,7 +209,7 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
         dialog.pinned_index = None
 
     await dialog.save(update_fields=["pinned_index"])
-    await upd.pin_dialog(user, peer)
+    await upd.pin_dialog(user, peer, dialog)
 
     return True
 

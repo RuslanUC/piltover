@@ -4,10 +4,6 @@ from enum import IntFlag
 from typing import Any, TypeVar, cast
 
 import tortoise
-from tortoise.expressions import Q
-
-from piltover.db import models
-from piltover.tl import User as TLUser, Chat as TLChat, Channel as TLChannel
 
 IntFlagT = TypeVar("IntFlagT", bound=IntFlag)
 
@@ -41,57 +37,3 @@ class IntFlagFieldInstance(tortoise.fields.BigIntField):
 
 def IntFlagField(enum_type: type[IntFlagT], **kwargs: Any) -> IntFlagT:
     return IntFlagFieldInstance(enum_type, **kwargs)  # type: ignore
-
-
-Q_EMPTY = Q()
-
-
-# TODO: fetch_users_chats and resolve_users_chats need to be rethought and rewritten
-
-async def fetch_users_chats(
-        users_q: Q | None = None, chats_q: Q | None = None, channels_q: Q | None = None,
-        users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
-        channels: dict[int, TLChannel] | None = None,
-) -> tuple[dict[int, models.User] | None, dict[int, models.Chat] | None, dict[int, models.Channel] | None]:
-    users_out = None
-    chats_out = None
-    channels_out = None
-
-    user: models.User
-    chat: models.Chat
-    channel: models.Channel
-
-    if users_q is not None and users_q != Q_EMPTY:
-        if users:
-            users_q &= Q(id__not_in=list(users.keys()))
-        users_out = {user.id: user for user in await models.User.filter(users_q)}
-    if chats_q is not None and chats_q != Q_EMPTY:
-        if chats:
-            chats_q &= Q(id__not_in=list(chats.keys()))
-        chats_out = {chat.id: chat for chat in await models.Chat.filter(chats_q)}
-    if channels_q is not None and channels_q != Q_EMPTY:
-        if channels:
-            channels_q &= Q(id__not_in=list(channels.keys()))
-        channels_out = {channel.id: channel for channel in await models.Channel.filter(channels_q)}
-
-    return users_out, chats_out, channels_out
-
-
-async def resolve_users_chats(
-        user: models.User, users_q: Q | None = None, chats_q: Q | None = None, channels_q: Q | None = None,
-        users: dict[int, TLUser] | None = None, chats: dict[int, TLChat] | None = None,
-        channels: dict[int, TLChannel] | None = None,
-) -> tuple[dict[int, TLUser] | None, dict[int, TLChat] | None, dict[int, TLChannel] | None]:
-    users_f, chats_f, channels_f = await fetch_users_chats(users_q, chats_q, channels_q, users, chats, channels)
-
-    if users_f is not None:
-        for rel_user in users_f.values():
-            users[rel_user.id] = await rel_user.to_tl(user)
-    if chats_f is not None:
-        for rel_chat in chats_f.values():
-            chats[rel_chat.id] = await rel_chat.to_tl(user)
-    if channels_f is not None:
-        for rel_channel in channels_f.values():
-            channels[rel_channel.id] = await rel_channel.to_tl(user)
-
-    return users, chats, channels

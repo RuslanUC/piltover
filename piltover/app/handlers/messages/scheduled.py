@@ -1,6 +1,5 @@
 from time import time
 
-from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -8,35 +7,31 @@ from piltover.app.handlers.messages import sending
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import MessageType, PeerType
 from piltover.db.models import User, Peer, Message
-from piltover.db.models._utils import resolve_users_chats
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Updates
 from piltover.tl.functions.messages import GetScheduledHistory, GetScheduledMessages, SendScheduledMessages, \
     DeleteScheduledMessages
 from piltover.tl.types.messages import Messages, MessagesNotModified
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.scheduled")
 
 
 async def _format_messages(user: User, messages: list[Message]) -> Messages:
-    users_q = Q()
-    chats_q = Q()
-    channels_q = Q()
+    ucc = UsersChatsChannels()
 
     messages_tl = []
     for message in messages:
         messages_tl.append(await message.to_tl(user))
-        users_q, chats_q, channels_q = message.query_users_chats(users_q, chats_q, channels_q)
+        ucc.add_message(message.id)
 
-    users, chats, channels = await resolve_users_chats(user, users_q, chats_q, channels_q, {}, {}, {})
-    chats_tl = [*chats.values(), *channels.values()]
-    users_tl = list(users.values())
+    users, chats, channels = await ucc.resolve(user)
 
     return Messages(
         messages=messages_tl,
-        chats=chats_tl,
-        users=users_tl,
+        chats=[*chats, *channels],
+        users=users,
     )
 
 
