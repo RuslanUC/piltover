@@ -126,9 +126,8 @@ class UsersChatsChannels:
     ) -> tuple[list[TLUser], list[TLChat], list[TLChannel]]:
         users, chats, channels = await self.resolve_nontl(fetch_users, fetch_chats, fetch_channels)
 
-        # TODO: add to_tl_bulk to models.User, models.Chat, models.Channel
         return (
             await models.User.to_tl_bulk(users, current_user),
-            [await chats.to_tl(current_user) for chats in chats],
+            await models.Chat.to_tl_bulk(chats, current_user),
             await models.Channel.to_tl_bulk(channels, current_user),
         )

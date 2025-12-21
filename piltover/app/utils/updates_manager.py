@@ -498,6 +498,7 @@ async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> No
     updates = UpdatesWithDefaults(
         updates=[UpdateDraftMessage(peer=peer.to_tl(), draft=draft)],
         users=[await user.to_tl(user)],
+        # TODO: support channels
         chats=[await peer.chat.to_tl(user)] if peer.type is PeerType.CHAT else [],
     )
 
@@ -524,6 +525,7 @@ async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
             )
         ],
         users=[await user.to_tl(user)],
+        # TODO: support channels
         chats=[await dialog.peer.chat.to_tl(user) for dialog in dialogs if dialog.peer.type is PeerType.CHAT],
     )
 
@@ -560,6 +562,7 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
                 )
             ],
             users=[await message.author.to_tl(peer.owner)],
+            # TODO: support channels
             chats=[await peer.chat.to_tl(peer.owner)] if peer.type is PeerType.CHAT else [],
         )
 
