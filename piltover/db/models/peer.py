@@ -69,12 +69,15 @@ class Peer(Model):
     @classmethod
     async def from_input_peer(
             cls, user: models.User, input_peer: InputPeers, allow_bot: bool = True, allow_migrated_chat: bool = False,
-            peer_types: tuple[PeerType, ...] | None = None,
+            peer_types: tuple[PeerType, ...] | None = None, select_related: tuple[str, ...] | None = None,
     ) -> Peer | None:
         if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
             return None
 
         ctx = request_ctx.get()
+
+        if select_related is None:
+            select_related = ()
 
         if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user.id):
@@ -92,7 +95,7 @@ class Peer(Model):
             query = Q(owner=user, user__id=input_peer.user_id)
             if not allow_bot:
                 query &= Q(user__bot=False)
-            return await Peer.get_or_none(query).select_related("owner", "user")
+            return await Peer.get_or_none(query).select_related("owner", "user", *select_related)
 
         if isinstance(input_peer, InputPeerChat):
             if peer_types is not None and PeerType.CHAT not in peer_types:
@@ -101,7 +104,7 @@ class Peer(Model):
             query = Q(owner=user, chat__id=chat_id)
             if not allow_migrated_chat:
                 query &= Q(chat__migrated=False)
-            return await Peer.get_or_none(query).select_related("owner", "chat")
+            return await Peer.get_or_none(query).select_related("owner", "chat", *select_related)
 
         if isinstance(input_peer, (InputPeerChannel, InputChannel)):
             if peer_types is not None and PeerType.CHANNEL not in peer_types:
@@ -111,7 +114,7 @@ class Peer(Model):
                 return None
             return await Peer.get_or_none(
                 owner=user, channel__id=channel_id, channel__deleted=False,
-            ).select_related("owner", "channel")
+            ).select_related("owner", "channel", *select_related)
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
@@ -119,8 +122,11 @@ class Peer(Model):
     async def from_input_peer_raise(
             cls, user: models.User, peer: InputPeers, message: str = "PEER_ID_INVALID", code: int = 400,
             allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
+            select_related: tuple[str, ...] | None = None,
     ) -> Peer:
-        peer_ = await Peer.from_input_peer(user, peer, allow_migrated_chat=allow_migrated_chat, peer_types=peer_types)
+        peer_ = await Peer.from_input_peer(
+            user, peer, allow_migrated_chat=allow_migrated_chat, peer_types=peer_types, select_related=select_related,
+        )
         if peer_ is not None:
             return peer_
         raise ErrorRpc(error_code=code, error_message=message)

@@ -320,7 +320,8 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
 @handler.on_request(EditPhoto)
 async def edit_channel_photo(request: EditPhoto, user: User):
     peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
+        select_related=("channel__photo",),
     )
 
     participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
@@ -328,7 +329,16 @@ async def edit_channel_photo(request: EditPhoto, user: User):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     channel = peer.channel
+    old_photo = channel.photo
     await channel.update(photo=await resolve_input_chat_photo(user, request.photo))
+
+    await AdminLogEntry.create(
+        channel=peer.channel,
+        user=user,
+        action=AdminLogEntryAction.CHANGE_PHOTO,
+        old_photo=old_photo,
+        new_photo=channel.photo,
+    )
 
     updates = await upd.update_channel(peer.channel, user)
     updates_msg = await send_message_internal(
@@ -1010,11 +1020,10 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
 
     events = []
     users = {}
-    chats = {
-        channel.make_id(): await channel.to_tl(user),
-    }
 
-    for event in await AdminLogEntry.filter(events_q).limit(limit).select_related("user"):
+    for event in await AdminLogEntry.filter(events_q).limit(limit).select_related(
+            "user", "old_photo", "new_photo",
+    ):
         event_tl = event.to_tl()
         if event_tl is None:
             continue
@@ -1025,6 +1034,6 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
     return AdminLogResults(
         events=events,
         users=list(users.values()),
-        chats=list(chats.values()),
+        chats=[await channel.to_tl(user)],
     )
 

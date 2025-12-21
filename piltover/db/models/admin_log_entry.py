@@ -7,7 +7,8 @@ from tortoise import Model, fields
 from piltover.db import models
 from piltover.db.enums import AdminLogEntryAction
 from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEventActionChangeAbout, \
-    ChannelAdminLogEventActionChangeUsername, ChannelAdminLogEventActionToggleSignatures
+    ChannelAdminLogEventActionChangeUsername, ChannelAdminLogEventActionToggleSignatures, \
+    ChannelAdminLogEventActionChangePhoto, PhotoEmpty
 from piltover.tl.base import ChannelAdminLogEvent
 
 
@@ -17,11 +18,17 @@ class AdminLogEntry(Model):
     channel: models.Channel = fields.ForeignKeyField("models.Channel")
     action: AdminLogEntryAction = fields.IntEnumField(AdminLogEntryAction)
     date: datetime = fields.DatetimeField(auto_now_add=True)
-    prev: bytes = fields.BinaryField(null=True)
-    new: bytes = fields.BinaryField(null=True)
+
+    prev: bytes = fields.BinaryField(null=True, default=None)
+    old_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="old_photo")
+
+    new: bytes = fields.BinaryField(null=True, default=None)
+    new_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="new_photo")
 
     user_id: int
     channel_id: int
+    old_photo_id: int | None
+    new_photo_id: int | None
 
     def to_tl(self) -> ChannelAdminLogEvent | None:
         action = None
@@ -43,6 +50,11 @@ class AdminLogEntry(Model):
         elif self.action is AdminLogEntryAction.TOGGLE_SIGNATURES:
             action = ChannelAdminLogEventActionToggleSignatures(
                 new_value=self.new == b"\x01",
+            )
+        elif self.action is AdminLogEntryAction.CHANGE_PHOTO:
+            action = ChannelAdminLogEventActionChangePhoto(
+                prev_photo=self.old_photo.to_tl_photo() if self.old_photo_id else PhotoEmpty(id=0),
+                new_photo=self.new_photo.to_tl_photo() if self.new_photo_id else PhotoEmpty(id=0),
             )
 
         if action is None:

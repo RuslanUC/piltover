@@ -356,7 +356,54 @@ class InlineQueryResultType(Enum):
 
 
 class AdminLogEntryAction(IntEnum):
+    # TODO:
+    #  MESSAGE_PIN
+    #  MESSAGE_EDIT
+    #  MESSAGE_DELETE
+    #  MESSAGE_SEND
+    #  PARTICIPANT_JOIN
+    #  PARTICIPANT_JOIN_INVITE
+    #  PARTICIPANT_JOIN_REQUEST
+    #  PARTICIPANT_LEAVE
+    #  PARTICIPANT_BAN
+    #  PARTICIPANT_PROMOTE
+    #  PREHISTORY_HIDDEN
+    #  DEFAULT_BANNED_RIGHTS
+    #  STOP_POLL
+    #  INVITE_DELETE
+    #  INVITE_REVOKE
+    #  INVITE_EDIT
+    #  EDIT_HISTORY_TTL
+    #  TOGGLE_NOFORWARDS
+    #  EDIT_AVAILABLE_REACTIONS
+    #  EDIT_PEER_COLOR
+    #  EDIT_PEER_COLOR_PROFILE
+    #  EDIT_WALLPAPER
+    # NOTE: following actions are ignored and probably wont be implemented for now:
+    #  ...ToggleInvites#1b7907ae
+    #  ...ParticipantInvite#e31c34d8
+    #  ...ChangeStickerSet#b1c3caa7
+    #  ...ChangeLinkedChat#50c7ac8
+    #  ...ChangeLocation#e6b76ae
+    #  ...ToggleSlowMode#53909779
+    #  ...StartGroupCall#23209745
+    #  ...DiscardGroupCall#db9f9140
+    #  ...ParticipantMute#f92424d2
+    #  ...ParticipantUnmute#e64429c0
+    #  ...ToggleGroupCallSetting#56d6a247
+    #  ...ChangeUsernames#f04fb3a9
+    #  ...ToggleForum#2cc6383
+    #  ...CreateTopic#58707d28
+    #  ...EditTopic#f06fe208
+    #  ...DeleteTopic#ae168909
+    #  ...PinTopic#5d8d353b
+    #  ...ToggleAntiSpam#64f36dfc
+    #  ...ChangeEmojiStatus#3ea9feb1
+    #  ...ChangeEmojiStickerSet#46d840ab
+    #  ...ToggleSignatureProfiles#60a79c79
+
     CHANGE_TITLE = 0
     CHANGE_ABOUT = 1
     CHANGE_USERNAME = 2
     TOGGLE_SIGNATURES = 3
+    CHANGE_PHOTO = 4
