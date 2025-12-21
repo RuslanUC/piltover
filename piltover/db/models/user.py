@@ -4,9 +4,8 @@ import hashlib
 import hmac
 from datetime import date
 from enum import auto, Enum
-from typing import overload, Literal, Sequence
+from typing import overload, Literal
 
-from loguru import logger
 from tortoise import fields, Model
 
 from piltover.app_config import AppConfig

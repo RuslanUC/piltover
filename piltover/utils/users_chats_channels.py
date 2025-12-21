@@ -130,5 +130,5 @@ class UsersChatsChannels:
         return (
             await models.User.to_tl_bulk(users, current_user),
             [await chats.to_tl(current_user) for chats in chats],
-            [await channel.to_tl(current_user) for channel in channels],
+            await models.Channel.to_tl_bulk(channels, current_user),
         )

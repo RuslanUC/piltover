@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
@@ -18,6 +19,9 @@ class _PhotoMissing(Enum):
 
 
 _PHOTO_MISSING = _PhotoMissing.PHOTO_MISSING
+
+if TYPE_CHECKING:
+    PhotoOrMissing = models.File | _PhotoMissing | None
 
 
 class ChatBase(Model):
@@ -84,19 +88,40 @@ class ChatBase(Model):
         self.version += 1
         await self.save(update_fields=[*save_fields, "version"])
 
-    async def to_tl_photo(self) -> Photo | PhotoEmpty:
+    @staticmethod
+    def to_tl_photo_internal(photo: models.File | None) -> Photo | PhotoEmpty:
+        if photo is None:
+            return PhotoEmpty(id=0)
+        return photo.to_tl_photo()
+
+    @staticmethod
+    def to_tl_chat_photo_internal(photo: models.File | None) -> ChatPhoto | ChatPhotoEmpty:
+        if photo is None:
+            return ChatPhotoEmpty()
+        return ChatPhoto(
+            has_video=False,
+            photo_id=photo.id,
+            dc_id=2,
+            stripped_thumb=photo.photo_stripped,
+        )
+
+    async def to_tl_photo(self, photo: PhotoOrMissing = _PHOTO_MISSING) -> Photo | PhotoEmpty:
         if not self.photo_id:
             return PhotoEmpty(id=0)
-        self.photo = await self.photo
-        return self.photo.to_tl_photo()
 
-    async def to_tl_chat_photo(self) -> ChatPhoto | ChatPhotoEmpty:
+        if photo is _PHOTO_MISSING:
+            self.photo = photo = await self.photo
+
+        return self.to_tl_photo_internal(photo)
+
+    async def to_tl_chat_photo(self, photo: PhotoOrMissing = _PHOTO_MISSING) -> ChatPhoto | ChatPhotoEmpty:
         if not self.photo_id:
             return ChatPhotoEmpty()
-        self.photo = await self.photo
-        return ChatPhoto(
-            has_video=False, photo_id=self.photo.id, dc_id=2, stripped_thumb=self.photo.photo_stripped,
-        )
+
+        if photo is _PHOTO_MISSING:
+            self.photo = photo = await self.photo
+
+        return self.to_tl_chat_photo_internal(photo)
 
     @staticmethod
     def or_channel(chat_or_channel: ChatBase) -> dict:

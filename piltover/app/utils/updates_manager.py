@@ -57,7 +57,7 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
 
         users_tl = await User.to_tl_bulk(users, peer.owner)
         chats_tl = [await chats.to_tl(peer.owner) for chats in chats]
-        channels_tl = [await channel.to_tl(peer.owner) for channel in channels]
+        channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
 
         # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
 
@@ -183,7 +183,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
 
         users_tl = await User.to_tl_bulk(users, peer.owner)
         chats_tl = [await chats.to_tl(peer.owner) for chats in chats]
-        channels_tl = [await channel.to_tl(peer.owner) for channel in channels]
+        channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
 
         updates = UpdatesWithDefaults(
             updates=updates,
