@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, UTC, timedelta
+from enum import auto, Enum
 from time import time
 
 from tortoise import fields, Model
@@ -19,6 +20,13 @@ LAST_WEEK = UserStatusLastWeek()
 LAST_MONTH = UserStatusLastMonth()
 
 
+class _PresenceMissing(Enum):
+    MISSING = auto()
+
+
+_MISSING = _PresenceMissing.MISSING
+
+
 class Presence(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.OneToOneField("models.User")
@@ -34,7 +42,7 @@ class Presence(Model):
             return UserStatusOnline(expires=int(time() + 30))
 
         if user is not None \
-                and await models.PrivacyRule.has_access_to(user, await self.user, PrivacyRuleKeyType.STATUS_TIMESTAMP):
+                and await models.PrivacyRule.has_access_to(user, self.user_id, PrivacyRuleKeyType.STATUS_TIMESTAMP):
             return UserStatusOffline(was_online=int(self.last_seen.timestamp()))
 
         if delta <= timedelta(days=3):
@@ -47,8 +55,13 @@ class Presence(Model):
         return EMPTY
 
     @classmethod
-    async def to_tl_or_empty(cls, user: models.User, current_user: models.User) -> TLUserStatus:
-        if (presence := await Presence.get_or_none(user=user)) is not None:
+    async def to_tl_or_empty(
+            cls, user: models.User, current_user: models.User, presence: Presence | _PresenceMissing | None = _MISSING,
+    ) -> TLUserStatus:
+        if presence is _MISSING:
+            presence = await Presence.get_or_none(user=user)
+
+        if presence is not None:
             return await presence.to_tl(current_user)
 
         return EMPTY

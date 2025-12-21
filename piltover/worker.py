@@ -202,7 +202,7 @@ class Worker(MessageHandler):
             ))
 
         user = None
-        if handler.auth_required() or (call.user_id is not None and call.auth_id is not None):
+        if handler.auth_required() or handler.has_user_arg:
             try:
                 user = await self.get_user(call, handler.allow_mfa_pending())
             except ErrorRpc as e:
@@ -211,7 +211,7 @@ class Worker(MessageHandler):
                     result=RpcError(error_code=e.error_code, error_message=e.error_message),
                 ))
 
-            if user is None:
+            if user is None and handler.auth_required():
                 return RpcResponse(obj=RpcResult(
                     req_msg_id=call.message_id,
                     result=RpcError(error_code=401, error_message="AUTH_KEY_UNREGISTERED"),
@@ -239,7 +239,6 @@ class Worker(MessageHandler):
             logger.warning(f"Handler for {call.obj} returned None")
             result = RpcError(error_code=500, error_message="Not implemented")
 
-        #logger.trace(f"Returning from worker: {type(result)}, {result}")
         return RpcResponse(
             obj=RpcResult(
                 req_msg_id=call.message_id,

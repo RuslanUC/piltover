@@ -101,7 +101,7 @@ async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice
         PeerBlocked(peer_id=peer.to_tl(), date=int(peer.blocked_at.timestamp()))
         for peer in blocked_peers
     ]
-    users = [await blocked.user.to_tl(user) for blocked in blocked_peers]
+    users = await User.to_tl_bulk([blocked.user for blocked in blocked_peers], user)
 
     if count > (limit + request.offset):
         return BlockedSlice(

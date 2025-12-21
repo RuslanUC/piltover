@@ -188,16 +188,19 @@ async def get_password_settings(request: GetPasswordSettings, user: User) -> Pas
 async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRules:
     rules_ = await PrivacyRule.filter(user=user, key=key)
     rules = []
-    users = []
+    users = {}
     for rule in rules_:
         rules.append(await rule.to_tl())
         if rule.value in {PrivacyRuleValueType.ALLOW_USERS, PrivacyRuleValueType.DISALLOW_USERS}:
-            users.extend([await rule_user.to_tl(user) for rule_user in await rule.users.all()])
+            for rule_user in await rule.users.all():
+                if rule_user.id in users:
+                    continue
+                users[rule_user.id] = rule_user
 
     return PrivacyRules(
         rules=rules,
         chats=[],
-        users=users,
+        users=await User.to_tl_bulk(list(users.values()), user),
     )
 
 

@@ -128,7 +128,7 @@ class UsersChatsChannels:
 
         # TODO: add to_tl_bulk to models.User, models.Chat, models.Channel
         return (
-            [await user.to_tl(current_user) for user in users],
+            await models.User.to_tl_bulk(users, current_user),
             [await chats.to_tl(current_user) for chats in chats],
             [await channel.to_tl(current_user) for channel in channels],
         )

@@ -11,5 +11,6 @@ class UserBackgroundEmojis(Model):
     accent_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="accent_emoji")
     profile_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="profile_emoji")
 
+    user_id: int
     accent_emoji_id: int | None
     profile_emoji_id: int | None

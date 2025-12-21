@@ -55,7 +55,7 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
         if isinstance(peer.owner, QuerySet):
             await peer.fetch_related("owner")
 
-        users_tl = [await user.to_tl(peer.owner) for user in users]
+        users_tl = await User.to_tl_bulk(users, peer.owner)
         chats_tl = [await chats.to_tl(peer.owner) for chats in chats]
         channels_tl = [await channel.to_tl(peer.owner) for channel in channels]
 
@@ -181,7 +181,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
                 pts_count=1,
             ))
 
-        users_tl = [await user.to_tl(peer.owner) for user in users]
+        users_tl = await User.to_tl_bulk(users, peer.owner)
         chats_tl = [await chats.to_tl(peer.owner) for chats in chats]
         channels_tl = [await channel.to_tl(peer.owner) for channel in channels]
 

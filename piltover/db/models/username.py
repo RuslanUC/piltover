@@ -9,3 +9,6 @@ class Username(Model):
     username: str = fields.CharField(max_length=64, unique=True)
     user: models.User | None = fields.OneToOneField("models.User", null=True, default=None)
     channel: models.Channel | None = fields.OneToOneField("models.Channel", null=True, default=None)
+
+    user_id: int | None
+    channel_id: int | None

@@ -1,11 +1,14 @@
 from typing import cast
 
+from tortoise.expressions import Q, Subquery
+
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel, BotInfo
-from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
-from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo
+from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
+    InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage
 from piltover.tl.types.users import UserFull
 from piltover.worker import MessageHandler
 
@@ -81,25 +84,46 @@ async def get_full_user(request: GetFullUser, user: User):
     )
 
 
+_InputUsers = (InputUser, InputPeerUser)
+_InputUsersSelf = (InputUserSelf, InputPeerSelf)
+_InputUsersInclMessage = (*_InputUsers, InputUserFromMessage, InputPeerUserFromMessage)
+
+
 @handler.on_request(GetUsers)
 async def get_users(request: GetUsers, user: User):
-    result = TLObjectVector()
+    ctx = request_ctx.get()
 
-    # TODO: fetch in single query
+    user_ids = set()
+    contact_ids = set()
+
     for peer in request.id:
-        if isinstance(peer, InputUser) and peer.access_hash == 0:
-            contact = await Contact.get_or_none(owner=user, target__id=peer.user_id).select_related("target")
-            if contact is not None:
-                result.append(await contact.target.to_tl(user))
+        if isinstance(peer, _InputUsers) and peer.access_hash == 0:
+            contact_ids.add(peer.user_id)
             continue
 
-        try:
-            out_peer = await Peer.from_input_peer(user, peer)
-            if not out_peer:
-                continue
-            target_user = user if out_peer.type is PeerType.SELF else out_peer.user
-            result.append(await target_user.to_tl(user))
-        except ErrorRpc:
-            ...
+        if isinstance(peer, _InputUsersSelf) \
+                or (isinstance(peer, _InputUsersInclMessage) and peer.user_id == user.id):
+            await Peer.get_or_create(owner=user, user=user, type=PeerType.SELF)
 
-    return result
+        if isinstance(peer, _InputUsersSelf):
+            user_ids.add(user.id)
+            continue
+
+        if isinstance(peer, _InputUsers):
+            if not User.check_access_hash(user.id, ctx.auth_id, peer.user_id, peer.access_hash):
+                continue
+            user_ids.add(peer.user_id)
+
+        # TODO: *FromMessage
+
+    users = await User.filter(
+        Q(id__in=user_ids)
+        | Q(id__in=Subquery(
+            Contact.filter(owner=user, target__id__in=contact_ids).values_list("target_id", flat=True)
+        ))
+    )
+
+    if users:
+        return TLObjectVector(await User.to_tl_bulk(users, user))
+    else:
+        return TLObjectVector()
