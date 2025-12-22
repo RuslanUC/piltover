@@ -34,7 +34,7 @@ handler = MessageHandler("messages.chats")
 @handler.on_request(CreateChat_150, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(CreateChat, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
-    chat = await Chat.create(name=request.title, creator=user)
+    chat = await Chat.create(name=request.title, creator=user, participants_count=0)
     chat_peers = {user.id: await Peer.create(owner=user, chat=chat, type=PeerType.CHAT)}
 
     participants_to_create = [
@@ -42,6 +42,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     ]
 
     missing = []
+    # TODO: do it in one query (instead of calling Peer.from_input_peer every iteration)
     for invited_user in request.users:
         if not isinstance(invited_user, (InputUser, InputUserFromMessage, InputPeerUser)):
             continue
@@ -60,7 +61,11 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
         chat_peers[invited_peer.user.id] = await Peer.create(owner=invited_peer.user, chat=chat, type=PeerType.CHAT)
         participants_to_create.append(ChatParticipant(user=invited_peer.user, chat=chat, inviter_id=user.id))
 
-    await ChatParticipant.bulk_create(participants_to_create)
+    async with in_transaction():
+        # TODO: also create peers in here
+        await ChatParticipant.bulk_create(participants_to_create)
+        chat.participants_count = len(participants_to_create)
+        await chat.save(update_fields=["participants_count"])
 
     updates = await upd.create_chat(user, chat, list(chat_peers.values()))
     updates_msg = await send_message_internal(
@@ -115,8 +120,8 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             participants=ChatParticipants(
                 chat_id=chat.make_id(),
                 participants=[
-                    await participant.to_tl()
-                    for participant in await ChatParticipant.filter(chat=chat).select_related("chat")
+                    await participant.to_tl(chat.creator_id)
+                    for participant in await ChatParticipant.filter(chat=chat)
                 ],
                 version=chat.version,
             ),
@@ -250,11 +255,13 @@ async def add_chat_user(request: AddChatUser, user: User):
         chat_peers[chat_peer.owner.id] = chat_peer
     invited_user = user_peer.peer_user(user)
     if user_peer.peer_user(user).id not in chat_peers:
-        chat_peers[invited_user.id] = await Peer.create(owner=invited_user, chat=chat_peer.chat, type=PeerType.CHAT)
-        await ChatParticipant.create(user=invited_user, chat=chat_peer.chat, inviter_id=user.id)
-        await ChatInviteRequest.filter(id__in=Subquery(
-            ChatInviteRequest.filter(user=invited_user, invite__chat=chat_peer.chat).values_list("id", flat=True)
-        )).delete()
+        async with in_transaction():
+            chat_peers[invited_user.id] = await Peer.create(owner=invited_user, chat=chat_peer.chat, type=PeerType.CHAT)
+            await ChatParticipant.create(user=invited_user, chat=chat_peer.chat, inviter_id=user.id)
+            await ChatInviteRequest.filter(id__in=Subquery(
+                ChatInviteRequest.filter(user=invited_user, invite__chat=chat_peer.chat).values_list("id", flat=True)
+            )).delete()
+            await Chat.filter(id=chat_peer.chat_id).update(participants_count=F("participants_count") + 1)
 
     updates = await upd.create_chat(user, chat_peer.chat, list(chat_peers.values()))
 
@@ -305,6 +312,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
         extra_info=MessageActionChatDeleteUser(user_id=user_peer.peer_user(user).id).write(),
     )
     await ChatParticipant.filter(chat=chat_peer.chat, user=user_peer.user).delete()
+    await Chat.filter(id=chat_peer.chat_id).update(participants_count=F("participants_count") - 1)
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
 

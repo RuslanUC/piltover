@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from tortoise import fields
-from tortoise.functions import Count
 
 from piltover.db import models
 from piltover.db.enums import PeerType
@@ -29,8 +28,9 @@ DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
 
 
 class Chat(ChatBase):
-    # TODO: store participants count in model field
     migrated: bool = fields.BooleanField(default=False)
+    # TODO: maybe sync this value once in a while
+    participants_count: int = fields.SmallIntField()
 
     def make_id(self) -> int:
         return self.make_id_from(self.id)
@@ -40,7 +40,7 @@ class Chat(ChatBase):
         return in_id * 2
 
     def _to_tl(
-            self, user_id: int, participant: models.ChatParticipant, participants_count: int, photo: models.File | None,
+            self, user_id: int, participant: models.ChatParticipant, photo: models.File | None,
             migrated_to: InputChannel | None,
     ) -> TLChat:
         return TLChat(
@@ -53,7 +53,7 @@ class Chat(ChatBase):
             id=self.make_id(),
             title=self.name,
             photo=self.to_tl_chat_photo_internal(photo),
-            participants_count=participants_count,
+            participants_count=self.participants_count,
             date=int(self.created_at.timestamp()),
             version=self.version,
             migrated_to=migrated_to,
@@ -74,9 +74,7 @@ class Chat(ChatBase):
         if self.photo is not None:
             self.photo = await self.photo
 
-        return self._to_tl(
-            user.id, participant, await models.ChatParticipant.filter(chat=self).count(), self.photo, migrated_to,
-        )
+        return self._to_tl(user.id, participant, self.photo, migrated_to)
 
     @classmethod
     async def to_tl_bulk(cls, chats: list[models.Chat], user: models.User) -> list[TLChat | ChatForbidden]:
@@ -108,13 +106,6 @@ class Chat(ChatBase):
             if chat.photo_id is not None and isinstance(chat.photo, models.File):
                 photos[chat.id] = chat.photo
 
-        participant_counts = {
-            chat_id: count
-            for chat_id, count in await models.ChatParticipant.filter(
-                chat__id__in=chat_ids,
-            ).group_by("chat__id").annotate(participants=Count("id")).values_list("chat__id", "participants")
-        }
-
         tl = []
         for chat in chats:
             participant = participants.get(chat.id)
@@ -126,9 +117,7 @@ class Chat(ChatBase):
             if chat.migrated and chat.id in migrated_tos:
                 migrated_to = InputChannel(channel_id=migrated_tos[chat.id].make_id(), access_hash=-1)
 
-            tl.append(chat._to_tl(
-                user.id, participant, participant_counts[chat.id], photos.get(chat.id), migrated_to,
-            ))
+            tl.append(chat._to_tl(user.id, participant, photos.get(chat.id), migrated_to))
 
         return tl
 

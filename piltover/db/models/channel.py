@@ -8,13 +8,13 @@ from tortoise import fields
 
 from piltover.app_config import AppConfig
 from piltover.db import models
-from piltover.db.enums import PeerType
+from piltover.db.enums import PeerType, ChatAdminRights
 from piltover.db.models import ChatBase
 from piltover.tl import ChannelForbidden, Channel as TLChannel, Long
-from piltover.tl.types import ChatAdminRights, PeerColor
+from piltover.tl.types import ChatAdminRights as TLChatAdminRights, PeerColor
 from piltover.tl.types.internal_access import AccessHashPayloadChannel
 
-CREATOR_RIGHTS = ChatAdminRights(
+CREATOR_RIGHTS = TLChatAdminRights(
     change_info=True,
     post_messages=True,
     edit_messages=True,
@@ -76,8 +76,17 @@ class Channel(ChatBase):
 
     def _to_tl(
             self, user_id: int, participant: models.ChatParticipant | None, photo: models.File | None,
-            username: str | None, admin_rights: ChatAdminRights,
+            username: str | None,
     ) -> TLChannel:
+        admin_rights = None
+        if self.creator_id == user_id:
+            admin_rights = CREATOR_RIGHTS
+            if participant is not None \
+                    and participant.admin_rights & ChatAdminRights.ANONYMOUS == ChatAdminRights.ANONYMOUS:
+                admin_rights.anonymous = True
+        elif participant is not None and participant.is_admin:
+            admin_rights = participant.admin_rights.to_tl()
+
         return TLChannel(
             id=self.make_id(),
             title=self.name,
@@ -137,17 +146,11 @@ class Channel(ChatBase):
                 title=self.name,
             )
 
-        admin_rights = None
-        if self.creator_id == user_id:
-            admin_rights = CREATOR_RIGHTS
-        elif participant is not None and participant.is_admin:
-            admin_rights = participant.admin_rights.to_tl()
-
         username = await self.get_username()
         if self.photo is not None:
             self.photo = await self.photo
 
-        return self._to_tl(user_id, participant, self.photo, username.username if username else None, admin_rights)
+        return self._to_tl(user_id, participant, self.photo, username.username if username else None)
 
     @classmethod
     async def to_tl_bulk(
@@ -206,15 +209,7 @@ class Channel(ChatBase):
                 ))
                 continue
 
-            admin_rights = None
-            if channel.creator_id == user.id:
-                admin_rights = CREATOR_RIGHTS
-            elif participant is not None and participant.is_admin:
-                admin_rights = participant.admin_rights.to_tl()
-
-            tl.append(channel._to_tl(
-                user.id, participant, photos.get(channel.id), usernames.get(channel.id), admin_rights,
-            ))
+            tl.append(channel._to_tl(user.id, participant, photos.get(channel.id), usernames.get(channel.id)))
 
         return tl
 

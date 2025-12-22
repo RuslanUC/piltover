@@ -55,18 +55,22 @@ class ChatParticipant(Model):
     def is_admin(self) -> bool:
         return cast(int, self.admin_rights.value) > 0
 
-    async def to_tl(self) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:
-        self.chat = await self.chat
+    async def to_tl(
+            self, chat_creator_id: int | None = None
+    ) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:
+        if chat_creator_id is None:
+            self.chat = await self.chat
+            chat_creator_id = self.chat.creator_id
 
-        if self.user_id == self.chat.creator_id:
+        if self.user_id == chat_creator_id:
             return ChatParticipantCreator(user_id=self.user_id)
         elif self.is_admin:
             return ChatParticipantAdmin(
-                user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp())
+                user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp()),
             )
 
         return TLChatParticipant(
-            user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp())
+            user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp()),
         )
 
     async def to_tl_channel(self, user: models.User) -> ChannelParticipants:
