@@ -54,6 +54,7 @@ class Channel(ChatBase):
     min_available_id: int | None = fields.BigIntField(null=True, default=None)
     migrated_from: models.Chat | None = fields.OneToOneField("models.Chat", null=True, default=None)
     join_to_send: bool = fields.BooleanField(default=False)
+    join_request: bool = fields.BooleanField(default=False)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -110,7 +111,7 @@ class Channel(ChatBase):
             gigagroup=False,
             noforwards=self.no_forwards,
             join_to_send=self.supergroup and self.join_to_send,
-            join_request=False,
+            join_request=self.join_request,
             forum=False,
             stories_hidden=False,
             stories_hidden_min=True,

@@ -31,7 +31,7 @@ from piltover.tl.functions.channels import GetChannelRecommendations, GetAdmined
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
-    TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog
+    TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -1037,3 +1037,24 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
         chats=[await channel.to_tl(user)],
     )
 
+
+@handler.on_request(ToggleJoinRequest, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def toggle_join_request(request: ToggleJoinRequest, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+    )
+
+    channel = peer.channel
+
+    if channel.join_request == request.enabled:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    channel.join_request = request.enabled
+    channel.version += 1
+    await channel.save(update_fields=["join_to_send", "version"])
+
+    return await upd.update_channel(channel, user)

@@ -84,7 +84,7 @@ async def export_chat_invite(request: ExportChatInvite, user: User) -> ChatInvit
         ).update(revoked=True)
 
     request_new = isinstance(request, (ExportChatInvite_134, ExportChatInvite))
-    request_needed = request.request_needed if request_new else True
+    request_needed = request.request_needed if request_new else False
     title = request.title if request_new else None
     expires_at = None if request.expire_date is None else datetime.fromtimestamp(request.expire_date, UTC)
 
@@ -316,7 +316,7 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     invite = await _get_invite_with_some_checks(request.hash)
     if await ChatParticipant.filter(Chat.query(invite.chat_or_channel) & Q(user=user)).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
-    if invite.request_needed:
+    if invite.request_needed or isinstance(invite.chat_or_channel, Channel) and invite.channel.join_request:
         # TODO: check for requests for current invite or all invites?
         query = Chat.query(invite.chat_or_channel, "invite") & Q(user=user)
         if not await ChatInviteRequest.filter(query).exists():
@@ -338,7 +338,7 @@ async def check_chat_invite(request: CheckChatInvite, user: User) -> TLChatInvit
         channel=isinstance(invite.chat_or_channel, Channel),
         broadcast=not channel.supergroup if channel is not None else False,
         megagroup=channel.supergroup if channel is not None else False,
-        request_needed=invite.request_needed,
+        request_needed=invite.request_needed or channel is not None and channel.join_request,
         title=invite.chat_or_channel.name,
         about=invite.chat_or_channel.description,
         photo=await invite.chat_or_channel.to_tl_photo(),
