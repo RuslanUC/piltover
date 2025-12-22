@@ -53,12 +53,15 @@ class Channel(ChatBase):
     hidden_prehistory: bool = fields.BooleanField(default=False)
     min_available_id: int | None = fields.BigIntField(null=True, default=None)
     migrated_from: models.Chat | None = fields.OneToOneField("models.Chat", null=True, default=None)
-    join_to_send: bool = fields.BooleanField(default=False)
+    join_to_send: bool = fields.BooleanField(default=True)
     join_request: bool = fields.BooleanField(default=False)
+    discussion: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
+    is_discussion: bool = fields.BooleanField(default=False)
 
     accent_color_id: int | None
     profile_color_id: int | None
     migrated_from_id: int | None
+    discussion_id: int | None
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
 
@@ -102,7 +105,7 @@ class Channel(ChatBase):
             signatures=self.signatures,
             min=False,
             scam=False,
-            has_link=False,
+            has_link=self.discussion_id is not None or self.is_discussion,
             has_geo=False,
             slowmode_enabled=False,
             call_active=False,

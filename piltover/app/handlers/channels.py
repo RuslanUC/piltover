@@ -2,6 +2,7 @@ from time import time
 from typing import cast
 
 from tortoise.expressions import Q, Subquery
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
@@ -31,7 +32,8 @@ from piltover.tl.functions.channels import GetChannelRecommendations, GetAdmined
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
-    TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest
+    TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
+    GetGroupsForDiscussion, SetDiscussionGroup
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -277,6 +279,8 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             available_min_id=min_message_id,
             migrated_from_chat_id=Chat.make_id_from(migrated_from_chat_id) if migrated_from_chat_id else None,
             migrated_from_max_id=migrated_from_max_id,
+            # TODO: linked_chat_id
+            # linked_chat_id=...,
         ),
         chats=[await channel.to_tl(user)],
         users=[await user.to_tl(user)],
@@ -894,6 +898,10 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user: User)
 
     channel = peer.channel
 
+    if channel.is_discussion:
+        # TODO: is this a correct error message?
+        raise ErrorRpc(error_code=400, error_message="CHAT_LINK_EXISTS")
+
     if channel.hidden_prehistory == request.enabled:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
@@ -926,6 +934,11 @@ async def toggle_join_to_send(request: ToggleJoinToSend, user: User) -> Updates:
     )
 
     channel = peer.channel
+    if not request.enabled and not channel.is_discussion:
+        # As per https://core.telegram.org/constructor/channel,
+        # "Whether a user needs to join the supergroup before they can send messages:
+        # can be false only for discussion groups"
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
     if channel.join_to_send == request.enabled:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
@@ -1058,3 +1071,56 @@ async def toggle_join_request(request: ToggleJoinRequest, user: User) -> Updates
     await channel.save(update_fields=["join_to_send", "version"])
 
     return await upd.update_channel(channel, user)
+
+
+@handler.on_request(GetGroupsForDiscussion, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_groups_for_discussion(user: User) -> Chats:
+    chats = await Chat.filter(creator=user, migrated=False).order_by("-id")
+    channels = await Channel.filter(creator=user, supergroup=True).order_by("-id")
+
+    return Chats(
+        chats=[
+            *await Channel.to_tl_bulk(channels, user),
+            *await Chat.to_tl_bulk(chats, user),
+        ],
+    )
+
+
+@handler.on_request(SetDiscussionGroup)
+async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
+    channel_peer = await Peer.from_input_peer_raise(
+        user, request.broadcast, message="BROADCAST_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
+    )
+    channel = channel_peer.channel
+    if channel.creator_id != user.id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    group_peer = await Peer.from_input_peer_raise(
+        user, request.group, message="MEGAGROUP_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
+    )
+    group = group_peer.channel
+    if group.creator_id != user.id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    if not group.supergroup or group.is_discussion:
+        raise ErrorRpc(error_code=400, error_message="MEGAGROUP_ID_INVALID")
+    if group.hidden_prehistory:
+        raise ErrorRpc(error_code=400, error_message="MEGAGROUP_PREHISTORY_HIDDEN")
+
+    if group.id == channel.discussion_id:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+
+    channel.discussion = group
+    group.is_discussion = True
+    channel.version += 1
+    group.version += 1
+
+    async with in_transaction():
+        await channel.save(update_fields=["discussion_id", "version"])
+        await group.save(update_fields=["is_discussion", "version"])
+
+    await upd.update_channel(channel, user)
+    await upd.update_channel(group, user)
+
+    return True
+

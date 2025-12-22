@@ -16,7 +16,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [x] Channels
 - [ ] Supergroups
 - [x] Scheduled messages
-- [ ] Bots
+- [x] Bots
 - [x] Dialog filters (folders)
 - [x] Secret chats (https://core.telegram.org/api/end-to-end)
 - [ ] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
@@ -25,9 +25,11 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [x] Make `access_hash`es completely offline (e.g. `hmac(current_user_id + current_session_id + target_user_id)`)
 - [ ] InstallTheme_133, InstallTheme
 - [x] InstallWallPaper
-- [ ] Rewrite related users/chats/channels collection code, cache (or write to database) related ids
+- [x] Rewrite related users/chats/channels collection code, cache (or write to database) related ids
 - [ ] Channel admin log
 - [ ] [Min constructors](https://core.telegram.org/api/min)
+- [ ] Channel discussions
+- [ ] [WebK](https://github.com/morethanwords/tweb) hangs on some requests (such as GetDialogs), probably seqno or message_id fields are wrong in our mtproto implementation
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
@@ -36,7 +38,7 @@ There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpi
 This project is currently not meant to be used to host custom Telegram
 instances, as most **security measures are <u>currently</u> barely in place**.
 For now, it can be used by MTProto clients developers to understand why their
-code fails, whereas Telegram just closes the connection with a -404 error code.
+code fails.
 
 That being said, it is planned in future to make it usable for most basic
 Telegram features, including but not limited to, sending and receiving text and
@@ -46,7 +48,7 @@ This can be really useful for bots developers that would like to have a testing
 sandbox that doesn't ratelimit their bots.
 
 Right now, project **may** (although not recommended) be used for basic features like messages/media sending.
-More complex features such as group chats, profile photos, etc. may work with errors.
+More complex features such as channels, supergroups, bots, etc. may work with errors.
 **Keep in mind that privacy settings may work incorrectly so any user can be texted by anyone, added to any group by anyone, etc.**
 
 ## Setup
