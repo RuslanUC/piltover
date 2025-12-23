@@ -188,20 +188,20 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
 @handler.on_request(GetFullChannel)
 async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatFull:
     peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
+        select_related=("channel__discussion", "channel__photo",),
     )
 
     channel = peer.channel
 
     photo = PhotoEmpty(id=0)
     if channel.photo_id:
-        channel.photo = await channel.photo
         photo = channel.photo.to_tl_photo()
 
     invite = None
     participant = await ChatParticipant.get_or_none(channel=channel, user=user)
     if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
-        invite = await ChatInvite.get_or_create_permanent(user, peer.channel)
+        invite = await ChatInvite.get_or_create_permanent(user, channel)
 
     in_read_max_id, out_read_max_id, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(
         peer, True, True,
@@ -239,6 +239,19 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             and (chat_peer := await Peer.get_or_none(owner=user, chat__id=channel.migrated_from_id)) is not None:
         migrated_from_chat_id = channel.migrated_from_id
         migrated_from_max_id = await Message.filter(peer=chat_peer).order_by("-id").first().values_list("id", flat=True)
+
+    channels_to_tl = [channel]
+
+    linked_chat = None
+    if channel.discussion_id:
+        linked_chat = channel.discussion
+    elif channel.is_discussion:
+        linked_chat = await Channel.get_or_none(discussion=channel).select_related("photo")
+
+    if linked_chat is not None:
+        channels_to_tl.append(linked_chat)
+
+    # TODO: probably should create peer for linked chat
 
     return MessagesChatFull(
         full_chat=ChannelFull(
@@ -279,10 +292,9 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             available_min_id=min_message_id,
             migrated_from_chat_id=Chat.make_id_from(migrated_from_chat_id) if migrated_from_chat_id else None,
             migrated_from_max_id=migrated_from_max_id,
-            # TODO: linked_chat_id
-            # linked_chat_id=...,
+            linked_chat_id=linked_chat.id if linked_chat else None,
         ),
-        chats=[await channel.to_tl(user)],
+        chats=await Channel.to_tl_bulk(channels_to_tl, user),
         users=[await user.to_tl(user)],
     )
 
@@ -793,6 +805,7 @@ async def delete_channel(request: DeleteChannel, user: User) -> Updates:
 
     await UserPersonalChannel.filter(channel=channel).delete()
     # TODO: delete channel peers, dialogs, participants and messages lazily or in background
+    # TODO: unlink linked channel (if either discussion_id or is_discussion is set)
 
     return await upd.update_channel(channel, user)
 
@@ -826,6 +839,7 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
     # TODO: do this in transaction
+    # TODO: unlink linked channel (if either discussion_id or is_discussion is set) >
 
     channel.creator = target_peer.user
     await channel.save(update_fields=["creator_id"])

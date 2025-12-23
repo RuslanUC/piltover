@@ -156,6 +156,7 @@ class Channel(ChatBase):
 
         return self._to_tl(user_id, participant, self.photo, username.username if username else None)
 
+    # TODO: check if to_tl_bulk for one channel is slower than regular to_tl
     @classmethod
     async def to_tl_bulk(
             cls, channels: list[models.Channel], user: models.User
