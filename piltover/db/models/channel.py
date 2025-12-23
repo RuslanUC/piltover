@@ -132,6 +132,8 @@ class Channel(ChatBase):
         )
 
     async def to_tl(self, user: models.User | int) -> TLChannel | ChannelForbidden:
+        # TODO: replace method body with `await Channel.to_tl_bulk([self], user)` maybe?
+
         user_id = user.id if isinstance(user, models.User) else user
 
         peer_exists = await models.Peer.filter(owner__id=user_id, channel=self, type=PeerType.CHANNEL).exists()

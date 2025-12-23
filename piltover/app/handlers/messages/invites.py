@@ -4,13 +4,14 @@ from typing import cast
 from urllib.parse import urlparse
 
 from tortoise.expressions import Q, Subquery
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app_config import AppConfig
-from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights
+from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights, AdminLogEntryAction
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel, \
-    Dialog, Message
+    Dialog, Message, AdminLogEntry
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -261,24 +262,31 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         else:
             min_message_id = chat_or_channel.min_available_id
 
-    new_peer, _ = await Peer.get_or_create(
-        owner=user, type=PeerType.CHAT if isinstance(chat_or_channel, Chat) else PeerType.CHANNEL,
-        **Chat.or_channel(chat_or_channel),
-    )
-    await ChatParticipant.create(
-        user=user,
-        inviter_id=from_invite.user_id if from_invite is not None else 0,
-        invite=from_invite,
-        min_message_id=min_message_id,
-        **Chat.or_channel(chat_or_channel),
-    )
-    await ChatInviteRequest.filter(id__in=Subquery(
-        ChatInviteRequest.filter(
-            Chat.query(chat_or_channel, "invite") & Q(user=user)
-        ).values_list("id", flat=True)
-    )).delete()
-
-    await Dialog.create_or_unhide(new_peer)
+    async with in_transaction():
+        new_peer, _ = await Peer.get_or_create(
+            owner=user, type=PeerType.CHAT if isinstance(chat_or_channel, Chat) else PeerType.CHANNEL,
+            **Chat.or_channel(chat_or_channel),
+        )
+        await ChatParticipant.create(
+            user=user,
+            inviter_id=from_invite.user_id if from_invite is not None else 0,
+            invite=from_invite,
+            min_message_id=min_message_id,
+            **Chat.or_channel(chat_or_channel),
+        )
+        await ChatInviteRequest.filter(id__in=Subquery(
+            ChatInviteRequest.filter(
+                Chat.query(chat_or_channel, "invite") & Q(user=user)
+            ).values_list("id", flat=True)
+        )).delete()
+        await Dialog.create_or_unhide(new_peer)
+        if isinstance(chat_or_channel, Channel):
+            await AdminLogEntry.create(
+                channel=chat_or_channel,
+                user=user,
+                # TODO: PARTICIPANT_JOIN_INVITE / PARTICIPANT_JOIN_REQUEST
+                action=AdminLogEntryAction.PARTICIPANT_JOIN,
+            )
 
     if isinstance(chat_or_channel, Channel):
         channel = cast(Channel, chat_or_channel)

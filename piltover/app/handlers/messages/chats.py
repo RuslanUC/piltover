@@ -374,6 +374,14 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
     chat_or_channel.version += 1
     await chat_or_channel.save(update_fields=["no_forwards", "version"])
 
+    if peer.type is PeerType.CHANNEL:
+        await AdminLogEntry.create(
+            channel=peer.channel,
+            user=user,
+            action=AdminLogEntryAction.TOGGLE_NOFORWARDS,
+            new=b"\x01" if request.enabled else b"\x00",
+        )
+
     if peer.type is PeerType.CHAT:
         return await upd.update_chat(peer.chat, user)
     else:
@@ -397,6 +405,7 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
     chat_or_channel.banned_rights = new_banned_rights
     chat_or_channel.version += 1
     await chat_or_channel.save(update_fields=["banned_rights", "version"])
+    # TODO: create AdminLogEntry
 
     if isinstance(chat_or_channel, Chat):
         return await upd.update_chat_default_banned_rights(chat_or_channel, user)

@@ -438,6 +438,7 @@ async def edit_banned(request: EditBanned, user: User):
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
     # TODO: check if target_participant is not admin
+    # TODO: create AdminLogEntry
 
     new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
     if target_participant.banned_rights == new_banned_rights:
@@ -500,6 +501,7 @@ async def edit_admin(request: EditAdmin, user: User):
         update_fields.append("promoted_by_id")
 
     await target_participant.save(update_fields=update_fields)
+    # TODO: create AdminLogEntry
 
     await upd.update_channel_for_user(channel, target_peer.peer_user(user))
     return Updates(
@@ -699,7 +701,6 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
         channel=peer.channel,
         user=user,
         action=AdminLogEntryAction.TOGGLE_SIGNATURES,
-        prev=None,
         new=b"\x01" if request.signatures_enabled else b"\x00",
     )
 
@@ -878,14 +879,20 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
     if participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
-    await participant.delete()
-    await ChatInvite.filter(channel=peer.channel, user=user).update(revoked=True)
-    await Dialog.hide(peer)
-    await Message.filter(id__in=Subquery(
-        Message.filter(
-            peer__channel=peer.channel, peer__owner=user, type=MessageType.SCHEDULED,
-        ).values_list("id", flat=True)
-    )).delete()
+    async with in_transaction():
+        await participant.delete()
+        await ChatInvite.filter(channel=peer.channel, user=user).update(revoked=True)
+        await Dialog.hide(peer)
+        await Message.filter(id__in=Subquery(
+            Message.filter(
+                peer__channel=peer.channel, peer__owner=user, type=MessageType.SCHEDULED,
+            ).values_list("id", flat=True)
+        )).delete()
+        await AdminLogEntry.create(
+            channel=peer.channel,
+            user=user,
+            action=AdminLogEntryAction.PARTICIPANT_LEAVE,
+        )
 
     return await upd.update_channel_for_user(peer.channel, user)
 
@@ -936,6 +943,12 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user: User)
     channel.hidden_prehistory = request.enabled
     channel.version += 1
     await channel.save(update_fields=["hidden_prehistory", "min_available_id", "version"])
+    await AdminLogEntry.create(
+        channel=channel,
+        user=user,
+        action=AdminLogEntryAction.PREHISTORY_HIDDEN,
+        new=b"\x01" if request.enabled else b"\x00"
+    )
 
     return await upd.update_channel(channel, user)
 
@@ -1015,7 +1028,17 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
         if request.events_filter.info:
             actions_q |= Q(action=AdminLogEntryAction.CHANGE_TITLE) \
                          | Q(action=AdminLogEntryAction.CHANGE_ABOUT) \
-                         | Q(action=AdminLogEntryAction.CHANGE_USERNAME)
+                         | Q(action=AdminLogEntryAction.CHANGE_USERNAME) \
+                         | Q(action=AdminLogEntryAction.CHANGE_PHOTO)
+        if request.events_filter.join:
+            actions_q |= Q(action=AdminLogEntryAction.PARTICIPANT_JOIN)
+        if request.events_filter.leave:
+            actions_q |= Q(action=AdminLogEntryAction.PARTICIPANT_LEAVE)
+        if request.events_filter.settings:
+            actions_q |= Q(action=AdminLogEntryAction.TOGGLE_SIGNATURES) \
+                         | Q(action=AdminLogEntryAction.TOGGLE_NOFORWARDS) \
+                         | Q(action=AdminLogEntryAction.DEFAULT_BANNED_RIGHTS) \
+                         | Q(action=AdminLogEntryAction.PREHISTORY_HIDDEN)
 
         if not actions_q.filters and not actions_q.children:
             return AdminLogResults(events=[], users=[], chats=[])

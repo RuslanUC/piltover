@@ -5,10 +5,13 @@ from datetime import datetime
 from tortoise import Model, fields
 
 from piltover.db import models
-from piltover.db.enums import AdminLogEntryAction
+from piltover.db.enums import AdminLogEntryAction, ChatBannedRights
+from piltover.db.models._utils import IntFlagField
 from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEventActionChangeAbout, \
     ChannelAdminLogEventActionChangeUsername, ChannelAdminLogEventActionToggleSignatures, \
-    ChannelAdminLogEventActionChangePhoto, PhotoEmpty
+    ChannelAdminLogEventActionChangePhoto, PhotoEmpty, ChannelAdminLogEventActionParticipantJoin, \
+    ChannelAdminLogEventActionParticipantLeave, ChannelAdminLogEventActionToggleNoForwards, \
+    ChannelAdminLogEventActionDefaultBannedRights, ChannelAdminLogEventActionTogglePreHistoryHidden
 from piltover.tl.base import ChannelAdminLogEvent
 
 
@@ -21,9 +24,11 @@ class AdminLogEntry(Model):
 
     prev: bytes = fields.BinaryField(null=True, default=None)
     old_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="old_photo")
+    old_banned_rights: ChatBannedRights | None = IntFlagField(ChatBannedRights, null=True, default=None)
 
     new: bytes = fields.BinaryField(null=True, default=None)
     new_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="new_photo")
+    new_banned_rights: ChatBannedRights | None = IntFlagField(ChatBannedRights, null=True, default=None)
 
     user_id: int
     channel_id: int
@@ -55,6 +60,23 @@ class AdminLogEntry(Model):
             action = ChannelAdminLogEventActionChangePhoto(
                 prev_photo=self.old_photo.to_tl_photo() if self.old_photo_id else PhotoEmpty(id=0),
                 new_photo=self.new_photo.to_tl_photo() if self.new_photo_id else PhotoEmpty(id=0),
+            )
+        elif self.action is AdminLogEntryAction.PARTICIPANT_JOIN:
+            action = ChannelAdminLogEventActionParticipantJoin()
+        elif self.action is AdminLogEntryAction.PARTICIPANT_LEAVE:
+            action = ChannelAdminLogEventActionParticipantLeave()
+        elif self.action is AdminLogEntryAction.TOGGLE_NOFORWARDS:
+            action = ChannelAdminLogEventActionToggleNoForwards(
+                new_value=self.new == b"\x01",
+            )
+        elif self.action is AdminLogEntryAction.DEFAULT_BANNED_RIGHTS:
+            action = ChannelAdminLogEventActionDefaultBannedRights(
+                prev_banned_rights=self.old_banned_rights.to_tl(),
+                new_banned_rights=self.new_banned_rights.to_tl(),
+            )
+        elif self.action is AdminLogEntryAction.PREHISTORY_HIDDEN:
+            action = ChannelAdminLogEventActionTogglePreHistoryHidden(
+                new_value=self.new == b"\x01",
             )
 
         if action is None:

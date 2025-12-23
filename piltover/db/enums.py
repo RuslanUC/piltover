@@ -361,29 +361,24 @@ class AdminLogEntryAction(IntEnum):
     #  MESSAGE_EDIT
     #  MESSAGE_DELETE
     #  MESSAGE_SEND
-    #  PARTICIPANT_JOIN
     #  PARTICIPANT_JOIN_INVITE
     #  PARTICIPANT_JOIN_REQUEST
-    #  PARTICIPANT_LEAVE
     #  PARTICIPANT_BAN
     #  PARTICIPANT_PROMOTE
-    #  PREHISTORY_HIDDEN
-    #  DEFAULT_BANNED_RIGHTS
     #  STOP_POLL
     #  INVITE_DELETE
     #  INVITE_REVOKE
     #  INVITE_EDIT
     #  EDIT_HISTORY_TTL
-    #  TOGGLE_NOFORWARDS
     #  EDIT_AVAILABLE_REACTIONS
     #  EDIT_PEER_COLOR
     #  EDIT_PEER_COLOR_PROFILE
     #  EDIT_WALLPAPER
+    #  LINKED_CHAT
     # NOTE: following actions are ignored and probably wont be implemented for now:
     #  ...ToggleInvites#1b7907ae
     #  ...ParticipantInvite#e31c34d8
     #  ...ChangeStickerSet#b1c3caa7
-    #  ...ChangeLinkedChat#50c7ac8
     #  ...ChangeLocation#e6b76ae
     #  ...ToggleSlowMode#53909779
     #  ...StartGroupCall#23209745
@@ -407,3 +402,8 @@ class AdminLogEntryAction(IntEnum):
     CHANGE_USERNAME = 2
     TOGGLE_SIGNATURES = 3
     CHANGE_PHOTO = 4
+    PARTICIPANT_JOIN = 5
+    PARTICIPANT_LEAVE = 6
+    TOGGLE_NOFORWARDS = 7
+    DEFAULT_BANNED_RIGHTS = 8
+    PREHISTORY_HIDDEN = 9
