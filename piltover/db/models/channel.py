@@ -44,8 +44,8 @@ class Channel(ChatBase):
     supergroup: bool = fields.BooleanField(default=False)
     pts: int = fields.BigIntField(default=1)
     signatures: bool = fields.BooleanField(default=False)
-    accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_accent")
-    profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_profile")
+    accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_accent", on_delete=fields.SET_NULL)
+    profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_profile", on_delete=fields.SET_NULL)
     all_reactions: bool = fields.BooleanField(default=True)
     all_reactions_custom: bool = fields.BooleanField(default=False)
     deleted: bool = fields.BooleanField(default=False)
@@ -57,11 +57,15 @@ class Channel(ChatBase):
     join_request: bool = fields.BooleanField(default=False)
     discussion: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
     is_discussion: bool = fields.BooleanField(default=False)
+    accent_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="channel_accent_emoji", on_delete=fields.SET_NULL)
+    profile_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="channel_profile_emoji", on_delete=fields.SET_NULL)
 
     accent_color_id: int | None
     profile_color_id: int | None
     migrated_from_id: int | None
     discussion_id: int | None
+    accent_emoji_id: int | None
+    profile_emoji_id: int | None
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
 
@@ -90,6 +94,13 @@ class Channel(ChatBase):
                 admin_rights.anonymous = True
         elif participant is not None and participant.is_admin:
             admin_rights = participant.admin_rights.to_tl()
+
+        accent_color = None
+        profile_color = None
+        if self.accent_color_id is not None or self.accent_emoji_id is not None:
+            accent_color = PeerColor(color=self.accent_color_id, background_emoji_id=self.accent_emoji_id)
+        if self.profile_color_id is not None or self.profile_emoji_id is not None:
+            profile_color = PeerColor(color=self.profile_color_id, background_emoji_id=self.profile_emoji_id)
 
         return TLChannel(
             id=self.make_id(),
@@ -126,8 +137,8 @@ class Channel(ChatBase):
             usernames=[],
             default_banned_rights=self.banned_rights.to_tl() if participant is not None else None,
             banned_rights=participant.banned_rights.to_tl() if participant is not None else None,
-            color=PeerColor(color=self.accent_color_id) if self.accent_color_id is not None else None,
-            profile_color=PeerColor(color=self.profile_color_id) if self.profile_color_id is not None else None,
+            color=accent_color,
+            profile_color=profile_color,
             # NOTE: participants_count is not included here since it is present in ChannelFull
         )
 

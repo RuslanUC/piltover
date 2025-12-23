@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from io import BytesIO
 
 from tortoise import Model, fields
 
@@ -11,8 +12,10 @@ from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEv
     ChannelAdminLogEventActionChangeUsername, ChannelAdminLogEventActionToggleSignatures, \
     ChannelAdminLogEventActionChangePhoto, PhotoEmpty, ChannelAdminLogEventActionParticipantJoin, \
     ChannelAdminLogEventActionParticipantLeave, ChannelAdminLogEventActionToggleNoForwards, \
-    ChannelAdminLogEventActionDefaultBannedRights, ChannelAdminLogEventActionTogglePreHistoryHidden
+    ChannelAdminLogEventActionDefaultBannedRights, ChannelAdminLogEventActionTogglePreHistoryHidden, PeerColor, \
+    ChannelAdminLogEventActionChangePeerColor, ChannelAdminLogEventActionChangeProfilePeerColor
 from piltover.tl.base import ChannelAdminLogEvent
+from piltover.utils.users_chats_channels import UsersChatsChannels
 
 
 class AdminLogEntry(Model):
@@ -35,7 +38,7 @@ class AdminLogEntry(Model):
     old_photo_id: int | None
     new_photo_id: int | None
 
-    def to_tl(self) -> ChannelAdminLogEvent | None:
+    def to_tl(self, ucc: UsersChatsChannels) -> ChannelAdminLogEvent | None:
         action = None
         if self.action is AdminLogEntryAction.CHANGE_TITLE:
             action = ChannelAdminLogEventActionChangeTitle(
@@ -78,9 +81,21 @@ class AdminLogEntry(Model):
             action = ChannelAdminLogEventActionTogglePreHistoryHidden(
                 new_value=self.new == b"\x01",
             )
+        elif self.action is AdminLogEntryAction.EDIT_PEER_COLOR:
+            action = ChannelAdminLogEventActionChangePeerColor(
+                prev_value=PeerColor.deserialize(BytesIO(self.prev)),
+                new_value=PeerColor.deserialize(BytesIO(self.new)),
+            )
+        elif self.action is AdminLogEntryAction.EDIT_PEER_COLOR_PROFILE:
+            action = ChannelAdminLogEventActionChangeProfilePeerColor(
+                prev_value=PeerColor.deserialize(BytesIO(self.prev)),
+                new_value=PeerColor.deserialize(BytesIO(self.new)),
+            )
 
         if action is None:
             return None
+
+        ucc.add_user(self.user_id)
 
         return ChannelAdminLogEvent(
             id=self.id,

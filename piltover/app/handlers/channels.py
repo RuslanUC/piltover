@@ -15,7 +15,8 @@ from piltover.context import request_ctx
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType, \
     AdminLogEntryAction
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
-    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, Chat
+    ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
+    Chat, PeerColorOption, File
 from piltover.db.models.admin_log_entry import AdminLogEntry
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
@@ -27,17 +28,18 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
-    InputUserFromMessage
+    InputUserFromMessage, PeerColor
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
-    GetGroupsForDiscussion, SetDiscussionGroup
+    GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("channels")
@@ -1068,22 +1070,21 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
     limit = max(1, min(100, request.limit))
 
     events = []
-    users = {}
+    ucc = UsersChatsChannels()
 
     for event in await AdminLogEntry.filter(events_q).limit(limit).select_related(
             "user", "old_photo", "new_photo",
     ):
-        event_tl = event.to_tl()
-        if event_tl is None:
+        if (event_tl := event.to_tl(ucc)) is None:
             continue
         events.append(event_tl)
-        if event.user_id not in users:
-            users[event.user_id] = await event.user.to_tl(user)
+
+    users, chats, channels = await ucc.resolve(user)
 
     return AdminLogResults(
         events=events,
-        users=list(users.values()),
-        chats=[await channel.to_tl(user)],
+        users=users,
+        chats=[*chats, *channels],
     )
 
 
@@ -1159,4 +1160,79 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
     await upd.update_channel(group, user)
 
     return True
+
+
+@handler.on_request(UpdateColor, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def update_color(request: UpdateColor, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
+    )
+
+    channel = peer.channel
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    changed = []
+
+    old_color = channel.profile_color_id if request.for_profile else channel.accent_color_id
+    old_emoji = channel.profile_emoji_id if request.for_profile else channel.accent_emoji_id
+    new_color = old_color
+    new_emoji = old_emoji
+
+    if request.color is None and request.for_profile and channel.profile_color_id is not None:
+        channel.profile_color = new_color = None
+        changed.append("profile_color_id")
+    elif request.color is None and not request.for_profile and channel.accent_color_id is not None:
+        channel.accent_color = new_color = None
+        changed.append("accent_color_id")
+    elif request.color is not None:
+        if (peer_color := await PeerColorOption.get_or_none(id=request.color, is_profile=request.for_profile)) is None:
+            raise ErrorRpc(error_code=400, error_message="COLOR_INVALID")
+        new_color = peer_color.id
+        if request.for_profile:
+            channel.profile_color = peer_color
+            changed.append("profile_color_id")
+        else:
+            channel.accent_color = peer_color
+            changed.append("accent_color_id")
+
+    if request.background_emoji_id is None and request.for_profile and channel.profile_emoji_id is not None:
+        channel.profile_emoji = new_emoji = None
+        changed.append("profile_emoji_id")
+    elif request.background_emoji_id is None and not request.for_profile and channel.accent_emoji_id is not None:
+        channel.accent_emoji = new_emoji = None
+        changed.append("accent_emoji_id")
+    elif request.background_emoji_id is not None:
+        emoji = await File.get_or_none(
+            id=request.background_emoji_id, stickerset__installedstickersets__user=user,
+        )
+        if emoji is None:
+            raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
+        new_emoji = emoji.id
+        if request.for_profile:
+            channel.profile_emoji = emoji
+            changed.append("profile_emoji_id")
+        else:
+            channel.accent_emoji = emoji
+            changed.append("accent_emoji_id")
+
+    if not changed:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_NOT_MODIFIED")
+
+    await channel.save(update_fields=changed)
+
+    if request.for_profile:
+        action = AdminLogEntryAction.EDIT_PEER_COLOR_PROFILE
+    else:
+        action = AdminLogEntryAction.EDIT_PEER_COLOR
+    await AdminLogEntry.create(
+        channel=peer.channel,
+        user=user,
+        action=action,
+        prev=PeerColor(color=old_color, background_emoji_id=old_emoji).serialize(),
+        new=PeerColor(color=new_color, background_emoji_id=new_emoji).serialize(),
+    )
+
+    return await upd.update_channel(channel, user)
 

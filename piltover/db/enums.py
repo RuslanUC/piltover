@@ -371,8 +371,6 @@ class AdminLogEntryAction(IntEnum):
     #  INVITE_EDIT
     #  EDIT_HISTORY_TTL
     #  EDIT_AVAILABLE_REACTIONS
-    #  EDIT_PEER_COLOR
-    #  EDIT_PEER_COLOR_PROFILE
     #  EDIT_WALLPAPER
     #  LINKED_CHAT
     # NOTE: following actions are ignored and probably wont be implemented for now:
@@ -407,3 +405,5 @@ class AdminLogEntryAction(IntEnum):
     TOGGLE_NOFORWARDS = 7
     DEFAULT_BANNED_RIGHTS = 8
     PREHISTORY_HIDDEN = 9
+    EDIT_PEER_COLOR = 10
+    EDIT_PEER_COLOR_PROFILE = 11
