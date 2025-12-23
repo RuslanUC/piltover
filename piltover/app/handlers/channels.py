@@ -249,9 +249,8 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         linked_chat = await Channel.get_or_none(discussion=channel).select_related("photo")
 
     if linked_chat is not None:
+        await Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=linked_chat)
         channels_to_tl.append(linked_chat)
-
-    # TODO: probably should create peer for linked chat
 
     return MessagesChatFull(
         full_chat=ChannelFull(
@@ -282,7 +281,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             pinned_msg_id=cast(
                 int | None,
                 await Message.filter(
-                    peer__owner=None, peer__channel=channel, pinned=True
+                    peer__owner=None, peer__channel=channel, pinned=True,
                 ).order_by("-id").first().values_list("id", flat=True)
             ),
             pts=channel.pts,

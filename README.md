@@ -30,6 +30,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] [Min constructors](https://core.telegram.org/api/min)
 - [ ] Channel discussions
 - [ ] [WebK](https://github.com/morethanwords/tweb) hangs on some requests (such as GetDialogs), probably seqno or message_id fields are wrong in our mtproto implementation
+- [ ] Refactor channels permission system and probably rewrite according to [channels-access.md](notes/channels-access.md) 
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
