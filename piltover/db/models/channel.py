@@ -156,7 +156,6 @@ class Channel(ChatBase):
 
         return self._to_tl(user_id, participant, self.photo, username.username if username else None)
 
-    # TODO: check if to_tl_bulk for one channel is slower than regular to_tl
     @classmethod
     async def to_tl_bulk(
             cls, channels: list[models.Channel], user: models.User
@@ -166,40 +165,77 @@ class Channel(ChatBase):
 
         channel_ids = [channel.id for channel in channels]
 
-        peers = set(await models.Peer.filter(owner=user, channel_id__in=channel_ids).values_list("channel__id"))
+        if len(channel_ids) == 1:
+            if await models.Peer.filter(owner=user, channel__id=channel_ids[0]).exists():
+                peers = {channel_ids[0]}
+            else:
+                peers = set()
+        else:
+            peers = set(await models.Peer.filter(owner=user, channel_id__in=channel_ids).values_list("channel__id", flat=True))
 
-        participants = {
-            participant.channel_id: participant
-            for participant in await models.ChatParticipant.filter(user=user, channel__id__in=channel_ids)
-        }
+        if len(channel_ids) == 1:
+            if peers:
+                channel_id = channel_ids[0]
+                participants = {channel_id: await models.ChatParticipant.get_or_none(user=user, channel__id=channel_id)}
+            else:
+                participants = {}
+        else:
+            if peers:
+                participants = {
+                    participant.channel_id: participant
+                    for participant in await models.ChatParticipant.filter(user=user, channel__id__in=peers)
+                }
+            else:
+                participants = {}
 
-        usernames = {
-            channel_id: username
-            for channel_id, username in await models.Username.filter(
-                channel__id__in=channel_ids,
-            ).values_list("channel_id", "username")
-        }
+        if len(channel_ids) == 1:
+            if peers:
+                channel_id = channel_ids[0]
+                usernames = {
+                    channel_id: await models.Username.filter(
+                        channel__id=channel_id,
+                    ).first().values_list("username", flat=True)
+                }
+            else:
+                usernames = {}
+        else:
+            if peers:
+                usernames = {
+                    channel_id: username
+                    for channel_id, username in await models.Username.filter(
+                        channel__id__in=peers,
+                    ).values_list("channel_id", "username")
+                }
+            else:
+                usernames = {}
 
-        channel_by_photo = {
-            channel.photo_id: channel.id
-            for channel in channels
-            if channel.photo_id is not None and not isinstance(channel.photo, models.File)
-        }
-        photos = {
-            channel_by_photo[photo.id]: photo
-            for photo in await models.File.filter(id__in=list(channel_by_photo))
-        }
-        for channel in channels:
-            if channel.photo_id is not None and isinstance(channel.photo, models.File):
-                photos[channel.id] = channel.photo
+        if len(channel_ids) == 1:
+            channel_id = channel_ids[0]
+            if peers and channels[0].photo_id is not None:
+                photos = {channel_id: await channels[0].photo}
+            else:
+                photos = {}
+        else:
+            channel_by_photo_id = {
+                channel.photo_id: channel.id
+                for channel in channels
+                if channel.id in peers and channel.photo_id is not None and not isinstance(channel.photo, models.File)
+            }
+            photos = {
+                channel_by_photo_id[photo.id]: photo
+                for photo in await models.File.filter(id__in=list(channel_by_photo_id))
+            }
+            for channel in channels:
+                if channel.id in peers and channel.photo_id is not None and isinstance(channel.photo, models.File):
+                    photos[channel.id] = channel.photo
 
         tl = []
         for channel in channels:
             peer_exists = channel.id in peers
-            if channel.deleted or peer_exists:
+            if channel.deleted or not peer_exists:
                 tl.append(ChannelForbidden(
                     id=channel.make_id(),
-                    access_hash=-1 if peer_exists is None else 0,
+                    access_hash=-1 if peer_exists else 0,
                     title=channel.name,
                 ))
                 continue

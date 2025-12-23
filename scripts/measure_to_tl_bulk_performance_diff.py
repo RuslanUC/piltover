@@ -1,3 +1,4 @@
+import math
 import os
 from asyncio import new_event_loop
 from itertools import islice
@@ -86,18 +87,22 @@ async def main() -> None:
 
     to_tl_bulk_one_at_a_time = await fut
 
-    channels = await Channel.all()
-    with measure_time_with_result("[to_tl_bulk] two channels at a time") as fut:
-        for batch in batched(channels, 2):
-            await Channel.to_tl_bulk(cast(list[Channel], batch), user)
+    power_of_two_ratios = []
 
-    to_tl_bulk_two_at_a_time = await fut
+    for batch_size_power in range(1, int(math.log2(NUM_CHANNELS)) - 1):
+        batch_size = 2 ** batch_size_power
+        channels = await Channel.all()
+        batches = list(batched(channels, batch_size))
+        with measure_time_with_result(f"[to_tl_bulk] {batch_size} channels at a time") as fut:
+            for batch in batches:
+                await Channel.to_tl_bulk(cast(list[Channel], batch), user)
+
+        power_of_two_ratios.append((batch_size_power, to_tl_one_at_a_time / (await fut)))
 
     logger.info("-" * 32)
 
     all_ratio = to_tl_one_at_a_time / to_tl_bulk_all_at_once
     one_ratio = to_tl_one_at_a_time / to_tl_bulk_one_at_a_time
-    two_ratio = to_tl_one_at_a_time / to_tl_bulk_two_at_a_time
 
     logger.info(
         f"For processing {NUM_CHANNELS} channels: "
@@ -107,10 +112,12 @@ async def main() -> None:
         f"For processing 1 channel at a time: "
         f"to_tl_bulk is {one_ratio:.1f}x {'slower' if one_ratio < 1 else 'faster'} than to_tl"
     )
-    logger.info(
-        f"For processing 2 channels at a time: "
-        f"to_tl_bulk is {two_ratio:.1f}x {'slower' if two_ratio < 1 else 'faster'} than to_tl"
-    )
+
+    for power, ratio in power_of_two_ratios:
+        logger.info(
+            f"For processing {2 ** power} channels at a time: "
+            f"to_tl_bulk is {ratio:.1f}x {'slower' if ratio < 1 else 'faster'} than to_tl"
+        )
 
     await Tortoise.close_connections()
 
