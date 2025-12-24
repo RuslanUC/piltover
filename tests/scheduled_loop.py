@@ -14,8 +14,9 @@ async def run_scheduler_loop_every_100ms(scheduler: TaskiqScheduler) -> None:
     loop = asyncio.get_event_loop()
     while True:
         scheduled_tasks = await get_all_schedules(scheduler)
-        logger.trace(f"Got {len(scheduled_tasks)} scheduled tasks")
+        logger.trace(f"Got {len(scheduled_tasks)} schedule sources")
         for source, task_list in scheduled_tasks.items():
+            logger.trace(f"Got {len(task_list)} tasks for source {source}")
             for task in task_list:
                 try:
                     task_delay = get_task_delay(task)

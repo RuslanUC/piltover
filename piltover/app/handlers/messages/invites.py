@@ -446,6 +446,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
         updates = await upd.create_chat(user, chat, chat_peers)
     else:
         await SessionManager.subscribe_to_channel(chat.id, requested_users)
+        # TODO: send updates when user is added to channel
         raise NotImplementedError("TODO: send updates when user is added to channel")
 
     for request in requests:

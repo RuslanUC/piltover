@@ -7,6 +7,7 @@ from typing import TypeVar
 from loguru import logger
 from taskiq import InMemoryBroker, TaskiqScheduler, ScheduleSource, ScheduledTask, AsyncBroker
 
+from piltover.db.enums import TaskIqScheduledState
 from piltover.db.models import TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
 
 try:
@@ -22,18 +23,26 @@ T = TypeVar("T")
 
 class OrmDatabaseScheduleSource(ScheduleSource):
     @staticmethod
+    async def _reset_scheduled_to_send_stuck_messages() -> None:
+        await TaskIqScheduledMessage.filter(
+            state__not=TaskIqScheduledState.SCHEDULED, state_updated_at__lte=int(time() - 60 * 5)
+        ).update(state=TaskIqScheduledState.SCHEDULED, state_updated_at=int(time()))
+
+    @staticmethod
     async def _get_scheduled_to_send_messages() -> list[ScheduledTask]:
         current_minute = int(time())
         current_minute += (-current_minute % 60)
         scheduled_messages = await TaskIqScheduledMessage.filter(
-            scheduled_time__lte=current_minute, start_processing__isnull=True,
+            scheduled_time__lte=current_minute, state=TaskIqScheduledState.SCHEDULED,
         ).order_by("scheduled_time").limit(100)
 
         logger.trace(f"Got {len(scheduled_messages)} scheduled messages")
 
         scheduled_ids = [scheduled.id for scheduled in scheduled_messages]
 
-        await TaskIqScheduledMessage.filter(id__in=scheduled_ids).update(start_processing=int(time()))
+        await TaskIqScheduledMessage.filter(id__in=scheduled_ids).update(
+            state=TaskIqScheduledState.SENT, state_updated_at=int(time())
+        )
 
         return [
             ScheduledTask(
@@ -57,7 +66,7 @@ class OrmDatabaseScheduleSource(ScheduleSource):
 
         scheduled_ids = [scheduled.id for scheduled in scheduled_messages]
 
-        await TaskIqScheduledMessage.filter(id__in=scheduled_ids).update(start_processing=int(time()))
+        await TaskIqScheduledDeleteMessage.filter(id__in=scheduled_ids).update(start_processing=int(time()))
 
         return [
             ScheduledTask(
@@ -72,6 +81,8 @@ class OrmDatabaseScheduleSource(ScheduleSource):
         ]
 
     async def get_schedules(self) -> list[ScheduledTask]:
+        await self._reset_scheduled_to_send_stuck_messages()
+
         return [
             *(await self._get_scheduled_to_send_messages()),
             *(await self._get_scheduled_to_delete_messages()),

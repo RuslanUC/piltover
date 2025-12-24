@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 from fastrand import xorshift128plus_bytes
 from pyrogram.enums import MessageEntityType
-from pyrogram.errors import ChatWriteForbidden, FileReferenceExpired, ChatForwardsRestricted, NotAcceptable
+from pyrogram.errors import ChatWriteForbidden, NotAcceptable
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL
@@ -988,15 +988,16 @@ async def test_messages_ttl(exit_stack: AsyncExitStack) -> None:
 async def test_send_multiple_scheduled_messages(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
-    await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=1))
-    await client.send_message("me", "test 456", schedule_date=datetime.now() + timedelta(seconds=2))
-    await client.send_message("me", "test 789", schedule_date=datetime.now() + timedelta(seconds=3))
+    now = datetime.now()
+    await client.send_message("me", "test 123", schedule_date=now + timedelta(seconds=2))
+    await client.send_message("me", "test 456", schedule_date=now + timedelta(seconds=3))
+    await client.send_message("me", "test 789", schedule_date=now + timedelta(seconds=4))
 
     messages = [m async for m in client.get_chat_history("me")]
     assert len(messages) == 0
     assert await client.get_chat_history_count("me") == 0
 
-    update1 = await client.expect_update(UpdateNewMessage, 3)
+    update1 = await client.expect_update(UpdateNewMessage, 4)
     assert update1.message.from_scheduled
     assert update1.message.message == "test 123"
     update2 = await client.expect_update(UpdateNewMessage, 2)

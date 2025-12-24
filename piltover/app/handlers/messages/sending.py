@@ -203,6 +203,7 @@ async def send_message_internal(
 
         await TaskIqScheduledMessage.create(
             scheduled_time=scheduled_date,
+            state_updated_at=int(time()),
             message=message,
             mentioned_users=mentioned_users,
             opposite=real_opposite,

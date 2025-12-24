@@ -407,3 +407,9 @@ class AdminLogEntryAction(IntEnum):
     EDIT_PEER_COLOR = 10
     EDIT_PEER_COLOR_PROFILE = 11
     LINKED_CHAT = 12
+
+
+class TaskIqScheduledState(IntEnum):
+    SCHEDULED = 0
+    SENT = 2
+    EXECUTING = 3

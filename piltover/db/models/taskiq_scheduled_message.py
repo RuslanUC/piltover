@@ -6,13 +6,15 @@ from uuid import UUID, uuid4
 from tortoise import fields, Model
 
 from piltover.db import models
+from piltover.db.enums import TaskIqScheduledState
 from piltover.tl import primitives, LongVector, Int
 
 
 class TaskIqScheduledMessage(Model):
     id: UUID = fields.UUIDField(pk=True, default=uuid4)
+    state: TaskIqScheduledState = fields.IntEnumField(TaskIqScheduledState, default=TaskIqScheduledState.SCHEDULED)
     scheduled_time: int = fields.BigIntField(index=True)
-    start_processing: int | None = fields.BigIntField(null=True, default=None)
+    state_updated_at: int = fields.BigIntField(index=True)
     message: models.Message = fields.OneToOneField("models.Message")
     mentioned_users: bytes | None = fields.BinaryField(null=True)
     opposite: bool = fields.BooleanField()
