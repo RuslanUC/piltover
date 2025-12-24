@@ -10,11 +10,11 @@ from tortoise.expressions import Q, Subquery
 import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence
+from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, Channel
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
-    ExportedContactToken, Long, User as TLUser, TLObjectVector, PeerUser, ContactStatus
+    ExportedContactToken, Long, User as TLUser, TLObjectVector, PeerUser, ContactStatus, PeerChannel
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken
@@ -122,26 +122,57 @@ async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice
 async def contacts_search(request: Search, user: User) -> Found:
     limit = max(1, min(100, request.limit))
 
-    contacts = await Contact.filter(
+    results = await Username.filter(
+        user__id__not_in=Subquery(Contact.filter(owner=user).values_list("target__id", flat=True)),
+        user__id__not=user.id,
+    ).filter(
         Q(
-            target__first_name__icontains=request.q,
-            target__last_name__icontains=request.q,
-            target__usernames__username__icontains=request.q,
+            username__icontains=request.q,
+            user__first_name__icontains=request.q,
+            user__last_name__icontains=request.q,
             join_type=Q.OR,
-        ),
-        owner=user,
-    ).limit(limit).select_related("target")
+          )
+    ).select_related("user", "channel").limit(limit)
 
-    peers = [PeerUser(user_id=contact.target_id) for contact in contacts]
+    peers = []
+    users = []
+    channels = []
+
+    for result in results:
+        if result.user is not None:
+            peers.append(PeerUser(user_id=result.user_id))
+            users.append(result.user)
+        elif result.channel is not None:
+            peers.append(PeerChannel(channel_id=Channel.make_id_from(result.channel_id)))
+            channels.append(result.channel)
+        else:
+            raise Unreachable
+
+    users_by_id = {result_user.id: result_user for result_user in users}
+    channels_by_id = {result_channel.id: result_channel for result_channel in channels}
+    for existing_peer in await Peer.filter(
+        Q(join_type=Q.OR, user__id__in=list(users_by_id.keys()), channel__id__in=list(channels_by_id.keys())),
+        owner=user
+    ):
+        if existing_peer.type is PeerType.USER:
+            users_by_id.pop(existing_peer.user_id)
+        else:
+            channels_by_id.pop(existing_peer.channel_id)
+
+    await Peer.bulk_create([
+        *(
+            Peer(owner=user, type=PeerType.USER, user=result_user) for result_user in users_by_id.values()
+        ),
+        *(
+            Peer(owner=user, type=PeerType.CHANNEL, channel=result_channel) for result_channel in channels_by_id.values()
+        ),
+    ])
 
     return Found(
-        my_results=peers,
+        my_results=[],
         results=peers,
-        chats=[],
-        users=[
-            await contact.target.to_tl(user)
-            for contact in contacts
-        ],
+        chats=await Channel.to_tl_bulk(channels, user),
+        users=await User.to_tl_bulk(users, user),
     )
 
 

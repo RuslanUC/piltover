@@ -469,21 +469,9 @@ async def get_all_drafts(user: User):
 
 @handler.on_request(SearchGlobal, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def search_global(request: SearchGlobal, user: User):
-    # TODO: whole method is probably wrong idk
-
-    users = []
-
-    q = user_q = request.q
-    if q.startswith("@"):
-        user_q = q[1:]
-    if USERNAME_REGEX_NO_LEN.match(user_q):
-        users = await Username.filter(
-            username__istartswith=user_q, user__not=None,
-        ).limit(10).values_list("user__id", flat=True)
-
     limit = max(min(request.limit, 1), 10)
 
-    # TODO: offset_peer ?
+    # TODO: offset_peer, offset_rate ?
     messages = await get_messages_internal(
         user, 0, 0, request.offset_id, limit, 0, 0,
         request.min_date, request.max_date, request.q, request.filter
@@ -501,13 +489,12 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
     query = Q(id__in=request.id)
     query &= Q(peer__owner=None, peer__channel=peer.channel) if peer.type is PeerType.CHANNEL else Q(peer=peer)
 
-    message: Message
     messages = {
         message.id: message
-        async for message in Message.filter(query).select_related("post_info", "peer", "peer__channel")
+        for message in await Message.filter(query).select_related("post_info", "peer", "peer__channel")
     }
 
-    channels = {}
+    ucc = UsersChatsChannels()
     views = []
     incremented = []
 
@@ -524,16 +511,16 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
 
         views.append(MessageViews(views=message.post_info.views))
 
-        # TODO: load channel from fwd_header
-        if message.peer.channel_id is not None and message.peer.channel.id not in channels:
-            channels[message.peer.channel.id] = await message.peer.channel.to_tl(user)
+        ucc.add_channel(message.peer.channel_id)
 
     if incremented:
         await ChannelPostInfo.bulk_update(incremented, fields=["views"])
 
+    _, channels, _ = await ucc.resolve(user, False, True, False)
+
     return MessagesMessageViews(
         views=views,
-        chats=list(channels.values()),
+        chats=channels,
         users=[],
     )
 

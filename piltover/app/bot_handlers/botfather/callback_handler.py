@@ -57,7 +57,7 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             page = int(data[12:])
         except ValueError:
             return None
-        # TODO: move 24 to variable `MAX_BOTS_PER_USER`
+        # TODO: move 24 to `AppConfig.MAX_BOTS_PER_USER`
         if page < 0 or page > 24 // 6 - 1:
             return None
 

@@ -66,15 +66,6 @@ PLACEHOLDERS = {
     # InputPhoto
     0x3bb3b94a: access_hash_and_file_ref_calc,
 
-    # InputEncryptedFileLocation
-    0xf5235d55: access_hash_calc,
-    # InputDocumentFileLocation
-    0xbad07584: access_hash_and_file_ref_calc,
-    # InputSecureFileLocation
-    0xcbc7ee28: access_hash_calc,
-    # InputPhotoFileLocation
-    0x40181ffe: access_hash_and_file_ref_calc,
-
     # Photo
     0xfb197a65: access_hash_and_file_ref_calc,
 

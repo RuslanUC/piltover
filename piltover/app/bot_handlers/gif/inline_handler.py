@@ -97,7 +97,7 @@ async def gif_inline_query_handler(
     }
     if inline_query.query:
         params["q"] = inline_query.query
-    # TODO: validate offset
+    # TODO: validate/verify offset
     if inline_query.offset:
         params["pos"] = inline_query.offset
 

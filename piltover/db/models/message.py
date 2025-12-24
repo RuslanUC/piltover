@@ -15,7 +15,7 @@ from tortoise.functions import Count
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
-from piltover.exceptions import ErrorRpc, Unreachable, Error
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase
 from piltover.tl.to_format import MessageServiceToFormat

@@ -214,7 +214,6 @@ async def _get_invite_with_some_checks(invite_hash: str) -> ChatInvite:
     if not invite_hash:
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_EMPTY")
     query = ChatInvite.query_from_link_hash(invite_hash.strip()) & Q(revoked=False)
-    # TODO: add "channel" to select_related when channel model will be added
     invite = await ChatInvite.get_or_none(query).select_related("chat", "channel")
     if invite is None:
         raise ErrorRpc(error_code=400, error_message="INVITE_HASH_INVALID")
