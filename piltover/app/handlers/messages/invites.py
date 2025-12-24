@@ -150,7 +150,7 @@ async def get_chat_invite_importers(request: GetChatInviteImporters, user: User)
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     importers = []
-    users = []
+    users_to_tl = []
 
     limit = max(min(100, request.limit), 1)
     invite: ChatInvite | None = None
@@ -180,7 +180,7 @@ async def get_chat_invite_importers(request: GetChatInviteImporters, user: User)
                 user_id=request.user.id,
                 date=int(request.created_at.timestamp()),
             ))
-            users.append(await request.user.to_tl(user))
+            users_to_tl.append(request.user)
 
         count = await ChatInviteRequest.filter(query_no_date).count()
     else:
@@ -199,14 +199,14 @@ async def get_chat_invite_importers(request: GetChatInviteImporters, user: User)
                 user_id=importer.user.id,
                 date=int(importer.invited_at.timestamp()),
             ))
-            users.append(await importer.user.to_tl(user))
+            users_to_tl.append(importer.user)
 
         count = await ChatParticipant.filter(query_no_date).count()
 
     return ChatInviteImporters(
         count=count,
         importers=importers,
-        users=users,
+        users=await User.to_tl_bulk(users_to_tl, user),
     )
 
 

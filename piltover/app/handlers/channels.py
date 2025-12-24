@@ -538,7 +538,7 @@ async def get_participants(request: GetParticipants, user: User):
     participants = await ChatParticipant.filter(query).select_related("user").limit(limit).offset(request.offset)
 
     participants_tl = []
-    users_tl = []
+    users_to_tl = []
 
     peers_to_create = []
 
@@ -549,15 +549,14 @@ async def get_participants(request: GetParticipants, user: User):
     await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
 
     for participant in participants:
-        participant.channel = peer.channel
-        participants_tl.append(await participant.to_tl_channel(user))
-        users_tl.append(await participant.user.to_tl(user))
+        participants_tl.append(participant.to_tl_channel_with_creator(user, creator_id=peer.channel.creator_id))
+        users_to_tl.append(participant.user)
 
     return ChannelParticipants(
         count=await ChatParticipant.filter(query).count(),
         participants=participants_tl,
         chats=[await peer.channel.to_tl(user)],
-        users=users_tl,
+        users=await User.to_tl_bulk(users_to_tl, user),
     )
 
 

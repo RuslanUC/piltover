@@ -30,19 +30,19 @@ async def get_contacts(user: User):
     contacts = await Contact.filter(owner=user).select_related("target")
 
     contacts_tl = []
-    users = []
+    users_to_tl = []
 
     for contact in contacts:
         if contact.target is None:
             continue
 
         contacts_tl.append(TLContact(user_id=contact.target.id, mutual=False))
-        users.append(await contact.target.to_tl(user))
+        users_to_tl.append(contact.target)
 
     return Contacts(
         contacts=contacts_tl,
         saved_count=0,
-        users=users,
+        users=await User.to_tl_bulk(users_to_tl, user),
     )
 
 
@@ -175,17 +175,17 @@ async def get_birthdays(user: User) -> ContactBirthdays:
         owner=user, user__birthday__gte=yesterday, user__birthday__lte=tomorrow
     ).select_related("user")
 
-    users = []
+    users_to_tl = []
     birthdays = []
     for peer in birthday_peers:
         if (birthday := await peer.user.to_tl_birthday(user)) is None:
             continue
         birthdays.append(ContactBirthday(contact_id=peer.user.id, birthday=birthday))
-        users.append(await peer.user.to_tl(user))
+        users_to_tl.append(peer.user)
 
     return ContactBirthdays(
         contacts=birthdays,
-        users=users,
+        users=await User.to_tl_bulk(users_to_tl, user),
     )
 
 

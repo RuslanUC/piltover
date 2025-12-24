@@ -73,10 +73,15 @@ class ChatParticipant(Model):
             user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp()),
         )
 
-    async def to_tl_channel(self, user: models.User) -> ChannelParticipants:
-        self.channel = await self.channel
+    async def to_tl_channel(self, user: models.User, creator_id: int | None = None) -> ChannelParticipants:
+        if creator_id is None:
+            self.channel = await self.channel
+            creator_id = self.channel.creator_id
 
-        if self.user_id == self.channel.creator_id:
+        return self.to_tl_channel_with_creator(user, creator_id)
+
+    def to_tl_channel_with_creator(self, user: models.User, creator_id: int) -> ChannelParticipants:
+        if self.user_id == creator_id:
             return ChannelParticipantCreator(
                 user_id=self.user_id, admin_rights=self.admin_rights.to_tl(), rank=self.admin_rank or None,
             )

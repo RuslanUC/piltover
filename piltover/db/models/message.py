@@ -154,6 +154,8 @@ class Message(Model):
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
+    # TODO: add to_tl_bulk
+
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessageBase:
         if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None and not with_reactions:
             return cached

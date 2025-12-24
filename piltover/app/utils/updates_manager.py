@@ -353,6 +353,10 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
     updates_to_create = []
     result_update = None
 
+    ucc = UsersChatsChannels()
+    ucc.add_message(next(iter(messages.values())).id)
+    users, chats, channels = await ucc.resolve_nontl()
+
     for peer, message in messages.items():
         if isinstance(peer.owner, QuerySet):
             await peer.fetch_related("owner")
@@ -368,11 +372,6 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
             )
         )
 
-        chats = []
-        if message.peer.type is PeerType.CHAT:
-            await message.peer.fetch_related("chat")
-            chats.append(await message.peer.chat.to_tl(peer.owner))
-
         update = UpdatesWithDefaults(
             updates=[
                 UpdateEditMessage(
@@ -381,8 +380,11 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
                     pts_count=1,
                 )
             ],
-            users=[await message.author.to_tl(peer.owner)],
-            chats=chats,
+            users=await User.to_tl_bulk(users, peer.owner),
+            chats=[
+                *await Chat.to_tl_bulk(chats, peer.owner),
+                *await Channel.to_tl_bulk(channels, peer.owner),
+            ],
         )
 
         if user.id == peer.owner.id:
@@ -495,11 +497,14 @@ async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> No
         related_id=peer.id,
     )
 
+    ucc = UsersChatsChannels()
+    ucc.add_peer(peer)
+    users, chats, channels = await ucc.resolve(user)
+
     updates = UpdatesWithDefaults(
         updates=[UpdateDraftMessage(peer=peer.to_tl(), draft=draft)],
-        users=[await user.to_tl(user)],
-        # TODO: support channels
-        chats=[await peer.chat.to_tl(user)] if peer.type is PeerType.CHAT else [],
+        users=users,
+        chats=[*chats, *channels],
     )
 
     await SessionManager.send(updates, user.id)
@@ -515,6 +520,12 @@ async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
         related_id=None,
     )
 
+    ucc = UsersChatsChannels()
+    for dialog in dialogs:
+        ucc.add_peer(dialog.peer)
+
+    users, chats, channels = await ucc.resolve(user)
+
     updates = UpdatesWithDefaults(
         updates=[
             UpdatePinnedDialogs(
@@ -524,9 +535,8 @@ async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
                 ],
             )
         ],
-        users=[await user.to_tl(user)],
-        # TODO: support channels
-        chats=[await dialog.peer.chat.to_tl(user) for dialog in dialogs if dialog.peer.type is PeerType.CHAT],
+        users=users,
+        chats=[*chats, *channels],
     )
 
     await SessionManager.send(updates, user.id)
@@ -535,6 +545,10 @@ async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
 async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
     updates_to_create = []
     result_update = None
+
+    ucc = UsersChatsChannels()
+    ucc.add_message(next(iter(messages.values())).id)
+    users, chats, channels = await ucc.resolve_nontl()
 
     for peer, message in messages.items():
         if isinstance(peer.owner, QuerySet):
@@ -561,9 +575,11 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
                     pts_count=1,
                 )
             ],
-            users=[await message.author.to_tl(peer.owner)],
-            # TODO: support channels
-            chats=[await peer.chat.to_tl(peer.owner)] if peer.type is PeerType.CHAT else [],
+            users=await User.to_tl_bulk(users, peer.owner),
+            chats=[
+                *await Chat.to_tl_bulk(chats, peer.owner),
+                *await Channel.to_tl_bulk(channels, peer.owner)
+            ],
         )
 
         if user.id == peer.owner.id:
