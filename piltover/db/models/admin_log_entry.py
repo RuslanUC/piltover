@@ -13,7 +13,8 @@ from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEv
     ChannelAdminLogEventActionChangePhoto, PhotoEmpty, ChannelAdminLogEventActionParticipantJoin, \
     ChannelAdminLogEventActionParticipantLeave, ChannelAdminLogEventActionToggleNoForwards, \
     ChannelAdminLogEventActionDefaultBannedRights, ChannelAdminLogEventActionTogglePreHistoryHidden, PeerColor, \
-    ChannelAdminLogEventActionChangePeerColor, ChannelAdminLogEventActionChangeProfilePeerColor
+    ChannelAdminLogEventActionChangePeerColor, ChannelAdminLogEventActionChangeProfilePeerColor, \
+    ChannelAdminLogEventActionChangeLinkedChat
 from piltover.tl.base import ChannelAdminLogEvent
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
@@ -28,15 +29,19 @@ class AdminLogEntry(Model):
     prev: bytes = fields.BinaryField(null=True, default=None)
     old_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="old_photo")
     old_banned_rights: ChatBannedRights | None = IntFlagField(ChatBannedRights, null=True, default=None)
+    old_channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None, related_name="old_channel")
 
     new: bytes = fields.BinaryField(null=True, default=None)
     new_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="new_photo")
     new_banned_rights: ChatBannedRights | None = IntFlagField(ChatBannedRights, null=True, default=None)
+    new_channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None, related_name="new_channel")
 
     user_id: int
     channel_id: int
     old_photo_id: int | None
     new_photo_id: int | None
+    old_channel_id: int | None
+    new_channel_id: int | None
 
     def to_tl(self, ucc: UsersChatsChannels) -> ChannelAdminLogEvent | None:
         action = None
@@ -91,11 +96,20 @@ class AdminLogEntry(Model):
                 prev_value=PeerColor.deserialize(BytesIO(self.prev)),
                 new_value=PeerColor.deserialize(BytesIO(self.new)),
             )
+        elif self.action is AdminLogEntryAction.EDIT_PEER_COLOR_PROFILE:
+            action = ChannelAdminLogEventActionChangeLinkedChat(
+                prev_value=self.old_channel_id or 0,
+                new_value=self.new_channel_id or 0,
+            )
 
         if action is None:
             return None
 
         ucc.add_user(self.user_id)
+        if self.old_channel_id is not None:
+            ucc.add_channel(self.old_channel_id)
+        if self.new_channel_id is not None:
+            ucc.add_channel(self.new_channel_id)
 
         return ChannelAdminLogEvent(
             id=self.id,

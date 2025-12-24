@@ -372,7 +372,6 @@ class AdminLogEntryAction(IntEnum):
     #  EDIT_HISTORY_TTL
     #  EDIT_AVAILABLE_REACTIONS
     #  EDIT_WALLPAPER
-    #  LINKED_CHAT
     # NOTE: following actions are ignored and probably wont be implemented for now:
     #  ...ToggleInvites#1b7907ae
     #  ...ParticipantInvite#e31c34d8
@@ -407,3 +406,4 @@ class AdminLogEntryAction(IntEnum):
     PREHISTORY_HIDDEN = 9
     EDIT_PEER_COLOR = 10
     EDIT_PEER_COLOR_PROFILE = 11
+    LINKED_CHAT = 12

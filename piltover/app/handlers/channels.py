@@ -28,7 +28,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
-    InputUserFromMessage, PeerColor
+    InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
@@ -574,7 +574,6 @@ async def get_participant(request: GetParticipant, user: User):
     if target_peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
-    # TODO: check if you can request info about self if you are not an admin
     if not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS) \
             and target_peer.type is not PeerType.SELF:
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
@@ -1031,7 +1030,10 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
             actions_q |= Q(action=AdminLogEntryAction.CHANGE_TITLE) \
                          | Q(action=AdminLogEntryAction.CHANGE_ABOUT) \
                          | Q(action=AdminLogEntryAction.CHANGE_USERNAME) \
-                         | Q(action=AdminLogEntryAction.CHANGE_PHOTO)
+                         | Q(action=AdminLogEntryAction.CHANGE_PHOTO) \
+                         | Q(action=AdminLogEntryAction.EDIT_PEER_COLOR) \
+                         | Q(action=AdminLogEntryAction.EDIT_PEER_COLOR_PROFILE) \
+                         | Q(action=AdminLogEntryAction.LINKED_CHAT)
         if request.events_filter.join:
             actions_q |= Q(action=AdminLogEntryAction.PARTICIPANT_JOIN)
         if request.events_filter.leave:
@@ -1113,7 +1115,7 @@ async def toggle_join_request(request: ToggleJoinRequest, user: User) -> Updates
 @handler.on_request(GetGroupsForDiscussion, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_groups_for_discussion(user: User) -> Chats:
     chats = await Chat.filter(creator=user, migrated=False).order_by("-id")
-    channels = await Channel.filter(creator=user, supergroup=True).order_by("-id")
+    channels = await Channel.filter(creator=user, supergroup=True, is_discussion=False).order_by("-id")
 
     return Chats(
         chats=[
@@ -1126,38 +1128,89 @@ async def get_groups_for_discussion(user: User) -> Chats:
 @handler.on_request(SetDiscussionGroup)
 async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
     channel_peer = await Peer.from_input_peer_raise(
-        user, request.broadcast, message="BROADCAST_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
+        user, request.broadcast, message="BROADCAST_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,),
+        select_related=("channel__discussion",),
     )
     channel = channel_peer.channel
     if channel.creator_id != user.id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    group_peer = await Peer.from_input_peer_raise(
-        user, request.group, message="MEGAGROUP_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
-    )
-    group = group_peer.channel
-    if group.creator_id != user.id:
-        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+    if isinstance(request.group, (InputChannel, InputPeerChannel)):
+        group_peer = await Peer.from_input_peer_raise(
+            user, request.group, message="MEGAGROUP_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
+        )
+        group = group_peer.channel
+        if group.creator_id != user.id:
+            raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    if not group.supergroup or group.is_discussion:
+        if not group.supergroup or group.is_discussion:
+            raise ErrorRpc(error_code=400, error_message="MEGAGROUP_ID_INVALID")
+        if group.hidden_prehistory:
+            raise ErrorRpc(error_code=400, error_message="MEGAGROUP_PREHISTORY_HIDDEN")
+
+        if group.id == channel.discussion_id:
+            raise ErrorRpc(error_code=400, error_message="MEGAGROUP_ID_INVALID")
+    elif isinstance(request.group, InputChannelEmpty):
+        group = None
+    else:
         raise ErrorRpc(error_code=400, error_message="MEGAGROUP_ID_INVALID")
-    if group.hidden_prehistory:
-        raise ErrorRpc(error_code=400, error_message="MEGAGROUP_PREHISTORY_HIDDEN")
 
-    if group.id == channel.discussion_id:
-        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    if channel.discussion is None and group is None:
+        raise ErrorRpc(error_code=400, error_message="LINK_NOT_MODIFIED")
+    if group is not None and channel.discussion_id == group.id:
+        raise ErrorRpc(error_code=400, error_message="LINK_NOT_MODIFIED")
 
+    old_group = channel.discussion
     channel.discussion = group
-    group.is_discussion = True
     channel.version += 1
-    group.version += 1
+    if old_group is not None:
+        old_group.is_discussion = False
+        old_group.version += 1
+    if group is not None:
+        group.is_discussion = True
+        group.version += 1
+
+    channels_to_update = [channel]
+    if old_group is not None:
+        channels_to_update.append(old_group)
+    if group is not None:
+        channels_to_update.append(group)
+
+    admin_log_to_create = [
+        AdminLogEntry(
+            channel=channel,
+            user=user,
+            action=AdminLogEntryAction.LINKED_CHAT,
+            old_channel=old_group,
+            new_channel=group,
+        )
+    ]
+    if old_group is not None:
+        admin_log_to_create.append(AdminLogEntry(
+            channel=old_group,
+            user=user,
+            action=AdminLogEntryAction.LINKED_CHAT,
+            old_channel=channel,
+            new_channel=None,
+        ))
+    if group is not None:
+        admin_log_to_create.append(AdminLogEntry(
+            channel=group,
+            user=user,
+            action=AdminLogEntryAction.LINKED_CHAT,
+            old_channel=None,
+            new_channel=channel,
+        ))
 
     async with in_transaction():
-        await channel.save(update_fields=["discussion_id", "version"])
-        await group.save(update_fields=["is_discussion", "version"])
+        await Channel.bulk_update(channels_to_update, fields=["discussion_id", "is_discussion", "version"])
+        await AdminLogEntry.bulk_create(admin_log_to_create)
 
     await upd.update_channel(channel, user)
-    await upd.update_channel(group, user)
+    if old_group is not None:
+        await upd.update_channel(old_group, user)
+    if group is not None:
+        await upd.update_channel(group, user)
 
     return True
 

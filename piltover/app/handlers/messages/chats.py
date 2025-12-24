@@ -402,10 +402,19 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
     if chat_or_channel.banned_rights == new_banned_rights:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
+    old_banned_rights = chat_or_channel.banned_rights
     chat_or_channel.banned_rights = new_banned_rights
     chat_or_channel.version += 1
     await chat_or_channel.save(update_fields=["banned_rights", "version"])
-    # TODO: create AdminLogEntry
+
+    if peer.type is PeerType.CHANNEL:
+        await AdminLogEntry.create(
+            channel=peer.channel,
+            user=user,
+            action=AdminLogEntryAction.DEFAULT_BANNED_RIGHTS,
+            prev=old_banned_rights,
+            new=new_banned_rights,
+        )
 
     if isinstance(chat_or_channel, Chat):
         return await upd.update_chat_default_banned_rights(chat_or_channel, user)
