@@ -4,10 +4,12 @@ from typing import cast
 from urllib.parse import urlparse
 
 from tortoise.expressions import Q, Subquery
+from tortoise.functions import Count
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
+from piltover.app.utils.updates_manager import UpdatesWithDefaults
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights, AdminLogEntryAction
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel, \
@@ -17,7 +19,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage, MessageActionChatJoinedByLink, \
-    MessageActionChatJoinedByRequest, MessageActionChatAddUser, ChatAdminWithInvites
+    MessageActionChatJoinedByRequest, MessageActionChatAddUser, ChatAdminWithInvites, UpdatePendingJoinRequests
 from piltover.tl.functions.messages import GetExportedChatInvites, GetAdminsWithInvites, GetChatInviteImporters, \
     ImportChatInvite, CheckChatInvite, ExportChatInvite, GetExportedChatInvite, DeleteRevokedExportedChatInvites, \
     HideChatJoinRequest, HideAllChatJoinRequests, ExportChatInvite_133, ExportChatInvite_134, EditExportedChatInvite
@@ -324,7 +326,6 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
     if await ChatParticipant.filter(Chat.query(invite.chat_or_channel) & Q(user=user)).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
     if invite.request_needed or isinstance(invite.chat_or_channel, Channel) and invite.channel.join_request:
-        # TODO: check for requests for current invite or all invites?
         query = Chat.query(invite.chat_or_channel, "invite") & Q(user=user)
         if not await ChatInviteRequest.filter(query).exists():
             # TODO: send updatePendingJoinRequests
@@ -401,9 +402,37 @@ async def delete_revoked_exported_chat_invites(request: DeleteRevokedExportedCha
     return True
 
 
+async def make_chat_join_request_updates(chat: ChatBase, user: User) -> Updates:
+    pending = await ChatInviteRequest.filter(
+        Chat.query(chat, "invite")
+    ).annotate(total_count=Count("id")).order_by("-created_at").limit(25).values_list("id", "total_count")
+    if not pending:
+        recent_users = [user_id for user_id, _ in pending]
+        count = pending[0][1]
+    else:
+        recent_users = []
+        count = 0
+
+    # TODO: create peers
+    users = []
+    if recent_users:
+        users = await User.to_tl_bulk(await User.filter(id__in=recent_users), user)
+
+    return UpdatesWithDefaults(
+        updates=[
+            UpdatePendingJoinRequests(
+                peer=chat.to_tl_peer(),
+                requests_pending=count,
+                recent_requesters=recent_users,
+            ),
+        ],
+        users=users,
+    )
+
+
 async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list[ChatInviteRequest]) -> Updates:
     if not requests:
-        return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+        return await make_chat_join_request_updates(chat, user)
 
     member_limit = AppConfig.BASIC_GROUP_MEMBER_LIMIT
     if isinstance(chat, Channel):
@@ -442,14 +471,14 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
 
     if isinstance(chat, Chat):
         chat_peers = await Peer.filter(Chat.query(chat)).select_related("owner")
-        updates = await upd.create_chat(user, chat, chat_peers)
+        await upd.create_chat(user, chat, chat_peers)
     else:
+        # TODO: send SERVICE_CHAT_USER_INVITE_JOIN and SERVICE_CHAT_USER_REQUEST_JOIN
         await SessionManager.subscribe_to_channel(chat.id, requested_users)
-        # TODO: send updates when user is added to channel
-        raise NotImplementedError("TODO: send updates when user is added to channel")
+        return await upd.update_channel_for_user(chat, user)
 
     for request in requests:
-        updates_msg = await send_message_internal(
+        await send_message_internal(
             user, this_peer, None, None, False,
             author=request.user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
             extra_info=MessageActionChatJoinedByLink(inviter_id=request.invite.user_id).write(),
@@ -460,9 +489,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
             extra_info=MessageActionChatJoinedByRequest().write()
         )
 
-        updates.updates.extend(updates_msg.updates)
-
-    return updates
+    return await make_chat_join_request_updates(chat, user)
 
 
 @handler.on_request(HideChatJoinRequest)
@@ -490,8 +517,7 @@ async def hide_chat_join_request(request: HideChatJoinRequest, user: User) -> Up
                 Chat.query(peer.chat_or_channel, "invite") & Q(user=invite_request.user)
             ).values_list("id", flat=True)
         )).delete()
-        # TODO: what should be in updates.updates?
-        return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+        return await make_chat_join_request_updates(peer.chat_or_channel, user)
 
     return await add_requested_users_to_chat(user, peer.chat_or_channel, [invite_request])
 
@@ -526,8 +552,7 @@ async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user: Us
         await ChatInviteRequest.filter(id__in=Subquery(
             ChatInviteRequest.filter(query).values_list("id", flat=True)
         )).delete()
-        # TODO: what should be in updates.updates?
-        return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+        return await make_chat_join_request_updates(peer.chat_or_channel, user)
 
     return await add_requested_users_to_chat(user, peer.chat_or_channel, requests)
 

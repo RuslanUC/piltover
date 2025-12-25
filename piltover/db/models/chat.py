@@ -6,7 +6,7 @@ from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.db.models.chat_base import ChatBase
 from piltover.tl import ChatForbidden
-from piltover.tl.types import Chat as TLChat, ChatAdminRights, InputChannel
+from piltover.tl.types import Chat as TLChat, ChatAdminRights, InputChannel, PeerChat
 
 DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
     change_info=True,
@@ -120,4 +120,7 @@ class Chat(ChatBase):
             tl.append(chat._to_tl(user.id, participant, photos.get(chat.id), migrated_to))
 
         return tl
+
+    def to_tl_peer(self) -> PeerChat:
+        return PeerChat(chat_id=self.make_id())
 

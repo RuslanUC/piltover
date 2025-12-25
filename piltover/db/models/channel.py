@@ -11,7 +11,7 @@ from piltover.db import models
 from piltover.db.enums import PeerType, ChatAdminRights
 from piltover.db.models import ChatBase
 from piltover.tl import ChannelForbidden, Channel as TLChannel, Long
-from piltover.tl.types import ChatAdminRights as TLChatAdminRights, PeerColor
+from piltover.tl.types import ChatAdminRights as TLChatAdminRights, PeerColor, PeerChannel
 from piltover.tl.types.internal_access import AccessHashPayloadChannel
 
 CREATOR_RIGHTS = TLChatAdminRights(
@@ -281,3 +281,6 @@ class Channel(ChatBase):
     @staticmethod
     def check_access_hash(user: int, auth: int, channel: int, access_hash: int) -> bool:
         return Channel.make_access_hash(user, auth, channel) == access_hash
+
+    def to_tl_peer(self) -> PeerChannel:
+        return PeerChannel(channel_id=self.make_id())

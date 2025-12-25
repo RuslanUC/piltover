@@ -11,7 +11,8 @@ from piltover.db import models
 from piltover.db.enums import ChatBannedRights, ChatAdminRights
 from piltover.db.models._utils import IntFlagField
 from piltover.exceptions import ErrorRpc
-from piltover.tl import Chat, ChatForbidden, ChannelForbidden, Channel, Photo, PhotoEmpty, ChatPhoto, ChatPhotoEmpty
+from piltover.tl import Chat, ChatForbidden, ChannelForbidden, Channel, Photo, PhotoEmpty, ChatPhoto, ChatPhotoEmpty, \
+    PeerChat, PeerChannel
 
 
 class _PhotoMissing(Enum):
@@ -184,15 +185,18 @@ class ChatBase(Model):
         return True
 
     def make_id(self) -> int:
-        raise NotImplemented
+        raise NotImplementedError
 
     @classmethod
     def make_id_from(cls, in_id: int) -> int:
-        raise NotImplemented
+        raise NotImplementedError
 
     @staticmethod
     def norm_id(t_id: int) -> int:
         return t_id // 2
 
     async def to_tl(self, user: models.User) -> Chat | ChatForbidden | Channel | ChannelForbidden:
-        raise NotImplemented
+        raise NotImplementedError
+
+    def to_tl_peer(self) -> PeerChat | PeerChannel:
+        raise NotImplementedError

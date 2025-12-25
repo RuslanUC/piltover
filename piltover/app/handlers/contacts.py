@@ -152,12 +152,12 @@ async def contacts_search(request: Search, user: User) -> Found:
     channels_by_id = {result_channel.id: result_channel for result_channel in channels}
     for existing_peer in await Peer.filter(
         Q(join_type=Q.OR, user__id__in=list(users_by_id.keys()), channel__id__in=list(channels_by_id.keys())),
-        owner=user
+        owner=user,
     ):
         if existing_peer.type is PeerType.USER:
-            users_by_id.pop(existing_peer.user_id)
+            del users_by_id[existing_peer.user_id]
         else:
-            channels_by_id.pop(existing_peer.channel_id)
+            del channels_by_id[existing_peer.channel_id]
 
     await Peer.bulk_create([
         *(
