@@ -1,5 +1,4 @@
 from datetime import datetime, UTC
-from time import time
 from typing import cast
 from urllib.parse import urlparse
 
@@ -405,7 +404,7 @@ async def make_chat_join_request_updates(chat: ChatBase, user: User) -> Updates:
     pending = await ChatInviteRequest.filter(
         Chat.query(chat, "invite")
     ).annotate(total_count=Count("id")).order_by("-created_at").limit(25).values_list("id", "total_count")
-    if not pending:
+    if pending:
         recent_users = [user_id for user_id, _ in pending]
         count = pending[0][1]
     else:
