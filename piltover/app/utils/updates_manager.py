@@ -712,7 +712,7 @@ async def update_user_name(user: User) -> None:
 
 async def add_remove_contact(user: User, targets: list[User]) -> Updates:
     updates = []
-    users = {}
+    users = []
     updates_to_create = []
 
     for target in targets:
@@ -728,11 +728,11 @@ async def add_remove_contact(user: User, targets: list[User]) -> Updates:
             peer=PeerUser(user_id=target.id),
             settings=PeerSettings(),
         ))
-        users[target.id] = await target.to_tl(user)
+        users.append(target)
 
     updates = UpdatesWithDefaults(
         updates=updates,
-        users=list(users.values()),
+        users=await User.to_tl_bulk(users, user),
     )
 
     await Update.bulk_create(updates_to_create)

@@ -234,15 +234,11 @@ async def add_contact(request: AddContact, user: User) -> Updates:
     if peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    contact, created = await Contact.get_or_create(owner=user, target=peer.user, defaults={
+    await Contact.update_or_create(owner=user, target=peer.user, defaults={
         "first_name": request.first_name,
         "last_name": request.last_name,
-        # TODO: fill Contact.phone_number from request?
+        "known_phone_number": request.phone or None,
     })
-    if not created:
-        contact.first_name = request.first_name
-        contact.last_name = request.last_name
-        await contact.save(update_fields=["first_name", "last_name"])
 
     # TODO: add_phone_privacy_exception
     return await upd.add_remove_contact(user, [peer.user])

@@ -66,15 +66,14 @@ async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
     if not votes:
         return VotesList(count=total_count, votes=[], chats=[], users=[], next_offset="")
 
-    users = {}
+    users_to_tl = {}
     votes_tl = []
 
     for vote in votes:
         peer = PeerUser(user_id=vote.user.id)
         vote_date = int(vote.voted_at.timestamp())
 
-        if vote.user.id not in users:
-            users[vote.user.id] = await vote.user.to_tl(user)
+        users_to_tl[vote.user.id] = vote.user
 
         if request.option:
             votes_tl.append(MessagePeerVoteInputOption(peer=peer, date=vote_date))
@@ -87,7 +86,7 @@ async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
         count=total_count,
         votes=votes_tl,
         chats=[],
-        users=list(users.values()),
+        users=await User.to_tl_bulk(users_to_tl.values(), user),
         next_offset=base64.b64encode(Long.write(votes[-1].id)).decode("utf8") if has_more else "",
     )
 

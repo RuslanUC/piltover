@@ -123,12 +123,11 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> 
     ).select_related("user")
 
     admins_tl = {}
-    users_tl = {}
+    users_to_tl = {}
 
     for invite in invites:
         user_id = invite.user.id
-        if user_id not in users_tl:
-            users_tl[user_id] = await invite.user.to_tl(user)
+        users_to_tl[user_id] = invite.user
         if user_id not in admins_tl:
             admins_tl[user_id] = ChatAdminWithInvites(admin_id=user_id, invites_count=0, revoked_invites_count=0)
         admins_tl[user_id].invites_count += 1
@@ -137,7 +136,7 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> 
 
     return ChatAdminsWithInvites(
         admins=list(admins_tl.values()),
-        users=list(users_tl.values()),
+        users=await User.to_tl_bulk(users_to_tl.values(), user),
     )
 
 

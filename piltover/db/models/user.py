@@ -4,7 +4,7 @@ import hashlib
 import hmac
 from datetime import date
 from enum import auto, Enum
-from typing import overload, Literal
+from typing import overload, Literal, Iterable
 
 from tortoise import fields, Model
 
@@ -106,7 +106,8 @@ class User(Model):
         is_contact = contact is not None
 
         phone_number = None
-        if await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PHONE_NUMBER):
+        if contact.known_phone_number == self.phone_number \
+                or await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PHONE_NUMBER):
             phone_number = self.phone_number
 
         username = await self.get_username()
@@ -166,7 +167,7 @@ class User(Model):
         )
 
     @classmethod
-    async def to_tl_bulk(cls, users: list[models.User], current: models.User) -> list[TLUser]:
+    async def to_tl_bulk(cls, users: Iterable[models.User], current: models.User) -> list[TLUser]:
         # TODO: "bottlenecks" are PrivacyRule.has_access_to, User.get_photo and Presence.to_tl_or_empty.
         #  User.get_photo and Presence.to_tl_or_empty both use PrivacyRule.has_access_to,
         #  so it needs to be made bulk-available first.
@@ -214,10 +215,6 @@ class User(Model):
 
         tl = []
         for user in users:
-            phone_number = None
-            if await models.PrivacyRule.has_access_to(current, user, PrivacyRuleKeyType.PHONE_NUMBER):
-                phone_number = user.phone_number
-
             emojis = background_emojis.get(user.id)
 
             color = None
@@ -238,6 +235,11 @@ class User(Model):
                 bot_info_version = bot_versions.get(user.id, 1)
 
             contact = contacts.get(user.id)
+
+            phone_number = None
+            if contact.known_phone_number == user.phone_number \
+                    or await models.PrivacyRule.has_access_to(current, user, PrivacyRuleKeyType.PHONE_NUMBER):
+                phone_number = user.phone_number
 
             tl.append(TLUser(
                 id=user.id,
