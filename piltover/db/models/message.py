@@ -202,7 +202,7 @@ class Message(Model):
                 readstate_peer = Q(peer=self.peer)
             last_id = cast(
                 int | None,
-                await models.ReadState.filter(readstate_peer).first().values_list("last_mention_id")
+                await models.ReadState.filter(readstate_peer).first().values_list("last_mention_id", flat=True)
             )
             media_unread = last_id is None or last_id < self.id
 
