@@ -200,3 +200,35 @@ class ChatBase(Model):
 
     def to_tl_peer(self) -> PeerChat | PeerChannel:
         raise NotImplementedError
+
+    def check_rights(
+            self, participant: models.ChatParticipant, admin: ChatAdminRights, regular: ChatBannedRights,
+    ) -> bool:
+        if self.creator_id == participant.user_id:
+            return True
+
+        admin_has_permission = (participant.admin_rights & admin) == admin
+
+        if isinstance(self, models.Channel) and self.channel:
+            if not participant.is_admin:
+                return False
+            return admin_has_permission
+
+        # Idk in which order we should check next two conditions
+
+        if (participant.banned_rights & regular) > 0:
+            return False
+
+        if admin_has_permission:
+            return True
+
+        return (self.banned_rights & regular) == 0
+
+    def can_pin_messages(self, participant: models.ChatParticipant) -> bool:
+        return self.check_rights(participant, ChatAdminRights.PIN_MESSAGES, ChatBannedRights.PIN_MESSAGES)
+
+    def can_send_messages(self, participant: models.ChatParticipant) -> bool:
+        return self.check_rights(participant, ChatAdminRights.POST_MESSAGES, ChatBannedRights.SEND_MESSAGES)
+
+    def can_send_plain(self, participant: models.ChatParticipant) -> bool:
+        return self.check_rights(participant, ChatAdminRights.POST_MESSAGES, ChatBannedRights.SEND_PLAIN)

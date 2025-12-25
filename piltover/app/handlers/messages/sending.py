@@ -269,16 +269,14 @@ async def send_message(request: SendMessage, user: User):
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant(user)
+        # TODO: move this into can_send_messages probably?
         if peer.type is PeerType.CHAT and participant is None:
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHANNEL and participant is None and not peer.channel.join_to_send:
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and peer.channel.channel \
-                and not peer.channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
+        if not chat_or_channel.can_send_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_PLAIN):
+        if not chat_or_channel.can_send_plain(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_SEND_PLAIN_FORBIDDEN")
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
@@ -316,12 +314,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
-        if peer.type is PeerType.CHAT and participant is None:
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and peer.channel.channel \
-                and not peer.channel.admin_has_permission(participant, ChatAdminRights.PIN_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.PIN_MESSAGES):
+        if not chat_or_channel.can_pin_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
     if (message := await Message.get_(request.id, peer)) is None:
