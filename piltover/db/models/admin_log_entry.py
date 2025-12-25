@@ -14,7 +14,7 @@ from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEv
     ChannelAdminLogEventActionParticipantLeave, ChannelAdminLogEventActionToggleNoForwards, \
     ChannelAdminLogEventActionDefaultBannedRights, ChannelAdminLogEventActionTogglePreHistoryHidden, PeerColor, \
     ChannelAdminLogEventActionChangePeerColor, ChannelAdminLogEventActionChangeProfilePeerColor, \
-    ChannelAdminLogEventActionChangeLinkedChat
+    ChannelAdminLogEventActionChangeLinkedChat, ChannelAdminLogEventActionChangeHistoryTTL, Long, Int
 from piltover.tl.base import ChannelAdminLogEvent
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
@@ -100,6 +100,11 @@ class AdminLogEntry(Model):
             action = ChannelAdminLogEventActionChangeLinkedChat(
                 prev_value=self.old_channel_id or 0,
                 new_value=self.new_channel_id or 0,
+            )
+        elif self.action is AdminLogEntryAction.EDIT_HISTORY_TTL:
+            action = ChannelAdminLogEventActionChangeHistoryTTL(
+                prev_value=Int.read_bytes(self.prev),
+                new_value=Int.read_bytes(self.new),
             )
 
         if action is None:

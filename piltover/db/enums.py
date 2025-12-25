@@ -369,7 +369,6 @@ class AdminLogEntryAction(IntEnum):
     #  INVITE_DELETE
     #  INVITE_REVOKE
     #  INVITE_EDIT
-    #  EDIT_HISTORY_TTL
     #  EDIT_AVAILABLE_REACTIONS
     #  EDIT_WALLPAPER
     # NOTE: following actions are ignored and probably wont be implemented for now:
@@ -407,6 +406,7 @@ class AdminLogEntryAction(IntEnum):
     EDIT_PEER_COLOR = 10
     EDIT_PEER_COLOR_PROFILE = 11
     LINKED_CHAT = 12
+    EDIT_HISTORY_TTL = 13
 
 
 class TaskIqScheduledState(IntEnum):

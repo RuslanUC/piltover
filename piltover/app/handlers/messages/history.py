@@ -13,9 +13,9 @@ from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights
+from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention, \
-    ChatParticipant, Chat, ReadHistoryChunk
+    ChatParticipant, Chat, ReadHistoryChunk, AdminLogEntry
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -25,7 +25,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
     InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo, \
-    InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition
+    InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition, Int
 from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDate
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
@@ -738,6 +738,7 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
     ttl_days = request.period // 86400
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
+    old_value = 0
     if peer.type is PeerType.SELF:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
     elif peer.type is PeerType.USER:
@@ -755,11 +756,19 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
                 and not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
             raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
+        old_value = peer.chat_or_channel.ttl_period_days
         await peer.chat_or_channel.update(ttl_period_days=ttl_days)
     else:
         raise Unreachable
 
     if peer.type is PeerType.CHANNEL:
+        await AdminLogEntry.create(
+            channel=peer.channel,
+            user=user,
+            action=AdminLogEntryAction.EDIT_HISTORY_TTL,
+            prev=Int.write(old_value * 86400),
+            new=Int.write(ttl_days * 86400),
+        )
         updates = await upd.update_channel(peer.channel, user)
     else:
         updates = await upd.update_history_ttl(peer, ttl_days)

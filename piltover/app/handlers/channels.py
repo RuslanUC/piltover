@@ -1032,7 +1032,8 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
                          | Q(action=AdminLogEntryAction.CHANGE_PHOTO) \
                          | Q(action=AdminLogEntryAction.EDIT_PEER_COLOR) \
                          | Q(action=AdminLogEntryAction.EDIT_PEER_COLOR_PROFILE) \
-                         | Q(action=AdminLogEntryAction.LINKED_CHAT)
+                         | Q(action=AdminLogEntryAction.LINKED_CHAT) \
+                         | Q(action=AdminLogEntryAction.EDIT_HISTORY_TTL)
         if request.events_filter.join:
             actions_q |= Q(action=AdminLogEntryAction.PARTICIPANT_JOIN)
         if request.events_filter.leave:
