@@ -13,10 +13,9 @@ from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.app.utils.utils import USERNAME_REGEX_NO_LEN
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention, \
-    ChatParticipant, Chat, ReadHistoryChunk, Username
+    ChatParticipant, Chat, ReadHistoryChunk
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -218,7 +217,7 @@ async def get_messages_internal(
 
 
 async def format_messages_internal(
-        user: User, messages: list[Message], add_users: list[int] | None = None, allow_slicing: bool = False,
+        user: User, messages: list[Message], allow_slicing: bool = False,
         peer: Peer | None = None, saved_peer: Peer | None = None, offset_id: int | None = None,
         query: QuerySet[Message] | None = None, with_reactions: bool = False,
 ) -> Messages | MessagesSlice:
@@ -228,10 +227,6 @@ async def format_messages_internal(
     for message in messages:
         messages_tl.append(await message.to_tl(user, with_reactions))
         ucc.add_message(message.id)
-
-    if add_users:
-        for add_user_id in add_users:
-            ucc.add_user(add_user_id)
 
     users, chats, channels = await ucc.resolve(user)
 
@@ -477,7 +472,7 @@ async def search_global(request: SearchGlobal, user: User):
         request.min_date, request.max_date, request.q, request.filter
     )
 
-    return await format_messages_internal(user, messages, users)
+    return await format_messages_internal(user, messages)
 
 
 @handler.on_request(GetMessagesViews, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -689,6 +684,8 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
 
 @handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_message_contents(request: ReadMessageContents, user: User) -> AffectedMessages:
+    # TODO: actually read media (mark message media_read as True)
+
     if not request.id:
         return AffectedMessages(
             pts=await State.add_pts(user, 0),

@@ -1,12 +1,8 @@
 from datetime import datetime, UTC
-from uuid import UUID
-
-from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash
 from piltover.app_config import AppConfig
-from piltover.context import request_ctx
 from piltover.db.enums import FileType
 from piltover.db.models import User, SavedGif, File
 from piltover.enums import ReqHandlerFlags

@@ -14,7 +14,7 @@ from tortoise.functions import Count
 
 from piltover.cache import Cache
 from piltover.db import models
-from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
+from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, FileType
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase
@@ -65,6 +65,7 @@ class Message(Model):
     # TODO: create fields type for tl objects
     reply_markup: bytes | None = fields.BinaryField(null=True, default=None)
     no_forwards: bool = fields.BooleanField(default=False)
+    media_read: bool = fields.BooleanField(default=False)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -187,13 +188,23 @@ class Message(Model):
             await models.MessageMention.get_or_none(peer__owner=current_user, message=self).values_list("id", flat=True)
         )
         if mention_id is not None:
-            # TODO: cache read state somewhere or pass as argument
-            # read_state, _ = await models.ReadState.get_or_create(peer=self.peer)
-            mentioned = True  # mention_id > read_state.last_mention_id
+            mentioned = True
 
-        media_unread = mentioned
-        if not media_unread:
-            ...  # TODO: check if media is read
+        media_unread = False
+        if self.media \
+                and self.media.file \
+                and self.media.file.type in (FileType.DOCUMENT_VOICE, FileType.DOCUMENT_VIDEO_NOTE):
+            media_unread = not self.media_read
+        elif mentioned:
+            if self.peer.type is PeerType.CHANNEL:
+                readstate_peer = Q(peer__owner=current_user, peer__channel__id=self.peer.channel_id)
+            else:
+                readstate_peer = Q(peer=self.peer)
+            last_id = cast(
+                int | None,
+                await models.ReadState.filter(readstate_peer).first().values_list("last_mention_id")
+            )
+            media_unread = last_id is None or last_id < self.id
 
         ttl_period = None
         if self.ttl_period_days and self.type is MessageType.REGULAR:

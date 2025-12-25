@@ -106,7 +106,7 @@ class User(Model):
         is_contact = contact is not None
 
         phone_number = None
-        if contact.known_phone_number == self.phone_number \
+        if (contact is not None and contact.known_phone_number == self.phone_number) \
                 or await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PHONE_NUMBER):
             phone_number = self.phone_number
 
@@ -237,7 +237,7 @@ class User(Model):
             contact = contacts.get(user.id)
 
             phone_number = None
-            if contact.known_phone_number == user.phone_number \
+            if (contact is not None and contact.known_phone_number == user.phone_number) \
                     or await models.PrivacyRule.has_access_to(current, user, PrivacyRuleKeyType.PHONE_NUMBER):
                 phone_number = user.phone_number
 
