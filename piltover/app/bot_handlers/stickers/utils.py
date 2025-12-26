@@ -1,9 +1,14 @@
+from tortoise.expressions import Q
+
 from piltover.db.models import User, Peer, Message, Stickerset
 from piltover.tl import KeyboardButtonRow, KeyboardButton, ReplyInlineMarkup, ReplyKeyboardMarkup, ReplyKeyboardHide
 
 
-async def get_stickerset_selection_keyboard(user: User, emoji: bool = False) -> list[KeyboardButtonRow] | None:
-    stickersets = await Stickerset.filter(owner=user, emoji=emoji).order_by("-id").values_list("short_name", flat=True)
+async def get_stickerset_selection_keyboard(user: User, emoji: bool | None = False) -> list[KeyboardButtonRow] | None:
+    query = Q(owner=user)
+    if emoji is not None:
+        query &= Q(emoji=emoji)
+    stickersets = await Stickerset.filter(query).order_by("-id").values_list("short_name", flat=True)
 
     if not stickersets:
         return None

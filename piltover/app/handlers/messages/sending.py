@@ -258,6 +258,17 @@ def _resolve_noforwards(peer: Peer, user: User, request_noforwards: bool = False
     return False
 
 
+async def _check_bot_blocked(user: User, peer: Peer) -> None:
+    if user.bot and peer.type is PeerType.USER \
+            and await Peer.filter(owner=peer.user, user=user, blocked_at__not_isnull=True).exists():
+        raise ErrorRpc(error_code=400, error_message="USER_IS_BLOCKED")
+
+
+def _check_we_blocked_user(peer: Peer) -> None:
+    if peer.type is PeerType.USER and peer.blocked_at is not None:
+        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+
+
 @handler.on_request(SendMessage_148)
 @handler.on_request(SendMessage_176)
 @handler.on_request(SendMessage)
@@ -274,10 +285,8 @@ async def send_message(request: SendMessage, user: User):
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
-    # TODO: check if bot can message this peer
-
-    if peer.blocked_at is not None:
-        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+    await _check_bot_blocked(user, peer)
+    _check_we_blocked_user(peer)
 
     if not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
@@ -309,6 +318,8 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
         participant = await chat_or_channel.get_participant_raise(user)
         if not chat_or_channel.can_pin_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+
+    await _check_bot_blocked(user, peer)
 
     if (message := await Message.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
@@ -384,18 +395,9 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         participant = await chat_or_channel.get_participant_raise(user)
         if not chat_or_channel.can_edit_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHAT and participant is None:
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and participant is None and not peer.channel.join_to_send:
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and peer.channel.channel \
-                and not peer.channel.admin_has_permission(participant, ChatAdminRights.EDIT_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
-    if peer.blocked_at is not None:
-        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+    await _check_bot_blocked(user, peer)
+    _check_we_blocked_user(peer)
 
     if peer.type is PeerType.CHANNEL:
         query = Q(id=request.id, peer__channel=peer.channel) & (
@@ -694,24 +696,14 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
-        if peer.type is PeerType.CHAT and participant is None:
+        if not chat_or_channel.can_send_media(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and participant is None and not peer.channel.join_to_send:
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and peer.channel.channel \
-                and not peer.channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MEDIA):
-            raise ErrorRpc(error_code=403, error_message="CHAT_SEND_GIFS_FORBIDDEN")
+        # TODO: check specific media type
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
-    # TODO: check if bot can message this peer
-
-    if peer.blocked_at is not None:
-        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+    await _check_bot_blocked(user, peer)
+    _check_we_blocked_user(peer)
 
     if len(request.message) > AppConfig.MAX_CAPTION_LENGTH:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
@@ -815,7 +807,8 @@ async def forward_messages(
     elif user.bot and (to_peer.type is PeerType.SELF or (to_peer.type is PeerType.USER and to_peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
-    # TODO: check if bot can message this peer
+    await _check_bot_blocked(user, to_peer)
+    _check_we_blocked_user(to_peer)
 
     if not request.id:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
@@ -902,13 +895,10 @@ async def upload_media(request: UploadMedia | UploadMedia_133, user: User):
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
+        if not chat_or_channel.can_send_media(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MEDIA):
-            raise ErrorRpc(error_code=403, error_message="CHAT_SEND_GIFS_FORBIDDEN")
 
-    if peer.blocked_at is not None:
-        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
+    _check_we_blocked_user(peer)
 
     media = await _process_media(user, request.media)
     return await media.to_tl(user)
@@ -924,24 +914,15 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
-        if peer.type is PeerType.CHAT and participant is None:
+        # TODO: check specific media type
+        if not chat_or_channel.can_send_media(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and participant is None and not peer.channel.join_to_send:
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and peer.channel.channel \
-                and not peer.channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MEDIA):
-            raise ErrorRpc(error_code=403, error_message="CHAT_SEND_GIFS_FORBIDDEN")
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
-    # TODO: check if bot can message this peer
+    await _check_bot_blocked(user, peer)
+    _check_we_blocked_user(peer)
 
-    if peer.blocked_at is not None:
-        raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
     if not request.multi_media:
         raise ErrorRpc(error_code=400, error_message="MEDIA_EMPTY")
     if len(request.multi_media) > 10:

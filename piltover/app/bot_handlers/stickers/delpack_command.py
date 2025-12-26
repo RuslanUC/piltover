@@ -11,7 +11,7 @@ __text_no_sets = "You have no sets :("  # TODO: correct text
 
 
 async def stickers_delpack_command(peer: Peer, _: Message) -> Message | None:
-    keyboard_rows = await get_stickerset_selection_keyboard(peer.owner)
+    keyboard_rows = await get_stickerset_selection_keyboard(peer.owner, None)
     if keyboard_rows is None:
         return await send_bot_message(peer, __text_no_sets)
 
