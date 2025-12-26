@@ -227,8 +227,26 @@ class ChatBase(Model):
     def can_pin_messages(self, participant: models.ChatParticipant) -> bool:
         return self.check_rights(participant, ChatAdminRights.PIN_MESSAGES, ChatBannedRights.PIN_MESSAGES)
 
+    def _check_can_send(self, participant: models.ChatParticipant) -> bool:
+        if isinstance(self, models.Chat) and participant is None:
+            return False
+        if isinstance(self, models.Channel) and participant is None and not self.join_to_send:
+            return False
+        return True
+
     def can_send_messages(self, participant: models.ChatParticipant) -> bool:
+        if not self._check_can_send(participant):
+            return False
         return self.check_rights(participant, ChatAdminRights.POST_MESSAGES, ChatBannedRights.SEND_MESSAGES)
 
     def can_send_plain(self, participant: models.ChatParticipant) -> bool:
+        # TODO: btw, this is probably completely wrong. SEND_MESSAGES may not be set when SEND_PLAIN is actually set.
+        #  Need to check how telegram handles this.
+        if not self.can_send_messages(participant):
+            return False
         return self.check_rights(participant, ChatAdminRights.POST_MESSAGES, ChatBannedRights.SEND_PLAIN)
+
+    def can_edit_messages(self, participant: models.ChatParticipant) -> bool:
+        if not self._check_can_send(participant):
+            return False
+        return self.check_rights(participant, ChatAdminRights.EDIT_MESSAGES, ChatBannedRights.SEND_MESSAGES)

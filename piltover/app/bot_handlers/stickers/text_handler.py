@@ -12,7 +12,7 @@ from piltover.db.enums import StickersBotState, MediaType, StickerSetType, FileT
 from piltover.db.models import Peer, Message, Stickerset, File, InstalledStickerset
 from piltover.db.models.stickers_state import StickersBotUserState
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.tl import ReplyKeyboardMarkup
+from piltover.tl import ReplyKeyboardMarkup, ReplyKeyboardHide
 from piltover.tl.functions.stickers import CheckShortName
 from piltover.tl.types.internal_stickersbot import StickersStateNewpack, NewpackInputSticker, StickersStateAddsticker, \
     StickersStateEditsticker, StickersStateDelpack, StickersStateRenamepack, StickersStateReplacesticker, \
@@ -34,38 +34,38 @@ Thanks! Now send me an emoji that corresponds to your first sticker.
 You can list several emoji in one message, but I recommend using no more than two per sticker.
 """.strip()
 __newpack_send_emoji_invalid = "Please send us an emoji that best describes your sticker."
-__newpack_sticker_added = """
+__newpack_sticker_added = FormatableTextWithEntities("""
 Congratulations. Stickers in the set: {num}. To add another sticker, send me the next sticker as a .PNG or .WEBP file.
 
-When you're done, simply send the /publish command.
-""".strip()
-__text_send_shortname = """
+When you're done, simply send the <c>/publish</c> command.
+""".strip())
+__text_send_shortname, __text_send_shortname_entities = FormatableTextWithEntities("""
 Please provide a short name for your set. I'll use it to create a link that you can share with friends and followers.
 
-For example, this set has the short name 'Animals': https://telegram.me/addstickers/Animals
-""".strip()
+For example, this set has the short name 'Animals': <a>https://telegram.me/addstickers/Animals</a>
+""".strip()).format()
 __text_shortname_taken = "Sorry, this short name is already taken."
 __text_shortname_invalid = "Sorry, this short name is unacceptable."
-__text_published = """
-Kaboom! I've just published your sticker set. Here's your link: https://t.me/addstickers/{short_name}
+__text_published = FormatableTextWithEntities("""
+Kaboom! I've just published your sticker set. Here's your link: <a>https://t.me/addstickers/{short_name}</a>
 
 You can share it with other Telegram users — they'll be able to add your stickers to their sticker panel by following the link. Just make sure they're using an up to date version of the app.
-""".strip()
+""".strip())
 __addsticker_shortname_invalid = "Invalid set selected."
-__addsticker_sticker_added = """
+__addsticker_sticker_added, __addsticker_sticker_added_entities = FormatableTextWithEntities("""
 There we go. I've added your sticker to the set, it will become available to all Telegram users within an hour. 
 
 To add another sticker, send me the next sticker.
-When you're done, simply send the /done command.
-""".strip()
+When you're done, simply send the <c>/done</c> command.
+""".strip()).format()
 __editsticker_send_sticker = "Please send me the sticker you want to edit."
 __editsticker_not_owner = "Sorry, I can't do this. Looks like you are not the owner of the relevant set."
-__editsticker_send_emoji = """
+__editsticker_send_emoji = FormatableTextWithEntities("""
 Current emoji: {current}
 Please send me some new emoji that correspond to this sticker.
 
-You can list several emoji in one message, but I recommend using no more than two per sticker. Send /cancel to keep the current emoji.
-""".strip()
+You can list several emoji in one message, but I recommend using no more than two per sticker. Send <c>/cancel</c> to keep the current emoji.
+""".strip())
 __editsticker_send_sticker_invalid = "Please send me the sticker."
 __editsticker_saved = "I edited your sticker. Hope you like it better this way."
 __delpack_confirm = f"""
@@ -73,12 +73,12 @@ OK, you selected the set {{name}}. Are you sure?
 
 Send `{DELPACK_CONFIRMATION}` to confirm you really want to delete this set.
 """.strip()
-__delpack_confirm_invalid = f"""
+__delpack_confirm_invalid, __delpack_confirm_invalid_entities = FormatableTextWithEntities(f"""
 Please enter the confirmation text exactly like this:
 `{DELPACK_CONFIRMATION}`
 
-Type /cancel to cancel the operation.
-""".strip()
+Type <c>/cancel</c> to cancel the operation.
+""".strip()).format()
 __delpack_deleted = "Done! The sticker set is gone."
 __renamepack_send_name = """
 OK, you selected the set {name}.
@@ -86,11 +86,11 @@ Now choose a new name for your set.
 """.strip()
 __renamepack_renamed = "Your sticker set has a new name now. Enjoy!"
 __replacesticker_send_sticker = "Please send me the sticker you want to replace."
-__replacesticker_replaced = """
+__replacesticker_replaced, __replacesticker_replaced_entities = FormatableTextWithEntities("""
 I replaced your sticker. Hope you like it better this way. Users should be able see the new sticker within an hour or so.
 
-Please send me the next sticker you want to replace or /done if you are done.
-""".strip()
+Please send me the next sticker you want to replace or <c>/done</c> if you are done.
+""".strip()).format()
 __newemojipack_invalid_type = "Please use buttons to choose the type of custom emoji set."
 __newemojipack_type_not_supported = "This emoji pack type is not supported yet :(. Please choose \"Static\"."
 __newemojipack_send_name, __newemojipack_send_name_entities = FormatableTextWithEntities("""
@@ -110,22 +110,22 @@ Thanks!
 Send me a replacement emoji that corresponds to your custom emoji.
 You can list several emoji that describe your custom one, but I recommend using no more than two per emoji.
 """.strip()
-__newemojipack_sticker_added = """
+__newemojipack_sticker_added = FormatableTextWithEntities("""
 Congratulations. Emoji in the set: {num}. 
 To add another custom emoji, send me the next emoji as a .PNG or .WEBP file.
 
-When you're done, simply send the /publish command.
-""".strip()
-__text_send_shortname_emoji = """
+When you're done, simply send the <c>/publish</c> command.
+""".strip())
+__text_send_shortname_emoji, __text_send_shortname_emoji_entities = FormatableTextWithEntities("""
 Please provide a short name for your emoji set. I'll use it to create a link that you can share with friends and followers.
 
-For example, this set has the short name 'DuckEmoji': https://telegram.me/addemoji/DuckEmoji
-""".strip()
-__text_published_emoji = """
-Kaboom! I've just published your emoji set. Here's your link: https://t.me/addemoji/{short_name}
+For example, this set has the short name 'DuckEmoji': <a>https://telegram.me/addemoji/DuckEmoji</a>
+""".strip()).format()
+__text_published_emoji = FormatableTextWithEntities("""
+Kaboom! I've just published your emoji set. Here's your link: <a>https://t.me/addemoji/{short_name}</a>
 
-You can share it with other Telegram users — they'll be able to add your emoji to their emoji panel by following the link. Just make sure they're using an up to date version of the app. At the moment, only Telegram Premium subscribers can send custom emoji.
-""".strip()
+You can share it with other Telegram users — they'll be able to add your emoji to their emoji panel by following the link. \Just make sure they're using an up to date version of the app. At the moment, only Telegram Premium subscribers can send custom emoji.
+""".strip())
 
 
 async def _invalid_set_selected(peer: Peer, emoji: bool) -> Message:
@@ -208,7 +208,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 StickersStateReplacesticker(set_id=stickerset.id).serialize(),
             )
 
-            return await send_bot_message(peer, __replacesticker_replaced)
+            return await send_bot_message(peer, __replacesticker_replaced, entities=__replacesticker_replaced_entities)
         elif state.state is StickersBotState.NEWEMOJIPACK_WAIT_IMAGE:
             state_data = StickersStateNewemojipack.deserialize(BytesIO(state.data))
             if state_data.stickers is None:
@@ -241,7 +241,8 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 StickersBotState.NEWPACK_WAIT_IMAGE,
                 state_data.serialize(),
             )
-            return await send_bot_message(peer, __newpack_sticker_added.format(num=len(state_data.stickers)))
+            text, entities = __newpack_sticker_added.format(num=len(state_data.stickers))
+            return await send_bot_message(peer, text, entities=entities)
         elif state.state in (StickersBotState.ADDSTICKER_WAIT_EMOJI, StickersBotState.ADDEMOJI_WAIT_EMOJI):
             is_emoji = False
             if state.state is StickersBotState.ADDSTICKER_WAIT_EMOJI:
@@ -270,7 +271,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 StickersStateAddsticker(set_id=stickerset.id, file_id=0).serialize(),
             )
 
-            return await send_bot_message(peer, __addsticker_sticker_added)
+            return await send_bot_message(peer, __addsticker_sticker_added, entities=__addsticker_sticker_added_entities)
         elif state.state is StickersBotState.EDITSTICKER_WAIT_EMOJI:
             state_data = StickersStateEditsticker.deserialize(BytesIO(state.data))
             file = await File.get_or_none(id=state_data.file_id)
@@ -284,17 +285,18 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             state_data = StickersStateNewemojipack.deserialize(BytesIO(state.data))
             state_data.stickers[-1].emoji = emoji
             await state.update_state(StickersBotState.NEWEMOJIPACK_WAIT_IMAGE, state_data.serialize())
-            return await send_bot_message(peer, __newemojipack_sticker_added.format(num=len(state_data.stickers)))
+            text, entities = __newemojipack_sticker_added.format(num=len(state_data.stickers))
+            return await send_bot_message(peer, text, entities=entities)
         else:
             raise Unreachable
 
     if state.state is StickersBotState.NEWPACK_WAIT_ICON:
         await state.update_state(StickersBotState.NEWPACK_WAIT_SHORT_NAME, None)
-        return await send_bot_message(peer, __text_send_shortname)
+        return await send_bot_message(peer, __text_send_shortname, entities=__text_send_shortname_entities)
 
     if state.state is StickersBotState.NEWEMOJIPACK_WAIT_ICON:
         await state.update_state(StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME, None)
-        return await send_bot_message(peer, __text_send_shortname_emoji)
+        return await send_bot_message(peer, __text_send_shortname_emoji, entities=__text_send_shortname_emoji_entities)
 
     if state.state in (StickersBotState.NEWPACK_WAIT_SHORT_NAME, StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME):
         short_name = message.message.strip()
@@ -349,9 +351,11 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
         await upd.new_stickerset(peer.owner, stickerset)
         if state.state is StickersBotState.NEWPACK_WAIT_SHORT_NAME:
-            return await send_bot_message(peer, __text_published.format(short_name=short_name))
+            text, entities = __text_published.format(short_name=short_name)
+            return await send_bot_message(peer, text, entities=entities)
         elif state.state is StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME:
-            return await send_bot_message(peer, __text_published_emoji.format(short_name=short_name))
+            text, entities = __text_published_emoji.format(short_name=short_name)
+            return await send_bot_message(peer, text, entities=entities)
         else:
             raise Unreachable
 
@@ -374,13 +378,15 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                     StickersBotState.EDITSTICKER_WAIT_EMOJI,
                     StickersStateEditsticker(set_id=None, file_id=sticker.id).serialize(),
                 )
-                return await send_bot_message(peer, __editsticker_send_emoji.format(current=sticker.sticker_alt))
+                text, entities = __editsticker_send_emoji.format(current=sticker.sticker_alt)
+                return await send_bot_message(peer, text, entities=entities)
             elif state.state is StickersBotState.REPLACESTICKER_WAIT_PACK_OR_STICKER:
                 await state.update_state(
                     StickersBotState.REPLACESTICKER_WAIT_IMAGE,
                     StickersStateReplacesticker(set_id=None, file_id=sticker.id).serialize(),
                 )
-                return await send_bot_message(peer, __editsticker_send_emoji.format(current=sticker.sticker_alt))
+                text, entities = __editsticker_send_emoji.format(current=sticker.sticker_alt)
+                return await send_bot_message(peer, text, entities=entities)
             else:
                 raise Unreachable
         elif allow_sticker and message.media:
@@ -446,7 +452,8 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 StickersBotState.EDITSTICKER_WAIT_EMOJI,
                 StickersStateEditsticker(set_id=None, file_id=sticker.id).serialize(),
             )
-            return await send_bot_message(peer, __editsticker_send_emoji.format(current=sticker.sticker_alt))
+            text, entities = __editsticker_send_emoji.format(current=sticker.sticker_alt)
+            return await send_bot_message(peer, text, entities=entities)
         elif state.state is StickersBotState.REPLACESTICKER_WAIT_STICKER:
             await state.update_state(
                 StickersBotState.REPLACESTICKER_WAIT_IMAGE,
@@ -458,7 +465,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
 
     if state.state is StickersBotState.DELPACK_WAIT_CONFIRM:
         if message.message != DELPACK_CONFIRMATION:
-            return await send_bot_message(peer, __delpack_confirm_invalid)
+            return await send_bot_message(peer, __delpack_confirm_invalid, entities=__delpack_confirm_invalid_entities)
 
         state_data = StickersStateDelpack.deserialize(BytesIO(state.data))
         stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner)
@@ -507,7 +514,9 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             StickersBotState.NEWEMOJIPACK_WAIT_NAME,
             StickersStateNewemojipack(type_=pack_type).serialize(),
         )
-        return await send_bot_message(peer, __newemojipack_send_name, None, __newemojipack_send_name_entities)
+        return await send_bot_message(
+            peer, __newemojipack_send_name, ReplyKeyboardHide(), __newemojipack_send_name_entities,
+        )
 
     if state.state is StickersBotState.NEWEMOJIPACK_WAIT_NAME:
         pack_name = message.message

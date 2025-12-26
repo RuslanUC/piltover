@@ -98,7 +98,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         if update.update_type is UpdateType.NEW_AUTHORIZATION and (update.related_id == ctx.auth_id or ctx.layer < 163):
             continue
 
-        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, ctx.auth_id, ucc)
+        update_tl = await update.to_tl(user, ctx.auth_id, ucc)
         if update_tl is not None:
             other_updates.append(update_tl)
 
@@ -173,7 +173,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
         if update.type is ChannelUpdateType.EDIT_MESSAGE and update.related_id in new_messages:
             continue
 
-        update_tl, users_q, chats_q, channels_q = await update.to_tl(user, ucc)
+        update_tl = await update.to_tl(user, ucc)
         if update_tl is not None:
             other_updates.append(update_tl)
 

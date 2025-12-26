@@ -269,13 +269,6 @@ async def send_message(request: SendMessage, user: User):
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant(user)
-        # TODO: move this into can_send_messages probably?
-        if peer.type is PeerType.CHAT and participant is None:
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if peer.type is PeerType.CHANNEL and participant is None and not peer.channel.join_to_send:
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        if not chat_or_channel.can_send_messages(participant):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.can_send_plain(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_SEND_PLAIN_FORBIDDEN")
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
@@ -389,6 +382,8 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
+        if not chat_or_channel.can_edit_messages(participant):
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHAT and participant is None:
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHANNEL and participant is None and not peer.channel.join_to_send:

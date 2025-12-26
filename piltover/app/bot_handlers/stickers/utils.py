@@ -1,5 +1,5 @@
 from piltover.db.models import User, Peer, Message, Stickerset
-from piltover.tl import KeyboardButtonRow, KeyboardButton, ReplyInlineMarkup, ReplyKeyboardMarkup
+from piltover.tl import KeyboardButtonRow, KeyboardButton, ReplyInlineMarkup, ReplyKeyboardMarkup, ReplyKeyboardHide
 
 
 async def get_stickerset_selection_keyboard(user: User, emoji: bool = False) -> list[KeyboardButtonRow] | None:
@@ -18,7 +18,7 @@ async def get_stickerset_selection_keyboard(user: User, emoji: bool = False) -> 
 
 
 async def send_bot_message(
-        peer: Peer, text: str, keyboard: ReplyInlineMarkup | ReplyKeyboardMarkup | None = None,
+        peer: Peer, text: str, keyboard: ReplyInlineMarkup | ReplyKeyboardMarkup | ReplyKeyboardHide | None = None,
         entities: list[dict[str, str | int]] | None = None,
 ) -> Message:
     messages = await Message.create_for_peer(

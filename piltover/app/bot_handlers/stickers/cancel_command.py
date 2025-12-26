@@ -1,5 +1,6 @@
 from typing import cast
 
+from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import StickersBotState, STICKERS_STATE_TO_COMMAND_NAME
 from piltover.db.models import Peer, Message
 from piltover.db.models.stickers_state import StickersBotUserState
@@ -7,11 +8,11 @@ from piltover.db.models.stickers_state import StickersBotUserState
 __text_no_command = """
 No active command to cancel. I wasn't doing anything anyway. Zzzzz...
 """.strip()
-__text_command_cancel = """
+__text_command_cancel = FormatableTextWithEntities("""
 The command {command} has been cancelled. Anything else I can do for you?
 
-Send /help for a list of commands.
-""".strip()
+Send <c>/help</c> for a list of commands.
+""".strip())
 
 
 async def stickers_cancel_command(peer: Peer, _: Message) -> Message | None:
@@ -21,11 +22,14 @@ async def stickers_cancel_command(peer: Peer, _: Message) -> Message | None:
     )
     await StickersBotUserState.filter(user=peer.owner).delete()
 
+    text = __text_no_command
+    entities = []
     command = STICKERS_STATE_TO_COMMAND_NAME[state]
-    if command is None:
-        text = __text_no_command
-    else:
-        text = __text_command_cancel.format(command=command)
 
-    messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=text)
+    if command is not None:
+        text, entities = __text_command_cancel.format(command=command)
+
+    messages = await Message.create_for_peer(
+        peer, None, None, peer.user, False, message=text, entities=entities or None,
+    )
     return messages[peer]

@@ -7,9 +7,7 @@ from piltover.db.enums import StickersBotState
 from piltover.db.models import Peer, Message
 from piltover.db.models.stickers_state import StickersBotUserState
 
-__text = """
-Yay! A new sticker set. Now choose a name for your set.
-""".strip()
+__text = "Yay! A new sticker set. Now choose a name for your set."
 
 
 async def stickers_newpack_command(peer: Peer, _: Message) -> Message | None:
