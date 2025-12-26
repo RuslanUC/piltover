@@ -59,6 +59,7 @@ class Channel(ChatBase):
     is_discussion: bool = fields.BooleanField(default=False)
     accent_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="channel_accent_emoji", on_delete=fields.SET_NULL)
     profile_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="channel_profile_emoji", on_delete=fields.SET_NULL)
+    slowmode_seconds: int | None = fields.IntField(null=True, default=None)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -118,7 +119,7 @@ class Channel(ChatBase):
             scam=False,
             has_link=self.discussion_id is not None or self.is_discussion,
             has_geo=False,
-            slowmode_enabled=False,
+            slowmode_enabled=self.slowmode_seconds is not None,
             call_active=False,
             call_not_empty=False,
             fake=False,

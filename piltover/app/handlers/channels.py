@@ -28,13 +28,13 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
-    InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty
+    InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
-    GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor
+    GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -294,6 +294,9 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             migrated_from_chat_id=Chat.make_id_from(migrated_from_chat_id) if migrated_from_chat_id else None,
             migrated_from_max_id=migrated_from_max_id,
             linked_chat_id=linked_chat.id if linked_chat else None,
+            slowmode_seconds=channel.slowmode_seconds,
+            # TODO: slowmode_next_send_date
+            slowmode_next_send_date=None,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl, user),
         users=[await user.to_tl(user)],
@@ -1033,7 +1036,8 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
                          | Q(action=AdminLogEntryAction.EDIT_PEER_COLOR) \
                          | Q(action=AdminLogEntryAction.EDIT_PEER_COLOR_PROFILE) \
                          | Q(action=AdminLogEntryAction.LINKED_CHAT) \
-                         | Q(action=AdminLogEntryAction.EDIT_HISTORY_TTL)
+                         | Q(action=AdminLogEntryAction.EDIT_HISTORY_TTL) \
+                         | Q(action=AdminLogEntryAction.TOGGLE_SLOWMODE)
         if request.events_filter.join:
             actions_q |= Q(action=AdminLogEntryAction.PARTICIPANT_JOIN)
         if request.events_filter.leave:
@@ -1288,4 +1292,39 @@ async def update_color(request: UpdateColor, user: User) -> Updates:
     )
 
     return await upd.update_channel(channel, user)
+
+
+@handler.on_request(ToggleSlowMode, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def toggle_slowmode(request: ToggleSlowMode, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+    )
+
+    channel = peer.channel
+
+    new_seconds = request.seconds or None
+    if channel.slowmode_seconds == request.seconds:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+    if new_seconds % 60 != 0 or new_seconds < 0 or new_seconds > 60 * 60:
+        raise ErrorRpc(error_code=400, error_message="SECONDS_INVALID")
+
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    old_seconds = channel.slowmode_seconds
+    channel.slowmode_seconds = new_seconds
+    channel.version += 1
+    await channel.save(update_fields=["slowmode_seconds", "version"])
+
+    await AdminLogEntry.create(
+        channel=peer.channel,
+        user=user,
+        action=AdminLogEntryAction.TOGGLE_SLOWMODE,
+        prev=Int.write(old_seconds or 0),
+        new=Int.write(new_seconds or 0),
+    )
+
+    return await upd.update_channel(channel, user)
+
 

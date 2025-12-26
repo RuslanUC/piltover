@@ -14,7 +14,8 @@ from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEv
     ChannelAdminLogEventActionParticipantLeave, ChannelAdminLogEventActionToggleNoForwards, \
     ChannelAdminLogEventActionDefaultBannedRights, ChannelAdminLogEventActionTogglePreHistoryHidden, PeerColor, \
     ChannelAdminLogEventActionChangePeerColor, ChannelAdminLogEventActionChangeProfilePeerColor, \
-    ChannelAdminLogEventActionChangeLinkedChat, ChannelAdminLogEventActionChangeHistoryTTL, Long, Int
+    ChannelAdminLogEventActionChangeLinkedChat, ChannelAdminLogEventActionChangeHistoryTTL, Long, Int, \
+    ChannelAdminLogEventActionToggleSlowMode
 from piltover.tl.base import ChannelAdminLogEvent
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
@@ -103,6 +104,11 @@ class AdminLogEntry(Model):
             )
         elif self.action is AdminLogEntryAction.EDIT_HISTORY_TTL:
             action = ChannelAdminLogEventActionChangeHistoryTTL(
+                prev_value=Int.read_bytes(self.prev),
+                new_value=Int.read_bytes(self.new),
+            )
+        elif self.action is AdminLogEntryAction.TOGGLE_SLOWMODE:
+            action = ChannelAdminLogEventActionToggleSlowMode(
                 prev_value=Int.read_bytes(self.prev),
                 new_value=Int.read_bytes(self.new),
             )

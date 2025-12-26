@@ -364,7 +364,6 @@ class AdminLogEntryAction(IntEnum):
     #  ...ParticipantInvite#e31c34d8
     #  ...ChangeStickerSet#b1c3caa7
     #  ...ChangeLocation#e6b76ae
-    #  ...ToggleSlowMode#53909779
     #  ...StartGroupCall#23209745
     #  ...DiscardGroupCall#db9f9140
     #  ...ParticipantMute#f92424d2
@@ -395,6 +394,7 @@ class AdminLogEntryAction(IntEnum):
     EDIT_PEER_COLOR_PROFILE = 11
     LINKED_CHAT = 12
     EDIT_HISTORY_TTL = 13
+    TOGGLE_SLOWMODE = 14
 
 
 class TaskIqScheduledState(IntEnum):
