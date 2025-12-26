@@ -12,6 +12,7 @@ from piltover.app.bot_handlers.stickers.addemoji_command import stickers_addemoj
 from piltover.app.bot_handlers.stickers.addsticker_command import stickers_addsticker_command
 from piltover.app.bot_handlers.stickers.cancel_command import stickers_cancel_command
 from piltover.app.bot_handlers.stickers.delpack_command import stickers_delpack_command
+from piltover.app.bot_handlers.stickers.done_command import stickers_done_command
 from piltover.app.bot_handlers.stickers.editsticker_command import stickers_editsticker_command
 from piltover.app.bot_handlers.stickers.newemojipack_command import stickers_newemojipack_command
 from piltover.app.bot_handlers.stickers.newpack_command import stickers_newpack_command
@@ -53,7 +54,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
         "publish": stickers_publish_command,
         "skip": stickers_skip_command,
         "addsticker": stickers_addsticker_command,
-        "done": stickers_addsticker_command,
+        "done": stickers_done_command,
         "editsticker": stickers_editsticker_command,
         "delpack": stickers_delpack_command,
         "renamepack": stickers_renamepack_command,

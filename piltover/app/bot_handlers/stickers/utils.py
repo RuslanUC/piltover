@@ -3,7 +3,7 @@ from piltover.tl import KeyboardButtonRow, KeyboardButton, ReplyInlineMarkup, Re
 
 
 async def get_stickerset_selection_keyboard(user: User, emoji: bool = False) -> list[KeyboardButtonRow] | None:
-    stickersets = await Stickerset.filter(owner=user, emoji=emoji).order_by("-id").values_list("short_name")
+    stickersets = await Stickerset.filter(owner=user, emoji=emoji).order_by("-id").values_list("short_name", flat=True)
 
     if not stickersets:
         return None

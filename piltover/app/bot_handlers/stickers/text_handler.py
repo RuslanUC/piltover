@@ -266,10 +266,18 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
             await stickerset.save(update_fields=["hash"])
 
-            await state.update_state(
-                StickersBotState.ADDEMOJI_WAIT_IMAGE,
-                StickersStateAddsticker(set_id=stickerset.id, file_id=0).serialize(),
-            )
+            if state.state is StickersBotState.ADDSTICKER_WAIT_EMOJI:
+                await state.update_state(
+                    StickersBotState.ADDSTICKER_WAIT_IMAGE,
+                    StickersStateAddsticker(set_id=stickerset.id, file_id=0).serialize(),
+                )
+            elif state.state is StickersBotState.ADDEMOJI_WAIT_EMOJI:
+                await state.update_state(
+                    StickersBotState.ADDEMOJI_WAIT_IMAGE,
+                    StickersStateAddemoji(set_id=stickerset.id, file_id=0).serialize(),
+                )
+            else:
+                raise Unreachable
 
             return await send_bot_message(peer, __addsticker_sticker_added, entities=__addsticker_sticker_added_entities)
         elif state.state is StickersBotState.EDITSTICKER_WAIT_EMOJI:
@@ -435,7 +443,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 StickersBotState.ADDEMOJI_WAIT_IMAGE,
                 StickersStateAddemoji(set_id=stickerset.id, file_id=0).serialize(),
             )
-            return await send_bot_message(peer, __newpack_send_sticker)
+            return await send_bot_message(peer, __newemojipack_send_image)
         else:
             raise Unreachable
 
