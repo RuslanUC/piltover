@@ -1,33 +1,22 @@
 from __future__ import annotations
 
 from tortoise import fields, Model
+from tortoise.expressions import Subquery
+from tortoise.query_utils import Prefetch
 
+from piltover.context import request_ctx
 from piltover.db import models
-from piltover.db.enums import PrivacyRuleKeyType, PrivacyRuleValueType, PeerType
+from piltover.db.enums import PrivacyRuleKeyType
+from piltover.db.models import Contact
 from piltover.tl import PrivacyValueAllowContacts, PrivacyValueAllowAll, PrivacyValueAllowUsers, \
-    PrivacyValueDisallowContacts, PrivacyValueDisallowAll, PrivacyValueDisallowUsers, InputPrivacyKeyStatusTimestamp, \
+    PrivacyValueDisallowAll, PrivacyValueDisallowUsers, InputPrivacyKeyStatusTimestamp, \
     InputPrivacyKeyChatInvite, InputPrivacyKeyPhoneCall, InputPrivacyKeyPhoneP2P, InputPrivacyKeyForwards, \
     InputPrivacyKeyProfilePhoto, InputPrivacyKeyPhoneNumber, InputPrivacyKeyAddedByPhone, \
     InputPrivacyKeyVoiceMessages, InputPrivacyValueAllowContacts, InputPrivacyValueAllowAll, \
-    InputPrivacyValueAllowUsers, InputPrivacyValueDisallowContacts, InputPrivacyValueDisallowAll, \
-    InputPrivacyValueDisallowUsers, InputUserSelf, InputUser, InputPrivacyKeyAbout, InputPrivacyKeyBirthday
+    InputPrivacyValueAllowUsers, InputPrivacyValueDisallowUsers, InputUserSelf, InputUser, InputPrivacyKeyAbout, \
+    InputPrivacyKeyBirthday, InputPeerUser
+from piltover.tl.base import InputPrivacyRule, PrivacyRule as TLPrivacyRule
 
-PRIVACY_ENUM_TO_TL = {
-    PrivacyRuleValueType.ALLOW_CONTACTS: PrivacyValueAllowContacts,
-    PrivacyRuleValueType.ALLOW_ALL: PrivacyValueAllowAll,
-    PrivacyRuleValueType.ALLOW_USERS: PrivacyValueAllowUsers,
-    PrivacyRuleValueType.DISALLOW_CONTACTS: PrivacyValueDisallowContacts,
-    PrivacyRuleValueType.DISALLOW_ALL: PrivacyValueDisallowAll,
-    PrivacyRuleValueType.DISALLOW_USERS: PrivacyValueDisallowUsers,
-}
-TL_TO_PRIVACY_ENUM = {
-    InputPrivacyValueAllowContacts: PrivacyRuleValueType.ALLOW_CONTACTS,
-    InputPrivacyValueAllowAll: PrivacyRuleValueType.ALLOW_ALL,
-    InputPrivacyValueAllowUsers: PrivacyRuleValueType.ALLOW_USERS,
-    InputPrivacyValueDisallowContacts: PrivacyRuleValueType.DISALLOW_CONTACTS,
-    InputPrivacyValueDisallowAll: PrivacyRuleValueType.DISALLOW_ALL,
-    InputPrivacyValueDisallowUsers: PrivacyRuleValueType.DISALLOW_USERS,
-}
 TL_KEY_TO_PRIVACY_ENUM = {
     InputPrivacyKeyStatusTimestamp: PrivacyRuleKeyType.STATUS_TIMESTAMP,
     InputPrivacyKeyChatInvite: PrivacyRuleKeyType.CHAT_INVITE,
@@ -43,12 +32,18 @@ TL_KEY_TO_PRIVACY_ENUM = {
 }
 
 
-def _inputusers_to_uids(user: models.User, input_users: list[InputUserSelf | InputUser]) -> set[int]:
-    result = set()
+def _inputusers_to_uids(
+        user: models.User, input_users: list[InputUserSelf | InputUser], existing_set: set[int] | None = None
+) -> set[int]:
+    auth_id = request_ctx.get().auth_id
+    result = existing_set if existing_set is not None else set()
+
     for input_user in input_users:
-        if isinstance(input_user, InputUserSelf):
-            result.add(user.id)
-        elif isinstance(input_user, InputUser):
+        if not isinstance(input_user, (InputUser, InputPeerUser)):
+            continue
+        if input_user.user_id == user.id:
+            continue
+        if models.User.check_access_hash(user.id, auth_id, input_user.user_id, input_user.access_hash):
             result.add(input_user.user_id)
 
     return result
@@ -58,52 +53,110 @@ class PrivacyRule(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
     key: PrivacyRuleKeyType = fields.IntEnumField(PrivacyRuleKeyType)
-    value: PrivacyRuleValueType = fields.IntEnumField(PrivacyRuleValueType)
-    users = fields.ManyToManyField("models.User", related_name="privacy_rules")
+    allow_all: bool = fields.BooleanField()
+    allow_contacts: bool = fields.BooleanField()
 
-    # TODO: chats
+    exceptions: fields.ReverseRelation[models.PrivacyRuleException]
+
+    class Meta:
+        unique_together = (
+            ("user", "key"),
+        )
 
     @classmethod
-    async def update_from_tl(cls, user: models.User, rule_key: PrivacyRuleKeyType, rules: list) -> None:
-        #existing_rules = {rule.value: rule for rule in await PrivacyRule.filter(user=user, key=rule_key)}
-        await PrivacyRule.filter(user=user, key=rule_key).delete()
-        new_rules = {}
+    async def update_from_tl(
+            cls, user: models.User, rule_key: PrivacyRuleKeyType, rules: list[InputPrivacyRule],
+    ) -> None:
+        allow_all = False
+        allow_contacts = False
+        allow_users = set()
+        disallow_users = set()
+
         for rule in rules:
-            type_ = type(rule)
-            if type_ not in TL_TO_PRIVACY_ENUM:
-                continue
-            value = TL_TO_PRIVACY_ENUM[type_]
-            new_rules[value] = rule
+            # Telegram completely ignores InputPrivacyValueDisallowAll/InputPrivacyValueDisallowContacts
+            #  after encountering InputPrivacyValueAllowAll/InputPrivacyValueAllowContacts for some unknown to reason,
+            #  so doing same thing here.
+            if isinstance(rule, InputPrivacyValueAllowAll):
+                allow_all = True
+            elif isinstance(rule, InputPrivacyValueAllowContacts):
+                allow_contacts = True
+            elif isinstance(rule, InputPrivacyValueAllowUsers):
+                _inputusers_to_uids(user, rule.users, allow_users)
+            elif isinstance(rule, InputPrivacyValueDisallowUsers):
+                _inputusers_to_uids(user, rule.users, disallow_users)
 
-        for key, rule in new_rules.items():
-            if (key in {PrivacyRuleValueType.ALLOW_USERS, PrivacyRuleValueType.DISALLOW_USERS} or
-                    (key == PrivacyRuleValueType.ALLOW_CONTACTS and PrivacyRuleValueType.ALLOW_ALL in new_rules) or
-                    (key == PrivacyRuleValueType.DISALLOW_CONTACTS and PrivacyRuleValueType.DISALLOW_ALL in new_rules) or
-                    (key == PrivacyRuleValueType.ALLOW_ALL and PrivacyRuleValueType.DISALLOW_ALL in new_rules)):
-                #if key in existing_rules:
-                #    await existing_rules[key].delete()
-                continue
-            await PrivacyRule.create(user=user, key=rule_key, value=key)
+        all_users = {*allow_users, *disallow_users}
 
-        async def _fill_users_rule(val: PrivacyRuleValueType, users: set[int]) -> None:
-            rule_ = await PrivacyRule.create(user=user, key=rule_key, value=val)
-            await rule_.users.add(*await models.User.filter(id__in=users))
+        rule, created = await cls.update_or_create(user=user, key=rule_key, defaults={
+            "allow_all": allow_all,
+            "allow_contacts": allow_contacts,
+        })
 
-        disallow = set()
-        if PrivacyRuleValueType.DISALLOW_USERS in new_rules:
-            disallow = _inputusers_to_uids(user, new_rules[PrivacyRuleValueType.DISALLOW_USERS].users)
-            await _fill_users_rule(PrivacyRuleValueType.DISALLOW_USERS, disallow)
-        if PrivacyRuleValueType.ALLOW_USERS in new_rules:
-            allow = disallow - _inputusers_to_uids(user, new_rules[PrivacyRuleValueType.ALLOW_USERS].users)
-            await _fill_users_rule(PrivacyRuleValueType.ALLOW_USERS, allow)
+        if all_users:
+            await models.PrivacyRuleException.filter(id__in=Subquery(
+                models.PrivacyRuleException.filter(rule=rule, user__id__not_in=all_users).values_list("id", flat=True)
+            )).delete()
 
-    async def to_tl(self):
-        tl_cls = PRIVACY_ENUM_TO_TL[self.value]
-        if self.value in {PrivacyRuleValueType.ALLOW_USERS, PrivacyRuleValueType.DISALLOW_USERS}:
-            user_ids = await self.users.all().values_list("id", flat=True)
-            return tl_cls(users=user_ids)
+            existing = {}
+            if not created:
+                existing = {
+                    exc.user_id: exc
+                    for exc in await models.PrivacyRuleException.filter(rule=rule)
+                }
 
-        return tl_cls()
+            to_update = []
+            to_create = []
+            for user in await models.User.filter(id__in=all_users):
+                allow = user.id in allow_users
+                if user.id in existing:
+                    exc = existing[user.id]
+                    if exc.allow != allow:
+                        exc.allow = allow
+                        to_update.append(exc)
+                else:
+                    to_create.append(models.PrivacyRuleException(
+                        rule=rule,
+                        user=user,
+                        allow=user.id in allow_users,
+                    ))
+
+            if to_create:
+                await models.PrivacyRuleException.bulk_create(to_create)
+            if to_update:
+                await models.PrivacyRuleException.bulk_update(to_update, fields=["allow"])
+        else:
+            await models.PrivacyRuleException.filter(rule=rule).delete()
+
+    async def to_tl_rules(self) -> list[TLPrivacyRule]:
+        rules = []
+
+        if self.allow_all:
+            rules.append(PrivacyValueAllowAll())
+        elif self.allow_contacts:
+            rules.append(PrivacyValueDisallowAll())
+            rules.append(PrivacyValueAllowContacts())
+        else:
+            rules.append(PrivacyValueDisallowAll())
+
+        if not self.exceptions._fetched:
+            await self.fetch_related("exceptions")
+
+        allow_users = []
+        disallow_users = []
+
+        for exc in self.exceptions:
+            if exc.user is not None:
+                if exc.allow:
+                    allow_users.append(exc.user_id)
+                else:
+                    disallow_users.append(exc.user_id)
+
+        if allow_users:
+            rules.append(PrivacyValueAllowUsers(users=allow_users))
+        if disallow_users:
+            rules.append(PrivacyValueDisallowUsers(users=disallow_users))
+
+        return rules
 
     @classmethod
     async def has_access_to(
@@ -114,22 +167,27 @@ class PrivacyRule(Model):
 
         if current_id == target_id:
             return True
-        if await models.Peer.filter(
-                owner__id=target_id, user__id=current_id, type=PeerType.USER, blocked_at__not_isnull=True,
-        ).exists():
+
+        rule = await cls.get_or_none(
+            user__id=target_id, key=key,
+        ).prefetch_related(Prefetch(
+            "exceptions", queryset=models.PrivacyRuleException.filter(user__id=current_id),
+        )).annotate(
+            is_contact=Subquery(Contact.filter(
+                owner_id=target_id,
+                target_id=current_id,
+            ).exists()),
+        )
+
+        if rule is None:
             return False
 
-        rules = {rule.value: rule for rule in await cls.filter(user__id=target_id, key=key)}
-        if PrivacyRuleValueType.ALLOW_ALL in rules and PrivacyRuleValueType.DISALLOW_USERS not in rules:
+        if rule.exceptions.related_objects:
+            return rule.exceptions.related_objects[0].allow
+
+        if rule.allow_all:
             return True
-        if PrivacyRuleValueType.DISALLOW_ALL in rules and PrivacyRuleValueType.ALLOW_USERS not in rules:
-            return False
+        elif rule.allow_contacts and rule.is_contact:
+            return True
 
-        if PrivacyRuleValueType.ALLOW_ALL in rules and PrivacyRuleValueType.DISALLOW_USERS in rules:
-            return not await rules[PrivacyRuleValueType.DISALLOW_USERS].users.filter(id=current_id).exists()
-        if PrivacyRuleValueType.DISALLOW_ALL in rules and PrivacyRuleValueType.ALLOW_USERS in rules:
-            return await rules[PrivacyRuleValueType.DISALLOW_USERS].users.filter(id=current_id).exists()
-
-        # handle PrivacyRuleValueType.ALLOW_CONTACTS and PrivacyRuleValueType.DISALLOW_CONTACTS
-
-        return True
+        return False

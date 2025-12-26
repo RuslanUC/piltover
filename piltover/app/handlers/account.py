@@ -10,7 +10,7 @@ from piltover.app.handlers.auth import _validate_phone
 from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleValueType, PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType
+from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis
@@ -21,7 +21,7 @@ from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, \
     UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
-    EmojiListNotModified
+    EmojiListNotModified, PrivacyValueDisallowAll
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
@@ -39,6 +39,7 @@ from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms
 from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("account")
@@ -186,39 +187,52 @@ async def get_password_settings(request: GetPasswordSettings, user: User) -> Pas
 
 
 async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRules:
-    rules_ = await PrivacyRule.filter(user=user, key=key)
-    rules = []
-    users = {}
-    for rule in rules_:
-        rules.append(await rule.to_tl())
-        if rule.value in {PrivacyRuleValueType.ALLOW_USERS, PrivacyRuleValueType.DISALLOW_USERS}:
-            for rule_user in await rule.users.all():
-                if rule_user.id in users:
-                    continue
-                users[rule_user.id] = rule_user
+    rule = await PrivacyRule.get_or_none(user=user, key=key).prefetch_related("exceptions")
+    if rule is None:
+        return PrivacyRules(
+            rules=[PrivacyValueDisallowAll()],
+            chats=[],
+            users=[],
+        )
+
+    # TODO: probably it is possible to not use UCC here (just prefetch exceptions__user)
+    ucc = UsersChatsChannels()
+
+    for exc in rule.exceptions:
+        if exc.user_id is not None:
+            ucc.add_user(exc.user_id)
+
+    users, chats, channels = await ucc.resolve(user)
 
     return PrivacyRules(
-        rules=rules,
-        chats=[],
-        users=await User.to_tl_bulk(list(users.values()), user),
+        rules=await rule.to_tl_rules(),
+        chats=[*chats, *channels],
+        users=users,
     )
 
 
 @handler.on_request(GetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_privacy(request: GetPrivacy, user: User):
+async def get_privacy(request: GetPrivacy, user: User) -> PrivacyRules:
     return await get_privacy_internal(TL_KEY_TO_PRIVACY_ENUM[type(request.key)], user)
 
 
 @handler.on_request(SetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def set_privacy(request: SetPrivacy, user: User):
+async def set_privacy(request: SetPrivacy, user: User) -> PrivacyRules:
+    # NOTE: official telegram limit is 1000
+    if len(request.rules) > 100:
+        raise ErrorRpc(error_code=400, error_message="PRIVACY_TOO_LONG")
+
     key = TL_KEY_TO_PRIVACY_ENUM[type(request.key)]
     await PrivacyRule.update_from_tl(user, key, request.rules)
+
     await upd.update_user(user)
+    # TODO: send UpdatePrivacy update
+
     return await get_privacy_internal(key, user)
 
 
 @handler.on_request(GetThemes, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_themes():  # pragma: no cover
+async def get_themes() -> Themes:  # pragma: no cover
     return Themes(hash=0, themes=[])
 
 

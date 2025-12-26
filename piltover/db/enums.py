@@ -19,18 +19,6 @@ class PrivacyRuleKeyType(IntEnum):
     BIRTHDAY = 10
 
 
-class PrivacyRuleValueType(IntEnum):
-    ALLOW_CONTACTS = 0
-    ALLOW_ALL = 1
-    ALLOW_USERS = 2
-    DISALLOW_CONTACTS = 3
-    DISALLOW_ALL = 4
-    DISALLOW_USERS = 5
-
-    ALLOW_CHATS = 6
-    DISALLOW_CHATS = 7
-
-
 class FileType(IntEnum):
     DOCUMENT = 0
     PHOTO = 1

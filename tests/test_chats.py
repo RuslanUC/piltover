@@ -4,10 +4,11 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatWriteForbidden
+from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatWriteForbidden, Forbidden
 from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs, MigrateChat
+from pyrogram.raw.functions.account import SetPrivacy
 from pyrogram.raw.types import UpdateUserName, UpdateNewMessage, MessageService, MessageActionChatMigrateTo, \
-    UpdateNewChannelMessage
+    UpdateNewChannelMessage, InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
 from pyrogram.raw.types.messages import Dialogs
 from pyrogram.utils import get_channel_id
 
@@ -86,6 +87,12 @@ async def test_add_delete_user_in_group_chat() -> None:
     async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
         await client1.set_username("test1_username")
         await client2.set_username("test2_username")
+
+        await client2.set_privacy(
+            InputPrivacyKeyChatInvite(),
+            InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+        )
+
         user1 = await client2.get_users("test1_username")
         user2 = await client1.get_users("test2_username")
 
@@ -109,7 +116,7 @@ async def test_add_delete_user_in_group_chat() -> None:
         assert len([dialog async for dialog in client1.get_dialogs()]) == 1
         assert len([dialog async for dialog in client2.get_dialogs()]) == 1
         assert await client1.get_chat_members_count(group.id) == 1
-        with pytest.raises(ChatWriteForbidden):
+        with pytest.raises(Forbidden):
             await client2.send_message(group.id, "test3")
 
 

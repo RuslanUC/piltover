@@ -11,9 +11,15 @@ from loguru import logger
 from pyrogram import Client
 from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
+from pyrogram.raw.base import InputPrivacyKey
 from pyrogram.raw.core import TLObject as PyroTLObject
 from pyrogram.raw.functions import InvokeWithLayer
-from pyrogram.raw.types import Updates
+from pyrogram.raw.functions.account import SetPrivacy
+from pyrogram.raw.types import Updates, InputPrivacyKeyAddedByPhone, InputPrivacyKeyChatInvite, InputPrivacyKeyForwards, \
+    InputPrivacyKeyPhoneNumber, InputPrivacyKeyPhoneCall, InputPrivacyKeyProfilePhoto, InputPrivacyKeyStatusTimestamp, \
+    InputPrivacyKeyVoiceMessages, InputPrivacyKeyPhoneP2P, InputPrivacyValueAllowAll, InputPrivacyValueAllowUsers, \
+    InputPrivacyValueDisallowChatParticipants, InputPrivacyValueDisallowUsers, InputPrivacyValueDisallowContacts, \
+    InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts
 from pyrogram.session import Session as PyroSession
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
@@ -28,6 +34,15 @@ if TYPE_CHECKING:
 
 
 T = TypeVar("T")
+InputPrivacyKey = InputPrivacyKeyAddedByPhone | InputPrivacyKeyChatInvite | InputPrivacyKeyForwards \
+                  | InputPrivacyKeyPhoneCall | InputPrivacyKeyPhoneNumber | InputPrivacyKeyPhoneP2P \
+                  | InputPrivacyKeyProfilePhoto | InputPrivacyKeyStatusTimestamp | InputPrivacyKeyVoiceMessages
+InputPrivacyRule = InputPrivacyValueAllowAll | InputPrivacyValueAllowChatParticipants | InputPrivacyValueAllowContacts \
+                   | InputPrivacyValueAllowUsers | InputPrivacyValueDisallowAll \
+                   | InputPrivacyValueDisallowChatParticipants | InputPrivacyValueDisallowContacts \
+                   | InputPrivacyValueDisallowUsers
+
+
 
 
 class TestDataCenter(DataCenter):
@@ -369,3 +384,9 @@ class TestClient(Client):
     async def start(self) -> bool:
         with measure_time("start()"):
             return await super().start()
+
+    async def set_privacy(self, key: InputPrivacyKey, rules: InputPrivacyRule | list[InputPrivacyRule]) -> None:
+        if not isinstance(rules, list):
+            rules = [rules]
+
+        await self.invoke(SetPrivacy(key=key, rules=rules))

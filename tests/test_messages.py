@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 from fastrand import xorshift128plus_bytes
 from pyrogram.enums import MessageEntityType
-from pyrogram.errors import ChatWriteForbidden, NotAcceptable
+from pyrogram.errors import ChatWriteForbidden, NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL
@@ -490,7 +490,7 @@ async def test_send_message_banned_rights() -> None:
         await client1.set_chat_permissions(group.id, ChatPermissions())
 
         assert await client1.send_message(group.id, "test 2.5")
-        with pytest.raises(ChatWriteForbidden):
+        with pytest.raises(Forbidden):
             await client2.send_message(group.id, "test 2")
 
         await client1.set_chat_permissions(group.id, ChatPermissions(

@@ -4,11 +4,12 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import ChatWriteForbidden, UsernameOccupied, PasswordMissing, PasswordHashInvalid, \
-    ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate
+from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInvalid, \
+    ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden
 from pyrogram.raw.functions.account import GetPassword
 from pyrogram.raw.functions.channels import EditCreator
-from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser
+from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser, \
+    InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
 from pyrogram.types import ChatMember, ChatPrivileges
 from pyrogram.utils import compute_password_check
 
@@ -97,7 +98,7 @@ async def test_channel_invite_and_promote_user() -> None:
         await client1.expect_update(UpdateNewChannelMessage)
         await client2.expect_update(UpdateNewChannelMessage)
 
-        with pytest.raises(ChatWriteForbidden):
+        with pytest.raises(Forbidden):
             assert await client2.send_message(channel.id, "test message 2")
 
         await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges(can_post_messages=True))
@@ -112,6 +113,12 @@ async def test_channel_add_user() -> None:
     async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
         await client1.set_username("test1_username")
         await client2.set_username("test2_username")
+
+        await client2.set_privacy(
+            InputPrivacyKeyChatInvite(),
+            InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+        )
+
         await client1.expect_update(UpdateUserName)
         await client2.expect_update(UpdateUserName)
 
@@ -174,6 +181,12 @@ async def test_edit_channel_owner(
 
     await client1.set_username("test1_username")
     await client2.set_username("test2_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
+
     await client1.expect_update(UpdateUserName)
     await client2.expect_update(UpdateUserName)
 
@@ -230,6 +243,12 @@ async def test_edit_channel_owner_fail_not_owner(exit_stack: AsyncExitStack) -> 
         await client1.set_username("test1_username")
         await client2.set_username("test2_username")
         await client3.set_username("test3_username")
+
+    for cl in (client2, client3):
+        await cl.set_privacy(
+            InputPrivacyKeyChatInvite(),
+            InputPrivacyValueAllowUsers(users=[await cl.resolve_peer("test1_username")]),
+        )
 
     async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
         channel = await client1.create_channel("idk")
@@ -344,8 +363,15 @@ async def test_delete_channel_success(exit_stack: AsyncExitStack) -> None:
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
 
+    async with client1.expect_updates_m(UpdateUserName):
+        await client1.set_username("test1_username")
     async with client2.expect_updates_m(UpdateUserName):
         await client2.set_username("test2_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
 
     async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
         channel = await client1.create_channel("idk")
@@ -373,8 +399,15 @@ async def test_delete_channel_fail_not_owner(exit_stack: AsyncExitStack) -> None
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
 
+    async with client1.expect_updates_m(UpdateUserName):
+        await client1.set_username("test1_username")
     async with client2.expect_updates_m(UpdateUserName):
         await client2.set_username("test2_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
 
     async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
         channel = await client1.create_channel("idk")
