@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tortoise import fields, Model
-from tortoise.expressions import Subquery
+from tortoise.expressions import Subquery, Q
 from tortoise.query_utils import Prefetch
 
 from piltover.context import request_ctx
@@ -57,6 +57,8 @@ class PrivacyRule(Model):
     allow_contacts: bool = fields.BooleanField()
 
     exceptions: fields.ReverseRelation[models.PrivacyRuleException]
+
+    user_id: int
 
     class Meta:
         unique_together = (
@@ -191,3 +193,64 @@ class PrivacyRule(Model):
             return True
 
         return False
+
+    @classmethod
+    async def has_access_to_bulk(
+            cls, users: list[models.User], user: models.User, keys: list[PrivacyRuleKeyType],
+    ) -> dict[int, dict[PrivacyRuleKeyType, bool]]:
+        if not keys:
+            return {}
+
+        user_ids = {target.id for target in users}
+        results = {
+            user_id: {}
+            for user_id in user_ids
+        }
+
+        if user.id in user_ids:
+            user_ids.remove(user.id)
+            results[user.id] = {
+                key: True for key in keys
+            }
+
+        if not user_ids:
+            return results
+
+        key_query = Q()
+        for key in keys:
+            key_query |= Q(key=key)
+
+        contacts = {
+            contact.owner_id
+            for contact in await models.Contact.filter(owner__id__in=user_ids, target__id=user.id)
+        }
+
+        rules = await cls.filter(
+            key_query, user__id__in=user_ids,
+        ).prefetch_related(Prefetch(
+            "exceptions", queryset=models.PrivacyRuleException.filter(user__id=user.id),
+        ))
+
+        leftover = {
+            (user_id, key)
+            for user_id in user_ids
+            for key in keys
+        }
+
+        for rule in rules:
+            leftover.discard((rule.user_id, rule.key))
+
+            if rule.exceptions.related_objects:
+                results[rule.user_id][rule.key] = rule.exceptions.related_objects[0].allow
+                continue
+
+            if rule.allow_all or rule.allow_contacts and rule.user_id in contacts:
+                results[rule.user_id][rule.key] = True
+                continue
+
+            results[rule.user_id][rule.key] = False
+
+        for user_id, key in leftover:
+            results[user_id][key] = False
+
+        return results

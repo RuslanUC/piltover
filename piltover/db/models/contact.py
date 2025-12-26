@@ -14,7 +14,8 @@ class Contact(Model):
     first_name: str = fields.CharField(max_length=128, null=True, default=None)
     last_name: str = fields.CharField(max_length=128, null=True, default=None)
 
-    target_id: int
+    owner_id: int
+    target_id: int | None
 
     class Meta:
         unique_together = (
