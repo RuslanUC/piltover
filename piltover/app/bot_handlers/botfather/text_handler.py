@@ -152,7 +152,7 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         async with in_transaction():
             await photo.save()
             await UserPhoto.filter(user=bot.bot).delete()
-            await UserPhoto.create(user=bot.bot, file=photo)
+            await UserPhoto.create(user=bot.bot, file=photo, current=True)
 
         await state.delete()
 

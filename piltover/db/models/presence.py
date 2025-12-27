@@ -35,14 +35,29 @@ class Presence(Model):
 
     user_id: int
 
-    async def to_tl(self, user: models.User | None) -> TLUserStatus:
+    EMPTY = EMPTY
+    RECENTLY = RECENTLY
+    LAST_WEEK = LAST_WEEK
+    LAST_MONTH = LAST_MONTH
+
+    async def to_tl(self, user: models.User | None, has_access: bool | _PresenceMissing = _MISSING) -> TLUserStatus:
         now = datetime.now(UTC)
         delta = now - self.last_seen
         if delta < timedelta(seconds=30):
             return UserStatusOnline(expires=int(time() + 30))
 
-        if user is not None \
-                and await models.PrivacyRule.has_access_to(user, self.user_id, PrivacyRuleKeyType.STATUS_TIMESTAMP):
+        if has_access is _MISSING:
+            has_access = await models.PrivacyRule.has_access_to(user, self.user_id, PrivacyRuleKeyType.STATUS_TIMESTAMP)
+
+        return self.to_tl_noprivacycheck(has_access)
+
+    def to_tl_noprivacycheck(self, has_access: bool) -> TLUserStatus:
+        now = datetime.now(UTC)
+        delta = now - self.last_seen
+        if delta < timedelta(seconds=30):
+            return UserStatusOnline(expires=int(time() + 30))
+
+        if has_access:
             return UserStatusOffline(was_online=int(self.last_seen.timestamp()))
 
         if delta <= timedelta(days=3):
@@ -57,12 +72,15 @@ class Presence(Model):
     @classmethod
     async def to_tl_or_empty(
             cls, user: models.User, current_user: models.User, presence: Presence | _PresenceMissing | None = _MISSING,
+            has_access: bool | _PresenceMissing = _MISSING,
     ) -> TLUserStatus:
         if presence is _MISSING:
             presence = await Presence.get_or_none(user=user)
 
         if presence is not None:
-            return await presence.to_tl(current_user)
+            if has_access is _MISSING:
+                return await presence.to_tl(current_user)
+            return presence.to_tl_noprivacycheck(has_access)
 
         return EMPTY
 

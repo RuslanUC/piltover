@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Iterable
+
 from tortoise import fields, Model
 from tortoise.expressions import Subquery, Q
 from tortoise.query_utils import Prefetch
@@ -196,7 +198,8 @@ class PrivacyRule(Model):
 
     @classmethod
     async def has_access_to_bulk(
-            cls, users: list[models.User], user: models.User, keys: list[PrivacyRuleKeyType],
+            cls, users: Iterable[models.User], user: models.User, keys: list[PrivacyRuleKeyType],
+            contacts: set[int] | None = None,
     ) -> dict[int, dict[PrivacyRuleKeyType, bool]]:
         if not keys:
             return {}
@@ -220,10 +223,11 @@ class PrivacyRule(Model):
         for key in keys:
             key_query |= Q(key=key)
 
-        contacts = {
-            contact.owner_id
-            for contact in await models.Contact.filter(owner__id__in=user_ids, target__id=user.id)
-        }
+        if contacts is None:
+            contacts = {
+                contact.owner_id
+                for contact in await models.Contact.filter(owner__id__in=user_ids, target__id=user.id)
+            }
 
         rules = await cls.filter(
             key_query, user__id__in=user_ids,

@@ -1,3 +1,4 @@
+from tortoise.expressions import Subquery
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -59,8 +60,9 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
     file = await uploaded_file.finalize_upload(
         storage, "image/png", file_type=FileType.PHOTO, profile_photo=True,
     )
-    await UserPhoto.filter(user=target_user).update(current=False)
-    photo = await UserPhoto.create(current=True, file=file, user=target_user)
+    async with in_transaction():
+        await UserPhoto.filter(user=target_user).update(current=False)
+        photo = await UserPhoto.create(current=True, file=file, user=target_user)
 
     await upd.update_user(target_user)
 
@@ -85,11 +87,23 @@ async def delete_photos(request: DeletePhotos, user: User):
         return deleted
 
     async with in_transaction():
-        actual_ids = await UserPhoto.select_for_update().filter(user=user, id__in=ids,).values_list("id", flat=True)
-        if not actual_ids:
+        photos = await UserPhoto.select_for_update().filter(user=user, id__in=ids).values_list("id", "current")
+        if not photos:
             return deleted
 
+        actual_ids = []
+        need_new_current = False
+        for photo_id, current in photos:
+            actual_ids.append(photo_id)
+            if current:
+                need_new_current = True
+
         await UserPhoto.filter(id__in=actual_ids).delete()
+
+        if need_new_current:
+            await UserPhoto.filter(id=Subquery(
+                UserPhoto.filter(user=user).order_by("-id").first().values_list("id", flat=True)
+            )).update(current=True)
 
     deleted.extend(actual_ids)
     await upd.update_user(user)

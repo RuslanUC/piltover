@@ -21,6 +21,8 @@ class _UsernameMissing(Enum):
 
 
 _USERNAME_MISSING = _UsernameMissing.USERNAME_MISSING
+_PROFILE_PHOTO_EMPTY = UserProfilePhotoEmpty()
+_PHOTO_EMPTY = PhotoEmpty(id=0)
 
 
 class User(Model):
@@ -72,25 +74,20 @@ class User(Model):
     async def get_photo(
             self, current_user: models.User, profile_photo: bool = False,
     ) -> UserProfilePhoto | UserProfilePhotoEmpty | Photo | PhotoEmpty:
-        empty = UserProfilePhotoEmpty() if profile_photo else PhotoEmpty(id=0)
+        empty = _PROFILE_PHOTO_EMPTY if profile_photo else _PHOTO_EMPTY
         if not await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PROFILE_PHOTO):
             return empty
 
-        photo = await models.UserPhoto.filter(
-            user=self
-        ).order_by("current", "-id").select_related("file").first()
+        photo = await self.get_db_photo()
         if photo is None:
             return empty
 
         if profile_photo:
-            return UserProfilePhoto(
-                has_video=False,
-                photo_id=photo.id,
-                dc_id=2,
-                stripped_thumb=photo.file.photo_stripped,
-            )
-
+            return photo.to_tl_profile()
         return photo.to_tl()
+
+    async def get_db_photo(self) -> models.UserPhoto | None:
+        return await models.UserPhoto.get_or_none(user=self, current=True).select_related("file")
 
     async def to_tl(self, current_user: models.User, peer: models.Peer | None = None) -> TLUser:
         # TODO: min (https://core.telegram.org/api/min)
@@ -105,9 +102,20 @@ class User(Model):
         contact = await models.Contact.get_or_none(owner=current_user, target=self)
         is_contact = contact is not None
 
+        privacyrules = await models.PrivacyRule.has_access_to_bulk(
+            users=[self],
+            user=current_user,
+            keys=[
+                PrivacyRuleKeyType.PHONE_NUMBER,
+                PrivacyRuleKeyType.PROFILE_PHOTO,
+                PrivacyRuleKeyType.STATUS_TIMESTAMP,
+            ],
+            contacts={self.id} if is_contact else set()
+        )
+
         phone_number = None
         if (contact is not None and contact.known_phone_number == self.phone_number) \
-                or await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PHONE_NUMBER):
+                or privacyrules[self.id][PrivacyRuleKeyType.PHONE_NUMBER]:
             phone_number = self.phone_number
 
         username = await self.get_username()
@@ -132,6 +140,11 @@ class User(Model):
             bot_info_version = await models.BotInfo.filter(user=self).first().values_list("version", flat=True)
             bot_info_version = bot_info_version or 1
 
+        photo = _PROFILE_PHOTO_EMPTY
+        if privacyrules[self.id][PrivacyRuleKeyType.PROFILE_PHOTO]:
+            if (photo_db := await self.get_db_photo()) is not None:
+                photo = photo_db.to_tl_profile()
+
         return TLUser(
             id=self.id,
             first_name=self.first_name if contact is None or not contact.first_name else contact.first_name,
@@ -140,9 +153,11 @@ class User(Model):
             phone=phone_number,
             lang_code=self.lang_code,
             is_self=self == current_user,
-            photo=await self.get_photo(current_user, True),
+            photo=photo,
             access_hash=-1 if peer_exists else 0,
-            status=await models.Presence.to_tl_or_empty(self, current_user),
+            status=await models.Presence.to_tl_or_empty(
+                self, current_user, has_access=privacyrules[self.id][PrivacyRuleKeyType.STATUS_TIMESTAMP],
+            ),
             contact=is_contact,
             bot=self.bot,
             bot_info_version=bot_info_version,
@@ -168,10 +183,6 @@ class User(Model):
 
     @classmethod
     async def to_tl_bulk(cls, users: Iterable[models.User], current: models.User) -> list[TLUser]:
-        # TODO: "bottlenecks" are PrivacyRule.has_access_to, User.get_photo and Presence.to_tl_or_empty.
-        #  User.get_photo and Presence.to_tl_or_empty both use PrivacyRule.has_access_to,
-        #  so it needs to be made bulk-available first.
-
         if not users:
             return []
 
@@ -213,6 +224,33 @@ class User(Model):
             for presence in await models.Presence.filter(user__id__in=user_ids)
         } if user_ids else {}
 
+        privacyrules = await models.PrivacyRule.has_access_to_bulk(
+            users=users,
+            user=current,
+            keys=[
+                PrivacyRuleKeyType.PHONE_NUMBER,
+                PrivacyRuleKeyType.PROFILE_PHOTO,
+                PrivacyRuleKeyType.STATUS_TIMESTAMP,
+            ],
+            contacts=set(contacts),
+        )
+
+        user_ids_to_fetch_photos = [
+            user_id
+            for user_id in user_ids
+            if privacyrules[user_id][PrivacyRuleKeyType.PROFILE_PHOTO]
+        ]
+
+        if user_ids_to_fetch_photos:
+            photos = {
+                photo.user_id: photo
+                for photo in await models.UserPhoto.filter(
+                    user__id__in=user_ids_to_fetch_photos, current=True,
+                ).select_related("file")
+            }
+        else:
+            photos = {}
+
         tl = []
         for user in users:
             emojis = background_emojis.get(user.id)
@@ -238,8 +276,14 @@ class User(Model):
 
             phone_number = None
             if (contact is not None and contact.known_phone_number == user.phone_number) \
-                    or await models.PrivacyRule.has_access_to(current, user, PrivacyRuleKeyType.PHONE_NUMBER):
+                    or privacyrules[user.id][PrivacyRuleKeyType.PHONE_NUMBER]:
                 phone_number = user.phone_number
+
+            presence = models.Presence.EMPTY
+            if user.id in presences:
+                presence = presences[user.id].to_tl_noprivacycheck(
+                    privacyrules[user.id][PrivacyRuleKeyType.STATUS_TIMESTAMP]
+                )
 
             tl.append(TLUser(
                 id=user.id,
@@ -249,9 +293,9 @@ class User(Model):
                 phone=phone_number,
                 lang_code=user.lang_code,
                 is_self=user == current,
-                photo=await user.get_photo(current, True),
+                photo=photos[user.id].to_tl_profile() if user.id in photos else _PROFILE_PHOTO_EMPTY,
                 access_hash=-1 if user.id in peer_ids else 0,
-                status=await models.Presence.to_tl_or_empty(user, current, presences.get(user.id)),
+                status=presence,
                 contact=contact is not None,
                 bot=user.bot,
                 bot_info_version=bot_info_version,
@@ -279,6 +323,12 @@ class User(Model):
 
     async def to_tl_birthday(self, user: User) -> Birthday | None:
         if self.birthday is None or not await models.PrivacyRule.has_access_to(user, self, PrivacyRuleKeyType.BIRTHDAY):
+            return None
+
+        return self.to_tl_birthday_noprivacycheck()
+
+    def to_tl_birthday_noprivacycheck(self) -> Birthday | None:
+        if self.birthday is None:
             return None
 
         return Birthday(
