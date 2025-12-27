@@ -1,3 +1,4 @@
+from datetime import datetime
 from time import time
 from typing import cast
 
@@ -16,8 +17,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
     AdminLogEntryAction
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
-    Chat, PeerColorOption, File
-from piltover.db.models.admin_log_entry import AdminLogEntry
+    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -254,6 +254,14 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         await Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=linked_chat)
         channels_to_tl.append(linked_chat)
 
+    slowmode_next_date = None
+    if channel.slowmode_seconds:
+        slowmode_last_date = cast(datetime | None, await SlowmodeLastMessage.get_or_none(
+            channel=channel, user=user
+        ).values_list("last_message", flat=True))
+        if slowmode_last_date is not None:
+            slowmode_next_date = int(slowmode_last_date.timestamp()) + channel.slowmode_seconds
+
     return MessagesChatFull(
         full_chat=ChannelFull(
             can_view_participants=False,  # TODO: allow viewing participants
@@ -295,8 +303,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             migrated_from_max_id=migrated_from_max_id,
             linked_chat_id=linked_chat.id if linked_chat else None,
             slowmode_seconds=channel.slowmode_seconds,
-            # TODO: slowmode_next_send_date
-            slowmode_next_send_date=None,
+            slowmode_next_send_date=slowmode_next_date,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl, user),
         users=[await user.to_tl(user)],

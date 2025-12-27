@@ -17,7 +17,8 @@ from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
-    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem
+    TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
+    SlowmodeLastMessage
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -269,6 +270,32 @@ def _check_we_blocked_user(peer: Peer) -> None:
         raise ErrorRpc(error_code=400, error_message="YOU_BLOCKED_USER")
 
 
+async def _check_channel_slowmode(channel: Channel, participant: ChatParticipant) -> None:
+    if not channel.slowmode_seconds:
+        return
+    if participant.is_admin:
+        # TODO: should user have specific permission? idk
+        return
+    last_date = cast(datetime | None, await SlowmodeLastMessage.get_or_none(
+        channel=channel, user__id=participant.user_id,
+    ).values_list("last_message", flat=True))
+    if last_date is None:
+        return
+    now = datetime.now(UTC)
+    next_time = last_date + timedelta(seconds=channel.slowmode_seconds)
+    if next_time > now:
+        wait = (now - next_time).seconds
+        raise ErrorRpc(error_code=420, error_message=f"SLOWMODE_WAIT_{wait}")
+
+
+async def _update_channel_slowmode_maybe(channel: Channel, user: User) -> None:
+    if not channel.slowmode_seconds:
+        return
+    await SlowmodeLastMessage.update_or_create(channel=channel, user=user, defaults={
+        "last_message": datetime.now(UTC),
+    })
+
+
 @handler.on_request(SendMessage_148)
 @handler.on_request(SendMessage_176)
 @handler.on_request(SendMessage)
@@ -282,6 +309,8 @@ async def send_message(request: SendMessage, user: User):
         participant = await chat_or_channel.get_participant(user)
         if not chat_or_channel.can_send_plain(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_SEND_PLAIN_FORBIDDEN")
+        if peer.type is PeerType.CHANNEL:
+            await _check_channel_slowmode(peer.channel, participant)
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
@@ -296,6 +325,9 @@ async def send_message(request: SendMessage, user: User):
     reply_to_message_id = _resolve_reply_id(request)
     is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
     reply_markup = await process_reply_markup(request.reply_markup, user)
+
+    if peer.type is PeerType.CHANNEL:
+        await _update_channel_slowmode_maybe(peer.channel, user)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
@@ -699,6 +731,8 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
         if not chat_or_channel.can_send_media(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         # TODO: check specific media type
+        if peer.type is PeerType.CHANNEL:
+            await _check_channel_slowmode(peer.channel, participant)
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
@@ -716,6 +750,9 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
         await RecentSticker.update_time_or_create(user, media.file)
         await upd.update_recent_stickers(user)
+
+    if peer.type is PeerType.CHANNEL:
+        await _update_channel_slowmode_maybe(peer.channel, user)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
@@ -804,6 +841,12 @@ async def forward_messages(
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.SEND_MESSAGES):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+
+        if to_peer.type is PeerType.CHANNEL:
+            await _check_channel_slowmode(to_peer.channel, participant)
+            # TODO: check if user is admin?
+            if to_peer.channel.slowmode_seconds is not None and len(request.id) > 1:
+                raise ErrorRpc(error_code=400, error_message="SLOWMODE_MULTI_MSGS_DISABLED")
     elif user.bot and (to_peer.type is PeerType.SELF or (to_peer.type is PeerType.USER and to_peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
@@ -885,6 +928,9 @@ async def forward_messages(
     if (update := await upd.send_messages(result, user)) is None:
         raise NotImplementedError("unknown chat type ?")
 
+    if to_peer.type is PeerType.CHANNEL:
+        await _update_channel_slowmode_maybe(to_peer.channel, user)
+
     return update
 
 
@@ -917,6 +963,8 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
         # TODO: check specific media type
         if not chat_or_channel.can_send_media(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+        if peer.type is PeerType.CHANNEL:
+            await _check_channel_slowmode(peer.channel, participant)
     elif user.bot and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
@@ -984,6 +1032,9 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
             continue
 
         updates.updates.extend(new_updates.updates)
+
+    if peer.type is PeerType.CHANNEL:
+        await _update_channel_slowmode_maybe(peer.channel, user)
 
     return updates
 
