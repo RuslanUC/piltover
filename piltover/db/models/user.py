@@ -101,6 +101,7 @@ class User(Model):
 
         contact = await models.Contact.get_or_none(owner=current_user, target=self)
         is_contact = contact is not None
+        current_is_contact = await models.Contact.filter(owner=self, target=current_user).exists()
 
         privacyrules = await models.PrivacyRule.has_access_to_bulk(
             users=[self],
@@ -110,7 +111,7 @@ class User(Model):
                 PrivacyRuleKeyType.PROFILE_PHOTO,
                 PrivacyRuleKeyType.STATUS_TIMESTAMP,
             ],
-            contacts={self.id} if is_contact else set()
+            contacts={self.id} if current_is_contact else set()
         )
 
         phone_number = None
@@ -164,7 +165,7 @@ class User(Model):
             color=color,
             profile_color=profile_color,
             deleted=self.deleted,
-            mutual_contact=is_contact and await models.Contact.filter(owner=self, target=current_user).exists(),
+            mutual_contact=is_contact and current_is_contact,
 
             verified=False,
             restricted=False,
@@ -196,11 +197,14 @@ class User(Model):
             contact.target_id: contact
             for contact in await models.Contact.filter(owner=current, target__id__in=user_ids)
         } if user_ids else {}
-        mutual_contacts = set(
-            await models.Contact.filter(
-                owner__id__in=list(contacts), target=current,
-            ).values_list("owner__id", flat=True)
-        ) if contacts else {}
+        other_contacts = set(
+            await models.Contact.filter(owner__id__in=user_ids, target=current).values_list("owner__id", flat=True)
+        )
+        mutual_contacts = {
+            user_id
+            for user_id in other_contacts
+            if user_id in contacts
+        }
 
         usernames = {
             user_id: username
@@ -232,7 +236,7 @@ class User(Model):
                 PrivacyRuleKeyType.PROFILE_PHOTO,
                 PrivacyRuleKeyType.STATUS_TIMESTAMP,
             ],
-            contacts=set(contacts),
+            contacts=other_contacts,
         )
 
         user_ids_to_fetch_photos = [
