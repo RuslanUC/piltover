@@ -8,7 +8,7 @@ from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, 
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
-    InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage
+    InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage, PhotoEmpty
 from piltover.tl.types.users import UserFull
 from piltover.worker import MessageHandler
 
@@ -20,8 +20,17 @@ async def get_full_user(request: GetFullUser, user: User):
     peer = await Peer.from_input_peer_raise(user, request.id, peer_types=(PeerType.SELF, PeerType.USER))
     target_user = peer.peer_user(user)
 
+    privacy_rules = await PrivacyRule.has_access_to_bulk([target_user], user, [
+        PrivacyRuleKeyType.ABOUT,
+        PrivacyRuleKeyType.BIRTHDAY,
+        PrivacyRuleKeyType.PROFILE_PHOTO,
+        PrivacyRuleKeyType.PHONE_NUMBER,
+        PrivacyRuleKeyType.STATUS_TIMESTAMP,
+    ])
+    privacy_rules = privacy_rules[target_user.id]
+
     about = ""
-    if await PrivacyRule.has_access_to(user, target_user, PrivacyRuleKeyType.ABOUT):
+    if privacy_rules[PrivacyRuleKeyType.ABOUT]:
         about = target_user.about
 
     chat_wallpaper = await ChatWallpaper.get_or_none(user=user, target=target_user).select_related(
@@ -56,16 +65,26 @@ async def get_full_user(request: GetFullUser, user: User):
         else:
             bot_info = bot_info.to_tl()
 
+    birthday = None
+    if privacy_rules[PrivacyRuleKeyType.BIRTHDAY]:
+        birthday = target_user.to_tl_birthday_noprivacycheck()
+
+    photo = PhotoEmpty(id=0)
+    photo_db = None
+    if privacy_rules[PrivacyRuleKeyType.PROFILE_PHOTO]:
+        if (photo_db := await target_user.get_db_photo()) is not None:
+            photo = photo_db.to_tl()
+
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
             id=target_user.id,
             about=about,
             settings=PeerSettings(),
-            profile_photo=await target_user.get_photo(user),
+            profile_photo=photo,
             notify_settings=PeerNotifySettings(show_previews=True),
             common_chats_count=0,
-            birthday=await target_user.to_tl_birthday(user),
+            birthday=birthday,
             read_dates_private=user.read_dates_private,
             wallpaper=chat_wallpaper.wallpaper.to_tl() if chat_wallpaper is not None else None,
             has_scheduled=has_scheduled,
@@ -80,7 +99,7 @@ async def get_full_user(request: GetFullUser, user: User):
             # video_calls_available=True,
         ),
         chats=[await personal_channel.to_tl(user)] if personal_channel is not None else [],
-        users=[await target_user.to_tl(user, peer)],
+        users=[await target_user.to_tl(user, peer, privacyrules=privacy_rules, userphoto=photo_db)],
     )
 
 

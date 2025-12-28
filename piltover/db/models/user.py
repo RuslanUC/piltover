@@ -16,11 +16,11 @@ from piltover.tl.types import User as TLUser, PeerColor, Photo
 from piltover.tl.types.internal_access import AccessHashPayloadUser
 
 
-class _UsernameMissing(Enum):
-    USERNAME_MISSING = auto()
+class _Missing(Enum):
+    MISSING = auto()
 
 
-_USERNAME_MISSING = _UsernameMissing.USERNAME_MISSING
+_MISSING = _Missing.MISSING
 _PROFILE_PHOTO_EMPTY = UserProfilePhotoEmpty()
 _PHOTO_EMPTY = PhotoEmpty(id=0)
 
@@ -45,11 +45,11 @@ class User(Model):
     accent_color_id: int | None
     profile_color_id: int | None
 
-    cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
+    cached_username: models.Username | None | _Missing = _MISSING
     is_lazy: bool = False
 
     async def get_username(self) -> models.Username | None:
-        if self.cached_username is _USERNAME_MISSING:
+        if self.cached_username is _MISSING:
             self.cached_username = await models.Username.get_or_none(user=self)
 
         return self.cached_username
@@ -89,7 +89,11 @@ class User(Model):
     async def get_db_photo(self) -> models.UserPhoto | None:
         return await models.UserPhoto.get_or_none(user=self, current=True).select_related("file")
 
-    async def to_tl(self, current_user: models.User, peer: models.Peer | None = None) -> TLUser:
+    async def to_tl(
+            self, current_user: models.User, peer: models.Peer | None = None,
+            privacyrules: dict[PrivacyRuleKeyType, bool] | None = None,
+            userphoto: models.UserPhoto | None | _Missing = _MISSING,
+    ) -> TLUser:
         # TODO: min (https://core.telegram.org/api/min)
         # TODO: add some "version" field and save tl user
         #  in some cache with key f"{self.id}:{current_user.id}:{version}"
@@ -103,20 +107,22 @@ class User(Model):
         is_contact = contact is not None
         current_is_contact = await models.Contact.filter(owner=self, target=current_user).exists()
 
-        privacyrules = await models.PrivacyRule.has_access_to_bulk(
-            users=[self],
-            user=current_user,
-            keys=[
-                PrivacyRuleKeyType.PHONE_NUMBER,
-                PrivacyRuleKeyType.PROFILE_PHOTO,
-                PrivacyRuleKeyType.STATUS_TIMESTAMP,
-            ],
-            contacts={self.id} if current_is_contact else set()
-        )
+        if privacyrules is None:
+            privacyrules = await models.PrivacyRule.has_access_to_bulk(
+                users=[self],
+                user=current_user,
+                keys=[
+                    PrivacyRuleKeyType.PHONE_NUMBER,
+                    PrivacyRuleKeyType.PROFILE_PHOTO,
+                    PrivacyRuleKeyType.STATUS_TIMESTAMP,
+                ],
+                contacts={self.id} if current_is_contact else set()
+            )
+            privacyrules = privacyrules[self.id]
 
         phone_number = None
         if (contact is not None and contact.known_phone_number == self.phone_number) \
-                or privacyrules[self.id][PrivacyRuleKeyType.PHONE_NUMBER]:
+                or privacyrules[PrivacyRuleKeyType.PHONE_NUMBER]:
             phone_number = self.phone_number
 
         username = await self.get_username()
@@ -142,9 +148,11 @@ class User(Model):
             bot_info_version = bot_info_version or 1
 
         photo = _PROFILE_PHOTO_EMPTY
-        if privacyrules[self.id][PrivacyRuleKeyType.PROFILE_PHOTO]:
-            if (photo_db := await self.get_db_photo()) is not None:
-                photo = photo_db.to_tl_profile()
+        if privacyrules[PrivacyRuleKeyType.PROFILE_PHOTO]:
+            if userphoto is _MISSING:
+                userphoto = await self.get_db_photo()
+            if userphoto is not None:
+                photo = userphoto.to_tl_profile()
 
         return TLUser(
             id=self.id,
@@ -157,7 +165,7 @@ class User(Model):
             photo=photo,
             access_hash=-1 if peer_exists else 0,
             status=await models.Presence.to_tl_or_empty(
-                self, current_user, has_access=privacyrules[self.id][PrivacyRuleKeyType.STATUS_TIMESTAMP],
+                self, current_user, has_access=privacyrules[PrivacyRuleKeyType.STATUS_TIMESTAMP],
             ),
             contact=is_contact,
             bot=self.bot,

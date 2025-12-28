@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Subquery, Q
 from tortoise.query_utils import Prefetch
