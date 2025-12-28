@@ -8,7 +8,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
 from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
-    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog
+    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
@@ -22,7 +22,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
-    UpdateSavedDialogPinned, UpdatePinnedSavedDialogs
+    UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy
+from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 from piltover.utils.users_chats_channels import UsersChatsChannels
@@ -595,6 +596,7 @@ async def update_user(user: User) -> None:
     updates_to_create = []
 
     peer: Peer
+    # TODO: probably dont do THIS
     async for peer in Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
         pts = await State.add_pts(peer.owner, 1)
 
@@ -1700,3 +1702,30 @@ async def reorder_pinned_saved_dialogs(user: User, dialogs: list[SavedDialog]) -
     )
 
     await SessionManager.send(updates, user.id)
+
+
+async def update_privacy(user: User, rule: PrivacyRule, rules: PrivacyRules) -> Updates:
+    new_pts = await State.add_pts(user, 1)
+
+    await Update.create(
+        user=user,
+        update_type=UpdateType.UPDATE_PRIVACY,
+        pts=new_pts,
+        pts_count=1,
+        related_id=rule.id,
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdatePrivacy(
+                key=rule.key.to_tl(),
+                rules=rules.rules,
+            ),
+        ],
+        users=rules.users,
+        chats=rules.chats,
+    )
+
+    await SessionManager.send(updates, user.id)
+
+    return updates

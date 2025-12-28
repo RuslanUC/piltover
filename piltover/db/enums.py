@@ -2,7 +2,13 @@ from __future__ import annotations
 from enum import IntEnum, IntFlag, Enum
 from io import BytesIO
 
-from piltover.tl import ChatBannedRights as TLChatBannedRights, Int, ChatAdminRights as TLChatAdminRights
+from piltover.tl import ChatBannedRights as TLChatBannedRights, Int, ChatAdminRights as TLChatAdminRights, \
+    InputPrivacyKeyStatusTimestamp, InputPrivacyKeyChatInvite, InputPrivacyKeyPhoneCall, InputPrivacyKeyPhoneP2P, \
+    InputPrivacyKeyForwards, InputPrivacyKeyProfilePhoto, InputPrivacyKeyPhoneNumber, InputPrivacyKeyAddedByPhone, \
+    InputPrivacyKeyVoiceMessages, InputPrivacyKeyAbout, InputPrivacyKeyBirthday, PrivacyKeyStatusTimestamp, \
+    PrivacyKeyChatInvite, PrivacyKeyPhoneCall, PrivacyKeyPhoneP2P, PrivacyKeyForwards, PrivacyKeyProfilePhoto, \
+    PrivacyKeyPhoneNumber, PrivacyKeyAddedByPhone, PrivacyKeyVoiceMessages, PrivacyKeyAbout, PrivacyKeyBirthday
+from piltover.tl.base import InputPrivacyKey, PrivacyKey
 
 
 class PrivacyRuleKeyType(IntEnum):
@@ -17,6 +23,42 @@ class PrivacyRuleKeyType(IntEnum):
     VOICE_MESSAGE = 8
     ABOUT = 9
     BIRTHDAY = 10
+
+    @classmethod
+    def from_tl(cls, constructor: InputPrivacyKey) -> PrivacyRuleKeyType:
+        return _TL_KEY_TO_PRIVACY_ENUM[type(constructor)]
+
+    def to_tl(self) -> PrivacyKey:
+        return _PRIVACY_ENUM_KEY_TO_TL[self]
+
+
+_TL_KEY_TO_PRIVACY_ENUM = {
+    InputPrivacyKeyStatusTimestamp: PrivacyRuleKeyType.STATUS_TIMESTAMP,
+    InputPrivacyKeyChatInvite: PrivacyRuleKeyType.CHAT_INVITE,
+    InputPrivacyKeyPhoneCall: PrivacyRuleKeyType.PHONE_CALL,
+    InputPrivacyKeyPhoneP2P: PrivacyRuleKeyType.PHONE_P2P,
+    InputPrivacyKeyForwards: PrivacyRuleKeyType.FORWARDS,
+    InputPrivacyKeyProfilePhoto: PrivacyRuleKeyType.PROFILE_PHOTO,
+    InputPrivacyKeyPhoneNumber: PrivacyRuleKeyType.PHONE_NUMBER,
+    InputPrivacyKeyAddedByPhone: PrivacyRuleKeyType.ADDED_BY_PHONE,
+    InputPrivacyKeyVoiceMessages: PrivacyRuleKeyType.VOICE_MESSAGE,
+    InputPrivacyKeyAbout: PrivacyRuleKeyType.ABOUT,
+    InputPrivacyKeyBirthday: PrivacyRuleKeyType.BIRTHDAY,
+}
+
+_PRIVACY_ENUM_KEY_TO_TL = {
+    PrivacyRuleKeyType.STATUS_TIMESTAMP: PrivacyKeyStatusTimestamp(),
+    PrivacyRuleKeyType.CHAT_INVITE: PrivacyKeyChatInvite(),
+    PrivacyRuleKeyType.PHONE_CALL: PrivacyKeyPhoneCall(),
+    PrivacyRuleKeyType.PHONE_P2P: PrivacyKeyPhoneP2P(),
+    PrivacyRuleKeyType.FORWARDS: PrivacyKeyForwards(),
+    PrivacyRuleKeyType.PROFILE_PHOTO: PrivacyKeyProfilePhoto(),
+    PrivacyRuleKeyType.PHONE_NUMBER: PrivacyKeyPhoneNumber(),
+    PrivacyRuleKeyType.ADDED_BY_PHONE: PrivacyKeyAddedByPhone(),
+    PrivacyRuleKeyType.VOICE_MESSAGE: PrivacyKeyVoiceMessages(),
+    PrivacyRuleKeyType.ABOUT: PrivacyKeyAbout(),
+    PrivacyRuleKeyType.BIRTHDAY: PrivacyKeyBirthday(),
+}
 
 
 class FileType(IntEnum):
@@ -90,6 +132,7 @@ class UpdateType(IntEnum):
     UPDATE_FAVED_STICKERS = 40
     SAVED_DIALOG_PIN = 41
     SAVED_DIALOG_PIN_REORDER = 42
+    UPDATE_PRIVACY = 43
 
 
 class SecretUpdateType(IntEnum):

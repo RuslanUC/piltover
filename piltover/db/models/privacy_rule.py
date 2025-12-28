@@ -11,27 +11,9 @@ from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import Contact
 from piltover.tl import PrivacyValueAllowContacts, PrivacyValueAllowAll, PrivacyValueAllowUsers, \
-    PrivacyValueDisallowAll, PrivacyValueDisallowUsers, InputPrivacyKeyStatusTimestamp, \
-    InputPrivacyKeyChatInvite, InputPrivacyKeyPhoneCall, InputPrivacyKeyPhoneP2P, InputPrivacyKeyForwards, \
-    InputPrivacyKeyProfilePhoto, InputPrivacyKeyPhoneNumber, InputPrivacyKeyAddedByPhone, \
-    InputPrivacyKeyVoiceMessages, InputPrivacyValueAllowContacts, InputPrivacyValueAllowAll, \
-    InputPrivacyValueAllowUsers, InputPrivacyValueDisallowUsers, InputUserSelf, InputUser, InputPrivacyKeyAbout, \
-    InputPrivacyKeyBirthday, InputPeerUser
+    PrivacyValueDisallowAll, PrivacyValueDisallowUsers, InputPrivacyValueAllowContacts, InputPrivacyValueAllowAll, \
+    InputPrivacyValueAllowUsers, InputPrivacyValueDisallowUsers, InputUserSelf, InputUser, InputPeerUser
 from piltover.tl.base import InputPrivacyRule, PrivacyRule as TLPrivacyRule
-
-TL_KEY_TO_PRIVACY_ENUM = {
-    InputPrivacyKeyStatusTimestamp: PrivacyRuleKeyType.STATUS_TIMESTAMP,
-    InputPrivacyKeyChatInvite: PrivacyRuleKeyType.CHAT_INVITE,
-    InputPrivacyKeyPhoneCall: PrivacyRuleKeyType.PHONE_CALL,
-    InputPrivacyKeyPhoneP2P: PrivacyRuleKeyType.PHONE_P2P,
-    InputPrivacyKeyForwards: PrivacyRuleKeyType.FORWARDS,
-    InputPrivacyKeyProfilePhoto: PrivacyRuleKeyType.PROFILE_PHOTO,
-    InputPrivacyKeyPhoneNumber: PrivacyRuleKeyType.PHONE_NUMBER,
-    InputPrivacyKeyAddedByPhone: PrivacyRuleKeyType.ADDED_BY_PHONE,
-    InputPrivacyKeyVoiceMessages: PrivacyRuleKeyType.VOICE_MESSAGE,
-    InputPrivacyKeyAbout: PrivacyRuleKeyType.ABOUT,
-    InputPrivacyKeyBirthday: PrivacyRuleKeyType.BIRTHDAY,
-}
 
 
 def _inputusers_to_uids(
@@ -70,7 +52,7 @@ class PrivacyRule(Model):
     @classmethod
     async def update_from_tl(
             cls, user: models.User, rule_key: PrivacyRuleKeyType, rules: list[InputPrivacyRule],
-    ) -> None:
+    ) -> PrivacyRule:
         allow_all = False
         allow_contacts = False
         allow_users = set()
@@ -130,6 +112,8 @@ class PrivacyRule(Model):
                 await models.PrivacyRuleException.bulk_update(to_update, fields=["allow"])
         else:
             await models.PrivacyRuleException.filter(rule=rule).delete()
+
+        return rule
 
     async def to_tl_rules(self) -> list[TLPrivacyRule]:
         rules = []

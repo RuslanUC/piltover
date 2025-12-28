@@ -17,7 +17,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
-    UpdatePinnedSavedDialogs
+    UpdatePinnedSavedDialogs, UpdatePrivacy
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -29,7 +29,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
               | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers \
-              | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs
+              | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs | UpdatePrivacy
 
 
 class Update(Model):
@@ -563,6 +563,22 @@ class Update(Model):
                         DialogPeer(peer=dialog.peer.to_tl())
                         for dialog in dialogs
                     ],
+                )
+
+            case UpdateType.UPDATE_PRIVACY:
+                rule = await models.PrivacyRule.get_or_none(
+                    user=user, id=self.related_id,
+                ).prefetch_related("exceptions")
+                if rule is None:
+                    return None
+
+                for exc in rule.exceptions:
+                    if exc.user_id is not None:
+                        ucc.add_user(exc.user_id)
+
+                return UpdatePrivacy(
+                    key=rule.key.to_tl(),
+                    rules=await rule.to_tl_rules(),
                 )
 
         return None

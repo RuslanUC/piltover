@@ -14,7 +14,6 @@ from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, Pee
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis
-from piltover.db.models.privacy_rule import TL_KEY_TO_PRIVACY_ENUM
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -213,7 +212,7 @@ async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRu
 
 @handler.on_request(GetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_privacy(request: GetPrivacy, user: User) -> PrivacyRules:
-    return await get_privacy_internal(TL_KEY_TO_PRIVACY_ENUM[type(request.key)], user)
+    return await get_privacy_internal(PrivacyRuleKeyType.from_tl(request.key), user)
 
 
 @handler.on_request(SetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -222,13 +221,15 @@ async def set_privacy(request: SetPrivacy, user: User) -> PrivacyRules:
     if len(request.rules) > 100:
         raise ErrorRpc(error_code=400, error_message="PRIVACY_TOO_LONG")
 
-    key = TL_KEY_TO_PRIVACY_ENUM[type(request.key)]
-    await PrivacyRule.update_from_tl(user, key, request.rules)
+    key = PrivacyRuleKeyType.from_tl(request.key)
+    rule = await PrivacyRule.update_from_tl(user, key, request.rules)
 
+    rules = await get_privacy_internal(key, user)
+
+    await upd.update_privacy(user, rule, rules)
     await upd.update_user(user)
-    # TODO: send UpdatePrivacy update
 
-    return await get_privacy_internal(key, user)
+    return rules
 
 
 @handler.on_request(GetThemes, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
