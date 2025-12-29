@@ -17,7 +17,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
     AdminLogEntryAction
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
-    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry
+    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -28,13 +28,14 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
-    InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int
+    InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
+    ChannelParticipantsContacts, ChannelParticipantsMentions
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
-    GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode
+    GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -262,9 +263,13 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         if slowmode_last_date is not None:
             slowmode_next_date = int(slowmode_last_date.timestamp()) + channel.slowmode_seconds
 
+    can_view_participants = not channel.participants_hidden
+    if participant is not None and participant.is_admin:
+        can_view_participants = True
+
     return MessagesChatFull(
         full_chat=ChannelFull(
-            can_view_participants=False,  # TODO: allow viewing participants
+            can_view_participants=can_view_participants,
             can_set_username=can_change_info,
             can_set_stickers=False,
             hidden_prehistory=channel.hidden_prehistory,
@@ -273,7 +278,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             can_view_stats=False,
             can_delete_channel=channel.creator_id == user.id,
             antispam=False,
-            participants_hidden=True,  # TODO: allow viewing participants
+            participants_hidden=channel.participants_hidden,
             translations_disabled=True,
             restricted_sponsored=True,
             can_view_revenue=False,
@@ -530,22 +535,42 @@ async def get_participants(request: GetParticipants, user: User):
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
-    participant = await peer.channel.get_participant(user)
-    if participant is None or not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+
+    this_participant = await peer.channel.get_participant(user)
+    if peer.channel.participants_hidden and (this_participant is None or not this_participant.is_admin):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
-    if isinstance(request.filter, ChannelParticipantsRecent):
-        query = Q(channel=peer.channel)
-    elif isinstance(request.filter, ChannelParticipantsAdmins):
-        query = Q(channel=peer.channel, admin_rights__gt=0)
-    elif isinstance(request.filter, ChannelParticipantsSearch):
-        query = Q(channel=peer.channel, user__first_name__icontains=request.filter.q)
+    query = ChatParticipant.filter(channel=peer.channel)
+
+    filt = request.filter
+    if isinstance(filt, ChannelParticipantsRecent):
+        query = query.order_by("-invited_at")
+    elif isinstance(filt, ChannelParticipantsAdmins):
+        query = query.filter(admin_rights__gt=0).order_by("user__id")
+    elif isinstance(filt, ChannelParticipantsSearch):
+        ...
+    elif isinstance(filt, ChannelParticipantsBots):
+        query = query.filter(user__bot=True).order_by("user__id")
+    elif isinstance(filt, ChannelParticipantsContacts):
+        query = query.filter(user__id__in=Subquery(Contact.filter(owner=user).values_list("target__id", flat=True)))
+    elif isinstance(filt, ChannelParticipantsMentions):
+        # TODO: remove anonymous admins
+        # TODO: fetch users that replied to `filt.top_msg_id`
+        ...
     else:
-        # TODO: ChannelParticipantsContacts, ChannelParticipantsMentions
+        # TODO: ChannelParticipantsBanned, ChannelParticipantsKicked
         return ChannelParticipants(count=0, participants=[], chats=[], users=[])
 
+    if isinstance(filt, (ChannelParticipantsSearch, ChannelParticipantsContacts, ChannelParticipantsMentions)):
+        if filt.q:
+            query = query.filter(Q(
+                user__first_name__icontains=filt.q,
+                usernames__username__icontains=filt.q,
+            ))
+        query = query.order_by("user__id")
+
     limit = max(min(request.limit, 100), 1)
-    participants = await ChatParticipant.filter(query).select_related("user").limit(limit).offset(request.offset)
+    participants = await query.select_related("user").limit(limit).offset(request.offset)
 
     participants_tl = []
     users_to_tl = []
@@ -563,7 +588,7 @@ async def get_participants(request: GetParticipants, user: User):
         users_to_tl.append(participant.user)
 
     return ChannelParticipants(
-        count=await ChatParticipant.filter(query).count(),
+        count=await query.count(),
         participants=participants_tl,
         chats=[await peer.channel.to_tl(user)],
         users=await User.to_tl_bulk(users_to_tl, user),
@@ -798,6 +823,13 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user:
     return await upd.update_channel(channel, user)
 
 
+async def _unlink_channel_maybe(channel: Channel) -> None:
+    if channel.is_discussion:
+        await Channel.filter(discussion=channel).update(discussion=None)
+    elif channel.discussion_id:
+        await Channel.filter(id=channel.discussion_id).update(is_discussion=False)
+
+
 @handler.on_request(DeleteChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_channel(request: DeleteChannel, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(
@@ -814,8 +846,8 @@ async def delete_channel(request: DeleteChannel, user: User) -> Updates:
     await channel.save(update_fields=["deleted", "version"])
 
     await UserPersonalChannel.filter(channel=channel).delete()
+    await _unlink_channel_maybe(channel)
     # TODO: delete channel peers, dialogs, participants and messages lazily or in background
-    # TODO: unlink linked channel (if either discussion_id or is_discussion is set)
 
     return await upd.update_channel(channel, user)
 
@@ -849,7 +881,6 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
     # TODO: do this in transaction
-    # TODO: unlink linked channel (if either discussion_id or is_discussion is set) >
 
     channel.creator = target_peer.user
     await channel.save(update_fields=["creator_id"])
@@ -857,6 +888,8 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
     participant.admin_rights = ChatAdminRights(0)
     target_participant.admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
     await ChatParticipant.bulk_update([participant, target_participant], fields=["admin_rights"])
+
+    await _unlink_channel_maybe(channel)
 
     return await upd.update_channel(channel, user, send_to_users=[user.id, target_peer.user.id])
 
@@ -1334,4 +1367,25 @@ async def toggle_slowmode(request: ToggleSlowMode, user: User) -> Updates:
 
     return await upd.update_channel(channel, user)
 
+
+@handler.on_request(ToggleParticipantsHidden, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def toggle_participants_hidden(request: ToggleParticipantsHidden, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+    )
+
+    channel = peer.channel
+
+    if channel.participants_hidden == request.enabled:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    channel.participants_hidden = request.enabled
+    channel.version += 1
+    await channel.save(update_fields=["participants_hidden", "version"])
+
+    return await upd.update_channel(channel, user)
 

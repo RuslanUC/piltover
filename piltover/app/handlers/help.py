@@ -210,7 +210,8 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="group_transcribe_level_min", value=JsonNumber(value=6.0)),
     JsonObjectValue(key="group_wallpaper_level_min", value=JsonNumber(value=9.0)),
     JsonObjectValue(key="groupcall_video_participants_max", value=JsonNumber(value=1000.0)),
-    JsonObjectValue(key="hidden_members_group_size_min", value=JsonNumber(value=100.0)),
+    # NOTE: telegram's default is 100 ig
+    JsonObjectValue(key="hidden_members_group_size_min", value=JsonNumber(value=1.0)),
     JsonObjectValue(key="ignore_restriction_reasons", value=JsonArray(value=[])),
     JsonObjectValue(key="inapp_update_check_delay", value=JsonNumber(value=365 * 24 * 60 * 60.0)),
     JsonObjectValue(key="intro_description_length_limit", value=JsonNumber(value=70.0)),
