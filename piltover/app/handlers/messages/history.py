@@ -1,13 +1,9 @@
 from datetime import datetime, UTC
 from time import time
-from typing import Any
 
 from loguru import logger
-from pypika_tortoise import SqlContext, Dialects
-from pypika_tortoise.terms import Function as PypikaFunction
-from pypika_tortoise.utils import format_alias_sql
 from tortoise import connections
-from tortoise.expressions import Q, Subquery, Function, CombinedExpression, Connector
+from tortoise.expressions import Q, Subquery, CombinedExpression, Connector
 from tortoise.functions import Min, Max, Count
 from tortoise.queryset import QuerySet
 
@@ -17,6 +13,7 @@ from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAd
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention, \
     ChatParticipant, Chat, ReadHistoryChunk, AdminLogEntry
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
+from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessage, InputMessagesFilterEmpty, \
@@ -518,42 +515,6 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
         chats=channels,
         users=[],
     )
-
-
-class DatetimeToUnixPika(PypikaFunction):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(kwargs.get("alias"))
-        self.args: list = [self.wrap_constant(param) for param in args]
-
-    def get_function_sql(self, ctx: SqlContext) -> str:
-        args = ",".join(self.get_arg_sql(arg, ctx) for arg in self.args)
-
-        if ctx.dialect is Dialects.MYSQL:
-            return f"UNIX_TIMESTAMP({args})"
-        elif ctx.dialect is Dialects.SQLITE:
-            return f"CAST(strftime('%s', {args}) AS INT)"
-        elif ctx.dialect is Dialects.POSTGRESQL:
-            return f"DATE_PART('epoch', {args})"
-        elif ctx.dialect is Dialects.MSSQL:
-            return f"DATEDIFF(SECOND, '1970-01-01', {args})"
-
-        raise RuntimeError(f"Dialect {ctx.dialect!r} is not supported!")
-
-    def get_sql(self, ctx: SqlContext) -> str:
-        function_sql = self.get_function_sql(ctx)
-
-        if ctx.with_alias:
-            return format_alias_sql(function_sql, self.alias, ctx)
-
-        return function_sql
-
-
-class DatetimeToUnix(Function):
-    database_func = DatetimeToUnixPika
-
-    @staticmethod
-    def is_supported(dialect: str) -> bool:
-        return dialect in ("mysql", "sqlite", "postgres", "postgresql", "mssql")
 
 
 @handler.on_request(GetSearchResultsCalendar_134, ReqHandlerFlags.BOT_NOT_ALLOWED)

@@ -7,14 +7,14 @@ from tortoise import Model, fields
 
 from piltover.db import models
 from piltover.db.enums import AdminLogEntryAction, ChatBannedRights
-from piltover.db.models._utils import IntFlagField
+from piltover.db.models.utils import IntFlagField
 from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEventActionChangeAbout, \
     ChannelAdminLogEventActionChangeUsername, ChannelAdminLogEventActionToggleSignatures, \
     ChannelAdminLogEventActionChangePhoto, PhotoEmpty, ChannelAdminLogEventActionParticipantJoin, \
     ChannelAdminLogEventActionParticipantLeave, ChannelAdminLogEventActionToggleNoForwards, \
     ChannelAdminLogEventActionDefaultBannedRights, ChannelAdminLogEventActionTogglePreHistoryHidden, PeerColor, \
     ChannelAdminLogEventActionChangePeerColor, ChannelAdminLogEventActionChangeProfilePeerColor, \
-    ChannelAdminLogEventActionChangeLinkedChat, ChannelAdminLogEventActionChangeHistoryTTL, Long, Int, \
+    ChannelAdminLogEventActionChangeLinkedChat, ChannelAdminLogEventActionChangeHistoryTTL, Int, \
     ChannelAdminLogEventActionToggleSlowMode
 from piltover.tl.base import ChannelAdminLogEvent
 from piltover.utils.users_chats_channels import UsersChatsChannels

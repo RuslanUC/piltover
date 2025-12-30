@@ -7,7 +7,7 @@ from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import ChatBannedRights, ChatAdminRights
-from piltover.db.models._utils import IntFlagField
+from piltover.db.models.utils import IntFlagField
 from piltover.tl import ChatParticipant as TLChatParticipant, ChatParticipantCreator, ChatParticipantAdmin, \
     ChannelParticipant, ChannelParticipantSelf, ChannelParticipantCreator, ChannelParticipantAdmin, \
     ChannelParticipantBanned, ChannelParticipantLeft

@@ -9,7 +9,7 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import ChatBannedRights, ChatAdminRights
-from piltover.db.models._utils import IntFlagField
+from piltover.db.models.utils import IntFlagField
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Chat, ChatForbidden, ChannelForbidden, Channel, Photo, PhotoEmpty, ChatPhoto, ChatPhotoEmpty, \
     PeerChat, PeerChannel

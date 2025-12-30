@@ -2,7 +2,7 @@ from datetime import datetime
 from time import time
 from typing import cast
 
-from tortoise.expressions import Q, Subquery
+from tortoise.expressions import Q, Subquery, RawSQL
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -29,7 +29,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
-    ChannelParticipantsContacts, ChannelParticipantsMentions
+    ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
@@ -454,6 +454,7 @@ async def edit_banned(request: EditBanned, user: User):
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
+    # TODO: remove participant if VIEW_MESSAGES is banned
     # TODO: check if target_participant is not admin
     # TODO: create AdminLogEntry
 
@@ -540,28 +541,40 @@ async def get_participants(request: GetParticipants, user: User):
     if peer.channel.participants_hidden and (this_participant is None or not this_participant.is_admin):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
-    query = ChatParticipant.filter(channel=peer.channel)
-
     filt = request.filter
+
+    query = ChatParticipant.filter(channel=peer.channel)
+    if not this_participant.is_admin or isinstance(filt, ChannelParticipantsMentions):
+        anon_value = ChatAdminRights.ANONYMOUS.value
+        query = query.annotate(check_anon=RawSQL(f"admin_rights & {anon_value}")).filter(check_anon=0)
+
     if isinstance(filt, ChannelParticipantsRecent):
         query = query.order_by("-invited_at")
     elif isinstance(filt, ChannelParticipantsAdmins):
         query = query.filter(admin_rights__gt=0).order_by("user__id")
     elif isinstance(filt, ChannelParticipantsSearch):
-        ...
+        ...  # Handled below
     elif isinstance(filt, ChannelParticipantsBots):
         query = query.filter(user__bot=True).order_by("user__id")
     elif isinstance(filt, ChannelParticipantsContacts):
         query = query.filter(user__id__in=Subquery(Contact.filter(owner=user).values_list("target__id", flat=True)))
     elif isinstance(filt, ChannelParticipantsMentions):
-        # TODO: remove anonymous admins
-        # TODO: fetch users that replied to `filt.top_msg_id`
-        ...
+        if filt.top_msg_id:
+            query = query.filter(user__id__in=Subquery(
+                Message.filter(
+                    peer__owner=None, peer__channel=peer.channel, reply_to__id=filt.top_msg_id,
+                ).distinct().values_list("author__id", flat=True)
+            ))
+    elif isinstance(filt, ChannelParticipantsBanned):
+        query = query.filter(banned_rights__gt=0).order_by("user__id")
     else:
-        # TODO: ChannelParticipantsBanned, ChannelParticipantsKicked
+        # TODO: ChannelParticipantsKicked
         return ChannelParticipants(count=0, participants=[], chats=[], users=[])
 
-    if isinstance(filt, (ChannelParticipantsSearch, ChannelParticipantsContacts, ChannelParticipantsMentions)):
+    if isinstance(filt, (
+            ChannelParticipantsSearch, ChannelParticipantsContacts, ChannelParticipantsMentions,
+            ChannelParticipantsBanned
+    )):
         if filt.q:
             query = query.filter(Q(
                 user__first_name__icontains=filt.q,
