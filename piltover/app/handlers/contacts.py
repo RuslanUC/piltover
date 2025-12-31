@@ -305,6 +305,8 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
         if contact.phone.strip("+").isdigit()
     }
 
+    # TODO: still create contact if user does not exist ?
+
     users = {
         contact.id: contact
         for contact in await User.filter(id__not=user.id, phone_number__in=list(phone_numbers.keys()))
@@ -328,14 +330,13 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
 
         input_contact = to_import[phone_numbers[user.phone_number]]
 
-        # TODO: fill Contact.phone_number from request?
-
         if user_id in existing_contacts:
             contact = existing_contacts[user_id]
             if contact.first_name == input_contact.first_name and contact.last_name == input_contact.last_name:
                 continue
             contact.first_name = input_contact.first_name
             contact.last_name = input_contact.last_name
+            contact.known_phone_number = user.phone_number
             to_update.append(contact)
         else:
             contact = Contact(
@@ -343,15 +344,16 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
                 target=contact_user,
                 first_name=input_contact.first_name,
                 last_name=input_contact.last_name,
+                known_phone_number=user.phone_number
             )
             to_create.append(contact)
 
         imported.append(ImportedContact(user_id=user_id, client_id=input_contact.client_id))
 
-    await Contact.bulk_update(to_update, fields=["first_name", "last_name"])
+    await Contact.bulk_update(to_update, fields=["first_name", "last_name", "known_phone_number"])
     await Contact.bulk_create(to_create)
 
-    # TODO: updates
+    # TODO: updates?
 
     return ImportedContacts(
         imported=imported,

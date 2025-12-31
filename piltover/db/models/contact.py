@@ -22,4 +22,3 @@ class Contact(Model):
             ("owner", "target"),
             ("owner", "phone_number"),
         )
-
