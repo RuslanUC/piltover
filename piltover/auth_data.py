@@ -21,7 +21,7 @@ class GenAuthData(AuthData):
         "expires_in",
     )
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         self.p: int | None = None

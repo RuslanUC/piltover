@@ -305,4 +305,3 @@ async def edit_peer_folders(request: EditPeerFolders, user: User) -> Updates:
 
     await Dialog.bulk_update(updated_dialogs, ["folder_id"])
     return await upd.update_folder_peers(user, updated_dialogs)
-

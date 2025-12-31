@@ -113,55 +113,55 @@ def layer_suffix(type_: str, layer: int) -> str:
     return f"_{found_layer}" if found_layer else ""
 
 
-# noinspection PyShadowingBuiltins, PyShadowingNames
 def get_type_hint(
-        type: str, layer: int, int_is_int: bool = False, dont_use_base_when_only_one_constructor: bool = False,
-        use_iterable_for_vector: bool = False
+        type_: str, layer: int, int_is_int: bool = False, dont_use_base_when_only_one_constructor: bool = False,
+        use_iterable_for_vector: bool = False, force_optional: bool = False
 ) -> str:
-    is_flag = FLAGS_RE.match(type)
+    is_flag = force_optional or FLAGS_RE.match(type_)
     is_core = False
 
-    if is_flag:
-        type = type.split("?")[1]
+    if is_flag and not force_optional:
+        print(type_)
+        type_ = type_.split("?")[1]
 
-    if type in CORE_TYPES:
+    if type_ in CORE_TYPES:
         is_core = True
 
-        if type == "long" or type == "#" or "int" in type:
-            type = "int" if int_is_int else CORE_TYPES_D.get(type, "Int")
-        elif type == "double":
-            type = "float"
-        elif type == "string":
-            type = "str"
-        elif type in ["Bool", "true"]:
-            type = "bool"
-        elif type == "bytes":
+        if type_ == "long" or type_ == "#" or "int" in type_:
+            type_ = "int" if int_is_int else CORE_TYPES_D.get(type_, "Int")
+        elif type_ == "double":
+            type_ = "float"
+        elif type_ == "string":
+            type_ = "str"
+        elif type_ in ["Bool", "true"]:
+            type_ = "bool"
+        elif type_ == "bytes":
             pass
         else:
-            raise RuntimeError(f"Got unknown type: {type}")
+            raise RuntimeError(f"Got unknown type: {type_}")
 
-    if type in ["Object", "!X"]:
+    if type_ in ["Object", "!X"]:
         return "TLObject"
 
-    if type.lower().startswith("vector"):
+    if type_.lower().startswith("vector"):
         is_core = True
 
-        sub_type = type.split("<")[1][:-1]
+        sub_type = type_.split("<")[1][:-1]
         outer = "Iterable" if use_iterable_for_vector else "list"
-        type = f"{outer}[{get_type_hint(sub_type, layer, int_is_int)}]"
+        type_ = f"{outer}[{get_type_hint(sub_type, layer, int_is_int, force_optional=force_optional)}]"
 
     if is_core:
-        return f"{type} | None" if is_flag and type != "bool" else type
+        return f"{type_} | None" if is_flag and type_ != "bool" else type_
     else:
-        base_type = f"{type}{layer_suffix(type, layer)}"
+        base_type = f"{type_}{layer_suffix(type_, layer)}"
         if dont_use_base_when_only_one_constructor \
                 and base_type in types_to_constructors \
                 and len(types_to_constructors[base_type]) == 1:
-            type = f"types.{types_to_constructors[base_type][0]}"
+            type_ = f"types.{types_to_constructors[base_type][0]}"
         else:
-            type = f"base.{base_type}"
+            type_ = f"base.{base_type}"
 
-        return f"{type} | None" if is_flag else type
+        return f"{type_} | None" if is_flag else type_
 
 
 def is_tl_object(field_type: str) -> bool:
@@ -408,7 +408,7 @@ def start():
         slots.append("")  # For trailing comma
 
         init_args = [
-            f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True)}"
+            f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True, force_optional=field.is_optional and field.type() != 'true')}"
             + ("" if not field.is_optional else (" = False" if field.type() in ("true", "Bool") else " = None"))
             for field in sorted(fields, key=lambda fd: (fd.is_optional, fd.position))
             if not field.is_flag
