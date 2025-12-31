@@ -305,15 +305,18 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
         if contact.phone.strip("+").isdigit()
     }
 
-    # TODO: check target users privacy settings, if they allow to find them by phone number
     users = {
         contact.id: contact
         for contact in await User.filter(id__not=user.id, phone_number__in=list(phone_numbers.keys()))
     }
     existing_contacts = {
         contact.target_id: contact
-        for contact in await Contact.filter(owner=user, id__in=list(users.keys()))
+        for contact in await Contact.filter(owner=user, target__id__in=list(users.keys()))
     }
+    not_allowed = await PrivacyRule.has_access_to_bulk(users.values(), user, [PrivacyRuleKeyType.ADDED_BY_PHONE])
+    for user_id, privacy in not_allowed.items():
+        if not privacy[PrivacyRuleKeyType.ADDED_BY_PHONE] and user_id in users:
+            del users[user_id]
 
     imported = []
 
@@ -354,10 +357,7 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
         imported=imported,
         popular_invites=[],
         retry_contacts=to_retry,
-        users=[
-            await contact_user.to_tl(user)
-            for contact_user in users.values()
-        ],
+        users=await User.to_tl_bulk(users.values(), user),
     )
 
 
