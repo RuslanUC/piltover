@@ -199,10 +199,13 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
         return True
 
     if request.pinned:
-        # TODO: set pinned index to Max("pinned_index") + 1 instead of whatever this is
-        dialog.pinned_index = await Dialog.filter(
-            peer=peer, pinned_index__not_isnull=True, folder_id=dialog.folder_id, visible=True,
-        ).count()
+        max_index = cast(
+            int | None,
+            await Dialog.filter(
+                peer=peer, folder_id=dialog.folder_id, visible=True,
+            ).annotate(max_pinned_index=Max("pinned_index")).first().values_list("max_pinned_index", flat=True)
+        )
+        dialog.pinned_index = (max_index or -1) + 1
         if dialog.pinned_index > 10:
             raise ErrorRpc(error_code=400, error_message="PINNED_DIALOGS_TOO_MUCH")
     else:
@@ -228,8 +231,9 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
         if (peer := await Peer.from_input_peer(user, dialog_peer.peer)) is None:
             continue
 
-        dialog = pinned_now.get(peer, None) \
-                 or await Dialog.get_or_none(peer=peer, folder_id=folder_id, visible=True).select_related("peer")
+        dialog = pinned_now.get(peer, None)
+        if dialog is None:
+            dialog = await Dialog.get_or_none(peer=peer, folder_id=folder_id, visible=True).select_related("peer")
         if not dialog:
             continue
 
