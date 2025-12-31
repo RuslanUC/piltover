@@ -55,6 +55,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
         # TODO: check if this is correct permission
+        # TODO: check if reaction is in allowed reactions list
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         channel_min_id = 0

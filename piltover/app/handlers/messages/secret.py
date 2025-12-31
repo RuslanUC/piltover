@@ -52,6 +52,8 @@ async def request_encryption(request: RequestEncryption, user: User):
     if not await UserAuthorization.filter(user=peer.user, allow_encrypted_requests=True).exists():
         return EncryptedChatDiscarded(id=0)
 
+    # TODO: if chat with target user already exists, what do we do? discard?
+
     ctx = request_ctx.get()
     chat = await EncryptedChat.create(
         from_user=user,
@@ -100,18 +102,22 @@ async def accept_encryption(request: AcceptEncryption, user: User):
     return await chat.to_tl(user, ctx.auth_id)
 
 
-# TODO: Handle it properly (allow discarding when it was and was not accepted)
 @handler.on_request(DiscardEncryption, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def discard_encryption(request: DiscardEncryption, user: User):
+    ctx = request_ctx.get()
+
     async with in_transaction():
-        chat = await EncryptedChat.select_for_update().get_or_none(id=request.chat_id, to_user=user)\
-            .select_related("from_user")
+        chat = await EncryptedChat.get_or_none(
+            Q(from_user=user, from_sess__id=ctx.auth_id) | Q(to_user=user),
+            id=request.chat_id,
+        ).select_related("from_user", "to_user")
+
         if chat is None:
             raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ID_INVALID")
 
-        ctx = request_ctx.get()
-        if chat.to_sess_id is not None and chat.to_sess_id != ctx.auth_id:
-            raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_ACCEPTED")
+        if chat.to_user_id == user.id:
+            if chat.to_sess_id is not None and chat.to_sess_id != ctx.auth_id:
+                raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_ACCEPTED")
         if chat.discarded:
             raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_DECLINED")
 
@@ -271,5 +277,3 @@ async def read_encrypted_history(request: ReadEncryptedHistory, user: User):
     await upd.send_encrypted_update(update)
 
     return True
-
-
