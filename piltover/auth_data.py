@@ -28,7 +28,7 @@ class GenAuthData(AuthData):
         self.q: int | None = None
         self.server_nonce: int | None = None
         self.new_nonce: bytes | None = None
-        self.server_nonce_bytes: ... | None = None
+        self.server_nonce_bytes: bytes | None = None
         self.tmp_aes_key: bytes | None = None
         self.tmp_aes_iv: bytes | None = None
         self.a: int | None = None

@@ -585,6 +585,7 @@ def start():
         out_path = dir_path / f"__init__.py"
         if not out_path.exists():
             with open(out_path, "w") as f:
+                f.write("# mypy: disable-error-code=arg-type\n\n")
                 f.write("\n".join(imports))
         with open(out_path, "a") as f:
             f.write("\n".join(result))
