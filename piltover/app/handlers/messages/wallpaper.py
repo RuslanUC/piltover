@@ -85,4 +85,3 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user: User) -> Updates:
         updates.updates.extend(message_updates.updates)
 
     return updates
-
