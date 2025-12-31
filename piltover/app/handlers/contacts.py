@@ -9,8 +9,9 @@ from tortoise.expressions import Q, Subquery
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app_config import AppConfig
-from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, Channel
+from piltover.db.enums import PeerType, PrivacyRuleKeyType
+from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, Channel, PrivacyRuleException, \
+    PrivacyRule
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
@@ -240,7 +241,15 @@ async def add_contact(request: AddContact, user: User) -> Updates:
         "known_phone_number": request.phone or None,
     })
 
-    # TODO: add_phone_privacy_exception
+    if request.add_phone_privacy_exception:
+        rule = await PrivacyRule.get_or_create(user=user, key=PrivacyRuleKeyType.PHONE_NUMBER, defaults={
+            "allow_all": False,
+            "allow_contacts": False,
+        })
+        await PrivacyRuleException.update_or_create(rule=rule, user=peer.user, defaults={
+            "allow": True,
+        })
+
     return await upd.add_remove_contact(user, [peer.user])
 
 
