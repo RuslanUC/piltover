@@ -75,9 +75,11 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
         await chat.save(update_fields=["participants_count"])
 
     chat_peers = {
-        peer.user_id: peer
+        peer.owner_id: peer
         for peer in await Peer.filter(chat=chat).select_related("owner")
     }
+    for peer in chat_peers.values():
+        peer.chat = chat
 
     updates = await upd.create_chat(user, chat, list(chat_peers.values()))
     updates_msg = await send_message_internal(
