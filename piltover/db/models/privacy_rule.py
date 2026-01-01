@@ -156,6 +156,8 @@ class PrivacyRule(Model):
         if current_id == target_id:
             return True
 
+        # TODO: check if target_user blocked current_user
+
         rule = await cls.get_or_none(
             user__id=target_id, key=key,
         ).prefetch_related(Prefetch(
@@ -182,13 +184,16 @@ class PrivacyRule(Model):
 
     @classmethod
     async def has_access_to_bulk(
-            cls, users: Iterable[models.User], user: models.User, keys: list[PrivacyRuleKeyType],
+            cls, users: Iterable[models.User | int], user: models.User, keys: list[PrivacyRuleKeyType],
             contacts: set[int] | None = None,
     ) -> dict[int, dict[PrivacyRuleKeyType, bool]]:
         if not keys:
             return {}
 
-        user_ids = {target.id for target in users}
+        user_ids = {
+            (target.id if isinstance(target, models.User) else target)
+            for target in users
+        }
         results = {
             user_id: {}
             for user_id in user_ids

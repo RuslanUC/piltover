@@ -45,18 +45,31 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
             continue
         if not isinstance(invited_user, (InputUser, InputPeerUser)):
             continue
-        # TODO: maybe also check if Peer exists for user
-        # TODO: check if target user didnt block current user
-        # TODO: check if current user can add target user to chat based on privacy rules
         if not User.check_access_hash(user.id, ctx.auth_id, invited_user.user_id, invited_user.access_hash):
             missing.append(MissingInvitee(user_id=invited_user.user_id))
             continue
 
         invited_user_ids.add(invited_user.user_id)
 
-    invited_users = []
     if invited_user_ids:
-        invited_users = await User.filter(id__in=invited_user_ids)
+        privacy = await PrivacyRule.has_access_to_bulk(invited_user_ids, user, [PrivacyRuleKeyType.CHAT_INVITE])
+        invited_user_ids.clear()
+        for user_id, rules in privacy.items():
+            if rules[PrivacyRuleKeyType.CHAT_INVITE]:
+                invited_user_ids.add(user_id)
+            else:
+                missing.append(MissingInvitee(user_id=user_id))
+
+    invited_peers: list[Peer] = []
+    if invited_user_ids:
+        invited_peers = await Peer.filter(owner=user, user__id__in=invited_user_ids).select_related("user")
+
+    invited_users = []
+    for invited_peer in invited_peers:
+        if invited_peer.blocked_at is not None:
+            missing.append(MissingInvitee(user_id=invited_peer.user_id))
+        else:
+            invited_users.append(invited_peer.user)
 
     async with in_transaction():
         chat = await Chat.create(name=request.title, creator=user, participants_count=0)

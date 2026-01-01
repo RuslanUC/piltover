@@ -67,6 +67,12 @@ async def test_create_group_chat_with_another_user() -> None:
     async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
         await client1.set_username("test1_username")
         await client2.set_username("test2_username")
+
+        await client2.set_privacy(
+            InputPrivacyKeyChatInvite(),
+            InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+        )
+
         user1 = await client2.get_users("test1_username")
         user2 = await client1.get_users("test2_username")
 
@@ -125,6 +131,12 @@ async def test_promote_user_to_admin() -> None:
     async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
         await client1.set_username("test1_username")
         await client2.set_username("test2_username")
+
+        await client2.set_privacy(
+            InputPrivacyKeyChatInvite(),
+            InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+        )
+
         user1 = await client2.get_users("test1_username")
         user2 = await client1.get_users("test2_username")
 
@@ -193,8 +205,15 @@ async def test_migrate_basic_chat_to_supergroup(exit_stack: AsyncExitStack) -> N
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
 
+    await client1.set_username("test1_username")
+    await client1.expect_update(UpdateUserName)
     await client2.set_username("test2_username")
     await client2.expect_update(UpdateUserName)
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
 
     async with client1.expect_updates_m(UpdateNewMessage), client2.expect_updates_m(UpdateNewMessage):
         group = await client1.create_group("idk basic group", ["test2_username"])

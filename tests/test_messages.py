@@ -19,6 +19,7 @@ from tortoise.expressions import F
 
 from piltover.db.enums import PeerType
 from piltover.db.models import Message, Peer, User
+from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
 from tests.client import TestClient
 
 
@@ -480,6 +481,12 @@ async def test_send_message_banned_rights() -> None:
     async with TestClient(phone_number="123456789") as client1, TestClient(phone_number="1234567890") as client2:
         await client1.set_username("test1_username")
         await client2.set_username("test2_username")
+
+        await client2.set_privacy(
+            InputPrivacyKeyChatInvite(),
+            InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+        )
+
         user1 = await client2.get_users("test1_username")
         user2 = await client1.get_users("test2_username")
 
@@ -628,7 +635,11 @@ async def test_mention_user_in_chat(exit_stack: AsyncExitStack) -> None:
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
 
     await client1.set_username("test1_username")
-    await client2.get_users("test1_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
 
     await client2.set_username("test2_username")
     user2 = await client1.get_users("test2_username")
@@ -657,7 +668,11 @@ async def test_get_unread_mentions_and_read_them_in_chat(exit_stack: AsyncExitSt
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
 
     await client1.set_username("test1_username")
-    await client2.get_users("test1_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
 
     await client2.set_username("test2_username")
     user2 = await client1.get_users("test2_username")
@@ -707,7 +722,11 @@ async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> No
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
 
     await client1.set_username("test1_username")
-    await client2.get_users("test1_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
 
     await client2.set_username("test2_username")
     user2 = await client1.get_users("test2_username")
