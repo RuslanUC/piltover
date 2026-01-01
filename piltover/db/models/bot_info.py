@@ -18,11 +18,16 @@ class BotInfo(Model):
     user_id: int
     description_photo_id: int | None
 
-    def to_tl(self) -> TLBotInfo:
+    async def to_tl(self) -> TLBotInfo:
+        commands = await models.BotCommand.filter(bot__id=self.user_id)
+
         return TLBotInfo(
             user_id=self.user_id,
             description=self.description,
             description_photo=self.description_photo.to_tl_photo() if self.description_photo_id is not None else None,
-            commands=[],
+            commands=[
+                command.to_tl()
+                for command in commands
+            ],
             privacy_policy_url=self.privacy_policy_url,
         )

@@ -1,3 +1,4 @@
+from asyncio import sleep
 from io import BytesIO
 from urllib.parse import urlparse
 
@@ -8,7 +9,7 @@ from piltover.app.utils.formatable_text_with_entities import FormatableTextWithE
 from piltover.app.utils.utils import is_username_valid
 from piltover.context import request_ctx
 from piltover.db.enums import BotFatherState, MediaType
-from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto
+from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto, BotCommand
 from piltover.tl.types.internal_botfather import BotfatherStateNewbot, BotfatherStateEditbot
 
 __bot_name_invalid = "Sorry, this isn't a proper name for a bot."
@@ -48,6 +49,17 @@ __bot_privacy_invalid = "Please send me a valid URL."
 _bot_privacy_updated, _bot_privacy_updated_entities = FormatableTextWithEntities(
     "Success! Privacy policy updated. <c>/help</c>",
 ).format()
+_bot_commands_updated, _bot_commands_updated_entities = FormatableTextWithEntities(
+    "Success! Command list updated. <c>/help</c>",
+).format()
+__bot_commands_invalid, __bot_commands_invalid_entities = FormatableTextWithEntities("""
+Sorry, the list of commands is invalid. Please use this format:
+
+command1 - Description
+command2 - Another description
+
+Send <c>/empty</c> to keep the list empty.
+""".strip()).format()
 
 
 async def botfather_text_message_handler(peer: Peer, message: Message) -> Message | None:
@@ -174,3 +186,37 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         await state.delete()
 
         return await send_bot_message(peer, _bot_privacy_updated, entities=_bot_privacy_updated_entities)
+
+    if state.state is BotFatherState.EDITBOT_WAIT_COMMANDS:
+        commands = {}
+
+        for command in message.message.split("\n"):
+            await sleep(0)
+            name, _, description = command.partition(" - ")
+            # TODO: validate command name
+            if not name or len(name) > 32 or not description or len(description) > 240:
+                return await send_bot_message(peer, __bot_commands_invalid, entities=__bot_commands_invalid_entities)
+            commands[name] = description
+
+        if not commands:
+            return await send_bot_message(peer, __bot_commands_invalid, entities=__bot_commands_invalid_entities)
+
+        state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
+        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        if bot is None:
+            return await send_bot_message(peer, "Bot does not exist (?)")
+
+        async with in_transaction():
+            await BotCommand.filter(bot=bot.bot).delete()
+
+            await BotCommand.bulk_create([
+                BotCommand(bot=bot.bot, name=command_name, description=command_description)
+                for command_name, command_description in commands.items()
+            ])
+
+            info, _ = await BotInfo.get_or_create(user=bot.bot)
+            info.version += 1
+            await info.save(update_fields=["version"])
+            await state.delete()
+
+        return await send_bot_message(peer, _bot_commands_updated, entities=_bot_commands_updated_entities)

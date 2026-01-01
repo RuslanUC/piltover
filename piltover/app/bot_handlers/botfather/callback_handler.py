@@ -5,7 +5,7 @@ from piltover.app.bot_handlers.botfather.mybots_command import text_no_bots, tex
 from piltover.app.bot_handlers.botfather.utils import get_bot_selection_inline_keyboard, send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import BotFatherState
-from piltover.db.models import Peer, Message, Bot, BotInfo, BotFatherUserState, UserPhoto
+from piltover.db.models import Peer, Message, Bot, BotInfo, BotFatherUserState, UserPhoto, BotCommand
 from piltover.db.models.bot import gen_bot_token
 from piltover.tl import ReplyInlineMarkup, KeyboardButtonRow, KeyboardButtonCallback
 from piltover.tl.types.internal_botfather import BotfatherStateEditbot
@@ -46,6 +46,14 @@ __editbot_privacy, __editbot_privacy_entities = FormatableTextWithEntities("""
 Send me a public URL to the new Privacy Policy for the bot or use <c>/empty</c> to remove the current one.
 
 If you don't specify a Privacy Policy, the Standard Privacy Policy for Bots and Mini Apps will apply.
+""".strip()).format()
+__editbot_commands, __editbot_commands_entities = FormatableTextWithEntities("""
+OK. Send me a list of commands for your bot. Please use this format:
+
+command1 - Description
+command2 - Another description
+
+Send <c>/empty</c> to keep the list empty.
 """.strip()).format()
 
 
@@ -198,6 +206,8 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
 
         bot_info, _ = await BotInfo.get_or_create(user=bot.bot)
         has_photo = await UserPhoto.filter(user=bot.bot).exists()
+        commands_count = await BotCommand.filter(bot=bot.bot).count()
+        comm_plural_s = "s" if commands_count > 1 else ""
 
         message.message, message.entities = __text_bot_edit_info.format(
             username=bot.bot.usernames.username,
@@ -206,8 +216,7 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             description=bot_info.description if bot_info.description else "🚫",
             picture="has description picture" if bot_info.description_photo else "🚫 no description picture",
             profile_picture="🖼 has a botpic" if has_photo else "🚫 no botpic",
-            # TODO: commands
-            commands="no commands yet",
+            commands=f"{commands_count} command{comm_plural_s}" if commands_count else "no commands yet",
             privacy_policy=bot_info.privacy_policy_url if bot_info.privacy_policy_url else "🚫",
         )
         message.reply_markup = ReplyInlineMarkup(rows=[
@@ -221,7 +230,7 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             ]),
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"Edit Botpic", data=f"bots-edit-pic/{bot.bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"🚫 Edit Commands", data=f"bots-edit-commands/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"Edit Commands", data=f"bots-edit-commands/{bot.bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"🚫 Edit Inline Placeholder", data=f"bots-edit-inline-placeholder/{bot.bot_id}".encode("latin1")),
@@ -320,6 +329,23 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             peer.owner, BotFatherState.EDITBOT_WAIT_PRIVACY, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         message = await send_bot_message(peer, __editbot_privacy, entities=__editbot_privacy_entities)
+        await upd.send_message(None, {peer: message}, False)
+
+        return BotCallbackAnswer(cache_time=0)
+
+    if data.startswith(b"bots-edit-commands/"):
+        try:
+            bot_id = int(data[19:])
+        except ValueError:
+            return None
+
+        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+            return None
+
+        await BotFatherUserState.set_state(
+            peer.owner, BotFatherState.EDITBOT_WAIT_COMMANDS, BotfatherStateEditbot(bot_id=bot_id).serialize()
+        )
+        message = await send_bot_message(peer, __editbot_commands, entities=__editbot_commands_entities)
         await upd.send_message(None, {peer: message}, False)
 
         return BotCallbackAnswer(cache_time=0)

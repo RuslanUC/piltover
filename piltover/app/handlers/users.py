@@ -63,7 +63,7 @@ async def get_full_user(request: GetFullUser, user: User):
         if bot_info is None:
             bot_info = TLBotInfo()
         else:
-            bot_info = bot_info.to_tl()
+            bot_info = await bot_info.to_tl()
 
     birthday = None
     if privacy_rules[PrivacyRuleKeyType.BIRTHDAY]:

@@ -1401,4 +1401,3 @@ async def toggle_participants_hidden(request: ToggleParticipantsHidden, user: Us
     await channel.save(update_fields=["participants_hidden", "version"])
 
     return await upd.update_channel(channel, user)
-

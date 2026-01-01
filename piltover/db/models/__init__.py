@@ -82,3 +82,4 @@ from .inline_query_result import InlineQueryResult
 from .inline_query_result_item import InlineQueryResultItem
 from .privacy_rule_exception import PrivacyRuleException
 from .slowmode_last_message import SlowmodeLastMessage
+from .bot_command import BotCommand
