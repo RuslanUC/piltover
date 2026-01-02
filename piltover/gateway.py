@@ -5,9 +5,7 @@ import base64
 import hashlib
 import hmac
 import os
-from asyncio import sleep
 from io import BytesIO
-from os import environ
 from pathlib import Path
 from time import time
 from typing import TYPE_CHECKING
@@ -22,12 +20,11 @@ from taskiq.kicker import AsyncKicker
 from piltover._keygen_handlers import KEYGEN_HANDLERS
 from piltover._system_handlers import SYSTEM_HANDLERS
 from piltover.cache import Cache
-from piltover.context import serialization_ctx, SerializationContext
+from piltover.context import SerializationContext
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
-from piltover.utils.utils import run_coro_with_additional_return
 
 try:
     from taskiq_aio_pika import AioPikaBroker
@@ -61,7 +58,6 @@ class Gateway:
     PORT = 4430
     RMQ_HOST = "amqp://guest:guest@127.0.0.1:5672"
     REDIS_HOST = "redis://127.0.0.1"
-    TL_CHECK_RESPONSES = environ.get("TL_DEBUG_CHECK_RESPONSES", "").lower() in ("1", "true",)
 
     def __init__(
             self, data_dir: Path, host: str = HOST, port: int = PORT, server_keys: Keys | None = None,
@@ -149,6 +145,7 @@ class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "auth_data", "empty_session", "session", "no_updates",
         "layer", "authorization", "disconnect_timeout", "channels_loaded_at", "msg_id_values", "salt_now", "salt_prev",
+        "write_lock",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -173,6 +170,7 @@ class Client:
         self.layer = 133
 
         self.disconnect_timeout: asyncio.Timeout | None = None
+        self.write_lock = asyncio.Lock()
 
     def _get_session(self, session_id: int) -> tuple[Session, bool]:
         if self.session is not None:
@@ -209,21 +207,22 @@ class Client:
 
         return packet
 
-    async def _write(self, packet: BasePacket, ignore_errors: bool = False) -> None:
+    async def _write_packet(self, packet: BasePacket, ignore_errors: bool = False) -> None:
         to_send = self.conn.send(packet)
         try:
-            self.writer.write(to_send)
-            await self.writer.drain()
+            async with self.write_lock:
+                self.writer.write(to_send)
+                await self.writer.drain()
         except ConnectionResetError:
             if ignore_errors:
                 return
-            raise Disconnection()
+            raise Disconnection
         except Exception as e:
             if ignore_errors:
                 return
-            raise Disconnection() from e
+            raise Disconnection from e
 
-    async def _send_raw(self, message: Message, session: Session) -> None:
+    async def _send_message(self, message: Message, session: Session) -> None:
         if not self.auth_data or self.auth_data.auth_key is None or self.auth_data.auth_key_id is None:
             logger.error("Trying to send encrypted response, but auth_key is empty")
             raise Disconnection(404)
@@ -234,58 +233,36 @@ class Client:
         auth_id = auth.id if auth is not None else None
         user_id = auth.user_id if auth is not None else None
         logger.debug(f"SerializationContext ({self.peername}): {user_id=}, {auth_id=}")
-        ctx_token = serialization_ctx.set(SerializationContext(
-            auth_id=auth_id,
-            user_id=user_id,
-            layer=self.layer,
-        ))
-
-        if self.server.TL_CHECK_RESPONSES:
-            try:
-                obj_cls = type(message.obj)
-                obj_write = message.obj.write()
-                obj_read = obj_cls.read(BytesIO(obj_write), True)
-                message.obj.eq_raise(obj_read)
-            except Exception as e:
-                logger.opt(exception=e).warning(
-                    "Failed response check! "
-                    "(It may fail on correct data when reading Bool because it is not in all.object "
-                    "or Vector because when serialized, it doesn't have any type information)"
-                )
 
         self._update_salts_maybe()
 
-        encrypted = DecryptedMessagePacket(
-            salt=self.salt_now[0],
-            session_id=session.session_id,
-            message_id=message.message_id,
-            seq_no=message.seq_no,
-            data=message.obj.write(),
-        ).encrypt(self.auth_data.auth_key, ConnectionRole.SERVER)
+        with SerializationContext(auth_id=auth_id, user_id=user_id, layer=self.layer).use():
+            decrypted = DecryptedMessagePacket(
+                salt=self.salt_now[0],
+                session_id=session.session_id,
+                message_id=message.message_id,
+                seq_no=message.seq_no,
+                data=message.obj.write(),
+            )
 
-        serialization_ctx.reset(ctx_token)
+        encrypted = decrypted.encrypt(self.auth_data.auth_key, ConnectionRole.SERVER)
 
-        await self._write(encrypted)
+        await self._write_packet(encrypted)
 
-    async def send(
-            self, obj: TLObject, session: Session, originating_request: Message | DecryptedMessagePacket | None = None,
-            need_auth_refresh: bool = False,
-    ) -> None:
+    async def send(self, obj: TLObject, session: Session, in_reply: bool, need_auth_refresh: bool = False) -> None:
         await self._refresh_session_maybe(session, need_auth_refresh)
 
-        message = session.pack_message(obj, originating_request)
+        message = session.pack_message(obj, in_reply)
+        await self._send_message(message, session)
 
-        await self._send_raw(message, session)
-
-    async def send_container(self, objects: list[tuple[TLObject, Message]], session: Session):
+    async def send_container(self, objects: list[tuple[TLObject, bool]], session: Session):
         logger.debug(f"Sending: {objects}")
         message = session.pack_container(objects)
-
-        await self._send_raw(message, session)
+        await self._send_message(message, session)
 
     async def send_unencrypted(self, obj: TLObject) -> None:
         logger.debug(obj)
-        await self._write(UnencryptedMessagePacket(
+        await self._write_packet(UnencryptedMessagePacket(
             self.empty_session.msg_id(in_reply=True),
             obj.write(),
         ))
@@ -385,29 +362,14 @@ class Client:
         except Exception as e:
             logger.opt(exception=e).warning(f"Error while processing {obj.tlname()}")
 
-    async def handle_encrypted_message(self, req_message: Message, session: Session):
+    async def handle_encrypted_message(self, req_message: Message, session: Session) -> None:
         if isinstance(req_message.obj, MsgContainer):
-            results = []
-            tasks = [
-                run_coro_with_additional_return(self.propagate(msg, session), msg)
+            await asyncio.gather(
+                self.propagate(msg, session)
                 for msg in req_message.obj.messages
-            ]
-            for task_result in asyncio.as_completed(tasks):
-                result, msg = await task_result
-                if result is None:
-                    continue
-                results.append((result, msg))
-
-            if not results:
-                logger.warning("Empty msg_container, returning...")
-                return
-
-            return await self.send_container(results, session)
-
-        if (result := await self.propagate(req_message, session)) is None:
-            return
-
-        await self.send(result, session, originating_request=req_message)
+            )
+        else:
+            await self.propagate(req_message, session)
 
     # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
     async def _is_message_bad(self, packet: DecryptedMessagePacket, check_salt: bool) -> bool:
@@ -446,7 +408,7 @@ class Client:
                     error_code=error_code,
                 ),
                 Session(self, packet.session_id, self.msg_id_values),
-                packet,
+                True,
             )
             return True
 
@@ -465,7 +427,7 @@ class Client:
                     new_server_salt=Long.read_bytes(self.salt_now[0]),
                 ),
                 Session(self, packet.session_id, self.msg_id_values),
-                packet,
+                True,
             )
             return True
 
@@ -477,7 +439,7 @@ class Client:
         if isinstance(packet, EncryptedMessagePacket):
             decrypted = await self.decrypt(packet)
             if packet.needs_quick_ack:
-                await self._write(self._create_quick_ack(decrypted))
+                await self._write_packet(self._create_quick_ack(decrypted))
 
             self._update_salts_maybe()
 
@@ -502,6 +464,7 @@ class Client:
                         server_salt=Long.read_bytes(self.salt_now[0]),
                     ),
                     session,
+                    False,
                 )
 
             logger.debug(f"Received from {self.session.session_id if self.session else 0}: {message}")
@@ -515,7 +478,7 @@ class Client:
                     logger.debug(f"Skipping reqPQ: {decoded}")
                     packet = self.conn.receive()
                     peeked = self.conn.peek_packet()
-                    await sleep(0)
+                    await asyncio.sleep(0)
 
                 if packet is not None:
                     decoded = TLObject.read(BytesIO(packet.message_data))
@@ -596,7 +559,7 @@ class Client:
                 await self._worker_loop()
         except Disconnection as err:
             if err.transport_error is not None:
-                await self._write(ErrorPacket(err.transport_error), ignore_errors=True)
+                await self._write_packet(ErrorPacket(err.transport_error), ignore_errors=True)
         except TimeoutError:
             logger.debug("Client disconnected because of expired timeout")
         finally:
@@ -609,7 +572,7 @@ class Client:
                 logger.info(f"Session {self.session.session_id} removed")
                 self.session.destroy()
 
-    async def propagate(self, request: Message, session: Session) -> RpcResult | None:
+    async def _process_request(self, request: Message, session: Session) -> RpcResult | None:
         await self._fetch_perm_auth_key_maybe()
 
         if request.obj.tlid() in SYSTEM_HANDLERS:
@@ -636,7 +599,7 @@ class Client:
                 result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR"),
             )
 
-        #logger.trace(f"Got RpcResponse from worker: {result!r}")
+        # logger.trace(f"Got RpcResponse from worker: {result!r}")
 
         if result.transport_error is not None:
             raise Disconnection(result.transport_error or None)
@@ -644,3 +607,7 @@ class Client:
             await self._refresh_session_maybe(session, True)
 
         return result.obj
+
+    async def propagate(self, request: Message, session: Session) -> RpcResult | None:
+        if (result := await self._process_request(request, session)) is not None:
+            await self.send(result, session, True)

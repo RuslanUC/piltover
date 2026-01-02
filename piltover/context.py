@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
-from typing import TypeVar, Generic, TYPE_CHECKING
+from typing import TypeVar, Generic, TYPE_CHECKING, Generator, Self
 
 if TYPE_CHECKING:
     from piltover.worker import Worker
@@ -72,6 +73,14 @@ class SerializationContext(Generic[T]):
         self.user_id = user_id
         self.layer = layer
         self.dont_format = dont_format
+
+    @contextmanager
+    def use(self) -> Generator[Self, None, None]:
+        token = serialization_ctx.set(self)
+        try:
+            yield self
+        finally:
+            serialization_ctx.reset(token)
 
 
 serialization_ctx: ContextVar[SerializationContext | None] = ContextVar("serialization_ctx", default=None)

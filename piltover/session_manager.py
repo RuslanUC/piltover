@@ -5,7 +5,6 @@ from time import time
 from typing import TYPE_CHECKING
 
 from loguru import logger
-from mtproto.packets import DecryptedMessagePacket
 
 from piltover.db.models import UserAuthorization, Channel, User, Message as DbMessage, Chat, EncryptedChat
 from piltover.exceptions import Disconnection
@@ -73,29 +72,9 @@ class Session:
             ret += 1
         return ret
 
-    def _update_time_and_offset_from_message_maybe(self, msg_id: int) -> None:
-        msg_time = msg_id >> 32
-        if msg_time < self.msg_id_values.last_time:
-            return
-
-        if int(time()) >= msg_time:
-            self.msg_id_values.last_time = msg_time
-
-        msg_offset = msg_id & 0xffffffff
-        msg_offset = (msg_offset >> 2) << 2
-
-        if msg_offset > self.msg_id_values.offset:
-            self.msg_id_values.offset = msg_offset
-
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    def pack_message(
-            self, obj: TLObject, originating_request: Message | DecryptedMessagePacket | None = None
-    ) -> Message:
-        if originating_request is None:
-            msg_id = self.msg_id(in_reply=False)
-        else:
-            self._update_time_and_offset_from_message_maybe(originating_request.message_id)
-            msg_id = self.msg_id(in_reply=True)
+    def pack_message(self, obj: TLObject, in_reply: bool) -> Message:
+        msg_id = self.msg_id(in_reply=in_reply)
 
         try:
             downgraded_maybe = LayerConverter.downgrade(obj, self.client.layer)
@@ -110,18 +89,17 @@ class Session:
         )
 
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    def pack_container(self, objects: list[tuple[TLObject, Message]]) -> Message:
-        container = MsgContainer(messages=[])
-        for obj, originating_request in objects:
-            if is_content_related(obj):
-                msg_id = self.msg_id(in_reply=True)
-            else:
-                msg_id = originating_request.message_id + 1
-            seq_no = self.get_outgoing_seq_no(obj)
+    def pack_container(self, objects: list[tuple[TLObject, bool]]) -> Message:
+        container = MsgContainer(messages=[
+            Message(
+                message_id=self.msg_id(in_reply=in_reply),
+                seq_no=self.get_outgoing_seq_no(obj),
+                obj=obj,
+            )
+            for obj, in_reply in objects
+        ])
 
-            container.messages.append(Message(message_id=msg_id, seq_no=seq_no, obj=obj))
-
-        return self.pack_message(container)
+        return self.pack_message(container, False)
 
     def __hash__(self) -> int:
         return self.session_id
@@ -219,7 +197,7 @@ class Session:
                 obj.qts = auth.upd_qts
 
         try:
-            await self.client.send(obj, self, need_auth_refresh=self.need_auth_refresh)
+            await self.client.send(obj, self, False, need_auth_refresh=self.need_auth_refresh)
             self.need_auth_refresh = False
         except Disconnection:
             if self.auth_key is not None:
