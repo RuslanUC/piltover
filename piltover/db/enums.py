@@ -445,3 +445,15 @@ class TaskIqScheduledState(IntEnum):
     SCHEDULED = 0
     SENT = 2
     EXECUTING = 3
+
+
+class EmojiGroupCategory(IntEnum):
+    REGULAR = 1
+    STICKER = 2
+    STATUS = 3
+    PROFILE_PHOTO = 4
+
+
+class EmojiGroupType(IntEnum):
+    REGULAR = 1
+    PREMIUM = 2

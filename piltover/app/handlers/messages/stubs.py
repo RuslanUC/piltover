@@ -119,9 +119,3 @@ async def get_emoji_keywords_difference(
         version=request.from_version,
         keywords=[],
     )
-
-
-#@handler.on_request(GetEmojiStickerGroups, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-#@handler.on_request(GetEmojiGroups, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-#async def get_emoji_groups(request: GetEmojiGroups | GetEmojiStickerGroups) -> EmojiGroups:  # pragma: no cover
-#    return EmojiGroups(hash=0, groups=[])

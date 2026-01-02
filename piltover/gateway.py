@@ -378,10 +378,10 @@ class Client:
 
     async def handle_encrypted_message(self, req_message: Message, session: Session) -> None:
         if isinstance(req_message.obj, MsgContainer):
-            await asyncio.gather(
+            await asyncio.gather(*[
                 self.propagate(msg, session)
                 for msg in req_message.obj.messages
-            )
+            ])
         else:
             await self.propagate(req_message, session)
 
