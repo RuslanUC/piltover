@@ -74,8 +74,6 @@ class Session:
 
     # https://core.telegram.org/mtproto/description#message-identifier-msg-id
     def pack_message(self, obj: TLObject, in_reply: bool) -> Message:
-        msg_id = self.msg_id(in_reply=in_reply)
-
         try:
             downgraded_maybe = LayerConverter.downgrade(obj, self.client.layer)
         except Exception as e:
@@ -83,7 +81,7 @@ class Session:
             raise
 
         return Message(
-            message_id=msg_id,
+            message_id=self.msg_id(in_reply=in_reply),
             seq_no=self.get_outgoing_seq_no(obj),
             obj=downgraded_maybe,
         )

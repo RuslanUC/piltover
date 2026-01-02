@@ -250,10 +250,14 @@ class Client:
         await self._write_packet(encrypted)
 
     async def send(self, obj: TLObject, session: Session, in_reply: bool, need_auth_refresh: bool = False) -> None:
-        await self._refresh_session_maybe(session, need_auth_refresh)
+        with measure_time(".send(...)"):
+            with measure_time("._refresh_session_maybe()"):
+                await self._refresh_session_maybe(session, need_auth_refresh)
 
-        message = session.pack_message(obj, in_reply)
-        await self._send_message(message, session)
+            with measure_time("session.pack_message(...)"):
+                message = session.pack_message(obj, in_reply)
+            with measure_time("._send_message()"):
+                await self._send_message(message, session)
 
     async def send_container(self, objects: list[tuple[TLObject, bool]], session: Session):
         logger.debug(f"Sending: {objects}")
@@ -293,6 +297,8 @@ class Client:
 
         auth, loaded_at = self.authorization
         if auth is None or (time() - loaded_at) > 60 or force_refresh_auth:
+            logger.trace("Refreshing auth...")
+
             auth = await UserAuthorization.get_or_none(key__id=perm_auth_key_id).select_related("user")
 
             self.authorization = (auth, time())
@@ -300,6 +306,10 @@ class Client:
                 session.set_user_id(auth.user.id)
 
         if auth is not None and (time() - self.channels_loaded_at) > 60 * 5:
+            logger.trace("Refreshing channels...")
+
+            self.channels_loaded_at = time()
+
             channel_ids: TaggedLongVector | None = await Cache.obj.get(f"channels:{auth.user.id}")
             if channel_ids is None:
                 channel_ids = TaggedLongVector(vec=[
@@ -329,7 +339,8 @@ class Client:
     async def _kiq(
             self, obj: TLObject, session: Session, message_id: int | None = None
     ) -> AsyncTaskiqTask:
-        await self._refresh_session_maybe(session)
+        with measure_time("_refresh_session_maybe()"):
+            await self._refresh_session_maybe(session)
 
         auth, _ = self.authorization
         auth_id = auth.id if auth is not None else None
@@ -337,7 +348,7 @@ class Client:
         is_bot = auth.user.bot if auth is not None else False
 
         # TODO: dont do .write.hex(), RpcResponse somehow doesn't need encoding it manually, check how exactly
-        return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(CallRpc(
+        call_rpc = CallRpc(
             obj=obj,
             layer=self.layer,
             auth_key_id=(self.auth_data.auth_key_id or None) if self.auth_data else None,
@@ -347,7 +358,10 @@ class Client:
             auth_id=auth_id,
             user_id=user_id,
             is_bot=is_bot,
-        ).write().hex())
+        ).write().hex()
+
+        with measure_time(".kiq()"):
+            return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
 
     async def handle_unencrypted_message(self, obj: TLObject) -> None:
         # TODO: move it to worker (and add db models to save auth key generation state)

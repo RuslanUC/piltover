@@ -88,6 +88,9 @@ class Channel(ChatBase):
             self, user_id: int, participant: models.ChatParticipant | None, photo: models.File | None,
             username: str | None,
     ) -> TLChannel:
+        # TODO: return ChannelToFormat so gateway will only fetch peer+participant and not channel+username+photo+...
+        #  when LazyChannel is used ?
+
         admin_rights = None
         if self.creator_id == user_id:
             admin_rights = CREATOR_RIGHTS

@@ -159,7 +159,7 @@ class SimpleStorage(Storage):
         await self.date(int(time()))
 
     async def close(self):
-       ...
+        ...
 
     async def delete(self):
         self._version = self.VERSION
@@ -339,9 +339,11 @@ class TestClient(Client):
             self, query: PyroTLObject, retries: int = PyroSession.MAX_RETRIES,
             timeout: float = PyroSession.WAIT_TIMEOUT, sleep_threshold: float = None,
     ) -> PyroTLObject:
-        res = await super().invoke(query, retries, timeout, sleep_threshold)
+        with measure_time("<pyrogram>.invoke(...)"):
+            res = await super().invoke(query, retries, timeout, sleep_threshold)
         if isinstance(res, Updates):
-            await self.handle_updates(res, True)
+            with measure_time("<pyrogram>.handle_updates(...)"):
+                await self.handle_updates(res, True)
         return res
 
     async def invoke_p(self, query: TLRequest[T], with_layer: int | None = None) -> T:

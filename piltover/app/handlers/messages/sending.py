@@ -146,16 +146,16 @@ async def send_created_messages_internal(
 
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
-        opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, **message_kwargs
+        opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, *,
+        message: str | None = None, entities: list[dict[str, int | str]] | None = None,
+        **message_kwargs
 ) -> Updates:
     if opposite \
             and peer.type is PeerType.USER \
             and peer.user.bot \
+            and peer.user.system \
             and await peer.user.get_raw_username() in bots.HANDLERS:
         opposite = False
-
-    mentioned_user_ids = set()
-    entities: list[dict[str, int | str]]
 
     if opposite and reply_to_message_id and peer.type is PeerType.CHANNEL:
         participant = await ChatParticipant.get_or_none(channel=peer.channel, user=peer.owner)
@@ -163,15 +163,16 @@ async def send_message_internal(
             if channel_min_id >= reply_to_message_id:
                 reply_to_message_id = None
 
-    message_text = message_kwargs.get("message")
+    mentioned_user_ids = set()
+
     if opposite and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
-        if (entities := message_kwargs.get("entities")) and message_text:
-            mentioned_user_ids = await _extract_mentions_from_message(entities, message_text, author)
+        if entities and message:
+            mentioned_user_ids = await _extract_mentions_from_message(entities, message, author)
 
         if reply_to_message_id:
-            peer_filter = {"peer__channel": peer.channel} if peer.type is PeerType.CHANNEL else {"peer": peer}
+            peer_filter = Q(peer__channel=peer.channel) if peer.type is PeerType.CHANNEL else Q(peer=peer)
             reply_author_id = cast(int, await Message.get_or_none(
-                id=reply_to_message_id, **peer_filter,
+                peer_filter, id=reply_to_message_id,
             ).values_list("author__id", flat=True))
             if reply_author_id is not None and reply_author_id != author.id:
                 mentioned_user_ids.add(reply_author_id)
@@ -191,7 +192,8 @@ async def send_message_internal(
         message_kwargs["ttl_period_days"] = peer.chat_or_channel.ttl_period_days
 
     messages = await Message.create_for_peer(
-        peer, random_id, reply_to_message_id, author, opposite, unhide_dialog, **message_kwargs,
+        peer, random_id, reply_to_message_id, author, opposite, unhide_dialog,
+        message=message, entities=entities, **message_kwargs,
     )
 
     if schedule:
