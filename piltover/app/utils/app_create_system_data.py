@@ -632,11 +632,10 @@ async def _create_system_stickers(args: ArgsNamespace) -> None:
             original_id=set_info["id"],
             defaults={"checksum": 0},
         )
-        if not created and system_obj.checksum == checksum:
-            logger.info(f"Sticker set \"{set_info['title']}\" is already up-to-date")
-            continue
-
-        if not created and system_obj.our_stickerset_id is not None:
+        if not created and system_obj.our_stickerset_id is not None and system_obj.checksum == checksum:
+            logger.info(f"Sticker set \"{set_info['title']}\" is probably up-to-date")
+            stickerset = await system_obj.our_stickerset
+        elif not created and system_obj.our_stickerset_id is not None:
             stickerset = await system_obj.our_stickerset
             stickerset.title = set_info["title"]
             stickerset.short_name = set_info["short_name"]
@@ -682,9 +681,9 @@ async def _create_system_stickers(args: ArgsNamespace) -> None:
         await stickerset.save(update_fields=["hash"])
 
         if created:
-            logger.info(f"Created sticker set \"{stickerset.title}\" ")
+            logger.success(f"Created sticker set \"{stickerset.title}\" ")
         else:
-            logger.info(f"Updated sticker set \"{stickerset.title}\"")
+            logger.success(f"Updated sticker set \"{stickerset.title}\"")
 
 
 async def create_system_data(
