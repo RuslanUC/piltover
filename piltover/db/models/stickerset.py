@@ -13,6 +13,7 @@ from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, Inp
     StickerPack, InputStickerSetAnimatedEmoji, InputStickerSetDice, InputStickerSetAnimatedEmojiAnimations, \
     InputStickerSetEmojiGenericAnimations, InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
+from piltover.tl.base import InputStickerSet as InputStickerSetBase
 
 EMOTICON_TO_DICE_ENUM = {
     "🏀": StickerSetOfficialType.DICE_BASKETBALL,
@@ -45,10 +46,7 @@ class Stickerset(Model):
     owner_id: int | None
 
     @staticmethod
-    def from_input_q(
-            input_set: InputStickerSetEmpty | InputStickerSetID | InputStickerSetShortName | None,
-            prefix: str | None = None,
-    ) -> Q | None:
+    def from_input_q(input_set: InputStickerSetBase | None, prefix: str | None = None) -> Q | None:
         prefix = f"{prefix}__" if prefix is not None else ""
         if input_set is None or isinstance(input_set, InputStickerSetEmpty):
             return None
@@ -73,9 +71,7 @@ class Stickerset(Model):
         return None
 
     @classmethod
-    async def from_input(
-            cls, input_set: InputStickerSetEmpty | InputStickerSetID | InputStickerSetShortName | None
-    ) -> Stickerset | None:
+    async def from_input(cls, input_set: InputStickerSetBase | None) -> Stickerset | None:
         if (q := cls.from_input_q(input_set)) is None:
             return None
         return await cls.get_or_none(q)
