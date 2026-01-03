@@ -7,9 +7,11 @@ from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
 from loguru import logger
-from tortoise.expressions import Q
+from tortoise.expressions import Q, Subquery
 
+from piltover.app.utils.utils import telegram_hash
 from piltover.app_config import AppConfig
+from piltover.db.enums import SystemObjectType, FileType, StickerSetOfficialType, StickerSetType
 from piltover.tl import Long, BaseThemeClassic, BaseThemeDay, BaseThemeNight, BaseThemeArctic, BaseThemeTinted
 
 if TYPE_CHECKING:
@@ -17,18 +19,19 @@ if TYPE_CHECKING:
     from piltover.app.app import ArgsNamespace
 
 
-async def _upload_doc(args: ArgsNamespace, base_dir: Path, idx: int, doc: dict) -> File:
+async def _upload_doc(data_dir: Path, base_dir: Path, idx: int, doc: dict, file_type: FileType) -> File:
     from datetime import datetime
     from pytz import UTC
 
-    from piltover.tl.types import DocumentAttributeImageSize, DocumentAttributeSticker, DocumentAttributeFilename
-    from piltover.db.models import File
-    from piltover.db.enums import FileType
+    from piltover.tl.types import DocumentAttributeImageSize, DocumentAttributeSticker, DocumentAttributeFilename, \
+        DocumentAttributeCustomEmoji
+    from piltover.db.models import File, SystemObjectId
     from piltover.app.utils.utils import PHOTOSIZE_TO_INT
 
     cls_name_to_cls = {
         "types.DocumentAttributeImageSize": DocumentAttributeImageSize,
         "types.DocumentAttributeSticker": DocumentAttributeSticker,
+        "types.DocumentAttributeCustomEmoji": DocumentAttributeCustomEmoji,
         "types.DocumentAttributeFilename": DocumentAttributeFilename,
     }
 
@@ -43,16 +46,56 @@ async def _upload_doc(args: ArgsNamespace, base_dir: Path, idx: int, doc: dict) 
             photo_path = f.read()
         break
 
-    # TODO: dont create new file if it already exists
+    checksum = telegram_hash((doc["id"], doc["date"], doc["size"]), 64)
+
+    system_obj, created = await SystemObjectId.get_or_create(
+        type=SystemObjectType.FILE,
+        original_id=doc["id"],
+        defaults={
+            "checksum": 0,
+        },
+    )
+    if not created and system_obj.checksum == checksum and system_obj.our_file_id is not None:
+        logger.info(f"File \"{doc['id']}\" already exists")
+        ret = await system_obj.our_file
+        return ret
+
+    stickerset = None
+    sticker_pos = None
+    sticker_alt = None
+
+    for attribute in doc["attributes"]:
+        is_sticker = attribute["_"] == "DocumentAttributeSticker"
+        is_emoji = attribute["_"] == "DocumentAttributeCustomEmoji"
+        if is_sticker:
+            file_type = FileType.DOCUMENT_STICKER
+        elif is_emoji:
+            file_type = FileType.DOCUMENT_EMOJI
+        else:
+            continue
+
+        sticker_pos = idx
+        sticker_alt = attribute["alt"]
+
+        if attribute["stickerset"]["_"] == "InputStickerSetID":
+            stickerset_obj = await SystemObjectId.get_or_none(
+                type=SystemObjectType.STICKERSET, original_id=attribute["stickerset"]["id"]
+            ).select_related("our_stickerset")
+            if stickerset_obj is not None:
+                stickerset = stickerset_obj.our_stickerset
+
     file = File(
         created_at=datetime.fromtimestamp(doc["date"], UTC),
         mime_type=doc["mime_type"],
         size=doc["size"],
-        type=FileType.DOCUMENT_STICKER,
+        type=file_type,
         photo_path=photo_path,
         photo_sizes=[],
         constant_access_hash=Long.read_bytes(xorshift128plus_bytes(8)),
         constant_file_ref=UUID(bytes=xorshift128plus_bytes(16)),
+        stickerset=stickerset,
+        sticker_pos=sticker_pos,
+        sticker_alt=sticker_alt,
     )
     await file.parse_attributes_from_tl([
         cls_name_to_cls[attr.pop("_")](**attr)
@@ -60,8 +103,8 @@ async def _upload_doc(args: ArgsNamespace, base_dir: Path, idx: int, doc: dict) 
     ])
     await file.save()
 
-    photos_dir = args.data_dir / "photos"
-    docs_dir = args.data_dir / "documents"
+    photos_dir = data_dir / "photos"
+    docs_dir = data_dir / "documents"
 
     with open(base_files_dir / f"{doc['id']}-{idx}.{ext}", "rb") as f_in:
         with open(docs_dir / f"{file.physical_id}", "wb") as f_out:
@@ -83,6 +126,10 @@ async def _upload_doc(args: ArgsNamespace, base_dir: Path, idx: int, doc: dict) 
         })
 
     await file.save(update_fields=["photo_sizes"])
+
+    system_obj.our_file = file
+    system_obj.checksum = checksum
+    await system_obj.save(update_fields=["our_file_id", "checksum"])
 
     return file
 
@@ -119,7 +166,9 @@ async def _create_reactions(args: ArgsNamespace) -> None:
         ):
             if doc_name not in reaction_info:
                 continue
-            defaults[doc_name] = await _upload_doc(args, reactions_dir, reaction_index, reaction_info[doc_name])
+            defaults[doc_name] = await _upload_doc(
+                args.data_dir, reactions_dir, reaction_index, reaction_info[doc_name], FileType.DOCUMENT_STICKER,
+            )
 
         reaction, created = await Reaction.get_or_create(
             reaction_id=Reaction.reaction_to_uuid(reaction_info["reaction"]), defaults=defaults,
@@ -204,7 +253,9 @@ async def _create_chat_themes(args: ArgsNamespace) -> None:
                 }
 
                 if wp["document"]:
-                    wp_defaults["document"] = await _upload_doc(args, chat_themes_dir, theme_index, wp["document"])
+                    wp_defaults["document"] = await _upload_doc(
+                        args.data_dir, chat_themes_dir, theme_index, wp["document"], FileType.DOCUMENT,
+                    )
 
                 wallpaper, wp_created = await Wallpaper.get_or_create(slug=wp["slug"], defaults=wp_defaults)
                 if not wp_created:
@@ -541,10 +592,105 @@ async def _create_languages(langs_dir: Path) -> None:
             ])
 
 
+async def _create_system_stickers(args: ArgsNamespace) -> None:
+    sets_dir = args.system_stickersets_dir
+    if not sets_dir.exists():
+        return
+
+    from os import listdir
+    import json
+
+    from piltover.db.models import Stickerset, File, SystemObjectId
+
+    type_name_to_type = {
+        "animated_emoji": StickerSetOfficialType.ANIMATED_EMOJI,
+        "dice_basketball": StickerSetOfficialType.DICE_BASKETBALL,
+        "dice_die": StickerSetOfficialType.DICE_DIE,
+        "dice_target": StickerSetOfficialType.DICE_TARGET,
+        "emoji_animations": StickerSetOfficialType.EMOJI_ANIMATIONS,
+        "generic_animations": StickerSetOfficialType.GENERIC_ANIMATIONS,
+        "user_statuses": StickerSetOfficialType.USER_STATUSES,
+        "topic_icons": StickerSetOfficialType.TOPIC_ICONS,
+    }
+
+    logger.info("Creating (or updating) system stickersets...")
+    for set_dir in listdir(sets_dir):
+        if set_dir not in type_name_to_type:
+            continue
+
+        info_file = sets_dir / set_dir / "set.json"
+        if not info_file.exists():
+            continue
+
+        with open(info_file) as f:
+            sticker_set = json.load(f)
+            set_info = sticker_set["set"]
+
+        checksum = set_info["hash"]
+        system_obj, created = await SystemObjectId.get_or_create(
+            type=SystemObjectType.STICKERSET,
+            original_id=set_info["id"],
+            defaults={"checksum": 0},
+        )
+        if not created and system_obj.checksum == checksum:
+            logger.info(f"Sticker set \"{set_info['title']}\" is already up-to-date")
+            continue
+
+        if not created and system_obj.our_stickerset_id is not None:
+            stickerset = await system_obj.our_stickerset
+            stickerset.title = set_info["title"]
+            stickerset.short_name = set_info["short_name"]
+            stickerset.owner = None
+            stickerset.official = True
+            stickerset.type = StickerSetType.STATIC
+            stickerset.official_type = type_name_to_type[set_dir]
+            stickerset.deleted = False
+            stickerset.emoji = set_info["emojis"]
+            stickerset.masks = set_info["masks"]
+            await stickerset.save()
+        else:
+            stickerset = await Stickerset.create(
+                title=set_info["title"],
+                short_name=set_info["short_name"],
+                owner=None,
+                official=True,
+                type=StickerSetType.STATIC,
+                official_type=type_name_to_type[set_dir],
+                deleted=False,
+                emoji=set_info["emojis"],
+                masks=set_info["masks"],
+            )
+
+        system_obj.our_stickerset = stickerset
+        system_obj.checksum = checksum
+        await system_obj.save(update_fields=["our_stickerset_id", "checksum"])
+
+        created_files = []
+        for idx, doc in enumerate(sticker_set["documents"]):
+            logger.info(f"Uploading file {doc['id']}")
+            created_files.append(await _upload_doc(
+                args.data_dir, sets_dir / set_dir, idx, doc, FileType.DOCUMENT_STICKER,
+            ))
+
+        await File.filter(
+            id__in=Subquery(File.filter(
+                stickerset=stickerset, id__not_in=[file.id for file in created_files],
+            ).values_list("id", flat=True))
+        ).update(stickerset_id=None)
+
+        stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
+        await stickerset.save(update_fields=["hash"])
+
+        if created:
+            logger.info(f"Created sticker set \"{stickerset.title}\" ")
+        else:
+            logger.info(f"Updated sticker set \"{stickerset.title}\"")
+
+
 async def create_system_data(
         args: ArgsNamespace,
         system_users: bool = True, countries_list: bool = True, reactions: bool = True, chat_themes: bool = True,
-        peer_colors: bool = True, languages: bool = True,
+        peer_colors: bool = True, languages: bool = True, system_stickersets: bool = True,
 ) -> None:
     if system_users:
         await _create_system_user()
@@ -586,3 +732,6 @@ async def create_system_data(
 
     if languages:
         await _create_languages(args.languages_dir)
+
+    if system_stickersets:
+        await _create_system_stickers(args)

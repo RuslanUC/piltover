@@ -457,3 +457,19 @@ class EmojiGroupCategory(IntEnum):
 class EmojiGroupType(IntEnum):
     REGULAR = 1
     PREMIUM = 2
+
+
+class SystemObjectType(IntEnum):
+    FILE = 1
+    STICKERSET = 2
+
+
+class StickerSetOfficialType(IntEnum):
+    ANIMATED_EMOJI = 1
+    DICE_BASKETBALL = 2
+    DICE_DIE = 3
+    DICE_TARGET = 4
+    EMOJI_ANIMATIONS = 5
+    GENERIC_ANIMATIONS = 6
+    USER_STATUSES = 7
+    TOPIC_ICONS = 8

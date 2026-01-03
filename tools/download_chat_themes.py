@@ -8,66 +8,18 @@ from typing import cast
 
 from loguru import logger
 from pyrogram import Client
-from pyrogram.file_id import FileId, FileType, ThumbnailSource
 from pyrogram.raw.core import TLObject
 from pyrogram.raw.functions.account import GetChatThemes
-from pyrogram.raw.types import Document, PhotoSize, PhotoPathSize, Theme, ThemeSettings, WallPaper
+from pyrogram.raw.types import Theme, ThemeSettings, WallPaper
 from pyrogram.raw.types.account import Themes
+
+from download_utils import download_document
 
 
 class ArgsNamespace(SimpleNamespace):
     api_id: int
     api_hash: str
     data_dir: Path
-
-
-def doc_to_fileid(doc: Document, thumb: PhotoSize | None = None) -> FileId:
-    return FileId(
-        major=FileId.MAJOR,
-        minor=FileId.MINOR,
-        file_type=FileType.DOCUMENT if thumb is None else FileType.THUMBNAIL,
-        dc_id=doc.dc_id,
-        file_reference=doc.file_reference,
-        media_id=doc.id,
-        access_hash=doc.access_hash,
-
-        thumbnail_source=None if thumb is None else ThumbnailSource.THUMBNAIL,
-        thumbnail_file_type=None if thumb is None else FileType.STICKER,
-        thumbnail_size="" if thumb is None else thumb.type,
-    )
-
-
-async def download_document(client: Client, idx: int, doc: Document, out_dir: Path) -> None:
-    await client.handle_download(
-        (
-            doc_to_fileid(doc),
-            str(out_dir / "files"),
-            f"{doc.id}-{idx}.{doc.mime_type.split('/')[-1]}",
-            False,
-            doc.size,
-            None,
-            (),
-        )
-    )
-
-    for thumb in doc.thumbs:
-        if isinstance(thumb, PhotoPathSize):
-            with open(out_dir / f"files/{doc.id}-{idx}-thumb-{thumb.type}.bin", "wb") as f:
-                f.write(thumb.bytes)
-        elif isinstance(thumb, PhotoSize):
-            await client.handle_download(
-                (
-                    doc_to_fileid(doc, thumb),
-                    str(out_dir / "files"),
-                    f"{doc.id}-{idx}-thumb-{thumb.type}.{doc.mime_type.split('/')[-1]}",
-                    False,
-                    doc.size,
-                    None,
-                    (),
-                )
-            )
-        else:
-            print(f"Unknown thumb type: {thumb}")
 
 
 async def extract_chat_themes(client: Client, out_dir: Path) -> None:

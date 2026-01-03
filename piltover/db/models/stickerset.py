@@ -8,10 +8,24 @@ from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
-from piltover.db.enums import StickerSetType
+from piltover.db.enums import StickerSetType, StickerSetOfficialType
 from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize, \
-    StickerPack
+    StickerPack, InputStickerSetAnimatedEmoji, InputStickerSetDice, InputStickerSetAnimatedEmojiAnimations, \
+    InputStickerSetEmojiGenericAnimations, InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
+
+EMOTICON_TO_DICE_ENUM = {
+    "🏀": StickerSetOfficialType.DICE_BASKETBALL,
+    "🎲": StickerSetOfficialType.DICE_DIE,
+    "🎯": StickerSetOfficialType.DICE_TARGET,
+}
+OFFICIAL_TL_SET_TO_ENUM = {
+    InputStickerSetAnimatedEmoji: StickerSetOfficialType.ANIMATED_EMOJI,
+    InputStickerSetAnimatedEmojiAnimations: StickerSetOfficialType.EMOJI_ANIMATIONS,
+    InputStickerSetEmojiGenericAnimations: StickerSetOfficialType.GENERIC_ANIMATIONS,
+    InputStickerSetEmojiDefaultStatuses: StickerSetOfficialType.USER_STATUSES,
+    InputStickerSetEmojiDefaultTopicIcons: StickerSetOfficialType.TOPIC_ICONS,
+}
 
 
 class Stickerset(Model):
@@ -23,6 +37,7 @@ class Stickerset(Model):
     official: bool = fields.BooleanField(default=False)
     hash: int = fields.IntField(default=0)
     type: StickerSetType = fields.IntEnumField(StickerSetType)
+    official_type: StickerSetOfficialType | None = fields.IntEnumField(StickerSetOfficialType, null=True, default=None)
     deleted: bool = fields.BooleanField(default=False)
     emoji: bool = fields.BooleanField(default=False)
     masks: bool = fields.BooleanField(default=False)
@@ -39,18 +54,20 @@ class Stickerset(Model):
             return None
         elif isinstance(input_set, InputStickerSetID):
             return Q(**{
-                f"{prefix}id": input_set.id, f"{prefix}access_hash": input_set.access_hash, "deleted": False,
+                f"{prefix}id": input_set.id, f"{prefix}access_hash": input_set.access_hash, f"{prefix}deleted": False,
             })
         elif isinstance(input_set, InputStickerSetShortName):
-            return Q(**{f"{prefix}short_name": input_set.short_name, "deleted": False})
+            return Q(**{f"{prefix}short_name": input_set.short_name, f"{prefix}deleted": False})
+        elif isinstance(input_set, InputStickerSetDice):
+            if input_set.emoticon not in EMOTICON_TO_DICE_ENUM:
+                return None
+            dice_type = EMOTICON_TO_DICE_ENUM[input_set.emoticon]
+            return Q(**{f"{prefix}official_type": dice_type, f"{prefix}deleted": False})
+        elif type(input_set) in OFFICIAL_TL_SET_TO_ENUM:
+            official_type = OFFICIAL_TL_SET_TO_ENUM[type(input_set)]
+            return Q(**{f"{prefix}official_type": official_type, f"{prefix}deleted": False})
 
-        # TODO: support InputStickerSetAnimatedEmoji
-        # TODO: support InputStickerSetDice
-        # TODO: support InputStickerSetAnimatedEmojiAnimations
         # TODO: support InputStickerSetPremiumGifts
-        # TODO: support InputStickerSetEmojiGenericAnimations
-        # TODO: support InputStickerSetEmojiDefaultStatuses
-        # TODO: support InputStickerSetEmojiDefaultTopicIcons
         # TODO: support InputStickerSetEmojiChannelDefaultStatuses
 
         return None

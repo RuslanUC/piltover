@@ -39,6 +39,8 @@ class ArgsNamespace(SimpleNamespace):
     peer_colors_dir: Path | None
     create_languages: bool
     languages_dir: Path | None
+    create_system_stickersets: bool
+    system_stickersets_dir: Path | None
     privkey_file: Path | None
     pubkey_file: Path | None
     rabbitmq_address: str | None
@@ -62,6 +64,8 @@ class ArgsNamespace(SimpleNamespace):
             self.peer_colors_dir = self.data_dir / "peer_colors"
         if self.languages_dir is None:
             self.languages_dir = self.data_dir / "languages"
+        if self.system_stickersets_dir is None:
+            self.system_stickersets_dir = self.data_dir / "stickersets"
 
 
 class MigrateNoDowngrade(Migrate):
@@ -247,6 +251,11 @@ if __name__ == "__main__":
         "Path to directory containing language files (for --create-languages option). "
         "By default, <data-dir>/languages will be used."
     ))
+    parser.add_argument("--create-system-stickersets", action="store_true", help="Insert system stickersets into database")
+    parser.add_argument("--system-stickersets-dir", type=Path, default=None, help=(
+        "Path to directory containing stickerset files (for --create-system-stickersets option). "
+        "By default, <data-dir>/stickersets will be used."
+    ))
     parser.add_argument("--privkey-file", type=Path, default=None, help=(
         "Path to private key file. "
         "By default, <data-dir>/secrets/privkey.asc will be used."
@@ -286,6 +295,8 @@ else:
         peer_colors_dir=Path("./data/peer_colors"),
         create_languages=True,
         languages_dir=Path("./data/languages"),
+        create_system_stickersets=True,
+        system_stickersets_dir=Path("./data/stickersets"),
         data_dir=Path("./data") / "testing",
         privkey_file=None,
         pubkey_file=None,
