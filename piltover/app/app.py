@@ -167,7 +167,7 @@ class PiltoverApp:
 
         await create_system_data(
             args, args.create_system_user, args.create_auth_countries, args.create_reactions, args.create_chat_themes,
-            args.create_peer_colors, args.create_languages,
+            args.create_peer_colors, args.create_languages, args.create_system_stickersets,
         )
 
         scheduler_task = self._run_in_memory_scheduler()
