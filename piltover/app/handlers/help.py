@@ -148,39 +148,43 @@ APP_CONFIG = JsonObject(value=[
     ])),
     JsonObjectValue(key="emojies_animated_zoom", value=JsonNumber(value=0.625)),
     JsonObjectValue(key="emojies_send_dice", value=JsonArray(value=[
-        JsonString(value="\U0001F3B2"),
-        JsonString(value="\U0001F3AF"),
-        JsonString(value="\U0001F3C0"),
-        JsonString(value="\u26bd"),
-        JsonString(value="\u26bd\ufe0f"),
-        JsonString(value="\U0001F3B0"),
-        JsonString(value="\U0001F3B3"),
+        JsonString(value="\U0001F3B2"),  # Die
+        JsonString(value="\U0001F3AF"),  # Target
+        JsonString(value="\U0001F3C0"),  # Basketball
+        # JsonString(value="\u26bd"),  # Football
+        # JsonString(value="\u26bd\ufe0f"),  # Football?
+        # JsonString(value="\U0001F3B0"),  # Slot machine
+        # JsonString(value="\U0001F3B3"),  # Bowling
     ])),
     JsonObjectValue(key="emojies_send_dice_success", value=JsonObject(value=[
+        JsonObjectValue(key="\U0001F3B2", value=JsonObject(value=[
+            JsonObjectValue(key="value", value=JsonNumber(value=float(AppConfig.DICE["\U0001F3B2"]))),
+            JsonObjectValue(key="frame_start", value=JsonNumber(value=62.0)),
+        ])),
         JsonObjectValue(key="\U0001F3AF", value=JsonObject(value=[
-            JsonObjectValue(key="value", value=JsonNumber(value=6.0)),
+            JsonObjectValue(key="value", value=JsonNumber(value=float(AppConfig.DICE["\U0001F3AF"]))),
             JsonObjectValue(key="frame_start", value=JsonNumber(value=62.0)),
         ])),
         JsonObjectValue(key="\U0001F3C0", value=JsonObject(value=[
-            JsonObjectValue(key="value", value=JsonNumber(value=5.0)),
+            JsonObjectValue(key="value", value=JsonNumber(value=float(AppConfig.DICE["\U0001F3C0"]))),
             JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
         ])),
-        JsonObjectValue(key="\u26bd", value=JsonObject(value=[
-            JsonObjectValue(key="value", value=JsonNumber(value=5.0)),
-            JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
-        ])),
-        JsonObjectValue(key="\u26bd\ufe0f", value=JsonObject(value=[
-            JsonObjectValue(key="value", value=JsonNumber(value=5.0)),
-            JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
-        ])),
-        JsonObjectValue(key="\U0001F3B0", value=JsonObject(value=[
-            JsonObjectValue(key="value", value=JsonNumber(value=64.0)),
-            JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
-        ])),
-        JsonObjectValue(key="\U0001F3B3", value=JsonObject(value=[
-            JsonObjectValue(key="value", value=JsonNumber(value=6.0)),
-            JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
-        ])),
+        #JsonObjectValue(key="\u26bd", value=JsonObject(value=[
+        #    JsonObjectValue(key="value", value=JsonNumber(value=5.0)),
+        #    JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
+        #])),
+        #JsonObjectValue(key="\u26bd\ufe0f", value=JsonObject(value=[
+        #    JsonObjectValue(key="value", value=JsonNumber(value=5.0)),
+        #    JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
+        #])),
+        #JsonObjectValue(key="\U0001F3B0", value=JsonObject(value=[
+        #    JsonObjectValue(key="value", value=JsonNumber(value=64.0)),
+        #    JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
+        #])),
+        #JsonObjectValue(key="\U0001F3B3", value=JsonObject(value=[
+        #    JsonObjectValue(key="value", value=JsonNumber(value=6.0)),
+        #    JsonObjectValue(key="frame_start", value=JsonNumber(value=110.0)),
+        #])),
     ])),
     JsonObjectValue(key="emojies_sounds", value=JsonArray(value=[])),
     JsonObjectValue(key="factcheck_length_limit", value=JsonNumber(value=1024.0)),

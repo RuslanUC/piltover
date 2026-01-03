@@ -3,6 +3,7 @@ from __future__ import annotations
 from os import urandom
 from typing import Generator
 
+from loguru import logger
 from tortoise import Model, fields
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
@@ -58,6 +59,7 @@ class Stickerset(Model):
             return Q(**{f"{prefix}short_name": input_set.short_name, f"{prefix}deleted": False})
         elif isinstance(input_set, InputStickerSetDice):
             if input_set.emoticon not in EMOTICON_TO_DICE_ENUM:
+                logger.warning(f"Invalid sticker set dice: {input_set.emoticon!r}, not in {EMOTICON_TO_DICE_ENUM.keys()}")
                 return None
             dice_type = EMOTICON_TO_DICE_ENUM[input_set.emoticon]
             return Q(**{f"{prefix}official_type": dice_type, f"{prefix}deleted": False})
@@ -67,6 +69,8 @@ class Stickerset(Model):
 
         # TODO: support InputStickerSetPremiumGifts
         # TODO: support InputStickerSetEmojiChannelDefaultStatuses
+
+        logger.warning(f"Invalid sticker set: {input_set}")
 
         return None
 

@@ -79,6 +79,16 @@ class AppConfig:
     SCHEDULED_INSTANT_SEND_THRESHOLD = 30
 
     TENOR_KEY = environ.get("TENOR_API_KEY", None)
+    
+    DICE = {
+        "\U0001F3B2": 6,  # Die
+        "\U0001F3AF": 6,  # Target
+        "\U0001F3C0": 5,  # Basketball
+        #"\u26bd": 5,  # Football
+        #"\u26bd\ufe0f": 5,  # Football
+        #"\U0001F3B0": 64,  # Slot machine
+        #"\U0001F3B3": 6,  # Bowling
+    }
 
 
 if "HMAC_KEY" not in environ:

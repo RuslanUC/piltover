@@ -9,10 +9,10 @@ from piltover.db import models
 from piltover.db.enums import MediaType
 from piltover.exceptions import InvalidConstructorException
 from piltover.tl import MessageMediaUnsupported, MessageMediaPhoto, MessageMediaDocument, MessageMediaPoll, \
-    MessageMediaContact, MessageMediaGeo
+    MessageMediaContact, MessageMediaGeo, MessageMediaDice
 
 MessageMediaTypes = MessageMediaUnsupported | MessageMediaPhoto | MessageMediaDocument | MessageMediaPoll \
-                    | MessageMediaContact | MessageMediaGeo
+                    | MessageMediaContact | MessageMediaGeo | MessageMediaDice
 
 
 class MessageMedia(Model):
@@ -69,5 +69,16 @@ class MessageMedia(Model):
                 return MessageMediaUnsupported()
 
             return geo
+        elif self.type is MediaType.DICE:
+            if self.static_data is None:
+                logger.warning("Expected \"static_data\" to be non-null for dice media type")
+                return MessageMediaUnsupported()
+            try:
+                dice = MessageMediaDice.read(BytesIO(self.static_data))
+            except InvalidConstructorException as e:
+                logger.opt(exception=e).warning("Invalid \"static_data\" data for dice media type")
+                return MessageMediaUnsupported()
+
+            return dice
 
         return MessageMediaUnsupported()

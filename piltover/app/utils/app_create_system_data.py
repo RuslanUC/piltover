@@ -65,8 +65,8 @@ async def _upload_doc(data_dir: Path, base_dir: Path, idx: int, doc: dict, file_
     sticker_alt = None
 
     for attribute in doc["attributes"]:
-        is_sticker = attribute["_"] == "DocumentAttributeSticker"
-        is_emoji = attribute["_"] == "DocumentAttributeCustomEmoji"
+        is_sticker = attribute["_"] == "types.DocumentAttributeSticker"
+        is_emoji = attribute["_"] == "types.DocumentAttributeCustomEmoji"
         if is_sticker:
             file_type = FileType.DOCUMENT_STICKER
         elif is_emoji:
@@ -77,7 +77,7 @@ async def _upload_doc(data_dir: Path, base_dir: Path, idx: int, doc: dict, file_
         sticker_pos = idx
         sticker_alt = attribute["alt"]
 
-        if attribute["stickerset"]["_"] == "InputStickerSetID":
+        if attribute["stickerset"]["_"] == "types.InputStickerSetID":
             stickerset_obj = await SystemObjectId.get_or_none(
                 type=SystemObjectType.STICKERSET, original_id=attribute["stickerset"]["id"]
             ).select_related("our_stickerset")

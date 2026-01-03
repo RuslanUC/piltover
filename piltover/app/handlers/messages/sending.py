@@ -5,6 +5,7 @@ from time import time
 from typing import cast
 from uuid import UUID
 
+from fastrand import xorshift128plusrandint
 from loguru import logger
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
@@ -26,7 +27,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
     LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
-    GeoPoint, InputGeoPoint
+    GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -40,7 +41,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.sending")
 
 InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument \
-             | InputMediaPoll
+             | InputMediaPoll | InputMediaDice
 DocOrPhotoMedia = (
     InputMediaUploadedDocument, InputMediaUploadedDocument_133, InputMediaUploadedPhoto, InputMediaPhoto,
     InputMediaDocument, InputMediaDocument_133,
@@ -565,7 +566,7 @@ async def _get_media_thumb(
 
 
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
-    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll, InputMediaContact, InputMediaGeoPoint)):
+    if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll, InputMediaContact, InputMediaGeoPoint, InputMediaDice)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     file: File | None = None
@@ -588,6 +589,8 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         media_type = MediaType.CONTACT
     elif isinstance(media, InputMediaGeoPoint):
         media_type = MediaType.GEOPOINT
+    elif isinstance(media, InputMediaDice):
+        media_type = MediaType.DICE
 
     if isinstance(media, (InputMediaUploadedDocument, InputMediaUploadedDocument_133, InputMediaUploadedPhoto)):
         uploaded_file = await UploadingFile.get_or_none(user=user, file_id=media.file.id)
@@ -708,6 +711,13 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
                 access_hash=0,  # ??
                 accuracy_radius=media.geo_point.accuracy_radius,
             ),
+        ).write()
+    elif isinstance(media, InputMediaDice):
+        if media.emoticon not in AppConfig.DICE:
+            raise ErrorRpc(error_code=400, error_message="EMOTICON_INVALID")
+        static_data = MessageMediaDice(
+            value=xorshift128plusrandint(1, AppConfig.DICE[media.emoticon]),
+            emoticon=media.emoticon,
         ).write()
 
     return await MessageMedia.create(
@@ -939,6 +949,9 @@ async def forward_messages(
 @handler.on_request(UploadMedia_133)
 @handler.on_request(UploadMedia)
 async def upload_media(request: UploadMedia | UploadMedia_133, user: User):
+    if not isinstance(request.media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
+        raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
