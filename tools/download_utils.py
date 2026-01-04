@@ -1,3 +1,4 @@
+from os import stat
 from pathlib import Path
 from typing import AsyncGenerator, cast
 
@@ -128,33 +129,41 @@ def doc_to_fileid(doc: Document, thumb: PhotoSize | None = None) -> FileId:
 
 
 async def download_document(client: Client, idx: int, doc: Document, out_dir: Path) -> None:
-    await client.handle_download(
-        (
-            doc_to_fileid(doc),
-            out_dir / "files",
-            f"{doc.id}-{idx}.{doc.mime_type.split('/')[-1]}",
-            False,
-            doc.size,
-            None,
-            (),
+    file_dir = out_dir / "files"
+    file_name = f"{doc.id}-{idx}.{doc.mime_type.split('/')[-1]}"
+    file_path = file_dir / file_name
+
+    if not file_path.exists() or stat(file_path).st_size != doc.size:
+        await client.handle_download(
+            (
+                doc_to_fileid(doc),
+                file_dir,
+                file_name,
+                False,
+                doc.size,
+                None,
+                (),
+            )
         )
-    )
 
     for thumb in doc.thumbs:
         if isinstance(thumb, PhotoPathSize):
             with open(out_dir / f"files/{doc.id}-{idx}-thumb-{thumb.type}.bin", "wb") as f:
                 f.write(thumb.bytes)
         elif isinstance(thumb, PhotoSize):
-            await client.handle_download(
-                (
-                    doc_to_fileid(doc, thumb),
-                    out_dir / "files",
-                    f"{doc.id}-{idx}-thumb-{thumb.type}.{doc.mime_type.split('/')[-1]}",
-                    False,
-                    doc.size,
-                    None,
-                    (),
+            thumb_name = f"{doc.id}-{idx}-thumb-{thumb.type}.{doc.mime_type.split('/')[-1]}"
+            thumb_path = file_dir / thumb_name
+            if not thumb_path.exists() or stat(thumb_path).st_size != thumb.size:
+                await client.handle_download(
+                    (
+                        doc_to_fileid(doc, thumb),
+                        file_dir,
+                        thumb_name,
+                        False,
+                        thumb.size,
+                        None,
+                        (),
+                    )
                 )
-            )
         else:
             logger.warning(f"Unknown thumb type: {thumb}")

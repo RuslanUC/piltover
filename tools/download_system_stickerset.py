@@ -42,16 +42,30 @@ class ArgsNamespace(SimpleNamespace):
     api_id: int
     api_hash: str
     data_dir: Path
+    clean: bool
 
 
 async def download_stickerset(client: Client, out_dir: Path, stickerset: InputStickerSet, set_type: str) -> None:
+    info_file = out_dir / "set.json"
+
+    existing_hash = 0
+    if info_file.exists():
+        with open(info_file) as f:
+            set_info = json.load(f)
+        existing_hash = set_info["set"]["hash"]
+
     sticker_set: MessagesStickerSet = await client.invoke(GetStickerSet(stickerset=stickerset, hash=0))
+
+    if existing_hash == sticker_set.set.hash:
+        logger.success(f"Stickerset {set_type!r} is already up-to-date")
+        return
+
     logger.success(f"Got {len(sticker_set.documents)} stickers for stickerset {set_type!r}")
     for idx, doc in enumerate(cast(list[Document], sticker_set.documents)):
         logger.info(f"Downloading sticker {doc.id}")
         await download_document(client, idx, doc, out_dir)
 
-    with open(out_dir / f"set.json", "w") as f:
+    with open(info_file, "w") as f:
         json.dump(sticker_set, f, indent=4, default=TLObject.default, ensure_ascii=False)
 
 
@@ -59,13 +73,14 @@ async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-id", required=False, type=int, help="Telegram api id")
     parser.add_argument("--api-hash", required=False, type=str, help="Telegram api hash")
+    parser.add_argument("--clean", action="store_true", help="Clean target directory before downloading")
     parser.add_argument("--data-dir", type=Path,
-                        help="Path to data directory to where chat themes will be download",
+                        help="Path to data directory to where stickersets will be download",
                         default=Path("./data").resolve())
     args = parser.parse_args(namespace=ArgsNamespace())
 
     out_dir = args.data_dir / "stickersets"
-    if out_dir.exists():
+    if args.clean and out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
