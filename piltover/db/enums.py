@@ -467,7 +467,6 @@ class SystemObjectType(IntEnum):
 
 class StickerSetOfficialType(IntEnum):
     ANIMATED_EMOJI = 1
-    # TODO: add support for the rest of dice types
     DICE_BASKETBALL = 2
     DICE_DIE = 3
     DICE_TARGET = 4
@@ -475,3 +474,6 @@ class StickerSetOfficialType(IntEnum):
     GENERIC_ANIMATIONS = 6
     USER_STATUSES = 7
     TOPIC_ICONS = 8
+    DICE_FOOTBALL = 9
+    DICE_SLOTMACHINE = 10
+    DICE_BOWLING = 11

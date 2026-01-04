@@ -81,13 +81,13 @@ class AppConfig:
     TENOR_KEY = environ.get("TENOR_API_KEY", None)
     
     DICE = {
-        "\U0001F3B2": 6,  # Die
-        "\U0001F3AF": 6,  # Target
-        "\U0001F3C0": 5,  # Basketball
-        #"\u26bd": 5,  # Football
-        #"\u26bd\ufe0f": 5,  # Football
-        #"\U0001F3B0": 64,  # Slot machine
-        #"\U0001F3B3": 6,  # Bowling
+        "\U0001F3B2": (6, 62),  # Die
+        "\U0001F3AF": (6, 62),  # Target
+        "\U0001F3C0": (5, 110),  # Basketball
+        "\u26bd": (5, 110),  # Football
+        "\u26bd\ufe0f": (5, 110),  # Football
+        "\U0001F3B0": (64, 110),  # Slot machine
+        "\U0001F3B3": (6, 110),  # Bowling
     }
 
 

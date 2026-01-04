@@ -17,9 +17,13 @@ from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 from piltover.tl.base import InputStickerSet as InputStickerSetBase
 
 EMOTICON_TO_DICE_ENUM = {
-    "🏀": StickerSetOfficialType.DICE_BASKETBALL,
-    "🎲": StickerSetOfficialType.DICE_DIE,
-    "🎯": StickerSetOfficialType.DICE_TARGET,
+    "\U0001F3C0": StickerSetOfficialType.DICE_BASKETBALL,
+    "\U0001F3B2": StickerSetOfficialType.DICE_DIE,
+    "\U0001F3AF": StickerSetOfficialType.DICE_TARGET,
+    "\u26bd": StickerSetOfficialType.DICE_FOOTBALL,
+    "\u26bd\ufe0f": StickerSetOfficialType.DICE_FOOTBALL,
+    "\U0001F3B0": StickerSetOfficialType.DICE_SLOTMACHINE,
+    "\U0001F3B3": StickerSetOfficialType.DICE_BOWLING,
 }
 OFFICIAL_TL_SET_TO_ENUM = {
     InputStickerSetAnimatedEmoji: StickerSetOfficialType.ANIMATED_EMOJI,

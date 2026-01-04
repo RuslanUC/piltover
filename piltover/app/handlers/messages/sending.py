@@ -716,7 +716,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         if media.emoticon not in AppConfig.DICE:
             raise ErrorRpc(error_code=400, error_message="EMOTICON_INVALID")
         static_data = MessageMediaDice(
-            value=xorshift128plusrandint(1, AppConfig.DICE[media.emoticon]),
+            value=xorshift128plusrandint(1, AppConfig.DICE[media.emoticon][0]),
             emoticon=media.emoticon,
         ).write()
 

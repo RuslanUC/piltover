@@ -26,7 +26,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] InstallTheme_133, InstallTheme
 - [x] InstallWallPaper
 - [x] Rewrite related users/chats/channels collection code, cache (or write to database) related ids
-- [ ] Channel admin log
+- [x] Channel admin log
 - [ ] [Min constructors](https://core.telegram.org/api/min)
 - [ ] Channel discussions
 - [ ] [WebK](https://github.com/morethanwords/tweb) hangs on some requests (such as GetDialogs), probably seqno or message_id fields are wrong in our mtproto implementation

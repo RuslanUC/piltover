@@ -24,9 +24,13 @@ InputStickerSet = InputStickerSetID | InputStickerSetAnimatedEmoji | InputSticke
 
 to_download = [
     ("animated_emoji", InputStickerSetAnimatedEmoji()),
-    ("dice_basketball", InputStickerSetDice(emoticon="🏀")),
-    ("dice_die", InputStickerSetDice(emoticon="🎲")),
-    ("dice_target", InputStickerSetDice(emoticon="🎯")),
+    ("dice_basketball", InputStickerSetDice(emoticon="\U0001F3C0")),
+    ("dice_die", InputStickerSetDice(emoticon="\U0001F3B2")),
+    ("dice_target", InputStickerSetDice(emoticon="\U0001F3AF")),
+    ("dice_football1", InputStickerSetDice(emoticon="\u26bd")),
+    ("dice_football2", InputStickerSetDice(emoticon="\u26bd\ufe0f")),
+    ("dice_slotmachine", InputStickerSetDice(emoticon="\U0001F3B0")),
+    ("dice_bowling", InputStickerSetDice(emoticon="\U0001F3B3")),
     ("emoji_animations", InputStickerSetAnimatedEmojiAnimations()),
     ("generic_animations", InputStickerSetEmojiGenericAnimations()),
     ("user_statuses", InputStickerSetEmojiDefaultStatuses()),
