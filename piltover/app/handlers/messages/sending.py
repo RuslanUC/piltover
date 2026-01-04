@@ -949,7 +949,10 @@ async def forward_messages(
 @handler.on_request(UploadMedia_133)
 @handler.on_request(UploadMedia)
 async def upload_media(request: UploadMedia | UploadMedia_133, user: User):
-    if not isinstance(request.media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
+    if not isinstance(request.media, (
+            InputMediaPhoto, InputMediaDocument, InputMediaDocument_133, InputMediaUploadedDocument,
+            InputMediaUploadedDocument_133, InputMediaUploadedPhoto,
+    )):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)

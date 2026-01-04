@@ -180,7 +180,7 @@ class PiltoverApp:
     async def run_test(
             self, create_sys_user: bool = True, create_countries: bool = False, create_reactions: bool = False,
             create_chat_themes: bool = False, create_peer_colors: bool = False, create_languages: bool = False,
-            run_scheduler: bool = False,
+            create_system_stickersets: bool = False, run_scheduler: bool = False,
     ) -> AsyncIterator[Gateway]:
         await Tortoise.init(
             db_url="sqlite://:memory:",
@@ -191,7 +191,7 @@ class PiltoverApp:
         await create_system_data(
             args,
             create_sys_user, create_countries, create_reactions, create_chat_themes, create_peer_colors,
-            create_languages,
+            create_languages, create_system_stickersets,
         )
 
         from piltover.app.handlers import testing
