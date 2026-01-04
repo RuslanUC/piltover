@@ -458,11 +458,13 @@ class EmojiGroupCategory(IntEnum):
 class EmojiGroupType(IntEnum):
     REGULAR = 1
     PREMIUM = 2
+    GREETING = 3
 
 
 class SystemObjectType(IntEnum):
     FILE = 1
     STICKERSET = 2
+    EMOJI_GROUP = 3
 
 
 class StickerSetOfficialType(IntEnum):
@@ -477,3 +479,4 @@ class StickerSetOfficialType(IntEnum):
     DICE_FOOTBALL = 9
     DICE_SLOTMACHINE = 10
     DICE_BOWLING = 11
+    EMOJI_CATEGORIES = 12

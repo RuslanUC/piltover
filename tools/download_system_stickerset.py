@@ -12,14 +12,15 @@ from pyrogram.raw.core import TLObject
 from pyrogram.raw.functions.messages import GetStickerSet
 from pyrogram.raw.types import InputStickerSetID, InputStickerSetAnimatedEmoji, \
     InputStickerSetDice, InputStickerSetAnimatedEmojiAnimations, InputStickerSetEmojiGenericAnimations, \
-    InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons, Document
+    InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons, Document, InputStickerSetShortName
 from pyrogram.raw.types.messages import StickerSet as MessagesStickerSet
 
 from download_utils import download_document, ClientCachedMediaSessions
 
 InputStickerSet = InputStickerSetID | InputStickerSetAnimatedEmoji | InputStickerSetDice \
                   | InputStickerSetAnimatedEmojiAnimations | InputStickerSetEmojiGenericAnimations \
-                  | InputStickerSetEmojiDefaultStatuses | InputStickerSetEmojiDefaultTopicIcons
+                  | InputStickerSetEmojiDefaultStatuses | InputStickerSetEmojiDefaultTopicIcons \
+                  | InputStickerSetShortName
 
 
 to_download = [
@@ -35,6 +36,7 @@ to_download = [
     ("generic_animations", InputStickerSetEmojiGenericAnimations()),
     ("user_statuses", InputStickerSetEmojiDefaultStatuses()),
     ("topic_icons", InputStickerSetEmojiDefaultTopicIcons()),
+    ("emoji_categories", InputStickerSetShortName(short_name="EmojiCategories")),
 ]
 
 

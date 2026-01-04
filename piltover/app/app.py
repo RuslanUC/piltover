@@ -41,6 +41,8 @@ class ArgsNamespace(SimpleNamespace):
     languages_dir: Path | None
     create_system_stickersets: bool
     system_stickersets_dir: Path | None
+    create_emoji_groups: bool
+    emoji_groups_dir: Path | None
     privkey_file: Path | None
     pubkey_file: Path | None
     rabbitmq_address: str | None
@@ -66,6 +68,8 @@ class ArgsNamespace(SimpleNamespace):
             self.languages_dir = self.data_dir / "languages"
         if self.system_stickersets_dir is None:
             self.system_stickersets_dir = self.data_dir / "stickersets"
+        if self.emoji_groups_dir is None:
+            self.emoji_groups_dir = self.data_dir / "emoji_groups"
 
 
 class MigrateNoDowngrade(Migrate):
@@ -167,7 +171,7 @@ class PiltoverApp:
 
         await create_system_data(
             args, args.create_system_user, args.create_auth_countries, args.create_reactions, args.create_chat_themes,
-            args.create_peer_colors, args.create_languages, args.create_system_stickersets,
+            args.create_peer_colors, args.create_languages, args.create_system_stickersets, args.create_emoji_groups,
         )
 
         scheduler_task = self._run_in_memory_scheduler()
@@ -180,7 +184,7 @@ class PiltoverApp:
     async def run_test(
             self, create_sys_user: bool = True, create_countries: bool = False, create_reactions: bool = False,
             create_chat_themes: bool = False, create_peer_colors: bool = False, create_languages: bool = False,
-            create_system_stickersets: bool = False, run_scheduler: bool = False,
+            create_system_stickersets: bool = False, create_emoji_groups: bool = False, run_scheduler: bool = False,
     ) -> AsyncIterator[Gateway]:
         await Tortoise.init(
             db_url="sqlite://:memory:",
@@ -191,7 +195,7 @@ class PiltoverApp:
         await create_system_data(
             args,
             create_sys_user, create_countries, create_reactions, create_chat_themes, create_peer_colors,
-            create_languages, create_system_stickersets,
+            create_languages, create_system_stickersets, create_emoji_groups,
         )
 
         from piltover.app.handlers import testing
@@ -256,6 +260,11 @@ if __name__ == "__main__":
         "Path to directory containing stickerset files (for --create-system-stickersets option). "
         "By default, <data-dir>/stickersets will be used."
     ))
+    parser.add_argument("--create-emoji-groups", action="store_true", help="Insert emoji groups into database")
+    parser.add_argument("--emoji-groups-dir", type=Path, default=None, help=(
+        "Path to directory containing emoji group files (for --create-emoji-groups option). "
+        "By default, <data-dir>/emoji_groups will be used."
+    ))
     parser.add_argument("--privkey-file", type=Path, default=None, help=(
         "Path to private key file. "
         "By default, <data-dir>/secrets/privkey.asc will be used."
@@ -297,6 +306,8 @@ else:
         languages_dir=Path("./data/languages"),
         create_system_stickersets=True,
         system_stickersets_dir=Path("./data/stickersets"),
+        create_emoji_groups=True,
+        emoji_groups_dir=Path("./data/emoji_groups"),
         data_dir=Path("./data") / "testing",
         privkey_file=None,
         pubkey_file=None,

@@ -11,7 +11,9 @@ from tortoise.expressions import Q, Subquery
 
 from piltover.app.utils.utils import telegram_hash
 from piltover.app_config import AppConfig
-from piltover.db.enums import SystemObjectType, FileType, StickerSetOfficialType, StickerSetType
+from piltover.db.enums import SystemObjectType, FileType, StickerSetOfficialType, StickerSetType, EmojiGroupCategory, \
+    EmojiGroupType
+from piltover.exceptions import Unreachable
 from piltover.tl import Long, BaseThemeClassic, BaseThemeDay, BaseThemeNight, BaseThemeArctic, BaseThemeTinted
 
 if TYPE_CHECKING:
@@ -615,6 +617,7 @@ async def _create_system_stickers(args: ArgsNamespace) -> None:
         "generic_animations": StickerSetOfficialType.GENERIC_ANIMATIONS,
         "user_statuses": StickerSetOfficialType.USER_STATUSES,
         "topic_icons": StickerSetOfficialType.TOPIC_ICONS,
+        "emoji_categories": StickerSetOfficialType.EMOJI_CATEGORIES,
     }
 
     logger.info("Creating (or updating) system stickersets...")
@@ -690,10 +693,108 @@ async def _create_system_stickers(args: ArgsNamespace) -> None:
             logger.success(f"Updated sticker set \"{stickerset.title}\"")
 
 
+async def _create_emoji_groups(groups_dir: Path) -> None:
+    if not groups_dir.exists():
+        return
+
+    import json
+
+    from piltover.db.models import EmojiGroup, SystemObjectId
+
+    type_name_to_category = {
+        "groups": EmojiGroupCategory.REGULAR,
+        "profile_photo_groups": EmojiGroupCategory.PROFILE_PHOTO,
+        "status_groups": EmojiGroupCategory.STATUS,
+        "sticker_groups": EmojiGroupCategory.STICKER,
+    }
+
+    logger.info("Creating (or updating) emoji groups...")
+    for group_type, cat in type_name_to_category.items():
+        info_file = groups_dir / f"{group_type}.json"
+        if not info_file.exists():
+            logger.warning(f"Emoji group file for \"{group_type}\" does not exist, skipping")
+            continue
+
+        with open(info_file) as f:
+            groups_info = json.load(f)
+            groups = groups_info["groups"]
+
+        created_group_ids = []
+
+        for idx, group in enumerate(groups):
+            fake_orig_id = telegram_hash([group_type, cat.value, group["_"], group["title"]], 64)
+            checksum = telegram_hash([
+                group_type, idx, group["title"], group.get("icon_emoji_id", 0), *group.get("emoticons", ["NONE"]),
+            ], 64)
+
+            icon_emoji = None
+            if "icon_emoji_id" in group:
+                icon_emoji_obj = await SystemObjectId.get_or_none(
+                    type=SystemObjectType.FILE, original_id=group["icon_emoji_id"]
+                ).select_related("our_file")
+                if icon_emoji_obj is not None:
+                    icon_emoji = icon_emoji_obj.our_file
+
+            if group["_"] == "types.EmojiGroup":
+                group_type = EmojiGroupType.REGULAR
+            elif group["_"] == "types.EmojiGroupPremium":
+                group_type = EmojiGroupType.PREMIUM
+            elif group["_"] == "types.EmojiGroupGreeting":
+                group_type = EmojiGroupType.GREETING
+            else:
+                raise Unreachable
+
+            system_obj, created = await SystemObjectId.get_or_create(
+                type=SystemObjectType.EMOJI_GROUP,
+                original_id=fake_orig_id,
+                defaults={"checksum": 0},
+            )
+            if not created and system_obj.our_emoji_group_id is not None and system_obj.checksum == checksum:
+                logger.info(f"Emoji group \"{group['title']}\" is up-to-date")
+                emoji_group = await system_obj.our_emoji_group
+            elif not created and system_obj.our_emoji_group_id is not None:
+                emoji_group = await system_obj.our_emoji_group
+                emoji_group.name = group["title"]
+                emoji_group.icon_emoji = icon_emoji
+                emoji_group.category = cat
+                emoji_group.type = group_type
+                emoji_group.emoticons = EmojiGroup.pack_emoticons(group["emoticons"]) if "emoticons" in group else None
+                emoji_group.position = idx
+                await emoji_group.save()
+            else:
+                emoji_group = await EmojiGroup.create(
+                    name=group["title"],
+                    icon_emoji=icon_emoji,
+                    category=cat,
+                    type=group_type,
+                    emoticons=EmojiGroup.pack_emoticons(group["emoticons"]) if "emoticons" in group else None,
+                    position=idx,
+                )
+
+            system_obj.our_emoji_group = emoji_group
+            system_obj.checksum = checksum
+            await system_obj.save(update_fields=["our_emoji_group_id", "checksum"])
+
+            created_group_ids.append(emoji_group.id)
+
+            if created:
+                logger.success(f"Created emoji group \"{emoji_group.name}\" (id {fake_orig_id})")
+            else:
+                logger.success(f"Updated emoji group \"{emoji_group.name}\" (id {fake_orig_id})")
+
+        await EmojiGroup.filter(
+            id__in=Subquery(EmojiGroup.filter(
+                category=cat, id__not_in=created_group_ids,
+            ).values_list("id", flat=True))
+        ).delete()
+
+        logger.success(f"Processed all emoji groups in category \"{cat!r}\" ")
+
+
 async def create_system_data(
         args: ArgsNamespace,
         system_users: bool = True, countries_list: bool = True, reactions: bool = True, chat_themes: bool = True,
-        peer_colors: bool = True, languages: bool = True, system_stickersets: bool = True,
+        peer_colors: bool = True, languages: bool = True, system_stickersets: bool = True, emoji_groups: bool = True,
 ) -> None:
     if system_users:
         await _create_system_user()
@@ -738,3 +839,6 @@ async def create_system_data(
 
     if system_stickersets:
         await _create_system_stickers(args)
+
+    if emoji_groups:
+        await _create_emoji_groups(args.emoji_groups_dir)

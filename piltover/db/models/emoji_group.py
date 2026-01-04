@@ -7,7 +7,7 @@ from tortoise import Model, fields
 from piltover.db import models
 from piltover.db.enums import EmojiGroupType, EmojiGroupCategory
 from piltover.exceptions import Unreachable
-from piltover.tl import EmojiGroupPremium, EmojiGroup as TLEmojiGroup
+from piltover.tl import EmojiGroupPremium, EmojiGroup as TLEmojiGroup, EmojiGroupGreeting
 
 
 class EmojiGroup(Model):
@@ -40,7 +40,7 @@ class EmojiGroup(Model):
 
         return result
 
-    def to_tl(self) -> TLEmojiGroup | EmojiGroupPremium:
+    def to_tl(self) -> TLEmojiGroup | EmojiGroupPremium | EmojiGroupGreeting:
         if self.type is EmojiGroupType.REGULAR:
             return EmojiGroup(
                 title=self.name,
@@ -52,6 +52,11 @@ class EmojiGroup(Model):
                 title=self.name,
                 icon_emoji_id=self.icon_emoji_id,
             )
+        if self.type is EmojiGroupType.GREETING:
+            return EmojiGroupGreeting(
+                title=self.name,
+                icon_emoji_id=self.icon_emoji_id,
+                emoticons=self.unpack_emoticons(self.emoticons),
+            )
 
         raise Unreachable
-
