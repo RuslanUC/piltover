@@ -57,7 +57,7 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
             await peer.fetch_related("owner")
 
         users_tl = await User.to_tl_bulk(users, peer.owner)
-        chats_tl = [await chats.to_tl(peer.owner) for chats in chats]
+        chats_tl = await Chat.to_tl_bulk(chats, peer.owner)
         channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
 
         # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
@@ -183,7 +183,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
             ))
 
         users_tl = await User.to_tl_bulk(users, peer.owner)
-        chats_tl = [await chats.to_tl(peer.owner) for chats in chats]
+        chats_tl = await Chat.to_tl_bulk(chats, peer.owner)
         channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
 
         updates = UpdatesWithDefaults(
@@ -653,7 +653,7 @@ async def create_chat(user: User, chat: Chat, peers: list[Peer]) -> Updates:
                     ),
                 ),
             ],
-            users=[await user_.to_tl(peer.owner) for user_ in users],
+            users=await User.to_tl_bulk(users, peer.owner),
             chats=[await chat.to_tl(peer.owner)],
         )
 
@@ -1696,8 +1696,9 @@ async def reorder_pinned_saved_dialogs(user: User, dialogs: list[SavedDialog]) -
         ],
         users=[
             await user.to_tl(user),
-            *(await dialog.peer.user.to_tl(user) for dialog in dialogs if dialog.peer.type is PeerType.USER),
+            *await User.to_tl_bulk([dialog.peer.user for dialog in dialogs if dialog.peer.type is PeerType.USER], user),
         ],
+        # TODO: chats and channels
         chats=[],
     )
 

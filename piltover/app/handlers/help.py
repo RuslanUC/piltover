@@ -345,6 +345,8 @@ async def get_countries_list(request: GetCountriesList) -> CountriesList | Count
     if time() - cache_time > 60 * 60 * 12:
         countries = CountriesList(countries=[], hash=0)
 
+        # TODO: prefetch codes?
+
         country: AuthCountry
         for country in await AuthCountry.filter().order_by("id"):
             countries.countries.append(await country.to_tl())

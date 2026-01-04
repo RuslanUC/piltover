@@ -97,6 +97,7 @@ class Stickerset(Model):
             creator=user.id == self.owner_id,
             installed_date=int(installed.installed_at.timestamp()) if installed is not None else None,
             archived=installed is not None and installed.archived,
+            # TODO: cache stickers count?
             count=await self.documents_query().count(),
             hash=self.hash,
             masks=self.masks,

@@ -144,7 +144,7 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             participants=ChatParticipants(
                 chat_id=chat.make_id(),
                 participants=[
-                    await participant.to_tl(chat.creator_id)
+                    participant.to_tl_chat_with_creator(chat.creator_id)
                     for participant in await ChatParticipant.filter(chat=chat)
                 ],
                 version=chat.version,

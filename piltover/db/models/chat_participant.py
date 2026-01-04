@@ -62,6 +62,11 @@ class ChatParticipant(Model):
             self.chat = await self.chat
             chat_creator_id = self.chat.creator_id
 
+        return self.to_tl_chat_with_creator(chat_creator_id)
+
+    def to_tl_chat_with_creator(
+            self, chat_creator_id: int,
+    ) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:
         if self.user_id == chat_creator_id:
             return ChatParticipantCreator(user_id=self.user_id)
         elif self.is_admin:

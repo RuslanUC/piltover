@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from os import urandom
+from time import time
 
 from tortoise import fields, Model
 
@@ -30,6 +31,16 @@ class UserPassword(Model):
     user: models.User = fields.OneToOneField("models.User")
     modified_at: datetime = fields.DatetimeField(auto_now_add=True)
 
+    async def get_session(self) -> models.SrpSession:
+        session, _ = await models.SrpSession.get_or_create(
+            password=self,
+            created_at__gt=int(time() - 1800),
+            defaults={"created_at": int(time())}
+        )
+        session.password = self
+
+        return session
+
     async def to_tl(self) -> TLPassword:
         p, g = gen_safe_prime()
         current = None
@@ -42,7 +53,7 @@ class UserPassword(Model):
                 g=g,
                 p=itob(p),
             )
-            session = await models.SrpSession.get_current(self)
+            session = await self.get_session()
             srp_B = session.pub_B()
             srp_id = session.id
 

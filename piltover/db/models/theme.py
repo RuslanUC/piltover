@@ -24,6 +24,7 @@ class Theme(Model):
     creator_id: int
     document_id: int | None
 
+    # TODO: create and use ThemeToFormat
     async def to_tl(self, user: models.User) -> TLTheme:
         return TLTheme(
             creator=self.creator_id == user.id,

@@ -28,14 +28,3 @@ class SrpSession(Model):
         p, g = gen_safe_prime()
         k_v: int = (SRP_K * btoi(self.password.password)) % p
         return itob((k_v + (pow(g, btoi(self.priv_b), p))) % p)
-
-    @classmethod
-    async def get_current(cls, password: models.UserPassword) -> SrpSession:
-        session, _ = await SrpSession.get_or_create(
-            password=password,
-            created_at__gt=int(time() - 1800),
-            defaults={"created_at": int(time())}
-        )
-        await session.fetch_related("password")
-
-        return session

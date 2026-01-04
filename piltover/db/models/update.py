@@ -177,8 +177,7 @@ class Update(Model):
                 participant: models.ChatParticipant
 
                 async for participant in models.ChatParticipant.filter(chat=peer.chat, user__id__in=self.related_ids):
-                    participant.chat = peer.chat
-                    participants.append(await participant.to_tl())
+                    participants.append(participant.to_tl_chat_with_creator(peer.chat.creator_id))
                     user_ids.remove(participant.user_id)
 
                 for missing_id in user_ids:

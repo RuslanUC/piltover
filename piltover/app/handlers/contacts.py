@@ -28,15 +28,12 @@ handler = MessageHandler("contacts")
 
 @handler.on_request(GetContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_contacts(user: User):
-    contacts = await Contact.filter(owner=user).select_related("target")
+    contacts = await Contact.filter(owner=user, target__not=None).select_related("target")
 
     contacts_tl = []
     users_to_tl = []
 
     for contact in contacts:
-        if contact.target is None:
-            continue
-
         contacts_tl.append(TLContact(user_id=contact.target.id, mutual=False))
         users_to_tl.append(contact.target)
 
@@ -407,3 +404,7 @@ async def import_contact_token(request: ImportContactToken, user: User) -> TLUse
         peer, _ = await Peer.get_or_create(owner=user, user=target_user, type=PeerType.USER)
 
     return await target_user.to_tl(user)
+
+
+# TODO: contacts.GetContactIDs
+# TODO: contacts.GetSaved ?

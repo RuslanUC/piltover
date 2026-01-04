@@ -235,7 +235,7 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
     if password.password is None:
         return
 
-    if (sess := await SrpSession.get_current(password)).id != check.srp_id:
+    if (sess := await password.get_session()).id != check.srp_id:
         raise ErrorRpc(error_code=400, error_message="SRP_ID_INVALID")
 
     p, g = gen_safe_prime()

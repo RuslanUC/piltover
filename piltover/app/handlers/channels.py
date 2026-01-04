@@ -182,10 +182,9 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
     if not channels_q.children:
         return Chats(chats=[])
 
-    return Chats(chats=[
-        await channel.to_tl(user)
-        for channel in await Channel.filter(channels_q)
-    ])
+    return Chats(
+        chats=await Channel.to_tl_bulk(await Channel.filter(channels_q), user),
+    )
 
 
 @handler.on_request(GetFullChannel)
@@ -960,10 +959,9 @@ async def get_admined_public_channels(request: GetAdminedPublicChannels, user: U
     if request.check_limit and await query.count() >= AppConfig.PUBLIC_CHANNELS_LIMIT:
         raise ErrorRpc(error_code=400, error_message="CHANNELS_ADMIN_PUBLIC_TOO_MUCH")
 
-    return Chats(chats=[
-        await channel.to_tl(user)
-        for channel in await query
-    ])
+    return Chats(
+        chats=await Channel.to_tl_bulk(await query, user),
+    )
 
 
 @handler.on_request(TogglePreHistoryHidden, ReqHandlerFlags.BOT_NOT_ALLOWED)
