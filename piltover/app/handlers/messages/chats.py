@@ -293,7 +293,7 @@ async def add_chat_user(request: AddChatUser, user: User):
         limit = min(request.fwd_limit, 100)
         messages_to_forward = await Message.filter(
             peer=chat_peer, type=MessageType.REGULAR
-        ).order_by("-id").limit(limit).select_related("author", "media", "reply_to", "fwd_header")
+        ).order_by("-id").limit(limit).select_related(*Message.PREFETCH_FIELDS)
         messages = []
         for message in reversed(messages_to_forward):
             messages.append(await message.clone_for_peer(

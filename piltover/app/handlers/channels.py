@@ -411,7 +411,7 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     query &= Q(peer__channel=peer.channel)
     query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
-    return await format_messages_internal(user, await Message.filter(query).select_related("peer"))
+    return await format_messages_internal(user, await Message.filter(query).select_related(*Message.PREFETCH_FIELDS))
 
 
 @handler.on_request(DeleteMessages)

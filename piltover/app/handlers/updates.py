@@ -72,7 +72,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
     new = await Message.filter(
         peer__owner=user, date__gt=date, type__not=MessageType.SCHEDULED,
-    ).select_related("author", "peer", "peer__owner", "peer__user", "peer__chat").order_by("id")
+    ).select_related(Message.PREFETCH_FIELDS).order_by("id")
     new_updates = await Update.filter(user=user, pts__gt=request.pts).order_by("pts")
     new_secret = await SecretUpdate.filter(authorization__id=ctx.auth_id, id__gt=last_local_secret_id)
     logger.trace(f"User {user.id} has {len(new_secret)} secret updates")
@@ -159,7 +159,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
     new_messages_ids = [update.related_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE]
     new = await Message.filter(
         messages_from_channel_query & Q(id__in=new_messages_ids)
-    ).select_related("author", "peer").order_by("id")
+    ).select_related(Message.PREFETCH_FIELDS).order_by("id")
 
     new_messages = {}
     other_updates = []

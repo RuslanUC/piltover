@@ -36,7 +36,9 @@ class ChannelUpdate(Model):
             case ChannelUpdateType.NEW_MESSAGE:
                 return None
             case ChannelUpdateType.EDIT_MESSAGE:
-                message = await Message.get(id=self.related_id, peer__channel__id=self.channel_id)
+                message = await Message.get(
+                    id=self.related_id, peer__channel__id=self.channel_id,
+                ).select_related(*Message.PREFETCH_FIELDS)
                 ucc.add_message(message.id)
 
                 return UpdateEditChannelMessage(

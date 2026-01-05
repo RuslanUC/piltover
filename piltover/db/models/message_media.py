@@ -27,13 +27,6 @@ class MessageMedia(Model):
     poll_id: int | None
 
     async def to_tl(self, user: models.User) -> MessageMediaTypes:
-        if self.type in (MediaType.DOCUMENT, MediaType.PHOTO):
-            # TODO: dont fetch it in here? it is probably fetched before every to_tl call?
-            self.file = await self.file
-        elif self.type is MediaType.POLL:
-            # TODO: prefetch it
-            self.poll = await self.poll
-
         if self.type is MediaType.DOCUMENT:
             return MessageMediaDocument(
                 spoiler=self.spoiler,

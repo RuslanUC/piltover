@@ -28,7 +28,7 @@ handler = MessageHandler("contacts")
 
 @handler.on_request(GetContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_contacts(user: User):
-    contacts = await Contact.filter(owner=user, target__not=None).select_related("target")
+    contacts = await Contact.filter(owner=user, target__id__not_isnull=True).select_related("target")
 
     contacts_tl = []
     users_to_tl = []

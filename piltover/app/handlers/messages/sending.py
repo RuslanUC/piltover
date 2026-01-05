@@ -366,7 +366,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
             and not (peer.type is PeerType.USER and (peer.blocked_at is not None or not await peer.get_opposite())):
         other_messages = await Message.filter(
             peer__user=user, internal_id=message.internal_id,
-        ).select_related("peer", "author")
+        ).select_related("peer", "peer__owner")
         for other_message in other_messages:
             other_message.pinned = message.pinned
             messages[other_message.peer] = other_message
@@ -402,9 +402,11 @@ async def delete_messages(request: DeleteMessages, user: User):
             raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
         for opposite_peer in await message.peer.get_opposite():
-            opp_message = await Message.get_or_none(internal_id=message.internal_id, peer=opposite_peer)
+            opp_message = await Message.get_or_none(
+                internal_id=message.internal_id, peer=opposite_peer,
+            ).select_related("peer", "peer__owner")
             if opp_message is not None:
-                messages[message.peer.user].append(opp_message.id)
+                messages[opp_message.peer.owner].append(opp_message.id)
 
     all_ids = [i for ids in messages.values() for i in ids]
     if not all_ids:
@@ -439,9 +441,9 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
                 Q(peer__owner=None, type=MessageType.REGULAR) | Q(peer__owner=user, type=MessageType.SCHEDULED)
         )
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
-        message = await Message.get_or_none(query).select_related("peer", "author", "media")
+        message = await Message.get_or_none(query).select_related(*Message.PREFETCH_FIELDS)
     else:
-        message = await Message.get_(request.id, peer, (MessageType.REGULAR, MessageType.SCHEDULED))
+        message = await Message.get_(request.id, peer, (MessageType.REGULAR, MessageType.SCHEDULED), prefetch_all=True)
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
@@ -523,7 +525,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     edit_date = datetime.now(UTC)
     for message in await Message.filter(
             internal_id=message.internal_id, peer__id__in=[p.id for p in peers],
-    ).select_related("author", "peer", "peer__owner", "peer__user"):
+    ).select_related(*Message.PREFETCH_FIELDS):
         _edit_message(message, edit_date)
         messages[message.peer] = message
 
@@ -876,10 +878,7 @@ async def forward_messages(
     src_messages_query = await append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query)
 
     random_ids = dict(zip(request.id[:100], request.random_id[:100]))
-    messages = await Message.filter(src_messages_query).order_by("id").select_related(
-        "peer", "media", "author", "peer__channel", "fwd_header", "fwd_header__from_user", "fwd_header__from_chat",
-        "fwd_header__from_channel",
-    )
+    messages = await Message.filter(src_messages_query).order_by("id").select_related(*Message.PREFETCH_FIELDS)
     reply_ids = {}
     media_group_ids: defaultdict[int | None, int | None] = defaultdict(Snowflake.make_id)
     media_group_ids[None] = None
@@ -1022,7 +1021,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: U
             if not File.check_access_hash(user.id, ctx.auth_id, media_id.id, media_id.access_hash):
                 raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
-        media = await MessageMedia.get_or_none(media_q)
+        media = await MessageMedia.get_or_none(media_q).select_related("file", "file__stickerset", "poll")
 
         messages.append((
             single_media.message,

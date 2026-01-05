@@ -8,7 +8,7 @@ from tests.client import TestClient
 
 
 @pytest.mark.asyncio
-async def test_get_contacts() -> None:
+async def test_get_contacts_empty() -> None:
     async with TestClient(phone_number="123456789") as client:
         assert await client.get_contacts() == []
 

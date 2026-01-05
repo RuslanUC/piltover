@@ -1085,6 +1085,7 @@ async def update_folders_order(user: User, folder_ids: list[int]) -> Updates:
 async def update_reactions(user: User, messages: list[Message], peer: Peer, send: bool = True) -> Updates:
     ucc = UsersChatsChannels()
 
+    # TODO: add reactions and not messages maybe?
     for message in messages:
         ucc.add_message(message.id)
 

@@ -140,13 +140,12 @@ async def get_messages_query_internal(
     query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
     limit = max(min(100, limit), 1)
-    select_related = "author", "peer", "peer__user"
 
     if not offset_id or add_offset >= 0:
         if offset_id:
             query &= Q(id__lt=offset_id)
 
-        return Message.filter(query).limit(limit).offset(add_offset).order_by("-date").select_related(*select_related)
+        return Message.filter(query).limit(limit).offset(add_offset).order_by("-date").select_related(*Message.PREFETCH_FIELDS)
 
     """
     (based in https://core.telegram.org/api/offsets)
@@ -190,7 +189,7 @@ async def get_messages_query_internal(
     ).limit(after_offset_limit).order_by("date").values_list("id", flat=True)
 
     if len(message_ids_after_offset) >= limit:
-        return Message.filter(id__in=message_ids_after_offset).order_by("-date").select_related(*select_related)
+        return Message.filter(id__in=message_ids_after_offset).order_by("-date").select_related(*Message.PREFETCH_FIELDS)
 
     limit -= len(message_ids_after_offset)
 
@@ -198,7 +197,7 @@ async def get_messages_query_internal(
     message_ids_before_offset = await Message.filter(query).limit(limit).order_by("-date").values_list("id", flat=True)
 
     final_query = Q(id__in=message_ids_before_offset) | Q(id__in=message_ids_after_offset)
-    return Message.filter(final_query).order_by("-date").select_related(*select_related)
+    return Message.filter(final_query).order_by("-date").select_related(*Message.PREFETCH_FIELDS)
 
 
 async def get_messages_internal(
@@ -322,14 +321,14 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
     query &= Q(peer__owner=user, peer__type__not=PeerType.CHANNEL)
 
-    return await format_messages_internal(user, await Message.filter(query).select_related("peer"))
+    return await format_messages_internal(user, await Message.filter(query).select_related(*Message.PREFETCH_FIELDS))
 
 
 @handler.on_request(GetMessages_57)
 async def get_messages_57(request: GetMessages_57, user: User) -> Messages:
     return await format_messages_internal(
         user,
-        await Message.filter(id__in=request.id[:100], peer__owner=user).select_related("peer"),
+        await Message.filter(id__in=request.id[:100], peer__owner=user).select_related(*Message.PREFETCH_FIELDS),
     )
 
 
@@ -483,10 +482,10 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
 
     messages = {
         message.id: message
-        for message in await Message.filter(query).select_related("post_info", "peer", "peer__channel")
+        for message in await Message.filter(query).select_related("post_info")
     }
 
-    ucc = UsersChatsChannels()
+    channels = []
     views = []
     incremented = []
 
@@ -503,16 +502,14 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
 
         views.append(MessageViews(views=message.post_info.views))
 
-        ucc.add_channel(message.peer.channel_id)
+        channels.append(message.peer.channel)
 
     if incremented:
         await ChannelPostInfo.bulk_update(incremented, fields=["views"])
 
-    _, channels, _ = await ucc.resolve(user, False, True, False)
-
     return MessagesMessageViews(
         views=views,
-        chats=channels,
+        chats=await peer.channel.to_tl(user),
         users=[],
     )
 
@@ -572,7 +569,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
             count=msg_count,
         ))
 
-    messages = await Message.filter(id__in=message_ids).select_related("peer")
+    messages = await Message.filter(id__in=message_ids).select_related(*Message.PREFETCH_FIELDS)
     messages_tl = []
     ucc = UsersChatsChannels()
 

@@ -88,6 +88,17 @@ class Message(Model):
     if (_ttl_mult := environ.get("DEBUG_MESSAGE_TTL_MULTIPLIER", "")).isdigit():
         TTL_MULT = int(_ttl_mult)
 
+    PREFETCH_FIELDS_MIN = (
+        "peer", "author", "media",
+    )
+    PREFETCH_FIELDS = (
+        *PREFETCH_FIELDS_MIN, "media__file", "media__file__stickerset", "media__poll", "fwd_header",
+        "fwd_header__saved_peer", "post_info",
+    )
+    _PREFETCH_ALL_TOP_FIELDS = (
+        "peer", "author", "media", "fwd_header", "reply_to", "via_bot",
+    )
+
     _cached_reply_markup: ReplyMarkup | None | _SomethingMissing = _SMTH_MISSING
 
     class Meta:
@@ -101,6 +112,7 @@ class Message(Model):
     @classmethod
     async def get_(
             cls, id_: int, peer: models.Peer, types: tuple[MessageType, ...] = (MessageType.REGULAR,),
+            prefetch_all: bool = False,
     ) -> models.Message | None:
         types_query = Q()
         for message_type in types:
@@ -112,10 +124,12 @@ class Message(Model):
         query = peer_query & types_query & Q(id=id_)
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
-        return await Message.get_or_none(query).select_related("peer", "author", "media")
+        return await Message.get_or_none(query).select_related(
+            *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN)
+        )
 
     @classmethod
-    async def get_many(cls, ids: list[int], peer: models.Peer) -> list[models.Message]:
+    async def get_many(cls, ids: list[int], peer: models.Peer, prefetch_all: bool = False) -> list[models.Message]:
         peer_query = Q(peer=peer)
         if peer.type is PeerType.CHANNEL:
             peer_query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
@@ -123,7 +137,9 @@ class Message(Model):
         query = peer_query & Q(id__in=ids, type=MessageType.REGULAR)
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
-        return await Message.filter(query).select_related("peer", "author", "media")
+        return await Message.filter(query).select_related(
+            *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN)
+        )
 
     def _make_reply_to_header(self) -> MessageReplyHeader:
         return MessageReplyHeader(reply_to_msg_id=self.reply_to_id) if self.reply_to_id is not None else None
@@ -165,14 +181,8 @@ class Message(Model):
             return self._to_tl_service()
 
         media = None
-        if self.media is not None:
-            # TODO: this should be prefetched
-            await self.fetch_related("media", "media__file", "media__file__stickerset")
+        if self.media_id is not None:
             media = await self.media.to_tl(current_user) if self.media is not None else None
-
-        if self.fwd_header_id is not None:
-            # TODO: this should be prefetched
-            await self.fetch_related("fwd_header", "fwd_header__saved_peer")
 
         entities = []
         for entity in (self.entities or []):
@@ -225,7 +235,7 @@ class Message(Model):
             media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
             reply_to=self._make_reply_to_header(),
-            fwd_from=self.fwd_header.to_tl() if self.fwd_header is not None else None,
+            fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
             from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
             entities=entities,
             grouped_id=self.media_group_id,
@@ -313,8 +323,6 @@ class Message(Model):
             reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
     ) -> models.Message:
-        await self.fetch_related("author", "media", "reply_to", "fwd_header", "post_info", "via_bot")
-
         if new_author is None and self.author is not None:
             new_author = self.author
 
@@ -322,7 +330,7 @@ class Message(Model):
         if reply_to_internal_id:
             reply_to = await Message.get_or_none(peer=peer, internal_id=reply_to_internal_id)
         else:
-            if self.reply_to is not None:
+            if self.reply_to_id is not None:
                 reply_to = await Message.get_or_none(peer=peer, internal_id=self.reply_to.internal_id)
 
         if fwd_header is _SMTH_MISSING:
@@ -359,6 +367,8 @@ class Message(Model):
         return message
 
     async def create_fwd_header(self, peer: models.Peer) -> models.MessageFwdHeader | None:
+        # TODO: pass prefetched privacy rules as an argument
+
         if self.fwd_header is not None:
             from_user = self.fwd_header.from_user
             from_chat = self.fwd_header.from_chat
@@ -588,12 +598,12 @@ class Message(Model):
         if self.peer.type is PeerType.USER:
             return await Message.get_or_none(
                 peer__owner=for_user, peer__user=self.peer.owner_id, internal_id=self.internal_id,
-            ).select_related("peer", "author", "media")
+            ).select_related(*self.PREFETCH_FIELDS_MIN)
 
         if self.peer.type is PeerType.CHAT:
             peer_for_user = await self.peer.get_for_user(for_user)
             return await Message.get_or_none(
                 peer=peer_for_user, internal_id=self.internal_id,
-            ).select_related("peer", "author", "media")
+            ).select_related(*self.PREFETCH_FIELDS_MIN)
 
         raise Unreachable

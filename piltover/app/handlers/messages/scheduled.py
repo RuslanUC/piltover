@@ -48,7 +48,7 @@ async def get_scheduled_history(request: GetScheduledHistory, user: User) -> Mes
         return MessagesNotModified(count=len(message_ids))
 
     messages = await Message.filter(id__in=message_ids).order_by("scheduled_date").select_related(
-        "peer", "peer__user", "author", "media",
+        *Message.PREFETCH_FIELDS
     )
 
     return await _format_messages(user, messages)
@@ -60,7 +60,7 @@ async def get_scheduled_messages(request: GetScheduledMessages, user: User) -> M
 
     messages = await Message.filter(
         peer=peer, type=MessageType.SCHEDULED, id__in=request.id,
-    ).order_by("scheduled_date").select_related("peer", "peer__user", "author", "media")
+    ).order_by("scheduled_date").select_related(*Message.PREFETCH_FIELDS)
 
     return await _format_messages(user, messages)
 

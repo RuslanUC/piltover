@@ -25,13 +25,15 @@ class Dialog(Model):
 
     peer_id: int
 
-    def top_message_query(self) -> QuerySetSingle[models.Message]:
+    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.Message]:
         if self.peer.type is PeerType.CHANNEL:
             top_message_q = Q(peer=self.peer) | Q(peer__owner=None, peer__channel__id=self.peer.channel_id)
         else:
             top_message_q = Q(peer=self.peer)
 
-        return models.Message.filter(top_message_q).select_related("author", "peer").order_by("-id").first()
+        return models.Message.filter(top_message_q).select_related(
+            *(models.Message.PREFETCH_FIELDS if prefetch else ()),
+        ).order_by("-id").first()
 
     async def to_tl(self) -> TLDialog:
         in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = \
@@ -41,7 +43,7 @@ class Dialog(Model):
             f"Max read outbox message id is {out_read_max_id} for peer {self.peer.id} for user {self.peer.owner_id}"
         )
 
-        top_message = await self.top_message_query().values_list("id", flat=True)
+        top_message = await self.top_message_query(False).values_list("id", flat=True)
         draft = await models.MessageDraft.get_or_none(dialog=self)
         draft = draft.to_tl() if draft else None
 
