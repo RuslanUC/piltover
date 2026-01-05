@@ -589,7 +589,7 @@ async def delete_account(request: DeleteAccount, user: User) -> bool:
 
 
 @handler.on_request(GetChatThemes, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_chat_themes(request: GetChatThemes, user: User) -> Themes | ThemesNotModified:
+async def get_chat_themes(request: GetChatThemes) -> Themes | ThemesNotModified:
     query = Theme.filter(creator=None).order_by("id")
     ids = await query.values_list("id", flat=True)
 

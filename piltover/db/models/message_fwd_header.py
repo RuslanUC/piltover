@@ -31,10 +31,7 @@ class MessageFwdHeader(Model):
     saved_peer_id: int | None
     saved_from_id: int | None
 
-    async def to_tl(self) -> TLMessageFwdHeader:
-        if self.saved_peer is not None:
-            self.saved_peer = await self.saved_peer
-
+    def to_tl(self) -> TLMessageFwdHeader:
         from_id = None
         if self.from_user_id is not None:
             from_id = PeerUser(user_id=self.from_user_id)

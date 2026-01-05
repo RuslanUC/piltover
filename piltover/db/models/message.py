@@ -166,11 +166,13 @@ class Message(Model):
 
         media = None
         if self.media is not None:
+            # TODO: this should be prefetched
             await self.fetch_related("media", "media__file", "media__file__stickerset")
             media = await self.media.to_tl(current_user) if self.media is not None else None
 
-        if self.fwd_header is not None:
-            self.fwd_header = await self.fwd_header
+        if self.fwd_header_id is not None:
+            # TODO: this should be prefetched
+            await self.fetch_related("fwd_header", "fwd_header__saved_peer")
 
         entities = []
         for entity in (self.entities or []):
@@ -180,6 +182,7 @@ class Message(Model):
 
         post_info = None
         if self.channel_post and self.post_info_id is not None:
+            # TODO: this should be prefetched
             self.post_info = post_info = await self.post_info
 
         mentioned = False
@@ -222,7 +225,7 @@ class Message(Model):
             media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
             reply_to=self._make_reply_to_header(),
-            fwd_from=await self.fwd_header.to_tl() if self.fwd_header is not None else None,
+            fwd_from=self.fwd_header.to_tl() if self.fwd_header is not None else None,
             from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
             entities=entities,
             grouped_id=self.media_group_id,

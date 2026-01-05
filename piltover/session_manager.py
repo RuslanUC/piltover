@@ -251,7 +251,7 @@ class SessionManager:
     async def send(
             cls, obj: TLObject | Vector, user_id: int | list[int] | None = None, key_id: int | list[int] | None = None,
             channel_id: int | list[int] | None = None, auth_id: int | list[int] | None = None,
-            ignore_auth_id: int | list[int] | None = None,
+            ignore_auth_id: int | list[int] | None = None, min_layer: int | None = None,
     ) -> None:
         if not user_id and not key_id and not channel_id and not auth_id:
             return
@@ -281,6 +281,7 @@ class SessionManager:
                 auth_id=auth_id,
                 ignore_auth_id=ignore_auth_id,
                 obj=obj,
+                min_layer=min_layer,
             )
         else:
             message = MessageToUsers(
@@ -290,6 +291,7 @@ class SessionManager:
                 auth_ids=[auth_id] if isinstance(auth_id, int) else auth_id,
                 ignore_auth_id=[ignore_auth_id] if isinstance(ignore_auth_id, int) else ignore_auth_id,
                 obj=obj,
+                min_layer=min_layer,
             )
 
         await cls.broker.send(message)

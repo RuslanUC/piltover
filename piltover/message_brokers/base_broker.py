@@ -53,25 +53,31 @@ class BaseMessageBroker(ABC):
     async def _listen(self) -> None: ...
 
     def subscribe_user(self, user_id: int, session: Session) -> None:
-        if user_id:
-            if user_id not in self.subscribed_users:
-                self.subscribed_users[user_id] = set()
+        if not user_id:
+            return
 
-            self.subscribed_users[user_id].add(session)
+        if user_id not in self.subscribed_users:
+            self.subscribed_users[user_id] = set()
+
+        self.subscribed_users[user_id].add(session)
 
     def subscribe_key(self, key_id: int, session: Session) -> None:
-        if key_id:
-            if key_id not in self.subscribed_keys:
-                self.subscribed_keys[key_id] = set()
+        if not key_id:
+            return
 
-            self.subscribed_keys[key_id].add(session)
+        if key_id not in self.subscribed_keys:
+            self.subscribed_keys[key_id] = set()
+
+        self.subscribed_keys[key_id].add(session)
 
     def subscribe_auth(self, auth_id: int, session: Session) -> None:
-        if auth_id:
-            if auth_id not in self.subscribed_auths:
-                self.subscribed_auths[auth_id] = set()
+        if not auth_id:
+            return
 
-            self.subscribed_auths[auth_id].add(session)
+        if auth_id not in self.subscribed_auths:
+            self.subscribed_auths[auth_id] = set()
+
+        self.subscribed_auths[auth_id].add(session)
 
     def subscribe(self, session: Session) -> None:
         self.subscribed_sessions[session.session_id] = session
@@ -83,25 +89,31 @@ class BaseMessageBroker(ABC):
         self.channels_diff_update(session, [], session.channel_ids)
 
     def unsubscribe_user(self, user_id: int, session: Session) -> None:
-        if user_id in self.subscribed_users:
-            if session in self.subscribed_users[user_id]:
-                self.subscribed_users[user_id].remove(session)
-            if not self.subscribed_users[user_id]:
-                del self.subscribed_users[user_id]
+        if user_id not in self.subscribed_users:
+            return
+
+        if session in self.subscribed_users[user_id]:
+            self.subscribed_users[user_id].remove(session)
+        if not self.subscribed_users[user_id]:
+            del self.subscribed_users[user_id]
 
     def unsubscribe_key(self, key_id: int, session: Session) -> None:
-        if key_id in self.subscribed_keys:
-            if session in self.subscribed_keys[key_id]:
-                self.subscribed_keys[key_id].remove(session)
-            if not self.subscribed_keys[key_id]:
-                del self.subscribed_keys[key_id]
+        if key_id not in self.subscribed_keys:
+            return
+
+        if session in self.subscribed_keys[key_id]:
+            self.subscribed_keys[key_id].remove(session)
+        if not self.subscribed_keys[key_id]:
+            del self.subscribed_keys[key_id]
 
     def unsubscribe_auth(self, auth_id: int, session: Session) -> None:
-        if auth_id in self.subscribed_auths:
-            if session in self.subscribed_auths[auth_id]:
-                self.subscribed_auths[auth_id].remove(session)
-            if not self.subscribed_auths[auth_id]:
-                del self.subscribed_auths[auth_id]
+        if auth_id not in self.subscribed_auths:
+            return
+
+        if session in self.subscribed_auths[auth_id]:
+            self.subscribed_auths[auth_id].remove(session)
+        if not self.subscribed_auths[auth_id]:
+            del self.subscribed_auths[auth_id]
 
     def unsubscribe(self, session: Session) -> None:
         self.subscribed_sessions.pop(session.session_id, None)

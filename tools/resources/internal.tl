@@ -23,8 +23,8 @@ internal.rpc_response#22be0328 flags:# refresh_auth:flags.2?true transport_error
 
 // Message exchange between gateway and brokers
 
-internal.message_to_users#96d8b547 flags:# users:flags.0?Vector<long> channel_ids:flags.1?Vector<long> key_ids:flags.2?Vector<long> auth_ids:flags.4?Vector<long> ignore_auth_id:flags.5?Vector<long> obj:flags.3?Object = internal.MessageInternal;
-internal.message_to_users_short#e49a2c2a flags:# user:flags.0?long channel_id:flags.1?long key_id:flags.2?long auth_id:flags.4?long ignore_auth_id:flags.5?long obj:flags.3?Object = internal.MessageInternal;
+internal.message_to_users#96d8b547 flags:# users:flags.0?Vector<long> channel_ids:flags.1?Vector<long> key_ids:flags.2?Vector<long> auth_ids:flags.4?Vector<long> ignore_auth_id:flags.5?Vector<long> obj:flags.3?Object min_layer:flags.6?int = internal.MessageInternal;
+internal.message_to_users_short#e49a2c2a flags:# user:flags.0?long channel_id:flags.1?long key_id:flags.2?long auth_id:flags.4?long ignore_auth_id:flags.5?long obj:flags.3?Object min_layer:flags.6?int = internal.MessageInternal;
 internal.set_session_internal_push#92aeb648 key_id:long session_id:long user_id:long = internal.MessageInternal;
 
 internal.channel_subscribe#ae808cf6 flags:# subscribe:flags.0?true user_ids:Vector<long> channel_ids:Vector<long> = internal.ChannelSubscribe;

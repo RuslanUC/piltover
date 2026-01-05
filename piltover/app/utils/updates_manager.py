@@ -1230,7 +1230,8 @@ async def new_auth(user: User, auth: UserAuthorization) -> Updates:
                 FieldWithLayerRequirement(field="updates.0", min_layer=163, max_layer=layer),
             ],
         ),
-        user.id
+        user.id,
+        min_layer=163,
     )
 
     return updates
