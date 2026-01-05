@@ -600,7 +600,7 @@ async def get_chat_themes(request: GetChatThemes, user: User) -> Themes | Themes
     return Themes(
         hash=themes_hash,
         themes=[
-            await theme.to_tl(user)
+            await theme.to_tl()
             for theme in await query.select_related("document")
         ]
     )

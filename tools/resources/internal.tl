@@ -195,6 +195,8 @@ internal_access.file_reference_payload#af4f0049 file_id:long created_at:int = in
 
 wallPaperToFormatInternal#68dda86b flags:# id:long creator_id:long pattern:flags.0?true dark:flags.1?true slug:string document:Document settings:flags.2?WallPaperSettings = WallPaper;
 messageServiceToFormatInternal#efce62cb flags:# author_id:long id:int from_id:flags.0?Peer peer_id:Peer reply_to:flags.1?MessageReplyHeader date:int action:MessageAction ttl_period:flags.2?int = Message;
+themeToFormatInternal#150039e1 flags:# creator_id:flags.0?long for_chat:flags.5?true id:long slug:string title:string document:flags.2?Document settings:flags.3?Vector<ThemeSettings> emoticon:flags.6?string = Theme;
+
 
 ---functions---
 

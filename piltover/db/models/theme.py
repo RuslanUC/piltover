@@ -8,7 +8,7 @@ from tortoise import Model, fields
 from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.tl import Long
-from piltover.tl.types import Theme as TLTheme
+from piltover.tl.to_format import ThemeToFormat
 from piltover.tl.types.internal_access import AccessHashPayloadTheme
 
 
@@ -24,14 +24,13 @@ class Theme(Model):
     creator_id: int
     document_id: int | None
 
-    # TODO: create and use ThemeToFormat
-    async def to_tl(self, user: models.User) -> TLTheme:
-        return TLTheme(
-            creator=self.creator_id == user.id,
-            default=False,
+    async def to_tl(self) -> ThemeToFormat:
+        # TODO: cache tl theme
+        # TODO: count installs maybe
+        return ThemeToFormat(
+            creator_id=self.creator_id,
             for_chat=self.for_chat,
             id=self.id,
-            access_hash=-1,
             slug=self.slug,
             title=self.title,
             document=self.document.to_tl_document() if self.document is not None else None,
@@ -42,7 +41,6 @@ class Theme(Model):
                 )
             ],
             emoticon=self.emoticon,
-            installs_count=None,  # TODO: count installs maybe
         )
 
     @staticmethod
