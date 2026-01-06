@@ -123,7 +123,7 @@ class Session:
             channel = await Channel.get_or_none(id=lazy_obj.channel_id)
             return await channel.to_tl(user)
         if isinstance(lazy_obj, LazyMessage):
-            message = await DbMessage.get_or_none(id=lazy_obj.message_id).select_related("peer")
+            message = await DbMessage.get_or_none(id=lazy_obj.message_id).select_related(*DbMessage.PREFETCH_FIELDS)
             return await message.to_tl(user)
         if isinstance(lazy_obj, LazyUser):
             other_user = await User.get_or_none(id=lazy_obj.user_id)

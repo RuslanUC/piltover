@@ -93,7 +93,7 @@ class Message(Model):
     )
     PREFETCH_FIELDS = (
         *PREFETCH_FIELDS_MIN, "media__file", "media__file__stickerset", "media__poll", "fwd_header",
-        "fwd_header__saved_peer", "post_info",
+        "fwd_header__saved_peer", "post_info", "via_bot",
     )
     _PREFETCH_ALL_TOP_FIELDS = (
         "peer", "author", "media", "fwd_header", "reply_to", "via_bot",
@@ -190,11 +190,6 @@ class Message(Model):
             entities.append(objects[tl_id](**entity))
             entity["_"] = tl_id
 
-        post_info = None
-        if self.channel_post and self.post_info_id is not None:
-            # TODO: this should be prefetched
-            self.post_info = post_info = await self.post_info
-
         mentioned = False
         mention_id = cast(
             int | None,
@@ -240,8 +235,8 @@ class Message(Model):
             entities=entities,
             grouped_id=self.media_group_id,
             post=self.channel_post,
-            views=post_info.views if post_info is not None else None,
-            forwards=post_info.forwards if post_info is not None else None,
+            views=self.post_info.views if self.post_info_id is not None else None,
+            forwards=self.post_info.forwards if self.post_info_id is not None else None,
             post_author=self.post_author if self.channel_post else None,
             reactions=await self.to_tl_reactions(current_user) if with_reactions else None,
             mentioned=mentioned,
