@@ -1068,3 +1068,16 @@ async def test_messages_noforwards(exit_stack: AsyncExitStack) -> None:
     with pytest.raises(NotAcceptable, match="CHAT_FORWARDS_RESTRICTED"):
         assert await client.forward_messages("me", group.id, message2.id)
     assert await client.get_chat_history_count("me") == 2
+
+
+@pytest.mark.asyncio
+async def test_send_geo_in_pm(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
+
+    await client2.set_username("test2_username")
+
+    message = await client1.send_location("test2_username", latitude=42.42, longitude=24.24)
+    assert message.location
+    assert message.location.latitude == 42.42
+    assert message.location.longitude == 24.24

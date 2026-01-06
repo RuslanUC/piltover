@@ -69,7 +69,6 @@ class Message(Model):
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
-    # TODO: "file__stickerset" should be prefetched with media
     media: models.MessageMedia | None = fields.ForeignKeyField("models.MessageMedia", null=True, default=None)
     reply_to: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
     fwd_header: models.MessageFwdHeader | None = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
