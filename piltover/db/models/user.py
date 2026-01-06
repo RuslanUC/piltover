@@ -4,15 +4,15 @@ import hashlib
 import hmac
 from datetime import date
 from enum import auto, Enum
-from typing import overload, Literal, Iterable
+from typing import Iterable
 
 from tortoise import fields, Model
 
 from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
-from piltover.tl import UserProfilePhotoEmpty, UserProfilePhoto, PhotoEmpty, Birthday, Long
-from piltover.tl.types import User as TLUser, PeerColor, Photo
+from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long
+from piltover.tl.types import User as TLUser, PeerColor
 from piltover.tl.types.internal_access import AccessHashPayloadUser
 
 
@@ -58,33 +58,6 @@ class User(Model):
         username = await self.get_username()
         if username is not None:
             return username.username
-
-    @overload
-    async def get_photo(
-            self, current_user: models.User, profile_photo: Literal[True] = True,
-    ) -> UserProfilePhoto | UserProfilePhotoEmpty:
-        ...
-
-    @overload
-    async def get_photo(
-            self, current_user: models.User, profile_photo: Literal[False] = False,
-    ) -> Photo | PhotoEmpty:
-        ...
-
-    async def get_photo(
-            self, current_user: models.User, profile_photo: bool = False,
-    ) -> UserProfilePhoto | UserProfilePhotoEmpty | Photo | PhotoEmpty:
-        empty = _PROFILE_PHOTO_EMPTY if profile_photo else _PHOTO_EMPTY
-        if not await models.PrivacyRule.has_access_to(current_user, self, PrivacyRuleKeyType.PROFILE_PHOTO):
-            return empty
-
-        photo = await self.get_db_photo()
-        if photo is None:
-            return empty
-
-        if profile_photo:
-            return photo.to_tl_profile()
-        return photo.to_tl()
 
     async def get_db_photo(self) -> models.UserPhoto | None:
         return await models.UserPhoto.get_or_none(user=self, current=True).select_related("file")

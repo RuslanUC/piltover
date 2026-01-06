@@ -12,7 +12,6 @@ from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
     InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, PeerChannel
 
-
 InputPeers = InputPeerSelf | InputPeerUser | InputUserSelf | InputUser | InputPeerChat | InputChannel \
              | InputChannelEmpty | InputPeerChannel
 InputOnlyPeers = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel

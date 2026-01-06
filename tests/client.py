@@ -19,7 +19,8 @@ from pyrogram.raw.types import Updates, InputPrivacyKeyAddedByPhone, InputPrivac
     InputPrivacyKeyPhoneNumber, InputPrivacyKeyPhoneCall, InputPrivacyKeyProfilePhoto, InputPrivacyKeyStatusTimestamp, \
     InputPrivacyKeyVoiceMessages, InputPrivacyKeyPhoneP2P, InputPrivacyValueAllowAll, InputPrivacyValueAllowUsers, \
     InputPrivacyValueDisallowChatParticipants, InputPrivacyValueDisallowUsers, InputPrivacyValueDisallowContacts, \
-    InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts
+    InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts, UpdateShort, \
+    UpdatesCombined
 from pyrogram.session import Session as PyroSession
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
@@ -320,8 +321,10 @@ class TestClient(Client):
         return await super().__aexit__(*args)
 
     async def handle_updates(self, updates: PyroTLObject, only_add: bool = False) -> ...:
-        if isinstance(updates, Updates):
+        if isinstance(updates, (Updates, UpdatesCombined)):
             _updates = updates.updates
+        elif isinstance(updates, UpdateShort):
+            _updates = [updates.update]
         else:
             _updates = updates
 

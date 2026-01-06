@@ -1,5 +1,6 @@
 from datetime import timedelta, datetime
 from io import BytesIO
+from time import time
 from typing import cast
 from uuid import uuid4
 
@@ -20,7 +21,7 @@ from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, M
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
-from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken
+from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken, UpdateShort
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode, ImportBotAuthorization
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
@@ -239,7 +240,7 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
 
 
 @handler.on_request(ExportLoginToken, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
-async def export_login_token():  # TODO: test
+async def export_login_token():
     ctx = request_ctx.get()
     if ctx.auth_id:
         auth = await UserAuthorization.get_or_none(id=ctx.auth_id).select_related("user")
@@ -264,7 +265,7 @@ async def export_login_token():  # TODO: test
 
 
 @handler.on_request(AcceptLoginToken, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def accept_login_token(request: AcceptLoginToken, user: User) -> Authorization:  # TODO: test
+async def accept_login_token(request: AcceptLoginToken, user: User) -> Authorization:
     login = await QrLogin.from_token(request.token)
     if login is None:
         raise ErrorRpc(error_code=400, error_message="AUTH_TOKEN_INVALID")
@@ -278,8 +279,16 @@ async def accept_login_token(request: AcceptLoginToken, user: User) -> Authoriza
         ip="127.0.0.1", user=user, key=login.key, mfa_pending=password.password is not None,
     )
 
+    login.auth = auth
+    await login.save(update_fields=["auth_id"])
+
     key_ids = await login.key.get_ids()
-    await SessionManager.send(UpdateLoginToken(), key_id=key_ids)
+    await SessionManager.send(
+        UpdateShort(
+            update=UpdateLoginToken(),
+            date=int(time()),
+        ), key_id=key_ids,
+    )
 
     return auth.to_tl()
 

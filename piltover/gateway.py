@@ -451,6 +451,7 @@ class Client:
         packet = await self.read_packet()
 
         if isinstance(packet, EncryptedMessagePacket):
+            await self._set_auth_data(packet.auth_key_id)
             decrypted = await self.decrypt(packet)
             if packet.needs_quick_ack:
                 await self._write_packet(self._create_quick_ack(decrypted))
@@ -470,6 +471,8 @@ class Client:
 
             session, created = self._get_session(decrypted.session_id)
             if created:
+                session.online = True
+                SessionManager.broker.subscribe_key(packet.auth_key_id, session)
                 logger.info(f"({self.peername}) Created session {session.session_id}")
                 await self.send(
                     NewSessionCreated(
@@ -500,25 +503,29 @@ class Client:
             logger.debug(decoded)
             await self.handle_unencrypted_message(decoded)
 
-    async def _set_auth_data(self, auth_key_id: int) -> None:
-        if self.auth_data is None or not self.auth_data.check_key(auth_key_id):
-            got = await self.server.get_auth_key(auth_key_id)
-            if got is None:
-                logger.info(f"Client ({self.peername}) sent unknown auth_key_id {auth_key_id}, disconnecting with 404")
+    async def _set_auth_data(self, auth_key_id: int) -> bool:
+        if self.auth_data is not None and self.auth_data.check_key(auth_key_id):
+            return False
+
+        got = await self.server.get_auth_key(auth_key_id)
+        if got is None:
+            logger.info(f"Client ({self.peername}) sent unknown auth_key_id {auth_key_id}, disconnecting with 404")
+            raise Disconnection(404)
+        self.auth_data = AuthData(*got)
+        _, _, perm_auth_key_id = got
+
+        if perm_auth_key_id is not None:
+            if (perm_key := await AuthKey.get_or_none(id=perm_auth_key_id)) is None:
+                logger.error(
+                    f"Somehow we managed to get perm auth key {perm_auth_key_id}, but now it does not exist"
+                )
                 raise Disconnection(404)
-            self.auth_data = AuthData(*got)
-            _, _, perm_auth_key_id = got
 
-            if perm_auth_key_id is not None:
-                if (perm_key := await AuthKey.get_or_none(id=perm_auth_key_id)) is None:
-                    logger.error(
-                        f"Somehow we managed to get perm auth key {perm_auth_key_id}, but now it does not exist"
-                    )
-                    raise Disconnection(404)
+            self.layer = perm_key.layer
 
-                self.layer = perm_key.layer
+        self._update_salts_maybe(True)
 
-            self._update_salts_maybe(True)
+        return True
 
     def make_salt(self, auth_key_id: int, timestamp: int) -> bytes:
         return hmac.new(self.server.salt_key, Long.write(auth_key_id) + Int.write(timestamp), hashlib.sha1).digest()[:8]

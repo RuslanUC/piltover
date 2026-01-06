@@ -1,22 +1,26 @@
 import hashlib
+from contextlib import AsyncExitStack
 from os import urandom
 from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from fastrand import xorshift128plus_bytes
 from loguru import logger
 from mtproto import ConnectionRole
 from mtproto.packets import DecryptedMessagePacket
+from pyrogram.errors import SessionPasswordNeeded
 from pyrogram.raw.core import Message, TLObject
-from pyrogram.raw.functions.auth import BindTempAuthKey
+from pyrogram.raw.functions.auth import BindTempAuthKey, ExportLoginToken, AcceptLoginToken
 from pyrogram.raw.functions.help import GetCountriesList
-from pyrogram.raw.types import BindAuthKeyInner
+from pyrogram.raw.types import BindAuthKeyInner, UpdateLoginToken
+from pyrogram.raw.types.auth import LoginToken, LoginTokenSuccess
 from pyrogram.raw.types.help import CountriesList, CountriesListNotModified
 from pyrogram.session import Auth
 from pyrogram.session.internals import MsgFactory
 from tortoise.expressions import F
 
-from piltover.db.models import TempAuthKey
+from piltover.db.models import TempAuthKey, AuthKey
 from piltover.tl import Long
 from tests.client import TestClient, TransportError
 
@@ -238,3 +242,94 @@ async def test_temp_auth_key_expired_rebind() -> None:
     async with temp_client:
         user_me_test = await temp_client.get_me()
         assert user_me_test.id == user_me.id
+
+
+@pytest.mark.asyncio
+async def test_login_token_export_accept(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2 = TestClient()
+
+    auth_key = xorshift128plus_bytes(256)
+    key_id = Long.read_bytes(hashlib.sha1(auth_key).digest()[-8:])
+    await AuthKey.create(id=key_id, auth_key=auth_key)
+
+    await client2.storage.dc_id(2)
+    await client2.storage.auth_key(auth_key)
+    await client2.storage.is_bot(False)
+    await client2.storage.test_mode(False)
+    await client2.storage.user_id(0)
+
+    await client2.connect()
+
+    export_request = ExportLoginToken(
+        api_id=client2.api_id,
+        api_hash=client2.api_hash,
+        except_ids=[],
+    )
+
+    token = await client2.invoke(export_request)
+    assert isinstance(token, LoginToken)
+
+    await client1.invoke(AcceptLoginToken(token=token.token))
+    await client2.expect_update(UpdateLoginToken, 3)
+
+    token = await client2.invoke(export_request)
+    assert isinstance(token, LoginTokenSuccess)
+
+    token2 = await client2.invoke(export_request)
+    assert token == token2
+
+    me1 = await client1.get_me()
+    me2 = await client2.get_me()
+
+    assert me1 == me2
+
+    await client2.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_login_token_export_accept_2fa(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    await client1.enable_cloud_password("123456")
+    client2 = TestClient()
+
+    auth_key = xorshift128plus_bytes(256)
+    key_id = Long.read_bytes(hashlib.sha1(auth_key).digest()[-8:])
+    await AuthKey.create(id=key_id, auth_key=auth_key)
+
+    await client2.storage.dc_id(2)
+    await client2.storage.auth_key(auth_key)
+    await client2.storage.is_bot(False)
+    await client2.storage.test_mode(False)
+    await client2.storage.user_id(0)
+
+    await client2.connect()
+
+    export_request = ExportLoginToken(
+        api_id=client2.api_id,
+        api_hash=client2.api_hash,
+        except_ids=[],
+    )
+
+    token = await client2.invoke(export_request)
+    assert isinstance(token, LoginToken)
+
+    await client1.invoke(AcceptLoginToken(token=token.token))
+    await client2.expect_update(UpdateLoginToken, 3)
+
+    token = await client2.invoke(export_request)
+    assert isinstance(token, LoginTokenSuccess)
+
+    with pytest.raises(SessionPasswordNeeded):
+        await client2.get_me()
+
+    assert await client2.check_password("123456")
+
+    me1 = await client1.get_me()
+    me2 = await client2.get_me()
+
+    assert me1 == me2
+
+    await client2.disconnect()
+
+    
