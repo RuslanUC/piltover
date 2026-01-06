@@ -1081,3 +1081,15 @@ async def test_send_geo_in_pm(exit_stack: AsyncExitStack) -> None:
     assert message.location
     assert message.location.latitude == 42.42
     assert message.location.longitude == 24.24
+
+
+@pytest.mark.asyncio
+async def test_send_dice_to_self(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    for dice_emoji in ("🎲", "🎯", "🏀", "⚽", "🎳", "🎰"):
+        message = await client.send_dice("me", dice_emoji)
+        assert message.dice is not None
+        assert message.dice.emoji == dice_emoji
+        assert message.dice.value >= 1
+        assert message.dice.value <= 64 if dice_emoji == "🎰" else 6
