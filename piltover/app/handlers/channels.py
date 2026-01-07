@@ -17,7 +17,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
     AdminLogEntryAction
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
-    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact
+    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, ChannelParticipantBan
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -450,21 +450,28 @@ async def edit_banned(request: EditBanned, user: User):
     if target_peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
     target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=peer.channel)
-    if target_participant is None:
-        raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
-
-    # TODO: remove participant if VIEW_MESSAGES is banned
-    # TODO: check if target_participant is not admin
-    # TODO: create AdminLogEntry
 
     new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
-    if target_participant.banned_rights == new_banned_rights:
+    if target_participant is not None and target_participant.banned_rights == new_banned_rights:
         return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
 
-    target_participant.banned_rights = new_banned_rights
-    await target_participant.save(update_fields=["banned_rights"])
+    # TODO: check if target_participant is not an admin
 
-    await upd.update_channel_for_user(peer.channel, target_peer.user)
+    if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
+        async with in_transaction():
+            if target_participant is not None:
+                await target_participant.delete()
+            await ChannelParticipantBan.create(user=target_peer.user, channel=peer.channel)
+    else:
+        if target_participant is not None:
+            target_participant.banned_rights = new_banned_rights
+            await target_participant.save(update_fields=["banned_rights"])
+
+    # TODO: create AdminLogEntry
+
+    if target_participant is not None:
+        await upd.update_channel_for_user(peer.channel, target_peer.user)
+
     return Updates(
         updates=[UpdateChannel(channel_id=peer.channel.make_id())],
         users=[],

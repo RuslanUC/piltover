@@ -414,6 +414,10 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
 
 @handler.on_request(EditChatDefaultBannedRights)
 async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, user: User) -> Updates:
+    new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
+    if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
+        raise ErrorRpc(error_code=406, error_message="BANNED_RIGHTS_INVALID")
+
     peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
     participant = await ChatParticipant.get_or_none(**Chat.or_channel(peer.chat_or_channel), user=user)
@@ -421,7 +425,6 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat_or_channel = peer.chat_or_channel
-    new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
 
     if chat_or_channel.banned_rights == new_banned_rights:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
