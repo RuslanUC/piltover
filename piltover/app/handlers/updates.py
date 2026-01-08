@@ -1,3 +1,4 @@
+from asyncio import sleep
 from datetime import datetime
 from time import time
 
@@ -74,7 +75,9 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         peer__owner=user, date__gt=date, type__not=MessageType.SCHEDULED,
     ).select_related(*Message.PREFETCH_FIELDS).order_by("id")
     new_updates = await Update.filter(user=user, pts__gt=request.pts).order_by("pts")
-    new_secret = await SecretUpdate.filter(authorization__id=ctx.auth_id, id__gt=last_local_secret_id)
+    new_secret = await SecretUpdate.filter(
+        authorization__id=ctx.auth_id, id__gt=last_local_secret_id
+    ).select_related("message_file", "message_file__file")
     logger.trace(f"User {user.id} has {len(new_secret)} secret updates")
 
     if not new and not new_updates and not new_secret:
@@ -103,7 +106,8 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
             other_updates.append(update_tl)
 
     for secret_update in new_secret:
-        secret_update_tl = await secret_update.to_tl()
+        await sleep(0)
+        secret_update_tl = secret_update.to_tl()
         if secret_update_tl is None:
             continue
         if secret_update.type is SecretUpdateType.NEW_MESSAGE:

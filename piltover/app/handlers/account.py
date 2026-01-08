@@ -204,7 +204,7 @@ async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRu
     users, chats, channels = await ucc.resolve(user)
 
     return PrivacyRules(
-        rules=await rule.to_tl_rules(),
+        rules=rule.to_tl_rules(),
         chats=[*chats, *channels],
         users=users,
     )

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import cast, Iterable
 
 from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySetSingle
+from tortoise.transactions import in_transaction
 
 from piltover.db import models
 from piltover.db.enums import DialogFolderId, PeerType
@@ -79,3 +80,27 @@ class Dialog(Model):
     async def get_or_create_hidden(cls, peer: models.Peer) -> Dialog:
         dialog, _ = await cls.get_or_create(peer=peer, defaults={"visible": False})
         return dialog
+
+    @classmethod
+    async def create_or_unhide_bulk(cls, peers: Iterable[models.Peer]) -> None:
+        valid_peers = [peer for peer in peers if peer.owner_id is not None]
+
+        if not valid_peers:
+            return
+
+        async with in_transaction():
+            existing = {
+                dialog.peer_id: dialog
+                for dialog in await cls.select_for_update().filter(peer__id__in=[peer.id for peer in valid_peers])
+            }
+
+            to_create = [cls(peer=peer, visible=True) for peer in valid_peers if peer.id not in existing]
+            to_update = [dialog for dialog in existing.values() if not dialog.visible]
+            for dialog in to_update:
+                dialog.visible = True
+
+            if to_create:
+                await cls.bulk_create(to_create)
+            if to_update:
+                await cls.bulk_update(to_update, fields=["visible"])
+

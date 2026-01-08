@@ -115,7 +115,7 @@ class PrivacyRule(Model):
 
         return rule
 
-    async def to_tl_rules(self) -> list[TLPrivacyRule]:
+    def to_tl_rules(self) -> list[TLPrivacyRule]:
         rules = []
 
         if self.allow_all:
@@ -127,7 +127,7 @@ class PrivacyRule(Model):
             rules.append(PrivacyValueDisallowAll())
 
         if not self.exceptions._fetched:
-            await self.fetch_related("exceptions")
+            raise RuntimeError("Privacy rule exceptions must be prefetched")
 
         allow_users = []
         disallow_users = []

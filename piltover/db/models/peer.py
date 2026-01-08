@@ -50,18 +50,26 @@ class Peer(Model):
         return await Peer.get_or_none(owner=user, user__id=user_id, type=PeerType.USER).select_related("user")
 
     @classmethod
-    async def from_chat_id(cls, user: models.User, chat_id: int, allow_migrated: bool = False) -> Peer | None:
+    async def from_chat_id(
+            cls, user: models.User, chat_id: int, allow_migrated: bool = False,
+            select_related: tuple[str, ...] | None = None,
+    ) -> Peer | None:
         chat_id = models.Chat.norm_id(chat_id)
         query = Q(owner=user, chat__id=chat_id, type=PeerType.CHAT)
         if not allow_migrated:
             query &= Q(chat__migrated=False)
-        return await Peer.get_or_none(query).select_related("owner", "chat")
+
+        if select_related is None:
+            select_related = ()
+
+        return await Peer.get_or_none(query).select_related("owner", "chat", *select_related)
 
     @classmethod
     async def from_chat_id_raise(
             cls, user: models.User, chat_id: int, message: str = "CHAT_ID_INVALID", allow_migrated: bool = False,
+            select_related: tuple[str, ...] | None = None,
     ) -> Peer:
-        if (peer := await Peer.from_chat_id(user, chat_id, allow_migrated)) is not None:
+        if (peer := await Peer.from_chat_id(user, chat_id, allow_migrated, select_related)) is not None:
             return peer
         raise ErrorRpc(error_code=400, error_message=message)
 
@@ -82,8 +90,9 @@ class Peer(Model):
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user.id):
             if peer_types is not None and PeerType.SELF not in peer_types:
                 return None
-            peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF, user=user)
-            peer.owner = await peer.owner
+            peer, created = await Peer.get_or_create(owner=user, type=PeerType.SELF, user=user)
+            if not created:
+                peer.owner = peer.user = user
             return peer
 
         if isinstance(input_peer, (InputPeerUser, InputUser)):
@@ -138,7 +147,7 @@ class Peer(Model):
             if peer.blocked_at is not None:
                 return []
             if not created:
-                await peer.fetch_related("owner")
+                peer.owner = self.user
             return [peer]
         elif self.type is PeerType.CHAT:
             return await Peer.filter(

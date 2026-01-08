@@ -87,7 +87,10 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
     if system_user is None:
         return resp
 
-    peer_system, _ = await Peer.get_or_create(owner=user, user=system_user, type=PeerType.USER)
+    peer_system, created = await Peer.get_or_create(owner=user, user=system_user, type=PeerType.USER)
+    if not created:
+        peer_system.owner = user
+        peer_system.user = system_user
 
     text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
     message = await Message.create_for_peer(

@@ -122,12 +122,11 @@ async def get_chats(request: GetChats, user: User) -> Chats:
 
 @handler.on_request(GetFullChat)
 async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
-    peer = await Peer.from_chat_id_raise(user, request.chat_id, allow_migrated=True)
+    peer = await Peer.from_chat_id_raise(user, request.chat_id, allow_migrated=True, select_related=("chat__photo",))
 
     chat = peer.chat
     photo = PhotoEmpty(id=0)
     if chat.photo_id:
-        await chat.fetch_related("photo")
         photo = chat.photo.to_tl_photo()
 
     invite = None
@@ -452,7 +451,7 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
 
 @handler.on_request(MigrateChat, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def migrate_chat(request: MigrateChat, user: User) -> Updates:
-    peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    peer = await Peer.from_chat_id_raise(user, request.chat_id, select_related=("chat__creator", "chat__photo"))
     if peer.type is not PeerType.CHAT:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -461,7 +460,6 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat = peer.chat
-    await chat.fetch_related("creator", "photo")
 
     participants = await ChatParticipant.filter(chat=chat).select_related("user")
 

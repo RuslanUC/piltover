@@ -224,6 +224,7 @@ class Worker(MessageHandler):
 
         try:
             with measure_time(f"handler({call.obj.tlname()})"):
+                # TODO: wrap handler call in in_transaction?
                 result = await handler(call.obj, user)
         except ErrorRpc as e:
             reason = f", reason: {e.reason}" if e.reason is not None else ""

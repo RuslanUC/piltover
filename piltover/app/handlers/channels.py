@@ -190,8 +190,6 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
 
 @handler.on_request(GetFullChannel)
 async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatFull:
-    # TODO: check if user is banned
-
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
         select_related=("channel__discussion", "channel__photo",),
@@ -482,7 +480,6 @@ async def edit_banned(request: EditBanned, user: User):
     if target_participant is not None:
         participant_tl_before = target_participant.to_tl_channel_with_creator(user, channel.creator_id)
 
-    # TODO: remove join requests if created
     target_participant, created = await ChatParticipant.update_or_create(
         user=target_peer.user,
         channel=channel,
@@ -494,6 +491,11 @@ async def edit_banned(request: EditBanned, user: User):
             "invited_at": datetime.now(UTC),
         },
     )
+
+    if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
+        await ChatInviteRequest.filter(id__in=Subquery(
+            ChatInviteRequest.filter(user=target_peer.user, invite__channel=channel).values_list("id", flat=True)
+        ))
 
     await AdminLogEntry.create(
         channel=channel,

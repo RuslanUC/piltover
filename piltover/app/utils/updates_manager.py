@@ -2,7 +2,6 @@ from time import time
 
 from loguru import logger
 from tortoise.expressions import Q
-from tortoise.queryset import QuerySet
 
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
@@ -53,9 +52,6 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
     users, chats, channels = await ucc.resolve_nontl()
 
     for peer, message in messages.items():
-        if isinstance(peer.owner, QuerySet):
-            await peer.fetch_related("owner")
-
         users_tl = await User.to_tl_bulk(users, peer.owner)
         chats_tl = await Chat.to_tl_bulk(chats, peer.owner)
         channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
@@ -359,9 +355,6 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
     users, chats, channels = await ucc.resolve_nontl()
 
     for peer, message in messages.items():
-        if isinstance(peer.owner, QuerySet):
-            await peer.fetch_related("owner")
-
         pts = await State.add_pts(peer.owner, 1)
 
         updates_to_create.append(
@@ -552,9 +545,6 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
     users, chats, channels = await ucc.resolve_nontl()
 
     for peer, message in messages.items():
-        if isinstance(peer.owner, QuerySet):
-            await peer.fetch_related("owner", "chat")
-
         pts = await State.add_pts(peer.owner, 1)
 
         updates_to_create.append(
@@ -579,7 +569,7 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
             users=await User.to_tl_bulk(users, peer.owner),
             chats=[
                 *await Chat.to_tl_bulk(chats, peer.owner),
-                *await Channel.to_tl_bulk(channels, peer.owner)
+                *await Channel.to_tl_bulk(channels, peer.owner),
             ],
         )
 
@@ -1148,7 +1138,7 @@ async def send_encrypted_update(update: SecretUpdate) -> None:
         f"to user {update.authorization.user_id} (auth {update.authorization.id})"
     )
     await SessionManager.send(
-        UpdatesWithDefaults(updates=[await update.to_tl()]),
+        UpdatesWithDefaults(updates=[update.to_tl()]),
         auth_id=update.authorization_id,
     )
 

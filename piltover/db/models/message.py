@@ -51,7 +51,8 @@ class Message(Model):
     date: datetime = fields.DatetimeField(default=lambda: datetime.now(UTC))
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
-    random_id: str = fields.CharField(max_length=24, null=True, default=None)
+    # TODO: use BigIntField for random_id
+    random_id: str | None = fields.CharField(max_length=24, null=True, default=None)
     # TODO: use tl for entities
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
     extra_info: bytes | None = fields.BinaryField(null=True, default=None)
@@ -284,8 +285,7 @@ class Message(Model):
 
         send_date = datetime.now(UTC)
         for to_peer in peers:
-            await to_peer.fetch_related("owner", "user")
-            await models.Dialog.create_or_unhide(to_peer)
+            # TODO: probably create in bulk too?
             messages[to_peer] = await Message.create(
                 from_scheduled=to_peer == self.peer,
                 internal_id=self.internal_id,
@@ -295,6 +295,7 @@ class Message(Model):
                 author=self.author,
                 peer=to_peer,
                 media=self.media,
+                # TODO: shouldn't reply_to be different for every peer ???
                 reply_to=self.reply_to,
                 fwd_header=self.fwd_header,
                 entities=self.entities,
@@ -304,6 +305,8 @@ class Message(Model):
                 post_info=self.post_info,
                 ttl_period_days=self.ttl_period_days,
             )
+
+        await models.Dialog.create_or_unhide_bulk(peers)
 
         related_users, related_chats, related_channels = await models.MessageRelated.get_for_message(self)
         await self._create_related(messages.values(), related_users, related_chats, related_channels)
@@ -433,28 +436,32 @@ class Message(Model):
             peers.extend(await peer.get_opposite())
         elif opposite and peer.type is PeerType.CHANNEL:
             peers = [await models.Peer.get_or_none(owner=None, channel=peer.channel, type=PeerType.CHANNEL)]
+
         messages: dict[models.Peer, Message] = {}
 
         related_user_ids: set[int] = set()
         related_chat_ids: set[int] = set()
         related_channel_ids: set[int] = set()
 
+        replies = {
+            message.peer_id: message
+            for message in await Message.filter(peer__id__in=[p.id for p in peers], internal_id=reply.internal_id)
+        } if reply else {}
+
         internal_id = Snowflake.make_id()
         for to_peer in peers:
-            await to_peer.fetch_related("owner", "user")
-            if unhide_dialog:
-                await models.Dialog.create_or_unhide(to_peer)
-            if to_peer == peer and random_id is not None:
-                message_kwargs["random_id"] = str(random_id)
             messages[to_peer] = message = await Message.create(
                 internal_id=internal_id,
                 peer=to_peer,
-                reply_to=(await Message.get_or_none(peer=to_peer, internal_id=reply.internal_id)) if reply else None,
+                reply_to=replies.get(to_peer.id, None),
                 author=author,
-                **message_kwargs
+                random_id=str(random_id) if to_peer == peer and random_id is not None else None,
+                **message_kwargs,
             )
-            message_kwargs.pop("random_id", None)
             message._fill_related(related_user_ids, related_chat_ids, related_channel_ids)
+
+        if unhide_dialog:
+            await models.Dialog.create_or_unhide_bulk(peers)
 
         await cls._create_related_from_ids(messages.values(), related_user_ids, related_chat_ids, related_channel_ids)
 

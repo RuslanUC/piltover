@@ -525,7 +525,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     edit_date = datetime.now(UTC)
     for message in await Message.filter(
             internal_id=message.internal_id, peer__id__in=[p.id for p in peers],
-    ).select_related(*Message.PREFETCH_FIELDS):
+    ).select_related(*Message.PREFETCH_FIELDS, "peer__owner"):
         _edit_message(message, edit_date)
         messages[message.peer] = message
 

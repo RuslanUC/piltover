@@ -577,7 +577,7 @@ class Update(Model):
 
                 return UpdatePrivacy(
                     key=rule.key.to_tl(),
-                    rules=await rule.to_tl_rules(),
+                    rules=rule.to_tl_rules(),
                 )
 
         return None

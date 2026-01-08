@@ -30,7 +30,7 @@ class SecretUpdate(Model):
     chat_id: int
     message_file_id: int | None
 
-    async def to_tl(self) -> UpdateTypes | None:
+    def to_tl(self) -> UpdateTypes | None:
         match self.type:
             case SecretUpdateType.NEW_MESSAGE:
                 if self.message_is_service:
@@ -43,9 +43,6 @@ class SecretUpdate(Model):
                 else:
                     file = EncryptedFileEmpty()
                     if self.message_file_id is not None:
-                        await self.fetch_related(
-                            "authorization", "authorization__user", "message_file", "message_file__file",
-                        )
                         file = self.message_file.to_tl()
 
                     message = EncryptedMessage(
