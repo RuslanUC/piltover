@@ -20,7 +20,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
     InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty, \
-    InputStickerSetAnimatedEmoji, StickerSet, Document, TLObjectVector
+    Document, TLObjectVector
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets, GetRecentStickers, \
     ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers, GetCustomEmojiDocuments, GetEmojiStickers
