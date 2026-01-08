@@ -74,6 +74,8 @@ build-backend = "poetry.core.masonry.api"
 [tool.coverage.run]
 data_file = "coverage.coverage"
 omit = [
-    "*piltover/tl.zip/*",
-    "*piltover/tl/*",
+    "*piltover/tl/base/*",
+    "*piltover/tl/types/*",
+    "*piltover/tl/functions/*",
+    "*piltover/tl/all.py",
 ]

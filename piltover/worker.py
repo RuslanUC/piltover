@@ -49,7 +49,10 @@ HandlerFunc = (Callable[[], HandlerResult] |
 
 
 class RequestHandler:
-    __slots__ = ("func", "flags", "has_request_arg", "has_user_arg",)
+    __slots__ = (
+        "func", "flags", "has_request_arg", "has_user_arg",
+        "auth_required", "allow_mfa_pending", "bots_not_allowed", "refresh_session", "users_not_allowed",
+    )
 
     def __init__(self, func: HandlerFunc, flags: int):
         self.func = func
@@ -58,20 +61,11 @@ class RequestHandler:
         self.has_request_arg = "request" in func_args
         self.has_user_arg = "user" in func_args
 
-    def auth_required(self) -> bool:
-        return not (self.flags & ReqHandlerFlags.AUTH_NOT_REQUIRED)
-
-    def allow_mfa_pending(self) -> bool:
-        return bool(self.flags & ReqHandlerFlags.ALLOW_MFA_PENDING)
-
-    def bots_not_allowed(self) -> bool:
-        return bool(self.flags & ReqHandlerFlags.BOT_NOT_ALLOWED)
-
-    def refresh_session(self) -> bool:
-        return bool(self.flags & ReqHandlerFlags.REFRESH_SESSION)
-
-    def users_not_allowed(self) -> bool:
-        return bool(self.flags & ReqHandlerFlags.USER_NOT_ALLOWED)
+        self.auth_required = not (self.flags & ReqHandlerFlags.AUTH_NOT_REQUIRED)
+        self.allow_mfa_pending = bool(self.flags & ReqHandlerFlags.ALLOW_MFA_PENDING)
+        self.bots_not_allowed = bool(self.flags & ReqHandlerFlags.BOT_NOT_ALLOWED)
+        self.refresh_session = bool(self.flags & ReqHandlerFlags.REFRESH_SESSION)
+        self.users_not_allowed = bool(self.flags & ReqHandlerFlags.USER_NOT_ALLOWED)
 
     async def __call__(self, request: TLObject, user: User | None) -> Any:
         kwargs = {}
@@ -178,10 +172,6 @@ class Worker(MessageHandler):
     async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse:
         call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
 
-        #obj, call.obj = call.obj, None
-        #logger.trace(f"Got CallRpc: {call!r}")
-        #call.obj = obj
-
         if not (handler := self.request_handlers.get(call.obj.tlid())):
             logger.warning(f"No handler found for obj: {call.obj}")
             return RpcResponse(obj=RpcResult(
@@ -190,28 +180,28 @@ class Worker(MessageHandler):
             ))
 
         # TODO: send this error from gateway
-        if call.is_bot and handler.bots_not_allowed():
+        if call.is_bot and handler.bots_not_allowed:
             return RpcResponse(obj=RpcResult(
                 req_msg_id=call.message_id,
                 result=RpcError(error_code=400, error_message="BOT_METHOD_INVALID"),
             ))
-        elif not call.is_bot and handler.users_not_allowed():
+        elif not call.is_bot and handler.users_not_allowed:
             return RpcResponse(obj=RpcResult(
                 req_msg_id=call.message_id,
                 result=RpcError(error_code=400, error_message="USER_BOT_REQUIRED"),
             ))
 
         user = None
-        if handler.auth_required() or handler.has_user_arg:
+        if handler.auth_required or handler.has_user_arg:
             try:
-                user = await self.get_user(call, handler.allow_mfa_pending())
+                user = await self.get_user(call, handler.allow_mfa_pending)
             except ErrorRpc as e:
                 return RpcResponse(obj=RpcResult(
                     req_msg_id=call.message_id,
                     result=RpcError(error_code=e.error_code, error_message=e.error_message),
                 ))
 
-            if user is None and handler.auth_required():
+            if user is None and handler.auth_required:
                 return RpcResponse(obj=RpcResult(
                     req_msg_id=call.message_id,
                     result=RpcError(error_code=401, error_message="AUTH_KEY_UNREGISTERED"),
@@ -245,7 +235,7 @@ class Worker(MessageHandler):
                 req_msg_id=call.message_id,
                 result=result,
             ),
-            refresh_auth=handler.refresh_session(),
+            refresh_auth=handler.refresh_session,
         )
 
     async def _handle_scheduled_message(self, message_id: int) -> None:

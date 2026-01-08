@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from piltover.db.models import UserAuthorization, Channel, User, Message as DbMessage, Chat, EncryptedChat
-from piltover.exceptions import Disconnection
+from piltover.exceptions import Disconnection, Unreachable
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates, Vector
 from piltover.tl.core_types import Message, MsgContainer
@@ -30,7 +30,7 @@ class KeyInfo:
 class MsgIdValues:
     __slots__ = ("last_time", "offset",)
 
-    def __init__(self, last_time: int = 0, offset: int = 0):
+    def __init__(self, last_time: int = 0, offset: int = 0) -> None:
         self.last_time = last_time
         self.offset = offset
 
@@ -135,7 +135,7 @@ class Session:
             chat = await EncryptedChat.get_or_none(id=lazy_obj.chat_id)
             return await chat.to_tl(user, self.auth_id)
 
-        raise RuntimeError("Unreachable")
+        raise Unreachable
 
     @staticmethod
     def _get_attr_or_element(obj: TLObject | list, field_name: str) -> TLObject | list:
@@ -267,11 +267,13 @@ class SessionManager:
         if isinstance(ignore_auth_id, list) and len(ignore_auth_id) == 1:
             ignore_auth_id = ignore_auth_id[0]
 
-        is_short = (user_id is None or isinstance(user_id, int)) \
-                   and (key_id is None or isinstance(key_id, int)) \
-                   and (channel_id is None or isinstance(channel_id, int)) \
-                   and (auth_id is None or isinstance(auth_id, int)) \
-                   and (ignore_auth_id is None or isinstance(ignore_auth_id, int))
+        is_short = (
+                (user_id is None or isinstance(user_id, int))
+                and (key_id is None or isinstance(key_id, int))
+                and (channel_id is None or isinstance(channel_id, int))
+                and (auth_id is None or isinstance(auth_id, int))
+                and (ignore_auth_id is None or isinstance(ignore_auth_id, int))
+        )
 
         if is_short:
             message = MessageToUsersShort(

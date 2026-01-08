@@ -22,7 +22,7 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
     SlowmodeLastMessage
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
@@ -131,13 +131,13 @@ async def send_created_messages_internal(
         return await upd.send_message_channel(user, message)
 
     if (update := await upd.send_message(user, messages)) is None:
-        raise RuntimeError("unreachable ?")
+        raise Unreachable
 
     if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
         bot_message = await bots.process_message_to_bot(peer, messages[peer])
         if bot_message is not None:
             if (bot_upd := await upd.send_message(user, {peer: bot_message})) is None:
-                raise RuntimeError("unreachable ?")
+                raise Unreachable
             update.users.extend(bot_upd.users)
             update.chats.extend(bot_upd.chats)
             update.updates.extend(bot_upd.updates)
@@ -277,7 +277,6 @@ async def _check_channel_slowmode(channel: Channel, participant: ChatParticipant
     if not channel.slowmode_seconds:
         return
     if participant.is_admin:
-        # TODO: should user have specific permission? idk
         return
     last_date = cast(datetime | None, await SlowmodeLastMessage.get_or_none(
         channel=channel, user__id=participant.user_id,
@@ -822,6 +821,8 @@ async def forward_messages(
 ) -> Updates:
     from_peer = None
 
+    # TODO: does telegram allow different peers, if from_peer is InputPeerEmpty?
+    #  e.g. request.id[0] is from user 123, request.id[1] is from user 456, etc.
     if isinstance(request.from_peer, InputPeerEmpty):
         first_msg = await Message.get_or_none(peer__owner=user, id=request.id[0]).select_related(
             "peer", "peer__chat", "peer__channel",
@@ -858,8 +859,7 @@ async def forward_messages(
 
         if to_peer.type is PeerType.CHANNEL:
             await _check_channel_slowmode(to_peer.channel, participant)
-            # TODO: check if user is admin?
-            if to_peer.channel.slowmode_seconds is not None and len(request.id) > 1:
+            if to_peer.channel.slowmode_seconds is not None and not participant.is_admin and len(request.id) > 1:
                 raise ErrorRpc(error_code=400, error_message="SLOWMODE_MULTI_MSGS_DISABLED")
     elif user.bot and (to_peer.type is PeerType.SELF or (to_peer.type is PeerType.USER and to_peer.user.bot)):
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
@@ -905,8 +905,6 @@ async def forward_messages(
             logger.trace(
                 f"Creating forwarded message for peer {opp_peer.id}({opp_peer.owner_id}) -> {opp_peer.user_id}"
             )
-            if opp_peer.owner_id is not None:
-                await Dialog.create_or_unhide(opp_peer)
             result[opp_peer].append(
                 await message.clone_for_peer(
                     peer=opp_peer,
@@ -924,6 +922,8 @@ async def forward_messages(
                 )
             )
 
+        await Dialog.create_or_unhide_bulk(peers)
+
     if to_peer.type is PeerType.SELF:
         await SavedDialog.get_or_create(peer=from_peer)
 
@@ -937,7 +937,7 @@ async def forward_messages(
         await upd.update_status(user, presence, peers[1:])
 
     if (update := await upd.send_messages(result, user)) is None:
-        raise NotImplementedError("unknown chat type ?")
+        raise Unreachable
 
     if to_peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(to_peer.channel, user)

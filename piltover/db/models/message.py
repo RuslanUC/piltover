@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum, auto
 from io import BytesIO
 from os import environ
-from typing import cast, Iterable
+from typing import cast, Iterable, TypeVar
 
 from loguru import logger
 from pytz import UTC
@@ -24,6 +24,9 @@ from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatA
     MessageEntityMentionName
 from piltover.utils.snowflake import Snowflake
 
+
+_T = TypeVar("_T")
+BackwardO2OOrT = fields.BackwardOneToOneRelation[_T] | _T
 
 class _SomethingMissing(Enum):
     MISSING = auto()
@@ -83,6 +86,8 @@ class Message(Model):
     fwd_header_id: int | None
     post_info_id: int | None
     via_bot_id: int | None
+
+    taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
     TTL_MULT = 86400
     if (_ttl_mult := environ.get("DEBUG_MESSAGE_TTL_MULTIPLIER", "")).isdigit():

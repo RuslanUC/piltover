@@ -2,16 +2,12 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections import defaultdict
-from io import BytesIO
-from os import environ
 from typing import Callable, TypeVar, cast
 
 from loguru import logger
 
 from piltover.tl import TLObject
 
-
-_CHECK_DOWNGRADED = environ.get("TL_DEBUG_CHECK_DOWNGRADED", "").lower() in ("1", "true")
 
 T = TypeVar("T", bound=TLObject)
 TAny = TypeVar("TAny")
@@ -54,16 +50,6 @@ class LayerConverter:
                 cls._down[obj_cls][to_layer] = cls._down[obj_cls][prev_layer]
 
             obj = cls._down[obj.__class__][to_layer](obj)
-            if _CHECK_DOWNGRADED and isinstance(obj, TLObject):
-                new_obj = obj.read(BytesIO(obj.write()))
-                if obj != new_obj:
-                    difference = obj.eq_diff(new_obj)
-                    logger.error(
-                        f"Downgrade check failed on object {obj.__class__.__name__}!\n"
-                        f"{obj=!r}\n"
-                        f"{new_obj=!r}\n"
-                        f"{difference=}\n"
-                    )
 
         if isinstance(obj, list):
             return cast(TLObject, cls._try_downgrade_list(obj, to_layer))
