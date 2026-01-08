@@ -8,6 +8,7 @@ from tortoise import Model, fields
 from piltover.db import models
 from piltover.db.enums import AdminLogEntryAction, ChatBannedRights
 from piltover.db.models.utils import IntFlagField
+from piltover.exceptions import InvalidConstructorException, Unreachable
 from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEventActionChangeAbout, \
     ChannelAdminLogEventActionChangeUsername, ChannelAdminLogEventActionToggleSignatures, \
     ChannelAdminLogEventActionChangePhoto, PhotoEmpty, ChannelAdminLogEventActionParticipantJoin, \
@@ -15,9 +16,61 @@ from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEv
     ChannelAdminLogEventActionDefaultBannedRights, ChannelAdminLogEventActionTogglePreHistoryHidden, PeerColor, \
     ChannelAdminLogEventActionChangePeerColor, ChannelAdminLogEventActionChangeProfilePeerColor, \
     ChannelAdminLogEventActionChangeLinkedChat, ChannelAdminLogEventActionChangeHistoryTTL, Int, \
-    ChannelAdminLogEventActionToggleSlowMode
-from piltover.tl.base import ChannelAdminLogEvent
+    ChannelAdminLogEventActionToggleSlowMode, TLObject, ChannelAdminLogEventActionParticipantToggleAdmin, \
+    ChannelParticipantBanned, ChannelParticipantAdmin, ChannelParticipantCreator, ChannelParticipant, \
+    ChannelParticipantLeft, ChannelParticipantSelf, ChannelParticipantSelf_133, ChannelParticipantSelf_134, \
+    ChannelParticipant_133, ChannelAdminLogEventActionParticipantToggleBan
+from piltover.tl.base import ChannelAdminLogEvent, ChannelParticipantInst, ChannelParticipant as ChannelParticipantBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
+
+
+ParticipantWithUserId = (
+    ChannelParticipantCreator, ChannelParticipant, ChannelParticipant_133, ChannelParticipantSelf,
+    ChannelParticipantSelf_133, ChannelParticipantSelf_134, ChannelParticipantAdmin,
+)
+ParticipantWithUserPeer = (
+    ChannelParticipantBanned, ChannelParticipantLeft,
+)
+
+
+def _add_participant_to_ucc(participant: ChannelParticipantBase, ucc: UsersChatsChannels) -> None:
+    if isinstance(participant, ParticipantWithUserId):
+        ucc.add_user(participant.user_id)
+    elif isinstance(participant, ParticipantWithUserPeer):
+        ucc.add_user(participant.peer.user_id)
+    else:
+        raise Unreachable
+
+    if isinstance(participant, ChannelParticipantBanned):
+        if participant.kicked_by:
+            ucc.add_user(participant.kicked_by)
+    elif isinstance(participant, ChannelParticipantAdmin):
+        if participant.promoted_by:
+            ucc.add_user(participant.promoted_by)
+    elif isinstance(participant, (ChannelParticipantSelf, ChannelParticipantSelf_133, ChannelParticipantSelf_134)):
+        if participant.inviter_id:
+            ucc.add_user(participant.inviter_id)
+
+
+def _process_channel_participant(
+        prev_bytes: bytes | None, new_bytes: bytes | None, ucc: UsersChatsChannels,
+) -> tuple[ChannelParticipantBase, ChannelParticipantBase] | None:
+    if not prev_bytes or not new_bytes:
+        return None
+
+    try:
+        prev: ChannelParticipantBase = TLObject.read(BytesIO(prev_bytes))
+        new: ChannelParticipantBase = TLObject.read(BytesIO(new_bytes))
+    except InvalidConstructorException:
+        return None
+
+    if not isinstance(prev, ChannelParticipantInst) or not isinstance(new, ChannelParticipantInst):
+        return None
+
+    _add_participant_to_ucc(prev, ucc)
+    _add_participant_to_ucc(new, ucc)
+
+    return prev, new
 
 
 class AdminLogEntry(Model):
@@ -111,6 +164,26 @@ class AdminLogEntry(Model):
             action = ChannelAdminLogEventActionToggleSlowMode(
                 prev_value=Int.read_bytes(self.prev),
                 new_value=Int.read_bytes(self.new),
+            )
+        elif self.action is AdminLogEntryAction.PARTICIPANT_ADMIN:
+            participant = _process_channel_participant(self.prev, self.new, ucc)
+            if participant is None:
+                return None
+
+            prev, new = participant
+            action = ChannelAdminLogEventActionParticipantToggleAdmin(
+                prev_participant=prev,
+                new_participant=new,
+            )
+        elif self.action is AdminLogEntryAction.PARTICIPANT_BAN:
+            participant = _process_channel_participant(self.prev, self.new, ucc)
+            if participant is None:
+                return None
+
+            prev, new = participant
+            action = ChannelAdminLogEventActionParticipantToggleBan(
+                prev_participant=prev,
+                new_participant=new,
             )
 
         if action is None:

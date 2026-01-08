@@ -107,7 +107,7 @@ class ChatParticipant(Model):
             return ChannelParticipantBanned(
                 left=self.left,
                 peer=PeerUser(user_id=self.user_id),
-                kicked_by=0,  # idk
+                kicked_by=0,  # TODO: add this as model field
                 date=int(self.invited_at.timestamp()),
                 banned_rights=self.banned_rights.to_tl(),
             )

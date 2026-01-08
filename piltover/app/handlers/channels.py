@@ -29,7 +29,8 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
-    ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked
+    ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked, \
+    ChannelParticipantLeft
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
@@ -448,14 +449,15 @@ async def edit_banned(request: EditBanned, user: User):
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
-    participant = await peer.channel.get_participant_raise(user)
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.BAN_USERS):
+    channel = peer.channel
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.BAN_USERS):
         raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
 
     target_peer = await Peer.from_input_peer_raise(user, request.participant)
     if target_peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
-    target_participant = await peer.channel.get_participant(target_peer.user, allow_left=True)
+    target_participant = await channel.get_participant(target_peer.user, allow_left=True)
 
     new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
     banned_for = request.banned_rights.until_date - time()
@@ -476,16 +478,30 @@ async def edit_banned(request: EditBanned, user: User):
             or bool(new_banned_rights & ChatBannedRights.VIEW_MESSAGES)
     )
 
-    # TODO: remove join requests if target_participant is None
-    await ChatParticipant.update_or_create(user=target_peer.user, channel=peer.channel, defaults={
-        "banned_rights": new_banned_rights,
-        "banned_until": banned_until,
-        "left": left,
-        "inviter_id": 0,
-        "invited_at": datetime.now(UTC),
-    })
+    participant_tl_before = ChannelParticipantLeft(peer=PeerUser(user_id=target_peer.user_id))
+    if target_participant is not None:
+        participant_tl_before = target_participant.to_tl_channel_with_creator(user, channel.creator_id)
 
-    # TODO: create AdminLogEntry
+    # TODO: remove join requests if created
+    target_participant, created = await ChatParticipant.update_or_create(
+        user=target_peer.user,
+        channel=channel,
+        defaults={
+            "banned_rights": new_banned_rights,
+            "banned_until": banned_until,
+            "left": left,
+            "inviter_id": 0,
+            "invited_at": datetime.now(UTC),
+        },
+    )
+
+    await AdminLogEntry.create(
+        channel=channel,
+        user=user,
+        action=AdminLogEntryAction.PARTICIPANT_BAN,
+        prev=participant_tl_before.write(),
+        new=target_participant.to_tl_channel_with_creator(user, channel.creator_id).write(),
+    )
 
     if was_participant:
         await upd.update_channel_for_user(peer.channel, target_peer.user)
@@ -505,6 +521,7 @@ async def edit_admin(request: EditAdmin, user: User):
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
     channel = peer.channel
+    creator_id = channel.creator_id
 
     participant = await channel.get_participant_raise(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.ADD_ADMINS):
@@ -513,23 +530,24 @@ async def edit_admin(request: EditAdmin, user: User):
     target_peer = await Peer.from_input_peer_raise(
         user, request.user_id, "PARTICIPANT_ID_INVALID", peer_types=(PeerType.USER, PeerType.SELF,)
     )
-    if target_peer.user_id == channel.creator_id and target_peer.user_id != user.id:
+    if target_peer.user_id == creator_id and target_peer.user_id != user.id:
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
     target_participant = await channel.get_participant(target_peer.user)
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
     new_admin_rights = ChatAdminRights.from_tl(request.admin_rights)
-    if target_peer.user_id == channel.creator_id:
+    if target_peer.user_id == creator_id:
         new_admin_rights |= ChatAdminRights.from_tl(CREATOR_RIGHTS)
 
-    if user.id != channel.creator_id:
-        for new_right in new_admin_rights:
-            if not (participant.admin_rights & new_right):
-                raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
+    if user.id != creator_id:
+        if participant.admin_rights ^ new_admin_rights:
+            raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
 
     if target_participant.admin_rights == new_admin_rights and target_participant.admin_rank == request.rank:
         return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
+
+    participant_tl_before = target_participant.to_tl_channel_with_creator(user, creator_id)
 
     update_fields = []
     if request.rank != target_participant.admin_rank:
@@ -543,7 +561,14 @@ async def edit_admin(request: EditAdmin, user: User):
         update_fields.append("promoted_by_id")
 
     await target_participant.save(update_fields=update_fields)
-    # TODO: create AdminLogEntry
+
+    await AdminLogEntry.create(
+        channel=channel,
+        user=user,
+        action=AdminLogEntryAction.PARTICIPANT_ADMIN,
+        prev=participant_tl_before.write(),
+        new=target_participant.to_tl_channel_with_creator(user, creator_id).write(),
+    )
 
     await upd.update_channel_for_user(channel, target_peer.peer_user(user))
     return Updates(
@@ -1133,6 +1158,10 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
                          | Q(action=AdminLogEntryAction.TOGGLE_NOFORWARDS) \
                          | Q(action=AdminLogEntryAction.DEFAULT_BANNED_RIGHTS) \
                          | Q(action=AdminLogEntryAction.PREHISTORY_HIDDEN)
+        if request.events_filter.promote or request.events_filter.demote:
+            actions_q |= Q(action=AdminLogEntryAction.PARTICIPANT_ADMIN)
+        if request.events_filter.ban or request.events_filter.unban:
+            actions_q |= Q(action=AdminLogEntryAction.PARTICIPANT_BAN)
 
         if not actions_q.filters and not actions_q.children:
             return AdminLogResults(events=[], users=[], chats=[])

@@ -397,8 +397,6 @@ class AdminLogEntryAction(IntEnum):
     #  MESSAGE_SEND
     #  PARTICIPANT_JOIN_INVITE
     #  PARTICIPANT_JOIN_REQUEST
-    #  PARTICIPANT_BAN
-    #  PARTICIPANT_PROMOTE
     #  STOP_POLL
     #  INVITE_DELETE
     #  INVITE_REVOKE
@@ -441,6 +439,8 @@ class AdminLogEntryAction(IntEnum):
     LINKED_CHAT = 12
     EDIT_HISTORY_TTL = 13
     TOGGLE_SLOWMODE = 14
+    PARTICIPANT_ADMIN = 15
+    PARTICIPANT_BAN = 16
 
 
 class TaskIqScheduledState(IntEnum):
