@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 from PIL import Image
 from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInvalid, \
-    ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden
+    ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden, InviteHashExpired
 from pyrogram.raw.functions.account import GetPassword
 from pyrogram.raw.functions.channels import EditCreator
 from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser, \
@@ -506,3 +506,79 @@ async def test_channel_leave(exit_stack: AsyncExitStack) -> None:
 
     assert await client1.get_chat_members_count(channel.id) == 1
     assert len([dialog async for dialog in client2.get_dialogs()]) == 0
+
+
+@pytest.mark.asyncio
+async def test_channel_supergroup_ban_user(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    await client2.set_username("test2_username")
+    await client2.expect_update(UpdateUserName)
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_supergroup("idk")
+    assert channel
+
+    invite_link = await channel.export_invite_link()
+    await client2.join_chat(invite_link)
+    await client2.expect_update(UpdateChannel)
+
+    await client1.ban_chat_member(channel.id, "test2_username")
+    await client2.expect_update(UpdateChannel)
+
+    with pytest.raises(ChannelPrivate):
+        await client2.get_chat(channel.id)
+
+    with pytest.raises(InviteHashExpired):
+        await client2.join_chat(invite_link)
+
+
+@pytest.mark.asyncio
+async def test_channel_supergroup_ban_user_before_join(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    await client2.set_username("test2_username")
+    await client2.expect_update(UpdateUserName)
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_supergroup("idk")
+    assert channel
+
+    await client1.ban_chat_member(channel.id, "test2_username")
+
+    invite_link = await channel.export_invite_link()
+
+    with pytest.raises(InviteHashExpired):
+        await client2.join_chat(invite_link)
+
+
+@pytest.mark.asyncio
+async def test_channel_supergroup_unban_user(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    await client2.set_username("test2_username")
+    await client2.expect_update(UpdateUserName)
+
+    async with client1.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client1.create_supergroup("idk")
+    assert channel
+
+    invite_link = await channel.export_invite_link()
+    await client2.join_chat(invite_link)
+    await client2.expect_update(UpdateChannel)
+
+    await client1.ban_chat_member(channel.id, "test2_username")
+    await client2.expect_update(UpdateChannel)
+
+    with pytest.raises(InviteHashExpired):
+        await client2.join_chat(invite_link)
+
+    await client1.unban_chat_member(channel.id, "test2_username")
+
+    await client2.join_chat(invite_link)
+
+
+# TODO: add tests for restricting chat members (including restricting before join)

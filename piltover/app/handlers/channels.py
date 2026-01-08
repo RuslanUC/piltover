@@ -203,9 +203,13 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         photo = channel.photo.to_tl_photo()
 
     invite = None
-    participant = await channel.get_participant(user)
-    if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
+    participant = await channel.get_participant(user, allow_left=True)
+    if participant is not None \
+            and not participant.left \
+            and channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         invite = await ChatInvite.get_or_create_permanent(user, channel)
+    if participant is not None and participant.banned_rights & ChatBannedRights.VIEW_MESSAGES:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     in_read_max_id, out_read_max_id, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(
         peer, True, True,
