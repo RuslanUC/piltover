@@ -72,7 +72,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
     new = await Message.filter(
         peer__owner=user, date__gt=date, type__not=MessageType.SCHEDULED,
-    ).select_related(Message.PREFETCH_FIELDS).order_by("id")
+    ).select_related(*Message.PREFETCH_FIELDS).order_by("id")
     new_updates = await Update.filter(user=user, pts__gt=request.pts).order_by("pts")
     new_secret = await SecretUpdate.filter(authorization__id=ctx.auth_id, id__gt=last_local_secret_id)
     logger.trace(f"User {user.id} has {len(new_secret)} secret updates")

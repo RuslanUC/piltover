@@ -68,11 +68,11 @@ You can list several emoji in one message, but I recommend using no more than tw
 """.strip())
 __editsticker_send_sticker_invalid = "Please send me the sticker."
 __editsticker_saved = "I edited your sticker. Hope you like it better this way."
-__delpack_confirm = f"""
+__delpack_confirm = FormatableTextWithEntities(f"""
 OK, you selected the set {{name}}. Are you sure?
 
 Send `{DELPACK_CONFIRMATION}` to confirm you really want to delete this set.
-""".strip()
+""".strip())
 __delpack_confirm_invalid, __delpack_confirm_invalid_entities = FormatableTextWithEntities(f"""
 Please enter the confirmation text exactly like this:
 `{DELPACK_CONFIRMATION}`
@@ -128,7 +128,7 @@ You can share it with other Telegram users — they'll be able to add your emoji
 """.strip())
 
 
-async def _invalid_set_selected(peer: Peer, emoji: bool) -> Message:
+async def _invalid_set_selected(peer: Peer, emoji: bool | None) -> Message:
     keyboard_rows = await get_stickerset_selection_keyboard(peer.owner, emoji)
     keyboard = ReplyKeyboardMarkup(rows=keyboard_rows, single_use=True) if keyboard_rows else None
     return await send_bot_message(peer, __addsticker_shortname_invalid, keyboard)
@@ -373,6 +373,10 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             StickersBotState.REPLACESTICKER_WAIT_PACK_OR_STICKER, StickersBotState.ADDEMOJI_WAIT_PACK,
     ):
         is_emoji = state.state is StickersBotState.ADDEMOJI_WAIT_PACK
+        is_any = state.state in (
+            StickersBotState.DELPACK_WAIT_PACK,
+            StickersBotState.RENAMEPACK_WAIT_PACK
+        )
         allow_sticker = state.state in (
             StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER,
             StickersBotState.REPLACESTICKER_WAIT_PACK_OR_STICKER,
@@ -398,15 +402,15 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             else:
                 raise Unreachable
         elif allow_sticker and message.media:
-            return await _invalid_set_selected(peer, is_emoji)
+            return await _invalid_set_selected(peer, None if is_any else is_emoji)
 
         sel_short_name = message.message.strip()
         if not sel_short_name:
-            return await _invalid_set_selected(peer, is_emoji)
+            return await _invalid_set_selected(peer, None if is_any else is_emoji)
 
-        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name, emoji=is_emoji)
+        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
         if stickerset is None:
-            return await _invalid_set_selected(peer, is_emoji)
+            return await _invalid_set_selected(peer, None if is_any else is_emoji)
 
         if state.state is StickersBotState.ADDSTICKER_WAIT_PACK:
             await state.update_state(
@@ -425,7 +429,8 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 StickersBotState.DELPACK_WAIT_CONFIRM,
                 StickersStateDelpack(set_id=stickerset.id).serialize(),
             )
-            return await send_bot_message(peer, __delpack_confirm.format(name=stickerset.short_name))
+            text, entities = __delpack_confirm.format(name=stickerset.short_name)
+            return await send_bot_message(peer, text, entities=entities)
         elif state.state is StickersBotState.RENAMEPACK_WAIT_PACK:
             await state.update_state(
                 StickersBotState.RENAMEPACK_WAIT_NAME,

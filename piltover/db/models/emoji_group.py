@@ -35,14 +35,14 @@ class EmojiGroup(Model):
     def unpack_emoticons(emoticons: bytes) -> list[str]:
         result = []
         emoticons = BytesIO(emoticons)
-        while length := emoticons.read(1)[0]:
-            result.append(emoticons.read(length).decode("utf8"))
+        while length := emoticons.read(1):
+            result.append(emoticons.read(length[0]).decode("utf8"))
 
         return result
 
     def to_tl(self) -> TLEmojiGroup | EmojiGroupPremium | EmojiGroupGreeting:
         if self.type is EmojiGroupType.REGULAR:
-            return EmojiGroup(
+            return TLEmojiGroup(
                 title=self.name,
                 icon_emoji_id=self.icon_emoji_id,
                 emoticons=self.unpack_emoticons(self.emoticons),
