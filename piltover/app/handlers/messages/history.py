@@ -706,7 +706,7 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
         peer.user_ttl_period_days = opp_peer.user_ttl_period_days = ttl_days
         await Peer.bulk_update([peer, opp_peer], fields=["user_ttl_period_days"])
     elif peer.type in (PeerType.CHAT, PeerType.CHANNEL):
-        participant = await ChatParticipant.get_or_none(**Chat.or_channel(peer.chat_or_channel), user=user)
+        participant = await peer.chat_or_channel.get_participant(user)
         if peer.type is PeerType.CHAT \
                 and (participant is None or not (participant.is_admin or peer.chat.creator_id == user.id)):
             raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")

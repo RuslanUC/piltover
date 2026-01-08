@@ -159,7 +159,7 @@ async def send_message_internal(
         opposite = False
 
     if opposite and reply_to_message_id and peer.type is PeerType.CHANNEL:
-        participant = await ChatParticipant.get_or_none(channel=peer.channel, user=peer.owner)
+        participant = await peer.channel.get_participant(user)
         if (channel_min_id := peer.channel.min_id(participant)) is not None:
             if channel_min_id >= reply_to_message_id:
                 reply_to_message_id = None

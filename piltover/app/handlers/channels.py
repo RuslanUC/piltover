@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from time import time
 from typing import cast
 
@@ -17,7 +17,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
     AdminLogEntryAction
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
-    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, ChannelParticipantBan
+    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -29,7 +29,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
-    ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned
+    ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
@@ -68,7 +68,7 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
 
     channel = peer.channel
 
-    participant = await ChatParticipant.get_or_none(channel=channel, user=user)
+    participant = await channel.get_participant(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -189,6 +189,8 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
 
 @handler.on_request(GetFullChannel)
 async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatFull:
+    # TODO: check if user is banned
+
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
         select_related=("channel__discussion", "channel__photo",),
@@ -201,7 +203,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         photo = channel.photo.to_tl_photo()
 
     invite = None
-    participant = await ChatParticipant.get_or_none(channel=channel, user=user)
+    participant = await channel.get_participant(user)
     if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         invite = await ChatInvite.get_or_create_permanent(user, channel)
 
@@ -284,7 +286,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
 
             id=channel.make_id(),
             about=channel.description,
-            participants_count=await ChatParticipant.filter(channel=channel).count(),
+            participants_count=await ChatParticipant.filter(channel=channel, left=False).count(),
             admins_count=await ChatParticipant.filter(channel=channel, admin_rights__gt=0).count(),
             read_inbox_max_id=in_read_max_id,
             read_outbox_max_id=out_read_max_id,
@@ -320,7 +322,7 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
-    participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
+    participant = await peer.channel.get_participant(user)
     if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -355,7 +357,7 @@ async def edit_channel_photo(request: EditPhoto, user: User):
         select_related=("channel__photo",),
     )
 
-    participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
+    participant = await peer.channel.get_participant(user)
     if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -449,27 +451,39 @@ async def edit_banned(request: EditBanned, user: User):
     target_peer = await Peer.from_input_peer_raise(user, request.participant)
     if target_peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
-    target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=peer.channel)
+    target_participant = await peer.channel.get_participant(target_peer.user, allow_left=True)
 
     new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
+    banned_for = request.banned_rights.until_date - time()
+    if not new_banned_rights or banned_for < 30 or banned_for > 86400 * 366:
+        banned_until = datetime.fromtimestamp(0, UTC)
+    else:
+        banned_until = datetime.fromtimestamp(request.banned_rights.until_date, UTC)
+
     if target_participant is not None and target_participant.banned_rights == new_banned_rights:
         return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
 
     # TODO: check if target_participant is not an admin
 
-    if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
-        async with in_transaction():
-            if target_participant is not None:
-                await target_participant.delete()
-            await ChannelParticipantBan.create(user=target_peer.user, channel=peer.channel)
-    else:
-        if target_participant is not None:
-            target_participant.banned_rights = new_banned_rights
-            await target_participant.save(update_fields=["banned_rights"])
+    was_participant = target_participant is not None and not target_participant.left
+    left = (
+            target_participant is None
+            or target_participant.left
+            or bool(new_banned_rights & ChatBannedRights.VIEW_MESSAGES)
+    )
+
+    # TODO: remove join requests if target_participant is None
+    await ChatParticipant.update_or_create(user=target_peer.user, channel=peer.channel, defaults={
+        "banned_rights": new_banned_rights,
+        "banned_until": banned_until,
+        "left": left,
+        "inviter_id": 0,
+        "invited_at": datetime.now(UTC),
+    })
 
     # TODO: create AdminLogEntry
 
-    if target_participant is not None:
+    if was_participant:
         await upd.update_channel_for_user(peer.channel, target_peer.user)
 
     return Updates(
@@ -497,7 +511,7 @@ async def edit_admin(request: EditAdmin, user: User):
     )
     if target_peer.user_id == channel.creator_id and target_peer.user_id != user.id:
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
-    target_participant = await ChatParticipant.get_or_none(user__id=target_peer.user_id, channel=channel)
+    target_participant = await channel.get_participant(target_peer.user)
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
@@ -549,6 +563,7 @@ async def get_participants(request: GetParticipants, user: User):
 
     filt = request.filter
 
+    view_value = ChatBannedRights.VIEW_MESSAGES.value
     query = ChatParticipant.filter(channel=peer.channel)
     if not this_participant.is_admin or isinstance(filt, ChannelParticipantsMentions):
         anon_value = ChatAdminRights.ANONYMOUS.value
@@ -572,19 +587,25 @@ async def get_participants(request: GetParticipants, user: User):
                 ).distinct().values_list("author__id", flat=True)
             ))
     elif isinstance(filt, ChannelParticipantsBanned):
-        query = query.filter(banned_rights__gt=0).order_by("user__id")
+        query = query.annotate(
+            check_view_banned=RawSQL(f"banned_rights & {view_value}"),
+        ).filter(banned_rights__gt=0, check_view_banned=0)
+    elif isinstance(filt, ChannelParticipantsKicked):
+        query = query.annotate(
+            check_view_banned=RawSQL(f"banned_rights & {view_value}"),
+        ).filter(check_view_banned__not=0)
     else:
-        # TODO: ChannelParticipantsKicked
+        # TODO: raise Unreachable ?
         return ChannelParticipants(count=0, participants=[], chats=[], users=[])
 
     if isinstance(filt, (
             ChannelParticipantsSearch, ChannelParticipantsContacts, ChannelParticipantsMentions,
-            ChannelParticipantsBanned
+            ChannelParticipantsBanned, ChannelParticipantsKicked,
     )):
         if filt.q:
             query = query.filter(Q(
                 user__first_name__icontains=filt.q,
-                usernames__username__icontains=filt.q,
+                user__usernames__username__icontains=filt.q,
             ))
         query = query.order_by("user__id")
 
@@ -697,6 +718,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
         user_peer = await Peer.from_input_peer_raise(user, input_user)
         if user_peer.type is not PeerType.USER:
             raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+        # TODO: handle participant.left in here
         if await ChatParticipant.filter(user=user_peer.user, channel=channel).exists():
             continue
         if not await PrivacyRule.has_access_to(user, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):
@@ -739,7 +761,7 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
-    participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
+    participant = await peer.channel.get_participant(user)
     if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -781,7 +803,7 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user:
 
     channel = peer.channel
 
-    participant = await ChatParticipant.get_or_none(channel=channel, user=user)
+    participant = await channel.get_participant(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -881,7 +903,7 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
     if channel.creator_id != user.id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    participant = await ChatParticipant.get_or_none(user=user, channel=channel)
+    participant = await channel.get_participant(user)
     if participant is None:
         # what
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
@@ -895,7 +917,7 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
     target_peer = await Peer.from_input_peer_raise(user, request.user_id)
     if target_peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
-    target_participant = await ChatParticipant.get_or_none(user=target_peer.user, channel=channel)
+    target_participant = await channel.get_participant(target_peer.user)
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
@@ -919,6 +941,7 @@ async def join_channel(request: JoinChannel, user: User) -> Updates:
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
+    # TODO: check if banned
     if await ChatParticipant.filter(channel=peer.channel, user=user).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
 
@@ -937,12 +960,13 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
     if peer.channel.creator_id == user.id:
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
 
-    participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
+    participant = await peer.channel.get_participant(user)
     if participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     async with in_transaction():
-        await participant.delete()
+        participant.left = True
+        await participant.save(update_fields=["left"])
         await ChatInvite.filter(channel=peer.channel, user=user).update(revoked=True)
         await Dialog.hide(peer)
         await Message.filter(id__in=Subquery(

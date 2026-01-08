@@ -179,7 +179,7 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
 async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
-    participant = await ChatParticipant.get_or_none(**Chat.or_channel(peer.chat_or_channel), user=user)
+    participant = await peer.chat_or_channel.get_participant(user)
     if participant is None or not (participant.is_admin or peer.chat_or_channel.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -390,7 +390,7 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
     if request.enabled == chat_or_channel.no_forwards:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
-    participant = await ChatParticipant.get_or_none(chat=chat_or_channel, user=user)
+    participant = await chat_or_channel.get_participant(user)
     if participant is None or not chat_or_channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -420,7 +420,7 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
 
     peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
-    participant = await ChatParticipant.get_or_none(**Chat.or_channel(peer.chat_or_channel), user=user)
+    participant = await peer.chat_or_channel.get_participant(user)
     if participant is None or not (participant.is_admin or peer.chat_or_channel.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -552,7 +552,9 @@ async def get_onlines(request: GetOnlines, user: User) -> ChatOnlines:
 
     onlines = await Presence.filter(
         status=UserStatus.ONLINE, last_seen__gt=datetime.now(UTC) - timedelta(minutes=1), user__id__in=Subquery(
-            ChatParticipant.filter(**Chat.or_channel(peer.chat_or_channel)).values_list("user__id", flat=True)
+            ChatParticipant.filter(
+                **Chat.or_channel(peer.chat_or_channel), left=False,
+            ).values_list("user__id", flat=True)
         )
     ).count()
 

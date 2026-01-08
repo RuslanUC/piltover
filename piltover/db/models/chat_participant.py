@@ -10,7 +10,7 @@ from piltover.db.enums import ChatBannedRights, ChatAdminRights
 from piltover.db.models.utils import IntFlagField
 from piltover.tl import ChatParticipant as TLChatParticipant, ChatParticipantCreator, ChatParticipantAdmin, \
     ChannelParticipant, ChannelParticipantSelf, ChannelParticipantCreator, ChannelParticipantAdmin, \
-    ChannelParticipantBanned, ChannelParticipantLeft
+    ChannelParticipantBanned, ChannelParticipantLeft, PeerUser
 
 ChannelParticipants = ChannelParticipant | ChannelParticipantSelf | ChannelParticipantCreator \
                       | ChannelParticipantAdmin | ChannelParticipantBanned | ChannelParticipantLeft
@@ -24,13 +24,13 @@ class ChatParticipant(Model):
     inviter_id: int = fields.BigIntField(default=0)
     invited_at: datetime = fields.DatetimeField(auto_now_add=True)
     banned_until: datetime = fields.DatetimeField(null=True, default=None)
-    # TODO: make null by default
     banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights(0))
     admin_rights: ChatAdminRights = IntFlagField(ChatAdminRights, default=ChatAdminRights(0))
     invite: models.ChatInvite | None = fields.ForeignKeyField("models.ChatInvite", null=True, default=None, on_delete=fields.SET_NULL)
     admin_rank: str = fields.CharField(max_length=24, default="")
     promoted_by_id: int = fields.BigIntField(default=0)
     min_message_id: int | None = fields.BigIntField(null=True, default=None)
+    left: bool = fields.BooleanField(default=False)
 
     user_id: int
     chat_id: int | None
@@ -88,17 +88,37 @@ class ChatParticipant(Model):
     def to_tl_channel_with_creator(self, user: models.User, creator_id: int) -> ChannelParticipants:
         if self.user_id == creator_id:
             return ChannelParticipantCreator(
-                user_id=self.user_id, admin_rights=self.admin_rights.to_tl(), rank=self.admin_rank or None,
+                user_id=self.user_id,
+                admin_rights=self.admin_rights.to_tl(),
+                rank=self.admin_rank or None,
             )
         elif self.is_admin:
             return ChannelParticipantAdmin(
-                user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp()),
-                is_self=self.user_id == user.id, promoted_by=self.promoted_by_id, rank=self.admin_rank or None,
-                admin_rights=self.admin_rights.to_tl(), can_edit=bool(self.admin_rights & ChatAdminRights.ADD_ADMINS),
+                user_id=self.user_id,
+                inviter_id=self.inviter_id,
+                date=int(self.invited_at.timestamp()),
+                is_self=self.user_id == user.id,
+                promoted_by=self.promoted_by_id,
+                rank=self.admin_rank or None,
+                admin_rights=self.admin_rights.to_tl(),
+                can_edit=bool(self.admin_rights & ChatAdminRights.ADD_ADMINS),
+            )
+        elif self.banned_rights:
+            return ChannelParticipantBanned(
+                left=self.left,
+                peer=PeerUser(user_id=self.user_id),
+                kicked_by=0,  # idk
+                date=int(self.invited_at.timestamp()),
+                banned_rights=self.banned_rights.to_tl(),
             )
         elif self.user_id == user.id:
             return ChannelParticipantSelf(
-                user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp())
+                user_id=self.user_id,
+                inviter_id=self.inviter_id,
+                date=int(self.invited_at.timestamp()),
             )
 
-        return ChannelParticipant(user_id=self.user_id, date=int(self.invited_at.timestamp()))
+        return ChannelParticipant(
+            user_id=self.user_id,
+            date=int(self.invited_at.timestamp()),
+        )

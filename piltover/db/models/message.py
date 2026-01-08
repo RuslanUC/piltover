@@ -37,7 +37,7 @@ async def append_channel_min_message_id_to_query_maybe(
 ) -> Q:
     if isinstance(peer, models.Peer) and peer.type is PeerType.CHANNEL:
         if participant is None:
-            participant = await models.ChatParticipant.get_or_none(channel=peer.channel, user=peer.owner)
+            participant = await peer.channel.get_participant(peer.owner)
         if (channel_min_id := peer.channel.min_id(participant)) is not None:
             query &= Q(id__gte=channel_min_id)
     return query

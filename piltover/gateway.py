@@ -314,8 +314,8 @@ class Client:
             if channel_ids is None:
                 channel_ids = TaggedLongVector(vec=[
                     channel_id
-                    async for channel_id in ChatParticipant.filter(
-                        channel_id__not_isnull=True, user=auth.user
+                    for channel_id in await ChatParticipant.filter(
+                        channel_id__not_isnull=True, user=auth.user, left=False,
                     ).values_list("channel_id", flat=True)
                 ])
                 await Cache.obj.set(f"channels:{auth.user.id}", channel_ids, ttl=60 * 10)

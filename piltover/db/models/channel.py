@@ -160,7 +160,7 @@ class Channel(ChatBase):
                 title=self.name,
             )
 
-        participant = await models.ChatParticipant.get_or_none(user__id=user_id, channel=self)
+        participant = await models.ChatParticipant.get_or_none(user__id=user_id, channel=self, left=False)
         if participant is None and not (self.nojoin_allow_view or await models.Username.filter(channel=self).exists()):
             return ChannelForbidden(
                 id=self.make_id(),
@@ -194,14 +194,16 @@ class Channel(ChatBase):
         if len(channel_ids) == 1:
             if peers:
                 channel_id = channel_ids[0]
-                participants = {channel_id: await models.ChatParticipant.get_or_none(user=user, channel__id=channel_id)}
+                participants = {
+                    channel_id: await models.ChatParticipant.get_or_none(user=user, channel__id=channel_id, left=False)
+                }
             else:
                 participants = {}
         else:
             if peers:
                 participants = {
                     participant.channel_id: participant
-                    for participant in await models.ChatParticipant.filter(user=user, channel__id__in=peers)
+                    for participant in await models.ChatParticipant.filter(user=user, channel__id__in=peers, left=False)
                 }
             else:
                 participants = {}

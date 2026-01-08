@@ -199,10 +199,11 @@ class ChatBannedRights(IntFlag):
         flags = Int.read_bytes(banned_rights.serialize()[:4])
         return ChatBannedRights(flags)
 
-    def to_tl(self) -> TLChatBannedRights:
-        flags = Int.write(self.value)
-        # TODO: until_date
-        return TLChatBannedRights.deserialize(BytesIO(flags + Int.write(2 ** 31 - 1)))
+    def to_tl(self, until: int = 0) -> TLChatBannedRights:
+        return TLChatBannedRights.deserialize(BytesIO(
+            Int.write(self.value)
+            + Int.write(until)
+        ))
 
 
 class ChannelUpdateType(IntEnum):
