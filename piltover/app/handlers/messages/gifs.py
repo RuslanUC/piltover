@@ -17,11 +17,19 @@ handler = MessageHandler("messages.gifs")
 @handler.on_request(SaveGif, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_gif(request: SaveGif, user: User) -> bool:
     doc = request.id
+
+    if request.unsave:
+        saved_gif = await SavedGif.get_or_none(user=user, gif__id=doc.id)
+        if saved_gif is not None:
+            await saved_gif.delete()
+            await upd.update_saved_gifs(user)
+        return True
+
     file = await File.from_input(user.id, doc.id, doc.access_hash, doc.file_reference, FileType.DOCUMENT_GIF)
     if file is None:
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
-    await SavedGif.update_or_create(user=user, file=file, defaults={
+    await SavedGif.update_or_create(user=user, gif=file, defaults={
         "last_access": datetime.now(UTC)
     })
 

@@ -310,7 +310,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             available_min_id=min_message_id,
             migrated_from_chat_id=Chat.make_id_from(migrated_from_chat_id) if migrated_from_chat_id else None,
             migrated_from_max_id=migrated_from_max_id,
-            linked_chat_id=linked_chat.id if linked_chat else None,
+            linked_chat_id=linked_chat.make_id() if linked_chat else None,
             slowmode_seconds=channel.slowmode_seconds,
             slowmode_next_send_date=slowmode_next_date,
         ),
@@ -1195,7 +1195,7 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
     events = []
     ucc = UsersChatsChannels()
 
-    for event in await AdminLogEntry.filter(events_q).limit(limit).select_related(
+    for event in await AdminLogEntry.filter(events_q).limit(limit).order_by("-id").select_related(
             "user", "old_photo", "new_photo",
     ):
         if (event_tl := event.to_tl(ucc)) is None:

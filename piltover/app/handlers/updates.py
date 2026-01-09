@@ -163,7 +163,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
     new_messages_ids = [update.related_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE]
     new = await Message.filter(
         messages_from_channel_query & Q(id__in=new_messages_ids)
-    ).select_related(Message.PREFETCH_FIELDS).order_by("id")
+    ).select_related(*Message.PREFETCH_FIELDS).order_by("id")
 
     new_messages = {}
     other_updates = []

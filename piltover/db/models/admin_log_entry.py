@@ -185,14 +185,19 @@ class AdminLogEntry(Model):
                 prev_participant=prev,
                 new_participant=new,
             )
+        elif self.action is AdminLogEntryAction.LINKED_CHAT:
+            action = ChannelAdminLogEventActionChangeLinkedChat(
+                prev_value=models.Channel.make_id_from(self.old_channel_id) if self.old_channel_id else 0,
+                new_value=models.Channel.make_id_from(self.new_channel_id) if self.new_channel_id else 0,
+            )
 
         if action is None:
             return None
 
         ucc.add_user(self.user_id)
-        if self.old_channel_id is not None:
+        if self.old_channel_id:
             ucc.add_channel(self.old_channel_id)
-        if self.new_channel_id is not None:
+        if self.new_channel_id:
             ucc.add_channel(self.new_channel_id)
 
         return ChannelAdminLogEvent(
