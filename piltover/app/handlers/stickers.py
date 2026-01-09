@@ -621,7 +621,7 @@ async def install_stickerset(
         request: InstallStickerSet, user: User,
 ) -> StickerSetInstallResultSuccess | StickerSetInstallResultArchive:
     stickerset = await Stickerset.from_input(request.stickerset)
-    if stickerset is None or stickerset.owner_id != user.id:
+    if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
     installed, created = await InstalledStickerset.get_or_create(set=stickerset, user=user, defaults={
@@ -647,7 +647,7 @@ async def install_stickerset(
 @handler.on_request(UninstallStickerSet, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def uninstall_stickerset(request: UninstallStickerSet, user: User) -> bool:
     stickerset = await Stickerset.from_input(request.stickerset)
-    if stickerset is None or stickerset.owner_id != user.id:
+    if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
     installed = await InstalledStickerset.get_or_none(set=stickerset, user=user)
