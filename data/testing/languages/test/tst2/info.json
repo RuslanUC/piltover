@@ -1,0 +1,13 @@
+{
+    "_": "types.LangPackLanguage",
+    "name": "Test 2",
+    "native_name": "Test 2",
+    "lang_code": "tst2",
+    "plural_code": "tst2",
+    "strings_count": 10000,
+    "translated_count": 3,
+    "translations_url": "https://translations.telegram.org/test2/",
+    "official": true,
+    "rtl": false,
+    "beta": false
+}

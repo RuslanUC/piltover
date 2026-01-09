@@ -303,7 +303,7 @@ else:
         create_peer_colors=True,
         peer_colors_dir=Path("./data/peer_colors"),
         create_languages=True,
-        languages_dir=Path("./data/languages"),
+        languages_dir=Path("./data/testing/languages"),
         create_system_stickersets=True,
         system_stickersets_dir=Path("./data/stickersets"),
         create_emoji_groups=True,

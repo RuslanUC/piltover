@@ -127,6 +127,7 @@ async def _session_recv_worker(self: PyroSession):
 
 
 PyroSession.recv_worker = _session_recv_worker
+PyroSession.MAX_RETRIES = 2
 
 
 class SimpleStorage(Storage):

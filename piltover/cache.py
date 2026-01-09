@@ -4,12 +4,17 @@ from typing import Literal
 from aiocache import BaseCache
 from aiocache.serializers import BaseSerializer
 
-from piltover.tl import TLObject, Int, Long, Int128, Int256
+from piltover.tl import TLObject, Int, Long, Int128, Int256, IntVector, LongVector, FloatVector, Int128Vector, \
+    Int256Vector, BoolVector, BytesVector, StringVector, TLObjectVector
 from piltover.tl.serialization_utils import SerializationUtils
 
 
 class TLSerializer(BaseSerializer):
-    _TYPES = [TLObject, Int, Long, Int128, Int256, float, bool, bytes, str]
+    _TYPES = [
+        TLObject, Int, Long, Int128, Int256, float, bool, bytes, str,
+        IntVector, LongVector, FloatVector, Int128Vector, Int256Vector, BoolVector, BytesVector, StringVector,
+        TLObjectVector,
+    ]
     _TYPES_TO_INT = {typ: idx for idx, typ in enumerate(_TYPES)}
 
     def dumps(self, value: TLObject | int | str | bytes | bool | float | None) -> bytes:

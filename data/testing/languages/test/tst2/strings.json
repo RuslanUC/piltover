@@ -1,0 +1,20 @@
+[
+    {
+        "_": "types.LangPackString",
+        "key": "TestLanguageKey",
+        "value": "some test string 2"
+    },
+  {
+        "_": "types.LangPackString",
+        "key": "TestAnotherLanguageKey",
+        "value": "some another test string 2"
+    },
+    {
+        "_": "types.LangPackStringPluralized",
+        "key": "TestPluralizedLanguageKey",
+        "other_value": "%1$d other 2",
+        "one_value": "%1$d one 2",
+        "few_value": "%1$d few 2",
+        "many_value": "%1$d many 2"
+    }
+]
