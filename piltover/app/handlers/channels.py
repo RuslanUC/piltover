@@ -596,7 +596,7 @@ async def get_participants(request: GetParticipants, user: User):
 
     view_value = ChatBannedRights.VIEW_MESSAGES.value
     query = ChatParticipant.filter(channel=peer.channel)
-    if not this_participant.is_admin or isinstance(filt, ChannelParticipantsMentions):
+    if this_participant is None or not this_participant.is_admin or isinstance(filt, ChannelParticipantsMentions):
         anon_value = ChatAdminRights.ANONYMOUS.value
         query = query.annotate(check_anon=RawSQL(f"admin_rights & {anon_value}")).filter(check_anon=0)
 

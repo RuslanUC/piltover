@@ -15,12 +15,14 @@ class MessageFwdHeader(Model):
     from_channel: models.Channel = fields.ForeignKeyField("models.Channel", null=True, default=None, related_name="from_channel")
     from_name: str = fields.CharField(max_length=64)
     date: datetime = fields.DatetimeField()
+    saved_out: bool = fields.BooleanField()
 
     channel_post_id: int | None = fields.BigIntField(null=True, default=None)
     channel_post_author: str | None = fields.CharField(max_length=128, null=True, default=None)
 
     saved_peer: models.Peer = fields.ForeignKeyField("models.Peer", null=True, default=None, related_name="saved_peer")
     saved_id: int = fields.BigIntField(null=True, default=None)
+    # TODO: saved_from can also be channel or chat
     saved_from: models.User = fields.ForeignKeyField("models.User", null=True, default=None, related_name="saved_user")
     saved_name: str = fields.CharField(max_length=64, null=True, default=None)
     saved_date: datetime = fields.DatetimeField(null=True, default=None)
@@ -41,6 +43,7 @@ class MessageFwdHeader(Model):
             from_id = PeerChannel(channel_id=models.Channel.make_id_from(self.from_channel_id))
 
         return TLMessageFwdHeader(
+            saved_out=self.saved_out,
             from_id=from_id,
             from_name=self.from_name,
             date=int(self.date.timestamp()),

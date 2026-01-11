@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastrand import xorshift128plusrandint
 from loguru import logger
+from taskiq.kicker import AsyncKicker
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
@@ -127,6 +128,11 @@ async def send_created_messages_internal(
 
             if unread_mentions_to_create:
                 await MessageMention.bulk_create(unread_mentions_to_create)
+
+        if message.peer.owner_id is None and peer.channel.discussion_id:
+            logger.debug(f"Creating task create_discussion({message.id})...")
+            ctx = request_ctx.get()
+            await AsyncKicker(task_name=f"create_discussion", broker=ctx.worker.broker, labels={}).kiq(message.id)
 
         return await upd.send_message_channel(user, message)
 
@@ -254,10 +260,10 @@ async def _make_channel_post_info_maybe(peer: Peer, user: User) -> tuple[bool, C
     return is_channel_post, post_info, post_signature
 
 
-def _resolve_noforwards(peer: Peer, user: User, request_noforwards: bool = False) -> bool:
+def _resolve_noforwards(peer: Peer, user: User | None, request_noforwards: bool = False) -> bool:
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL) and peer.chat_or_channel.no_forwards:
         return True
-    if user.bot and request_noforwards:
+    if user is not None and user.bot and request_noforwards:
         return True
     return False
 

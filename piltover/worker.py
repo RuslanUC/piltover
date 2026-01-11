@@ -33,7 +33,7 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.context import RequestContext, request_ctx
-from piltover.db.models import UserAuthorization, User, Message
+from piltover.db.models import UserAuthorization, User, Message, Peer
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import TLObject, RpcError, TLRequest, layer
@@ -142,6 +142,7 @@ class Worker(MessageHandler):
         self.broker.register_task(self._handle_tl_rpc_measure_time, "handle_tl_rpc")
         self.broker.register_task(self._handle_scheduled_message, "send_scheduled")
         self.broker.register_task(self._handle_scheduled_delete_message, "delete_scheduled")
+        self.broker.register_task(self._handle_create_discussion, "create_discussion")
         self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
         self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
 
@@ -310,3 +311,40 @@ class Worker(MessageHandler):
                 await upd.delete_messages(None, regular_messages)
             for channel, message_ids in channel_messages.items():
                 await upd.delete_messages_channel(channel, message_ids)
+
+    async def _handle_create_discussion(self, message_id: int) -> None:
+        import piltover.app.utils.updates_manager as upd
+        from piltover.app.handlers.messages.sending import _resolve_noforwards
+
+        # TODO: forward media groups correctly
+
+        async with in_transaction():
+            logger.info(f"Creating discussion thread for message {message_id}")
+            message = await Message.select_for_update().get_or_none(id=message_id).select_related(
+                *Message.PREFETCH_FIELDS, "peer__channel",
+            )
+            if message is None or not message.peer.channel.discussion_id:
+                return
+
+            discussion_peer = await Peer.get_or_none(
+                owner=None, channel__id=message.peer.channel.discussion_id,
+            ).select_related("channel")
+
+            discussion_message = await message.clone_for_peer(
+                peer=discussion_peer,
+                no_forwards=_resolve_noforwards(discussion_peer, None, False),
+                fwd_header=await message.create_fwd_header(None),
+                is_forward=True,
+                pinned=True,
+                is_discussion=True,
+            )
+
+            logger.debug(f"Created discussion message {discussion_message.id} for message {message.id}")
+
+            message.discussion = discussion_message
+            message.has_discussion = True
+            await message.save(update_fields=["discussion_id", "has_discussion"])
+
+        await upd.send_messages_channel([discussion_message], discussion_peer.channel, None)
+        await upd.edit_message_channel(None, message)
+

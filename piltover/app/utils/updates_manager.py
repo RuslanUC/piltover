@@ -1,4 +1,5 @@
 from time import time
+from typing import overload
 
 from loguru import logger
 from tortoise.expressions import Q
@@ -196,7 +197,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
 
 
 async def send_messages_channel(
-        messages: list[Message], channel: Channel, user: User,
+        messages: list[Message], channel: Channel, user: User | None,
 ) -> Updates | None:
     update_messages = []
     updates_to_create = []
@@ -220,7 +221,7 @@ async def send_messages_channel(
     await channel.save(update_fields=["pts"])
     await ChannelUpdate.bulk_create(updates_to_create)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve_nontl()
 
     lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
     lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in chats]
@@ -262,8 +263,11 @@ async def send_messages_channel(
             )
             for message, pts in update_messages
         ],
-        users=users,
-        chats=[*chats, *channels],
+        users=await User.to_tl_bulk(users, user),
+        chats=[
+            *await Chat.to_tl_bulk(chats, user),
+            *await Channel.to_tl_bulk(channels, user),
+        ],
     )
 
 
@@ -390,7 +394,18 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
     return result_update
 
 
+@overload
 async def edit_message_channel(user: User, message: Message) -> Updates:
+    ...
+
+
+@overload
+async def edit_message_channel(user: None, message: Message) -> None:
+    ...
+
+
+async def edit_message_channel(user: User | None, message: Message) -> Updates | None:
+    # TODO: dont fetch channel in here
     message.peer.channel = channel = await message.peer.channel
     channel.pts += 1
     this_pts = channel.pts
@@ -405,7 +420,7 @@ async def edit_message_channel(user: User, message: Message) -> Updates:
 
     ucc = UsersChatsChannels()
     ucc.add_message(message.id)
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve_nontl()
 
     lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
     lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in chats]
@@ -434,6 +449,9 @@ async def edit_message_channel(user: User, message: Message) -> Updates:
         channel_id=channel.id,
     )
 
+    if user is None:
+        return None
+
     return UpdatesWithDefaults(
         updates=[
             UpdateEditChannelMessage(
@@ -442,8 +460,11 @@ async def edit_message_channel(user: User, message: Message) -> Updates:
                 pts_count=1,
             ),
         ],
-        users=users,
-        chats=[*chats, *channels],
+        users=await User.to_tl_bulk(users, user),
+        chats=[
+            *await Chat.to_tl_bulk(chats, user),
+            *await Channel.to_tl_bulk(channels, user),
+        ],
     )
 
 

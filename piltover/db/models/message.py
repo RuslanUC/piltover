@@ -21,7 +21,7 @@ from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Me
 from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
-    MessageEntityMentionName
+    MessageEntityMentionName, MessageReplies
 from piltover.utils.snowflake import Snowflake
 
 
@@ -78,6 +78,9 @@ class Message(Model):
     fwd_header: models.MessageFwdHeader | None = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
     post_info: models.ChannelPostInfo | None = fields.ForeignKeyField("models.ChannelPostInfo", null=True, default=None)
     via_bot: models.User | None = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True, default=None, related_name="msg_via_bot")
+    discussion: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL, related_name="discussion_message")
+    is_discussion: bool = fields.BooleanField(default=False)
+    has_discussion: bool = fields.BooleanField(default=False)
 
     peer_id: int
     author_id: int | None
@@ -86,6 +89,7 @@ class Message(Model):
     fwd_header_id: int | None
     post_info_id: int | None
     via_bot_id: int | None
+    discussion_id: int | None
 
     taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
@@ -146,8 +150,14 @@ class Message(Model):
             *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN)
         )
 
-    def _make_reply_to_header(self) -> MessageReplyHeader:
-        return MessageReplyHeader(reply_to_msg_id=self.reply_to_id) if self.reply_to_id is not None else None
+    def _make_reply_to_header(self) -> MessageReplyHeader | None:
+        if self.reply_to_id is None and self.discussion_id is None:
+            return None
+
+        return MessageReplyHeader(
+            reply_to_msg_id=self.reply_to_id,
+            reply_to_top_id=self.discussion_id if not self.has_discussion else None,
+        )
 
     def _to_tl_service(self) -> MessageServiceToFormat:
         action = TLObject.read(BytesIO(self.extra_info))
@@ -195,13 +205,7 @@ class Message(Model):
             entities.append(objects[tl_id](**entity))
             entity["_"] = tl_id
 
-        mentioned = False
-        mention_id = cast(
-            int | None,
-            await models.MessageMention.get_or_none(peer__owner=current_user, message=self).values_list("id", flat=True)
-        )
-        if mention_id is not None:
-            mentioned = True
+        mentioned = await models.MessageMention.filter(peer__owner=current_user, message=self).exists()
 
         media_unread = False
         if self.media \
@@ -224,6 +228,26 @@ class Message(Model):
             ttl_period = self.ttl_period_days * self.TTL_MULT
 
         reply_markup = self.make_reply_markup()
+
+        # TODO: this initial discussions implementation is shit, probably should store MessageReplies in separate model
+
+        replies = None
+        if self.is_discussion:
+            replies = MessageReplies(
+                replies=await models.Message.filter(discussion=self, has_discussion=False).count(),
+                # TODO: probably handle pts
+                replies_pts=0,
+            )
+        elif self.discussion_id is not None and self.has_discussion:
+            # TODO: prefetch this
+            await self.fetch_related("discussion", "discussion__peer")
+            replies = MessageReplies(
+                replies=await models.Message.filter(discussion__id=self.discussion_id, has_discussion=False).count(),
+                # TODO: probably handle pts
+                replies_pts=0,
+                comments=True,
+                channel_id=self.discussion.peer.channel_id,
+            )
 
         message = TLMessage(
             id=self.id,
@@ -251,6 +275,7 @@ class Message(Model):
             reply_markup=reply_markup,
             noforwards=self.no_forwards,
             via_bot_id=self.via_bot_id,
+            replies=replies,
 
             silent=False,
             legacy=False,
@@ -323,7 +348,8 @@ class Message(Model):
             random_id: int | None = None,
             fwd_header: models.MessageFwdHeader | None | _SomethingMissing = _SMTH_MISSING,
             reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
-            drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
+            drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
+            is_discussion: bool = False,
     ) -> models.Message:
         if new_author is None and self.author is not None:
             new_author = self.author
@@ -341,7 +367,7 @@ class Message(Model):
         message = await Message.create(
             internal_id=internal_id or Snowflake.make_id(),
             message=self.message if self.media is None or not drop_captions else None,
-            pinned=self.pinned,
+            pinned=self.pinned if pinned is None else pinned,
             date=self.date if not is_forward else datetime.now(UTC),
             edit_date=self.edit_date if not is_forward else None,
             type=self.type,
@@ -358,6 +384,7 @@ class Message(Model):
             post_info=self.post_info if not drop_author else None,
             no_forwards=no_forwards,
             via_bot=self.via_bot,
+            is_discussion=is_discussion,
         )
 
         related_user_ids = set()
@@ -368,10 +395,12 @@ class Message(Model):
 
         return message
 
-    async def create_fwd_header(self, peer: models.Peer) -> models.MessageFwdHeader | None:
+    async def create_fwd_header(
+            self, peer: models.Peer | None, discussion: bool = False,
+    ) -> models.MessageFwdHeader:
         # TODO: pass prefetched privacy rules as an argument
 
-        if self.fwd_header is not None:
+        if self.fwd_header is not None and not discussion:
             from_user = self.fwd_header.from_user
             from_chat = self.fwd_header.from_chat
             from_channel = self.fwd_header.from_channel
@@ -395,8 +424,10 @@ class Message(Model):
                     from_user = self.author
                 from_name = self.author.first_name
 
-        saved_peer = self.peer if peer.type == PeerType.SELF else None
-        if saved_peer is not None and peer.type is PeerType.USER:
+        is_self = peer is not None and peer.type is PeerType.SELF
+
+        saved_peer = self.peer if is_self or discussion else None
+        if saved_peer is not None and saved_peer.type is PeerType.USER:
             peer_ = self.peer
             if not await models.PrivacyRule.has_access_to(peer_.owner_id, peer_.user_id, PrivacyRuleKeyType.FORWARDS):
                 saved_peer = None
@@ -407,15 +438,16 @@ class Message(Model):
             from_channel=from_channel,
             from_name=from_name,
             date=self.fwd_header.date if self.fwd_header else self.date,
+            saved_out=not discussion,
 
             channel_post_id=channel_post_id,
             channel_post_author=channel_post_author,
 
             saved_peer=saved_peer,
-            saved_id=self.id if peer.type == PeerType.SELF else None,
-            saved_from=self.author if peer.type == PeerType.SELF else None,
-            saved_name=self.author.first_name if peer.type == PeerType.SELF else None,
-            saved_date=self.date if peer.type == PeerType.SELF else None,
+            saved_id=self.id if is_self or discussion else None,
+            saved_from=self.author if is_self else None,
+            saved_name=self.author.first_name if is_self else None,
+            saved_date=self.date if is_self else None,
         )
 
     @classmethod

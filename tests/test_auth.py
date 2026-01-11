@@ -317,9 +317,8 @@ async def test_login_token_export_accept_2fa(exit_stack: AsyncExitStack) -> None
     await client1.invoke(AcceptLoginToken(token=token.token))
     await client2.expect_update(UpdateLoginToken, 3)
 
-    token = await client2.invoke(export_request)
-    assert isinstance(token, LoginTokenSuccess)
-
+    with pytest.raises(SessionPasswordNeeded):
+        await client2.invoke(export_request)
     with pytest.raises(SessionPasswordNeeded):
         await client2.get_me()
 
