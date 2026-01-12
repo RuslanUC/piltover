@@ -27,9 +27,11 @@ from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDat
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
-    ReadMessageContents, SetHistoryTTL, GetSearchResultsPositions, GetSearchResultsPositions_134
+    ReadMessageContents, SetHistoryTTL, GetSearchResultsPositions, GetSearchResultsPositions_134, GetDiscussionMessage, \
+    GetReplies
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
-    MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory, SearchResultsPositions
+    MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory, SearchResultsPositions, \
+    DiscussionMessage
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -92,7 +94,7 @@ async def get_messages_query_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
-        only_mentions: bool = False,
+        only_mentions: bool = False, reply_to_id: int | None = None,
 ) -> QuerySet[Message]:
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
     if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
@@ -137,6 +139,9 @@ async def get_messages_query_internal(
             MessageMention.filter(peer=peer, id__gt=read_state.last_mention_id).values_list("message__id", flat=True)
         ))
 
+    if reply_to_id:
+        query &= Q(reply_to__id=reply_to_id)
+
     query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
     limit = max(min(100, limit), 1)
@@ -145,7 +150,9 @@ async def get_messages_query_internal(
         if offset_id:
             query &= Q(id__lt=offset_id)
 
-        return Message.filter(query).limit(limit).offset(add_offset).order_by("-date").select_related(*Message.PREFETCH_FIELDS)
+        return Message.filter(query).limit(limit).offset(add_offset).order_by("-date").select_related(
+            *Message.PREFETCH_FIELDS,
+        )
 
     """
     (based in https://core.telegram.org/api/offsets)
@@ -204,10 +211,11 @@ async def get_messages_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
+        reply_to_id: int | None = None,
 ) -> list[Message]:
     query = await get_messages_query_internal(
         peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_, saved_peer,
-        after_reaction_id,
+        after_reaction_id, reply_to_id=reply_to_id,
     )
     return await query
 
@@ -817,3 +825,53 @@ async def get_search_results_positions(request: GetSearchResultsPositions, user:
         count=count,
         positions=positions,
     )
+
+
+@handler.on_request(GetDiscussionMessage)
+async def get_discussion_message(request: GetDiscussionMessage, user: User) -> DiscussionMessage:
+    peer = await Peer.from_input_peer_raise(user, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
+
+    message = await Message.get_(request.msg_id, peer)
+    if message is None:
+        raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
+
+    if message.discussion_id is None or message.comments_info_id is None:
+        raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
+
+    discussion_message = await Message.get(id=message.discussion_id).select_related(*Message.PREFETCH_FIELDS)
+
+    ucc = UsersChatsChannels()
+    ucc.add_message(discussion_message.id)
+    users, chats, channels = await ucc.resolve(user)
+
+    replies_info = await Message.filter(reply_to=discussion_message).annotate(
+        total=Count("id"), max_id=Max("id")
+    ).first().values_list("total", "max_id")
+    if replies_info is not None:
+        total, max_id = replies_info
+    else:
+        total, max_id = 0, None
+
+    return DiscussionMessage(
+        messages=[await discussion_message.to_tl(user)],
+        max_id=max_id,
+        read_inbox_max_id=None,
+        read_outbox_max_id=None,
+        unread_count=total,
+        chats=[*chats, *channels],
+        users=users,
+    )
+
+
+@handler.on_request(GetReplies, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_replies(request: GetReplies, user: User) -> Messages:
+    peer = await Peer.from_input_peer_raise(user, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
+
+    messages = await get_messages_internal(
+        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset,
+        reply_to_id=request.msg_id,
+    )
+    if not messages:
+        return Messages(messages=[], chats=[], users=[])
+
+    return await format_messages_internal(user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id)

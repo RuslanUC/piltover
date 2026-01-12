@@ -236,13 +236,13 @@ class Message(Model):
         replies = None
         if self.is_discussion:
             replies = MessageReplies(
-                replies=await models.Message.filter(top_message=self).count(),
+                replies=await models.Message.filter(reply_to=self).count(),
                 # TODO: probably handle pts
                 replies_pts=0,
             )
         elif self.discussion_id is not None and self.comments_info_id is not None:
             replies = MessageReplies(
-                replies=await models.Message.filter(top_message__id=self.discussion_id).count(),
+                replies=await models.Message.filter(reply_to__id=self.discussion_id).count(),
                 replies_pts=self.comments_info.discussion_pts,
                 comments=True,
                 channel_id=models.Channel.make_id_from(self.comments_info.discussion_channel_id),
