@@ -34,7 +34,7 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
     ForwardMessages_176, SaveDraft_166, ClearAllDrafts, SaveDraft_148, SaveDraft_133, SendInlineBotResult_133, \
     SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
-    SendInlineBotResult
+    SendInlineBotResult, SendMultiMedia_176
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -227,10 +227,10 @@ async def send_message_internal(
 SendMessageTypes = SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia \
                    | SendMultiMedia_148 | SendMultiMedia | SaveDraft | SaveDraft_133 | SaveDraft_148 | SaveDraft_166 \
                    | SendInlineBotResult_133 | SendInlineBotResult_135 | SendInlineBotResult_148 \
-                   | SendInlineBotResult_160 | SendInlineBotResult_176 | SendInlineBotResult
+                   | SendInlineBotResult_160 | SendInlineBotResult_176 | SendInlineBotResult | SendMultiMedia_176
 NEW_REPLY_TYPES = (
-    SendMessage, SendMedia, SendMultiMedia, SendMessage_176, SendMedia_176, SaveDraft, SaveDraft_166,
-    SendInlineBotResult, SendInlineBotResult_176, SendInlineBotResult_160,
+    SendMessage, SendMedia, SendMultiMedia, SendMultiMedia_176, SendMessage_176, SendMedia_176, SaveDraft,
+    SaveDraft_166, SendInlineBotResult, SendInlineBotResult_176, SendInlineBotResult_160,
 )
 OLD_REPLY_TYPES = (
     SendMessage_148, SendMedia_148, SendMultiMedia_148, SaveDraft_148, SaveDraft_133, SendInlineBotResult_148,
@@ -973,9 +973,10 @@ async def upload_media(request: UploadMedia | UploadMedia_133, user: User):
     return await media.to_tl(user)
 
 
+@handler.on_request(SendMultiMedia_176)
 @handler.on_request(SendMultiMedia_148)
 @handler.on_request(SendMultiMedia)
-async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148, user: User):
+async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMultiMedia_176, user: User):
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
 

@@ -563,7 +563,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
             message_ids.append(max_id)
 
         periods_tl.append(SearchResultsCalendarPeriod(
-            date=day * 86400,
+            date=int(day * 86400),
             min_msg_id=min_id,
             max_msg_id=max_id,
             count=msg_count,

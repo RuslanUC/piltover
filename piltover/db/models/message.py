@@ -160,6 +160,7 @@ class Message(Model):
         )
 
     def _to_tl_service(self) -> MessageServiceToFormat:
+        # TODO: fails when parsing slowmode service action ???
         action = TLObject.read(BytesIO(self.extra_info))
         if not isinstance(action, MessageActionInst):
             logger.error(
@@ -362,6 +363,7 @@ class Message(Model):
                 reply_to = await Message.get_or_none(peer=peer, internal_id=self.reply_to.internal_id)
 
         if fwd_header is _SMTH_MISSING:
+            # TODO: probably should be prefetched
             fwd_header = await self.fwd_header
 
         message = await Message.create(
