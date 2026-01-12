@@ -246,7 +246,7 @@ class Message(Model):
                 # TODO: probably handle pts
                 replies_pts=0,
                 comments=True,
-                channel_id=self.discussion.peer.channel_id,
+                channel_id=models.Channel.make_id_from(self.discussion.peer.channel_id),
             )
 
         message = TLMessage(
