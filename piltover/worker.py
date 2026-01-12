@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime, UTC
 from inspect import getfullargspec
 from io import BytesIO
 from pathlib import Path
@@ -341,11 +342,13 @@ class Worker(MessageHandler):
 
             logger.debug(f"Created discussion message {discussion_message.id} for message {message.id}")
 
+            message.edit_date = datetime.now(UTC)
+            message.edit_hide = True
             message.discussion = discussion_message
             message.comments_info = await MessageComments.create(
                 discussion_channel=discussion_peer.channel, discussion_pts=discussion_peer.channel.pts,
             )
-            await message.save(update_fields=["discussion_id", "comments_info_id"])
+            await message.save(update_fields=["discussion_id", "comments_info_id", "edit_date", "edit_hide"])
 
         await upd.send_messages_channel([discussion_message], discussion_peer.channel, None)
         await upd.edit_message_channel(None, message)

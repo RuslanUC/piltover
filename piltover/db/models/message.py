@@ -70,6 +70,7 @@ class Message(Model):
     reply_markup: bytes | None = fields.BinaryField(null=True, default=None)
     no_forwards: bool = fields.BooleanField(default=False)
     media_read: bool = fields.BooleanField(default=False)
+    edit_hide: bool = fields.BooleanField(default=False)
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
@@ -239,7 +240,7 @@ class Message(Model):
                 # TODO: probably handle pts
                 replies_pts=0,
             )
-        elif self.discussion_id is not None:
+        elif self.discussion_id is not None and self.comments_info_id is not None:
             replies = MessageReplies(
                 replies=await models.Message.filter(top_message__id=self.discussion_id).count(),
                 replies_pts=self.comments_info.discussion_pts,
@@ -274,10 +275,10 @@ class Message(Model):
             noforwards=self.no_forwards,
             via_bot_id=self.via_bot_id,
             replies=replies,
+            edit_hide=self.edit_hide,
 
             silent=False,
             legacy=False,
-            edit_hide=False,
             restriction_reason=[],
         )
 

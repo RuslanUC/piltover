@@ -20,7 +20,7 @@ from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
-    SlowmodeLastMessage
+    SlowmodeLastMessage, MessageComments
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -499,6 +499,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         if media is not None:
             m.media = media
         m.edit_date = new_edit_date
+        m.edit_hide = False
         m.reply_markup = reply_markup
         m.version += 1
 
@@ -513,13 +514,15 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
             await TaskIqScheduledMessage.filter(message=message).update(scheduled_time=request.schedule_date)
 
         await message.save(update_fields=[
-            "message", "version", "media_id", "entities", "reply_markup", "scheduled_date",
+            "message", "version", "media_id", "entities", "reply_markup", "scheduled_date", "edit_date", "edit_hide",
         ])
         return await upd.edit_message(user, {peer: message})
 
     if peer.type is PeerType.CHANNEL:
         _edit_message(message, datetime.now(UTC))
-        await message.save(update_fields=["message", "edit_date", "version", "media_id", "entities", "reply_markup"])
+        await message.save(update_fields=[
+            "message", "edit_date", "version", "media_id", "entities", "reply_markup", "edit_hide",
+        ])
         message.peer.channel = peer.channel
         return await upd.edit_message_channel(user, message)
 
@@ -535,7 +538,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         messages[message.peer] = message
 
     await Message.bulk_update(messages.values(), [
-        "message", "edit_date", "version", "media_id", "entities", "reply_markup",
+        "message", "edit_date", "version", "media_id", "entities", "reply_markup", "edit_hide",
     ])
 
     if not user.bot:
