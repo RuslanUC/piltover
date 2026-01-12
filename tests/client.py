@@ -379,6 +379,11 @@ class TestClient(Client):
         yield
         await self.expect_updates(*update_clss, timeout_per_update=timeout_per_update)
 
+    def clear_updates(self, update_cls: type[PyroTLObject]) -> None:
+        if update_cls not in self._got_updates:
+            return
+        self._got_updates[update_cls].clear()
+
     async def authorize(self) -> User:
         with measure_time("authorize()"):
             return await super().authorize()

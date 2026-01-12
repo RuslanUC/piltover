@@ -74,13 +74,14 @@ class Message(Model):
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     media: models.MessageMedia | None = fields.ForeignKeyField("models.MessageMedia", null=True, default=None)
-    reply_to: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
+    reply_to: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL, related_name="msg_reply_to")
     fwd_header: models.MessageFwdHeader | None = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
     post_info: models.ChannelPostInfo | None = fields.ForeignKeyField("models.ChannelPostInfo", null=True, default=None)
     via_bot: models.User | None = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True, default=None, related_name="msg_via_bot")
-    discussion: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL, related_name="discussion_message")
+    discussion: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL, related_name="msg_discussion_message")
+    comments_info: models.MessageComments | None = fields.ForeignKeyField("models.MessageComments", null=True, default=None)
+    top_message: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL, related_name="msg_top_message")
     is_discussion: bool = fields.BooleanField(default=False)
-    has_discussion: bool = fields.BooleanField(default=False)
 
     peer_id: int
     author_id: int | None
@@ -90,6 +91,8 @@ class Message(Model):
     post_info_id: int | None
     via_bot_id: int | None
     discussion_id: int | None
+    top_message_id: int | None
+    comments_info_id: int | None
 
     taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
@@ -102,7 +105,7 @@ class Message(Model):
     )
     PREFETCH_FIELDS = (
         *PREFETCH_FIELDS_MIN, "media__file", "media__file__stickerset", "media__poll", "fwd_header",
-        "fwd_header__saved_peer", "post_info", "via_bot",
+        "fwd_header__saved_peer", "post_info", "via_bot", "comments_info",
     )
     _PREFETCH_ALL_TOP_FIELDS = (
         "peer", "author", "media", "fwd_header", "reply_to", "via_bot",
@@ -151,12 +154,12 @@ class Message(Model):
         )
 
     def _make_reply_to_header(self) -> MessageReplyHeader | None:
-        if self.reply_to_id is None and self.discussion_id is None:
+        if self.reply_to_id is None and self.top_message_id is None:
             return None
 
         return MessageReplyHeader(
             reply_to_msg_id=self.reply_to_id,
-            reply_to_top_id=self.discussion_id if not self.has_discussion else None,
+            reply_to_top_id=self.top_message_id,
         )
 
     def _to_tl_service(self) -> MessageServiceToFormat:
@@ -229,24 +232,19 @@ class Message(Model):
 
         reply_markup = self.make_reply_markup()
 
-        # TODO: this initial discussions implementation is shit, probably should store MessageReplies in separate model
-
         replies = None
         if self.is_discussion:
             replies = MessageReplies(
-                replies=await models.Message.filter(discussion=self, has_discussion=False).count(),
+                replies=await models.Message.filter(top_message=self).count(),
                 # TODO: probably handle pts
                 replies_pts=0,
             )
-        elif self.discussion_id is not None and self.has_discussion:
-            # TODO: prefetch this
-            await self.fetch_related("discussion", "discussion__peer")
+        elif self.discussion_id is not None:
             replies = MessageReplies(
-                replies=await models.Message.filter(discussion__id=self.discussion_id, has_discussion=False).count(),
-                # TODO: probably handle pts
-                replies_pts=0,
+                replies=await models.Message.filter(top_message__id=self.discussion_id).count(),
+                replies_pts=self.comments_info.discussion_pts,
                 comments=True,
-                channel_id=models.Channel.make_id_from(self.discussion.peer.channel_id),
+                channel_id=models.Channel.make_id_from(self.comments_info.discussion_channel_id),
             )
 
         message = TLMessage(

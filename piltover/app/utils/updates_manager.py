@@ -225,7 +225,7 @@ async def send_messages_channel(
 
     lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
     lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in chats]
-    lazy_channels = [LazyChannel(channel_id=Channel.norm_id(rel_channel.id)) for rel_channel in channels]
+    lazy_channels = [LazyChannel(channel_id=rel_channel.id) for rel_channel in channels]
 
     await SessionManager.send(
         ObjectWithLazyFields(
@@ -424,7 +424,7 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
 
     lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
     lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in chats]
-    lazy_channels = [LazyChannel(channel_id=Channel.norm_id(rel_channel.id)) for rel_channel in channels]
+    lazy_channels = [LazyChannel(channel_id=rel_channel.id) for rel_channel in channels]
 
     await SessionManager.send(
         ObjectWithLazyFields(

@@ -85,3 +85,4 @@ from .slowmode_last_message import SlowmodeLastMessage
 from .bot_command import BotCommand
 from .emoji_group import EmojiGroup
 from .system_object_id import SystemObjectId
+from .message_comments import MessageComments

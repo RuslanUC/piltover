@@ -1,3 +1,4 @@
+from asyncio import get_running_loop
 from contextlib import AsyncExitStack
 from datetime import timedelta, datetime, UTC
 from io import BytesIO
@@ -6,13 +7,15 @@ from time import time
 import pytest
 from PIL import Image
 from fastrand import xorshift128plus_bytes
+from loguru import logger
 from pyrogram.enums import MessageEntityType
-from pyrogram.errors import ChatWriteForbidden, NotAcceptable, Forbidden
-from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel
+from pyrogram.errors import NotAcceptable, Forbidden
+from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
-    InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages
+    InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
+    UpdateNewChannelMessage, UpdateEditChannelMessage
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F
@@ -1093,3 +1096,30 @@ async def test_send_dice_to_self(exit_stack: AsyncExitStack) -> None:
         assert message.dice.emoji == dice_emoji
         assert message.dice.value >= 1
         assert message.dice.value <= 64 if dice_emoji == "🎰" else 6
+
+
+@pytest.mark.asyncio
+async def test_send_message_to_channel_with_discussion_group(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    channel = await client.create_channel("idk channel")
+    group = await client.create_supergroup("idk group")
+
+    await client.invoke(SetDiscussionGroup(
+        broadcast=await client.resolve_peer(channel.id),
+        group=await client.resolve_peer(group.id),
+    ))
+
+    async with client.expect_updates_m(UpdateNewChannelMessage, timeout_per_update=1):
+        message = await client.send_message(channel.id, "test message")
+
+    await client.expect_updates(UpdateEditChannelMessage, timeout_per_update=1)
+
+    async for msg in client.get_chat_history(group.id, limit=1):
+        assert msg.text == message.text
+        assert msg.forward_from_message_id == message.id
+        assert msg.forward_from_chat == channel
+        break
+    else:
+        assert False
+
