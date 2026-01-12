@@ -160,7 +160,6 @@ class Message(Model):
         )
 
     def _to_tl_service(self) -> MessageServiceToFormat:
-        # TODO: fails when parsing slowmode service action ???
         action = TLObject.read(BytesIO(self.extra_info))
         if not isinstance(action, MessageActionInst):
             logger.error(

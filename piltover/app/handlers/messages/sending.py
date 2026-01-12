@@ -129,7 +129,7 @@ async def send_created_messages_internal(
             if unread_mentions_to_create:
                 await MessageMention.bulk_create(unread_mentions_to_create)
 
-        if message.peer.owner_id is None and peer.channel.discussion_id:
+        if message.type is MessageType.REGULAR and message.peer.owner_id is None and peer.channel.discussion_id:
             logger.debug(f"Creating task create_discussion({message.id})...")
             ctx = request_ctx.get()
             await AsyncKicker(task_name=f"create_discussion", broker=ctx.worker.broker, labels={}).kiq(message.id)
