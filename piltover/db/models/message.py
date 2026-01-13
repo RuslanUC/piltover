@@ -165,6 +165,9 @@ class Message(Model):
             reply_to_top_id=self.top_message_id,
         )
 
+    def is_service(self) -> bool:
+        return self.type not in (MessageType.REGULAR, MessageType.SCHEDULED)
+
     def _to_tl_service(self) -> MessageServiceToFormat:
         action = TLObject.read(BytesIO(self.extra_info))
         if not isinstance(action, MessageActionInst):
@@ -193,11 +196,20 @@ class Message(Model):
         )
 
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessageBase:
-        if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None and not with_reactions:
-            return cached
-
-        if self.type not in (MessageType.REGULAR, MessageType.SCHEDULED):
+        # This function call is probably much cheaper than cache lookup, so doing this before Cache.obj.get(...)
+        if self.is_service():
             return self._to_tl_service()
+
+        reactions = None
+        if with_reactions and self.type is MessageType.REGULAR:
+            reactions = await self.to_tl_reactions(current_user)
+
+        cache_key = self._cache_key(current_user)
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            if with_reactions and self.type is MessageType.REGULAR:
+                cached.reactions = reactions
+                await Cache.obj.set(cache_key, cached)
+            return cached
 
         media = None
         if self.media_id is not None:
@@ -230,8 +242,6 @@ class Message(Model):
         ttl_period = None
         if self.ttl_period_days and self.type is MessageType.REGULAR:
             ttl_period = self.ttl_period_days * self.TTL_MULT
-
-        reply_markup = self.make_reply_markup()
 
         replies = None
         if self.is_discussion:
@@ -266,12 +276,12 @@ class Message(Model):
             views=self.post_info.views if self.post_info_id is not None else None,
             forwards=self.post_info.forwards if self.post_info_id is not None else None,
             post_author=self.post_author if self.channel_post else None,
-            reactions=await self.to_tl_reactions(current_user) if with_reactions else None,
+            reactions=reactions,
             mentioned=mentioned,
             media_unread=media_unread,
             from_scheduled=self.from_scheduled or self.scheduled_date is not None,
             ttl_period=ttl_period,
-            reply_markup=reply_markup,
+            reply_markup=self.make_reply_markup(),
             noforwards=self.no_forwards,
             via_bot_id=self.via_bot_id,
             replies=replies,
@@ -282,7 +292,7 @@ class Message(Model):
             restriction_reason=[],
         )
 
-        await Cache.obj.set(self._cache_key(current_user), message)
+        await Cache.obj.set(cache_key, message)
         return message
 
     @classmethod
@@ -290,14 +300,15 @@ class Message(Model):
             cls, messages: list[Message], user: models.User, with_reactions: bool = False,
     ) -> list[TLMessageBase]:
         cached = {}
-        if not with_reactions:
-            cache_keys = [message._cache_key(user) for message in messages]
-            if cache_keys:
-                for cached_msg in await Cache.obj.multi_get(cache_keys):
-                    if cached_msg is not None:
-                        cached[cached_msg.id] = cached_msg
+        cache_keys = [message._cache_key(user) for message in messages]
+        if cache_keys:
+            cached = {
+                cached_msg.id: cached_msg
+                for cached_msg in await Cache.obj.multi_get(cache_keys)
+                if cached_msg is not None
+            }
 
-        message_ids = {message.id for message in messages if message.id not in cached}
+        message_ids = {message.id for message in messages if message.id not in cached and not message.is_service()}
 
         if message_ids:
             mentioned = set(await models.MessageMention.filter(
@@ -310,7 +321,7 @@ class Message(Model):
         last_mention_peers_to_fetch = set()
         last_mention_messages_to_check = set()
         for message in messages:
-            if message.id in cached:
+            if message.is_service():
                 continue
             if message.media \
                     and message.media.file \
@@ -361,7 +372,7 @@ class Message(Model):
         replies = {}
         replies_count_to_fetch = defaultdict(list)
         for message in messages:
-            if message.id in cached:
+            if message.id in cached or message.is_service():
                 continue
             if message.is_discussion:
                 replies_count_to_fetch[message.id].append(message.id)
@@ -386,27 +397,46 @@ class Message(Model):
                     reply_to__id__in=list(replies_count_to_fetch),
                 ).group_by("reply__to__id").annotate(count=Count("id")).values_list("reply__to__id", "count")
             }
-            for reply_to_id, message_ids in replies_count_to_fetch:
+            for reply_to_id, ids in replies_count_to_fetch:
                 count = counts.get(reply_to_id, 0)
-                for message_id in message_ids:
+                for message_id in ids:
                     replies[message_id].replies = count
 
         to_cache = []
 
         result = []
         for message in messages:
-            if not with_reactions and message.id in cached:
-                result.append(cached[message.id])
+            if message.is_service():
+                result.append(message._to_tl_service())
                 continue
 
-            if message.type not in (MessageType.REGULAR, MessageType.SCHEDULED):
-                result.append(message._to_tl_service())
-                to_cache.append((message._cache_key(user), result[-1]))
+            msg_media_unread = media_unreads.get(message.id, False)
+
+            reactions = None
+            if with_reactions and message.type is MessageType.REGULAR:
+                # TODO: precalculate reactions for all regular messages before loop
+                reactions = await message.to_tl_reactions(user)
+            
+            if message.id in cached:
+                result.append(cached[message.id])
+                need_recache = False
+                
+                if result[-1].media_unread != msg_media_unread:
+                    result[-1].media_unread = msg_media_unread
+                    need_recache = True
+                
+                if with_reactions:
+                    result[-1].reactions = reactions
+                    need_recache = True
+                
+                if need_recache:
+                    to_cache.append((message._cache_key(user), result[-1]))
+                
                 continue
 
             media = None
             if message.media_id is not None:
-                # TODO: precalculate before loop somehow
+                # TODO: precalculate for all messages before loop somehow
                 media = await message.media.to_tl(user) if message.media is not None else None
 
             entities = []
@@ -437,10 +467,9 @@ class Message(Model):
                 views=message.post_info.views if message.post_info_id is not None else None,
                 forwards=message.post_info.forwards if message.post_info_id is not None else None,
                 post_author=message.post_author if message.channel_post else None,
-                # TODO: precalculate before loop
-                reactions=await message.to_tl_reactions(user) if with_reactions else None,
+                reactions=reactions,
                 mentioned=message.id in mentioned,
-                media_unread=media_unreads.get(message.id, False),
+                media_unread=msg_media_unread,
                 from_scheduled=message.from_scheduled or message.scheduled_date is not None,
                 ttl_period=ttl_period,
                 reply_markup=message.make_reply_markup(),
@@ -454,8 +483,7 @@ class Message(Model):
                 restriction_reason=[],
             ))
 
-            if not with_reactions:
-                to_cache.append((message._cache_key(user), result[-1]))
+            to_cache.append((message._cache_key(user), result[-1]))
 
         if to_cache:
             await Cache.obj.multi_set(to_cache)
