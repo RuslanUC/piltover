@@ -1,6 +1,7 @@
 import asyncio
 from datetime import timedelta, datetime, UTC
 from io import BytesIO
+from typing import Literal
 from uuid import uuid4, UUID
 
 from fastrand import xorshift128plus_bytes
@@ -16,8 +17,24 @@ from piltover.storage.base import StorageType
 from piltover.tl import Long
 from piltover.utils.utils import run_coro_with_additional_return
 
+# TODO: rewrite providers as different classes?
+
 _TENOR_SEARCH = "https://tenor.googleapis.com/v2/search"
 _TENOR_FEATURED = "https://tenor.googleapis.com/v2/featured"
+_KLIPY_SEARCH = "https://api.klipy.com/v2/search"
+_KLIPY_FEATURED = "https://api.klipy.com/v2/featured"
+
+
+def _get_api_endpoint_and_token(provider: Literal["tenor", "klipy"], search: bool) -> tuple[str | None, str | None]:
+    if provider == "tenor":
+        if search:
+            return _TENOR_SEARCH, AppConfig.TENOR_KEY
+        return _TENOR_FEATURED, AppConfig.TENOR_KEY
+    elif provider == "klipy":
+        if search:
+            return _KLIPY_SEARCH, AppConfig.KLIPY_KEY
+        return _KLIPY_FEATURED, AppConfig.KLIPY_KEY
+    return None, None
 
 
 def _empty(inline_query: InlineQuery) -> tuple[InlineQueryResult, list]:
@@ -83,15 +100,15 @@ async def _get_or_download_gif(
 async def gif_inline_query_handler(
         inline_query: InlineQuery,
 ) -> tuple[InlineQueryResult, list[InlineQueryResultItem]] | None:
-    if AppConfig.TENOR_KEY is None:
-        logger.warning("\"TENOR_API_KEY\" environment variable is not set!")
-        return _empty(inline_query)
-
     storage = request_ctx.get().storage
 
-    url = _TENOR_SEARCH if inline_query.query else _TENOR_FEATURED
+    endpoint, api_key = _get_api_endpoint_and_token(AppConfig.GIFS_PROVIDER, bool(inline_query.query.strip()))
+    if endpoint is None or api_key is None:
+        logger.warning("Uknown gif provider or provider api key is not set!")
+        return _empty(inline_query)
+
     params = {
-        "key": AppConfig.TENOR_KEY,
+        "key": api_key,
         "limit": "32",
         "media_filter": "mp4",
     }
@@ -102,7 +119,7 @@ async def gif_inline_query_handler(
         params["pos"] = inline_query.offset
 
     async with AsyncClient() as cl:
-        resp = await cl.get(url, params=params)
+        resp = await cl.get(endpoint, params=params)
 
         if resp.status_code >= 400:
             logger.warning(f"Failed to get gifs, response code is {resp.status_code}!")

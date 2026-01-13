@@ -78,8 +78,12 @@ class AppConfig:
     SRP_PASSWORD_RESET_WAIT_SECONDS = 86400 * 7
     SCHEDULED_INSTANT_SEND_THRESHOLD = 30
 
+    # TODO: use enum?
+    GIFS_PROVIDER = environ.get("GIFS_PROVIDER", "tenor").lower().strip()
+
     TENOR_KEY = environ.get("TENOR_API_KEY", None)
-    
+    KLIPY_KEY = environ.get("KLIPY_API_KEY", None)
+
     DICE = {
         "\U0001F3B2": (6, 62),  # Die
         "\U0001F3AF": (6, 62),  # Target
@@ -93,3 +97,10 @@ class AppConfig:
 
 if "HMAC_KEY" not in environ:
     logger.info(f"Generated key for signing file references: {b64encode(AppConfig.HMAC_KEY).decode('utf8')}")
+
+if AppConfig.GIFS_PROVIDER and AppConfig.GIFS_PROVIDER not in ("tenor", "klipy"):
+    logger.warning(
+        f"Invalid gifs provider selected: \"{AppConfig.GIFS_PROVIDER}\". "
+        f"Gifs search is disabled. "
+        f"Currently supported providers: \"tenor\", \"klipy\"."
+    )
