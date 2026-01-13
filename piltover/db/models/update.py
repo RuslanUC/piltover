@@ -59,7 +59,9 @@ class Update(Model):
                     pts_count=len(self.related_ids),
                 )
             case UpdateType.MESSAGE_EDIT:
-                message = await models.Message.get_or_none(id=self.related_id).select_related(*Message.PREFETCH_FIELDS)
+                message = await models.Message.get_or_none(id=self.related_id).select_related(
+                    *models.Message.PREFETCH_FIELDS,
+                )
                 if message is None:
                     return None
 
@@ -426,7 +428,7 @@ class Update(Model):
             case UpdateType.NEW_SCHEDULED_MESSAGE:
                 message = await models.Message.get_or_none(
                     id=self.related_id, type=MessageType.SCHEDULED, peer__owner=user
-                ).select_related(*Message.PREFETCH_FIELDS)
+                ).select_related(*models.Message.PREFETCH_FIELDS)
                 if message is None:
                     return None
 

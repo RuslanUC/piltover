@@ -247,6 +247,8 @@ async def export_login_token():
     ctx = request_ctx.get()
     if ctx.auth_id:
         auth = await UserAuthorization.get_or_none(id=ctx.auth_id).select_related("user")
+        if auth.mfa_pending:
+            raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         return LoginTokenSuccess(authorization=AuthAuthorization(user=await auth.user.to_tl(auth.user)))
 
     login_q = Q(key__id=ctx.perm_auth_key_id) & (

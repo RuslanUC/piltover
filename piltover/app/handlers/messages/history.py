@@ -11,7 +11,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, Message, MessageMention, \
-    ChatParticipant, Chat, ReadHistoryChunk, AdminLogEntry
+    ReadHistoryChunk, AdminLogEntry
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -227,11 +227,10 @@ async def format_messages_internal(
 ) -> Messages | MessagesSlice:
     ucc = UsersChatsChannels()
 
-    messages_tl = []
     for message in messages:
-        messages_tl.append(await message.to_tl(user, with_reactions))
         ucc.add_message(message.id)
 
+    messages_tl = await Message.to_tl_bulk(messages, user, with_reactions)
     users, chats, channels = await ucc.resolve(user)
 
     """
@@ -578,11 +577,10 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
         ))
 
     messages = await Message.filter(id__in=message_ids).select_related(*Message.PREFETCH_FIELDS)
-    messages_tl = []
+    messages_tl = await Message.to_tl_bulk(messages, user)
     ucc = UsersChatsChannels()
 
     for message in messages:
-        messages_tl.append(await message.to_tl(user))
         ucc.add_message(message.id)
 
     users, chats, channels = await ucc.resolve(user)

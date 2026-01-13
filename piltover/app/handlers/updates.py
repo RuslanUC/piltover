@@ -86,14 +86,17 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
             seq=(await get_seq_qts())[0],
         )
 
-    new_messages = {}
     new_secret_messages = []
     other_updates = []
     ucc = UsersChatsChannels()
 
     for message in new:
-        new_messages[message.id] = await message.to_tl(user)
         ucc.add_message(message.id)
+
+    new_messages = {
+        message.id: message
+        for message in await Message.to_tl_bulk(new, user)
+    }
 
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
@@ -165,13 +168,16 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
         messages_from_channel_query & Q(id__in=new_messages_ids)
     ).select_related(*Message.PREFETCH_FIELDS).order_by("id")
 
-    new_messages = {}
     other_updates = []
     ucc = UsersChatsChannels()
 
     for message in new:
-        new_messages[message.id] = await message.to_tl(user)
         ucc.add_message(message.id)
+
+    new_messages = {
+        message.id: message
+        for message in await Message.to_tl_bulk(new, user)
+    }
 
     for update in new_updates:
         if update.type is ChannelUpdateType.EDIT_MESSAGE and update.related_id in new_messages:

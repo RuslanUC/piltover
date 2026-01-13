@@ -33,9 +33,10 @@ async def format_dialogs(
     ucc = UsersChatsChannels()
 
     for dialog in dialogs:
+        # TODO: fetch in bulk
         message = await dialog.top_message_query()
         if message is not None:
-            messages.append(await message.to_tl(user))
+            messages.append(message)
             ucc.add_message(message.id)
         else:
             ucc.add_peer(dialog.peer)
@@ -44,7 +45,7 @@ async def format_dialogs(
 
     result = {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
-        "messages": messages,
+        "messages": await Message.to_tl_bulk(messages, user),
         "chats": [*chats, *channels],
         "users": users,
     }

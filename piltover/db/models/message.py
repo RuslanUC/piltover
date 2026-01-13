@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime
 from enum import Enum, auto
 from io import BytesIO
@@ -27,6 +28,7 @@ from piltover.utils.snowflake import Snowflake
 
 _T = TypeVar("_T")
 BackwardO2OOrT = fields.BackwardOneToOneRelation[_T] | _T
+
 
 class _SomethingMissing(Enum):
     MISSING = auto()
@@ -190,8 +192,6 @@ class Message(Model):
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
-    # TODO: add to_tl_bulk
-
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessageBase:
         if (cached := await Cache.obj.get(self._cache_key(current_user))) is not None and not with_reactions:
             return cached
@@ -284,6 +284,183 @@ class Message(Model):
 
         await Cache.obj.set(self._cache_key(current_user), message)
         return message
+
+    @classmethod
+    async def to_tl_bulk(
+            cls, messages: list[Message], user: models.User, with_reactions: bool = False,
+    ) -> list[TLMessageBase]:
+        cached = {}
+        if not with_reactions:
+            cache_keys = [message._cache_key(user) for message in messages]
+            if cache_keys:
+                for cached_msg in await Cache.obj.multi_get(cache_keys):
+                    if cached_msg is not None:
+                        cached[cached_msg.id] = cached_msg
+
+        message_ids = {message.id for message in messages if message.id not in cached}
+
+        if message_ids:
+            mentioned = set(await models.MessageMention.filter(
+                peer__owner=user, message__id__in=message_ids,
+            ).values_list("message__id", flat=True))
+        else:
+            mentioned = set()
+
+        media_unreads = {}
+        last_mention_peers_to_fetch = set()
+        last_mention_messages_to_check = set()
+        for message in messages:
+            if message.id in cached:
+                continue
+            if message.media \
+                    and message.media.file \
+                    and message.media.file.type in (FileType.DOCUMENT_VOICE, FileType.DOCUMENT_VIDEO_NOTE):
+                media_unreads[message.id] = not message.media_read
+            elif message.id in mentioned:
+                last_mention_peers_to_fetch.add(message.peer)
+                last_mention_messages_to_check.add(message.id)
+
+        if last_mention_peers_to_fetch:
+            last_mentions_q = Q()
+            for peer in last_mention_peers_to_fetch:
+                if peer.type is PeerType.CHANNEL:
+                    last_mentions_q |= Q(peer__owner=user, peer__channel__id=peer.channel_id)
+                else:
+                    last_mentions_q |= Q(peer=peer)
+
+            last_ids_result = await models.ReadState.filter(last_mentions_q).values_list(
+                "peer__type", "peer__user__id", "peer__chat__id", "peer__channel__id", "last_mention_id"
+            )
+            last_ids = {}
+            for peer_type, peer_user, peer_chat, peer_channel, last_id in last_ids_result:
+                if peer_type in (PeerType.SELF, PeerType.USER):
+                    last_ids[(peer_type, peer_user)] = last_id
+                elif peer_type is PeerType.CHAT:
+                    last_ids[(peer_type, peer_chat)] = last_id
+                elif peer_type is PeerType.CHANNEL:
+                    last_ids[(peer_type, peer_channel)] = last_id
+                else:
+                    raise Unreachable
+
+            for message in messages:
+                if message.id not in last_mention_messages_to_check:
+                    continue
+
+                if message.peer.type in (PeerType.SELF, PeerType.USER):
+                    key = (message.peer.type, message.peer.user_id)
+                elif message.peer.type is PeerType.CHAT:
+                    key = (message.peer.type, message.peer.chat_id)
+                elif message.peer.type is PeerType.CHANNEL:
+                    key = (message.peer.type, message.peer.channel_id)
+                else:
+                    raise Unreachable
+
+                if key not in last_ids or last_ids[key] < message.id:
+                    media_unreads[message.id] = True
+
+        replies = {}
+        replies_count_to_fetch = defaultdict(list)
+        for message in messages:
+            if message.id in cached:
+                continue
+            if message.is_discussion:
+                replies_count_to_fetch[message.id].append(message.id)
+                replies[message.id] = MessageReplies(
+                    replies=0,
+                    # TODO: probably handle pts
+                    replies_pts=0,
+                )
+            elif message.discussion_id is not None and message.comments_info_id is not None:
+                replies_count_to_fetch[message.discussion_id].append(message.id)
+                replies[message.id] = MessageReplies(
+                    replies=0,
+                    replies_pts=message.comments_info.discussion_pts,
+                    comments=True,
+                    channel_id=models.Channel.make_id_from(message.comments_info.discussion_channel_id),
+                )
+
+        if replies_count_to_fetch:
+            counts = {
+                reply_to_id: count
+                for reply_to_id, count in await models.Message.filter(
+                    reply_to__id__in=list(replies_count_to_fetch),
+                ).group_by("reply__to__id").annotate(count=Count("id")).values_list("reply__to__id", "count")
+            }
+            for reply_to_id, message_ids in replies_count_to_fetch:
+                count = counts.get(reply_to_id, 0)
+                for message_id in message_ids:
+                    replies[message_id].replies = count
+
+        to_cache = []
+
+        result = []
+        for message in messages:
+            if not with_reactions and message.id in cached:
+                result.append(cached[message.id])
+                continue
+
+            if message.type not in (MessageType.REGULAR, MessageType.SCHEDULED):
+                result.append(message._to_tl_service())
+                to_cache.append((message._cache_key(user), result[-1]))
+                continue
+
+            media = None
+            if message.media_id is not None:
+                # TODO: precalculate before loop somehow
+                media = await message.media.to_tl(user) if message.media is not None else None
+
+            entities = []
+            for entity in (message.entities or []):
+                tl_id = entity.pop("_")
+                entities.append(objects[tl_id](**entity))
+                entity["_"] = tl_id
+
+            ttl_period = None
+            if message.ttl_period_days and message.type is MessageType.REGULAR:
+                ttl_period = message.ttl_period_days * message.TTL_MULT
+
+            result.append(TLMessage(
+                id=message.id,
+                message=message.message or "",
+                pinned=message.pinned,
+                peer_id=message.peer.to_tl(),
+                date=int((message.date if message.scheduled_date is None else message.scheduled_date).timestamp()),
+                out=user.id == message.author_id,
+                media=media,
+                edit_date=int(message.edit_date.timestamp()) if message.edit_date is not None else None,
+                reply_to=message._make_reply_to_header(),
+                fwd_from=message.fwd_header.to_tl() if message.fwd_header_id is not None else None,
+                from_id=PeerUser(user_id=message.author_id) if not message.channel_post else None,
+                entities=entities,
+                grouped_id=message.media_group_id,
+                post=message.channel_post,
+                views=message.post_info.views if message.post_info_id is not None else None,
+                forwards=message.post_info.forwards if message.post_info_id is not None else None,
+                post_author=message.post_author if message.channel_post else None,
+                # TODO: precalculate before loop
+                reactions=await message.to_tl_reactions(user) if with_reactions else None,
+                mentioned=message.id in mentioned,
+                media_unread=media_unreads.get(message.id, False),
+                from_scheduled=message.from_scheduled or message.scheduled_date is not None,
+                ttl_period=ttl_period,
+                reply_markup=message.make_reply_markup(),
+                noforwards=message.no_forwards,
+                via_bot_id=message.via_bot_id,
+                replies=replies.get(message.id, None),
+                edit_hide=message.edit_hide,
+
+                silent=False,
+                legacy=False,
+                restriction_reason=[],
+            ))
+
+            if not with_reactions:
+                to_cache.append((message._cache_key(user), result[-1]))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
+
+        return result
 
     def make_reply_markup(self) -> ReplyMarkup | None:
         if self._cached_reply_markup is _SMTH_MISSING:

@@ -205,10 +205,10 @@ class PrivacyRule(Model):
                 key: True for key in keys
             }
 
-        for user in users:
-            if isinstance(user, models.User) and user.bot:
-                user_ids.remove(user.id)
-                results[user.id] = {
+        for target_user in users:
+            if isinstance(target_user, models.User) and target_user.bot:
+                user_ids.discard(target_user.id)
+                results[target_user.id] = {
                     key: True for key in keys
                 }
 
