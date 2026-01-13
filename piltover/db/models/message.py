@@ -18,7 +18,8 @@ from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, FileType
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, objects, TLObject
-from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase
+from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase, \
+    MessageMedia as MessageMediaBase, MessageEntity as MessageEntityBase
 from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
@@ -195,6 +196,48 @@ class Message(Model):
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
+    def _to_tl(
+            self, out: bool, media: MessageMediaBase, entities: list[MessageEntityBase] | None,
+            reactions: MessageReactions | None, mentioned: bool, media_unread: bool, replies: MessageReplies | None,
+    ) -> TLMessage:
+        ttl_period = None
+        if self.ttl_period_days is not None and self.type is not MessageType.SCHEDULED:
+            ttl_period = self.ttl_period_days * self.TTL_MULT
+
+        return TLMessage(
+            id=self.id,
+            message=self.message or "",
+            pinned=self.pinned,
+            peer_id=self.peer.to_tl(),
+            date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
+            out=out,
+            media=media,
+            edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
+            reply_to=self._make_reply_to_header(),
+            fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
+            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
+            entities=entities,
+            grouped_id=self.media_group_id,
+            post=self.channel_post,
+            views=self.post_info.views if self.post_info_id is not None else None,
+            forwards=self.post_info.forwards if self.post_info_id is not None else None,
+            post_author=self.post_author if self.channel_post else None,
+            reactions=reactions,
+            mentioned=mentioned,
+            media_unread=media_unread,
+            from_scheduled=self.from_scheduled or self.scheduled_date is not None,
+            ttl_period=ttl_period,
+            reply_markup=self.make_reply_markup(),
+            noforwards=self.no_forwards,
+            via_bot_id=self.via_bot_id,
+            replies=replies,
+            edit_hide=self.edit_hide,
+
+            silent=False,
+            legacy=False,
+            restriction_reason=[],
+        )
+
     async def to_tl(self, current_user: models.User, with_reactions: bool = False) -> TLMessageBase:
         # This function call is probably much cheaper than cache lookup, so doing this before Cache.obj.get(...)
         if self.is_service():
@@ -239,10 +282,6 @@ class Message(Model):
             )
             media_unread = last_id is None or last_id < self.id
 
-        ttl_period = None
-        if self.ttl_period_days and self.type is MessageType.REGULAR:
-            ttl_period = self.ttl_period_days * self.TTL_MULT
-
         replies = None
         if self.is_discussion:
             replies = MessageReplies(
@@ -258,38 +297,14 @@ class Message(Model):
                 channel_id=models.Channel.make_id_from(self.comments_info.discussion_channel_id),
             )
 
-        message = TLMessage(
-            id=self.id,
-            message=self.message or "",
-            pinned=self.pinned,
-            peer_id=self.peer.to_tl(),
-            date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
+        message = self._to_tl(
             out=current_user.id == self.author_id,
             media=media,
-            edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
-            reply_to=self._make_reply_to_header(),
-            fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
-            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
             entities=entities,
-            grouped_id=self.media_group_id,
-            post=self.channel_post,
-            views=self.post_info.views if self.post_info_id is not None else None,
-            forwards=self.post_info.forwards if self.post_info_id is not None else None,
-            post_author=self.post_author if self.channel_post else None,
             reactions=reactions,
             mentioned=mentioned,
             media_unread=media_unread,
-            from_scheduled=self.from_scheduled or self.scheduled_date is not None,
-            ttl_period=ttl_period,
-            reply_markup=self.make_reply_markup(),
-            noforwards=self.no_forwards,
-            via_bot_id=self.via_bot_id,
             replies=replies,
-            edit_hide=self.edit_hide,
-
-            silent=False,
-            legacy=False,
-            restriction_reason=[],
         )
 
         await Cache.obj.set(cache_key, message)
@@ -445,42 +460,14 @@ class Message(Model):
                 entities.append(objects[tl_id](**entity))
                 entity["_"] = tl_id
 
-            ttl_period = None
-            if message.ttl_period_days and message.type is MessageType.REGULAR:
-                ttl_period = message.ttl_period_days * message.TTL_MULT
-
-            result.append(TLMessage(
-                id=message.id,
-                message=message.message or "",
-                pinned=message.pinned,
-                peer_id=message.peer.to_tl(),
-                date=int((message.date if message.scheduled_date is None else message.scheduled_date).timestamp()),
+            result.append(message._to_tl(
                 out=user.id == message.author_id,
                 media=media,
-                edit_date=int(message.edit_date.timestamp()) if message.edit_date is not None else None,
-                reply_to=message._make_reply_to_header(),
-                fwd_from=message.fwd_header.to_tl() if message.fwd_header_id is not None else None,
-                from_id=PeerUser(user_id=message.author_id) if not message.channel_post else None,
                 entities=entities,
-                grouped_id=message.media_group_id,
-                post=message.channel_post,
-                views=message.post_info.views if message.post_info_id is not None else None,
-                forwards=message.post_info.forwards if message.post_info_id is not None else None,
-                post_author=message.post_author if message.channel_post else None,
                 reactions=reactions,
                 mentioned=message.id in mentioned,
                 media_unread=msg_media_unread,
-                from_scheduled=message.from_scheduled or message.scheduled_date is not None,
-                ttl_period=ttl_period,
-                reply_markup=message.make_reply_markup(),
-                noforwards=message.no_forwards,
-                via_bot_id=message.via_bot_id,
                 replies=replies.get(message.id, None),
-                edit_hide=message.edit_hide,
-
-                silent=False,
-                legacy=False,
-                restriction_reason=[],
             ))
 
             to_cache.append((message._cache_key(user), result[-1]))
