@@ -1123,3 +1123,43 @@ async def test_send_message_to_channel_with_discussion_group(exit_stack: AsyncEx
     else:
         assert False
 
+
+@pytest.mark.asyncio
+async def test_send_message_to_channel_comments(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    channel = await client.create_channel("idk channel")
+    group = await client.create_supergroup("idk group")
+
+    await client.invoke(SetDiscussionGroup(
+        broadcast=await client.resolve_peer(channel.id),
+        group=await client.resolve_peer(group.id),
+    ))
+
+    async with client.expect_updates_m(UpdateNewChannelMessage, timeout_per_update=1):
+        message = await client.send_message(channel.id, "test message")
+
+    await client.expect_updates(UpdateEditChannelMessage, timeout_per_update=1)
+
+    discussion_message = await client.get_discussion_message(channel.id, message.id)
+    assert len([m async for m in client.get_discussion_replies(discussion_message.chat.id, discussion_message.id)]) == 0
+
+    comment = await discussion_message.reply("idk")
+
+    async for msg in client.get_chat_history(group.id, limit=1):
+        assert msg.text == comment.text
+        assert msg.id == comment.id
+        break
+    else:
+        assert False
+
+    assert len([m async for m in client.get_discussion_replies(discussion_message.chat.id, discussion_message.id)]) == 1
+
+    async for msg in client.get_discussion_replies(discussion_message.chat.id, discussion_message.id, limit=1):
+        assert msg.text == comment.text
+        assert msg.id == comment.id
+        break
+    else:
+        assert False
+
+
