@@ -14,6 +14,9 @@ class PollVote(Model):
     hidden: bool = fields.BooleanField(default=False)
     voted_at: datetime = fields.DatetimeField(auto_now_add=True)
 
+    user_id: int
+    answer_id: int
+
     class Meta:
         unique_together = (
             ("user", "answer",),

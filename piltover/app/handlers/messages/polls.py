@@ -25,7 +25,9 @@ async def get_poll_results(request: GetPollResults, user: User) -> Updates:
     else:
         query = Q(peer=peer)
 
-    message = await Message.get_or_none(query & Q(id=request.msg_id)).select_related("media", "media__poll")
+    message = await Message.get_or_none(query & Q(id=request.msg_id)).select_related(
+        "media", "media__poll"
+    ).prefetch_related("media__poll__answers")
     if message is None or message.media is None or message.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
@@ -100,7 +102,9 @@ async def send_vote(request: SendVote, user: User) -> Updates:
     else:
         query = Q(peer=peer)
 
-    message = await Message.get_or_none(query & Q(id=request.msg_id)).select_related("media", "media__poll")
+    message = await Message.get_or_none(query & Q(id=request.msg_id)).select_related(
+        "media", "media__poll",
+    ).prefetch_related("media__poll__pollanswers")
     if message is None or message.media is None or message.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
     if message.media.poll.is_closed_fr:

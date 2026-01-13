@@ -38,8 +38,9 @@ class MessageMedia(Model):
                 photo=self.file.to_tl_photo(),
             )
         elif self.type is MediaType.POLL:
+            await self.fetch_related("poll", "poll__pollanswers")
             return MessageMediaPoll(
-                poll=await self.poll.to_tl(),
+                poll=self.poll.to_tl(),
                 results=await self.poll.to_tl_results(user),
             )
         elif self.type is MediaType.CONTACT:

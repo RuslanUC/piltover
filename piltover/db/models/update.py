@@ -318,12 +318,12 @@ class Update(Model):
                 )
 
             case UpdateType.UPDATE_POLL:
-                if (poll := await models.Poll.get_or_none(id=self.related_id)) is None:
+                if (poll := await models.Poll.get_or_none(id=self.related_id).prefetch_related("pollanswers")) is None:
                     return None
 
                 return UpdateMessagePoll(
                     poll_id=poll.id,
-                    poll=await poll.to_tl(),
+                    poll=poll.to_tl(),
                     results=await poll.to_tl_results(user),
                 )
 
