@@ -123,7 +123,8 @@ class Message(Model):
         )
 
     def _cache_key(self, user: models.User) -> str:
-        return f"message:{user.id}:{self.id}:{self.version}"
+        media_version = None if self.media_id is None else self.media.version
+        return f"message:{user.id}:{self.id}:{self.version}-{media_version}"
 
     @classmethod
     async def get_(

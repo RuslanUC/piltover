@@ -22,6 +22,7 @@ class MessageMedia(Model):
     file: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None)
     poll: models.Poll | None = fields.ForeignKeyField("models.Poll", null=True, default=None)
     static_data: bytes | None = fields.BinaryField(null=True, default=None)
+    version: int = fields.IntField(default=0)
 
     file_id: int | None
     poll_id: int | None
