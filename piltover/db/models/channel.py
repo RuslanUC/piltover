@@ -148,54 +148,36 @@ class Channel(ChatBase):
         )
 
     async def to_tl(self, user: models.User | int) -> TLChannel | ChannelForbidden:
-        # TODO: replace method body with `await Channel.to_tl_bulk([self], user)` maybe?
-
-        user_id = user.id if isinstance(user, models.User) else user
-
-        peer_exists = await models.Peer.filter(owner__id=user_id, channel=self, type=PeerType.CHANNEL).exists()
-        if self.deleted or not peer_exists:
-            return ChannelForbidden(
-                id=self.make_id(),
-                access_hash=-1 if peer_exists is None else 0,
-                title=self.name,
-            )
-
-        participant = await models.ChatParticipant.get_or_none(user__id=user_id, channel=self, left=False)
-        if participant is None and not (self.nojoin_allow_view or await models.Username.filter(channel=self).exists()):
-            return ChannelForbidden(
-                id=self.make_id(),
-                access_hash=-1,
-                title=self.name,
-            )
-
-        username = await self.get_username()
-        if self.photo is not None:
-            self.photo = await self.photo
-
-        return self._to_tl(user_id, participant, self.photo, username.username if username else None)
+        return (await self.to_tl_bulk([self], user))[0]
 
     @classmethod
     async def to_tl_bulk(
-            cls, channels: list[models.Channel], user: models.User
+            cls, channels: list[models.Channel], user_or_id: models.User | int,
     ) -> list[TLChannel | ChannelForbidden]:
         if not channels:
             return []
 
+        user_id = user_or_id.id if isinstance(user_or_id, models.User) else user_or_id
+
         channel_ids = [channel.id for channel in channels]
 
         if len(channel_ids) == 1:
-            if await models.Peer.filter(owner=user, channel__id=channel_ids[0]).exists():
+            if await models.Peer.filter(owner__id=user_id, channel__id=channel_ids[0]).exists():
                 peers = {channel_ids[0]}
             else:
                 peers = set()
         else:
-            peers = set(await models.Peer.filter(owner=user, channel_id__in=channel_ids).values_list("channel__id", flat=True))
+            peers = set(await models.Peer.filter(
+                owner__id=user_id, channel_id__in=channel_ids,
+            ).values_list("channel__id", flat=True))
 
         if len(channel_ids) == 1:
             if peers:
                 channel_id = channel_ids[0]
                 participants = {
-                    channel_id: await models.ChatParticipant.get_or_none(user=user, channel__id=channel_id, left=False)
+                    channel_id: await models.ChatParticipant.get_or_none(
+                        user__id=user_id, channel__id=channel_id, left=False,
+                    )
                 }
             else:
                 participants = {}
@@ -203,7 +185,9 @@ class Channel(ChatBase):
             if peers:
                 participants = {
                     participant.channel_id: participant
-                    for participant in await models.ChatParticipant.filter(user=user, channel__id__in=peers, left=False)
+                    for participant in await models.ChatParticipant.filter(
+                        user__id=user_id, channel__id__in=peers, left=False,
+                    )
                 }
             else:
                 participants = {}
@@ -270,7 +254,7 @@ class Channel(ChatBase):
                 ))
                 continue
 
-            tl.append(channel._to_tl(user.id, participant, photos.get(channel.id), usernames.get(channel.id)))
+            tl.append(channel._to_tl(user_id, participant, photos.get(channel.id), usernames.get(channel.id)))
 
         return tl
 
