@@ -9,7 +9,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector, InputUser
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
-from piltover.tl.types.photos import Photos, Photo as PhotosPhoto
+from piltover.tl.types.photos import Photos, Photo as PhotosPhoto, PhotosSlice
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("photos")
@@ -23,11 +23,40 @@ async def get_user_photos(request: GetUserPhotos, user: User):
     if not await PrivacyRule.has_access_to(user, peer_user, PrivacyRuleKeyType.PROFILE_PHOTO):
         return Photos(photos=[], users=[])
 
-    photos = await UserPhoto.filter(user=peer_user).select_related("file").order_by("-id")
+    # TODO: does official telegram server have limit?
+    limit = min(100, max(request.limit, 1))
+    photos_query = UserPhoto.filter(user=peer_user).select_related("file")
+
+    photos = []
+    if request.offset < 0:
+        photos_query_neg = photos_query
+        if request.max_id:
+            photos_query_neg = photos_query.filter(id__gte=request.max_id)
+        photos.extend(reversed(await photos_query_neg.limit(limit).order_by("id")))
+        limit -= len(photos)
+    elif request.offset > 0:
+        photos_query = photos_query.offset(request.offset)
+
+    if request.max_id:
+        photos_query = photos_query.filter(id__lt=request.max_id)
+
+    if limit:
+        photos.extend(await photos_query.limit(limit).order_by("-id"))
+
+    photos_total = await UserPhoto.filter(user=peer_user).count()
+    photos_tl = [photo.to_tl() for photo in photos]
+    users_tl = [await peer_user.to_tl(user)]
+
+    if photos_total >= len(photos):
+        return PhotosSlice(
+            count=photos_total,
+            photos=photos_tl,
+            users=users_tl,
+        )
 
     return Photos(
-        photos=[photo.to_tl() for photo in photos],
-        users=[await peer_user.to_tl(user)],
+        photos=photos_tl,
+        users=users_tl,
     )
 
 

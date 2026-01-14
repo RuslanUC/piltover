@@ -536,6 +536,7 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
                 peer = await Peer.from_input_peer_raise(user, button.user_id, "BUTTON_USER_INVALID")
                 if peer.type not in (PeerType.USER, PeerType.SELF):
                     raise ErrorRpc(error_code=400, error_message="BUTTON_USER_INVALID")
+                # TODO: use has_access_to_bulk?
                 if not await PrivacyRule.has_access_to(user, peer.user_id, PrivacyRuleKeyType.FORWARDS):
                     raise ErrorRpc(error_code=400, error_message="BUTTON_USER_PRIVACY_RESTRICTED")
                 button = KeyboardButtonUserProfile(text=button.text, user_id=peer.user_id)

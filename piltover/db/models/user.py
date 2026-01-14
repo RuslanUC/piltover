@@ -12,7 +12,7 @@ from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long
-from piltover.tl.types import User as TLUser, PeerColor
+from piltover.tl.types import User as TLUser, PeerColor, PeerUser
 from piltover.tl.types.internal_access import AccessHashPayloadUser
 
 
@@ -331,3 +331,6 @@ class User(Model):
     @staticmethod
     def check_access_hash(user: int, auth: int, target: int, access_hash: int) -> bool:
         return User.make_access_hash(user, auth, target) == access_hash
+
+    def to_tl_peer(self) -> PeerUser:
+        return PeerUser(user_id=self.id)

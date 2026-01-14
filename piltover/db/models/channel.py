@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 from enum import auto, Enum
+from typing import Any
 
 from tortoise import fields
+from tortoise.models import MODEL
 
 from piltover.app_config import AppConfig
 from piltover.db import models
-from piltover.db.enums import PeerType, ChatAdminRights
+from piltover.db.enums import ChatAdminRights
 from piltover.db.models import ChatBase
 from piltover.tl import ChannelForbidden, Channel as TLChannel, Long
 from piltover.tl.types import ChatAdminRights as TLChatAdminRights, PeerColor, PeerChannel
@@ -39,13 +41,29 @@ class _UsernameMissing(Enum):
 _USERNAME_MISSING = _UsernameMissing.USERNAME_MISSING
 
 
+def NullableFKSetNull(
+        model_name: str,
+        related_name: str,
+        **kwargs: Any,
+) -> fields.ForeignKeyNullableRelation[MODEL]:
+    return fields.ForeignKeyField(
+        model_name=model_name,
+        related_name=related_name,
+        on_delete=fields.SET_NULL,
+        db_constraint=True,
+        null=True,
+        default=None,
+        **kwargs,
+    )
+
+
 class Channel(ChatBase):
     channel: bool = fields.BooleanField(default=False)
     supergroup: bool = fields.BooleanField(default=False)
     pts: int = fields.BigIntField(default=1)
     signatures: bool = fields.BooleanField(default=False)
-    accent_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_accent", on_delete=fields.SET_NULL)
-    profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="channel_profile", on_delete=fields.SET_NULL)
+    accent_color: models.PeerColorOption | None = NullableFKSetNull("models.PeerColorOption", "channel_accent")
+    profile_color: models.PeerColorOption | None = NullableFKSetNull("models.PeerColorOption", "channel_profile")
     all_reactions: bool = fields.BooleanField(default=True)
     all_reactions_custom: bool = fields.BooleanField(default=False)
     deleted: bool = fields.BooleanField(default=False)
@@ -57,8 +75,8 @@ class Channel(ChatBase):
     join_request: bool = fields.BooleanField(default=False)
     discussion: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
     is_discussion: bool = fields.BooleanField(default=False)
-    accent_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="channel_accent_emoji", on_delete=fields.SET_NULL)
-    profile_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="channel_profile_emoji", on_delete=fields.SET_NULL)
+    accent_emoji: models.File | None = NullableFKSetNull("models.File", "channel_accent_emoji")
+    profile_emoji: models.File | None = NullableFKSetNull("models.File", "channel_profile_emoji")
     slowmode_seconds: int | None = fields.IntField(null=True, default=None)
     participants_hidden: bool = fields.BooleanField(default=False)
 

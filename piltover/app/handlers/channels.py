@@ -752,6 +752,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
         existing_participant = await ChatParticipant.get_or_none(user=user_peer.user, channel=channel)
         if existing_participant and not existing_participant.left:
             continue
+        # TODO: use has_access_to_bulk
         if not await PrivacyRule.has_access_to(user, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):
             raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
@@ -1117,15 +1118,15 @@ async def get_send_as(request: GetSendAs | GetSendAs_135, user: User) -> SendAsP
 
     if channel.creator_id != user.id:
         return SendAsPeers(
-            peers=[SendAsPeer(peer=PeerUser(user_id=user.id))],
+            peers=[SendAsPeer(peer=user.to_tl_peer())],
             chats=[],
             users=[await user.to_tl(user)],
         )
 
     return SendAsPeers(
         peers=[
-            SendAsPeer(peer=PeerUser(user_id=user.id)),
-            SendAsPeer(peer=PeerChannel(channel_id=channel.make_id())),
+            SendAsPeer(peer=user.to_tl_peer()),
+            SendAsPeer(peer=channel.to_tl_peer()),
         ],
         chats=[await channel.to_tl(user)],
         users=[await user.to_tl(user)],
