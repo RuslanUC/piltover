@@ -41,7 +41,7 @@ async def get_full_user(request: GetFullUser, user: User):
     pinned_msg_id = cast(
         int | None,
         await Message.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True),
-    )
+        )
 
     personal_channel = await Channel.get_or_none(userpersonalchannels__user=target_user)
     if personal_channel is not None:
@@ -50,7 +50,7 @@ async def get_full_user(request: GetFullUser, user: User):
             await Message.filter(
                 peer__owner=None, peer__channel=personal_channel,
             ).order_by("-id").first().values_list("id", flat=True),
-        )
+            )
     else:
         personal_channel_msg_id = None
 
@@ -70,10 +70,16 @@ async def get_full_user(request: GetFullUser, user: User):
         birthday = target_user.to_tl_birthday_noprivacycheck()
 
     photo = PhotoEmpty(id=0)
-    photo_db = None
+    photo_db, photo_fallback_db = await target_user.get_db_photos()
     if privacy_rules[PrivacyRuleKeyType.PROFILE_PHOTO]:
-        if (photo_db := await target_user.get_db_photo()) is not None:
+        if photo_db is not None:
             photo = photo_db.to_tl()
+    else:
+        photo_db = None
+
+    fallback_photo = None
+    if photo_fallback_db is not None:
+        fallback_photo = photo_fallback_db.to_tl()
 
     return UserFull(
         full_user=FullUser(
@@ -96,9 +102,11 @@ async def get_full_user(request: GetFullUser, user: User):
             blocked=peer.blocked_at is not None,
             phone_calls_available=True,
             phone_calls_private=False,
+            fallback_photo=fallback_photo,
             # video_calls_available=True,
         ),
         chats=[await personal_channel.to_tl(user)] if personal_channel is not None else [],
+        # TODO: pass photo_fallback_db of photo_db is None?
         users=[await target_user.to_tl(user, peer, privacyrules=privacy_rules, userphoto=photo_db)],
     )
 

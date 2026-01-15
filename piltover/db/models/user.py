@@ -7,10 +7,12 @@ from enum import auto, Enum
 from typing import Iterable
 
 from tortoise import fields, Model
+from tortoise.expressions import Q
 
 from piltover.app_config import AppConfig
 from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
+from piltover.exceptions import Unreachable
 from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long
 from piltover.tl.types import User as TLUser, PeerColor, PeerUser
 from piltover.tl.types.internal_access import AccessHashPayloadUser
@@ -59,8 +61,27 @@ class User(Model):
         if username is not None:
             return username.username
 
-    async def get_db_photo(self) -> models.UserPhoto | None:
+    async def get_db_current_photo(self) -> models.UserPhoto | None:
         return await models.UserPhoto.get_or_none(user=self, current=True).select_related("file")
+
+    async def get_db_photos(self) -> tuple[models.UserPhoto | None, models.UserPhoto | None]:
+        # TODO: also fetch personal_photo (when will be implemented)
+
+        current = None
+        fallback = None
+
+        photos = await models.UserPhoto.filter(
+            Q(current=True, fallback=True, join_type=Q.OR), user=self
+        ).select_related("file")
+        for photo in photos:
+            if photo.current:
+                current = photo
+            elif photo.fallback:
+                fallback = photo
+            else:
+                raise Unreachable
+
+        return current, fallback
 
     async def to_tl(
             self, current_user: models.User, peer: models.Peer | None = None,
@@ -123,8 +144,9 @@ class User(Model):
         photo = _PROFILE_PHOTO_EMPTY
         if privacyrules[PrivacyRuleKeyType.PROFILE_PHOTO]:
             if userphoto is _MISSING:
-                userphoto = await self.get_db_photo()
+                userphoto = await self.get_db_current_photo()
             if userphoto is not None:
+                # TODO: use fallback photo is userphoto is None?
                 photo = userphoto.to_tl_profile()
 
         return TLUser(

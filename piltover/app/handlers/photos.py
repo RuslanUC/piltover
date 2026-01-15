@@ -23,9 +23,8 @@ async def get_user_photos(request: GetUserPhotos, user: User):
     if not await PrivacyRule.has_access_to(user, peer_user, PrivacyRuleKeyType.PROFILE_PHOTO):
         return Photos(photos=[], users=[])
 
-    # TODO: does official telegram server have limit?
     limit = min(100, max(request.limit, 1))
-    photos_query = UserPhoto.filter(user=peer_user).select_related("file")
+    photos_query = UserPhoto.filter(user=peer_user, fallback=False).select_related("file")
 
     photos = []
     if request.offset < 0:
@@ -43,7 +42,7 @@ async def get_user_photos(request: GetUserPhotos, user: User):
     if limit:
         photos.extend(await photos_query.limit(limit).order_by("-id"))
 
-    photos_total = await UserPhoto.filter(user=peer_user).count()
+    photos_total = await UserPhoto.filter(user=peer_user, fallback=False).count()
     photos_tl = [photo.to_tl() for photo in photos]
     users_tl = [await peer_user.to_tl(user)]
 
@@ -90,14 +89,27 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
         storage, "image/png", file_type=FileType.PHOTO, profile_photo=True,
     )
     async with in_transaction():
-        await UserPhoto.filter(user=target_user).update(current=False)
-        photo = await UserPhoto.create(current=True, file=file, user=target_user)
+        if target_user.bot:
+            await UserPhoto.filter(user=target_user).delete()
+            request.fallback = False
+        elif not request.fallback:
+            await UserPhoto.filter(user=target_user).update(current=False)
+        elif request.fallback:
+            # TODO: or dont delete and just get latest UserPhoto in GetFullUser?
+            await UserPhoto.filter(user=target_user, fallback=True).delete()
+
+        photo = await UserPhoto.create(
+            current=not request.fallback,
+            fallback=request.fallback,
+            file=file,
+            user=target_user,
+        )
 
     await upd.update_user(target_user)
 
     return PhotosPhoto(
         photo=photo.to_tl(),
-        users=[],  # [await user.to_tl(user)],
+        users=[],
     )
 
 
@@ -146,15 +158,27 @@ async def update_profile_photo(request: UpdateProfilePhoto, user: User):
 
     photo = None
     if isinstance(request.id, InputPhotoEmpty):
-        await UserPhoto.filter(user=target_user).delete()
-    elif (photo := await UserPhoto.get_or_none(id=request.id.id, user=target_user)) is not None:
-        await UserPhoto.filter(user=target_user).update(current=False)
-        photo.current = True
-        await photo.save(update_fields=["current"])
+        await UserPhoto.filter(user=target_user, fallback=request.fallback).delete()
+    elif (photo := await UserPhoto.get_or_none(id=request.id.id, user=target_user).select_related("file")) is not None:
+        async with in_transaction():
+            # TODO: figure out what telegram does when request.fallback is set
+            if request.fallback:
+                if target_user.bot:
+                    raise ErrorRpc(error_code=400, error_message="BOT_FALLBACK_UNSUPPORTED")
+                await UserPhoto.filter(user=target_user, fallback=True).delete()
+                await UserPhoto.create(user=target_user, fallback=True, current=False, file=photo.file)
+            else:
+                await UserPhoto.filter(user=target_user).update(current=False)
+                photo.current = True
+                photo.fallback = False
+                await photo.save(update_fields=["current", "fallback"])
 
     await upd.update_user(target_user)
 
     return PhotosPhoto(
         photo=photo.to_tl() if photo else PhotoEmpty(id=0),
-        users=[],  # [await user.to_tl(user)],
+        users=[],
     )
+
+
+# TODO: UploadContactProfilePhoto
