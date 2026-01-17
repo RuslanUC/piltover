@@ -54,7 +54,7 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
 
     for peer, message in messages.items():
         users_tl = await User.to_tl_bulk(users, peer.owner)
-        chats_tl = await Chat.to_tl_bulk(chats, peer.owner)
+        chats_tl = await Chat.to_tl_bulk(chats)
         channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
 
         # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
@@ -180,7 +180,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
             ))
 
         users_tl = await User.to_tl_bulk(users, peer.owner)
-        chats_tl = await Chat.to_tl_bulk(chats, peer.owner)
+        chats_tl = await Chat.to_tl_bulk(chats)
         channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
 
         updates = UpdatesWithDefaults(
@@ -265,7 +265,7 @@ async def send_messages_channel(
         ],
         users=await User.to_tl_bulk(users, user),
         chats=[
-            *await Chat.to_tl_bulk(chats, user),
+            *await Chat.to_tl_bulk(chats),
             *await Channel.to_tl_bulk(channels, user),
         ],
     )
@@ -380,7 +380,7 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
             ],
             users=await User.to_tl_bulk(users, peer.owner),
             chats=[
-                *await Chat.to_tl_bulk(chats, peer.owner),
+                *await Chat.to_tl_bulk(chats),
                 *await Channel.to_tl_bulk(channels, peer.owner),
             ],
         )
@@ -462,7 +462,7 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
         ],
         users=await User.to_tl_bulk(users, user),
         chats=[
-            *await Chat.to_tl_bulk(chats, user),
+            *await Chat.to_tl_bulk(chats),
             *await Channel.to_tl_bulk(channels, user),
         ],
     )
@@ -589,7 +589,7 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
             ],
             users=await User.to_tl_bulk(users, peer.owner),
             chats=[
-                *await Chat.to_tl_bulk(chats, peer.owner),
+                *await Chat.to_tl_bulk(chats),
                 *await Channel.to_tl_bulk(channels, peer.owner),
             ],
         )
@@ -1035,7 +1035,8 @@ async def update_message_poll(poll: Poll, user: User) -> Updates:
             UpdateMessagePoll(
                 poll_id=poll.id,
                 poll=poll.to_tl(),
-                results=await poll.to_tl_results(user),
+                # TODO: replace with PollResultsToFormat or something
+                results=await poll.to_tl_results(user.id),
             )
         ],
     )

@@ -39,6 +39,8 @@ internal.object_with_lazy_fields#d836c6b8 object:Object fields:Vector<string> = 
 internal.field_with_layer_requirement#d9594f1f field:string min_layer:int max_layer:int = internal.FieldWithLayerRequirement;
 internal.object_with_layer_requirement#7678a3 object:Object fields:Vector<internal.FieldWithLayerRequirement> = internal.ObjectWithLayerRequirement;
 
+internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> = internal.NeedsContextValues;
+
 // Vectors with concrete types
 
 internal.tagged_int_vector#f12bae38 vec:Vector<int> = internal.TaggedVector;
@@ -196,7 +198,7 @@ internal_access.file_reference_payload#af4f0049 file_id:long created_at:int = in
 wallPaperToFormatInternal#68dda86b flags:# id:long creator_id:long pattern:flags.0?true dark:flags.1?true slug:string document:Document settings:flags.2?WallPaperSettings = WallPaper;
 messageServiceToFormatInternal#efce62cb flags:# author_id:long id:int from_id:flags.0?Peer peer_id:Peer reply_to:flags.1?MessageReplyHeader date:int action:MessageAction ttl_period:flags.2?int = Message;
 themeToFormatInternal#150039e1 flags:# creator_id:flags.0?long for_chat:flags.5?true id:long slug:string title:string document:flags.2?Document settings:flags.3?Vector<ThemeSettings> emoticon:flags.6?string = Theme;
-
+chatToFormatInternal#afe6f89 flags:# creator_id:long deactivated:flags.0?true noforwards:flags.1?true id:long title:string photo:flags.2?ChatPhoto participants_count:int date:long version:long migrated_to:flags.3?long default_banned_rights:ChatBannedRights = Chat;
 
 ---functions---
 

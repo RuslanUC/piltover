@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from piltover.context import NeedContextValuesContext
 from piltover.db.models import UserAuthorization, Channel, User, Message as DbMessage, Chat, EncryptedChat
 from piltover.exceptions import Disconnection, Unreachable
 from piltover.layer_converter.manager import LayerConverter
@@ -274,6 +275,22 @@ class SessionManager:
                 and (auth_id is None or isinstance(auth_id, int))
                 and (ignore_auth_id is None or isinstance(ignore_auth_id, int))
         )
+
+        ctx = NeedContextValuesContext()
+        with ctx.use():
+            # TODO: !!! this does COMPLETELY UNNECESSARY write !!!
+            #  better add some .traverse_for_ctx_values method in TLObject
+
+            if isinstance(obj, (ObjectWithLayerRequirement, ObjectWithLazyFields)):
+                obj.object.write()
+            else:
+                obj.write()
+
+        if ctx.any():
+            if isinstance(obj, (ObjectWithLayerRequirement, ObjectWithLazyFields)):
+                obj.object = ctx.to_tl(obj.object)
+            else:
+                obj = ctx.to_tl(obj)
 
         if is_short:
             message = MessageToUsersShort(

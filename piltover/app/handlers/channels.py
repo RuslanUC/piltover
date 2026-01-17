@@ -1249,7 +1249,7 @@ async def get_groups_for_discussion(user: User) -> Chats:
     return Chats(
         chats=[
             *await Channel.to_tl_bulk(channels, user),
-            *await Chat.to_tl_bulk(chats, user),
+            *await Chat.to_tl_bulk(chats),
         ],
     )
 

@@ -42,7 +42,8 @@ class MessageMedia(Model):
             await self.fetch_related("poll", "poll__pollanswers")
             return MessageMediaPoll(
                 poll=self.poll.to_tl(),
-                results=await self.poll.to_tl_results(user),
+                # TODO: replace with PollResultsToFormat or something
+                results=await self.poll.to_tl_results(user.id),
             )
         elif self.type is MediaType.CONTACT:
             if self.static_data is None:

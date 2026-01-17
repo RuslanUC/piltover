@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from typing import Any
+
 from tortoise import fields
 
 from piltover.db import models
-from piltover.db.enums import PeerType
 from piltover.db.models.chat_base import ChatBase
 from piltover.tl import ChatForbidden
-from piltover.tl.types import Chat as TLChat, ChatAdminRights, InputChannel, PeerChat
+from piltover.tl.base import Chat as TLChatBase
+from piltover.tl.to_format import ChatToFormat
+from piltover.tl.types import Chat as TLChat, ChatAdminRights, PeerChat
 
 DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
     change_info=True,
@@ -39,59 +42,51 @@ class Chat(ChatBase):
     def make_id_from(cls, in_id: int) -> int:
         return in_id * 2
 
-    def _to_tl(
-            self, user_id: int, participant: models.ChatParticipant, photo: models.File | None,
-            migrated_to: InputChannel | None,
-    ) -> TLChat:
-        return TLChat(
-            creator=self.creator_id == user_id,
-            left=False,
+    def _to_tl(self, photo: models.File | None, migrated_to_id: int | None) -> TLChatBase:
+        return ChatToFormat(
+            creator_id=self.creator_id,
             deactivated=self.migrated,
-            call_active=False,
-            call_not_empty=False,
             noforwards=self.no_forwards,
-            id=self.make_id(),
+            id=self.id,
             title=self.name,
             photo=self.to_tl_chat_photo_internal(photo),
             participants_count=self.participants_count,
             date=int(self.created_at.timestamp()),
             version=self.version,
-            migrated_to=migrated_to,
-            admin_rights=DEFAULT_ADMIN_RIGHTS if participant.is_admin or self.creator_id == user_id else None,
+            migrated_to=migrated_to_id,
             default_banned_rights=self.banned_rights.to_tl(),
         )
 
-    async def to_tl(self, user: models.User) -> TLChat | ChatForbidden:
-        participant = await models.ChatParticipant.get_or_none(user=user, chat=self)
-        if participant is None:
-            return ChatForbidden(id=self.make_id(), title=self.name)
+    # TODO: remove `user` argument
+    async def to_tl(self, user: Any | None = None) -> TLChatBase:
+        # TODO: cache result
 
-        migrated_to = None
-        if self.migrated and (to_channel := await models.Channel.get_or_none(migrated_from=self)) is not None:
-            await models.Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=to_channel)
-            migrated_to = InputChannel(channel_id=to_channel.make_id(), access_hash=-1)
+        migrated_to_id = None
+        if self.migrated:
+            migrated_to_id = await models.Channel.get_or_none(migrated_from=self).values_list("id", flat=True)
 
         if self.photo is not None:
             self.photo = await self.photo
 
-        return self._to_tl(user.id, participant, self.photo, migrated_to)
+        return self._to_tl(self.photo, migrated_to_id)
 
     @classmethod
-    async def to_tl_bulk(cls, chats: list[models.Chat], user: models.User) -> list[TLChat | ChatForbidden]:
+    async def to_tl_bulk(cls, chats: list[models.Chat]) -> list[TLChat | ChatForbidden]:
         if not chats:
             return []
 
         chat_ids = [chat.id for chat in chats]
 
-        participants = {
-            participant.chat_id: participant
-            for participant in await models.ChatParticipant.filter(user=user, chat__id__in=chat_ids)
-        }
-
-        migrated_tos = {
-            channel.migrated_from_id: channel
-            for channel in await models.Channel.filter(migrated_from__id__in=chat_ids)
-        }
+        migrated_ids = [chat.id for chat in chats if chat.migrated]
+        if migrated_ids:
+            migrated_tos = {
+                migrated_from: migrated_to
+                for migrated_from, migrated_to in await models.Channel.filter(
+                    migrated_from__id__in=chat_ids,
+                ).values_list("migrated_from_id", "id")
+            }
+        else:
+            migrated_tos = {}
 
         chat_by_photo = {
             chat.photo_id: chat.id
@@ -106,21 +101,11 @@ class Chat(ChatBase):
             if chat.photo_id is not None and isinstance(chat.photo, models.File):
                 photos[chat.id] = chat.photo
 
-        tl = []
-        for chat in chats:
-            participant = participants.get(chat.id)
-            if participant is None:
-                tl.append(ChatForbidden(id=chat.make_id(), title=chat.name))
-                continue
-
-            migrated_to = None
-            if chat.migrated and chat.id in migrated_tos:
-                migrated_to = InputChannel(channel_id=migrated_tos[chat.id].make_id(), access_hash=-1)
-
-            tl.append(chat._to_tl(user.id, participant, photos.get(chat.id), migrated_to))
-
-        return tl
+        # TODO: cache chats
+        return [
+            chat._to_tl(photos.get(chat.id), migrated_tos.get(chat.id, None))
+            for chat in chats
+        ]
 
     def to_tl_peer(self) -> PeerChat:
         return PeerChat(chat_id=self.make_id())
-

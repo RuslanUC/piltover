@@ -324,7 +324,8 @@ class Update(Model):
                 return UpdateMessagePoll(
                     poll_id=poll.id,
                     poll=poll.to_tl(),
-                    results=await poll.to_tl_results(user),
+                    # TODO: replace with PollResultsToFormat or something
+                    results=await poll.to_tl_results(user.id),
                 )
 
             case UpdateType.UPDATE_FOLDER:

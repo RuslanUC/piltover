@@ -116,7 +116,7 @@ async def get_chats(request: GetChats, user: User) -> Chats:
     peers = await Peer.filter(owner=user, chat__id__in=chat_ids).select_related("chat")
 
     return Chats(
-        chats=await Chat.to_tl_bulk([peer.chat for peer in peers], user),
+        chats=await Chat.to_tl_bulk([peer.chat for peer in peers]),
     )
 
 

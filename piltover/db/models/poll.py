@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from time import time
 
 from pytz import UTC
 from tortoise import Model, fields
 from tortoise.functions import Count
 
+from piltover.cache import Cache
 from piltover.db import models
 from piltover.tl import Poll as TLPoll, PollResults, PollAnswerVoters, TextWithEntities
 
@@ -20,6 +22,8 @@ class Poll(Model):
     solution: str | None = fields.CharField(max_length=200, null=True, default=None)
     ends_at: datetime | None = fields.DatetimeField(null=True, default=None)
     pollanswers: fields.ReverseRelation[models.PollAnswer]
+
+    CACHE_TTL = 60 * 5
 
     @property
     def is_closed_fr(self) -> bool:
@@ -43,14 +47,27 @@ class Poll(Model):
             close_date=int(self.ends_at.timestamp()) if self.ends_at else None,
         )
 
-    async def to_tl_results(self, user: models.User) -> PollResults:
+    def _cache_key(self, user_id: int | None) -> str:
+        # TODO: add some version (for when poll is edited)? idk
+        return f"poll-results:{self.id}:{user_id or 0}:{int(time() // self.CACHE_TTL)}"
+
+    # TODO: to_tl_results_bulk
+
+    async def to_tl_results(self, user_id: int) -> PollResults:
         if not self.pollanswers._fetched:
             raise RuntimeError("Poll answers must be prefetched")
 
-        user_voted_answers = set(await models.PollVote.filter(answer__poll=self, user=user).values_list("answer__id"))
-        # TODO: create PollResults with min, results, total_voters, min and cache it
-        #if not user_votes:
-        #    return PollResults(min=True, ...)
+        results_min = False
+        user_voted_answers = set(
+            await models.PollVote.filter(answer__poll=self, user__id=user_id).values_list("answer__id")
+        )
+        if not user_voted_answers:
+            user_id = None
+            results_min = True
+
+        cache_key = self._cache_key(user_id)
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            return cached
 
         answers = []
         incorrect = False
@@ -73,8 +90,12 @@ class Poll(Model):
                 voters=voter_counts.get(answer.id, 0),
             ))
 
-        return PollResults(
+        results = PollResults(
+            min=results_min,
             results=answers,
             total_voters=await models.User.filter(pollvotes__answer__poll=self).distinct().count(),
             solution=self.solution if self.quiz and incorrect else None,
         )
+
+        await Cache.obj.set(cache_key, results)
+        return results

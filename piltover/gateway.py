@@ -16,11 +16,12 @@ from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMe
     ErrorPacket, QuickAckPacket, BasePacket
 from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqEvents, AsyncBroker
 from taskiq.kicker import AsyncKicker
+from tortoise.expressions import Q
 
 from piltover._keygen_handlers import KEYGEN_HANDLERS
 from piltover._system_handlers import SYSTEM_HANDLERS
 from piltover.cache import Cache
-from piltover.context import SerializationContext
+from piltover.context import SerializationContext, ContextValues
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
@@ -37,7 +38,7 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.auth_data import AuthData, GenAuthData
-from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant
+from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, Poll, Peer
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
@@ -46,7 +47,7 @@ from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
 from piltover.tl.functions.internal import CallRpc
-from piltover.tl.types.internal import RpcResponse, TaggedLongVector
+from piltover.tl.types.internal import RpcResponse, TaggedLongVector, NeedsContextValues
 
 if TYPE_CHECKING:
     from piltover.worker import Worker
@@ -222,7 +223,9 @@ class Client:
                 return
             raise Disconnection from e
 
-    async def _send_message(self, message: Message, session: Session) -> None:
+    async def _send_message(
+            self, message: Message, session: Session, context_values: ContextValues | None = None,
+    ) -> None:
         if not self.auth_data or self.auth_data.auth_key is None or self.auth_data.auth_key_id is None:
             logger.error("Trying to send encrypted response, but auth_key is empty")
             raise Disconnection(404)
@@ -236,7 +239,7 @@ class Client:
 
         self._update_salts_maybe()
 
-        with SerializationContext(auth_id=auth_id, user_id=user_id, layer=self.layer).use():
+        with SerializationContext(auth_id=auth_id, user_id=user_id, layer=self.layer, values=context_values).use():
             decrypted = DecryptedMessagePacket(
                 salt=self.salt_now[0],
                 session_id=session.session_id,
@@ -254,10 +257,15 @@ class Client:
             with measure_time("._refresh_session_maybe()"):
                 await self._refresh_session_maybe(session, need_auth_refresh)
 
+            context_values = None
+            if isinstance(obj, NeedsContextValues):
+                context_values = await self._resolve_context_values(obj)
+                obj = obj.obj
+
             with measure_time("session.pack_message(...)"):
                 message = session.pack_message(obj, in_reply)
             with measure_time("._send_message()"):
-                await self._send_message(message, session)
+                await self._send_message(message, session, context_values)
 
     async def send_container(self, objects: list[tuple[TLObject, bool]], session: Session):
         logger.debug(f"Sending: {objects}")
@@ -632,3 +640,31 @@ class Client:
     async def propagate(self, request: Message, session: Session) -> RpcResult | None:
         if (result := await self._process_request(request, session)) is not None:
             await self.send(result, session, True)
+
+    # TODO: this method is probably should be between gateway and workers?
+    async def _resolve_context_values(self, values: NeedsContextValues) -> ContextValues:
+        result = ContextValues()
+
+        if values.poll_answers:
+            # TODO: also refactor this
+            for poll in await Poll.filter(id__in=values.poll_answers).prefetch_related("pollanswers"):
+                result.poll_answers[poll.id] = await poll.to_tl_results(self.session.user_id)
+
+        if values.chat_participants or values.channel_participants:
+            if values.chat_participants:
+                query = Q(chat__id__in=values.chat_participants)
+                if values.channel_participants:
+                    query |= Q(channel__id__in=values.channel_participants)
+            else:
+                query = Q(channel__id__in=values.channel_participants)
+
+            result.chat_participants.update({
+                participant.chat_id: participant
+                for participant in await ChatParticipant.filter(query, user__id=self.session.user_id)
+            })
+            result.peers.update({
+                (peer.type, peer.target_id_raw()): peer
+                for peer in await Peer.filter(query, owner__id=self.session.user_id)
+            })
+
+        return result

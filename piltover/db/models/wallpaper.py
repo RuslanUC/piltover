@@ -45,7 +45,7 @@ class Wallpaper(Model):
 
         return WallPaperToFormat(
             id=self.id,
-            creator_id=self.creator_id,
+            creator_id=self.creator_id or 0,
             pattern=self.pattern,
             dark=self.dark,
             slug=self.slug,

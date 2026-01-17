@@ -33,7 +33,7 @@ except ImportError:
     RedisAsyncResultBackend = None
     REMOTE_BROKER_SUPPORTED = False
 
-from piltover.context import RequestContext, request_ctx
+from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
 from piltover.db.models import UserAuthorization, User, Message, Peer, MessageComments
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -171,43 +171,35 @@ class Worker(MessageHandler):
         with measure_time("_handle_tl_rpc()"):
             return await self._handle_tl_rpc(call_hex)
 
+    @staticmethod
+    def _err_response(req_msg_id: int, code: int, message: str) -> RpcResponse:
+        return RpcResponse(obj=RpcResult(
+            req_msg_id=req_msg_id,
+            result=RpcError(error_code=code, error_message=message),
+        ))
+
     async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse:
         call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
 
         if not (handler := self.request_handlers.get(call.obj.tlid())):
             logger.warning(f"No handler found for obj: {call.obj}")
-            return RpcResponse(obj=RpcResult(
-                req_msg_id=call.message_id,
-                result=RpcError(error_code=500, error_message="Not implemented"),
-            ))
+            return self._err_response(call.message_id, 500, "NOT_IMPLEMENTED")
 
         # TODO: send this error from gateway
         if call.is_bot and handler.bots_not_allowed:
-            return RpcResponse(obj=RpcResult(
-                req_msg_id=call.message_id,
-                result=RpcError(error_code=400, error_message="BOT_METHOD_INVALID"),
-            ))
+            return self._err_response(call.message_id, 400, "BOT_METHOD_INVALID")
         elif not call.is_bot and handler.users_not_allowed:
-            return RpcResponse(obj=RpcResult(
-                req_msg_id=call.message_id,
-                result=RpcError(error_code=400, error_message="USER_BOT_REQUIRED"),
-            ))
+            return self._err_response(call.message_id, 400, "USER_BOT_REQUIRED")
 
         user = None
         if handler.auth_required or handler.has_user_arg:
             try:
                 user = await self.get_user(call, handler.allow_mfa_pending)
             except ErrorRpc as e:
-                return RpcResponse(obj=RpcResult(
-                    req_msg_id=call.message_id,
-                    result=RpcError(error_code=e.error_code, error_message=e.error_message),
-                ))
+                return self._err_response(call.message_id, e.error_code, e.error_message)
 
             if user is None and handler.auth_required:
-                return RpcResponse(obj=RpcResult(
-                    req_msg_id=call.message_id,
-                    result=RpcError(error_code=401, error_message="AUTH_KEY_UNREGISTERED"),
-                ))
+                return self._err_response(call.message_id, 401, "AUTH_KEY_UNREGISTERED")
 
         ctx_token = request_ctx.set(RequestContext(
             call.auth_key_id, call.perm_auth_key_id, call.message_id, call.session_id, call.obj, call.layer,
@@ -230,13 +222,24 @@ class Worker(MessageHandler):
 
         if result is None:
             logger.warning(f"Handler for {call.obj} returned None")
-            result = RpcError(error_code=500, error_message="Not implemented")
+            result = RpcError(error_code=500, error_message="NOT_IMPLEMENTED")
+
+        result_obj = RpcResult(
+            req_msg_id=call.message_id,
+            result=result,
+        )
+
+        if not isinstance(result_obj.result, RpcError):
+            ctx = NeedContextValuesContext()
+            with ctx.use():
+                # TODO: !!! this does COMPLETELY UNNECESSARY write !!!
+                #  better add some .traverse_for_ctx_values method in TLObject
+                result_obj.write()
+            if ctx.any():
+                result_obj = ctx.to_tl(result_obj)
 
         return RpcResponse(
-            obj=RpcResult(
-                req_msg_id=call.message_id,
-                result=result,
-            ),
+            obj=result_obj,
             refresh_auth=handler.refresh_session,
         )
 

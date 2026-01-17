@@ -185,6 +185,18 @@ class Peer(Model):
 
         raise Unreachable
 
+    def target_id_raw(self) -> int:
+        if self.type is PeerType.SELF:
+            return self.owner_id
+        if self.type is PeerType.USER:
+            return self.user_id
+        if self.type == PeerType.CHAT:
+            return self.chat_id
+        if self.type == PeerType.CHANNEL:
+            return self.channel_id
+
+        raise Unreachable
+
     def to_input_peer(self, self_is_user: bool = False) -> InputOnlyPeers:
         return self.to_input_peer_cls(self.type, self.user_id, self.chat_id, self.channel_id, self_is_user)
 
