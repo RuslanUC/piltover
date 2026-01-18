@@ -21,6 +21,7 @@ async def get_full_user(request: GetFullUser, user: User):
     target_user = peer.peer_user(user)
 
     privacy_rules = await PrivacyRule.has_access_to_bulk([target_user], user, [
+        # TODO: dont fetch fields that are not used in GetFullUser
         PrivacyRuleKeyType.ABOUT,
         PrivacyRuleKeyType.BIRTHDAY,
         PrivacyRuleKeyType.PROFILE_PHOTO,
@@ -150,6 +151,6 @@ async def get_users(request: GetUsers, user: User):
     )
 
     if users:
-        return TLObjectVector(await User.to_tl_bulk(users, user))
+        return TLObjectVector(await User.to_tl_bulk(users))
     else:
         return TLObjectVector()

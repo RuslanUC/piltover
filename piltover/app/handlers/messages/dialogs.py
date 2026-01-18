@@ -41,7 +41,7 @@ async def format_dialogs(
         else:
             ucc.add_peer(dialog.peer)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     result = {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],

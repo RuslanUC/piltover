@@ -29,7 +29,6 @@ internal.set_session_internal_push#92aeb648 key_id:long session_id:long user_id:
 
 internal.channel_subscribe#ae808cf6 flags:# subscribe:flags.0?true user_ids:Vector<long> channel_ids:Vector<long> = internal.ChannelSubscribe;
 
-internal.lazy_user#f6eb7088 user_id:long = internal.LazyField;
 internal.lazy_message#e51fc740 message_id:long = internal.LazyField;
 internal.lazy_encrypted_chat#b6696ef8 chat_id:long = internal.LazyField;
 internal.object_with_lazy_fields#d836c6b8 object:Object fields:Vector<string> = internal.LazyObject;
@@ -37,7 +36,7 @@ internal.object_with_lazy_fields#d836c6b8 object:Object fields:Vector<string> = 
 internal.field_with_layer_requirement#d9594f1f field:string min_layer:int max_layer:int = internal.FieldWithLayerRequirement;
 internal.object_with_layer_requirement#7678a3 object:Object fields:Vector<internal.FieldWithLayerRequirement> = internal.ObjectWithLayerRequirement;
 
-internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> = internal.NeedsContextValues;
+internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> users:flags.3?Vector<long> = internal.NeedsContextValues;
 
 // Vectors with concrete types
 
@@ -198,6 +197,7 @@ messageServiceToFormatInternal#efce62cb flags:# author_id:long id:int from_id:fl
 themeToFormatInternal#150039e1 flags:# creator_id:flags.0?long for_chat:flags.5?true id:long slug:string title:string document:flags.2?Document settings:flags.3?Vector<ThemeSettings> emoticon:flags.6?string = Theme;
 chatToFormatInternal#afe6f89 flags:# creator_id:long deactivated:flags.0?true noforwards:flags.1?true id:long title:string photo:flags.2?ChatPhoto participants_count:int date:long version:long migrated_to:flags.3?long default_banned_rights:ChatBannedRights = Chat;
 channelToFormatInternal#89ce0d3a flags:# creator_id:long noforwards:flags.0?true id:long title:string photo:flags.1?ChatPhoto created_at:long default_banned_rights:ChatBannedRights broadcast:flags.2?true megagroup:flags.3?true signatures:flags.4?true has_link:flags.5?true slowmode_enabled:flags.6?true join_to_send:flags.7?true join_request:flags.8?true username:flags.9?string color:flags.10?PeerColor profile_color:flags.11?PeerColor nojoin_allow_view:flags.12?true = Chat;
+userToFormatInternal#276511f3 flags:# id:long first_name:string last_name:flags.0?string username:flags.1?string phone:flags.2?string lang_code:string photo:flags.3?UserProfilePhoto bot:flags.4?true bot_info_version:flags.5?long color:flags.6?PeerColor profile_color:flags.6?PeerColor = User;
 
 ---functions---
 

@@ -10,8 +10,8 @@ from piltover.tl.types.internal import NeedsContextValues
 if TYPE_CHECKING:
     from piltover.worker import Worker
     from piltover.storage import BaseStorage
-    from piltover.db.enums import PeerType
-    from piltover.db.models import ChatParticipant
+    from piltover.db.enums import PeerType, PrivacyRuleKeyType
+    from piltover.db.models import ChatParticipant, Contact, Presence, Peer
 
 T = TypeVar("T")
 
@@ -46,13 +46,18 @@ request_ctx: ContextVar[RequestContext] = ContextVar("request_ctx")
 
 
 class ContextValues:
-    __slots__ = ("poll_answers", "chat_participants", "channel_participants", "peers",)
+    __slots__ = (
+        "poll_answers", "chat_participants", "channel_participants", "peers", "contacts", "privacyrules", "presences",
+    )
 
     def __init__(self) -> None:
         self.poll_answers: dict[int, ...] = {}
         self.chat_participants: dict[int, ChatParticipant] = {}
         self.channel_participants: dict[int, ChatParticipant] = {}
-        self.peers: dict[tuple[PeerType, int], ...] = {}
+        self.peers: dict[tuple[PeerType, int], Peer] = {}
+        self.contacts: dict[tuple[int, int], Contact] = {}
+        self.privacyrules: dict[int, dict[PrivacyRuleKeyType, bool]] = {}
+        self.presences: dict[int, Presence] = {}
 
 
 class SerializationContext:
@@ -81,12 +86,13 @@ serialization_ctx: ContextVar[SerializationContext | None] = ContextVar("seriali
 
 
 class NeedContextValuesContext:
-    __slots__ = ("poll_answers", "chat_participants", "channel_participants", "peers",)
+    __slots__ = ("poll_answers", "chat_participants", "channel_participants", "users",)
 
     def __init__(self) -> None:
         self.poll_answers: set[int] = set()
         self.chat_participants: set[int] = set()
         self.channel_participants: set[int] = set()
+        self.users: set[int] = set()
 
     @contextmanager
     def use(self) -> Generator[Self, None, None]:
@@ -97,7 +103,12 @@ class NeedContextValuesContext:
             need_values_ctx.reset(token)
 
     def any(self) -> bool:
-        return bool(self.poll_answers) or bool(self.chat_participants) or bool(self.channel_participants)
+        return (
+                bool(self.poll_answers)
+                or bool(self.chat_participants)
+                or bool(self.channel_participants)
+                or bool(self.users)
+        )
 
     def to_tl(self, obj: TLObject) -> NeedsContextValues:
         return NeedsContextValues(
@@ -105,6 +116,7 @@ class NeedContextValuesContext:
             poll_answers=list(self.poll_answers) if self.poll_answers else None,
             chat_participants=list(self.chat_participants) if self.chat_participants else None,
             channel_participants=list(self.channel_participants) if self.channel_participants else None,
+            users=list(self.users) if self.users else None,
         )
 
 

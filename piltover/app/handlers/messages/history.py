@@ -231,7 +231,7 @@ async def format_messages_internal(
         ucc.add_message(message.id)
 
     messages_tl = await Message.to_tl_bulk(messages, user, with_reactions)
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     """
     Messages with following ids are in database:
@@ -454,7 +454,7 @@ async def get_all_drafts(user: User):
         updates.append(UpdateDraftMessage(peer=peer.to_tl(), draft=draft.to_tl()))
         ucc.add_peer(peer)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     return Updates(
         updates=updates,
@@ -583,7 +583,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     for message in messages:
         ucc.add_message(message.id)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     return SearchResultsCalendar(
         count=count,
@@ -840,7 +840,7 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
 
     ucc = UsersChatsChannels()
     ucc.add_message(discussion_message.id)
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     replies_info = await Message.filter(reply_to=discussion_message).annotate(
         total=Count("id"), max_id=Max("id")

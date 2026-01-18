@@ -1,5 +1,3 @@
-from time import time
-
 from fastrand import xorshift128plus_bytes
 
 import piltover.app.utils.updates_manager as upd
@@ -10,7 +8,6 @@ from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL
-from piltover.tl.types.internal import LazyUser
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
@@ -33,7 +30,7 @@ async def set_typing(request: SetTyping, user: User):
         await SessionManager.send(
             upd.UpdatesWithDefaults(
                 updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
-                users=[LazyUser(user_id=user.id)],
+                users=[await user.to_tl()],
             ),
             user_id=[other.owner_id for other in peers],
         )
@@ -49,7 +46,7 @@ async def set_typing(request: SetTyping, user: User):
                     from_id=user.to_tl_peer(),
                     action=request.action,
                 )],
-                users=[LazyUser(user_id=user.id)],
+                users=[await user.to_tl()],
                 chats=[await peer.chat.to_tl()],
             ),
             user_id=[other.owner_id for other in peers],
@@ -72,7 +69,7 @@ async def set_typing(request: SetTyping, user: User):
                     from_id=user.to_tl_peer(),
                     action=request.action,
                 )],
-                users=[LazyUser(user_id=user.id)],
+                users=[await user.to_tl()],
                 chats=[await peer.channel.to_tl()],
             ),
             channel_id=peer.channel_id,

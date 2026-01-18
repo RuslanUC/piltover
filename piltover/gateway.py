@@ -22,6 +22,7 @@ from piltover._keygen_handlers import KEYGEN_HANDLERS
 from piltover._system_handlers import SYSTEM_HANDLERS
 from piltover.cache import Cache
 from piltover.context import SerializationContext, ContextValues
+from piltover.db.enums import PrivacyRuleKeyType
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
@@ -38,7 +39,8 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.auth_data import AuthData, GenAuthData
-from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, Poll, Peer
+from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, Poll, Peer, Contact, \
+    PrivacyRule, Presence
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
@@ -650,24 +652,52 @@ class Client:
             for poll in await Poll.filter(id__in=values.poll_answers).prefetch_related("pollanswers"):
                 result.poll_answers[poll.id] = await poll.to_tl_results(self.session.user_id)
 
+        peers_q = Q()
+
         if values.chat_participants or values.channel_participants:
             if values.chat_participants:
-                query = Q(chat__id__in=values.chat_participants)
-                if values.channel_participants:
-                    query |= Q(channel__id__in=values.channel_participants)
-            else:
-                query = Q(channel__id__in=values.channel_participants)
+                peers_q |= Q(chat__id__in=values.chat_participants)
+            if values.channel_participants:
+                peers_q |= Q(channel__id__in=values.channel_participants)
 
-            participants = await ChatParticipant.filter(query, user__id=self.session.user_id)
+            participants = await ChatParticipant.filter(peers_q, user__id=self.session.user_id)
             for participant in participants:
                 if participant.chat_id is not None:
                     result.chat_participants[participant.chat_id] = participant
                 else:
                     result.channel_participants[participant.channel_id] = participant
 
+        if values.users:
+            peers_q |= Q(user__id__in=values.users)
+
+            contact_ids = set()
+            for contact in await Contact.filter(
+                Q(owner__id=self.session.user_id, target__id__in=values.users)
+                | Q(owner__id__in=values.users, target__id=self.session.user_id)
+            ):
+                result.contacts[(contact.owner_id, contact.target_id)] = contact
+                if contact.owner_id != self.session.user_id:
+                    contact_ids.add(contact.owner_id)
+
+            # NOTE (for future me refactoring this): this overwrites existing rules in context variables btw
+            result.privacyrules = await PrivacyRule.has_access_to_bulk(
+                users=values.users,
+                user=self.session.user_id,
+                keys=[
+                    PrivacyRuleKeyType.PHONE_NUMBER,
+                    PrivacyRuleKeyType.PROFILE_PHOTO,
+                    PrivacyRuleKeyType.STATUS_TIMESTAMP,
+                ],
+                contacts=contact_ids,
+            )
+
+            for presence in await Presence.filter(user__id__in=values.users):
+                result.presences[presence.user_id] = presence
+
+        if peers_q.children:
             result.peers.update({
                 (peer.type, peer.target_id_raw()): peer
-                for peer in await Peer.filter(query, owner__id=self.session.user_id)
+                for peer in await Peer.filter(peers_q, owner__id=self.session.user_id)
             })
 
         return result

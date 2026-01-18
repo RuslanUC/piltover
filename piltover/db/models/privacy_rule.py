@@ -184,11 +184,13 @@ class PrivacyRule(Model):
 
     @classmethod
     async def has_access_to_bulk(
-            cls, users: Iterable[models.User | int], user: models.User, keys: list[PrivacyRuleKeyType],
+            cls, users: Iterable[models.User | int], user: models.User | int, keys: list[PrivacyRuleKeyType],
             contacts: set[int] | None = None,
     ) -> dict[int, dict[PrivacyRuleKeyType, bool]]:
         if not keys:
             return {}
+
+        this_user_id = user.id if isinstance(user, models.User) else user
 
         user_ids = {
             (target.id if isinstance(target, models.User) else target)
@@ -199,9 +201,9 @@ class PrivacyRule(Model):
             for user_id in user_ids
         }
 
-        if user.id in user_ids:
-            user_ids.remove(user.id)
-            results[user.id] = {
+        if this_user_id in user_ids:
+            user_ids.remove(this_user_id)
+            results[this_user_id] = {
                 key: True for key in keys
             }
 
@@ -222,13 +224,13 @@ class PrivacyRule(Model):
         if contacts is None:
             contacts = {
                 contact.owner_id
-                for contact in await models.Contact.filter(owner__id__in=user_ids, target__id=user.id)
+                for contact in await models.Contact.filter(owner__id__in=user_ids, target__id=this_user_id)
             }
 
         rules = await cls.filter(
             key_query, user__id__in=user_ids,
         ).prefetch_related(Prefetch(
-            "exceptions", queryset=models.PrivacyRuleException.filter(user__id=user.id),
+            "exceptions", queryset=models.PrivacyRuleException.filter(user__id=this_user_id),
         ))
 
         leftover = {

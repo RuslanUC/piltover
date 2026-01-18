@@ -201,7 +201,7 @@ async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRu
         if exc.user_id is not None:
             ucc.add_user(exc.user_id)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     return PrivacyRules(
         rules=rule.to_tl_rules(),

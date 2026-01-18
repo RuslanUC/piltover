@@ -14,7 +14,9 @@ from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.exceptions import Unreachable
 from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long
+from piltover.tl.to_format import UserToFormat
 from piltover.tl.types import User as TLUser, PeerColor, PeerUser
+from piltover.tl.base import User as TLUserBase
 from piltover.tl.types.internal_access import AccessHashPayloadUser
 
 
@@ -83,41 +85,26 @@ class User(Model):
 
         return current, fallback
 
+    # TODO: fetch ALL privacy rules (including all exceptions) in to_tl/to_tl_bulk
+    #  to not refetch them every time in gateway?
+
     async def to_tl(
-            self, current_user: models.User, peer: models.Peer | None = None,
+            # TODO: remove current_user, peer, privacyrules
+            self, current_user: models.User | None = None, peer: models.Peer | None = None,
             privacyrules: dict[PrivacyRuleKeyType, bool] | None = None,
             userphoto: models.UserPhoto | None | _Missing = _MISSING,
-    ) -> TLUser:
+    ) -> TLUserBase:
+        if self.deleted:
+            return TLUser(
+                id=self.id,
+                is_self=False,
+                access_hash=0,
+                deleted=True,
+            )
+
         # TODO: min (https://core.telegram.org/api/min)
         # TODO: add some "version" field and save tl user
         #  in some cache with key f"{self.id}:{current_user.id}:{version}"
-
-        if peer is None:
-            peer_exists = await models.Peer.filter(owner=current_user, user__id=self.id).exists()
-        else:
-            peer_exists = True
-
-        contact = await models.Contact.get_or_none(owner=current_user, target=self)
-        is_contact = contact is not None
-        current_is_contact = await models.Contact.filter(owner=self, target=current_user).exists()
-
-        if privacyrules is None:
-            privacyrules = await models.PrivacyRule.has_access_to_bulk(
-                users=[self],
-                user=current_user,
-                keys=[
-                    PrivacyRuleKeyType.PHONE_NUMBER,
-                    PrivacyRuleKeyType.PROFILE_PHOTO,
-                    PrivacyRuleKeyType.STATUS_TIMESTAMP,
-                ],
-                contacts={self.id} if current_is_contact else set()
-            )
-            privacyrules = privacyrules[self.id]
-
-        phone_number = None
-        if (contact is not None and contact.known_phone_number == self.phone_number) \
-                or privacyrules[PrivacyRuleKeyType.PHONE_NUMBER]:
-            phone_number = self.phone_number
 
         username = await self.get_username()
 
@@ -141,73 +128,35 @@ class User(Model):
             bot_info_version = await models.BotInfo.filter(user=self).first().values_list("version", flat=True)
             bot_info_version = bot_info_version or 1
 
-        photo = _PROFILE_PHOTO_EMPTY
-        if privacyrules[PrivacyRuleKeyType.PROFILE_PHOTO]:
-            if userphoto is _MISSING:
-                userphoto = await self.get_db_current_photo()
-            if userphoto is not None:
-                # TODO: use fallback photo is userphoto is None?
-                photo = userphoto.to_tl_profile()
+        photo = None
+        if userphoto is _MISSING:
+            userphoto = await self.get_db_current_photo()
+        if userphoto is not None:
+            # TODO: use fallback photo is userphoto is None?
+            photo = userphoto.to_tl_profile()
 
-        return TLUser(
+        return UserToFormat(
             id=self.id,
-            first_name=self.first_name if contact is None or not contact.first_name else contact.first_name,
-            last_name=self.last_name if contact is None or not contact.last_name else contact.last_name,
+            first_name=self.first_name,
+            last_name=self.last_name,
             username=username.username if username is not None else None,
-            phone=phone_number,
+            phone=self.phone_number,
             lang_code=self.lang_code,
-            is_self=self == current_user,
             photo=photo,
-            access_hash=-1 if peer_exists else 0,
-            status=await models.Presence.to_tl_or_empty(
-                self, current_user, has_access=privacyrules[PrivacyRuleKeyType.STATUS_TIMESTAMP],
-            ),
-            contact=is_contact,
             bot=self.bot,
             bot_info_version=bot_info_version,
             color=color,
             profile_color=profile_color,
-            deleted=self.deleted,
-            mutual_contact=is_contact and current_is_contact,
-
-            verified=False,
-            restricted=False,
-            min=False,
-            support=False,
-            scam=False,
-            apply_min_photo=False,
-            fake=False,
-            bot_attach_menu=False,
-            # TODO: this is True only because custom emojis are not available (like at all, missing in emoji list)
-            #  for non-premium users.
-            #  Need to figure out how official telegram allows custom emojis to be visible to non-premium users.
-            premium=not self.bot,
-            attach_menu_enabled=False,
         )
 
     @classmethod
-    async def to_tl_bulk(cls, users: Iterable[models.User], current: models.User) -> list[TLUser]:
+    async def to_tl_bulk(cls, users: Iterable[models.User]) -> list[TLUserBase]:
         if not users:
             return []
 
         all_ids = [user.id for user in users]
         user_ids = [user.id for user in users if not user.bot]
         bot_ids = [user.id for user in users if user.bot]
-
-        peer_ids = set(await models.Peer.filter(owner=current, user__id__in=all_ids).values_list("user_id", flat=True))
-
-        contacts = {
-            contact.target_id: contact
-            for contact in await models.Contact.filter(owner=current, target__id__in=user_ids)
-        } if user_ids else {}
-        other_contacts = set(
-            await models.Contact.filter(owner__id__in=user_ids, target=current).values_list("owner__id", flat=True)
-        )
-        mutual_contacts = {
-            user_id
-            for user_id in other_contacts
-            if user_id in contacts
-        }
 
         usernames = {
             user_id: username
@@ -226,37 +175,12 @@ class User(Model):
             for user_id, version in await models.BotInfo.filter(user__id__in=bot_ids).values_list("user_id", "version")
         } if bot_ids else {}
 
-        presences = {
-            presence.user_id: presence
-            for presence in await models.Presence.filter(user__id__in=user_ids)
-        } if user_ids else {}
-
-        privacyrules = await models.PrivacyRule.has_access_to_bulk(
-            users=users,
-            user=current,
-            keys=[
-                PrivacyRuleKeyType.PHONE_NUMBER,
-                PrivacyRuleKeyType.PROFILE_PHOTO,
-                PrivacyRuleKeyType.STATUS_TIMESTAMP,
-            ],
-            contacts=other_contacts,
-        )
-
-        user_ids_to_fetch_photos = [
-            user_id
-            for user_id in user_ids
-            if privacyrules[user_id][PrivacyRuleKeyType.PROFILE_PHOTO]
-        ]
-
-        if user_ids_to_fetch_photos:
-            photos = {
-                photo.user_id: photo
-                for photo in await models.UserPhoto.filter(
-                    user__id__in=user_ids_to_fetch_photos, current=True,
-                ).select_related("file")
-            }
-        else:
-            photos = {}
+        photos = {
+            photo.user_id: photo
+            for photo in await models.UserPhoto.filter(
+                user__id__in=all_ids, current=True,
+            ).select_related("file")
+        }
 
         tl = []
         for user in users:
@@ -275,55 +199,18 @@ class User(Model):
                     background_emoji_id=emojis.profile_emoji_id if emojis is not None else None,
                 )
 
-            bot_info_version = None
-            if user.bot:
-                bot_info_version = bot_versions.get(user.id, 1)
-
-            contact = contacts.get(user.id)
-
-            phone_number = None
-            if (contact is not None and contact.known_phone_number == user.phone_number) \
-                    or privacyrules[user.id][PrivacyRuleKeyType.PHONE_NUMBER]:
-                phone_number = user.phone_number
-
-            presence = models.Presence.EMPTY
-            if user.id in presences:
-                presence = presences[user.id].to_tl_noprivacycheck(
-                    privacyrules[user.id][PrivacyRuleKeyType.STATUS_TIMESTAMP]
-                )
-
-            tl.append(TLUser(
+            tl.append(UserToFormat(
                 id=user.id,
-                first_name=user.first_name if contact is None or not contact.first_name else contact.first_name,
-                last_name=user.last_name if contact is None or not contact.last_name else contact.last_name,
+                first_name=user.first_name,
+                last_name=user.last_name,
                 username=usernames.get(user.id),
-                phone=phone_number,
+                phone=user.phone_number,
                 lang_code=user.lang_code,
-                is_self=user == current,
-                photo=photos[user.id].to_tl_profile() if user.id in photos else _PROFILE_PHOTO_EMPTY,
-                access_hash=-1 if user.id in peer_ids else 0,
-                status=presence,
-                contact=contact is not None,
+                photo=photos[user.id].to_tl_profile() if user.id in photos else None,
                 bot=user.bot,
-                bot_info_version=bot_info_version,
+                bot_info_version=bot_versions.get(user.id, 1) if user.bot else None,
                 color=color,
                 profile_color=profile_color,
-                deleted=user.deleted,
-                mutual_contact=user.id in mutual_contacts,
-
-                verified=False,
-                restricted=False,
-                min=False,
-                support=False,
-                scam=False,
-                apply_min_photo=False,
-                fake=False,
-                bot_attach_menu=False,
-                # TODO: this is True only because custom emojis are not available (like at all, missing in emoji list)
-                #  for non-premium users.
-                #  Need to figure out how official telegram allows custom emojis to be visible to non-premium users.
-                premium=not user.bot,
-                attach_menu_enabled=False,
             ))
 
         return tl

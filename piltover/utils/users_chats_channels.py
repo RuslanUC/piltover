@@ -121,13 +121,12 @@ class UsersChatsChannels:
         )
 
     async def resolve(
-            self, current_user: models.User, fetch_users: bool = True, fetch_chats: bool = True,
-            fetch_channels: bool = True,
+            self, fetch_users: bool = True, fetch_chats: bool = True, fetch_channels: bool = True,
     ) -> tuple[list[TLUser], list[TLChat], list[TLChannel]]:
         users, chats, channels = await self.resolve_nontl(fetch_users, fetch_chats, fetch_channels)
 
         return (
-            await models.User.to_tl_bulk(users, current_user),
+            await models.User.to_tl_bulk(users),
             await models.Chat.to_tl_bulk(chats),
             await models.Channel.to_tl_bulk(channels),
         )

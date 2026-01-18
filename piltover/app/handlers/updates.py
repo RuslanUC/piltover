@@ -127,7 +127,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         ucc.add_channel(channel_id)
 
     ucc.add_user(user.id)
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     return Difference(
         new_messages=list(new_messages.values()),
@@ -187,7 +187,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
         if update_tl is not None:
             other_updates.append(update_tl)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     return ChannelDifference(
         final=not has_more,

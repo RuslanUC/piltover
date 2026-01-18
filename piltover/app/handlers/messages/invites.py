@@ -55,7 +55,7 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user: User)
         invites.append(await chat_invite.to_tl())
         ucc.add_chat_invite(chat_invite)
 
-    users, *_ = await ucc.resolve(user, fetch_chats=False, fetch_channels=False)
+    users, *_ = await ucc.resolve(fetch_chats=False, fetch_channels=False)
 
     return ExportedChatInvites(
         count=await ChatInvite.filter(query).count(),
@@ -135,7 +135,7 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> 
 
     return ChatAdminsWithInvites(
         admins=list(admins_tl.values()),
-        users=await User.to_tl_bulk(users_to_tl.values(), user),
+        users=await User.to_tl_bulk(users_to_tl.values()),
     )
 
 
@@ -206,7 +206,7 @@ async def get_chat_invite_importers(request: GetChatInviteImporters, user: User)
     return ChatInviteImporters(
         count=count,
         importers=importers,
-        users=await User.to_tl_bulk(users_to_tl, user),
+        users=await User.to_tl_bulk(users_to_tl),
     )
 
 
@@ -407,7 +407,7 @@ async def delete_revoked_exported_chat_invites(request: DeleteRevokedExportedCha
     return True
 
 
-async def make_chat_join_request_updates(chat: ChatBase, user: User) -> Updates:
+async def make_chat_join_request_updates(chat: ChatBase) -> Updates:
     pending = await ChatInviteRequest.filter(
         Chat.query(chat, "invite")
     ).annotate(total_count=Count("id")).order_by("-created_at").limit(25).values_list("id", "total_count")
@@ -421,7 +421,7 @@ async def make_chat_join_request_updates(chat: ChatBase, user: User) -> Updates:
     # TODO: create peers
     users = []
     if recent_users:
-        users = await User.to_tl_bulk(await User.filter(id__in=recent_users), user)
+        users = await User.to_tl_bulk(await User.filter(id__in=recent_users))
 
     return UpdatesWithDefaults(
         updates=[
@@ -437,7 +437,7 @@ async def make_chat_join_request_updates(chat: ChatBase, user: User) -> Updates:
 
 async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list[ChatInviteRequest]) -> Updates:
     if not requests:
-        return await make_chat_join_request_updates(chat, user)
+        return await make_chat_join_request_updates(chat)
 
     member_limit = AppConfig.BASIC_GROUP_MEMBER_LIMIT
     if isinstance(chat, Channel):
@@ -494,7 +494,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
             extra_info=MessageActionChatJoinedByRequest().write()
         )
 
-    return await make_chat_join_request_updates(chat, user)
+    return await make_chat_join_request_updates(chat)
 
 
 @handler.on_request(HideChatJoinRequest)
@@ -522,7 +522,7 @@ async def hide_chat_join_request(request: HideChatJoinRequest, user: User) -> Up
                 Chat.query(peer.chat_or_channel, "invite") & Q(user=invite_request.user)
             ).values_list("id", flat=True)
         )).delete()
-        return await make_chat_join_request_updates(peer.chat_or_channel, user)
+        return await make_chat_join_request_updates(peer.chat_or_channel)
 
     return await add_requested_users_to_chat(user, peer.chat_or_channel, [invite_request])
 
@@ -557,7 +557,7 @@ async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user: Us
         await ChatInviteRequest.filter(id__in=Subquery(
             ChatInviteRequest.filter(query).values_list("id", flat=True)
         )).delete()
-        return await make_chat_join_request_updates(peer.chat_or_channel, user)
+        return await make_chat_join_request_updates(peer.chat_or_channel)
 
     return await add_requested_users_to_chat(user, peer.chat_or_channel, requests)
 

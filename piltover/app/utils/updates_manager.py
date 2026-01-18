@@ -24,8 +24,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy
 from piltover.tl.types.account import PrivacyRules
-from piltover.tl.types.internal import LazyMessage, ObjectWithLazyFields, LazyUser, \
-    LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
+from piltover.tl.types.internal import LazyMessage, ObjectWithLazyFields, LazyEncryptedChat, \
+    ObjectWithLayerRequirement, FieldWithLayerRequirement
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 
@@ -50,13 +50,10 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
 
     ucc = UsersChatsChannels()
     ucc.add_message(next(iter(messages.values())).id)
-    users, chats, channels = await ucc.resolve_nontl()
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     for peer, message in messages.items():
-        users_tl = await User.to_tl_bulk(users, peer.owner)
-        chats_tl = await Chat.to_tl_bulk(chats)
-        channels_tl = await Channel.to_tl_bulk(channels)
-
         # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
 
         updates = UpdatesWithDefaults(
@@ -67,8 +64,8 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
                     pts_count=1,
                 ),
             ],
-            users=users_tl,
-            chats=[*chats_tl, *channels_tl],
+            users=users,
+            chats=chats_and_channels,
         )
 
         if message.random_id:
@@ -110,14 +107,9 @@ async def send_message_channel(user: User, message: Message) -> Updates:
 
     ucc = UsersChatsChannels()
     ucc.add_message(message.id)
-    users_db, chats_db, channels_db = await ucc.resolve_nontl()
+    users, chats, channels = await ucc.resolve()
 
-    lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users_db]
-
-    chats_tl = [
-        *await Chat.to_tl_bulk(chats_db),
-        *await Channel.to_tl_bulk(channels_db),
-    ]
+    chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(
         ObjectWithLazyFields(
@@ -129,12 +121,11 @@ async def send_message_channel(user: User, message: Message) -> Updates:
                         pts_count=1,
                     )
                 ],
-                users=lazy_users,  # type: ignore
-                chats=chats_tl,
+                users=users,
+                chats=chats_and_channels,
             ),
             fields=[
                 "updates.0.message",
-                *(f"users.{i}" for i in range(len(lazy_users))),
             ],
         ),
         channel_id=channel.id,
@@ -153,8 +144,8 @@ async def send_message_channel(user: User, message: Message) -> Updates:
 
     return UpdatesWithDefaults(
         updates=updates,
-        users=await User.to_tl_bulk(users_db, user),
-        chats=chats_tl,
+        users=users,
+        chats=chats_and_channels,
     )
 
 
@@ -164,7 +155,9 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
     ucc = UsersChatsChannels()
     for message in next(iter(messages.values())):
         ucc.add_message(message.id)
-    users, chats, channels = await ucc.resolve_nontl()
+
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     for peer, messages in messages.items():
         peer.owner = await peer.owner
@@ -180,14 +173,10 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
                 pts_count=1,
             ))
 
-        users_tl = await User.to_tl_bulk(users, peer.owner)
-        chats_tl = await Chat.to_tl_bulk(chats)
-        channels_tl = await Channel.to_tl_bulk(channels)
-
         updates = UpdatesWithDefaults(
             updates=updates,
-            users=users_tl,
-            chats=[*chats_tl, *channels_tl],
+            users=users,
+            chats=chats_and_channels,
         )
 
         await SessionManager.send(updates, peer.owner.id)
@@ -222,9 +211,8 @@ async def send_messages_channel(
     await channel.save(update_fields=["pts"])
     await ChannelUpdate.bulk_create(updates_to_create)
 
-    users, chats, channels = await ucc.resolve_nontl()
-
-    lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(
         ObjectWithLazyFields(
@@ -237,15 +225,11 @@ async def send_messages_channel(
                     )
                     for message, pts in update_messages
                 ],
-                users=lazy_users,  # type: ignore
-                chats=[
-                    *await Chat.to_tl_bulk(chats),
-                    *await Channel.to_tl_bulk(channels),
-                ],
+                users=users,
+                chats=chats_and_channels,
             ),
             fields=[
                 *(f"updates.{i}.message" for i in range(len(update_messages))),
-                *(f"users.{i}" for i in range(len(lazy_users))),
             ],
         ),
         channel_id=channel.id,
@@ -263,11 +247,8 @@ async def send_messages_channel(
             )
             for message, pts in update_messages
         ],
-        users=await User.to_tl_bulk(users, user),
-        chats=[
-            *await Chat.to_tl_bulk(chats),
-            *await Channel.to_tl_bulk(channels),
-        ],
+        users=users,
+        chats=chats_and_channels,
     )
 
 
@@ -353,7 +334,8 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
 
     ucc = UsersChatsChannels()
     ucc.add_message(next(iter(messages.values())).id)
-    users, chats, channels = await ucc.resolve_nontl()
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     for peer, message in messages.items():
         pts = await State.add_pts(peer.owner, 1)
@@ -375,11 +357,8 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
                     pts_count=1,
                 )
             ],
-            users=await User.to_tl_bulk(users, peer.owner),
-            chats=[
-                *await Chat.to_tl_bulk(chats),
-                *await Channel.to_tl_bulk(channels),
-            ],
+            users=users,
+            chats=chats_and_channels,
         )
 
         if user.id == peer.owner.id:
@@ -417,9 +396,8 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
 
     ucc = UsersChatsChannels()
     ucc.add_message(message.id)
-    users, chats, channels = await ucc.resolve_nontl()
-
-    lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(
         ObjectWithLazyFields(
@@ -431,15 +409,11 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
                         pts_count=1,
                     ),
                 ],
-                users=lazy_users,  # type: ignore
-                chats=[
-                    *await Chat.to_tl_bulk(chats),
-                    *await Channel.to_tl_bulk(channels),
-                ],
+                users=users,
+                chats=chats_and_channels,
             ),
             fields=[
                 "updates.0.message",
-                *(f"users.{i}" for i in range(len(lazy_users))),
             ],
         ),
         channel_id=channel.id,
@@ -456,11 +430,8 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
                 pts_count=1,
             ),
         ],
-        users=await User.to_tl_bulk(users, user),
-        chats=[
-            *await Chat.to_tl_bulk(chats),
-            *await Channel.to_tl_bulk(channels),
-        ],
+        users=users,
+        chats=chats_and_channels,
     )
 
 
@@ -476,7 +447,7 @@ async def pin_dialog(user: User, peer: Peer, dialog: Dialog) -> None:
     ucc = UsersChatsChannels()
     ucc.add_peer(peer)
     ucc.add_user(user.id)
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
         updates=[
@@ -510,7 +481,7 @@ async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> No
 
     ucc = UsersChatsChannels()
     ucc.add_peer(peer)
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
         updates=[UpdateDraftMessage(peer=peer.to_tl(), draft=draft)],
@@ -535,7 +506,7 @@ async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
     for dialog in dialogs:
         ucc.add_peer(dialog.peer)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
         updates=[
@@ -559,7 +530,8 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
 
     ucc = UsersChatsChannels()
     ucc.add_message(next(iter(messages.values())).id)
-    users, chats, channels = await ucc.resolve_nontl()
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     for peer, message in messages.items():
         pts = await State.add_pts(peer.owner, 1)
@@ -583,11 +555,8 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
                     pts_count=1,
                 )
             ],
-            users=await User.to_tl_bulk(users, peer.owner),
-            chats=[
-                *await Chat.to_tl_bulk(chats),
-                *await Channel.to_tl_bulk(channels),
-            ],
+            users=users,
+            chats=chats_and_channels,
         )
 
         if user.id == peer.owner.id:
@@ -601,6 +570,8 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
 
 async def update_user(user: User) -> None:
     updates_to_create = []
+
+    user_tl = await user.to_tl()
 
     peer: Peer
     # TODO: probably dont do THIS
@@ -618,7 +589,7 @@ async def update_user(user: User) -> None:
 
         await SessionManager.send(UpdatesWithDefaults(
             updates=[UpdateUser(user_id=user.id)],
-            users=[await user.to_tl(peer.owner)],
+            users=[user_tl],
         ), peer.owner.id)
 
     await Update.bulk_create(updates_to_create)
@@ -635,7 +606,8 @@ async def create_chat(user: User, chat: Chat, peers: list[Peer]) -> Updates:
         for participant in await ChatParticipant.filter(chat=chat).select_related("chat")
     ]
     participant_ids = [participant.user_id for participant in participants]
-    users = await User.filter(id__in=participant_ids)
+    users_tl = await User.to_tl_bulk(await User.filter(id__in=participant_ids))
+    chat_tl = await chat.to_tl()
 
     for peer in peers:
         pts = await State.add_pts(peer.owner, 1)
@@ -660,8 +632,8 @@ async def create_chat(user: User, chat: Chat, peers: list[Peer]) -> Updates:
                     ),
                 ),
             ],
-            users=await User.to_tl_bulk(users, peer.owner),
-            chats=[await chat.to_tl(peer.owner)],
+            users=users_tl,
+            chats=[chat_tl],
         )
 
         await SessionManager.send(updates, peer.owner.id)
@@ -673,6 +645,8 @@ async def create_chat(user: User, chat: Chat, peers: list[Peer]) -> Updates:
 
 
 async def update_status(user: User, status: Presence, peers: list[Peer | User]) -> None:
+    user_tl = await user.to_tl()
+
     for peer in peers:
         peer_user = peer.owner if isinstance(peer, Peer) else peer
         updates = UpdatesWithDefaults(
@@ -682,7 +656,7 @@ async def update_status(user: User, status: Presence, peers: list[Peer | User]) 
                     status=await status.to_tl(peer_user),
                 ),
             ],
-            users=[await user.to_tl(peer_user)],
+            users=[user_tl],
         )
 
         await SessionManager.send(updates, peer_user.id)
@@ -693,6 +667,8 @@ async def update_user_name(user: User) -> None:
 
     username = await user.get_username()
     username = username.username if username is not None else None
+
+    user_tl = await user.to_tl()
 
     usernames = [] if not username else [TLUsername(editable=True, active=True, username=username)]
     update = UpdateUserName(
@@ -713,7 +689,7 @@ async def update_user_name(user: User) -> None:
 
         await SessionManager.send(UpdatesWithDefaults(
             updates=[update],
-            users=[await user.to_tl(peer.owner)],
+            users=[user_tl],
         ), peer.owner.id)
 
     await Update.bulk_create(updates_to_create)
@@ -741,7 +717,7 @@ async def add_remove_contact(user: User, targets: list[User]) -> Updates:
 
     updates = UpdatesWithDefaults(
         updates=updates,
-        users=await User.to_tl_bulk(users, user),
+        users=await User.to_tl_bulk(users),
     )
 
     await Update.bulk_create(updates_to_create)
@@ -763,13 +739,15 @@ async def block_unblock_user(user: User, target: Peer) -> None:
                 blocked=target.blocked_at is not None,
             ),
         ],
-        users=[await target.user.to_tl(user)],
+        users=[await target.user.to_tl()],
     ), user.id)
 
 
 async def update_chat(chat: Chat, user: User | None = None) -> Updates | None:
     updates_to_create = []
     update_to_return = None
+
+    chat_tl = await chat.to_tl()
 
     peer: Peer
     async for peer in Peer.filter(chat=chat).select_related("owner"):
@@ -780,7 +758,7 @@ async def update_chat(chat: Chat, user: User | None = None) -> Updates | None:
 
         updates = UpdatesWithDefaults(
             updates=[UpdateChat(chat_id=chat.make_id())],
-            chats=[await chat.to_tl(peer.owner)],
+            chats=[chat_tl],
         )
         if user == peer.owner:
             update_to_return = updates
@@ -800,7 +778,7 @@ async def update_dialog_unread_mark(user: User, dialog: Dialog) -> None:
 
     ucc = UsersChatsChannels()
     ucc.add_peer(dialog.peer)
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     await SessionManager.send(UpdatesWithDefaults(
         updates=[
@@ -823,7 +801,8 @@ async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) 
 
     ucc = UsersChatsChannels()
     ucc.add_peer(peer)
-    users, chats, channels = await ucc.resolve(peer.owner)
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(UpdatesWithDefaults(
         updates=[
@@ -836,7 +815,7 @@ async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) 
             ),
         ],
         users=users,
-        chats=[*chats, *channels],
+        chats=chats_and_channels,
     ), peer.owner.id)
 
     return pts
@@ -851,7 +830,8 @@ async def update_read_history_inbox_channel(peer: Peer, max_id: int, unread_coun
 
     ucc = UsersChatsChannels()
     ucc.add_peer(peer)
-    users, chats, channels = await ucc.resolve(peer.owner)
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(UpdatesWithDefaults(
         updates=[
@@ -863,7 +843,7 @@ async def update_read_history_inbox_channel(peer: Peer, max_id: int, unread_coun
             ),
         ],
         users=users,
-        chats=[*chats, *channels],
+        chats=chats_and_channels,
     ), peer.owner.id)
 
 
@@ -882,7 +862,8 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
 
         ucc = UsersChatsChannels()
         ucc.add_peer(peer)
-        users, chats, channels = await ucc.resolve(peer.owner)
+        # TODO: move this out of the loop
+        users, chats, channels = await ucc.resolve()
 
         await SessionManager.send(UpdatesWithDefaults(
             updates=[
@@ -926,7 +907,7 @@ async def update_channel(
     if user is not None:
         return UpdatesWithDefaults(
             updates=[UpdateChannel(channel_id=channel.make_id())],
-            chats=[await channel.to_tl(user)],
+            chats=[await channel.to_tl()],
         )
 
 
@@ -950,7 +931,7 @@ async def update_folder_peers(user: User, dialogs: list[Dialog]) -> Updates:
         folder_peers.append(FolderPeer(peer=dialog.peer.to_tl(), folder_id=dialog.folder_id.value))
         ucc.add_peer(dialog.peer)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
         updates=[
@@ -975,6 +956,8 @@ async def update_chat_default_banned_rights(chat: Chat, user: User | None = None
 
     banned_rights = chat.banned_rights.to_tl()
 
+    chat_tl = await chat.to_tl()
+
     peer: Peer
     async for peer in Peer.filter(chat=chat).select_related("owner"):
         pts = await State.add_pts(peer.owner, 1)
@@ -990,7 +973,7 @@ async def update_chat_default_banned_rights(chat: Chat, user: User | None = None
                     version=chat.version,
                 )
             ],
-            chats=[await chat.to_tl(peer.owner)],
+            chats=[chat_tl],
         )
         if user == peer.owner:
             update_to_return = updates
@@ -1010,7 +993,7 @@ async def update_channel_for_user(channel: Channel, user: User) -> Updates:
 
     updates = UpdatesWithDefaults(
         updates=[UpdateChannel(channel_id=channel.make_id())],
-        chats=[await channel.to_tl(user)],
+        chats=[await channel.to_tl()],
     )
 
     await SessionManager.send(updates, user.id)
@@ -1094,7 +1077,7 @@ async def update_reactions(user: User, messages: list[Message], peer: Peer, send
     for message in messages:
         ucc.add_message(message.id)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
         updates=[
@@ -1139,7 +1122,7 @@ async def encryption_update(user: User, chat: EncryptedChat) -> None:
                         date=int(update.date.timestamp()),
                     ),
                 ],
-                users=[await other_user.to_tl(user)],
+                users=[await other_user.to_tl()],
             ),
             fields=["updates.0.chat"],
         ),
@@ -1330,7 +1313,7 @@ async def update_chat_wallpaper(user: User, target: User, chat_wallpaper: ChatWa
                 wallpaper=chat_wallpaper.wallpaper.to_tl() if chat_wallpaper is not None else None,
             )
         ],
-        users=[await target.to_tl(user)]
+        users=[await target.to_tl()]
     )
 
     await SessionManager.send(updates, user.id)
@@ -1462,6 +1445,8 @@ async def migrate_chat(chat: Chat, channel: Channel, user: User | None = None) -
     updates_to_create = []
     update_to_return = None
 
+    chats_and_channels = [await chat.to_tl(), await channel.to_tl()]
+
     peer: Peer
     async for peer in Peer.filter(chat=chat).select_related("owner"):
         pts = await State.add_pts(peer.owner, 2)
@@ -1477,7 +1462,7 @@ async def migrate_chat(chat: Chat, channel: Channel, user: User | None = None) -
                 UpdateChat(chat_id=chat.make_id()),
                 UpdateChannel(channel_id=channel.make_id())
             ],
-            chats=[await chat.to_tl(peer.owner), await channel.to_tl(peer.owner)],
+            chats=chats_and_channels,
         )
         if user == peer.owner:
             update_to_return = updates
@@ -1503,7 +1488,7 @@ async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
 
     ucc = UsersChatsChannels()
     ucc.add_message(query.message_id)
-    users, chats, channels = await ucc.resolve(bot)
+    users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
         updates=[
@@ -1612,7 +1597,7 @@ async def bot_inline_query(bot: User, query: InlineQuery) -> None:
                 offset=query.offset,
             )
         ],
-        users=[await query.user.to_tl(bot)],
+        users=[await query.user.to_tl()],
     )
 
     await SessionManager.send(updates, bot.id)
@@ -1666,7 +1651,7 @@ async def pin_saved_dialog(user: User, dialog: SavedDialog) -> None:
     ucc = UsersChatsChannels()
     ucc.add_peer(dialog.peer)
     ucc.add_user(user.id)
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
         updates=[
@@ -1702,8 +1687,8 @@ async def reorder_pinned_saved_dialogs(user: User, dialogs: list[SavedDialog]) -
             )
         ],
         users=[
-            await user.to_tl(user),
-            *await User.to_tl_bulk([dialog.peer.user for dialog in dialogs if dialog.peer.type is PeerType.USER], user),
+            await user.to_tl(),
+            *await User.to_tl_bulk([dialog.peer.user for dialog in dialogs if dialog.peer.type is PeerType.USER]),
         ],
         # TODO: chats and channels
         chats=[],

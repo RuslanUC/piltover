@@ -40,7 +40,7 @@ async def get_contacts(user: User):
     return Contacts(
         contacts=contacts_tl,
         saved_count=0,
-        users=await User.to_tl_bulk(users_to_tl, user),
+        users=await User.to_tl_bulk(users_to_tl),
     )
 
 
@@ -99,7 +99,7 @@ async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice
         PeerBlocked(peer_id=peer.to_tl(), date=int(peer.blocked_at.timestamp()))
         for peer in blocked_peers
     ]
-    users = await User.to_tl_bulk([blocked.user for blocked in blocked_peers], user)
+    users = await User.to_tl_bulk([blocked.user for blocked in blocked_peers])
 
     if count > (limit + request.offset):
         return BlockedSlice(
@@ -170,7 +170,7 @@ async def contacts_search(request: Search, user: User) -> Found:
         my_results=[],
         results=peers,
         chats=await Channel.to_tl_bulk(channels),
-        users=await User.to_tl_bulk(users, user),
+        users=await User.to_tl_bulk(users),
     )
 
 
@@ -214,7 +214,7 @@ async def get_birthdays(user: User) -> ContactBirthdays:
 
     return ContactBirthdays(
         contacts=birthdays,
-        users=await User.to_tl_bulk(users_to_tl, user),
+        users=await User.to_tl_bulk(users_to_tl),
     )
 
 
@@ -356,7 +356,7 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
         imported=imported,
         popular_invites=[],
         retry_contacts=to_retry,
-        users=await User.to_tl_bulk(users.values(), user),
+        users=await User.to_tl_bulk(users.values()),
     )
 
 

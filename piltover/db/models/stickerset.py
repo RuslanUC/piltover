@@ -84,6 +84,7 @@ class Stickerset(Model):
             return None
         return await cls.get_or_none(q)
 
+    # TODO: use StickerSetToFormat
     async def to_tl(self, user: models.User) -> StickerSet:
         installed = await models.InstalledStickerset.get_or_none(set=self, user=user)
         thumb = await models.StickersetThumb.filter(set=self).select_related("file").order_by("-id").first()

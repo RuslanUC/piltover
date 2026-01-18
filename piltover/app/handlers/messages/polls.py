@@ -88,7 +88,7 @@ async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
         count=total_count,
         votes=votes_tl,
         chats=[],
-        users=await User.to_tl_bulk(users_to_tl.values(), user),
+        users=await User.to_tl_bulk(users_to_tl.values()),
         next_offset=base64.b64encode(Long.write(votes[-1].id)).decode("utf8") if has_more else "",
     )
 

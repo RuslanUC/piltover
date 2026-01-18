@@ -660,8 +660,8 @@ async def get_participants(request: GetParticipants, user: User):
     return ChannelParticipants(
         count=await query.count(),
         participants=participants_tl,
-        chats=[await peer.channel.to_tl(user)],
-        users=await User.to_tl_bulk(users_to_tl, user),
+        chats=[await peer.channel.to_tl()],
+        users=await User.to_tl_bulk(users_to_tl),
     )
 
 
@@ -1210,7 +1210,7 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
             continue
         events.append(event_tl)
 
-    users, chats, channels = await ucc.resolve(user)
+    users, chats, channels = await ucc.resolve()
 
     return AdminLogResults(
         events=events,
