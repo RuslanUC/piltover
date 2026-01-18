@@ -169,7 +169,7 @@ async def contacts_search(request: Search, user: User) -> Found:
     return Found(
         my_results=[],
         results=peers,
-        chats=await Channel.to_tl_bulk(channels, user),
+        chats=await Channel.to_tl_bulk(channels),
         users=await User.to_tl_bulk(users, user),
     )
 

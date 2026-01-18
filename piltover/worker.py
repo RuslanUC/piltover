@@ -238,6 +238,8 @@ class Worker(MessageHandler):
             if ctx.any():
                 result_obj = ctx.to_tl(result_obj)
 
+        logger.trace(f"Returning to gateway: {result_obj!r}")
+
         return RpcResponse(
             obj=result_obj,
             refresh_auth=handler.refresh_session,

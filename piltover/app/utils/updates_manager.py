@@ -24,7 +24,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy
 from piltover.tl.types.account import PrivacyRules
-from piltover.tl.types.internal import LazyChannel, LazyMessage, ObjectWithLazyFields, LazyUser, LazyChat, \
+from piltover.tl.types.internal import LazyMessage, ObjectWithLazyFields, LazyUser, \
     LazyEncryptedChat, ObjectWithLayerRequirement, FieldWithLayerRequirement
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
@@ -55,7 +55,7 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
     for peer, message in messages.items():
         users_tl = await User.to_tl_bulk(users, peer.owner)
         chats_tl = await Chat.to_tl_bulk(chats)
-        channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
+        channels_tl = await Channel.to_tl_bulk(channels)
 
         # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
 
@@ -110,11 +110,14 @@ async def send_message_channel(user: User, message: Message) -> Updates:
 
     ucc = UsersChatsChannels()
     ucc.add_message(message.id)
-    users, chats, channels = await ucc.resolve(user)
+    users_db, chats_db, channels_db = await ucc.resolve_nontl()
 
-    lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
-    lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in chats]
-    lazy_channels = [LazyChannel(channel_id=Channel.norm_id(rel_channel.id)) for rel_channel in channels]
+    lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users_db]
+
+    chats_tl = [
+        *await Chat.to_tl_bulk(chats_db),
+        *await Channel.to_tl_bulk(channels_db),
+    ]
 
     await SessionManager.send(
         ObjectWithLazyFields(
@@ -127,13 +130,11 @@ async def send_message_channel(user: User, message: Message) -> Updates:
                     )
                 ],
                 users=lazy_users,  # type: ignore
-                chats=[*lazy_chats, *lazy_channels],  # type: ignore
+                chats=chats_tl,
             ),
             fields=[
                 "updates.0.message",
                 *(f"users.{i}" for i in range(len(lazy_users))),
-                *(f"chats.{i}" for i in range(len(lazy_chats))),
-                *(f"chats.{len(lazy_chats) + i}" for i in range(len(lazy_channels)))
             ],
         ),
         channel_id=channel.id,
@@ -152,8 +153,8 @@ async def send_message_channel(user: User, message: Message) -> Updates:
 
     return UpdatesWithDefaults(
         updates=updates,
-        users=users,
-        chats=[*chats, *channels],
+        users=await User.to_tl_bulk(users_db, user),
+        chats=chats_tl,
     )
 
 
@@ -181,7 +182,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
 
         users_tl = await User.to_tl_bulk(users, peer.owner)
         chats_tl = await Chat.to_tl_bulk(chats)
-        channels_tl = await Channel.to_tl_bulk(channels, peer.owner)
+        channels_tl = await Channel.to_tl_bulk(channels)
 
         updates = UpdatesWithDefaults(
             updates=updates,
@@ -224,8 +225,6 @@ async def send_messages_channel(
     users, chats, channels = await ucc.resolve_nontl()
 
     lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
-    lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in chats]
-    lazy_channels = [LazyChannel(channel_id=rel_channel.id) for rel_channel in channels]
 
     await SessionManager.send(
         ObjectWithLazyFields(
@@ -239,13 +238,14 @@ async def send_messages_channel(
                     for message, pts in update_messages
                 ],
                 users=lazy_users,  # type: ignore
-                chats=[*lazy_chats, *lazy_channels],  # type: ignore
+                chats=[
+                    *await Chat.to_tl_bulk(chats),
+                    *await Channel.to_tl_bulk(channels),
+                ],
             ),
             fields=[
                 *(f"updates.{i}.message" for i in range(len(update_messages))),
                 *(f"users.{i}" for i in range(len(lazy_users))),
-                *(f"chats.{i}" for i in range(len(lazy_chats))),
-                *(f"chats.{len(lazy_chats) + i}" for i in range(len(lazy_channels)))
             ],
         ),
         channel_id=channel.id,
@@ -266,7 +266,7 @@ async def send_messages_channel(
         users=await User.to_tl_bulk(users, user),
         chats=[
             *await Chat.to_tl_bulk(chats),
-            *await Channel.to_tl_bulk(channels, user),
+            *await Channel.to_tl_bulk(channels),
         ],
     )
 
@@ -330,19 +330,16 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
     ).delete()
 
     await SessionManager.send(
-        ObjectWithLazyFields(
-            object=UpdatesWithDefaults(
-                updates=[
-                    UpdateDeleteChannelMessages(
-                        channel_id=channel.make_id(),
-                        messages=messages,
-                        pts=channel.pts,
-                        pts_count=1,
-                    ),
-                ],
-                chats=[LazyChannel(channel_id=channel.id)],  # type: ignore
-            ),
-            fields=["chats.0"],
+        UpdatesWithDefaults(
+            updates=[
+                UpdateDeleteChannelMessages(
+                    channel_id=channel.make_id(),
+                    messages=messages,
+                    pts=channel.pts,
+                    pts_count=1,
+                ),
+            ],
+            chats=[await channel.to_tl()],
         ),
         channel_id=channel.id
     )
@@ -381,7 +378,7 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
             users=await User.to_tl_bulk(users, peer.owner),
             chats=[
                 *await Chat.to_tl_bulk(chats),
-                *await Channel.to_tl_bulk(channels, peer.owner),
+                *await Channel.to_tl_bulk(channels),
             ],
         )
 
@@ -423,8 +420,6 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
     users, chats, channels = await ucc.resolve_nontl()
 
     lazy_users = [LazyUser(user_id=rel_user.id) for rel_user in users]
-    lazy_chats = [LazyChat(chat_id=rel_chat.id) for rel_chat in chats]
-    lazy_channels = [LazyChannel(channel_id=rel_channel.id) for rel_channel in channels]
 
     await SessionManager.send(
         ObjectWithLazyFields(
@@ -437,13 +432,14 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
                     ),
                 ],
                 users=lazy_users,  # type: ignore
-                chats=[*lazy_chats, *lazy_channels],  # type: ignore
+                chats=[
+                    *await Chat.to_tl_bulk(chats),
+                    *await Channel.to_tl_bulk(channels),
+                ],
             ),
             fields=[
                 "updates.0.message",
                 *(f"users.{i}" for i in range(len(lazy_users))),
-                *(f"chats.{i}" for i in range(len(lazy_chats))),
-                *(f"chats.{len(lazy_chats)+i}" for i in range(len(lazy_channels)))
             ],
         ),
         channel_id=channel.id,
@@ -463,7 +459,7 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
         users=await User.to_tl_bulk(users, user),
         chats=[
             *await Chat.to_tl_bulk(chats),
-            *await Channel.to_tl_bulk(channels, user),
+            *await Channel.to_tl_bulk(channels),
         ],
     )
 
@@ -590,7 +586,7 @@ async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
             users=await User.to_tl_bulk(users, peer.owner),
             chats=[
                 *await Chat.to_tl_bulk(chats),
-                *await Channel.to_tl_bulk(channels, peer.owner),
+                *await Channel.to_tl_bulk(channels),
             ],
         )
 
@@ -919,12 +915,9 @@ async def update_channel(
     )
 
     await SessionManager.send(
-        ObjectWithLazyFields(
-            object=UpdatesWithDefaults(
-                updates=[UpdateChannel(channel_id=channel.make_id())],
-                chats=[LazyChannel(channel_id=channel.id)],  # type: ignore
-            ),
-            fields=["chats.0"],
+        UpdatesWithDefaults(
+            updates=[UpdateChannel(channel_id=channel.make_id())],
+            chats=[await channel.to_tl()],
         ),
         channel_id=channel.id if send_to_users is None else None,
         user_id=send_to_users,

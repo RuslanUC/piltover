@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from piltover.worker import Worker
     from piltover.storage import BaseStorage
     from piltover.db.enums import PeerType
+    from piltover.db.models import ChatParticipant
 
 T = TypeVar("T")
 
@@ -49,8 +50,8 @@ class ContextValues:
 
     def __init__(self) -> None:
         self.poll_answers: dict[int, ...] = {}
-        self.chat_participants: dict[int, ...] = {}
-        self.channel_participants: dict[int, ...] = {}
+        self.chat_participants: dict[int, ChatParticipant] = {}
+        self.channel_participants: dict[int, ChatParticipant] = {}
         self.peers: dict[tuple[PeerType, int], ...] = {}
 
 

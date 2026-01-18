@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from piltover.context import NeedContextValuesContext
-from piltover.db.models import UserAuthorization, Channel, User, Message as DbMessage, Chat, EncryptedChat
+from piltover.db.models import UserAuthorization, User, Message as DbMessage, EncryptedChat
 from piltover.exceptions import Disconnection, Unreachable
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates, Vector
 from piltover.tl.core_types import Message, MsgContainer
-from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyChannel, \
-    LazyMessage, LazyUser, LazyChat, MessageToUsers, LazyEncryptedChat, ObjectWithLayerRequirement
+from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyMessage, \
+    LazyUser, MessageToUsers, LazyEncryptedChat, ObjectWithLayerRequirement
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -116,22 +116,16 @@ class Session:
         SessionManager.broker.unsubscribe(self)
         SessionManager.cleanup(self)
 
-    async def _fetch_lazy_field(self, lazy_obj: LazyChannel | LazyMessage | LazyUser | LazyChat) -> TLObject:
+    async def _fetch_lazy_field(self, lazy_obj: LazyMessage | LazyUser | LazyEncryptedChat) -> TLObject:
         user = User(id=self.user_id, phone_number=0)
         user.is_lazy = True
 
-        if isinstance(lazy_obj, LazyChannel):
-            channel = await Channel.get_or_none(id=lazy_obj.channel_id)
-            return await channel.to_tl(user)
         if isinstance(lazy_obj, LazyMessage):
             message = await DbMessage.get_or_none(id=lazy_obj.message_id).select_related(*DbMessage.PREFETCH_FIELDS)
             return await message.to_tl(user)
         if isinstance(lazy_obj, LazyUser):
             other_user = await User.get_or_none(id=lazy_obj.user_id)
             return await other_user.to_tl(user)
-        if isinstance(lazy_obj, LazyChat):
-            chat = await Chat.get_or_none(id=lazy_obj.chat_id)
-            return await chat.to_tl(user)
         if isinstance(lazy_obj, LazyEncryptedChat):
             chat = await EncryptedChat.get_or_none(id=lazy_obj.chat_id)
             return await chat.to_tl(user, self.auth_id)
@@ -289,6 +283,13 @@ class SessionManager:
         if ctx.any():
             if isinstance(obj, (ObjectWithLayerRequirement, ObjectWithLazyFields)):
                 obj.object = ctx.to_tl(obj.object)
+                # TODO: this is a temporary fix, lazy fields will be deleted
+                if isinstance(obj, ObjectWithLazyFields):
+                    for idx, field_ in enumerate(obj.fields):
+                        obj.fields[idx] = f"obj.{field_}"
+                elif isinstance(obj, ObjectWithLayerRequirement):
+                    for field_ in obj.fields:
+                        field_.field = f"obj.{field_.field}"
             else:
                 obj = ctx.to_tl(obj)
 

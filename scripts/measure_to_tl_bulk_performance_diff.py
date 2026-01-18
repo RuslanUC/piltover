@@ -76,14 +76,14 @@ async def main() -> None:
 
     channels = await Channel.all()
     with measure_time_with_result("[to_tl_bulk] all channels at once") as fut:
-        await Channel.to_tl_bulk(channels, user)
+        await Channel.to_tl_bulk(channels)
 
     to_tl_bulk_all_at_once = await fut
 
     channels = await Channel.all()
     with measure_time_with_result("[to_tl_bulk] one channel at a time") as fut:
         for channel in channels:
-            await Channel.to_tl_bulk([channel], user)
+            await Channel.to_tl_bulk([channel])
 
     to_tl_bulk_one_at_a_time = await fut
 
@@ -95,7 +95,7 @@ async def main() -> None:
         batches = list(batched(channels, batch_size))
         with measure_time_with_result(f"[to_tl_bulk] {batch_size} channels at a time") as fut:
             for batch in batches:
-                await Channel.to_tl_bulk(cast(list[Channel], batch), user)
+                await Channel.to_tl_bulk(cast(list[Channel], batch))
 
         power_of_two_ratios.append((batch_size_power, to_tl_one_at_a_time / (await fut)))
 

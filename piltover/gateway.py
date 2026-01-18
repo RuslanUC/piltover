@@ -658,10 +658,13 @@ class Client:
             else:
                 query = Q(channel__id__in=values.channel_participants)
 
-            result.chat_participants.update({
-                participant.chat_id: participant
-                for participant in await ChatParticipant.filter(query, user__id=self.session.user_id)
-            })
+            participants = await ChatParticipant.filter(query, user__id=self.session.user_id)
+            for participant in participants:
+                if participant.chat_id is not None:
+                    result.chat_participants[participant.chat_id] = participant
+                else:
+                    result.channel_participants[participant.channel_id] = participant
+
             result.peers.update({
                 (peer.type, peer.target_id_raw()): peer
                 for peer in await Peer.filter(query, owner__id=self.session.user_id)

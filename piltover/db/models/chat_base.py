@@ -198,7 +198,7 @@ class ChatBase(Model):
     def norm_id(t_id: int) -> int:
         return t_id // 2
 
-    async def to_tl(self, user: models.User) -> Chat | ChatForbidden | Channel | ChannelForbidden:
+    async def to_tl(self, user: object | None = None) -> Chat | ChatForbidden | Channel | ChannelForbidden:
         raise NotImplementedError
 
     def to_tl_peer(self) -> PeerChat | PeerChannel:

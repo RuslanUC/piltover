@@ -10,9 +10,10 @@ from tortoise.models import MODEL
 
 from piltover.app_config import AppConfig
 from piltover.db import models
-from piltover.db.enums import ChatAdminRights
 from piltover.db.models import ChatBase
-from piltover.tl import ChannelForbidden, Channel as TLChannel, Long
+from piltover.tl import ChannelForbidden, Long
+from piltover.tl.base import Chat as TLChatBase
+from piltover.tl.to_format import ChannelToFormat
 from piltover.tl.types import ChatAdminRights as TLChatAdminRights, PeerColor, PeerChannel
 from piltover.tl.types.internal_access import AccessHashPayloadChannel
 
@@ -102,22 +103,8 @@ class Channel(ChatBase):
 
         return self.cached_username
 
-    def _to_tl(
-            self, user_id: int, participant: models.ChatParticipant | None, photo: models.File | None,
-            username: str | None,
-    ) -> TLChannel:
-        # TODO: return ChannelToFormat so gateway will only fetch peer+participant and not channel+username+photo+...
-        #  when LazyChannel is used ?
-
-        admin_rights = None
-        if self.creator_id == user_id:
-            admin_rights = CREATOR_RIGHTS
-            if participant is not None \
-                    and participant.admin_rights & ChatAdminRights.ANONYMOUS == ChatAdminRights.ANONYMOUS:
-                admin_rights.anonymous = True
-        elif participant is not None and participant.is_admin:
-            admin_rights = participant.admin_rights.to_tl()
-
+    # TODO: move _to_tl to to_tl_bulk?
+    def _to_tl(self, photo: models.File | None, username: str | None) -> TLChatBase:
         accent_color = None
         profile_color = None
         if self.accent_color_id is not None or self.accent_emoji_id is not None:
@@ -125,146 +112,76 @@ class Channel(ChatBase):
         if self.profile_color_id is not None or self.profile_emoji_id is not None:
             profile_color = PeerColor(color=self.profile_color_id, background_emoji_id=self.profile_emoji_id)
 
-        return TLChannel(
-            id=self.make_id(),
+        return ChannelToFormat(
+            id=self.id,
             title=self.name,
             photo=self.to_tl_chat_photo_internal(photo),
-            date=int((participant.invited_at if participant else self.created_at).timestamp()),
-            creator=self.creator_id == user_id,
-            left=participant is None,
+            created_at=int(self.created_at.timestamp()),
+            creator_id=self.creator_id,
             broadcast=self.channel,
-            verified=False,
             megagroup=self.supergroup,
-            restricted=False,
             signatures=self.signatures,
-            min=False,
-            scam=False,
             has_link=self.discussion_id is not None or self.is_discussion,
-            has_geo=False,
             slowmode_enabled=self.slowmode_seconds is not None,
-            call_active=False,
-            call_not_empty=False,
-            fake=False,
-            gigagroup=False,
             noforwards=self.no_forwards,
             join_to_send=self.supergroup and self.join_to_send,
             join_request=self.join_request,
-            forum=False,
-            stories_hidden=False,
-            stories_hidden_min=True,
-            stories_unavailable=True,
-            access_hash=-1,
-            restriction_reason=None,
-            admin_rights=admin_rights,
             username=username,
-            usernames=[],
-            default_banned_rights=self.banned_rights.to_tl() if participant is not None else None,
-            banned_rights=participant.banned_rights.to_tl() if participant is not None else None,
+            default_banned_rights=self.banned_rights.to_tl(),
             color=accent_color,
             profile_color=profile_color,
+            nojoin_allow_view=self.nojoin_allow_view,
             # NOTE: participants_count is not included here since it is present in ChannelFull
         )
 
-    async def to_tl(self, user: models.User | int) -> TLChannel | ChannelForbidden:
-        return (await self.to_tl_bulk([self], user))[0]
+    async def to_tl(self, user: object | None = None) -> TLChatBase:
+        return (await self.to_tl_bulk([self]))[0]
 
     @classmethod
-    async def to_tl_bulk(
-            cls, channels: list[models.Channel], user_or_id: models.User | int,
-    ) -> list[TLChannel | ChannelForbidden]:
+    async def to_tl_bulk(cls, channels: list[models.Channel]) -> list[TLChatBase]:
         if not channels:
             return []
-
-        user_id = user_or_id.id if isinstance(user_or_id, models.User) else user_or_id
 
         channel_ids = [channel.id for channel in channels]
 
         if len(channel_ids) == 1:
-            if await models.Peer.filter(owner__id=user_id, channel__id=channel_ids[0]).exists():
-                peers = {channel_ids[0]}
-            else:
-                peers = set()
-        else:
-            peers = set(await models.Peer.filter(
-                owner__id=user_id, channel_id__in=channel_ids,
-            ).values_list("channel__id", flat=True))
-
-        if len(channel_ids) == 1:
-            if peers:
-                channel_id = channel_ids[0]
-                participants = {
-                    channel_id: await models.ChatParticipant.get_or_none(
-                        user__id=user_id, channel__id=channel_id, left=False,
-                    )
-                }
-            else:
-                participants = {}
-        else:
-            if peers:
-                participants = {
-                    participant.channel_id: participant
-                    for participant in await models.ChatParticipant.filter(
-                        user__id=user_id, channel__id__in=peers, left=False,
-                    )
-                }
-            else:
-                participants = {}
-
-        if len(channel_ids) == 1:
-            if peers:
-                channel_id = channel_ids[0]
-                usernames = {
-                    channel_id: await models.Username.filter(
-                        channel__id=channel_id,
-                    ).first().values_list("username", flat=True)
-                }
-            else:
-                usernames = {}
-        else:
-            if peers:
-                usernames = {
-                    channel_id: username
-                    for channel_id, username in await models.Username.filter(
-                        channel__id__in=peers,
-                    ).values_list("channel_id", "username")
-                }
-            else:
-                usernames = {}
-
-        if len(channel_ids) == 1:
             channel_id = channel_ids[0]
-            if peers and channels[0].photo_id is not None:
-                photos = {channel_id: await channels[0].photo}
+            usernames = {
+                channel_id: await models.Username.filter(
+                    channel__id=channel_id,
+                ).first().values_list("username", flat=True)
+            }
+        else:
+            usernames = {
+                channel_id: username
+                for channel_id, username in await models.Username.filter(
+                    channel__id__in=channel_ids,
+                ).values_list("channel_id", "username")
+            }
+
+        if len(channel_ids) == 1:
+            channel = channels[0]
+            if channel.photo_id is not None:
+                photos = {channel.id: await channel.photo}
             else:
                 photos = {}
         else:
             channel_by_photo_id = {
                 channel.photo_id: channel.id
                 for channel in channels
-                if channel.id in peers and channel.photo_id is not None and not isinstance(channel.photo, models.File)
+                if channel.photo_id is not None and not isinstance(channel.photo, models.File)
             }
             photos = {
                 channel_by_photo_id[photo.id]: photo
                 for photo in await models.File.filter(id__in=list(channel_by_photo_id))
             }
             for channel in channels:
-                if channel.id in peers and channel.photo_id is not None and isinstance(channel.photo, models.File):
+                if channel.photo_id is not None and isinstance(channel.photo, models.File):
                     photos[channel.id] = channel.photo
 
         tl = []
         for channel in channels:
-            peer_exists = channel.id in peers
-            if channel.deleted or not peer_exists:
-                tl.append(ChannelForbidden(
-                    id=channel.make_id(),
-                    access_hash=-1 if peer_exists else 0,
-                    title=channel.name,
-                ))
-                continue
-
-            participant = participants.get(channel.id)
-
-            if participant is None and not (channel.nojoin_allow_view or channel.id in usernames):
+            if channel.deleted:
                 tl.append(ChannelForbidden(
                     id=channel.make_id(),
                     access_hash=-1,
@@ -272,7 +189,7 @@ class Channel(ChatBase):
                 ))
                 continue
 
-            tl.append(channel._to_tl(user_id, participant, photos.get(channel.id), usernames.get(channel.id)))
+            tl.append(channel._to_tl(photos.get(channel.id), usernames.get(channel.id)))
 
         return tl
 

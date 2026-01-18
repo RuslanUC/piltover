@@ -184,7 +184,7 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
         return Chats(chats=[])
 
     return Chats(
-        chats=await Channel.to_tl_bulk(await Channel.filter(channels_q), user),
+        chats=await Channel.to_tl_bulk(await Channel.filter(channels_q)),
     )
 
 
@@ -314,7 +314,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             slowmode_seconds=channel.slowmode_seconds,
             slowmode_next_send_date=slowmode_next_date,
         ),
-        chats=await Channel.to_tl_bulk(channels_to_tl, user),
+        chats=await Channel.to_tl_bulk(channels_to_tl),
         users=[await user.to_tl(user)],
     )
 
@@ -1032,7 +1032,7 @@ async def get_admined_public_channels(request: GetAdminedPublicChannels, user: U
         raise ErrorRpc(error_code=400, error_message="CHANNELS_ADMIN_PUBLIC_TOO_MUCH")
 
     return Chats(
-        chats=await Channel.to_tl_bulk(await query, user),
+        chats=await Channel.to_tl_bulk(await query),
     )
 
 
@@ -1248,7 +1248,7 @@ async def get_groups_for_discussion(user: User) -> Chats:
 
     return Chats(
         chats=[
-            *await Channel.to_tl_bulk(channels, user),
+            *await Channel.to_tl_bulk(channels),
             *await Chat.to_tl_bulk(chats),
         ],
     )
