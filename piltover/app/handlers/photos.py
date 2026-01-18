@@ -44,7 +44,7 @@ async def get_user_photos(request: GetUserPhotos, user: User):
 
     photos_total = await UserPhoto.filter(user=peer_user, fallback=False).count()
     photos_tl = [photo.to_tl() for photo in photos]
-    users_tl = [await peer_user.to_tl(user)]
+    users_tl = [await peer_user.to_tl()]
 
     if photos_total >= len(photos):
         return PhotosSlice(

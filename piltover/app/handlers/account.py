@@ -77,7 +77,7 @@ async def update_username(request: UpdateUsername, user: User) -> TLUser:
         user.cached_username = await Username.create(user=user, username=request.username)
 
     await upd.update_user_name(user)
-    return await user.to_tl(user)
+    return await user.to_tl()
 
 
 @handler.on_request(GetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -291,7 +291,7 @@ async def update_profile(request: UpdateProfile, user: User):
         else:
             await upd.update_user_name(user)
 
-    return await user.to_tl(user)
+    return await user.to_tl()
 
 
 @handler.on_request(GetNotifySettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -384,7 +384,7 @@ async def get_default_profile_photo_emojis(request: GetDefaultProfilePhotoEmojis
 
 @handler.on_request(GetWebAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_web_authorizations(user: User) -> WebAuthorizations:  # pragma: no cover
-    return WebAuthorizations(authorizations=[], users=[await user.to_tl(user)])
+    return WebAuthorizations(authorizations=[], users=[await user.to_tl()])
 
 
 @handler.on_request(UpdateBirthday, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -536,7 +536,7 @@ async def change_phone(request: ChangePhone, user: User) -> TLUser:
     await user.save(update_fields=["phone_number"])
 
     await upd.update_user_phone(user)
-    return await user.to_tl(user)
+    return await user.to_tl()
 
 
 # https://core.telegram.org/api/account-deletion

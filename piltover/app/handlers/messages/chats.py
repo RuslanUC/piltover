@@ -153,8 +153,8 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             ttl_period=chat.ttl_period_days * 86400 if chat.ttl_period_days else None,
             exported_invite=await invite.to_tl() if invite is not None else None,
         ),
-        chats=[await chat.to_tl(user)],
-        users=[await user.to_tl(user)],
+        chats=[await chat.to_tl()],
+        users=[await user.to_tl()],
     )
 
 

@@ -57,8 +57,7 @@ class Chat(ChatBase):
             default_banned_rights=self.banned_rights.to_tl(),
         )
 
-    # TODO: remove `user` argument
-    async def to_tl(self, user: Any | None = None) -> TLChatBase:
+    async def to_tl(self) -> TLChatBase:
         # TODO: cache result
 
         migrated_to_id = None

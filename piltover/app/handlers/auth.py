@@ -143,7 +143,7 @@ async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpReq
     if not auth.mfa_pending:
         await upd.new_auth(user, auth)
 
-    return AuthAuthorization(user=await user.to_tl(user))
+    return AuthAuthorization(user=await user.to_tl())
 
 
 @handler.on_request(SignUp_133, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
@@ -177,7 +177,7 @@ async def sign_up(request: SignUp | SignUp_133):
 
     # TODO: send notification to all users that have new user's number as contact if no_joined_notifications is False
 
-    return AuthAuthorization(user=await user.to_tl(user))
+    return AuthAuthorization(user=await user.to_tl())
 
 
 @handler.on_request(
@@ -187,7 +187,7 @@ async def check_password(request: CheckPassword, user: User):
     ctx = request_ctx.get()
     auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
     if not auth.mfa_pending:  # ??
-        return AuthAuthorization(user=await user.to_tl(user))
+        return AuthAuthorization(user=await user.to_tl())
 
     password, _ = await UserPassword.get_or_create(user=user)
     await check_password_internal(password, request.password)
@@ -197,7 +197,7 @@ async def check_password(request: CheckPassword, user: User):
 
     await upd.new_auth(user, auth)
 
-    return AuthAuthorization(user=await user.to_tl(user))
+    return AuthAuthorization(user=await user.to_tl())
 
 
 @handler.on_request(BindTempAuthKey, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.REFRESH_SESSION)
@@ -249,7 +249,7 @@ async def export_login_token():
         auth = await UserAuthorization.get_or_none(id=ctx.auth_id).select_related("user")
         if auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
-        return LoginTokenSuccess(authorization=AuthAuthorization(user=await auth.user.to_tl(auth.user)))
+        return LoginTokenSuccess(authorization=AuthAuthorization(user=await auth.user.to_tl()))
 
     login_q = Q(key__id=ctx.perm_auth_key_id) & (
         Q(created_at__gt=datetime.now(UTC) - timedelta(seconds=QrLogin.EXPIRE_TIME))
@@ -264,7 +264,7 @@ async def export_login_token():
         if login.auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         user = login.auth.user
-        return LoginTokenSuccess(authorization=AuthAuthorization(user=await user.to_tl(user)))
+        return LoginTokenSuccess(authorization=AuthAuthorization(user=await user.to_tl()))
 
     return LoginToken(expires=int(login.created_at.timestamp()) + QrLogin.EXPIRE_TIME, token=login.to_token())
 
@@ -366,4 +366,4 @@ async def import_bot_authorization(request: ImportBotAuthorization) -> AuthAutho
     await UserAuthorization.filter(key=key).delete()
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
-    return AuthAuthorization(user=await user.to_tl(user))
+    return AuthAuthorization(user=await user.to_tl())

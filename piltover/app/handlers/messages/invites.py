@@ -344,7 +344,7 @@ async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
 async def check_chat_invite(request: CheckChatInvite, user: User) -> TLChatInvite | ChatInviteAlready:
     invite = await _get_invite_with_some_checks(request.hash, user)
     if await ChatParticipant.filter(Chat.query(invite.chat_or_channel), user=user, left=False).exists():
-        return ChatInviteAlready(chat=await invite.chat_or_channel.to_tl(user))
+        return ChatInviteAlready(chat=await invite.chat_or_channel.to_tl())
 
     channel = invite.channel
     return TLChatInvite(
@@ -384,7 +384,7 @@ async def get_exported_chat_invite(request: GetExportedChatInvite, user: User) -
 
     return ExportedChatInvite(
         invite=await invite.to_tl(),
-        users=[await invite.user.to_tl(user)],
+        users=[await invite.user.to_tl()],
     )
 
 
@@ -601,5 +601,5 @@ async def edit_exported_chat_invite(request: EditExportedChatInvite, user: User)
 
     return ExportedChatInvite(
         invite=await invite.to_tl(),
-        users=[await invite.user.to_tl(user)],
+        users=[await invite.user.to_tl()],
     )

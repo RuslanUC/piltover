@@ -58,8 +58,8 @@ async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
 
     return ResolvedPeer(
         peer=peer.to_tl(),
-        chats=[await resolved.channel.to_tl(user)] if resolved.channel is not None else [],
-        users=[await resolved.user.to_tl(user)] if resolved.user is not None else [],
+        chats=[await resolved.channel.to_tl()] if resolved.channel is not None else [],
+        users=[await resolved.user.to_tl()] if resolved.user is not None else [],
     )
 
 
@@ -72,7 +72,7 @@ async def _format_resolved_peer_by_phone(user: User, resolved: User) -> Resolved
     return ResolvedPeer(
         peer=peer.to_tl(),
         chats=[],
-        users=[await resolved.to_tl(user)],
+        users=[await resolved.to_tl()],
     )
 
 
@@ -403,7 +403,7 @@ async def import_contact_token(request: ImportContactToken, user: User) -> TLUse
     else:
         peer, _ = await Peer.get_or_create(owner=user, user=target_user, type=PeerType.USER)
 
-    return await target_user.to_tl(user)
+    return await target_user.to_tl()
 
 
 # TODO: contacts.GetContactIDs

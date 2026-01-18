@@ -103,38 +103,7 @@ class Channel(ChatBase):
 
         return self.cached_username
 
-    # TODO: move _to_tl to to_tl_bulk?
-    def _to_tl(self, photo: models.File | None, username: str | None) -> TLChatBase:
-        accent_color = None
-        profile_color = None
-        if self.accent_color_id is not None or self.accent_emoji_id is not None:
-            accent_color = PeerColor(color=self.accent_color_id, background_emoji_id=self.accent_emoji_id)
-        if self.profile_color_id is not None or self.profile_emoji_id is not None:
-            profile_color = PeerColor(color=self.profile_color_id, background_emoji_id=self.profile_emoji_id)
-
-        return ChannelToFormat(
-            id=self.id,
-            title=self.name,
-            photo=self.to_tl_chat_photo_internal(photo),
-            created_at=int(self.created_at.timestamp()),
-            creator_id=self.creator_id,
-            broadcast=self.channel,
-            megagroup=self.supergroup,
-            signatures=self.signatures,
-            has_link=self.discussion_id is not None or self.is_discussion,
-            slowmode_enabled=self.slowmode_seconds is not None,
-            noforwards=self.no_forwards,
-            join_to_send=self.supergroup and self.join_to_send,
-            join_request=self.join_request,
-            username=username,
-            default_banned_rights=self.banned_rights.to_tl(),
-            color=accent_color,
-            profile_color=profile_color,
-            nojoin_allow_view=self.nojoin_allow_view,
-            # NOTE: participants_count is not included here since it is present in ChannelFull
-        )
-
-    async def to_tl(self, user: object | None = None) -> TLChatBase:
+    async def to_tl(self) -> TLChatBase:
         return (await self.to_tl_bulk([self]))[0]
 
     @classmethod
@@ -189,7 +158,34 @@ class Channel(ChatBase):
                 ))
                 continue
 
-            tl.append(channel._to_tl(photos.get(channel.id), usernames.get(channel.id)))
+            accent_color = None
+            profile_color = None
+            if channel.accent_color_id is not None or channel.accent_emoji_id is not None:
+                accent_color = PeerColor(color=channel.accent_color_id, background_emoji_id=channel.accent_emoji_id)
+            if channel.profile_color_id is not None or channel.profile_emoji_id is not None:
+                profile_color = PeerColor(color=channel.profile_color_id, background_emoji_id=channel.profile_emoji_id)
+
+            tl.append(ChannelToFormat(
+                id=channel.id,
+                title=channel.name,
+                photo=Channel.to_tl_chat_photo_internal(photos.get(channel.id)),
+                created_at=int(channel.created_at.timestamp()),
+                creator_id=channel.creator_id,
+                broadcast=channel.channel,
+                megagroup=channel.supergroup,
+                signatures=channel.signatures,
+                has_link=channel.discussion_id is not None or channel.is_discussion,
+                slowmode_enabled=channel.slowmode_seconds is not None,
+                noforwards=channel.no_forwards,
+                join_to_send=channel.supergroup and channel.join_to_send,
+                join_request=channel.join_request,
+                username=usernames.get(channel.id),
+                default_banned_rights=channel.banned_rights.to_tl(),
+                color=accent_color,
+                profile_color=profile_color,
+                nojoin_allow_view=channel.nojoin_allow_view,
+                # NOTE: participants_count is not included here since it is present in ChannelFull
+            ))
 
         return tl
 

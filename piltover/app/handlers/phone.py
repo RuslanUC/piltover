@@ -92,7 +92,7 @@ async def request_call(request: RequestCall, user: User) -> PhonePhoneCall:
             conference_call=None,
         ),
         users=[
-            await user.to_tl(user),
-            await peer.user.to_tl(user),
+            await user.to_tl(),
+            await peer.user.to_tl(),
         ],
     )

@@ -315,7 +315,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             slowmode_next_send_date=slowmode_next_date,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl),
-        users=[await user.to_tl(user)],
+        users=[await user.to_tl()],
     )
 
 
@@ -511,7 +511,7 @@ async def edit_banned(request: EditBanned, user: User):
     return Updates(
         updates=[UpdateChannel(channel_id=peer.channel.make_id())],
         users=[],
-        chats=[await peer.channel.to_tl(user)],
+        chats=[await peer.channel.to_tl()],
         date=int(time()),
         seq=0,
     )
@@ -576,7 +576,7 @@ async def edit_admin(request: EditAdmin, user: User):
     return Updates(
         updates=[UpdateChannel(channel_id=channel.make_id())],
         users=[],
-        chats=[await channel.to_tl(user)],
+        chats=[await channel.to_tl()],
         date=int(time()),
         seq=0,
     )
@@ -690,8 +690,8 @@ async def get_participant(request: GetParticipant, user: User):
 
     return ChannelParticipant(
         participant=await target_participant.to_tl_channel(user),
-        chats=[await peer.channel.to_tl(user)],
-        users=[await target_participant.user.to_tl(user)],
+        chats=[await peer.channel.to_tl()],
+        users=[await target_participant.user.to_tl()],
     )
 
 
@@ -785,7 +785,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
     return InvitedUsers(
         updates=Updates(
             updates=[UpdateChannel(channel_id=channel.make_id())],
-            chats=[await channel.to_tl(user)],
+            chats=[await channel.to_tl()],
             users=[],
             date=int(time()),
             seq=0,
@@ -1120,7 +1120,7 @@ async def get_send_as(request: GetSendAs | GetSendAs_135, user: User) -> SendAsP
         return SendAsPeers(
             peers=[SendAsPeer(peer=user.to_tl_peer())],
             chats=[],
-            users=[await user.to_tl(user)],
+            users=[await user.to_tl()],
         )
 
     return SendAsPeers(
@@ -1128,8 +1128,8 @@ async def get_send_as(request: GetSendAs | GetSendAs_135, user: User) -> SendAsP
             SendAsPeer(peer=user.to_tl_peer()),
             SendAsPeer(peer=channel.to_tl_peer()),
         ],
-        chats=[await channel.to_tl(user)],
-        users=[await user.to_tl(user)],
+        chats=[await channel.to_tl()],
+        users=[await user.to_tl()],
     )
 
 

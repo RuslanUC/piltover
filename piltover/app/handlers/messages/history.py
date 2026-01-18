@@ -516,7 +516,7 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
 
     return MessagesMessageViews(
         views=views,
-        chats=[await peer.channel.to_tl(user)],
+        chats=[await peer.channel.to_tl()],
         users=[],
     )
 

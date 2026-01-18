@@ -21,12 +21,9 @@ async def get_full_user(request: GetFullUser, user: User):
     target_user = peer.peer_user(user)
 
     privacy_rules = await PrivacyRule.has_access_to_bulk([target_user], user, [
-        # TODO: dont fetch fields that are not used in GetFullUser
         PrivacyRuleKeyType.ABOUT,
         PrivacyRuleKeyType.BIRTHDAY,
         PrivacyRuleKeyType.PROFILE_PHOTO,
-        PrivacyRuleKeyType.PHONE_NUMBER,
-        PrivacyRuleKeyType.STATUS_TIMESTAMP,
     ])
     privacy_rules = privacy_rules[target_user.id]
 
@@ -106,9 +103,9 @@ async def get_full_user(request: GetFullUser, user: User):
             fallback_photo=fallback_photo,
             # video_calls_available=True,
         ),
-        chats=[await personal_channel.to_tl(user)] if personal_channel is not None else [],
+        chats=[await personal_channel.to_tl()] if personal_channel is not None else [],
         # TODO: pass photo_fallback_db of photo_db is None?
-        users=[await target_user.to_tl(user, peer, privacyrules=privacy_rules, userphoto=photo_db)],
+        users=[await target_user.to_tl(userphoto=photo_db)],
     )
 
 

@@ -88,12 +88,7 @@ class User(Model):
     # TODO: fetch ALL privacy rules (including all exceptions) in to_tl/to_tl_bulk
     #  to not refetch them every time in gateway?
 
-    async def to_tl(
-            # TODO: remove current_user, peer, privacyrules
-            self, current_user: models.User | None = None, peer: models.Peer | None = None,
-            privacyrules: dict[PrivacyRuleKeyType, bool] | None = None,
-            userphoto: models.UserPhoto | None | _Missing = _MISSING,
-    ) -> TLUserBase:
+    async def to_tl(self, *, userphoto: models.UserPhoto | None | _Missing = _MISSING) -> TLUserBase:
         if self.deleted:
             return TLUser(
                 id=self.id,
