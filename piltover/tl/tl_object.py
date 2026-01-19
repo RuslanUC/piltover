@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 from io import BytesIO
-from typing import Generic, TypeVar, Self
+from typing import Generic, TypeVar, Self, TYPE_CHECKING
 
 import piltover.tl as tl
 from piltover.exceptions import Error, InvalidConstructorException
 from .primitives import Int
+
+if TYPE_CHECKING:
+    from piltover.context import NeedContextValuesContext
 
 
 class TLObject(ABC):
@@ -27,6 +30,9 @@ class TLObject(ABC):
     @classmethod
     @abstractmethod
     def deserialize(cls, stream: BytesIO) -> Self: ...
+
+    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
+        ...
 
     @classmethod
     def read(cls, stream: BytesIO, strict_type: bool = False) -> Self:

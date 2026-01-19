@@ -6,3 +6,6 @@ REPLACE_CONSTRUCTORS = {
     0x89ce0d3a: "to_format.ChannelToFormat",
     0x276511f3: "to_format.UserToFormat",
 }
+
+BASE_CLASSES_NEED_CONTEXT = {"Chat", "User"}
+

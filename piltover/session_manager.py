@@ -268,14 +268,7 @@ class SessionManager:
         )
 
         ctx = NeedContextValuesContext()
-        with ctx.use():
-            # TODO: !!! this does COMPLETELY UNNECESSARY write !!!
-            #  better add some .traverse_for_ctx_values method in TLObject
-
-            if isinstance(obj, (ObjectWithLayerRequirement, ObjectWithLazyFields)):
-                obj.object.write()
-            else:
-                obj.write()
+        obj.check_for_ctx_values(ctx)
 
         if ctx.any():
             if isinstance(obj, (ObjectWithLayerRequirement, ObjectWithLazyFields)):

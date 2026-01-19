@@ -231,10 +231,7 @@ class Worker(MessageHandler):
 
         if not isinstance(result_obj.result, RpcError):
             ctx = NeedContextValuesContext()
-            with ctx.use():
-                # TODO: !!! this does COMPLETELY UNNECESSARY write !!!
-                #  better add some .traverse_for_ctx_values method in TLObject
-                result_obj.write()
+            result_obj.check_for_ctx_values(ctx)
             if ctx.any():
                 result_obj = ctx.to_tl(result_obj)
 

@@ -1,4 +1,4 @@
-from piltover.context import serialization_ctx, need_values_ctx
+from piltover.context import serialization_ctx, NeedContextValuesContext
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types, Int
 
@@ -126,10 +126,11 @@ class ChatToFormat(types.ChatToFormatInternal):
     def write(self) -> bytes:
         ctx = serialization_ctx.get()
         if ctx is None or ctx.dont_format:
-            if (val_ctx := need_values_ctx.get()) is not None:
-                val_ctx.chat_participants.add(self.id)
             return super().write()
         return self._write()
+
+    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
+        values.chat_participants.add(self.id)
 
 
 class ChannelToFormat(types.ChannelToFormatInternal):
@@ -213,10 +214,11 @@ class ChannelToFormat(types.ChannelToFormatInternal):
     def write(self) -> bytes:
         ctx = serialization_ctx.get()
         if ctx is None or ctx.dont_format:
-            if (val_ctx := need_values_ctx.get()) is not None:
-                val_ctx.channel_participants.add(self.id)
             return super().write()
         return self._write()
+
+    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
+        values.channel_participants.add(self.id)
 
 
 class UserToFormat(types.UserToFormatInternal):
@@ -291,7 +293,8 @@ class UserToFormat(types.UserToFormatInternal):
     def write(self) -> bytes:
         ctx = serialization_ctx.get()
         if ctx is None or ctx.dont_format:
-            if (val_ctx := need_values_ctx.get()) is not None:
-                val_ctx.users.add(self.id)
             return super().write()
         return self._write()
+
+    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
+        values.users.add(self.id)

@@ -28,8 +28,7 @@ from typing import Literal, TextIO
 from tqdm import tqdm
 
 from tl_gen_placeholders import PLACEHOLDERS
-from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS
-
+from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS, BASE_CLASSES_NEED_CONTEXT
 
 DRY_RUN = False
 HOME_PATH = Path("./tools")
@@ -66,6 +65,7 @@ if DRY_RUN:
 all_layers = set()
 types_to_constructors: dict[str, list[str]] = defaultdict(list)
 types_to_constructors["future_salt"].append("FutureSalt")
+types_to_combinators: dict[str, list[Combinator]] = defaultdict(list)
 namespaces_to_constructors: dict[str, list[str]] = defaultdict(list)
 namespaces_to_functions: dict[str, list[str]] = defaultdict(list)
 namespaces_to_types: dict[str, list[str]] = defaultdict(list)
@@ -74,6 +74,7 @@ namespaces_to_types: dict[str, list[str]] = defaultdict(list)
 class Combinator:
     __slots__ = (
         "section", "qualname", "namespace", "name", "id", "args", "qualtype", "typespace", "type", "fields", "layer",
+        "fields_for_check",
     )
 
     def __init__(
@@ -89,8 +90,9 @@ class Combinator:
         self.qualtype = qualtype
         self.typespace = typespace
         self.type = type_
-        self.fields = []
+        self.fields: list[Field] = []
         self.layer = 0
+        self.fields_for_check: list[Field] | None = None
 
 
 def snake(s: str):
@@ -336,6 +338,12 @@ class Field:
     def write(self) -> bool:
         return self.type() != "true"
 
+    @property
+    def actual_type(self) -> str:
+        if self.is_vector:
+            return self.type()[7:-1]
+        return self.type()
+
 
 def get_real_type_from_type_and_subtype(type_name: str, subtype_name: str | None) -> str:
     if type_name in ("Int", "Long", "Int128", "Int256", "TLObject"):
@@ -354,6 +362,37 @@ def get_real_type_from_type_and_subtype(type_name: str, subtype_name: str | None
         return f"{get_real_type_from_type_and_subtype(subtype_name, '')}Vector"
     else:
         raise RuntimeError(f"Got unknown type: {type_name=!r}, {subtype_name=!r}")
+
+
+def resolve_fields_for_check(c: Combinator) -> list[Field]:
+    if c.fields_for_check is not None:
+        return c.fields_for_check
+
+    c.fields_for_check = []
+
+    if c.section != "types":
+        return c.fields_for_check
+
+    for field in c.fields:
+        field_type = field.actual_type
+        if field_type in CORE_TYPES:
+            continue
+        if field_type not in types_to_combinators:
+            if field_type == "Object":
+                c.fields_for_check.append(field)
+            #else:
+            #    print(field_type)
+            continue
+
+        has_fields_to_check = False
+
+        for combinator in types_to_combinators[field_type]:
+            has_fields_to_check = has_fields_to_check or bool(resolve_fields_for_check(combinator))
+
+        if field_type in BASE_CLASSES_NEED_CONTEXT or has_fields_to_check:
+            c.fields_for_check.append(field)
+
+    return c.fields_for_check
 
 
 def start():
@@ -379,14 +418,15 @@ def start():
             raise RuntimeError(f"TL type constructors cannot be of type {c.qualtype}")
 
         types_to_constructors[c.qualtype].append(c.qualname)
+        types_to_combinators[c.qualtype].append(c)
         if c.type not in namespaces_to_types[c.namespace]:
             namespaces_to_types[c.namespace].append(c.type)
 
-    for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
-        c.fields = fields = []
+    for c in tqdm(combinators, desc="Processing combinators", total=len(combinators)):
+        c.fields = []
         flag_num = 1
         for arg in c.args:
-            fields.append((field := Field(arg[0])))
+            c.fields.append((field := Field(arg[0])))
 
             arg_type = arg[1]
             if arg_type == "#":
@@ -403,14 +443,15 @@ def start():
 
             field.full_type = arg_type
 
+    for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
         third_dot = "." if "." in c.qualname else ""
-        slots = [f"\"{field.name}\"" for field in fields if not field.is_flag]
+        slots = [f"\"{field.name}\"" for field in c.fields if not field.is_flag]
         slots.append("")  # For trailing comma
 
         init_args = [
             f"{field.name}: {get_type_hint(field.full_type, c.layer, True, True, force_optional=field.is_optional and field.type() != 'true')}"
             + ("" if not field.is_optional else (" = False" if field.type() in ("true", "Bool") else " = None"))
-            for field in sorted(fields, key=lambda fd: (fd.is_optional, fd.position))
+            for field in sorted(c.fields, key=lambda fd: (fd.is_optional, fd.position))
             if not field.is_flag
         ]
         if init_args:
@@ -418,14 +459,14 @@ def start():
 
         deserialize_cls_args = [
             f"{field.name}={field.name}"
-            for field in fields if not field.is_flag
+            for field in c.fields if not field.is_flag
         ]
 
         placeholders = PLACEHOLDERS.get(int(c.id[2:], 16), {})
 
         serialize_body = []
         deserialize_body = []
-        for field in fields:
+        for field in c.fields:
             tmp_ = field.type().split("Vector<")
 
             subtype_name = None
@@ -450,7 +491,7 @@ def start():
             if field.is_flag:
                 flag_var = f"flags{field.flag_num}"
                 serialize_body.append(f"{flag_var} = 0")
-                for ffield in fields:
+                for ffield in c.fields:
                     if not ffield.is_optional or ffield.flag_num != field.flag_num:
                         continue
                     empty_condition = "" if ffield.type().lower().startswith("vector") or not ffield.write else " is not None"
@@ -479,7 +520,7 @@ def start():
                 if field.write:
                     empty_condition = ""
                     fields_with_this_flag = len([
-                        1 for f in fields if f.flag_num == field.flag_num and f.flag_bit == field.flag_bit
+                        1 for f in c.fields if f.flag_num == field.flag_num and f.flag_bit == field.flag_bit
                     ])
                     if fields_with_this_flag > 1 or not field.is_vector:
                         empty_condition = " is not None"
@@ -506,8 +547,23 @@ def start():
                 serialize_body.append(f"result += {type_name}.write({write_var_name})")
             deserialize_body.append(f"{field.name} = {type_name}.read(stream)")
 
+        to_check_body = []
+        if c.section == "types":
+            for field in resolve_fields_for_check(c):
+                spaces = ""
+                if field.is_optional:
+                    to_check_body.append(f"if self.{field.name}:")
+                    spaces = " " * 4
+
+                if field.is_vector:
+                    to_check_body.append(f"{spaces}for {field.name}_item in self.{field.name}:")
+                    to_check_body.append(f"{spaces}    {field.name}_item.check_for_ctx_values(values)")
+                else:
+                    to_check_body.append(f"{spaces}self.{field.name}.check_for_ctx_values(values)")
+
         imports = [
             f"from __future__ import annotations",
+            f"from io import BytesIO",
             f"from {third_dot}..primitives import *",
             f"from {third_dot}.. import types",
             f"from {third_dot}..tl_object import TLObject",
@@ -523,6 +579,7 @@ def start():
                 f"from typing import TYPE_CHECKING",
                 f"if TYPE_CHECKING:",
                 f"    from {third_dot}.. import base",
+                f"    from piltover.context import NeedContextValuesContext",
                 f"",
             ))
         else:
@@ -554,7 +611,7 @@ def start():
                     f"    def __init__(self, {', '.join(init_args)}):",
                     *[
                         f"        self.{field.name} = {field.name}"
-                        for field in fields if not field.is_flag
+                        for field in c.fields if not field.is_flag
                     ],
                 ] if init_args else []
             ),
@@ -572,9 +629,16 @@ def start():
             ),
             f"",
             f"    @classmethod",
-            f"    def deserialize(cls, stream) -> {c.name}:",
+            f"    def deserialize(cls, stream: BytesIO) -> {c.name}:",
             *indent(deserialize_body, 8),
             f"        return cls({', '.join(deserialize_cls_args)})",
+            *(
+                [
+                    f"",
+                    f"    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:",
+                    *indent(to_check_body, 8),
+                ] if to_check_body else []
+            ),
             f"",
         ]
 

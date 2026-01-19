@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from gzip import decompress
 from io import BytesIO
 from typing import TypeVar, Generic, TYPE_CHECKING
@@ -9,6 +10,7 @@ from .serialization_utils import SerializationUtils
 
 if TYPE_CHECKING:
     from .types import FutureSalt
+    from ..context import NeedContextValuesContext
 
 
 T = TypeVar("T", bound=TLObject)
@@ -91,6 +93,13 @@ class RpcResult(TLObject):
 
     def serialize(self) -> bytes:
         return Long.write(self.req_msg_id) + SerializationUtils.write(self.result)
+
+    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
+        if isinstance(self.result, Iterable):
+            for item in self.result:
+                item.check_for_ctx_values(values)
+        elif isinstance(self.result, TLObject):
+            self.result.check_for_ctx_values(values)
 
 
 class GzipPacked(TLObject):
