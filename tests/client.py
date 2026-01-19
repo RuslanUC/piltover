@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import socket
 from asyncio import Event, Lock, timeout
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from io import BytesIO
 from time import time
-from typing import TypeVar, Self, TYPE_CHECKING
+from typing import TypeVar, Self, TYPE_CHECKING, Any
 
 from loguru import logger
 from pyrogram import Client
+from pyrogram.connection.transport import TCP
 from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
 from pyrogram.raw.base import InputPrivacyKey
@@ -28,6 +31,7 @@ from pyrogram.storage.sqlite_storage import get_input_peer
 from pyrogram.types import User
 
 from piltover.utils.debug import measure_time
+from tests import USE_REAL_TCP_FOR_TESTING, server_instance
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
@@ -44,6 +48,32 @@ InputPrivacyRule = InputPrivacyValueAllowAll | InputPrivacyValueAllowChatPartici
                    | InputPrivacyValueDisallowUsers
 
 
+async def _TCP_connect(self: TCP, _: tuple[str, int]) -> None:
+    logger.trace("Using socket pair for connection")
+
+    gateway = server_instance.get()
+
+    server_socket, client_socket = socket.socketpair()
+    server_socket.setblocking(False)
+    client_socket.setblocking(False)
+
+    server_reader, server_writer = await asyncio.open_connection(sock=server_socket)
+    self.reader, self.writer = await asyncio.open_connection(sock=client_socket)
+
+    real_get_extra_info = server_writer.get_extra_info
+
+    def _fake_get_extra_info(info: str) -> Any:
+        if info == "peername":
+            return "0.0.0.0", 0
+        return real_get_extra_info(info)
+
+    server_writer.get_extra_info = _fake_get_extra_info
+
+    await gateway.accept_client(server_reader, server_writer)
+
+
+if not USE_REAL_TCP_FOR_TESTING:
+    TCP.connect = _TCP_connect
 
 
 class TestDataCenter(DataCenter):

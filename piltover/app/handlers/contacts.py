@@ -204,12 +204,21 @@ async def get_birthdays(user: User) -> ContactBirthdays:
         owner=user, user__birthday__gte=yesterday, user__birthday__lte=tomorrow
     ).select_related("user")
 
+    privacyrules = await PrivacyRule.has_access_to_bulk(
+        users=[peer.user for peer in birthday_peers],
+        user=user,
+        keys=[PrivacyRuleKeyType.BIRTHDAY],
+    )
+
     users_to_tl = []
     birthdays = []
     for peer in birthday_peers:
-        if (birthday := await peer.user.to_tl_birthday(user)) is None:
+        if not privacyrules[peer.user_id][PrivacyRuleKeyType.BIRTHDAY]:
             continue
-        birthdays.append(ContactBirthday(contact_id=peer.user.id, birthday=birthday))
+        birthdays.append(ContactBirthday(
+            contact_id=peer.user.id,
+            birthday=peer.user.to_tl_birthday_noprivacycheck(),
+        ))
         users_to_tl.append(peer.user)
 
     return ContactBirthdays(
@@ -222,6 +231,8 @@ async def get_birthdays(user: User) -> ContactBirthdays:
 async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
     if (resolved := await User.get_or_none(phone_number=request.phone)) is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_NOT_OCCUPIED")
+
+    # TODO: dont allow user to resolve phone if target user disallowed this via privacy rules
 
     return await _format_resolved_peer_by_phone(user, resolved)
 

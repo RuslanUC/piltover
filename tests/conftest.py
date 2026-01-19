@@ -17,6 +17,7 @@ from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
 
 from piltover.app_config import AppConfig
+from tests import server_instance, USE_REAL_TCP_FOR_TESTING
 from tests.client import setup_test_dc
 from tests.scheduled_loop import run_scheduler_loop_every_100ms
 
@@ -72,12 +73,14 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
                 mock.patch("taskiq.cli.scheduler.run.run_scheduler_loop", run_scheduler_loop_every_100ms)
             )
 
-        test_server = await stack.enter_async_context(app.run_test(
+        test_server: Gateway = await stack.enter_async_context(app.run_test(
             create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
             create_peer_colors=create_peer_colors, create_languages=create_languages,
             create_system_stickersets=create_system_stickersets, create_emoji_groups=create_emoji_groups,
-            run_scheduler=run_scheduler,
+            run_scheduler=run_scheduler, run_actual_server=USE_REAL_TCP_FOR_TESTING,
         ))
+
+        token = server_instance.set(test_server)
 
         if not real_key_gen:
             Auth.create = _custom_auth_create
@@ -86,6 +89,8 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
         setup_test_dc(test_server)
 
         yield test_server
+
+        server_instance.reset(token)
 
         if not real_key_gen:
             Auth.create = _real_auth_create

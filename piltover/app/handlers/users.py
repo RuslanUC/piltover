@@ -89,7 +89,7 @@ async def get_full_user(request: GetFullUser, user: User):
             notify_settings=PeerNotifySettings(show_previews=True),
             common_chats_count=0,
             birthday=birthday,
-            read_dates_private=user.read_dates_private,
+            read_dates_private=target_user.read_dates_private,
             wallpaper=chat_wallpaper.wallpaper.to_tl() if chat_wallpaper is not None else None,
             has_scheduled=has_scheduled,
             ttl_period=peer.user_ttl_period_days * 86400 if peer.user_ttl_period_days else None,

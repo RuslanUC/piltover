@@ -27,7 +27,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputChannelFromMessage, InputChannel, ChannelFull, PhotoEmpty, PeerNotifySettings, MessageActionChatEditTitle, \
     InputMessageID, InputMessageReplyTo, ChannelParticipantsRecent, ChannelParticipantsAdmins, \
     ChannelParticipantsSearch, ChatReactionsAll, ChatReactionsNone, ChatReactionsSome, ReactionEmoji, \
-    ReactionCustomEmoji, SendAsPeer, PeerUser, PeerChannel, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
+    ReactionCustomEmoji, SendAsPeer, PeerUser, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
     ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked, \
     ChannelParticipantLeft

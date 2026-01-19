@@ -148,7 +148,7 @@ def get_type_hint(
 
         sub_type = type_.split("<")[1][:-1]
         outer = "Iterable" if use_iterable_for_vector else "list"
-        type_ = f"{outer}[{get_type_hint(sub_type, layer, int_is_int, force_optional=force_optional)}]"
+        type_ = f"{outer}[{get_type_hint(sub_type, layer, int_is_int)}]"
 
     if is_core:
         return f"{type_} | None" if is_flag and type_ != "bool" else type_

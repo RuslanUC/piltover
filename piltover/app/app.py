@@ -185,6 +185,7 @@ class PiltoverApp:
             self, create_sys_user: bool = True, create_countries: bool = False, create_reactions: bool = False,
             create_chat_themes: bool = False, create_peer_colors: bool = False, create_languages: bool = False,
             create_system_stickersets: bool = False, create_emoji_groups: bool = False, run_scheduler: bool = False,
+            run_actual_server: bool = False,
     ) -> AsyncIterator[Gateway]:
         await Tortoise.init(
             db_url="sqlite://:memory:",
@@ -208,9 +209,14 @@ class PiltoverApp:
         if run_scheduler:
             scheduler_task = self._run_in_memory_scheduler()
 
-        server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
-        async with server:
-            self._gateway.host, self._gateway.port = server.sockets[0].getsockname()
+        if run_actual_server:
+            server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
+            async with server:
+                self._gateway.host, self._gateway.port = server.sockets[0].getsockname()
+                yield self._gateway
+        else:
+            self._gateway.host = "0.0.0.0"
+            self._gateway.port = -1
             yield self._gateway
 
         if scheduler_task is not None:
