@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sized
 from gzip import decompress
 from io import BytesIO
 from typing import TypeVar, Generic, TYPE_CHECKING
@@ -97,6 +97,8 @@ class RpcResult(TLObject):
     def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
         if isinstance(self.result, Iterable):
             for item in self.result:
+                if not isinstance(item, TLObject):
+                    return
                 item.check_for_ctx_values(values)
         elif isinstance(self.result, TLObject):
             self.result.check_for_ctx_values(values)

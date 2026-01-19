@@ -6,8 +6,9 @@ from os import urandom
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.tl import Long, EncryptedChat as TLEncryptedChat, EncryptedChatWaiting, EncryptedChatRequested, \
-    EncryptedChatDiscarded
+from piltover.tl import Long, EncryptedChatDiscarded
+from piltover.tl.base import EncryptedChat as EncryptedChatBase
+from piltover.tl.to_format import EncryptedChatToFormat
 
 
 class EncryptedChat(Model):
@@ -36,47 +37,22 @@ class EncryptedChat(Model):
     #        ("from_user", "to_user"),
     #    )
 
-    async def to_tl(self, user: models.User, auth_id: int) -> TLEncryptedChat | EncryptedChatWaiting | EncryptedChatRequested | EncryptedChatDiscarded:
+    def to_tl(self) -> EncryptedChatBase:
         if self.discarded:
             return EncryptedChatDiscarded(
                 id=self.id,
                 history_deleted=self.history_deleted,
             )
 
-        common_kwargs = {
-            "id": self.id,
-            "access_hash": self.access_hash,
-            "date": int(self.created_at.timestamp()),
-            "admin_id": self.from_user_id,
-            "participant_id": self.to_user_id,
-        }
-
-        if user.id == self.from_user_id:
-            if self.to_sess_id is None:
-                return EncryptedChatWaiting(**common_kwargs)
-            else:
-                return TLEncryptedChat(
-                    **common_kwargs,
-                    g_a_or_b=self.g_a if user.id == self.to_user_id else self.g_b,
-                    key_fingerprint=self.key_fp,
-                )
-
-        if user.id == self.to_user_id:
-            if self.to_sess_id is None:
-                return EncryptedChatRequested(
-                    **common_kwargs,
-                    g_a=self.g_a,
-                )
-            elif self.to_sess_id == auth_id:
-                return TLEncryptedChat(
-                    **common_kwargs,
-                    g_a_or_b=self.g_a if user.id == self.to_user_id else self.g_b,
-                    key_fingerprint=self.key_fp,
-                )
-            else:
-                return EncryptedChatDiscarded(
-                    id=self.id,
-                    history_deleted=True,
-                )
-
-        raise RuntimeError("Unreachable")
+        return EncryptedChatToFormat(
+            id=self.id,
+            access_hash=self.access_hash,
+            date=int(self.created_at.timestamp()),
+            admin_id=self.from_user_id,
+            participant_id=self.to_user_id,
+            admin_sess_id=self.from_sess_id,
+            participant_sess_id=self.to_sess_id,
+            g_a=self.g_a,
+            g_b=self.g_b or None,
+            key_fingerprint=self.key_fp,
+        )

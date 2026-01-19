@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from piltover.context import NeedContextValuesContext
-from piltover.db.models import UserAuthorization, User, Message as DbMessage, EncryptedChat
+from piltover.db.models import UserAuthorization, User, Message as DbMessage
 from piltover.exceptions import Disconnection, Unreachable
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates, Vector
 from piltover.tl.core_types import Message, MsgContainer
 from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyMessage, \
-    MessageToUsers, LazyEncryptedChat, ObjectWithLayerRequirement
+    MessageToUsers, ObjectWithLayerRequirement
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -116,16 +116,13 @@ class Session:
         SessionManager.broker.unsubscribe(self)
         SessionManager.cleanup(self)
 
-    async def _fetch_lazy_field(self, lazy_obj: LazyMessage | LazyEncryptedChat) -> TLObject:
+    async def _fetch_lazy_field(self, lazy_obj: LazyMessage) -> TLObject:
         user = User(id=self.user_id, phone_number=0)
-        user.is_lazy = True
 
+        # TODO: replace with MessageToFormat
         if isinstance(lazy_obj, LazyMessage):
             message = await DbMessage.get_or_none(id=lazy_obj.message_id).select_related(*DbMessage.PREFETCH_FIELDS)
             return await message.to_tl(user)
-        if isinstance(lazy_obj, LazyEncryptedChat):
-            chat = await EncryptedChat.get_or_none(id=lazy_obj.chat_id)
-            return await chat.to_tl(user, self.auth_id)
 
         raise Unreachable
 

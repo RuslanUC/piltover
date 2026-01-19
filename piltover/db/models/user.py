@@ -52,7 +52,6 @@ class User(Model):
     profile_color_id: int | None
 
     cached_username: models.Username | None | _Missing = _MISSING
-    is_lazy: bool = False
 
     _CACHE_VERSION = 1
 

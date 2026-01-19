@@ -67,7 +67,7 @@ async def request_encryption(request: RequestEncryption, user: User):
 
     await upd.encryption_update(peer.user, chat)
 
-    return await chat.to_tl(user, ctx.auth_id)
+    return chat.to_tl()
 
 
 @handler.on_request(AcceptEncryption, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -99,7 +99,7 @@ async def accept_encryption(request: AcceptEncryption, user: User):
     await upd.encryption_update(chat.from_user, chat)
     await upd.encryption_update(user, chat)
 
-    return await chat.to_tl(user, ctx.auth_id)
+    return chat.to_tl()
 
 
 @handler.on_request(DiscardEncryption, ReqHandlerFlags.BOT_NOT_ALLOWED)

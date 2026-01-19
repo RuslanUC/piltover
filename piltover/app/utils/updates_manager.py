@@ -24,8 +24,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy
 from piltover.tl.types.account import PrivacyRules
-from piltover.tl.types.internal import LazyMessage, ObjectWithLazyFields, LazyEncryptedChat, \
-    ObjectWithLayerRequirement, FieldWithLayerRequirement
+from piltover.tl.types.internal import LazyMessage, ObjectWithLazyFields, ObjectWithLayerRequirement, \
+    FieldWithLayerRequirement
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 
@@ -1110,21 +1110,19 @@ async def encryption_update(user: User, chat: EncryptedChat) -> None:
     )
     logger.trace(f"Sending UPDATE_ENCRYPTION to user {user.id}")
 
+    # TODO: prefetch outside of this function
     other_user = chat.from_user if user.id == chat.to_user_id else chat.to_user
     other_user = await other_user
 
     await SessionManager.send(
-        ObjectWithLazyFields(
-            object=UpdatesWithDefaults(
-                updates=[
-                    UpdateEncryption(
-                        chat=LazyEncryptedChat(chat_id=chat.id),  # type: ignore
-                        date=int(update.date.timestamp()),
-                    ),
-                ],
-                users=[await other_user.to_tl()],
-            ),
-            fields=["updates.0.chat"],
+        UpdatesWithDefaults(
+            updates=[
+                UpdateEncryption(
+                    chat=chat.to_tl(),
+                    date=int(update.date.timestamp()),
+                ),
+            ],
+            users=[await other_user.to_tl()],
         ),
         user_id=user.id,
     )

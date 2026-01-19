@@ -355,7 +355,7 @@ class Update(Model):
                 ucc.add_user(other_user_id)
 
                 return UpdateEncryption(
-                    chat=await chat.to_tl(user, auth_id),
+                    chat=chat.to_tl(),
                     date=int(self.date.timestamp()),
                 )
 
