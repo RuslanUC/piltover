@@ -106,9 +106,11 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
-        bot.bot.first_name = first_name
-        await bot.bot.save(update_fields=["first_name"])
-        await state.delete()
+        async with in_transaction():
+            bot.bot.first_name = first_name
+            bot.bot.version += 1
+            await bot.save(update_fields=["first_name", "version"])
+            await state.delete()
 
         return await send_bot_message(peer, __bot_name_updated, entities=__bot_name_updated_entities)
 
@@ -122,9 +124,11 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
-        bot.bot.about = about
-        await bot.bot.save(update_fields=["about"])
-        await state.delete()
+        async with in_transaction():
+            bot.bot.about = about
+            bot.bot.version += 1
+            await bot.save(update_fields=["about", "version"])
+            await state.delete()
 
         return await send_bot_message(peer, __bot_about_updated, entities=__bot_about_updated_entities)
 
@@ -138,10 +142,14 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
-        await BotInfo.update_or_create(user=bot.bot, defaults={
-            "description": description,
-        })
-        await state.delete()
+        async with in_transaction():
+            info, _ = await BotInfo.get_or_create(user=bot.bot)
+            info.version += 1
+            info.description = description
+            bot.bot.version += 1
+            await bot.save(update_fields=["version"])
+            await info.save(update_fields=["description", "version"])
+            await state.delete()
 
         return await send_bot_message(peer, __bot_desc_updated, entities=__bot_desc_updated_entities)
 
@@ -162,6 +170,8 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             return await send_bot_message(peer, __bot_photo_invalid)
 
         async with in_transaction():
+            bot.bot.version += 1
+            await bot.save(update_fields=["version"])
             await photo.save()
             await UserPhoto.filter(user=bot.bot).delete()
             await UserPhoto.create(user=bot.bot, file=photo, current=True)
@@ -180,10 +190,14 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
-        await BotInfo.update_or_create(user=bot.bot, defaults={
-            "privacy_policy_url": message.message,
-        })
-        await state.delete()
+        async with in_transaction():
+            info, _ = await BotInfo.get_or_create(user=bot.bot)
+            info.version += 1
+            info.privacy_policy_url = message.message
+            bot.bot.version += 1
+            await bot.save(update_fields=["version"])
+            await info.save(update_fields=["privacy_policy_url", "version"])
+            await state.delete()
 
         return await send_bot_message(peer, _bot_privacy_updated, entities=_bot_privacy_updated_entities)
 

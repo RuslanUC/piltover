@@ -4,6 +4,7 @@ from os import urandom
 
 from pytz import UTC
 from tortoise.expressions import Q
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.auth import _validate_phone
@@ -66,15 +67,18 @@ async def update_username(request: UpdateUsername, user: User) -> TLUser:
         if await Username.filter(username__iexact=request.username).exists():
             raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
 
-    if current_username is not None:
-        if not request.username:
-            await current_username.delete()
-            user.cached_username = None
-        else:
+    async with in_transaction():
+        if current_username is None:
+            user.cached_username = await Username.create(user=user, username=request.username)
+        elif current_username is not None and request.username:
             current_username.username = request.username
             await current_username.save(update_fields=["username"])
-    else:
-        user.cached_username = await Username.create(user=user, username=request.username)
+        elif current_username is not None and not request.username:
+            await current_username.delete()
+            user.cached_username = None
+
+        user.version += 1
+        await user.save(update_fields=["version"])
 
     await upd.update_user_name(user)
     return await user.to_tl()
@@ -285,6 +289,7 @@ async def update_profile(request: UpdateProfile, user: User):
         updates["about"] = request.about
 
     if updates:
+        updates["version"] = user.version + 1
         await user.update_from_dict(updates).save(update_fields=updates.keys())
         if "about" in updates:
             await upd.update_user(user)
@@ -405,7 +410,8 @@ async def update_birthday(request: UpdateBirthday, user: User) -> bool:
 
     if before != after:
         user.birthday = after
-        await user.save(update_fields=["birthday"])
+        user.version += 1
+        await user.save(update_fields=["birthday", "version"])
         await upd.update_user(user)
 
     return True
@@ -533,7 +539,8 @@ async def change_phone(request: ChangePhone, user: User) -> TLUser:
         raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")
 
     user.phone_number = request.phone_number
-    await user.save(update_fields=["phone_number"])
+    user.version += 1
+    await user.save(update_fields=["phone_number", "version"])
 
     await upd.update_user_phone(user)
     return await user.to_tl()
@@ -553,7 +560,10 @@ async def _delete_account(user: User) -> None:
     user.last_name = None
     user.about = None
     user.birthday = None
-    await user.save(update_fields=["deleted", "phone_number", "first_name", "last_name", "about", "birthday"])
+    user.version += 1
+    await user.save(update_fields=[
+        "deleted", "phone_number", "first_name", "last_name", "about", "birthday", "version"
+    ])
 
     auths = await UserAuthorization.get_or_none(user=user).select_related("key")
 
@@ -784,8 +794,6 @@ async def update_color(request: UpdateColor, user: User) -> bool:
         else:
             accent_emoji = emoji
 
-    if changed:
-        await user.save(update_fields=changed)
     if profile_emoji is None and accent_emoji is None:
         await UserBackgroundEmojis.filter(user=user).delete()
     else:
@@ -793,6 +801,11 @@ async def update_color(request: UpdateColor, user: User) -> bool:
             "profile_emoji": profile_emoji,
             "accent_emoji": accent_emoji,
         })
+
+    # TODO: only update version if something really changed
+    user.version += 1
+    changed.append("version")
+    await user.save(update_fields=changed)
 
     await upd.update_user(user)
     return True

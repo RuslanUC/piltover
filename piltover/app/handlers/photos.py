@@ -105,6 +105,9 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
             user=target_user,
         )
 
+        user.version += 1
+        await user.save(update_fields=["version"])
+
     await upd.update_user(target_user)
 
     return PhotosPhoto(
@@ -145,6 +148,8 @@ async def delete_photos(request: DeletePhotos, user: User):
             await UserPhoto.filter(id=Subquery(
                 UserPhoto.filter(user=user).order_by("-id").first().values_list("id", flat=True)
             )).update(current=True)
+            user.version += 1
+            await user.save(update_fields=["version"])
 
     deleted.extend(actual_ids)
     await upd.update_user(user)
@@ -172,6 +177,9 @@ async def update_profile_photo(request: UpdateProfilePhoto, user: User):
                 photo.current = True
                 photo.fallback = False
                 await photo.save(update_fields=["current", "fallback"])
+
+            target_user.version += 1
+            await target_user.save(update_fields=["version"])
 
     await upd.update_user(target_user)
 

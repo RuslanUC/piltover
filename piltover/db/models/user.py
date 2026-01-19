@@ -10,6 +10,7 @@ from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.app_config import AppConfig
+from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.exceptions import Unreachable
@@ -45,12 +46,18 @@ class User(Model):
     profile_color: models.PeerColorOption | None = fields.ForeignKeyField("models.PeerColorOption", null=True, default=None, related_name="profile")
     history_ttl_days: int = fields.SmallIntField(default=0)
     read_dates_private: bool = fields.BooleanField(default=False)
+    version: int = fields.IntField(default=0)
 
     accent_color_id: int | None
     profile_color_id: int | None
 
     cached_username: models.Username | None | _Missing = _MISSING
     is_lazy: bool = False
+
+    _CACHE_VERSION = 1
+
+    def _cache_key(self) -> str:
+        return f"user:{self.id}:{self.version}:{self._CACHE_VERSION}"
 
     async def get_username(self) -> models.Username | None:
         if self.cached_username is _MISSING:
@@ -97,6 +104,9 @@ class User(Model):
                 deleted=True,
             )
 
+        if (cached := await Cache.obj.get(self._cache_key())) is not None:
+            return cached
+
         # TODO: min (https://core.telegram.org/api/min)
         # TODO: add some "version" field and save tl user
         #  in some cache with key f"{self.id}:{current_user.id}:{version}"
@@ -130,7 +140,7 @@ class User(Model):
             # TODO: use fallback photo is userphoto is None?
             photo = userphoto.to_tl_profile()
 
-        return UserToFormat(
+        result = UserToFormat(
             id=self.id,
             first_name=self.first_name,
             last_name=self.last_name,
@@ -144,41 +154,70 @@ class User(Model):
             profile_color=profile_color,
         )
 
+        await Cache.obj.set(self._cache_key(), result)
+        return result
+
     @classmethod
     async def to_tl_bulk(cls, users: Iterable[models.User]) -> list[TLUserBase]:
         if not users:
             return []
 
-        all_ids = [user.id for user in users]
-        user_ids = [user.id for user in users if not user.bot]
-        bot_ids = [user.id for user in users if user.bot]
-
-        usernames = {
-            user_id: username
-            for user_id, username in await models.Username.filter(
-                user__id__in=all_ids,
-            ).values_list("user_id", "username")
+        cached_users = {
+            cached.id: cached
+            for cached in await Cache.obj.multi_get([user._cache_key() for user in users])
+            if cached is not None
         }
 
-        background_emojis = {
-            emojis.user_id: emojis
-            for emojis in await models.UserBackgroundEmojis.filter(user__id__in=user_ids)
-        } if user_ids else {}
+        all_ids = [user.id for user in users if user.id not in cached_users]
+        user_ids = [user.id for user in users if not user.bot and user.id not in cached_users]
+        bot_ids = [user.id for user in users if user.bot and user.id not in cached_users]
 
-        bot_versions = {
-            user_id: version
-            for user_id, version in await models.BotInfo.filter(user__id__in=bot_ids).values_list("user_id", "version")
-        } if bot_ids else {}
+        if all_ids:
+            usernames = {
+                user_id: username
+                for user_id, username in await models.Username.filter(
+                    user__id__in=all_ids,
+                ).values_list("user_id", "username")
+            }
+        else:
+            usernames = {}
 
-        photos = {
-            photo.user_id: photo
-            for photo in await models.UserPhoto.filter(
-                user__id__in=all_ids, current=True,
-            ).select_related("file")
-        }
+        if user_ids:
+            background_emojis = {
+                emojis.user_id: emojis
+                for emojis in await models.UserBackgroundEmojis.filter(user__id__in=user_ids)
+            }
+        else:
+            background_emojis = {}
+
+        if bot_ids:
+            bot_versions = {
+                user_id: version
+                for user_id, version in await models.BotInfo.filter(
+                    user__id__in=bot_ids,
+                ).values_list("user_id", "version")
+            }
+        else:
+            bot_versions = {}
+
+        if all_ids:
+            photos = {
+                photo.user_id: photo
+                for photo in await models.UserPhoto.filter(
+                    user__id__in=all_ids, current=True,
+                ).select_related("file")
+            }
+        else:
+            photos = {}
 
         tl = []
+        to_cache = []
+
         for user in users:
+            if user.id in cached_users:
+                tl.append(cached_users[user.id])
+                continue
+
             emojis = background_emojis.get(user.id)
 
             color = None
@@ -207,6 +246,11 @@ class User(Model):
                 color=color,
                 profile_color=profile_color,
             ))
+
+            to_cache.append((user.id, tl[-1]))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
 
         return tl
 
