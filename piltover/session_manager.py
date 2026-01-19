@@ -7,13 +7,12 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from piltover.context import NeedContextValuesContext
-from piltover.db.models import UserAuthorization, User, Message as DbMessage
-from piltover.exceptions import Disconnection, Unreachable
+from piltover.db.models import UserAuthorization
+from piltover.exceptions import Disconnection
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import TLObject, Updates, Vector
 from piltover.tl.core_types import Message, MsgContainer
-from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, ObjectWithLazyFields, LazyMessage, \
-    MessageToUsers, ObjectWithLayerRequirement
+from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, MessageToUsers, ObjectWithLayerRequirement
 from piltover.tl.utils import is_content_related
 
 if TYPE_CHECKING:
@@ -116,16 +115,6 @@ class Session:
         SessionManager.broker.unsubscribe(self)
         SessionManager.cleanup(self)
 
-    async def _fetch_lazy_field(self, lazy_obj: LazyMessage) -> TLObject:
-        user = User(id=self.user_id, phone_number=0)
-
-        # TODO: replace with MessageToFormat
-        if isinstance(lazy_obj, LazyMessage):
-            message = await DbMessage.get_or_none(id=lazy_obj.message_id).select_related(*DbMessage.PREFETCH_FIELDS)
-            return await message.to_tl(user)
-
-        raise Unreachable
-
     @staticmethod
     def _get_attr_or_element(obj: TLObject | list, field_name: str) -> TLObject | list:
         if isinstance(obj, list):
@@ -161,19 +150,6 @@ class Session:
                     continue
 
                 del parent[int(field_path[-1])]
-        elif isinstance(obj, ObjectWithLazyFields):
-            field_paths = obj.fields
-            obj = obj.object
-
-            for field_path in field_paths:
-                field_path = field_path.split(".")
-                current = obj
-                for field_name in field_path[:-1]:
-                    current = self._get_attr_or_element(current, field_name)
-
-                lazy_obj = self._get_attr_or_element(current, field_path[-1])
-                fetched_obj = await self._fetch_lazy_field(lazy_obj)  # type: ignore
-                self._set_attr_or_element(current, field_path[-1], fetched_obj)
 
         if isinstance(obj, Updates) and self.auth_key is not None and self.auth_key.perm_auth_key_id:
             # TODO: replace with id=self.auth_id ??
@@ -268,15 +244,11 @@ class SessionManager:
         obj.check_for_ctx_values(ctx)
 
         if ctx.any():
-            if isinstance(obj, (ObjectWithLayerRequirement, ObjectWithLazyFields)):
+            if isinstance(obj, ObjectWithLayerRequirement):
                 obj.object = ctx.to_tl(obj.object)
-                # TODO: this is a temporary fix, lazy fields will be deleted
-                if isinstance(obj, ObjectWithLazyFields):
-                    for idx, field_ in enumerate(obj.fields):
-                        obj.fields[idx] = f"obj.{field_}"
-                elif isinstance(obj, ObjectWithLayerRequirement):
-                    for field_ in obj.fields:
-                        field_.field = f"obj.{field_.field}"
+                # TODO: this is (probably) a temporary fix (?)
+                for field_ in obj.fields:
+                    field_.field = f"obj.{field_.field}"
             else:
                 obj = ctx.to_tl(obj)
 

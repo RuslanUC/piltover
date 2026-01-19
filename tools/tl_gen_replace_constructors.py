@@ -6,7 +6,8 @@ REPLACE_CONSTRUCTORS = {
     0x89ce0d3a: "to_format.ChannelToFormat",
     0x276511f3: "to_format.UserToFormat",
     0x44045474: "to_format.EncryptedChatToFormat",
+    0x6afa05f5: "to_format.DumbChannelMessageToFormat",
 }
 
-BASE_CLASSES_NEED_CONTEXT = {"Chat", "User"}
+BASE_CLASSES_NEED_CONTEXT = {"Chat", "User", "Message"}
 

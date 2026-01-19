@@ -27,7 +27,9 @@ class MessageMedia(Model):
     file_id: int | None
     poll_id: int | None
 
-    async def to_tl(self, user: models.User) -> MessageMediaTypes:
+    async def to_tl(self, user: models.User | int) -> MessageMediaTypes:
+        user_id = user.id if isinstance(user, models.User) else user
+
         if self.type is MediaType.DOCUMENT:
             return MessageMediaDocument(
                 spoiler=self.spoiler,
@@ -43,7 +45,7 @@ class MessageMedia(Model):
             return MessageMediaPoll(
                 poll=self.poll.to_tl(),
                 # TODO: replace with PollResultsToFormat or something
-                results=await self.poll.to_tl_results(user.id),
+                results=await self.poll.to_tl_results(user_id),
             )
         elif self.type is MediaType.CONTACT:
             if self.static_data is None:

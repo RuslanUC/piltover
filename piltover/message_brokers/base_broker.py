@@ -9,7 +9,7 @@ from loguru import logger
 
 from piltover.cache import Cache
 from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetSessionInternalPush, ChannelSubscribe, \
-    ObjectWithLazyFields, ObjectWithLayerRequirement
+    ObjectWithLayerRequirement
 
 if TYPE_CHECKING:
     from piltover.session_manager import Session
@@ -188,7 +188,7 @@ class BaseMessageBroker(ABC):
             if session.auth_id in ignore_auths:
                 continue
             try:
-                if isinstance(message.obj, (ObjectWithLazyFields, ObjectWithLayerRequirement)):
+                if isinstance(message.obj, ObjectWithLayerRequirement):
                     await session.send(deepcopy(message.obj))
                 else:
                     await session.send(message.obj)

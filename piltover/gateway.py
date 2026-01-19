@@ -18,16 +18,6 @@ from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqEvents, AsyncBroker
 from taskiq.kicker import AsyncKicker
 from tortoise.expressions import Q
 
-from piltover._keygen_handlers import KEYGEN_HANDLERS
-from piltover._system_handlers import SYSTEM_HANDLERS
-from piltover.cache import Cache
-from piltover.context import SerializationContext, ContextValues
-from piltover.db.enums import PrivacyRuleKeyType
-from piltover.message_brokers.base_broker import BrokerType
-from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
-from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
-from piltover.utils.debug import measure_time
-
 try:
     from taskiq_aio_pika import AioPikaBroker
     from taskiq_redis import RedisAsyncResultBackend
@@ -38,9 +28,19 @@ except ImportError:
     RedisAsyncResultBackend = None
     REMOTE_BROKER_SUPPORTED = False
 
+from piltover._keygen_handlers import KEYGEN_HANDLERS
+from piltover._system_handlers import SYSTEM_HANDLERS
+from piltover.cache import Cache
+from piltover.context import SerializationContext, ContextValues
+from piltover.db.enums import PrivacyRuleKeyType
+from piltover.message_brokers.base_broker import BrokerType
+from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
+from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
+from piltover.utils.debug import measure_time
+
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, Poll, Peer, Contact, \
-    PrivacyRule, Presence
+    PrivacyRule, Presence, Message as DbMessage
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
@@ -699,5 +699,11 @@ class Client:
                 (peer.type, peer.target_id_raw()): peer
                 for peer in await Peer.filter(peers_q, owner__id=self.session.user_id)
             })
+
+        if values.messages:
+            # TODO: rewrite fetching user-specific fields
+            messages = await DbMessage.filter(id__in=values.messages).select_related(*DbMessage.PREFETCH_FIELDS)
+            for message in await DbMessage.to_tl_bulk(messages, self.session.user_id):
+                result.dumb_messages[message.id] = message
 
         return result

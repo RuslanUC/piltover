@@ -23,9 +23,9 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy
+from piltover.tl.to_format import DumbChannelMessageToFormat
 from piltover.tl.types.account import PrivacyRules
-from piltover.tl.types.internal import LazyMessage, ObjectWithLazyFields, ObjectWithLayerRequirement, \
-    FieldWithLayerRequirement
+from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 
@@ -112,21 +112,16 @@ async def send_message_channel(user: User, message: Message) -> Updates:
     chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(
-        ObjectWithLazyFields(
-            object=UpdatesWithDefaults(
-                updates=[
-                    UpdateNewChannelMessage(
-                        message=LazyMessage(message_id=message.id),  # type: ignore
-                        pts=channel.pts,
-                        pts_count=1,
-                    )
-                ],
-                users=users,
-                chats=chats_and_channels,
-            ),
-            fields=[
-                "updates.0.message",
+        UpdatesWithDefaults(
+            updates=[
+                UpdateNewChannelMessage(
+                    message=DumbChannelMessageToFormat(id=message.id),
+                    pts=channel.pts,
+                    pts_count=1,
+                )
             ],
+            users=users,
+            chats=chats_and_channels,
         ),
         channel_id=channel.id,
     )
@@ -215,22 +210,17 @@ async def send_messages_channel(
     chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(
-        ObjectWithLazyFields(
-            object=UpdatesWithDefaults(
-                updates=[
-                    UpdateNewChannelMessage(
-                        message=LazyMessage(message_id=message.id),  # type: ignore
-                        pts=pts,
-                        pts_count=len(update_messages),
-                    )
-                    for message, pts in update_messages
-                ],
-                users=users,
-                chats=chats_and_channels,
-            ),
-            fields=[
-                *(f"updates.{i}.message" for i in range(len(update_messages))),
+        UpdatesWithDefaults(
+            updates=[
+                UpdateNewChannelMessage(
+                    message=DumbChannelMessageToFormat(id=message.id),
+                    pts=pts,
+                    pts_count=len(update_messages),
+                )
+                for message, pts in update_messages
             ],
+            users=users,
+            chats=chats_and_channels,
         ),
         channel_id=channel.id,
     )
@@ -400,21 +390,16 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
     chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(
-        ObjectWithLazyFields(
-            object=UpdatesWithDefaults(
-                updates=[
-                    UpdateEditChannelMessage(
-                        message=LazyMessage(message_id=message.id),  # type: ignore
-                        pts=channel.pts,
-                        pts_count=1,
-                    ),
-                ],
-                users=users,
-                chats=chats_and_channels,
-            ),
-            fields=[
-                "updates.0.message",
+        UpdatesWithDefaults(
+            updates=[
+                UpdateEditChannelMessage(
+                    message=DumbChannelMessageToFormat(id=message.id),
+                    pts=channel.pts,
+                    pts_count=1,
+                ),
             ],
+            users=users,
+            chats=chats_and_channels,
         ),
         channel_id=channel.id,
     )

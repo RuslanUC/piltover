@@ -122,9 +122,9 @@ class Message(Model):
             ("peer", "random_id"),
         )
 
-    def _cache_key(self, user: models.User) -> str:
+    def _cache_key(self, user_id: int) -> str:
         media_version = None if self.media_id is None else self.media.version
-        return f"message:{user.id}:{self.id}:{self.version}-{media_version}"
+        return f"message:{user_id}:{self.id}:{self.version}-{media_version}"
 
     @classmethod
     async def get_(
@@ -248,7 +248,7 @@ class Message(Model):
         if with_reactions and self.type is MessageType.REGULAR:
             reactions = await self.to_tl_reactions(current_user)
 
-        cache_key = self._cache_key(current_user)
+        cache_key = self._cache_key(current_user.id)
         if (cached := await Cache.obj.get(cache_key)) is not None:
             if with_reactions and self.type is MessageType.REGULAR:
                 cached.reactions = reactions
@@ -313,10 +313,12 @@ class Message(Model):
 
     @classmethod
     async def to_tl_bulk(
-            cls, messages: list[Message], user: models.User, with_reactions: bool = False,
+            cls, messages: list[Message], user: models.User | int, with_reactions: bool = False,
     ) -> list[TLMessageBase]:
+        user_id = user.id if isinstance(user, models.User) else user
+
         cached = {}
-        cache_keys = [message._cache_key(user) for message in messages]
+        cache_keys = [message._cache_key(user_id) for message in messages]
         if cache_keys:
             cached = {
                 cached_msg.id: cached_msg
@@ -328,7 +330,7 @@ class Message(Model):
 
         if message_ids:
             mentioned = set(await models.MessageMention.filter(
-                peer__owner=user, message__id__in=message_ids,
+                peer__owner__id=user_id, message__id__in=message_ids,
             ).values_list("message__id", flat=True))
         else:
             mentioned = set()
@@ -351,7 +353,7 @@ class Message(Model):
             last_mentions_q = Q()
             for peer in last_mention_peers_to_fetch:
                 if peer.type is PeerType.CHANNEL:
-                    last_mentions_q |= Q(peer__owner=user, peer__channel__id=peer.channel_id)
+                    last_mentions_q |= Q(peer__owner__id=user_id, peer__channel__id=peer.channel_id)
                 else:
                     last_mentions_q |= Q(peer=peer)
 
@@ -411,9 +413,9 @@ class Message(Model):
                 reply_to_id: count
                 for reply_to_id, count in await models.Message.filter(
                     reply_to__id__in=list(replies_count_to_fetch),
-                ).group_by("reply__to__id").annotate(count=Count("id")).values_list("reply__to__id", "count")
+                ).group_by("reply_to__id").annotate(count=Count("id")).values_list("reply_to__id", "count")
             }
-            for reply_to_id, ids in replies_count_to_fetch:
+            for reply_to_id, ids in replies_count_to_fetch.items():
                 count = counts.get(reply_to_id, 0)
                 for message_id in ids:
                     replies[message_id].replies = count
@@ -431,7 +433,7 @@ class Message(Model):
             reactions = None
             if with_reactions and message.type is MessageType.REGULAR:
                 # TODO: precalculate reactions for all regular messages before loop
-                reactions = await message.to_tl_reactions(user)
+                reactions = await message.to_tl_reactions(user_id)
             
             if message.id in cached:
                 result.append(cached[message.id])
@@ -446,14 +448,14 @@ class Message(Model):
                     need_recache = True
                 
                 if need_recache:
-                    to_cache.append((message._cache_key(user), result[-1]))
+                    to_cache.append((message._cache_key(user_id), result[-1]))
                 
                 continue
 
             media = None
             if message.media_id is not None:
                 # TODO: precalculate for all messages before loop somehow
-                media = await message.media.to_tl(user) if message.media is not None else None
+                media = await message.media.to_tl(user_id) if message.media is not None else None
 
             entities = []
             for entity in (message.entities or []):
@@ -462,7 +464,7 @@ class Message(Model):
                 entity["_"] = tl_id
 
             result.append(message._to_tl(
-                out=user.id == message.author_id,
+                out=user_id == message.author_id,
                 media=media,
                 entities=entities,
                 reactions=reactions,
@@ -471,7 +473,7 @@ class Message(Model):
                 replies=replies.get(message.id, None),
             ))
 
-            to_cache.append((message._cache_key(user), result[-1]))
+            to_cache.append((message._cache_key(user_id), result[-1]))
 
         if to_cache:
             await Cache.obj.multi_set(to_cache)
@@ -791,11 +793,13 @@ class Message(Model):
             await models.MessageRelated.bulk_create(related_to_create)
 
     async def remove_from_cache(self, user: models.User) -> None:
-        await Cache.obj.delete(self._cache_key(user))
+        await Cache.obj.delete(self._cache_key(user.id))
 
-    async def to_tl_reactions(self, user: models.User) -> MessageReactions:
+    async def to_tl_reactions(self, user: models.User | int) -> MessageReactions:
+        user_id = user.id if isinstance(user, models.User) else user
+
         # TODO: send min MessageReactions if current user didn't send reaction to message
-        user_reaction = await models.MessageReaction.get_or_none(user=user, message=self)
+        user_reaction = await models.MessageReaction.get_or_none(user__id=user_id, message=self)
         reactions = await models.MessageReaction\
             .annotate(msg_count=Count("id"))\
             .filter(message=self)\

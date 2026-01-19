@@ -29,13 +29,10 @@ internal.set_session_internal_push#92aeb648 key_id:long session_id:long user_id:
 
 internal.channel_subscribe#ae808cf6 flags:# subscribe:flags.0?true user_ids:Vector<long> channel_ids:Vector<long> = internal.ChannelSubscribe;
 
-internal.lazy_message#e51fc740 message_id:long = internal.LazyField;
-internal.object_with_lazy_fields#d836c6b8 object:Object fields:Vector<string> = internal.LazyObject;
-
 internal.field_with_layer_requirement#d9594f1f field:string min_layer:int max_layer:int = internal.FieldWithLayerRequirement;
 internal.object_with_layer_requirement#7678a3 object:Object fields:Vector<internal.FieldWithLayerRequirement> = internal.ObjectWithLayerRequirement;
 
-internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> users:flags.3?Vector<long> = internal.NeedsContextValues;
+internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> users:flags.3?Vector<long> messages:flags.4?Vector<long> = internal.NeedsContextValues;
 
 // Vectors with concrete types
 
@@ -198,6 +195,7 @@ chatToFormatInternal#afe6f89 flags:# creator_id:long deactivated:flags.0?true no
 channelToFormatInternal#89ce0d3a flags:# creator_id:long noforwards:flags.0?true id:long title:string photo:flags.1?ChatPhoto created_at:long default_banned_rights:ChatBannedRights broadcast:flags.2?true megagroup:flags.3?true signatures:flags.4?true has_link:flags.5?true slowmode_enabled:flags.6?true join_to_send:flags.7?true join_request:flags.8?true username:flags.9?string color:flags.10?PeerColor profile_color:flags.11?PeerColor nojoin_allow_view:flags.12?true = Chat;
 userToFormatInternal#276511f3 flags:# id:long first_name:string last_name:flags.0?string username:flags.1?string phone:flags.2?string lang_code:string photo:flags.3?UserProfilePhoto bot:flags.4?true bot_info_version:flags.5?long color:flags.6?PeerColor profile_color:flags.6?PeerColor = User;
 encryptedChatToFormatInternal#44045474 flags:# id:long access_hash:long date:long admin_id:long participant_id:long admin_sess_id:long participant_sess_id:flags.0?long g_a:bytes g_b:flags.1?bytes key_fingerprint:flags.2?long = EncryptedChat;
+dumbChannelMessageToFormatInternal#6afa05f5 id:long = Message;
 
 ---functions---
 
