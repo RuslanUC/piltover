@@ -21,10 +21,11 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
     MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines, \
     MessageActionChatEditPhoto, InputPeerSelf, InputUserSelf, InputPeerUserFromMessage
+from piltover.tl.base.messages import Chats as ChatsBase
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
-    EditChatDefaultBannedRights, CreateChat_133, MigrateChat, GetOnlines
-from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull
+    EditChatDefaultBannedRights, CreateChat_133, MigrateChat, GetOnlines, GetCommonChats
+from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull, ChatsSlice
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.chats")
@@ -558,3 +559,37 @@ async def get_onlines(request: GetOnlines, user: User) -> ChatOnlines:
 
     return ChatOnlines(onlines=onlines)
 
+
+@handler.on_request(GetCommonChats)
+async def get_common_chats(request: GetCommonChats, user: User) -> ChatsBase:
+    peer = await Peer.from_input_peer_raise(user, request.user_id, peer_types=(PeerType.USER, PeerType.SELF))
+
+    limit = max(1, min(100, request.limit))
+
+    query = ChatParticipant.common_chats_query(user.id, peer.user_id)
+
+    chats = []
+    channels = []
+    total = await query.count()
+
+    if request.max_id:
+        query = query.filter(id__lte=request.max_id)
+
+    for participant in await query.limit(limit):
+        if participant.chat_id is not None:
+            chats.append(participant.chat)
+        else:
+            channels.append(participant.channel)
+
+    chats_tl = await Chat.to_tl_bulk(chats)
+    channels_tl = await Channel.to_tl_bulk(channels)
+    chats_and_channels = [*chats_tl, *channels_tl]
+    chats_and_channels.sort(key=lambda c: c.id, reverse=True)
+
+    if len(chats_and_channels) <= total:
+        return ChatsSlice(
+            count=total,
+            chats=chats_and_channels,
+        )
+
+    return Chats(chats=chats_and_channels)

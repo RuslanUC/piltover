@@ -4,9 +4,8 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, ChatWriteForbidden, Forbidden
+from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, Forbidden
 from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs, MigrateChat
-from pyrogram.raw.functions.account import SetPrivacy
 from pyrogram.raw.types import UpdateUserName, UpdateNewMessage, MessageService, MessageActionChatMigrateTo, \
     UpdateNewChannelMessage, InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
 from pyrogram.raw.types.messages import Dialogs
@@ -252,3 +251,34 @@ async def test_migrate_basic_chat_to_supergroup(exit_stack: AsyncExitStack) -> N
 
     assert len(dialogs1) == 1
     assert len(dialogs2) == 1
+
+
+@pytest.mark.skip(reason="https://github.com/tortoise/tortoise-orm/issues/2058")
+@pytest.mark.asyncio
+async def test_get_common_chats(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    await client1.set_username("test1_username")
+    await client2.set_username("test2_username")
+
+    await client1.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client1.resolve_peer("test2_username")]),
+    )
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
+
+    common_chats = await client1.get_common_chats("test2_username")
+    assert len(common_chats) == 0
+
+    group1 = await client1.create_group("idk 1", ["test2_username"])
+
+    common_chats = await client1.get_common_chats("test2_username")
+    assert len(common_chats) == 1
+    assert common_chats[0].id == group1.id
+    common_chats = await client2.get_common_chats("test1_username")
+    assert len(common_chats) == 1
+    assert common_chats[0].id == group1.id

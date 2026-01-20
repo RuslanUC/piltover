@@ -4,6 +4,9 @@ from datetime import datetime
 from typing import cast
 
 from tortoise import fields, Model
+from tortoise.expressions import Subquery
+from tortoise.functions import Count
+from tortoise.queryset import QuerySet
 
 from piltover.db import models
 from piltover.db.enums import ChatBannedRights, ChatAdminRights
@@ -131,3 +134,24 @@ class ChatParticipant(Model):
             user_id=self.user_id,
             date=int(self.invited_at.timestamp()),
         )
+
+    @classmethod
+    def common_chats_query(cls, user_id: int, other_user_id: int) -> QuerySet[ChatParticipant]:
+        # TODO: uncomment when https://github.com/tortoise/tortoise-orm/issues/2058 is resolved
+        #return ChatParticipant.filter(
+        #    chat__id__in=Subquery(
+        #        ChatParticipant.filter(
+        #            user__id__in=[user_id, other_user_id], left=False,
+        #        ).group_by(
+        #            "chat__id", "channel__id",
+        #        ).annotate(
+        #            user_count=Count("user__id", distinct=True),
+        #        ).filter(
+        #            user_count=2,
+        #        ).values_list("id", flat=True)
+        #    )
+        #).select_related(
+        #    "chat", "chat__photo", "channel", "channel__photo",
+        #).order_by("-chat__id", "-channel__id")
+
+        return ChatParticipant.filter(id=0)

@@ -4,7 +4,8 @@ from tortoise.expressions import Q, Subquery
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel, BotInfo
+from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel, BotInfo, \
+    ChatParticipant
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
@@ -39,7 +40,7 @@ async def get_full_user(request: GetFullUser, user: User):
     pinned_msg_id = cast(
         int | None,
         await Message.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True),
-        )
+    )
 
     personal_channel = await Channel.get_or_none(userpersonalchannels__user=target_user)
     if personal_channel is not None:
@@ -87,7 +88,7 @@ async def get_full_user(request: GetFullUser, user: User):
             settings=PeerSettings(),
             profile_photo=photo,
             notify_settings=PeerNotifySettings(show_previews=True),
-            common_chats_count=0,
+            common_chats_count=await ChatParticipant.common_chats_query(user.id, peer.user_id).count(),
             birthday=birthday,
             read_dates_private=target_user.read_dates_private,
             wallpaper=chat_wallpaper.wallpaper.to_tl() if chat_wallpaper is not None else None,
