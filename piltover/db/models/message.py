@@ -257,7 +257,7 @@ class Message(Model):
 
         media = None
         if self.media_id is not None:
-            media = await self.media.to_tl(current_user) if self.media is not None else None
+            media = await self.media.to_tl() if self.media is not None else None
 
         entities = []
         for entity in (self.entities or []):
@@ -455,7 +455,7 @@ class Message(Model):
             media = None
             if message.media_id is not None:
                 # TODO: precalculate for all messages before loop somehow
-                media = await message.media.to_tl(user_id) if message.media is not None else None
+                media = await message.media.to_tl() if message.media is not None else None
 
             entities = []
             for entity in (message.entities or []):

@@ -196,6 +196,8 @@ channelToFormatInternal#89ce0d3a flags:# creator_id:long noforwards:flags.0?true
 userToFormatInternal#276511f3 flags:# id:long first_name:string last_name:flags.0?string username:flags.1?string phone:flags.2?string lang_code:string photo:flags.3?UserProfilePhoto bot:flags.4?true bot_info_version:flags.5?long color:flags.6?PeerColor profile_color:flags.6?PeerColor = User;
 encryptedChatToFormatInternal#44045474 flags:# id:long access_hash:long date:long admin_id:long participant_id:long admin_sess_id:long participant_sess_id:flags.0?long g_a:bytes g_b:flags.1?bytes key_fingerprint:flags.2?long = EncryptedChat;
 dumbChannelMessageToFormatInternal#6afa05f5 id:long = Message;
+pollResultsToFormatInternal#fb007fa4 flags:# id:long results:Vector<PollAnswerVoters> total_voters:int solution:flags.0?string = PollResults;
+pollAnswerVotersToFormatInternal#a6ad847b flags:# id:long poll_id:long correct:flags.0?true option:bytes voters:int = PollAnswerVoters;
 
 ---functions---
 

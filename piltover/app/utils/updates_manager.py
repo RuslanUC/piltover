@@ -996,8 +996,7 @@ async def update_message_poll(poll: Poll, user: User) -> Updates:
             UpdateMessagePoll(
                 poll_id=poll.id,
                 poll=poll.to_tl(),
-                # TODO: replace with PollResultsToFormat or something
-                results=await poll.to_tl_results(user.id),
+                results=await poll.to_tl_results(),
             )
         ],
     )

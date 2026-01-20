@@ -376,3 +376,54 @@ class DumbChannelMessageToFormat(types.DumbChannelMessageToFormatInternal):
     def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
         values.messages.add(self.id)
 
+
+class PollResultsToFormat(types.PollResultsToFormatInternal):
+    def _write(self) -> bytes:
+        ctx = serialization_ctx.get()
+
+        return LayerConverter.downgrade(
+            obj=types.PollResults(
+                min=ctx.values is None or ctx.user_id not in ctx.values.poll_answers,
+                results=self.results,
+                total_voters=self.total_voters,
+                # TODO: only show solution if incorrect option was selected
+                solution=self.solution,
+            ),
+            to_layer=ctx.layer,
+        ).write()
+
+    def write(self) -> bytes:
+        ctx = serialization_ctx.get()
+        if ctx is None or ctx.dont_format:
+            return super().write()
+        return self._write()
+
+    def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
+        values.poll_answers.add(self.id)
+
+
+class PollAnswerVotersToFormat(types.PollAnswerVotersToFormatInternal):
+    def _write(self) -> bytes:
+        ctx = serialization_ctx.get()
+
+        chosen = (
+                ctx.values is not None
+                and self.poll_id in ctx.values.poll_answers
+                and self.id in ctx.values.poll_answers[self.poll_id]
+        )
+
+        return LayerConverter.downgrade(
+            obj=types.PollAnswerVoters(
+                chosen=chosen,
+                correct=self.correct and chosen,
+                option=self.option,
+                voters=self.voters,
+            ),
+            to_layer=ctx.layer,
+        ).write()
+
+    def write(self) -> bytes:
+        ctx = serialization_ctx.get()
+        if ctx is None or ctx.dont_format:
+            return super().write()
+        return self._write()

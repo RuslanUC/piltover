@@ -7,7 +7,9 @@ REPLACE_CONSTRUCTORS = {
     0x276511f3: "to_format.UserToFormat",
     0x44045474: "to_format.EncryptedChatToFormat",
     0x6afa05f5: "to_format.DumbChannelMessageToFormat",
+    0xfb007fa4: "to_format.PollResultsToFormat",
+    0xa6ad847b: "to_format.PollAnswerVotersToFormat",
 }
 
-BASE_CLASSES_NEED_CONTEXT = {"Chat", "User", "Message"}
+BASE_CLASSES_NEED_CONTEXT = {"Chat", "User", "Message", "PollResults"}
 

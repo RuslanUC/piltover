@@ -40,7 +40,7 @@ from piltover.utils.debug import measure_time
 
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.db.models import AuthKey, TempAuthKey, UserAuthorization, ChatParticipant, Poll, Peer, Contact, \
-    PrivacyRule, Presence, Message as DbMessage
+    PrivacyRule, Presence, Message as DbMessage, PollVote
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session_manager import Session, SessionManager, MsgIdValues
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
@@ -648,9 +648,13 @@ class Client:
         result = ContextValues()
 
         if values.poll_answers:
-            # TODO: also refactor this
-            for poll in await Poll.filter(id__in=values.poll_answers).prefetch_related("pollanswers"):
-                result.poll_answers[poll.id] = await poll.to_tl_results(self.session.user_id)
+            selected_answers = await PollVote.filter(
+                answer__poll__id__in=values.poll_answers, user__id=self.session.user_id,
+            ).values_list("answer__poll__id", "answer__id")
+            for poll_id, answer_id in selected_answers:
+                if poll_id not in result.poll_answers:
+                    result.poll_answers[poll_id] = set()
+                result.poll_answers[poll_id].add(answer_id)
 
         peers_q = Q()
 

@@ -9,6 +9,7 @@ from piltover.tl import PollAnswer as TLPollAnswer, TextWithEntities
 class PollAnswer(Model):
     id: int = fields.BigIntField(pk=True)
     correct: bool = fields.BooleanField(default=False)
+    # TODO: poll answer entities
     text: str = fields.CharField(max_length=100)
     option: bytes = fields.BinaryField()
     poll: models.Poll = fields.ForeignKeyField("models.Poll")

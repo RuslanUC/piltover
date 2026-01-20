@@ -53,7 +53,7 @@ class ContextValues:
     )
 
     def __init__(self) -> None:
-        self.poll_answers: dict[int, ...] = {}
+        self.poll_answers: dict[int, set[int]] = {}
         self.chat_participants: dict[int, ChatParticipant] = {}
         self.channel_participants: dict[int, ChatParticipant] = {}
         self.peers: dict[tuple[PeerType, int], Peer] = {}

@@ -973,7 +973,7 @@ async def upload_media(request: UploadMedia | UploadMedia_133, user: User):
     _check_we_blocked_user(peer)
 
     media = await _process_media(user, request.media)
-    return await media.to_tl(user)
+    return await media.to_tl()
 
 
 @handler.on_request(SendMultiMedia_176)
