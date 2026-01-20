@@ -114,8 +114,8 @@ async def send_vote(request: SendVote, user: User) -> Updates:
         if not vote_ids:
             raise ErrorRpc(error_code=400, error_message="OPTION_INVALID")
         await PollVote.filter(id__in=vote_ids).delete()
-        message.media.version += 1
-        await message.media.save(update_fields=["version"])
+        message.media.poll.version += 1
+        await message.media.poll.save(update_fields=["version"])
         return await upd.update_message_poll(message.media.poll, user)
     if len(request.options) > 1 and not message.media.poll.multiple_choices:
         raise ErrorRpc(error_code=400, error_message="OPTIONS_TOO_MUCH")
@@ -132,7 +132,7 @@ async def send_vote(request: SendVote, user: User) -> Updates:
         votes_to_create.append(PollVote(user=user, answer=options[option], hidden=peer.type is PeerType.CHANNEL))
 
     await PollVote.bulk_create(votes_to_create)
-    message.media.version += 1
-    await message.media.save(update_fields=["version"])
+    message.media.poll.version += 1
+    await message.media.poll.save(update_fields=["version"])
 
     return await upd.update_message_poll(message.media.poll, user)
