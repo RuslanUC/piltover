@@ -27,7 +27,7 @@ class MessageMedia(Model):
     file_id: int | None
     poll_id: int | None
 
-    async def to_tl(self) -> MessageMediaTypes:
+    def _to_tl_sync(self) -> MessageMediaTypes:
         if self.type is MediaType.DOCUMENT:
             return MessageMediaDocument(
                 spoiler=self.spoiler,
@@ -39,11 +39,7 @@ class MessageMedia(Model):
                 photo=self.file.to_tl_photo(),
             )
         elif self.type is MediaType.POLL:
-            await self.fetch_related("poll", "poll__pollanswers")
-            return MessageMediaPoll(
-                poll=self.poll.to_tl(),
-                results=await self.poll.to_tl_results(),
-            )
+            raise ValueError("POLL media is not supported in _to_tl_sync")
         elif self.type is MediaType.CONTACT:
             if self.static_data is None:
                 logger.warning("Expected \"static_data\" to be non-null for contact media type")
@@ -79,3 +75,47 @@ class MessageMedia(Model):
             return dice
 
         return MessageMediaUnsupported()
+
+    async def to_tl(self) -> MessageMediaTypes:
+        if self.type is MediaType.POLL:
+            await self.fetch_related("poll", "poll__pollanswers")
+            return MessageMediaPoll(
+                poll=self.poll.to_tl(),
+                results=await self.poll.to_tl_results(),
+            )
+
+        return self._to_tl_sync()
+
+    @classmethod
+    async def to_tl_bulk(cls, medias: list[MessageMedia]) -> list[MessageMediaTypes]:
+        polls_to_refetch: dict[int, list[MessageMedia]] = {}
+        for media in medias:
+            if media.type != MediaType.POLL or media.poll.pollanswers._fetched:
+                continue
+
+            if media.poll.id not in polls_to_refetch:
+                polls_to_refetch[media.poll.id] = []
+            polls_to_refetch[media.poll.id].append(media)
+
+        if polls_to_refetch:
+            for poll in await models.Poll.filter(id__in=list(polls_to_refetch.keys())).prefetch_related("pollanswers"):
+                for media in polls_to_refetch[poll.id]:
+                    media.poll = poll
+
+        polls = [media.poll for media in medias if media.type is MediaType.POLL]
+        poll_results = {
+            poll.id: results
+            for poll, results in zip(polls, await models.Poll.to_tl_results_bulk(polls))
+        }
+
+        tl = []
+        for media in medias:
+            if media.type is MediaType.POLL:
+                tl.append(MessageMediaPoll(
+                    poll=media.poll.to_tl(),
+                    results=poll_results[media.poll.id],
+                ))
+            else:
+                tl.append(media._to_tl_sync())
+
+        return tl

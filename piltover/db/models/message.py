@@ -420,6 +420,12 @@ class Message(Model):
                 for message_id in ids:
                     replies[message_id].replies = count
 
+        medias_ = [message.media for message in messages if message.media is not None]
+        medias = {
+            media.id: media_tl
+            for media, media_tl in zip(medias_, await models.MessageMedia.to_tl_bulk(medias_))
+        }
+
         to_cache = []
 
         result = []
@@ -452,11 +458,6 @@ class Message(Model):
                 
                 continue
 
-            media = None
-            if message.media_id is not None:
-                # TODO: precalculate for all messages before loop somehow
-                media = await message.media.to_tl() if message.media is not None else None
-
             entities = []
             for entity in (message.entities or []):
                 tl_id = entity.pop("_")
@@ -465,7 +466,7 @@ class Message(Model):
 
             result.append(message._to_tl(
                 out=user_id == message.author_id,
-                media=media,
+                media=medias[message.media_id] if message.media_id is not None else None,
                 entities=entities,
                 reactions=reactions,
                 mentioned=message.id in mentioned,

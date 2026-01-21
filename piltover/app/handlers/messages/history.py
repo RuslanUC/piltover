@@ -196,7 +196,9 @@ async def get_messages_query_internal(
     ).limit(after_offset_limit).order_by("date").values_list("id", flat=True)
 
     if len(message_ids_after_offset) >= limit:
-        return Message.filter(id__in=message_ids_after_offset).order_by("-date").select_related(*Message.PREFETCH_FIELDS)
+        return Message.filter(
+            id__in=message_ids_after_offset,
+        ).order_by("-date").select_related(*Message.PREFETCH_FIELDS)
 
     limit -= len(message_ids_after_offset)
 

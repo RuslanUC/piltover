@@ -91,6 +91,9 @@ class Poll(Model):
 
     @classmethod
     async def to_tl_results_bulk(cls, polls: list[Poll]) -> list[PollResultsBase]:
+        if not polls:
+            return []
+
         cached = {}
         for cached_poll in await Cache.obj.multi_get([poll._cache_key() for poll in polls]):
             if cached_poll:
