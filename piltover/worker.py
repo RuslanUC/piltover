@@ -154,7 +154,7 @@ class Worker(MessageHandler):
 
     async def _broker_shutdown(self, _) -> None:
         await self.message_broker.shutdown()
-        await self.pubsub.startup()
+        await self.pubsub.shutdown()
 
     @classmethod
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False) -> User | None:

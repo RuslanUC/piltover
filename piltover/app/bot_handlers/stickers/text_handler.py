@@ -124,7 +124,8 @@ For example, this set has the short name 'DuckEmoji': <a>https://telegram.me/add
 __text_published_emoji = FormatableTextWithEntities("""
 Kaboom! I've just published your emoji set. Here's your link: <a>https://t.me/addemoji/{short_name}</a>
 
-You can share it with other Telegram users — they'll be able to add your emoji to their emoji panel by following the link. \Just make sure they're using an up to date version of the app. At the moment, only Telegram Premium subscribers can send custom emoji.
+You can share it with other Telegram users — they'll be able to add your emoji to their emoji panel by following the link. 
+Just make sure they're using an up to date version of the app. At the moment, only Telegram Premium subscribers can send custom emoji.
 """.strip())
 
 

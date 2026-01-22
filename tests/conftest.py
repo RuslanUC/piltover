@@ -46,6 +46,10 @@ async def _empty_async_func(*args, **kwargs) -> None:
 
 @pytest_asyncio.fixture(autouse=True)
 async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
+    # loop = get_running_loop()
+    # loop.set_debug(True)
+    # loop.slow_callback_duration = 0.01
+
     from piltover.app.app import app
 
     marks = {mark.name for mark in request.node.own_markers}
@@ -99,6 +103,7 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
 
 
 real_input = input
+real_print = print
 
 
 def _input(prompt: str = "") -> str:
@@ -110,7 +115,19 @@ def _input(prompt: str = "") -> str:
     return real_input(prompt)
 
 
+def _print(*args, **kwargs) -> None:
+    hide = ["Pyrogram", "Code: ", "The confirmation code has been sent", "Running on "]
+
+    if args and isinstance(args[0], str):
+        for check in hide:
+            if check in args[0]:
+                return
+
+    real_print(*args, **kwargs)
+
+
 builtins.input = _input
+builtins.print = _print
 
 
 # https://stackoverflow.com/a/72735401
@@ -146,6 +163,7 @@ InterceptHandler.redirect_to_loguru("pyrogram")
 InterceptHandler.redirect_to_loguru("aiocache.base", logging.DEBUG)
 InterceptHandler.redirect_to_loguru("taskiq", logging.WARNING)
 InterceptHandler.redirect_to_loguru(taskiq_sched_logger.name, logging.DEBUG)
+InterceptHandler.redirect_to_loguru("asyncio", logging.WARNING)
 
 
 def _async_task_done_callback(task: Task) -> None:
@@ -165,7 +183,7 @@ class CustomEventLoopPolicy(DefaultEventLoopPolicy):
 
 
 @pytest.fixture(scope="session")
-def event_loop_policy(request):
+def event_loop_policy():
     return CustomEventLoopPolicy()
 
 
