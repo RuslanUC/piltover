@@ -1,3 +1,4 @@
+import asyncio
 from typing import cast
 
 from tortoise.expressions import Q, Subquery
@@ -5,12 +6,13 @@ from tortoise.expressions import Q, Subquery
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel, BotInfo, \
-    ChatParticipant
+    ChatParticipant, UserPhoto
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
-    InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage, PhotoEmpty
+    InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage, PhotoEmpty, Photo as TLPhoto
 from piltover.tl.types.users import UserFull
+from piltover.tl.base import Photo as TLPhotoBase
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("users")
@@ -27,10 +29,6 @@ async def get_full_user(request: GetFullUser, user: User):
         PrivacyRuleKeyType.PROFILE_PHOTO,
     ])
     privacy_rules = privacy_rules[target_user.id]
-
-    about = ""
-    if privacy_rules[PrivacyRuleKeyType.ABOUT]:
-        about = target_user.about
 
     chat_wallpaper = await ChatWallpaper.get_or_none(user=user, target=target_user).select_related(
         "wallpaper", "wallpaper__document", "wallpaper__settings",
@@ -49,7 +47,7 @@ async def get_full_user(request: GetFullUser, user: User):
             await Message.filter(
                 peer__owner=None, peer__channel=personal_channel,
             ).order_by("-id").first().values_list("id", flat=True),
-            )
+        )
     else:
         personal_channel_msg_id = None
 
@@ -68,23 +66,19 @@ async def get_full_user(request: GetFullUser, user: User):
     if privacy_rules[PrivacyRuleKeyType.BIRTHDAY]:
         birthday = target_user.to_tl_birthday_noprivacycheck()
 
-    photo = PhotoEmpty(id=0)
+    photo = None
+    fallback_photo = None
     photo_db, photo_fallback_db = await target_user.get_db_photos()
-    if privacy_rules[PrivacyRuleKeyType.PROFILE_PHOTO]:
-        if photo_db is not None:
-            photo = photo_db.to_tl()
+    if privacy_rules[PrivacyRuleKeyType.PROFILE_PHOTO] and photo_db is not None:
+        photo = photo_db.to_tl()
     else:
         photo_db = None
-
-    fallback_photo = None
-    if photo_fallback_db is not None:
-        fallback_photo = photo_fallback_db.to_tl()
 
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
             id=target_user.id,
-            about=about,
+            about=target_user.about if privacy_rules[PrivacyRuleKeyType.ABOUT] else "",
             settings=PeerSettings(),
             profile_photo=photo,
             notify_settings=PeerNotifySettings(show_previews=True),
@@ -101,11 +95,11 @@ async def get_full_user(request: GetFullUser, user: User):
             blocked=peer.blocked_at is not None,
             phone_calls_available=True,
             phone_calls_private=False,
-            fallback_photo=fallback_photo,
+            fallback_photo=photo_fallback_db.to_tl() if fallback_photo is not None else None,
             # video_calls_available=True,
         ),
         chats=[await personal_channel.to_tl()] if personal_channel is not None else [],
-        # TODO: pass photo_fallback_db of photo_db is None?
+        # TODO: pass photo_fallback_db if photo_db is None?
         users=[await target_user.to_tl(userphoto=photo_db)],
     )
 

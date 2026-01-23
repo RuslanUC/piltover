@@ -48,7 +48,7 @@ def NullableFKSetNull(
         **kwargs: Any,
 ) -> fields.ForeignKeyNullableRelation[MODEL]:
     return fields.ForeignKeyField(
-        model_name=model_name,
+        to=model_name,
         related_name=related_name,
         on_delete=fields.SET_NULL,
         db_constraint=True,

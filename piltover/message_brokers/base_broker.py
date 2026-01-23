@@ -12,7 +12,7 @@ from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetS
     ObjectWithLayerRequirement
 
 if TYPE_CHECKING:
-    from piltover.session_manager import Session
+    from piltover.session import Session
 
 
 class BrokerType(Flag):
@@ -83,7 +83,8 @@ class BaseMessageBroker(ABC):
         self.subscribed_sessions[session.session_id] = session
 
         self.subscribe_user(session.user_id, session)
-        self.subscribe_key(session.auth_key.auth_key_id if session.auth_key else None, session)
+        self.subscribe_key(session.auth_data.auth_key_id if session.auth_data else None, session)
+        self.subscribe_key(session.auth_data.perm_auth_key_id if session.auth_data else None, session)
         self.subscribe_auth(session.auth_id, session)
 
         self.channels_diff_update(session, [], session.channel_ids)
@@ -119,7 +120,8 @@ class BaseMessageBroker(ABC):
         self.subscribed_sessions.pop(session.session_id, None)
 
         self.unsubscribe_user(session.user_id, session)
-        self.unsubscribe_key(session.auth_key.auth_key_id if session.auth_key else None, session)
+        self.unsubscribe_key(session.auth_data.auth_key_id if session.auth_data else None, session)
+        self.unsubscribe_key(session.auth_data.perm_auth_key_id if session.auth_data else None, session)
         self.unsubscribe_auth(session.auth_id, session)
 
         self.channels_diff_update(session, session.channel_ids, [])
@@ -226,8 +228,9 @@ class BaseMessageBroker(ABC):
                 return
             if message.key_id not in SessionManager.sessions[message.session_id]:
                 return
+            # TODO: refresh auth
             session = SessionManager.sessions[message.session_id][message.key_id]
-            session.set_user_id(message.user_id, need_auth_refresh=True)
+            session.set_user_id(message.user_id)
             return
         if isinstance(message, ChannelSubscribe):
             return await self._process_channels_subscribe(message)

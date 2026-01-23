@@ -29,29 +29,29 @@ async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
     if p > q:
         p, q = q, p
 
-    client.auth_data = GenAuthData()
-    client.auth_data.p, client.auth_data.q = p, q
+    client.gen_auth_data = GenAuthData()
+    client.gen_auth_data.p, client.gen_auth_data.q = p, q
 
     if p == -1 or q == -1 or q == p:
         raise Disconnection(404)
 
-    pq = client.auth_data.p * client.auth_data.q
+    pq = client.gen_auth_data.p * client.gen_auth_data.q
 
-    client.auth_data.server_nonce = Int128.read_bytes(secrets.token_bytes(128 // 8))
+    client.gen_auth_data.server_nonce = Int128.read_bytes(secrets.token_bytes(128 // 8))
 
     await client.send_unencrypted(ResPQ(
         nonce=req_pq_multi.nonce,
-        server_nonce=client.auth_data.server_nonce,
+        server_nonce=client.gen_auth_data.server_nonce,
         pq=pq.to_bytes(64 // 8, "big"),
         server_public_key_fingerprints=[client.server.fingerprint_signed],
     ))
 
 
 async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
-    if not isinstance(client.auth_data, GenAuthData):
+    if not isinstance(client.gen_auth_data, GenAuthData):
         raise Disconnection(404)
 
-    auth_data = client.auth_data
+    auth_data = client.gen_auth_data
 
     if len(req_dh_params.p) != 4 or len(req_dh_params.q) != 4:
         raise Disconnection(404)
@@ -153,7 +153,7 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
 
 
 async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDHParams):
-    auth_data = client.auth_data
+    auth_data = client.gen_auth_data
 
     if not isinstance(auth_data, GenAuthData) \
             or auth_data.tmp_aes_key is None \

@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 from loguru import logger
 
 from piltover.db.models import UserAuthorization, AuthKey
-from piltover.session_manager import Session
 from piltover.tl import InitConnection, MsgsAck, Ping, Pong, PingDelayDisconnect, InvokeWithLayer, InvokeAfterMsg, \
-    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts, FutureSalt, \
-    Long
+    InvokeWithoutUpdates, RpcDropAnswer, DestroySession, DestroySessionOk, RpcAnswerUnknown, GetFutureSalts, \
+    FutureSalt, Long
 from piltover.tl.core_types import Message, RpcResult, FutureSalts
 
 if TYPE_CHECKING:
     from piltover.gateway import Client
+    from piltover.session import Session
 
 
 async def msgs_ack(_1: Client, _2: Message[MsgsAck], _3: Session) -> None:
@@ -45,10 +45,10 @@ async def _invoke_inner_query(client: Client, request: Message, session: Session
 
 
 async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], session: Session) -> RpcResult:
-    if request.obj.layer > client.layer:
-        logger.trace(f"saving layer for key {client.auth_data.perm_auth_key_id}")
-        await AuthKey.filter(id=client.auth_data.perm_auth_key_id).update(layer=request.obj.layer)
-    client.layer = request.obj.layer
+    if request.obj.layer > session.layer:
+        logger.trace(f"saving layer for key {session.auth_data.perm_auth_key_id}")
+        await AuthKey.filter(id=session.auth_data.perm_auth_key_id).update(layer=request.obj.layer)
+    session.layer = request.obj.layer
     return await _invoke_inner_query(client, request, session)
 
 
@@ -57,14 +57,14 @@ async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], ses
 
 
 async def invoke_without_updates(client: Client, request: Message[InvokeWithoutUpdates], session: Session) -> RpcResult:
-    client.no_updates = True
+    session.no_updates = True
     return await _invoke_inner_query(client, request, session)
 
 
 async def init_connection(client: Client, request: Message[InitConnection], session: Session) -> RpcResult:
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
-    authorization = await UserAuthorization.get_or_none(key__id=client.auth_data.perm_auth_key_id)
+    authorization = await UserAuthorization.get_or_none(key__id=session.auth_data.perm_auth_key_id)
     if authorization is not None:
         # TODO: set api id
         authorization.active_at = datetime.now()
@@ -75,7 +75,7 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
 
         await authorization.save(update_fields=["active_at", "device_model", "system_version", "app_version", "ip"])
 
-        if not client.no_updates:
+        if not session.no_updates:
             ...  # TODO: subscribe user to updates manually
 
     logger.info(f"initConnection with Api ID: {request.obj.api_id}")
@@ -83,17 +83,15 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
     return await _invoke_inner_query(client, request, session)
 
 
-# noinspection PyUnusedLocal
-async def destroy_session(client: Client, request: Message[DestroySession], session: Session) -> DestroySessionOk:
+async def destroy_session(_1: Client, request: Message[DestroySession], _3: Session) -> DestroySessionOk:
     return DestroySessionOk(session_id=request.obj.session_id)
 
 
-# noinspection PyUnusedLocal
-async def rpc_drop_answer(client: Client, request: Message[RpcDropAnswer], session: Session) -> RpcResult:
+async def rpc_drop_answer(_1: Client, request: Message[RpcDropAnswer], _3: Session) -> RpcResult:
     return RpcResult(req_msg_id=request.message_id, result=RpcAnswerUnknown())
 
 
-async def get_future_salts(client: Client, request: Message[GetFutureSalts], _2: Session) -> FutureSalts:
+async def get_future_salts(client: Client, request: Message[GetFutureSalts], session: Session) -> FutureSalts:
     limit = max(min(request.obj.num, 1), 64)
     base_timestamp = int(time() // (30 * 60))
 
@@ -104,7 +102,9 @@ async def get_future_salts(client: Client, request: Message[GetFutureSalts], _2:
             FutureSalt(
                 valid_since=(base_timestamp + salt_offset) * 30 * 60,
                 valid_until=(base_timestamp + salt_offset + 1) * 30 * 60,
-                salt=Long.read_bytes(client.make_salt(client.auth_data.auth_key_id, base_timestamp + salt_offset)),
+                salt=Long.read_bytes(session.make_salt(
+                    client.server.salt_key, session.auth_data.auth_key_id, base_timestamp + salt_offset,
+                )),
             )
             for salt_offset in range(limit)
         ]
