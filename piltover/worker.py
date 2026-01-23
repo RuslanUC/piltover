@@ -160,12 +160,10 @@ class Worker(MessageHandler):
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False) -> User | None:
         if call.user_id is None or call.auth_id is None:
             return None
-
-        auth = await UserAuthorization.get_or_none(user__id=call.user_id, id=call.auth_id).select_related("user")
-        if auth is not None and not allow_mfa_pending and auth.mfa_pending:
+        if call.mfa_pending and not allow_mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
 
-        return auth.user if auth is not None else None
+        return await User.get_or_none(id=call.user_id, userauthorizations__id=call.auth_id)
 
     async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse:
         with measure_time("_handle_tl_rpc()"):

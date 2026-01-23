@@ -214,4 +214,4 @@ internal.get_available_servers#a2ed5af3 auth:bytes = internal.AvailableServers;
 // Rpc calls between brokers
 
 // TODO: tl id is not updated
-internal.call_rpc#ead5e531 flags:# is_bot:flags.6?true auth_key_id:flags.1?long perm_auth_key_id:flags.0?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long layer:int obj:Object = internal.RpcResponse;
+internal.call_rpc#ead5e531 flags:# is_bot:flags.6?true mfa_pending:flags.7?true auth_key_id:flags.1?long perm_auth_key_id:flags.0?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long layer:int obj:Object = internal.RpcResponse;

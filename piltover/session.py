@@ -157,10 +157,17 @@ class Session:
             self.layer = perm_key_layer
 
     def _reset_auth(self) -> None:
+        from piltover.session_manager import SessionManager
+
+        SessionManager.broker.unsubscribe_auth(self.auth_id, self)
+        SessionManager.broker.unsubscribe_user(self.user_id, self)
+        SessionManager.broker.channels_diff_update(self, self.channel_ids, [])
+
         self.user_id = None
         self.auth_id = None
         self.is_bot = False
         self.mfa_pending = False
+        self.channel_ids.clear()
 
     async def refresh_auth_maybe(self, force_refresh_auth: bool = False) -> None:
         from piltover.session_manager import SessionManager
@@ -170,6 +177,9 @@ class Session:
 
         auth_key_id = self.auth_data.auth_key_id
         perm_auth_key_id = self.auth_data.perm_auth_key_id
+
+        old_user_id = self.user_id
+        old_auth_id = self.auth_id
 
         if auth_key_id is None or perm_auth_key_id is None:
             self._reset_auth()
@@ -187,6 +197,7 @@ class Session:
                 self.mfa_pending = auth.mfa_pending
             else:
                 self._reset_auth()
+                return
 
         if self.auth_id is not None and not self.mfa_pending and (time() - self.channels_loaded_at) > 60 * 5:
             logger.trace("Refreshing channels...")
@@ -211,4 +222,11 @@ class Session:
             self.channel_ids = new_channels
             SessionManager.broker.channels_diff_update(self, channels_to_delete, channels_to_add)
 
-        # TODO: subscribe/unsubscribe based on old/new auth_id and user_id
+        if old_user_id != self.user_id:
+            if old_user_id:
+                SessionManager.broker.unsubscribe_user(old_user_id, self)
+            SessionManager.broker.subscribe_user(self.user_id, self)
+        if old_auth_id != self.auth_id:
+            if old_auth_id:
+                SessionManager.broker.unsubscribe_auth(old_auth_id, self)
+            SessionManager.broker.subscribe_auth(self.auth_id, self)

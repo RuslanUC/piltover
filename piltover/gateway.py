@@ -342,7 +342,7 @@ class Client:
             auth_id=session.auth_id,
             user_id=session.user_id,
             is_bot=session.is_bot,
-            # TODO: pass mfa_pending to worker
+            mfa_pending=session.mfa_pending,
         ).write().hex()
 
         with measure_time(".kiq()"):
