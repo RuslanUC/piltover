@@ -307,7 +307,8 @@ class Client:
         with measure_time(".send(...)"):
             context_values = None
             if isinstance(obj, NeedsContextValues):
-                context_values = await self._resolve_context_values(obj, session)
+                with measure_time("._resolve_context_values(...)"):
+                    context_values = await self._resolve_context_values(obj, session)
                 obj = obj.obj
 
             with measure_time("session.pack_message(...)"):
@@ -603,6 +604,10 @@ class Client:
     @staticmethod
     async def _resolve_context_values(values: NeedsContextValues, session: Session) -> ContextValues:
         result = ContextValues()
+
+        # TODO: fetch only those values that are actually needed in *ToFormat
+        #  (e.g. only banned_rights/admin_rights for ChatParticipant, etc.)
+        # TODO: cache fetched values
 
         if values.poll_answers:
             selected_answers = await PollVote.filter(

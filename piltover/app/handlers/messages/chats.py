@@ -1,7 +1,9 @@
 from datetime import datetime, UTC, timedelta
 from typing import cast
 
+from loguru import logger
 from tortoise.expressions import Subquery, F
+from tortoise.functions import Count, Coalesce
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -566,14 +568,13 @@ async def get_common_chats(request: GetCommonChats, user: User) -> ChatsBase:
 
     limit = max(1, min(100, request.limit))
 
-    query = ChatParticipant.common_chats_query(user.id, peer.user_id)
+    query = ChatParticipant.common_chats_query(
+        user.id, peer.user_id, (request.max_id // 2) if request.max_id > 0 else None,
+    )
 
     chats = []
     channels = []
     total = await query.count()
-
-    if request.max_id:
-        query = query.filter(id__lte=request.max_id)
 
     for participant in await query.limit(limit):
         if participant.chat_id is not None:

@@ -253,7 +253,6 @@ async def test_migrate_basic_chat_to_supergroup(exit_stack: AsyncExitStack) -> N
     assert len(dialogs2) == 1
 
 
-@pytest.mark.skip(reason="https://github.com/tortoise/tortoise-orm/issues/2058")
 @pytest.mark.asyncio
 async def test_get_common_chats(exit_stack: AsyncExitStack) -> None:
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import cast
 
 from tortoise import fields, Model
-from tortoise.expressions import Subquery
+from tortoise.expressions import Subquery, Q
 from tortoise.functions import Count
 from tortoise.queryset import QuerySet
 
@@ -136,22 +136,30 @@ class ChatParticipant(Model):
         )
 
     @classmethod
-    def common_chats_query(cls, user_id: int, other_user_id: int) -> QuerySet[ChatParticipant]:
-        # TODO: uncomment when https://github.com/tortoise/tortoise-orm/issues/2058 is resolved
-        #return ChatParticipant.filter(
-        #    chat__id__in=Subquery(
-        #        ChatParticipant.filter(
-        #            user__id__in=[user_id, other_user_id], left=False,
-        #        ).group_by(
-        #            "chat__id", "channel__id",
-        #        ).annotate(
-        #            user_count=Count("user__id", distinct=True),
-        #        ).filter(
-        #            user_count=2,
-        #        ).values_list("id", flat=True)
-        #    )
-        #).select_related(
-        #    "chat", "chat__photo", "channel", "channel__photo",
-        #).order_by("-chat__id", "-channel__id")
+    def common_chats_query(
+            cls, user_id: int, other_user_id: int, max_id: int | None = None,
+    ) -> QuerySet[ChatParticipant]:
+        chat_query = channel_query = ChatParticipant.filter(
+            user__id__in=[user_id, other_user_id], left=False,
+        ).annotate(
+            user_count=Count("user__id", distinct=True),
+        ).filter(
+            user_count=2,
+        )
 
-        return ChatParticipant.filter(id=0)
+        if max_id is not None:
+            chat_query = chat_query.filter(chat__id__lte=max_id)
+            channel_query = channel_query.filter(channel__id__lte=max_id)
+
+        chat_query = chat_query.group_by("chat__id").values("chat__id")
+        channel_query = channel_query.group_by("channel__id").values("channel__id")
+
+        chat_subquery = Subquery(chat_query)
+        channel_subquery = Subquery(channel_query)
+
+        return ChatParticipant.filter(
+            Q(join_type=Q.OR, chat__id__in=chat_subquery, channel__id__in=channel_subquery),
+            user__id=user_id,
+        ).select_related(
+            "chat", "chat__photo", "channel", "channel__photo",
+        ).order_by("-chat__id", "-channel__id")
