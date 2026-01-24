@@ -10,6 +10,7 @@ from piltover.db.models import User, Username, Bot
 from tests.client import TestClient
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_create_botfather_bot(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
@@ -67,6 +68,7 @@ async def _create_bots(owner: User, count: int, username_prefix: str = "") -> li
     return await Bot.filter(owner=owner)
 
 
+@pytest.mark.real_auth
 @pytest.mark.parametrize(
     ("bots_count", "check_text", "rows_count", "has_page_buttons"),
     [
@@ -110,6 +112,7 @@ async def test_botfather_mybots(
         assert btn_text in ("->", "<-")
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
@@ -162,6 +165,7 @@ async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
     assert new_message.reply_markup == bot_message.reply_markup
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_bot_send_message_get_response(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
@@ -184,6 +188,7 @@ async def test_bot_send_message_get_response(exit_stack: AsyncExitStack) -> None
     assert bot_response.message.reply_to.reply_to_msg_id == start_message.id
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_bot_send_callback_query_get_response(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))

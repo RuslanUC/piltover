@@ -16,6 +16,7 @@ async def test_get_languages_empty(exit_stack: AsyncExitStack) -> None:
     assert len(languages) == 0
 
 
+@pytest.mark.real_auth
 @pytest.mark.create_languages
 @pytest.mark.asyncio
 async def test_get_available_languages_for_test_platform() -> None:
@@ -29,6 +30,7 @@ async def test_get_available_languages_for_test_platform() -> None:
     await client.disconnect()
 
 
+@pytest.mark.real_auth
 @pytest.mark.create_languages
 @pytest.mark.asyncio
 async def test_get_test_language() -> None:
@@ -42,6 +44,7 @@ async def test_get_test_language() -> None:
     await client.disconnect()
 
 
+@pytest.mark.real_auth
 @pytest.mark.create_languages
 @pytest.mark.asyncio
 async def test_get_test_langpack() -> None:
@@ -59,6 +62,7 @@ async def test_get_test_langpack() -> None:
     await client.disconnect()
 
 
+@pytest.mark.real_auth
 @pytest.mark.create_languages
 @pytest.mark.asyncio
 async def test_get_test_strings() -> None:
