@@ -15,9 +15,13 @@ from loguru import logger
 from pyrogram.session import Auth
 from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
+from tortoise.queryset import AwaitableQuery, BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, \
+    ValuesListQuery, CountQuery, DeleteQuery, UpdateQuery, QuerySet, ExistsQuery
 
 from piltover.app_config import AppConfig
-from tests import server_instance, USE_REAL_TCP_FOR_TESTING
+from piltover.db.models import User, UserAuthorization
+from piltover.utils.debug import measure_time
+from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
 from tests.client import setup_test_dc
 from tests.scheduled_loop import run_scheduler_loop_every_100ms
 
@@ -27,13 +31,22 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
-async def _custom_auth_create(_) -> bytes:
+async def _custom_auth_create(self: Auth) -> bytes:
     from piltover.db.models import AuthKey
     from piltover.tl import Long
 
     key = urandom(256)
     key_id = Long.read_bytes(hashlib.sha1(key).digest()[-8:])
-    await AuthKey.create(id=key_id, auth_key=key)
+    auth_key = await AuthKey.create(id=key_id, auth_key=key)
+
+    if not getattr(self, "_real_auth"):
+        logger.trace("Skipping auth")
+        user, _ = await User.get_or_create(phone_number=test_phone_number.get(), defaults={
+            "first_name": "First",
+            "last_name": "Last",
+        })
+        await UserAuthorization.create(user=user, key=auth_key, ip="0.0.0.0")
+
     return key
 
 
@@ -50,10 +63,25 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
     # loop.set_debug(True)
     # loop.slow_callback_duration = 0.01
 
+    query_clss = [
+        BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, CountQuery, ExistsQuery,
+        DeleteQuery, UpdateQuery, QuerySet
+    ]
+
+    for cls in query_clss:
+        async def _execute(self: AwaitableQuery, *args, **kwargs) -> None:
+            _execute_real = getattr(self, "_execute_real")
+            with measure_time(f"{self.__class__.__name__}._execute()"):
+                return await _execute_real(*args, **kwargs)
+
+        setattr(cls, "_execute_real", getattr(cls, "_execute"))
+        setattr(cls, "_execute", _execute)
+
     from piltover.app.app import app
 
     marks = {mark.name for mark in request.node.own_markers}
     real_key_gen = "real_key_gen" in marks
+    real_auth = "real_auth" in marks
     create_countries = "create_countries" in marks
     create_reactions = "create_reactions" in marks
     create_chat_themes = "create_chat_themes" in marks
@@ -84,22 +112,31 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
             run_scheduler=run_scheduler, run_actual_server=USE_REAL_TCP_FOR_TESTING,
         ))
 
-        token = server_instance.set(test_server)
+        server_reset_token = server_instance.set(test_server)
+        skip_auth_reset_token = skipping_auth.set(not real_key_gen and not real_auth)
 
         if not real_key_gen:
             Auth.create = _custom_auth_create
+            setattr(Auth, "_real_auth", real_auth)
 
         print(f"Running on {test_server.port}")
         setup_test_dc(test_server)
 
         yield test_server
 
-        server_instance.reset(token)
+        server_instance.reset(server_reset_token)
+        skipping_auth.reset(skip_auth_reset_token)
 
         if not real_key_gen:
             Auth.create = _real_auth_create
+            delattr(Auth, "_real_auth")
 
     AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = sched_insta_send_thresh
+
+    for cls in query_clss:
+        _execute_real = getattr(cls, "_execute_real")
+        setattr(cls, "_execute", _execute_real)
+        delattr(cls, "_execute_real")
 
 
 real_input = input

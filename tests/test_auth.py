@@ -25,12 +25,14 @@ from piltover.tl import Long
 from tests.client import TestClient, TransportError
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_signup() -> None:
     async with TestClient(phone_number="123456789") as client:
         assert await client.storage.user_id() is not None
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_signin() -> None:
     async with TestClient(phone_number="123456789") as client:
@@ -42,6 +44,7 @@ async def test_signin() -> None:
         assert client.me.id == user_id
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_enable_disable_cloud_password() -> None:
     async with TestClient(phone_number="123456789") as client:
@@ -58,6 +61,7 @@ async def test_enable_disable_cloud_password() -> None:
         assert await client.remove_cloud_password("test_passw0rd_new")
 
 
+@pytest.mark.real_auth
 @pytest.mark.create_countries
 @pytest.mark.asyncio
 async def test_get_countries_list() -> None:
@@ -159,6 +163,7 @@ class MsgFactoryCustom(MsgFactory):
         return super().__call__(body)
 
 
+@pytest.mark.real_auth
 @pytest.mark.real_key_gen
 @pytest.mark.asyncio
 async def test_temp_auth_key() -> None:
@@ -180,6 +185,7 @@ async def test_temp_auth_key() -> None:
         assert user_me_test.id == user_me.id
 
 
+@pytest.mark.real_auth
 @pytest.mark.real_key_gen
 @pytest.mark.asyncio
 async def test_temp_auth_key_expired() -> None:
@@ -208,6 +214,7 @@ async def test_temp_auth_key_expired() -> None:
             ...
 
 
+@pytest.mark.real_auth
 @pytest.mark.real_key_gen
 @pytest.mark.asyncio
 async def test_temp_auth_key_expired_rebind() -> None:
@@ -244,6 +251,7 @@ async def test_temp_auth_key_expired_rebind() -> None:
         assert user_me_test.id == user_me.id
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_login_token_export_accept(exit_stack: AsyncExitStack) -> None:
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
@@ -287,6 +295,7 @@ async def test_login_token_export_accept(exit_stack: AsyncExitStack) -> None:
     await client2.disconnect()
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_login_token_export_accept_2fa(exit_stack: AsyncExitStack) -> None:
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))

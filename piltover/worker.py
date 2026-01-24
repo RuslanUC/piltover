@@ -34,7 +34,7 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
-from piltover.db.models import UserAuthorization, User, Message, Peer, MessageComments
+from piltover.db.models import User, Message, Peer, MessageComments
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import TLObject, RpcError, TLRequest, layer
@@ -129,7 +129,10 @@ class Worker(MessageHandler):
 
         if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
             logger.info("Worker is initializing with InMemoryBroker")
-            self.broker = InMemoryBroker().with_result_backend(FasterInmemoryResultBackend())
+            self.broker = InMemoryBroker(
+                max_async_tasks=128,
+                cast_types=False,
+            ).with_result_backend(FasterInmemoryResultBackend())
             self.message_broker = InMemoryMessageBroker()
         else:
             logger.info("Worker is initializing with AioPikaBroker + RedisAsyncResultBackend")
@@ -177,7 +180,8 @@ class Worker(MessageHandler):
         ))
 
     async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse:
-        call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
+        with measure_time("read CallRpc"):
+            call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
 
         if not (handler := self.request_handlers.get(call.obj.tlid())):
             logger.warning(f"No handler found for obj: {call.obj}")
@@ -192,7 +196,8 @@ class Worker(MessageHandler):
         user = None
         if handler.auth_required or handler.has_user_arg:
             try:
-                user = await self.get_user(call, handler.allow_mfa_pending)
+                with measure_time(".get_user(...)"):
+                    user = await self.get_user(call, handler.allow_mfa_pending)
             except ErrorRpc as e:
                 return self._err_response(call.message_id, e.error_code, e.error_message)
 

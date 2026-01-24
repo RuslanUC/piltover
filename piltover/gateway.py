@@ -441,7 +441,7 @@ class Client:
                 auth_key = self.active_keys[packet.auth_key_id]
             else:
                 auth_data = await self._get_auth_data(packet.auth_key_id)
-                auth_key = auth_data.auth_key
+                self.active_keys[packet.auth_key_id] = auth_key = auth_data.auth_key
 
             decrypted = await self.decrypt(packet, auth_key)
 

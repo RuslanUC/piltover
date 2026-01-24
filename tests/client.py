@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
-from asyncio import Event, Lock, timeout
+from asyncio import Event, timeout
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -24,14 +24,14 @@ from pyrogram.raw.types import Updates, InputPrivacyKeyAddedByPhone, InputPrivac
     InputPrivacyValueDisallowChatParticipants, InputPrivacyValueDisallowUsers, InputPrivacyValueDisallowContacts, \
     InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts, UpdateShort, \
     UpdatesCombined
-from pyrogram.session import Session as PyroSession
+from pyrogram.session import Session as PyroSession, Auth
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
 from pyrogram.types import User
 
 from piltover.utils.debug import measure_time
-from tests import USE_REAL_TCP_FOR_TESTING, server_instance
+from tests import USE_REAL_TCP_FOR_TESTING, server_instance, test_phone_number, skipping_auth
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
@@ -48,32 +48,45 @@ InputPrivacyRule = InputPrivacyValueAllowAll | InputPrivacyValueAllowChatPartici
                    | InputPrivacyValueDisallowUsers
 
 
-async def _TCP_connect(self: TCP, _: tuple[str, int]) -> None:
-    logger.trace("Using socket pair for connection")
+class _TCP(TCP):
+    def __init__(self: TCP, ipv6: ..., proxy: ...) -> None:
+        self.socket = None
 
-    gateway = server_instance.get()
+        self.reader = None
+        self.writer = None
 
-    server_socket, client_socket = socket.socketpair()
-    server_socket.setblocking(False)
-    client_socket.setblocking(False)
+        self.lock = asyncio.Lock()
+        self.loop = asyncio.get_event_loop()
 
-    server_reader, server_writer = await asyncio.open_connection(sock=server_socket)
-    self.reader, self.writer = await asyncio.open_connection(sock=client_socket)
+        self.proxy = {}
 
-    real_get_extra_info = server_writer.get_extra_info
+    async def connect(self: TCP, _: tuple[str, int]) -> None:
+        logger.trace("Using socket pair for connection")
 
-    def _fake_get_extra_info(info: str) -> Any:
-        if info == "peername":
-            return "0.0.0.0", 0
-        return real_get_extra_info(info)
+        gateway = server_instance.get()
 
-    server_writer.get_extra_info = _fake_get_extra_info
+        server_socket, client_socket = socket.socketpair()
+        server_socket.setblocking(False)
+        client_socket.setblocking(False)
 
-    await gateway.accept_client(server_reader, server_writer)
+        server_reader, server_writer = await asyncio.open_connection(sock=server_socket)
+        self.reader, self.writer = await asyncio.open_connection(sock=client_socket)
+
+        real_get_extra_info = server_writer.get_extra_info
+
+        def _fake_get_extra_info(info: str) -> Any:
+            if info == "peername":
+                return "0.0.0.0", 0
+            return real_get_extra_info(info)
+
+        server_writer.get_extra_info = _fake_get_extra_info
+
+        await gateway.accept_client(server_reader, server_writer)
 
 
 if not USE_REAL_TCP_FOR_TESTING:
-    TCP.connect = _TCP_connect
+    TCP.__new__ = _TCP.__new__
+    TCP.connect = _TCP.connect
 
 
 class TestDataCenter(DataCenter):
@@ -334,7 +347,6 @@ class TestClient(Client):
         self.storage = SimpleStorage(self.name)
         self._got_updates: dict[type[T], list[T]] = defaultdict(list)
         self._updates_event = Event()
-        self._updates_lock = Lock()
 
     async def __aenter__(self) -> Self:
         self._got_updates = defaultdict(list)
@@ -359,10 +371,9 @@ class TestClient(Client):
         else:
             _updates = updates
 
-        async with self._updates_lock:
-            for update in _updates:
-                logger.trace(f"Got update btw: {update}")
-                self._got_updates[type(update)].append(update)
+        for update in _updates:
+            logger.trace(f"Got update btw: {update}")
+            self._got_updates[type(update)].append(update)
 
         self._updates_event.set()
 
@@ -389,9 +400,8 @@ class TestClient(Client):
     async def expect_update(self, update_cls: type[T], timeout_: float = 1) -> T:
         async with timeout(timeout_):
             while True:
-                async with self._updates_lock:
-                    if self._got_updates[update_cls]:
-                        return self._got_updates[update_cls].pop(0)
+                if self._got_updates[update_cls]:
+                    return self._got_updates[update_cls].pop(0)
 
                 await self._updates_event.wait()
                 self._updates_event.clear()
@@ -423,6 +433,21 @@ class TestClient(Client):
             return await super().connect()
 
     async def start(self) -> bool:
+        if skipping_auth.get():
+            reset_token = test_phone_number.set(self.phone_number)
+
+            await self.storage.api_id(self.api_id)
+            await self.storage.dc_id(2)
+            await self.storage.date(0)
+            await self.storage.test_mode(self.test_mode)
+            await self.storage.auth_key(
+                await Auth(self, await self.storage.dc_id(), await self.storage.test_mode()).create()
+            )
+            await self.storage.user_id(1)
+            await self.storage.is_bot(False)
+
+            test_phone_number.reset(reset_token)
+
         with measure_time("start()"):
             return await super().start()
 

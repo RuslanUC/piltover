@@ -171,6 +171,7 @@ async def test_set_account_ttl_invalid() -> None:
             await client.invoke(SetAccountTTL(ttl=AccountDaysTTL(days=400)))
 
 
+@pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_get_authorizations_one() -> None:
     async with TestClient(phone_number="123456789") as client:
@@ -183,16 +184,18 @@ async def test_get_authorizations_one() -> None:
 
 @pytest.mark.asyncio
 async def test_get_authorizations_multiple(exit_stack: AsyncExitStack) -> None:
+    CLIENTS_COUNT = 10
+
     phone_number = "123456789"
     client = TestClient(phone_number=phone_number)
     await exit_stack.enter_async_context(client)
 
-    for _ in range(10):
+    for _ in range(CLIENTS_COUNT):
         await exit_stack.enter_async_context(TestClient(phone_number=phone_number))
 
     authorizations = await client.invoke(GetAuthorizations())
     assert authorizations
-    assert len(authorizations.authorizations) == 11
+    assert len(authorizations.authorizations) == CLIENTS_COUNT + 1
 
     current = [auth for auth in authorizations.authorizations if auth.current]
     assert len(current) == 1
