@@ -78,12 +78,17 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
         chat = await Chat.create(name=request.title, creator=user, participants_count=0)
         chat_peers_to_create = [Peer(owner=user, chat=chat, type=PeerType.CHAT)]
         participants_to_create = [
-            ChatParticipant(user=user, chat=chat, admin_rights=ChatAdminRights.from_tl(CREATOR_RIGHTS))
+            ChatParticipant(
+                user=user, chat=chat, chat_channel_id=chat.make_id(),
+                admin_rights=ChatAdminRights.from_tl(CREATOR_RIGHTS),
+            )
         ]
 
         for invited_user in invited_users:
             chat_peers_to_create.append(Peer(owner=invited_user, chat=chat, type=PeerType.CHAT))
-            participants_to_create.append(ChatParticipant(user=invited_user, chat=chat, inviter_id=user.id))
+            participants_to_create.append(ChatParticipant(
+                user=invited_user, chat=chat, chat_channel_id=chat.make_id(), inviter_id=user.id,
+            ))
 
         await Peer.bulk_create(chat_peers_to_create)
         await ChatParticipant.bulk_create(participants_to_create)
@@ -283,7 +288,9 @@ async def add_chat_user(request: AddChatUser, user: User):
     if user_peer.peer_user(user).id not in chat_peers:
         async with in_transaction():
             chat_peers[invited_user.id] = await Peer.create(owner=invited_user, chat=chat_peer.chat, type=PeerType.CHAT)
-            await ChatParticipant.create(user=invited_user, chat=chat_peer.chat, inviter_id=user.id)
+            await ChatParticipant.create(
+                user=invited_user, chat=chat_peer.chat, chat_channel_id=chat_peer.chat.make_id(), inviter_id=user.id,
+            )
             await ChatInviteRequest.filter(id__in=Subquery(
                 ChatInviteRequest.filter(user=invited_user, invite__chat=chat_peer.chat).values_list("id", flat=True)
             )).delete()
@@ -492,6 +499,7 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
             participants_to_create.append(ChatParticipant(
                 user=participant.user,
                 channel=channel,
+                chat_channel_id=channel.make_id(),
                 inviter_id=participant.inviter_id,
                 invited_at=participant.invited_at,
                 banned_until=participant.banned_until,
@@ -569,7 +577,7 @@ async def get_common_chats(request: GetCommonChats, user: User) -> ChatsBase:
     limit = max(1, min(100, request.limit))
 
     query = ChatParticipant.common_chats_query(
-        user.id, peer.user_id, (request.max_id // 2) if request.max_id > 0 else None,
+        user.id, peer.user_id, request.max_id if request.max_id > 0 else None,
     )
 
     chats = []

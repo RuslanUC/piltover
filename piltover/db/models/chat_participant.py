@@ -24,6 +24,7 @@ class ChatParticipant(Model):
     user: models.User = fields.ForeignKeyField("models.User")
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)
     channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
+    chat_channel_id: int = fields.BigIntField(index=True)
     inviter_id: int = fields.BigIntField(default=0)
     invited_at: datetime = fields.DatetimeField(auto_now_add=True)
     banned_until: datetime = fields.DatetimeField(null=True, default=None)
@@ -139,27 +140,24 @@ class ChatParticipant(Model):
     def common_chats_query(
             cls, user_id: int, other_user_id: int, max_id: int | None = None,
     ) -> QuerySet[ChatParticipant]:
-        chat_query = channel_query = ChatParticipant.filter(
+        chat_query = ChatParticipant.filter(
             user__id__in=[user_id, other_user_id], left=False,
         ).annotate(
             user_count=Count("user__id", distinct=True),
+        ).group_by(
+            "chat_channel_id"
         ).filter(
             user_count=2,
         )
 
         if max_id is not None:
-            chat_query = chat_query.filter(chat__id__lte=max_id)
-            channel_query = channel_query.filter(channel__id__lte=max_id)
+            chat_query = chat_query.filter(chat_channel_id__lte=max_id)
 
-        chat_query = chat_query.group_by("chat__id").values("chat__id")
-        channel_query = channel_query.group_by("channel__id").values("channel__id")
-
-        chat_subquery = Subquery(chat_query)
-        channel_subquery = Subquery(channel_query)
+        chat_query = chat_query.values("chat_channel_id")
 
         return ChatParticipant.filter(
-            Q(join_type=Q.OR, chat__id__in=chat_subquery, channel__id__in=channel_subquery),
             user__id=user_id,
+            chat_channel_id__in=Subquery(chat_query)
         ).select_related(
             "chat", "chat__photo", "channel", "channel__photo",
-        ).order_by("-chat__id", "-channel__id")
+        ).order_by("-chat_channel_id")

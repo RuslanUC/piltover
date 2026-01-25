@@ -464,7 +464,8 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
                 owner=request.user, type=peer_type, **Chat.or_channel(chat)
             )
         participants_to_create.append(ChatParticipant(
-            user=request.user, inviter_id=request.invite.user_id, invite=request.invite, **Chat.or_channel(chat)
+            user=request.user, inviter_id=request.invite.user_id, invite=request.invite, **Chat.or_channel(chat),
+            chat_channel_id=chat.make_id(),
         ))
 
     await ChatParticipant.bulk_create(participants_to_create, ignore_conflicts=True)

@@ -142,7 +142,8 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
     )
     peer_for_user = await Peer.create(owner=user, channel=channel, type=PeerType.CHANNEL)
     await ChatParticipant.create(
-        channel=channel, user=user, admin_rights=ChatAdminRights.from_tl(CREATOR_RIGHTS),
+        channel=channel, chat_channel_id=channel.make_id(), user=user,
+        admin_rights=ChatAdminRights.from_tl(CREATOR_RIGHTS),
     )
     await Dialog.create_or_unhide(peer_for_user)
     peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL)
@@ -760,7 +761,8 @@ async def invite_to_channel(request: InviteToChannel, user: User):
         peers_to_create.append(Peer(owner=user_peer.user, channel=channel, type=PeerType.CHANNEL))
         if existing_participant is None:
             participants_to_create.append(ChatParticipant(
-                user=user_peer.user, channel=channel, inviter_id=user.id, min_message_id=channel.min_available_id,
+                user=user_peer.user, channel=channel, chat_channel_id=channel.make_id(), inviter_id=user.id,
+                min_message_id=channel.min_available_id,
             ))
         else:
             existing_participant.left = False

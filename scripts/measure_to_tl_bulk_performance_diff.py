@@ -55,7 +55,7 @@ async def main() -> None:
         ])
 
         await ChatParticipant.bulk_create([
-            ChatParticipant(user=user, channel=peer.channel)
+            ChatParticipant(user=user, channel=peer.channel, chat_channel_id=peer.channel.make_id())
             for peer in await Peer.filter(type=PeerType.CHANNEL, owner=user).select_related("channel")
         ])
 
@@ -70,7 +70,7 @@ async def main() -> None:
     channels = await Channel.all()
     with measure_time_with_result("[to_tl] one channel at a time") as fut:
         for channel in channels:
-            await channel.to_tl(user)
+            await channel.to_tl()
 
     to_tl_one_at_a_time = await fut
 
