@@ -4,19 +4,20 @@ import hashlib
 import hmac
 from datetime import date
 from enum import auto, Enum
-from typing import Iterable
+from typing import Iterable, Self
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.app_config import AppConfig
 from piltover.cache import Cache
+from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
-from piltover.exceptions import Unreachable
-from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long
+from piltover.exceptions import Unreachable, ErrorRpc
+from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long, InputUser
 from piltover.tl.to_format import UserToFormat
-from piltover.tl.types import User as TLUser, PeerColor, PeerUser
+from piltover.tl.types import User as TLUser, PeerColor, PeerUser, InputPeerSelf, InputPeerUser, InputUserSelf
 from piltover.tl.base import User as TLUserBase
 from piltover.tl.types.internal_access import AccessHashPayloadUser
 
@@ -281,3 +282,27 @@ class User(Model):
 
     def to_tl_peer(self) -> PeerUser:
         return PeerUser(user_id=self.id)
+
+    @classmethod
+    async def get_from_input(
+            cls, user_id: int, target_id: InputPeerSelf | InputPeerUser | InputUserSelf | InputUser,
+            select_related: tuple[str, ...] = (),
+    ) -> Self | None:
+        if isinstance(target_id, (InputPeerSelf, InputUserSelf)) \
+                or (isinstance(target_id, (InputPeerUser, InputUser)) and target_id.user_id == user_id):
+            return await cls.get(id=user_id).select_related(*select_related)
+        elif isinstance(target_id, (InputPeerUser, InputUser)):
+            ctx = request_ctx.get()
+            if not cls.check_access_hash(user_id, ctx.auth_id, target_id.user_id, target_id.access_hash):
+                return None
+            return await cls.get_or_none(id=target_id.user_id).select_related(*select_related)
+
+    @classmethod
+    async def get_from_input_raise(
+            cls, user_id: int, target_id: InputPeerSelf | InputPeerUser | InputUserSelf | InputUser,
+            select_related: tuple[str, ...] = (), code: int = 400, message: str = "PEER_ID_INVALID",
+    ) -> Self:
+        user = await cls.get_from_input(user_id, target_id, select_related)
+        if user is not None:
+            return user
+        raise ErrorRpc(error_code=code, error_message=message)

@@ -279,6 +279,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
             "invite": from_invite,
             "min_message_id": min_message_id,
             "left": False,
+            "chat_channel_id": chat_or_channel.make_id(),
         })
         await ChatInviteRequest.filter(id__in=Subquery(
             ChatInviteRequest.filter(
@@ -604,3 +605,6 @@ async def edit_exported_chat_invite(request: EditExportedChatInvite, user: User)
         invite=await invite.to_tl(),
         users=[await invite.user.to_tl()],
     )
+
+
+# TODO: DeleteExportedChatInvite

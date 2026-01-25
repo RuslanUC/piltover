@@ -875,3 +875,6 @@ async def get_replies(request: GetReplies, user: User) -> Messages:
         return Messages(messages=[], chats=[], users=[])
 
     return await format_messages_internal(user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id)
+
+
+# TODO: GetMessageReadParticipants

@@ -1,9 +1,7 @@
 from datetime import datetime, UTC, timedelta
 from typing import cast
 
-from loguru import logger
 from tortoise.expressions import Subquery, F
-from tortoise.functions import Count, Coalesce
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -602,3 +600,6 @@ async def get_common_chats(request: GetCommonChats, user: User) -> ChatsBase:
         )
 
     return Chats(chats=chats_and_channels)
+
+
+# TODO: DeleteChat

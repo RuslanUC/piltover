@@ -490,6 +490,7 @@ async def edit_banned(request: EditBanned, user: User):
             "left": left,
             "inviter_id": 0,
             "invited_at": datetime.now(UTC),
+            "chat_channel_id": channel.make_id(),
         },
     )
 
@@ -1475,3 +1476,7 @@ async def toggle_participants_hidden(request: ToggleParticipantsHidden, user: Us
     await channel.save(update_fields=["participants_hidden", "version"])
 
     return await upd.update_channel(channel, user)
+
+
+# TODO: DeleteHistory
+# TODO: DeleteParticipantHistory
