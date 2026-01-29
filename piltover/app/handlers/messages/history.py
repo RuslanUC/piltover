@@ -448,13 +448,10 @@ async def get_all_drafts(user: User):
     ucc = UsersChatsChannels()
 
     updates = []
-    drafts = await MessageDraft.filter(dialog__peer__owner=user).select_related(
-        "dialog", "dialog__peer", "dialog__peer__user",
-    )
+    drafts = await MessageDraft.filter(peer__owner=user).select_related("peer")
     for draft in drafts:
-        peer = draft.dialog.peer
-        updates.append(UpdateDraftMessage(peer=peer.to_tl(), draft=draft.to_tl()))
-        ucc.add_peer(peer)
+        updates.append(UpdateDraftMessage(peer=draft.peer.to_tl(), draft=draft.to_tl()))
+        ucc.add_peer(draft.peer)
 
     users, chats, channels = await ucc.resolve()
 

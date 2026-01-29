@@ -98,7 +98,7 @@ async def send_created_messages_internal(
         if unread_mentions_to_create:
             await MessageMention.bulk_create(unread_mentions_to_create)
 
-    if clear_draft and (draft := await MessageDraft.get_or_none(dialog__peer=peer)) is not None:
+    if clear_draft and (draft := await MessageDraft.get_or_none(peer=peer)) is not None:
         await draft.delete()
         await upd.update_draft(user, peer, None)
 
@@ -790,7 +790,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
 @handler.on_request(SaveDraft_148, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SaveDraft_166, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SaveDraft, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def save_draft(request: SaveDraft, user: User):
+async def save_draft(request: SaveDraft, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         await peer.chat_or_channel.get_participant_raise(user)
@@ -801,13 +801,19 @@ async def save_draft(request: SaveDraft, user: User):
         peer_filter = Q(peer__channel=peer.channel, peer__owner=None) if peer.type is PeerType.CHANNEL else Q(peer=peer)
         reply_to = await Message.get_or_none(peer_filter, id=reply_to_message_id)
 
+    if not request.message and reply_to is None:
+        if (existing_draft := await MessageDraft.get_or_none(peer=peer)) is not None:
+            await existing_draft.delete()
+            await upd.update_draft(user, peer, None)
+        return True
+
     entities = await process_message_entities(request.message, request.entities, user)
 
     # TODO: media
 
-    dialog = await Dialog.create_or_unhide(peer)
+    await Dialog.create_or_unhide(peer)
     draft, _ = await MessageDraft.update_or_create(
-        dialog=dialog,
+        peer=peer,
         defaults={
             "message": request.message,
             "date": datetime.now(),

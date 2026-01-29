@@ -1,4 +1,3 @@
-import asyncio
 from typing import cast
 
 from tortoise.expressions import Q, Subquery
@@ -6,13 +5,12 @@ from tortoise.expressions import Q, Subquery
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel, BotInfo, \
-    ChatParticipant, UserPhoto
+    ChatParticipant
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
-    InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage, PhotoEmpty, Photo as TLPhoto
+    InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage
 from piltover.tl.types.users import UserFull
-from piltover.tl.base import Photo as TLPhotoBase
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("users")

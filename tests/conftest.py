@@ -6,7 +6,7 @@ import logging
 from asyncio import Task, DefaultEventLoopPolicy
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable
 from unittest import mock
 
 import pytest
@@ -20,7 +20,9 @@ from tortoise.queryset import AwaitableQuery, BulkCreateQuery, BulkUpdateQuery, 
 
 from piltover.app_config import AppConfig
 from piltover.db.models import User, UserAuthorization
-from piltover.utils.debug import measure_time
+from piltover.exceptions import Unreachable
+from piltover.utils.debug import measure_time_with_result
+from piltover.worker import RequestHandler
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
 from tests.client import setup_test_dc
 from tests.scheduled_loop import run_scheduler_loop_every_100ms
@@ -59,24 +61,6 @@ async def _empty_async_func(*args, **kwargs) -> None:
 
 @pytest_asyncio.fixture(autouse=True)
 async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
-    # loop = get_running_loop()
-    # loop.set_debug(True)
-    # loop.slow_callback_duration = 0.01
-
-    query_clss = [
-        BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, CountQuery, ExistsQuery,
-        DeleteQuery, UpdateQuery, QuerySet
-    ]
-
-    for cls in query_clss:
-        async def _execute(self: AwaitableQuery, *args, **kwargs) -> None:
-            _execute_real = getattr(self, "_execute_real")
-            with measure_time(f"{self.__class__.__name__}._execute()"):
-                return await _execute_real(*args, **kwargs)
-
-        setattr(cls, "_execute_real", getattr(cls, "_execute"))
-        setattr(cls, "_execute", _execute)
-
     from piltover.app.app import app
 
     marks = {mark.name for mark in request.node.own_markers}
@@ -133,10 +117,147 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
 
     AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = sched_insta_send_thresh
 
+
+class QueryStats:
+    def __init__(self, parent_stats: QueryStats | None = None) -> None:
+        self._make_query_count = 0
+        self._make_query_time = 0
+        self._execute_count = 0
+        self._execute_time = 0
+        self._parent = parent_stats
+
+    @property
+    def make_query_count(self) -> int:
+        return self._make_query_count
+
+    @make_query_count.setter
+    def make_query_count(self, value: int) -> None:
+        if self._parent is not None:
+            self._parent.make_query_count += value
+        self._make_query_count = value
+
+    @property
+    def make_query_time(self) -> int:
+        return self._make_query_time
+
+    @make_query_time.setter
+    def make_query_time(self, value: int) -> None:
+        if self._parent is not None:
+            self._parent.make_query_time += value
+        self._make_query_time = value
+
+    @property
+    def execute_count(self) -> int:
+        return self._execute_count
+
+    @execute_count.setter
+    def execute_count(self, value: int) -> None:
+        if self._parent is not None:
+            self._parent.execute_count += value
+        self._execute_count = value
+
+    @property
+    def execute_time(self) -> int:
+        return self._execute_time
+
+    @execute_time.setter
+    def execute_time(self, value: int) -> None:
+        if self._parent is not None:
+            self._parent.execute_time += value
+        self._execute_time = value
+
+
+def _patch_cls_replace_method(cls: type, names: Iterable[str], suffix: str, replace_with: Callable) -> None:
+    for name in names:
+        if not hasattr(cls, name):
+            continue
+
+        setattr(cls, f"{name}{suffix}", getattr(cls, name))
+        setattr(cls, name, replace_with)
+        return
+
+
+def _unpatch_cls_replaced_method(cls: type, names: Iterable[str], suffix: str) -> None:
+    for name in names:
+        real_name = f"{name}{suffix}"
+        if not hasattr(cls, real_name):
+            continue
+
+        setattr(cls, name, getattr(cls, real_name))
+        delattr(cls, real_name)
+        return
+
+
+def _get_patched_cls_original_method(obj: object, names: Iterable[str], suffix: str) -> tuple[str, Callable]:
+    for name in names:
+        real_method = getattr(obj, f"{name}{suffix}", None)
+        if real_method is not None:
+            return name, real_method
+
+    raise Unreachable
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def measure_query_stats(request: pytest.FixtureRequest) -> AsyncIterator[None]:
+    query_clss = [
+        BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, CountQuery, ExistsQuery,
+        DeleteQuery, UpdateQuery, QuerySet
+    ]
+    execute_methods = ("_execute", "_execute_many",)
+    make_query_methods = ("_make_query", "_make_queries",)
+    call_methods = ("__call__",)
+    real_suffix = "_real"
+
+    query_stats_test = QueryStats()
+    query_stats = QueryStats(query_stats_test)
+
+    async def _RequestHandler___call__(self: RequestHandler, *args, **kwargs):
+        _, _call_real = _get_patched_cls_original_method(self, call_methods, real_suffix)
+        result = await _call_real(*args, **kwargs)
+        logger.debug(
+            f"{self.func.__name__} made {query_stats.execute_count} ({query_stats.make_query_count}) queries "
+            f"that took {query_stats.execute_count:.2f}ms ({query_stats.make_query_time:.2f}ms)"
+        )
+        return result
+
+    _patch_cls_replace_method(RequestHandler, call_methods, real_suffix, _RequestHandler___call__)
+
     for cls in query_clss:
-        _execute_real = getattr(cls, "_execute_real")
-        setattr(cls, "_execute", _execute_real)
-        delattr(cls, "_execute_real")
+        async def _execute(self: AwaitableQuery, *args, **kwargs) -> ...:
+            name, execute_real = _get_patched_cls_original_method(self, execute_methods, real_suffix)
+            with measure_time_with_result(f"{self.__class__.__name__}.{name}()") as _time_spent:
+                result = await execute_real(*args, **kwargs)
+
+            query_stats.execute_count = 1
+            query_stats.execute_time = await _time_spent
+
+            return result
+
+        def _make_query(self: AwaitableQuery, *args, **kwargs) -> ...:
+            name, make_query_real = _get_patched_cls_original_method(self, make_query_methods, real_suffix)
+            with measure_time_with_result(f"{self.__class__.__name__}.{name}()") as _time_spent:
+                result = make_query_real(*args, **kwargs)
+
+            query_stats.make_query_count = 1
+            query_stats.make_query_time = _time_spent.result()
+
+            return result
+
+        _patch_cls_replace_method(cls, execute_methods, real_suffix, _execute)
+        _patch_cls_replace_method(cls, make_query_methods, real_suffix, _make_query)
+
+    yield
+
+    for cls in query_clss:
+        _unpatch_cls_replaced_method(cls, execute_methods, real_suffix)
+        _unpatch_cls_replaced_method(cls, make_query_methods, real_suffix)
+
+    _unpatch_cls_replaced_method(RequestHandler, call_methods, real_suffix)
+
+    logger.info(
+        f"Test {request.node.name} made {query_stats_test.execute_count} ({query_stats_test.make_query_count}) queries "
+        f"that took {query_stats_test.execute_count:.2f}ms ({query_stats_test.make_query_time:.2f}ms)"
+    )
 
 
 real_input = input

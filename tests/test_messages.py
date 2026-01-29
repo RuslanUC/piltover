@@ -12,10 +12,10 @@ from pyrogram.enums import MessageEntityType
 from pyrogram.errors import NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
-    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL
+    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
-    UpdateNewChannelMessage, UpdateEditChannelMessage
+    UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F
@@ -1162,4 +1162,25 @@ async def test_send_message_to_channel_comments(exit_stack: AsyncExitStack) -> N
     else:
         assert False
 
+
+@pytest.mark.asyncio
+async def test_save_clear_draft(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    await client.invoke(SaveDraft(
+        peer=await client.resolve_peer("self"),
+        message="asd qwe",
+    ))
+    update = await client.expect_update(UpdateDraftMessage)
+    assert update.peer.user_id == client.me.id
+    assert isinstance(update.draft, DraftMessage)
+    assert update.draft.message == "asd qwe"
+
+    await client.invoke(SaveDraft(
+        peer=await client.resolve_peer("self"),
+        message="",
+    ))
+    update = await client.expect_update(UpdateDraftMessage)
+    assert update.peer.user_id == client.me.id
+    assert isinstance(update.draft, DraftMessageEmpty)
 

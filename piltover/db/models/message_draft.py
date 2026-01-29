@@ -12,14 +12,14 @@ class MessageDraft(Model):
     id: int = fields.BigIntField(pk=True)
     message: str = fields.TextField()
     date: datetime = fields.DatetimeField(default=datetime.now)
-    dialog: models.Dialog = fields.OneToOneField("models.Dialog", on_delete=fields.CASCADE)
+    peer: models.Peer = fields.OneToOneField("models.Peer")
     reply_to: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
     no_webpage: bool = fields.BooleanField(default=False)
     invert_media: bool = fields.BooleanField(default=False)
     # TODO: use tl for entities
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
 
-    dialog_id: int
+    peer_id: int
     reply_to_id: int | None
 
     def to_tl(self) -> DraftMessage:

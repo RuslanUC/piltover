@@ -22,7 +22,6 @@ class Dialog(Model):
     visible: bool = fields.BooleanField(default=True)
 
     peer: models.Peer = fields.OneToOneField("models.Peer")
-    draft: fields.ReverseRelation[models.MessageDraft]
 
     peer_id: int
 
@@ -45,7 +44,7 @@ class Dialog(Model):
         )
 
         top_message = await self.top_message_query(False).values_list("id", flat=True)
-        draft = await models.MessageDraft.get_or_none(dialog=self)
+        draft = await models.MessageDraft.get_or_none(peer=self.peer)
         draft = draft.to_tl() if draft else None
 
         return TLDialog(

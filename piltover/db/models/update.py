@@ -129,7 +129,7 @@ class Update(Model):
 
                 ucc.add_peer(peer)
 
-                draft = await models.MessageDraft.get_or_none(dialog__peer=peer)
+                draft = await models.MessageDraft.get_or_none(peer=peer)
                 if isinstance(draft, models.MessageDraft):
                     draft = draft.to_tl()
                 elif draft is None:
