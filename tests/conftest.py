@@ -119,52 +119,23 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
 
 
 class QueryStats:
-    def __init__(self, parent_stats: QueryStats | None = None) -> None:
-        self._make_query_count = 0
-        self._make_query_time = 0
-        self._execute_count = 0
-        self._execute_time = 0
-        self._parent = parent_stats
+    def __init__(self) -> None:
+        self.make_query_count = 0
+        self.make_query_time = 0
+        self.execute_count = 0
+        self.execute_time = 0
 
-    @property
-    def make_query_count(self) -> int:
-        return self._make_query_count
+    def reset(self) -> None:
+        self.make_query_count = 0
+        self.make_query_time = 0
+        self.execute_count = 0
+        self.execute_time = 0
 
-    @make_query_count.setter
-    def make_query_count(self, value: int) -> None:
-        if self._parent is not None:
-            self._parent.make_query_count += value
-        self._make_query_count = value
-
-    @property
-    def make_query_time(self) -> int:
-        return self._make_query_time
-
-    @make_query_time.setter
-    def make_query_time(self, value: int) -> None:
-        if self._parent is not None:
-            self._parent.make_query_time += value
-        self._make_query_time = value
-
-    @property
-    def execute_count(self) -> int:
-        return self._execute_count
-
-    @execute_count.setter
-    def execute_count(self, value: int) -> None:
-        if self._parent is not None:
-            self._parent.execute_count += value
-        self._execute_count = value
-
-    @property
-    def execute_time(self) -> int:
-        return self._execute_time
-
-    @execute_time.setter
-    def execute_time(self, value: int) -> None:
-        if self._parent is not None:
-            self._parent.execute_time += value
-        self._execute_time = value
+    def add(self, stats: QueryStats) -> None:
+        self.make_query_count += stats.make_query_count
+        self.make_query_time += stats.make_query_time
+        self.execute_count += stats.execute_count
+        self.execute_time += stats.execute_time
 
 
 def _patch_cls_replace_method(cls: type, names: Iterable[str], suffix: str, replace_with: Callable) -> None:
@@ -209,16 +180,19 @@ async def measure_query_stats(request: pytest.FixtureRequest) -> AsyncIterator[N
     real_suffix = "_real"
 
     query_stats_test = QueryStats()
-    query_stats = QueryStats(query_stats_test)
+    query_stats = QueryStats()
 
     async def _RequestHandler___call__(self: RequestHandler, *args, **kwargs):
         _, _call_real = _get_patched_cls_original_method(self, call_methods, real_suffix)
-        result = await _call_real(*args, **kwargs)
-        logger.debug(
-            f"{self.func.__name__} made {query_stats.execute_count} ({query_stats.make_query_count}) queries "
-            f"that took {query_stats.execute_count:.2f}ms ({query_stats.make_query_time:.2f}ms)"
-        )
-        return result
+        query_stats.reset()
+        try:
+            return await _call_real(*args, **kwargs)
+        finally:
+            query_stats_test.add(query_stats)
+            logger.debug(
+                f"{self.func.__name__} made {query_stats.execute_count} ({query_stats.make_query_count}) queries "
+                f"that took {query_stats.execute_count:.2f}ms ({query_stats.make_query_time:.2f}ms)"
+            )
 
     _patch_cls_replace_method(RequestHandler, call_methods, real_suffix, _RequestHandler___call__)
 
@@ -228,8 +202,8 @@ async def measure_query_stats(request: pytest.FixtureRequest) -> AsyncIterator[N
             with measure_time_with_result(f"{self.__class__.__name__}.{name}()") as _time_spent:
                 result = await execute_real(*args, **kwargs)
 
-            query_stats.execute_count = 1
-            query_stats.execute_time = await _time_spent
+            query_stats.execute_count += 1
+            query_stats.execute_time += await _time_spent
 
             return result
 
@@ -238,8 +212,8 @@ async def measure_query_stats(request: pytest.FixtureRequest) -> AsyncIterator[N
             with measure_time_with_result(f"{self.__class__.__name__}.{name}()") as _time_spent:
                 result = make_query_real(*args, **kwargs)
 
-            query_stats.make_query_count = 1
-            query_stats.make_query_time = _time_spent.result()
+            query_stats.make_query_count += 1
+            query_stats.make_query_time += _time_spent.result()
 
             return result
 
@@ -255,7 +229,8 @@ async def measure_query_stats(request: pytest.FixtureRequest) -> AsyncIterator[N
     _unpatch_cls_replaced_method(RequestHandler, call_methods, real_suffix)
 
     logger.info(
-        f"Test {request.node.name} made {query_stats_test.execute_count} ({query_stats_test.make_query_count}) queries "
+        f"Test {request.node.name} "
+        f"made {query_stats_test.execute_count} ({query_stats_test.make_query_count}) queries "
         f"that took {query_stats_test.execute_count:.2f}ms ({query_stats_test.make_query_time:.2f}ms)"
     )
 

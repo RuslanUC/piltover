@@ -17,7 +17,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
-    UpdatePinnedSavedDialogs, UpdatePrivacy
+    UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -29,7 +29,8 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateStickerSetsOrder | UpdatePeerWallpaper | UpdateReadMessagesContents | UpdateNewScheduledMessage \
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
               | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers \
-              | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs | UpdatePrivacy
+              | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs | UpdatePrivacy \
+              | UpdateMessageID
 
 
 class Update(Model):
@@ -46,6 +47,8 @@ class Update(Model):
     related_ids: list[int] = fields.JSONField(null=True, default=None)
     additional_data: list | dict = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User")
+
+    # TODO: add to_tl_bulk
 
     async def to_tl(
             self, user: models.User, auth_id: int | None = None, ucc: UsersChatsChannels | None = None,
@@ -580,6 +583,16 @@ class Update(Model):
                 return UpdatePrivacy(
                     key=rule.key.to_tl(),
                     rules=rule.to_tl_rules(),
+                )
+
+            case UpdateType.NEW_MESSAGE:
+                ucc.add_message(self.related_id)
+                return None  # Handled in GetDifference
+
+            case UpdateType.UPDATE_MESSAGE_ID:
+                return UpdateMessageID(
+                    id=self.related_id,
+                    random_id=self.related_ids[0],
                 )
 
         return None

@@ -52,15 +52,35 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
     ucc.add_message(next(iter(messages.values())).id)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
+    updates_to_create = []
 
     for peer, message in messages.items():
-        # TODO: also generate UpdateShortMessage / UpdateShortSentMessage
+        # TODO: also generate UpdateShortMessage / UpdateShortSentMessage ?
+
+        if message.random_id:
+            updates_to_create.append(Update(
+                update_type=UpdateType.UPDATE_MESSAGE_ID,
+                pts=await State.add_pts(peer.owner, 1),
+                pts_count=1,
+                related_id=message.id,
+                related_ids=[int(message.random_id)],
+                user=peer.owner,
+            ))
+
+        new_message_pts = await State.add_pts(peer.owner, 1)
+        updates_to_create.append(Update(
+            update_type=UpdateType.NEW_MESSAGE,
+            pts=new_message_pts,
+            pts_count=1,
+            related_id=message.id,
+            user=peer.owner,
+        ))
 
         updates = UpdatesWithDefaults(
             updates=[
                 UpdateNewMessage(
                     message=await message.to_tl(peer.owner),
-                    pts=await State.add_pts(peer.owner, 1),
+                    pts=new_message_pts,
                     pts_count=1,
                 ),
             ],
@@ -74,20 +94,11 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
         if peer.owner == user:
             result = updates
 
-            read_history_pts = await State.add_pts(user, 1)
-            updates.updates.append(UpdateReadHistoryInbox(
-                peer=peer.to_tl(),
-                max_id=message.id,
-                still_unread_count=0,
-                pts=read_history_pts,
-                pts_count=1,
-            ))
-            read_history_inbox_args = {"update_type": UpdateType.READ_HISTORY_INBOX, "user": user, "related_id": 0}
-            await Update.filter(**read_history_inbox_args).delete()
-            await Update.create(**read_history_inbox_args, pts=read_history_pts, related_ids=[message.id, 0])
-
         ignore_auth_id = request_ctx.get().auth_id if ignore_current and peer.owner == user else None
         await SessionManager.send(updates, peer.owner.id, ignore_auth_id=ignore_auth_id)
+
+    if updates_to_create:
+        await Update.bulk_create(updates_to_create)
 
     return result
 
@@ -153,18 +164,39 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
 
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
+    updates_to_create = []
 
     for peer, messages in messages.items():
+        # TODO: dont fetch peer.owner? probably should be prefetched outside of the function
         peer.owner = await peer.owner
         updates = []
 
         for message in messages:
             if message.random_id:
+                updates_to_create.append(Update(
+                    update_type=UpdateType.UPDATE_MESSAGE_ID,
+                    pts=await State.add_pts(peer.owner, 1),
+                    pts_count=1,
+                    related_id=message.id,
+                    related_ids=[int(message.random_id)],
+                    user=peer.owner,
+                ))
+
+            new_message_pts = await State.add_pts(peer.owner, 1)
+            updates_to_create.append(Update(
+                update_type=UpdateType.NEW_MESSAGE,
+                pts=new_message_pts,
+                pts_count=1,
+                related_id=message.id,
+                user=peer.owner,
+            ))
+
+            if message.random_id:
                 updates.append(UpdateMessageID(id=message.id, random_id=int(message.random_id)))
 
             updates.append(UpdateNewMessage(
                 message=await message.to_tl(peer.owner),
-                pts=await State.add_pts(peer.owner, 1),
+                pts=new_message_pts,
                 pts_count=1,
             ))
 
@@ -177,6 +209,9 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
         await SessionManager.send(updates, peer.owner.id)
         if peer.owner == user:
             result_update = updates
+
+    if updates_to_create:
+        await Update.bulk_create(updates_to_create)
 
     return result_update
 
@@ -276,6 +311,7 @@ async def delete_messages(user: User | None, messages: dict[User, list[int]]) ->
             user_new_pts = new_pts
 
     all_ids = [i for ids in messages.values() for i in ids]
+    # TODO: also filter by type?
     await Update.filter(related_id__in=all_ids).delete()
     await Update.bulk_create(updates_to_create)
 

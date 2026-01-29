@@ -134,6 +134,8 @@ class UpdateType(IntEnum):
     SAVED_DIALOG_PIN = 41
     SAVED_DIALOG_PIN_REORDER = 42
     UPDATE_PRIVACY = 43
+    NEW_MESSAGE = 44
+    UPDATE_MESSAGE_ID = 45
 
 
 class SecretUpdateType(IntEnum):

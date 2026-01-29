@@ -1,11 +1,12 @@
 from asyncio import sleep
 from datetime import datetime
 from time import time
+from typing import cast
 
 from loguru import logger
 from pytz import UTC
 from tortoise.expressions import Q
-from tortoise.functions import Min
+from tortoise.functions import Min, Max
 
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType, MessageType
@@ -13,7 +14,7 @@ from piltover.db.models import User, Message, UserAuthorization, State, Update, 
 from piltover.tl import UpdateChannelTooLong
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_133, GetChannelDifference
 from piltover.tl.types.updates import State as TLState, Difference, ChannelDifferenceEmpty, DifferenceEmpty, \
-    ChannelDifference
+    ChannelDifference, DifferenceTooLong, DifferenceSlice
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -36,12 +37,13 @@ async def get_seq_qts() -> tuple[int, int]:
     return seq_qts or (0, 0)
 
 
-async def get_state_internal(user: User) -> TLState:
-    state = await State.get_or_none(user=user)
+async def get_state_internal(user: User, pts: int | None = None) -> TLState:
+    if pts is None:
+        pts = cast(int | None, await State.get_or_none(user=user).values_list("pts", flat=True)) or 0
 
     seq, qts = await get_seq_qts()
     return TLState(
-        pts=state.pts if state else 0,
+        pts=pts,
         qts=qts,
         seq=seq,
         date=int(time()),
@@ -57,7 +59,16 @@ async def get_state(user: User):
 @handler.on_request(GetDifference_133)
 @handler.on_request(GetDifference)
 async def get_difference(request: GetDifference | GetDifference_133, user: User):
-    # TODO: pts_limit/qts_limit and difference slices
+    # TODO: qts_limit
+
+    server_pts = cast(
+        int | None,
+        await Update.filter(user=user).annotate(max_pts=Max("pts")).values_list("max_pts", flat=True)
+    ) or 0
+
+    if request.pts_total_limit is not None:
+        if server_pts > (request.pts + request.pts_total_limit):
+            return DifferenceTooLong(pts=server_pts)
 
     requested_update = await Update.filter(user=user, pts__lte=request.pts).order_by("-pts").first()
     date = requested_update.date if requested_update is not None else datetime.fromtimestamp(request.date, UTC)
@@ -71,35 +82,42 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     last_local_secret_id = last_local_secret_update.id if last_local_secret_update is not None else 0
     logger.trace(f"User's {user.id} last secret id is {last_local_secret_id}")
 
-    new = await Message.filter(
-        peer__owner=user, date__gt=date, type__not=MessageType.SCHEDULED,
-    ).select_related(*Message.PREFETCH_FIELDS).order_by("id")
-    new_updates = await Update.filter(user=user, pts__gt=request.pts).order_by("pts")
+    if request.pts_limit is not None:
+        max_pts = request.pts + request.pts_limit
+    else:
+        max_pts = server_pts
+
+    new_updates = await Update.filter(user=user, pts__gt=request.pts, pts__lte=max_pts).order_by("pts")
     new_secret = await SecretUpdate.filter(
         authorization__id=ctx.auth_id, id__gt=last_local_secret_id
     ).select_related("message_file", "message_file__file")
     logger.trace(f"User {user.id} has {len(new_secret)} secret updates")
 
-    if not new and not new_updates and not new_secret:
+    new_message_ids = {
+        update.related_id
+        for update in new_updates
+        if update.update_type is UpdateType.NEW_MESSAGE
+    }
+    new_messages_db = await Message.filter(
+        peer__owner=user, id__in=new_message_ids,
+    ).select_related(*Message.PREFETCH_FIELDS).order_by("id")
+
+    if not new_messages_db and not new_updates and not new_secret:
         return DifferenceEmpty(
             date=int(time()),
             seq=(await get_seq_qts())[0],
         )
 
+    new_messages = await Message.to_tl_bulk(new_messages_db, user)
     new_secret_messages = []
     other_updates = []
     ucc = UsersChatsChannels()
 
-    for message in new:
+    for message in new_messages_db:
         ucc.add_message(message.id)
 
-    new_messages = {
-        message.id: message
-        for message in await Message.to_tl_bulk(new, user)
-    }
-
     for update in new_updates:
-        if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_messages:
+        if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_message_ids:
             continue
         if update.update_type is UpdateType.NEW_AUTHORIZATION and (update.related_id == ctx.auth_id or ctx.layer < 163):
             continue
@@ -108,8 +126,9 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         if update_tl is not None:
             other_updates.append(update_tl)
 
-    for secret_update in new_secret:
-        await sleep(0)
+    for idx, secret_update in enumerate(new_secret):
+        if idx % 10 == 0:
+            await sleep(0)
         secret_update_tl = secret_update.to_tl()
         if secret_update_tl is None:
             continue
@@ -129,14 +148,24 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     ucc.add_user(user.id)
     users, chats, channels = await ucc.resolve()
 
-    return Difference(
-        new_messages=list(new_messages.values()),
-        new_encrypted_messages=new_secret_messages,
-        other_updates=other_updates,
-        chats=[*chats, *channels],
-        users=users,
-        state=await get_state_internal(user),
-    )
+    if max_pts >= server_pts:
+        return Difference(
+            new_messages=new_messages,
+            new_encrypted_messages=new_secret_messages,
+            other_updates=other_updates,
+            chats=[*chats, *channels],
+            users=users,
+            state=await get_state_internal(user),
+        )
+    else:
+        return DifferenceSlice(
+            new_messages=new_messages,
+            new_encrypted_messages=new_secret_messages,
+            other_updates=other_updates,
+            chats=[*chats, *channels],
+            users=users,
+            intermediate_state=await get_state_internal(user, max_pts),
+        )
 
 
 @handler.on_request(GetChannelDifference)
