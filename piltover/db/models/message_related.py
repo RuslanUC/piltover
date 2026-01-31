@@ -9,7 +9,7 @@ from piltover.db import models
 
 class MessageRelated(Model):
     id: int = fields.BigIntField(pk=True)
-    message: models.Message = fields.ForeignKeyField("models.Message")
+    message: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     user: models.User | None = fields.ForeignKeyField("models.User", null=True, default=None)
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)
     channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
@@ -20,7 +20,7 @@ class MessageRelated(Model):
     channel_id: int | None
 
     @classmethod
-    async def get_ids_for_message(cls, message: models.Message) -> tuple[set[int], set[int], set[int]]:
+    async def get_ids_for_message(cls, message: models.MessageContent) -> tuple[set[int], set[int], set[int]]:
         user_ids = set()
         chat_ids = set()
         channel_ids = set()
@@ -38,7 +38,7 @@ class MessageRelated(Model):
 
     @classmethod
     async def get_for_message(
-            cls, message: models.Message,
+            cls, message: models.MessageContent,
     ) -> tuple[Iterable[models.User], Iterable[models.Chat], Iterable[models.Channel]]:
         users = {}
         chats = {}

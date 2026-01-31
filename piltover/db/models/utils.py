@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import IntFlag
+from enum import IntFlag, Enum, auto
 from typing import Any, TypeVar, cast
 
 import tortoise
@@ -77,3 +77,10 @@ class DatetimeToUnix(Function):
     @staticmethod
     def is_supported(dialect: str) -> bool:
         return dialect in ("mysql", "sqlite", "postgres", "postgresql", "mssql")
+
+
+class Missing(Enum):
+    MISSING = auto()
+
+
+MISSING = Missing.MISSING

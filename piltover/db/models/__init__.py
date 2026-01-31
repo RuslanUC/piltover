@@ -8,7 +8,6 @@ from .chat_participant import ChatParticipant
 from .contact import Contact
 from .dialog import Dialog
 from .file import File
-from .message import Message
 from .message_draft import MessageDraft
 from .message_fwd_header import MessageFwdHeader
 from .message_media import MessageMedia
@@ -86,3 +85,5 @@ from .bot_command import BotCommand
 from .emoji_group import EmojiGroup
 from .system_object_id import SystemObjectId
 from .message_comments import MessageComments
+from .message_content import MessageContent
+from .message_ref import MessageRef

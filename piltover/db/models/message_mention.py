@@ -7,13 +7,13 @@ from piltover.db import models
 
 class MessageMention(Model):
     id: int = fields.BigIntField(pk=True)
-    peer: models.Peer = fields.ForeignKeyField("models.Peer")
-    message: models.Message = fields.ForeignKeyField("models.Message")
+    user: models.User = fields.ForeignKeyField("models.User")
+    message: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
 
-    peer_id: int
+    user_id: int
     message_id: int
 
     class Meta:
         unique_together = (
-            ("peer", "message"),
+            ("user", "message"),
         )
