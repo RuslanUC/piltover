@@ -356,5 +356,5 @@ class Worker(MessageHandler):
             await message.save(update_fields=["discussion_id", "comments_info_id", "edit_date", "edit_hide"])
 
         await upd.send_messages_channel([discussion_message], discussion_peer.channel, None)
-        await upd.edit_message_channel(None, message)
+        await upd.edit_message_channel(None, message.peer.channel, message)
 

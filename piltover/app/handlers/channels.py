@@ -399,7 +399,10 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
-    if not await Username.filter(channel=peer.channel).exists() and await peer.channel.get_participant(user) is None:
+    participant = await peer.channel.get_participant(user, True)
+    participant_is_banned = bool(participant.banned_rights & ChatBannedRights.VIEW_MESSAGES)
+    channel_is_public = peer.channel.nojoin_allow_view or await Username.filter(channel=peer.channel).exists()
+    if (not channel_is_public and participant is None) or participant_is_banned:
         raise ErrorRpc(error_code=400, error_message="CHAT_RESTRICTED")
 
     query = Q(id=0)
@@ -415,7 +418,7 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
             ))
 
     query &= Q(peer__channel=peer.channel)
-    query = await append_channel_min_message_id_to_query_maybe(peer, query)
+    query = await append_channel_min_message_id_to_query_maybe(peer, query, participant)
 
     return await format_messages_internal(user, await Message.filter(query).select_related(*Message.PREFETCH_FIELDS))
 

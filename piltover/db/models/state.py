@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from time import time
+from typing import cast
 
 from tortoise import fields, Model
+from tortoise.transactions import in_transaction
 
 from piltover.db import models
 from piltover.tl.types.updates import State as TLState
@@ -23,18 +25,14 @@ class State(Model):
         )
 
     @classmethod
-    async def add_pts(cls, user: models.User, pts: int, cache_state: bool = True) -> int:
-        # TODO: add pts in transaction?
+    async def add_pts(cls, user: models.User, pts_count: int) -> int:
+        async with in_transaction():
+            pts = cast(int, await cls.select_for_update().get(user=user).values_list("pts", flat=True))
 
-        if hasattr(user, "_cached_updates_state") and cache_state:
-            state = getattr(user, "_cached_updates_state")
-        else:
-            state, _ = await State.get_or_create(user=user)
+            if pts_count <= 0:
+                return pts
 
-        if pts:
-            state.pts += pts
-            await state.save(update_fields=["pts"])
-            if cache_state:
-                setattr(user, "_cached_updates_state", state)
+            new_pts = pts + pts_count
+            await cls.filter(user=user).update(pts=new_pts)
 
-        return state.pts
+        return new_pts

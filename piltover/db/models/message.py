@@ -5,13 +5,14 @@ from datetime import datetime
 from enum import Enum, auto
 from io import BytesIO
 from os import environ
-from typing import cast, Iterable, TypeVar
+from typing import cast, Iterable, TypeVar, Any
 
 from loguru import logger
 from pytz import UTC
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.functions import Count
+from tortoise.models import MODEL
 
 from piltover.cache import Cache
 from piltover.db import models
@@ -36,6 +37,36 @@ class _SomethingMissing(Enum):
 
 
 _SMTH_MISSING = _SomethingMissing.MISSING
+
+
+def NullableFK(
+        to: str,
+        related_name: str | None = None,
+        on_delete: fields.OnDelete = fields.OnDelete.CASCADE,
+        **kwargs: Any,
+) -> fields.ForeignKeyNullableRelation[MODEL]:
+    return fields.ForeignKeyField(
+        to=to,
+        related_name=related_name,
+        on_delete=on_delete,
+        db_constraint=True,
+        null=True,
+        default=None,
+        **kwargs,
+    )
+
+
+def NullableFKSetNull(
+        to: str,
+        related_name: str | None = None,
+        **kwargs: Any,
+) -> fields.ForeignKeyNullableRelation[MODEL]:
+    return NullableFK(
+        to=to,
+        related_name=related_name,
+        on_delete=fields.SET_NULL,
+        **kwargs,
+    )
 
 
 async def append_channel_min_message_id_to_query_maybe(
@@ -77,14 +108,14 @@ class Message(Model):
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
-    media: models.MessageMedia | None = fields.ForeignKeyField("models.MessageMedia", null=True, default=None)
-    reply_to: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL, related_name="msg_reply_to")
-    fwd_header: models.MessageFwdHeader | None = fields.ForeignKeyField("models.MessageFwdHeader", null=True, default=None)
-    post_info: models.ChannelPostInfo | None = fields.ForeignKeyField("models.ChannelPostInfo", null=True, default=None)
-    via_bot: models.User | None = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True, default=None, related_name="msg_via_bot")
-    discussion: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL, related_name="msg_discussion_message")
-    comments_info: models.MessageComments | None = fields.ForeignKeyField("models.MessageComments", null=True, default=None)
-    top_message: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL, related_name="msg_top_message")
+    media: models.MessageMedia | None = NullableFK("models.MessageMedia")
+    reply_to: models.Message | None = NullableFKSetNull("models.Message", related_name="msg_reply_to")
+    fwd_header: models.MessageFwdHeader | None = NullableFK("models.MessageFwdHeader")
+    post_info: models.ChannelPostInfo | None = NullableFK("models.ChannelPostInfo")
+    via_bot: models.User | None = NullableFKSetNull("models.User", related_name="msg_via_bot")
+    discussion: models.Message | None = NullableFKSetNull("models.Message", related_name="msg_discussion_message")
+    comments_info: models.MessageComments | None = NullableFK("models.MessageComments")
+    top_message: models.Message | None = NullableFKSetNull("models.Message", related_name="msg_top_message")
     is_discussion: bool = fields.BooleanField(default=False)
 
     peer_id: int

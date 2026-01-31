@@ -3,6 +3,7 @@ from typing import overload
 
 from loguru import logger
 from tortoise.expressions import Q
+from tortoise.transactions import in_transaction
 
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
@@ -105,14 +106,12 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
 
 async def send_message_channel(user: User, message: Message) -> Updates:
     message.peer.channel = channel = await message.peer.channel
-    channel.pts += 1
-    this_pts = channel.pts
-    await channel.save(update_fields=["pts"])
+    new_pts = await channel.add_pts(1)
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.NEW_MESSAGE,
         related_id=message.id,
-        pts=this_pts,
+        pts=new_pts,
         pts_count=1,
     )
 
@@ -127,7 +126,7 @@ async def send_message_channel(user: User, message: Message) -> Updates:
             updates=[
                 UpdateNewChannelMessage(
                     message=DumbChannelMessageToFormat(id=message.id),
-                    pts=channel.pts,
+                    pts=new_pts,
                     pts_count=1,
                 )
             ],
@@ -140,7 +139,7 @@ async def send_message_channel(user: User, message: Message) -> Updates:
     updates = [
         UpdateNewChannelMessage(
             message=await message.to_tl(user),
-            pts=channel.pts,
+            pts=new_pts,
             pts_count=1,
         ),
     ]
@@ -224,22 +223,24 @@ async def send_messages_channel(
 
     ucc = UsersChatsChannels()
 
-    for message in messages:
-        # TODO: increase pts in transaction
-        channel.pts += 1
-        update_messages.append((message, channel.pts))
-        ucc.add_message(message.id)
+    async with in_transaction():
+        new_pts = await channel.add_pts(len(messages))
+        start_pts = new_pts - len(messages)
 
-        updates_to_create.append(ChannelUpdate(
-            channel=channel,
-            type=ChannelUpdateType.NEW_MESSAGE,
-            related_id=message.id,
-            pts=channel.pts,
-            pts_count=1,
-        ))
+        for num, message in enumerate(messages, start=1):
+            this_pts = start_pts + num
+            update_messages.append((message, this_pts))
+            ucc.add_message(message.id)
 
-    await channel.save(update_fields=["pts"])
-    await ChannelUpdate.bulk_create(updates_to_create)
+            updates_to_create.append(ChannelUpdate(
+                channel=channel,
+                type=ChannelUpdateType.NEW_MESSAGE,
+                related_id=message.id,
+                pts=this_pts,
+                pts_count=1,
+            ))
+
+        await ChannelUpdate.bulk_create(updates_to_create)
 
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
@@ -250,7 +251,7 @@ async def send_messages_channel(
                 UpdateNewChannelMessage(
                     message=DumbChannelMessageToFormat(id=message.id),
                     pts=pts,
-                    pts_count=len(update_messages),
+                    pts_count=1,
                 )
                 for message, pts in update_messages
             ],
@@ -268,7 +269,7 @@ async def send_messages_channel(
             UpdateNewChannelMessage(
                 message=await message.to_tl(user),
                 pts=pts,
-                pts_count=len(update_messages),
+                pts_count=1,
             )
             for message, pts in update_messages
         ],
@@ -319,9 +320,7 @@ async def delete_messages(user: User | None, messages: dict[User, list[int]]) ->
 
 
 async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
-    channel.pts += len(messages)
-    new_pts = channel.pts
-    await channel.save(update_fields=["pts"])
+    new_pts = await channel.add_pts(len(messages))
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.DELETE_MESSAGES,
@@ -342,13 +341,13 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
                 UpdateDeleteChannelMessages(
                     channel_id=channel.make_id(),
                     messages=messages,
-                    pts=channel.pts,
+                    pts=new_pts,
                     pts_count=1,
                 ),
             ],
             chats=[await channel.to_tl()],
         ),
-        channel_id=channel.id
+        channel_id=channel.id,
     )
 
     return new_pts
@@ -397,26 +396,22 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
 
 
 @overload
-async def edit_message_channel(user: User, message: Message) -> Updates:
+async def edit_message_channel(user: User, channel: Channel, message: Message) -> Updates:
     ...
 
 
 @overload
-async def edit_message_channel(user: None, message: Message) -> None:
+async def edit_message_channel(user: None, channel: Channel, message: Message) -> None:
     ...
 
 
-async def edit_message_channel(user: User | None, message: Message) -> Updates | None:
-    # TODO: dont fetch channel in here
-    message.peer.channel = channel = await message.peer.channel
-    channel.pts += 1
-    this_pts = channel.pts
-    await channel.save(update_fields=["pts"])
+async def edit_message_channel(user: User | None, channel: Channel, message: Message) -> Updates | None:
+    new_pts = await channel.add_pts(1)
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.EDIT_MESSAGE,
         related_id=message.id,
-        pts=this_pts,
+        pts=new_pts,
         pts_count=1,
     )
 
@@ -430,7 +425,7 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
             updates=[
                 UpdateEditChannelMessage(
                     message=DumbChannelMessageToFormat(id=message.id),
-                    pts=channel.pts,
+                    pts=new_pts,
                     pts_count=1,
                 ),
             ],
@@ -447,7 +442,7 @@ async def edit_message_channel(user: User | None, message: Message) -> Updates |
         updates=[
             UpdateEditChannelMessage(
                 message=await message.to_tl(user),
-                pts=channel.pts,
+                pts=new_pts,
                 pts_count=1,
             ),
         ],
@@ -902,17 +897,25 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
     await Update.bulk_create(updates_to_create)
 
 
+@overload
+async def update_channel(channel: Channel, user: User, send_to_users: list[int] | None) -> Updates:
+    ...
+
+
+@overload
+async def update_channel(channel: Channel, user: None, send_to_users: list[int] | None) -> None:
+    ...
+
+
 async def update_channel(
         channel: Channel, user: User | None = None, send_to_users: list[int] | None = None,
 ) -> Updates | None:
-    channel.pts += 1
-    this_pts = channel.pts
-    await channel.save(update_fields=["pts"])
+    new_pts = await channel.add_pts(1)
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.UPDATE_CHANNEL,
         related_id=None,
-        pts=this_pts,
+        pts=new_pts,
         pts_count=1,
     )
 

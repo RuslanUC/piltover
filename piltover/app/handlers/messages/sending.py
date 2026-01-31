@@ -524,7 +524,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
             "message", "edit_date", "version", "media_id", "entities", "reply_markup", "edit_hide",
         ])
         message.peer.channel = peer.channel
-        return await upd.edit_message_channel(user, message)
+        return await upd.edit_message_channel(user, peer.channel, message)
 
     peers = [peer]
     peers.extend(await peer.get_opposite())

@@ -9,7 +9,7 @@ from tortoise.expressions import Q
 from tortoise.functions import Min, Max
 
 from piltover.context import request_ctx
-from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType, MessageType
+from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType
 from piltover.db.models import User, Message, UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate
 from piltover.tl import UpdateChannelTooLong
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_133, GetChannelDifference
@@ -170,6 +170,8 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
 @handler.on_request(GetChannelDifference)
 async def get_channel_difference(request: GetChannelDifference, user: User):
+    # TODO: return ChannelDifferenceTooLong if request.pts + request.limit < server_pts
+
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
     )
@@ -190,8 +192,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
 
     has_more = await ChannelUpdate.filter(channel=peer.channel, pts__gt=new_updates[-1].pts).exists()
 
-    messages_from_channel_query = Q(peer__owner=user, peer__channel=peer.channel) \
-                                  | Q(peer__owner=None, peer__channel=peer.channel)
+    messages_from_channel_query = Q(peer__channel=peer.channel) & (Q(peer__owner=user) | Q(peer__owner=None))
     new_messages_ids = [update.related_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE]
     new = await Message.filter(
         messages_from_channel_query & Q(id__in=new_messages_ids)

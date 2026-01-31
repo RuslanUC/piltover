@@ -3,10 +3,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 from enum import auto, Enum
-from typing import Any
+from typing import Any, cast
 
 from tortoise import fields
 from tortoise.models import MODEL
+from tortoise.transactions import in_transaction
 
 from piltover.app_config import AppConfig
 from piltover.db import models
@@ -206,3 +207,17 @@ class Channel(ChatBase):
 
     def to_tl_peer(self) -> PeerChannel:
         return PeerChannel(channel_id=self.make_id())
+
+    async def add_pts(self, pts_count: int) -> int:
+        async with in_transaction():
+            pts = cast(int, await Channel.select_for_update().get(id=self.id).values_list("pts", flat=True))
+
+            if pts_count <= 0:
+                self.pts = pts
+                return pts
+
+            new_pts = pts + pts_count
+            await Channel.filter(id=self.id).update(pts=new_pts)
+
+        self.pts = new_pts
+        return new_pts

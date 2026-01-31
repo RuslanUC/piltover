@@ -9,7 +9,8 @@ from piltover.app.utils.formatable_text_with_entities import FormatableTextWithE
 from piltover.app.utils.utils import is_username_valid
 from piltover.context import request_ctx
 from piltover.db.enums import BotFatherState, MediaType
-from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto, BotCommand
+from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto, BotCommand, \
+    State
 from piltover.tl.types.internal_botfather import BotfatherStateNewbot, BotfatherStateEditbot
 
 __bot_name_invalid = "Sorry, this isn't a proper name for a bot."
@@ -89,6 +90,7 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
 
         async with in_transaction():
             bot_user = await User.create(phone_number=None, first_name=state_data.name, bot=True)
+            await State.create(user=bot_user)
             await Username.create(user=bot_user, username=username)
             bot = await Bot.create(owner=peer.owner, bot=bot_user)
             await state.delete()

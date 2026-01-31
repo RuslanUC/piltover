@@ -19,7 +19,7 @@ from tortoise.queryset import AwaitableQuery, BulkCreateQuery, BulkUpdateQuery, 
     ValuesListQuery, CountQuery, DeleteQuery, UpdateQuery, QuerySet, ExistsQuery
 
 from piltover.app_config import AppConfig
-from piltover.db.models import User, UserAuthorization
+from piltover.db.models import User, UserAuthorization, State
 from piltover.exceptions import Unreachable
 from piltover.utils.debug import measure_time_with_result
 from piltover.worker import RequestHandler
@@ -43,10 +43,12 @@ async def _custom_auth_create(self: Auth) -> bytes:
 
     if not getattr(self, "_real_auth"):
         logger.trace("Skipping auth")
-        user, _ = await User.get_or_create(phone_number=test_phone_number.get(), defaults={
+        user, created = await User.get_or_create(phone_number=test_phone_number.get(), defaults={
             "first_name": "First",
             "last_name": "Last",
         })
+        if created:
+            await State.create(user=user)
         await UserAuthorization.create(user=user, key=auth_key, ip="0.0.0.0")
 
     return key
