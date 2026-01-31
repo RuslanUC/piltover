@@ -7,11 +7,11 @@ from piltover.app.handlers.messages.dialogs import get_dialogs_internal, format_
 from piltover.app.handlers.messages.history import get_messages_internal, format_messages_internal
 import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
-from piltover.db.models import User, SavedDialog, Peer, State, Message
+from piltover.db.models import User, SavedDialog, Peer, State, MessageRef
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl.functions.messages import GetSavedDialogs, GetSavedHistory, DeleteSavedHistory, GetPinnedSavedDialogs, \
-    ToggleSavedDialogPin, ReorderPinnedSavedDialogs
+from piltover.tl.functions.messages import GetSavedDialogs, GetSavedHistory, DeleteSavedHistory, \
+    GetPinnedSavedDialogs, ToggleSavedDialogPin, ReorderPinnedSavedDialogs
 from piltover.tl.types.messages import SavedDialogs, Messages, AffectedHistory
 from piltover.worker import MessageHandler
 
@@ -54,22 +54,22 @@ async def delete_saved_history(request: DeleteSavedHistory, user: User) -> Affec
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
-    query = Q(peer=self_peer, fwd_header__saved_peer=peer)
+    query = Q(peer=self_peer, content__fwd_header__saved_peer=peer)
     if request.max_id:
         query &= Q(id__lte=request.max_id)
     if request.max_date:
-        query &= Q(date__lt=datetime.fromtimestamp(request.max_date, UTC))
+        query &= Q(content__date__lt=datetime.fromtimestamp(request.max_date, UTC))
     if request.min_date:
-        query &= Q(date__gt=datetime.fromtimestamp(request.min_date, UTC))
+        query &= Q(content__date__gt=datetime.fromtimestamp(request.min_date, UTC))
 
     # TODO: delete as in DeleteHistory, chunk-by-chunk
 
-    ids = await Message.filter(query).values_list("id", flat=True)
+    ids = await MessageRef.filter(query).values_list("id", flat=True)
     if not ids:
         updates_state, _ = await State.get_or_create(user=user)
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
 
-    await Message.filter(id__in=ids).delete()
+    await MessageRef.filter(id__in=ids).delete()
     pts = await upd.delete_messages(user, {user: ids})
 
     return AffectedHistory(pts=pts, pts_count=len(ids), offset=0)

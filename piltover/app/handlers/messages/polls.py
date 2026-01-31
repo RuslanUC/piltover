@@ -4,7 +4,7 @@ from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Message, PollAnswer, PollVote
+from piltover.db.models import User, Peer, PollAnswer, PollVote, MessageRef
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -25,13 +25,13 @@ async def get_poll_results(request: GetPollResults, user: User) -> Updates:
     else:
         query = Q(peer=peer)
 
-    message = await Message.get_or_none(query & Q(id=request.msg_id)).select_related(
-        "media", "media__poll"
+    message = await MessageRef.get_or_none(query & Q(id=request.msg_id)).select_related(
+        "content__media", "content__media__poll"
     ).prefetch_related("media__poll__answers")
-    if message is None or message.media is None or message.media.poll is None:
+    if message is None or message.content.media is None or message.content.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    return await upd.update_message_poll(message.media.poll, user)
+    return await upd.update_message_poll(message.content.media.poll, user)
 
 
 @handler.on_request(GetPollVotes, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -40,18 +40,20 @@ async def get_poll_votes(request: GetPollVotes, user: User) -> VotesList:
     if peer.type is PeerType.CHANNEL:
         raise ErrorRpc(error_code=403, error_message="BROADCAST_FORBIDDEN")
 
-    message = await Message.get_or_none(peer=peer, id=request.id).select_related("media", "media__poll")
-    if message is None or message.media is None or message.media.poll is None:
+    message = await MessageRef.get_or_none(
+        peer=peer, id=request.id,
+    ).select_related("content__media", "content__media__poll")
+    if message is None or message.content.media is None or message.content.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
-    if not message.media.poll.public_voters:
+    if not message.content.media.poll.public_voters:
         raise ErrorRpc(error_code=403, error_message="BROADCAST_FORBIDDEN")
-    if not await PollVote.filter(answer__poll=message.media.poll, user=user).exists():
+    if not await PollVote.filter(answer__poll=message.content.media.poll, user=user).exists():
         raise ErrorRpc(error_code=403, error_message="POLL_VOTE_REQUIRED")
 
     sel_related = ["user"]
-    query = Q(answer__poll=message.media.poll, hidden=False)
+    query = Q(answer__poll=message.content.media.poll, hidden=False)
     if request.option is not None:
-        if (option := await PollAnswer.get_or_none(poll=message.media.poll, option=request.option)) is None:
+        if (option := await PollAnswer.get_or_none(poll=message.content.media.poll, option=request.option)) is None:
             raise ErrorRpc(error_code=403, error_message="MSG_ID_INVALID")
         query &= Q(answer=option)
     else:
@@ -102,26 +104,27 @@ async def send_vote(request: SendVote, user: User) -> Updates:
     else:
         query = Q(peer=peer)
 
-    message = await Message.get_or_none(query & Q(id=request.msg_id)).select_related(
-        "media", "media__poll",
-    ).prefetch_related("media__poll__pollanswers")
-    if message is None or message.media is None or message.media.poll is None:
+    message = await MessageRef.get_or_none(query, id=request.msg_id).select_related(
+        "content__media", "content__media__poll",
+    ).prefetch_related("content__media__poll__pollanswers")
+    if message is None or message.content.media is None or message.content.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
-    if message.media.poll.is_closed_fr:
+    if message.content.media.poll.is_closed_fr:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_POLL_CLOSED")
     if not request.options:
-        vote_ids = await PollVote.filter(answer__poll=message.media.poll, user=user).values_list("id", flat=True)
+        vote_ids = await PollVote.filter(answer__poll=message.content.media.poll, user=user).values_list("id", flat=True)
         if not vote_ids:
             raise ErrorRpc(error_code=400, error_message="OPTION_INVALID")
         await PollVote.filter(id__in=vote_ids).delete()
-        message.media.poll.version += 1
-        await message.media.poll.save(update_fields=["version"])
-        return await upd.update_message_poll(message.media.poll, user)
-    if len(request.options) > 1 and not message.media.poll.multiple_choices:
+        # TODO: increment atomically
+        message.content.media.poll.version += 1
+        await message.content.media.poll.save(update_fields=["version"])
+        return await upd.update_message_poll(message.content.media.poll, user)
+    if len(request.options) > 1 and not message.content.media.poll.multiple_choices:
         raise ErrorRpc(error_code=400, error_message="OPTIONS_TOO_MUCH")
 
     answer: PollAnswer
-    options = {answer.option: answer async for answer in PollAnswer.filter(poll=message.media.poll)}
+    options = {answer.option: answer async for answer in PollAnswer.filter(poll=message.content.media.poll)}
 
     votes_to_create = []
     for option in request.options:
@@ -132,7 +135,8 @@ async def send_vote(request: SendVote, user: User) -> Updates:
         votes_to_create.append(PollVote(user=user, answer=options[option], hidden=peer.type is PeerType.CHANNEL))
 
     await PollVote.bulk_create(votes_to_create)
-    message.media.poll.version += 1
-    await message.media.poll.save(update_fields=["version"])
+    # TODO: increment atomically
+    message.content.media.poll.version += 1
+    await message.content.media.poll.save(update_fields=["version"])
 
-    return await upd.update_message_poll(message.media.poll, user)
+    return await upd.update_message_poll(message.content.media.poll, user)

@@ -11,8 +11,8 @@ from piltover.app.bot_handlers.bots import process_callback_query, process_inlin
 from piltover.app.utils.utils import check_password_internal, process_message_entities
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer, FileType, InlineQueryResultType
-from piltover.db.models import User, Peer, Message, UserPassword, CallbackQuery, InlineQuery, File, \
-    InlineQueryResultItem
+from piltover.db.models import User, Peer, UserPassword, CallbackQuery, InlineQuery, File, InlineQueryResultItem, \
+    MessageRef
 from piltover.db.models.inline_query_result import InlineQueryResult
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
@@ -46,20 +46,20 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
                 and request.msg_id < channel_min_id:
             raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    if (message := await Message.get_(request.msg_id, peer)) is None:
+    if (message := await MessageRef.get_(request.msg_id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    if not message.author.bot:
+    if not message.content.author.bot:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    builtin_bot = message.author.system
+    builtin_bot = message.content.author.system
 
-    kbd = message.make_reply_markup()
+    kbd = message.content.make_reply_markup()
     if kbd is None or not isinstance(kbd, ReplyInlineMarkup):
         raise ErrorRpc(error_code=400, error_message="DATA_INVALID")
 
     message_for_bot = None
-    if not builtin_bot and (message_for_bot := await message.get_for_user(message.author)) is None:
+    if not builtin_bot and (message_for_bot := await message.get_for_user(message.content.author)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     button: KeyboardButtonCallback | None = None
@@ -95,7 +95,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
 
         topic = f"bot-callback-query/{query.id}"
         await pubsub.listen(topic, None)
-        await upd.bot_callback_query(message_for_bot.author, query)
+        await upd.bot_callback_query(message_for_bot.content.author, query)
 
         result = await pubsub.listen(topic, 15)
         if result is None:

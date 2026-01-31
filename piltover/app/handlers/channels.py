@@ -15,9 +15,9 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType, \
     AdminLogEntryAction
-from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Message, ReadState, PrivacyRule, \
+from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
-    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact
+    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -110,7 +110,7 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
     if channel.cached_username is not None and channel.hidden_prehistory:
         channel.min_available_id = cast(
             int | None,
-            await Message.filter(
+            await MessageRef.filter(
                 peer__owner=None, peer__channel=channel,
             ).order_by("-id").first().values_list("id", flat=True)
         )
@@ -227,8 +227,8 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
 
     has_scheduled = False
     if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
-        has_scheduled = await Message.filter(
-            peer__owner=user, peer__channel=channel, scheduled_date__not_isnull=True,
+        has_scheduled = await MessageRef.filter(
+            peer__owner=user, peer__channel=channel, content__scheduled_date__not_isnull=True,
         ).exists()
 
     can_change_info = participant is not None and channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)
@@ -237,7 +237,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     if channel.hidden_prehistory and participant is not None and participant.min_message_id:
         min_message_id = cast(
             int | None,
-            await Message.filter(
+            await MessageRef.filter(
                 peer__owner=None, peer__channel=channel, id__gte=participant.min_message_id,
             ).order_by("id").first().values_list("id", flat=True)
         )
@@ -246,7 +246,9 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     if channel.migrated_from_id is not None \
             and (chat_peer := await Peer.get_or_none(owner=user, chat__id=channel.migrated_from_id)) is not None:
         migrated_from_chat_id = channel.migrated_from_id
-        migrated_from_max_id = await Message.filter(peer=chat_peer).order_by("-id").first().values_list("id", flat=True)
+        migrated_from_max_id = await MessageRef.filter(
+            peer=chat_peer,
+        ).order_by("-id").first().values_list("id", flat=True)
 
     channels_to_tl = [channel]
 
@@ -300,7 +302,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             bot_info=[],
             pinned_msg_id=cast(
                 int | None,
-                await Message.filter(
+                await MessageRef.filter(
                     peer__owner=None, peer__channel=channel, pinned=True,
                 ).order_by("-id").first().values_list("id", flat=True)
             ),
@@ -405,22 +407,39 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     if (not channel_is_public and participant is None) or participant_is_banned:
         raise ErrorRpc(error_code=400, error_message="CHAT_RESTRICTED")
 
-    query = Q(id=0)
+    ids = []
+    reply_ids = []
 
     for message_query in request.id:
         if isinstance(message_query, InputMessageID):
-            query |= Q(id=message_query.id)
+            ids.append(message_query.id)
         elif isinstance(message_query, InputMessageReplyTo):
-            query |= Q(id=Subquery(
-                Message.filter(
-                    peer__channel=peer.channel, id=message_query.id
-                ).first().values_list("reply_to__id", flat=True)
-            ))
+            reply_ids.append(message_query.id)
+
+    if not ids and not reply_ids:
+        return Messages(
+            messages=[],
+            chats=[],
+            users=[],
+        )
+
+    query = Q()
+    if ids:
+        query |= Q(id__in=ids)
+    if reply_ids:
+        query |= Q(content__id__in=Subquery(
+            MessageRef.filter(
+                peer__channel=peer.channel, id__in=reply_ids,
+            ).values_list("content__reply_to__id", flat=True)
+        ))
 
     query &= Q(peer__channel=peer.channel)
     query = await append_channel_min_message_id_to_query_maybe(peer, query, participant)
 
-    return await format_messages_internal(user, await Message.filter(query).select_related(*Message.PREFETCH_FIELDS))
+    return await format_messages_internal(
+        user,
+        await MessageRef.filter(query).select_related(*MessageRef.PREFETCH_FIELDS)
+    )
 
 
 @handler.on_request(DeleteMessages)
@@ -435,12 +454,12 @@ async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessag
     ids = request.id[:100]
     ids_query = Q(id__in=ids, peer__channel=peer.channel) & (Q(peer__owner=user) | Q(peer__owner=None))
     ids_query = await append_channel_min_message_id_to_query_maybe(peer, ids_query, participant)
-    message_ids: list[int] = await Message.filter(ids_query).values_list("id", flat=True)
+    message_ids: list[int] = await MessageRef.filter(ids_query).values_list("id", flat=True)
 
     if not message_ids:
         return AffectedMessages(pts=peer.channel.pts, pts_count=0)
 
-    await Message.filter(id__in=message_ids).delete()
+    await MessageRef.filter(id__in=message_ids).delete()
     pts = await upd.delete_messages_channel(peer.channel, message_ids)
 
     return AffectedMessages(pts=pts, pts_count=len(message_ids))
@@ -618,8 +637,8 @@ async def get_participants(request: GetParticipants, user: User):
     elif isinstance(filt, ChannelParticipantsMentions):
         if filt.top_msg_id:
             query = query.filter(user__id__in=Subquery(
-                Message.filter(
-                    peer__owner=None, peer__channel=peer.channel, reply_to__id=filt.top_msg_id,
+                MessageRef.filter(
+                    peer__owner=None, peer__channel=peer.channel, content__reply_to__id=filt.top_msg_id,
                 ).distinct().values_list("author__id", flat=True)
             ))
     elif isinstance(filt, ChannelParticipantsBanned):
@@ -710,7 +729,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     if request.max_id <= read_state.last_message_id:
         return True
 
-    unread_ids = await Message.filter(
+    unread_ids = await MessageRef.filter(
         id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
     ).order_by("-id").first().values_list("id", "internal_id")
     if not unread_ids:
@@ -720,7 +739,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     if not message_id:
         return True
 
-    unread_count = await Message.filter(peer__owner=None, peer__channel=peer.channel, id__gt=message_id).count()
+    unread_count = await MessageRef.filter(peer__owner=None, peer__channel=peer.channel, id__gt=message_id).count()
 
     read_state.last_message_id = message_id
     await read_state.save(update_fields=["last_message_id"])
@@ -1016,10 +1035,10 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
         await participant.save(update_fields=["left"])
         await ChatInvite.filter(channel=peer.channel, user=user).update(revoked=True)
         await Dialog.hide(peer)
-        await Message.filter(id__in=Subquery(
-            Message.filter(
-                peer__channel=peer.channel, peer__owner=user, type=MessageType.SCHEDULED,
-            ).values_list("id", flat=True)
+        await MessageContent.filter(id__in=Subquery(
+            MessageRef.filter(
+                peer__channel=peer.channel, peer__owner=user, content__type=MessageType.SCHEDULED,
+            ).values_list("content__id", flat=True)
         )).delete()
         await AdminLogEntry.create(
             channel=peer.channel,
@@ -1065,7 +1084,7 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user: User)
 
     channel.min_available_id = cast(
         int | None,
-        await Message.filter(
+        await MessageRef.filter(
             peer__owner=None, peer__channel=channel,
         ).order_by("-id").first().values_list("id", flat=True)
     )

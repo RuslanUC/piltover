@@ -12,7 +12,7 @@ from piltover.app.utils.updates_manager import UpdatesWithDefaults
 from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights, AdminLogEntryAction
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel, \
-    Dialog, Message, AdminLogEntry
+    Dialog, AdminLogEntry, MessageRef
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -261,7 +261,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         if chat_or_channel.hidden_prehistory:
             min_message_id = cast(
                 int | None,
-                await Message.filter(
+                await MessageRef.filter(
                     peer__owner=None, peer__channel=chat_or_channel,
                 ).order_by("-id").first().values_list("id", flat=True)
             )

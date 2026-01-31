@@ -34,7 +34,7 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
-from piltover.db.models import User, Message, Peer, MessageComments
+from piltover.db.models import User, Peer, MessageComments, MessageRef, MessageContent
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import TLObject, RpcError, TLRequest, layer
@@ -252,13 +252,13 @@ class Worker(MessageHandler):
         logger.trace(f"Processing scheduled message {message_id}")
 
         async with in_transaction():
-            scheduled = await Message.select_for_update(
+            scheduled = await MessageRef.select_for_update(
                 skip_locked=True, no_key=True,
             ).get_or_none(
                 id=message_id,
             ).select_related(
-                "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "author", "media", "reply_to",
-                "fwd_header", "post_info",
+                "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",
+                "content__media", "content__reply_to", "content__fwd_header", "content__post_info",
             )
             if scheduled is None:
                 logger.warning(f"Scheduled message {message_id} does not exist?")
@@ -291,14 +291,10 @@ class Worker(MessageHandler):
     async def _handle_scheduled_delete_message(self, message_id: int) -> None:
         import piltover.app.utils.updates_manager as upd
 
-        internal_id = await Message.filter(id=message_id).first().values_list("internal_id", flat=True)
-        if internal_id is None:
-            return
-
         async with in_transaction():
-            to_delete = await Message.select_for_update(
+            to_delete = await MessageRef.select_for_update(
                 skip_locked=True, no_key=True,
-            ).filter(internal_id=internal_id).select_related("peer", "peer__owner", "peer__channel")
+            ).filter(content__id=message_id).select_related("peer", "peer__owner", "peer__channel")
 
             all_ids = []
             regular_messages = defaultdict(list)
@@ -311,7 +307,7 @@ class Worker(MessageHandler):
                 else:
                     regular_messages[message.peer.owner].append(message.id)
 
-            await Message.filter(id__in=all_ids).delete()
+            await MessageContent.filter(id=message_id).delete()
 
             if regular_messages:
                 await upd.delete_messages(None, regular_messages)
@@ -326,8 +322,8 @@ class Worker(MessageHandler):
 
         async with in_transaction():
             logger.info(f"Creating discussion thread for message {message_id}")
-            message = await Message.select_for_update().get_or_none(id=message_id).select_related(
-                *Message.PREFETCH_FIELDS, "peer__channel",
+            message = await MessageRef.select_for_update().get_or_none(id=message_id).select_related(
+                *MessageRef.PREFETCH_FIELDS, "peer__channel",
             )
             if message is None or not message.peer.channel.discussion_id:
                 return
@@ -336,10 +332,10 @@ class Worker(MessageHandler):
                 owner=None, channel__id=message.peer.channel.discussion_id,
             ).select_related("channel")
 
-            discussion_message = await message.clone_for_peer(
+            discussion_message = await message.forward_for_peer(
                 peer=discussion_peer,
                 no_forwards=_resolve_noforwards(discussion_peer, None, False),
-                fwd_header=await message.create_fwd_header(None),
+                fwd_header=await message.create_fwd_header(False),
                 is_forward=True,
                 pinned=True,
                 is_discussion=True,

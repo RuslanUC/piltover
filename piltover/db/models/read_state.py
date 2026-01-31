@@ -22,6 +22,11 @@ class ReadState(Model):
         return read_state
 
     @classmethod
+    async def for_peer_chat(cls, user_id: int, chat_id: int) -> ReadState:
+        read_state, _ = await models.ReadState.get_or_create(peer__owner__id=user_id, peer__chat__id=chat_id)
+        return read_state
+
+    @classmethod
     async def get_in_out_ids_and_unread(
             cls, peer: models.Peer, no_reactions: bool = False, no_mentions: bool = False,
     ) -> tuple[int, int, int, int, int]:

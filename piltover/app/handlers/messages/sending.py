@@ -18,9 +18,9 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
-    SavedDialog, Message, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
+    SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
-    SlowmodeLastMessage, MessageComments
+    SlowmodeLastMessage, MessageRef, MessageContent
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -77,23 +77,23 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
 
 
 async def send_created_messages_internal(
-        messages: dict[Peer, Message], opposite: bool, peer: Peer, user: User, clear_draft: bool,
+        messages: dict[Peer, MessageRef], opposite: bool, peer: Peer, user: User, clear_draft: bool,
         mentioned_user_ids: set[int],
 ) -> Updates:
     if opposite and peer.type is not PeerType.CHANNEL and not user.bot:
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, await peer.get_opposite())
 
-    if opposite and peer.type is PeerType.CHAT and mentioned_user_ids:
-        mentioned_peers = [
-            message_peer
-            for message_peer in messages
-            if message_peer.owner_id in mentioned_user_ids
-        ]
-
+    if opposite and peer.type in PeerType.CHAT and mentioned_user_ids:
         unread_mentions_to_create = []
-        for mentioned_peer in mentioned_peers:
-            unread_mentions_to_create.append(MessageMention(peer=mentioned_peer, message=messages[mentioned_peer]))
+        for mentioned_peer, message in messages:
+            if mentioned_peer.owner_id not in mentioned_user_ids:
+                continue
+            unread_mentions_to_create.append(MessageMention(
+                peer=mentioned_peer.owner,
+                chat=mentioned_peer.chat,
+                message=messages[mentioned_peer].content
+            ))
 
         if unread_mentions_to_create:
             await MessageMention.bulk_create(unread_mentions_to_create)
@@ -104,10 +104,13 @@ async def send_created_messages_internal(
 
     ttl_tasks = []
     for message in messages.values():
-        if message.ttl_period_days:
+        if message.content.ttl_period_days:
             ttl_tasks.append(TaskIqScheduledDeleteMessage(
-                message=message,
-                scheduled_for=int(message.date.timestamp()) + message.ttl_period_days * Message.TTL_MULT,
+                message=message.content,
+                scheduled_for=(
+                        int(message.content.date.timestamp())
+                        + message.content.ttl_period_days * MessageContent.TTL_MULT
+                ),
             ))
 
     if ttl_tasks:
@@ -121,15 +124,19 @@ async def send_created_messages_internal(
         message = list(messages.values())[0]
 
         if mentioned_user_ids:
-            mentioned_peers = await Peer.filter(owner__id__in=list(mentioned_user_ids), channel__id=peer.channel_id)
+            mentioned_users = await User.filter(id__in=mentioned_user_ids)
             unread_mentions_to_create = []
-            for mentioned_peer in mentioned_peers:
-                unread_mentions_to_create.append(MessageMention(peer=mentioned_peer, message=message))
+            for mentioned_user in mentioned_users:
+                unread_mentions_to_create.append(MessageMention(
+                    peer=mentioned_user,
+                    channel=peer.channel,
+                    message=message,
+                ))
 
             if unread_mentions_to_create:
                 await MessageMention.bulk_create(unread_mentions_to_create)
 
-        if message.type is MessageType.REGULAR and message.peer.owner_id is None and peer.channel.discussion_id:
+        if message.content.type is MessageType.REGULAR and message.peer.owner_id is None and peer.channel.discussion_id:
             logger.debug(f"Creating task create_discussion({message.id})...")
             ctx = request_ctx.get()
             await AsyncKicker(task_name=f"create_discussion", broker=ctx.worker.broker, labels={}).kiq(message.id)
@@ -170,19 +177,18 @@ async def send_message_internal(
             if channel_min_id >= reply_to_message_id:
                 reply_to_message_id = None
 
+    reply_to = None
+    if reply_to_message_id:
+        reply_to = await MessageContent.get_or_none(peer.q_this_or_channel(), id=reply_to_message_id)
+
     mentioned_user_ids = set()
 
     if opposite and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         if entities and message:
             mentioned_user_ids = await _extract_mentions_from_message(entities, message, author)
 
-        if reply_to_message_id:
-            peer_filter = Q(peer__channel=peer.channel) if peer.type is PeerType.CHANNEL else Q(peer=peer)
-            reply_author_id = cast(int, await Message.get_or_none(
-                peer_filter, id=reply_to_message_id,
-            ).values_list("author__id", flat=True))
-            if reply_author_id is not None and reply_author_id != author.id:
-                mentioned_user_ids.add(reply_author_id)
+        if reply_to:
+            mentioned_user_ids.add(reply_to.author_id)
 
     schedule = False
     real_opposite = opposite
@@ -198,9 +204,9 @@ async def send_message_internal(
     elif ttl_not_in_kwargs and peer.type in (PeerType.CHAT, PeerType.CHANNEL) and peer.chat_or_channel.ttl_period_days:
         message_kwargs["ttl_period_days"] = peer.chat_or_channel.ttl_period_days
 
-    messages = await Message.create_for_peer(
-        peer, random_id, reply_to_message_id, author, opposite, unhide_dialog,
-        message=message, entities=entities, **message_kwargs,
+    messages = await MessageRef.create_for_peer(
+        peer, author, random_id, opposite, unhide_dialog,
+        message=message, entities=entities, reply_to=reply_to, **message_kwargs,
     )
 
     if schedule:
@@ -361,22 +367,23 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
     await _check_bot_blocked(user, peer)
 
-    if (message := await Message.get_(request.id, peer)) is None:
+    if (message := await MessageRef.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     message.pinned = not request.unpin
     messages = {peer: message}
 
-    if not request.pm_oneside \
-            and not (peer.type is PeerType.USER and (peer.blocked_at is not None or not await peer.get_opposite())):
-        other_messages = await Message.filter(
-            peer__user=user, internal_id=message.internal_id,
+    opposite_peers = await peer.get_opposite()
+    # TODO: set pm_oneside to True in channel peers
+    if not request.pm_oneside and opposite_peers:
+        other_messages = await MessageRef.filter(
+            peer__in=opposite_peers, content__id=message.content_id,
         ).select_related("peer", "peer__owner")
         for other_message in other_messages:
             other_message.pinned = message.pinned
             messages[other_message.peer] = other_message
 
-    await Message.bulk_update(messages.values(), ["pinned"])
+    await MessageRef.bulk_update(messages.values(), ["pinned"])
 
     result = await upd.pin_message(user, messages)
 
@@ -396,7 +403,7 @@ async def delete_messages(request: DeleteMessages, user: User):
 
     ids = request.id[:100]
     messages = defaultdict(list)
-    for message in await Message.filter(id__in=ids, peer__owner=user).select_related(
+    for message in await MessageRef.filter(id__in=ids, peer__owner=user).select_related(
             "peer", "peer__user", "peer__owner", "peer__chat",
     ):
         messages[user].append(message.id)
@@ -406,11 +413,12 @@ async def delete_messages(request: DeleteMessages, user: User):
         if message.peer.type is PeerType.CHAT and message.peer.chat.migrated:
             raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-        for opposite_peer in await message.peer.get_opposite():
-            opp_message = await Message.get_or_none(
-                internal_id=message.internal_id, peer=opposite_peer,
+        opp_peers = await message.peer.get_opposite()
+        if opp_peers:
+            opp_messages = await MessageRef.get_or_none(
+                content_id=message.content_id, peer__in=opp_peers,
             ).select_related("peer", "peer__owner")
-            if opp_message is not None:
+            for opp_message in opp_messages:
                 messages[opp_message.peer.owner].append(opp_message.id)
 
     all_ids = [i for ids in messages.values() for i in ids]
@@ -418,7 +426,7 @@ async def delete_messages(request: DeleteMessages, user: User):
         updates_state, _ = await State.get_or_create(user=user)
         return AffectedMessages(pts=updates_state.pts, pts_count=0)
 
-    await Message.filter(id__in=all_ids).delete()
+    await MessageRef.filter(id__in=all_ids).delete()
     pts = await upd.delete_messages(user, messages)
 
     if not user.bot:
@@ -443,55 +451,60 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
     if peer.type is PeerType.CHANNEL:
         query = Q(id=request.id, peer__channel=peer.channel) & (
-                Q(peer__owner=None, type=MessageType.REGULAR) | Q(peer__owner=user, type=MessageType.SCHEDULED)
+                Q(peer__owner=None, content__type=MessageType.REGULAR)
+                | Q(peer__owner=user, content__type=MessageType.SCHEDULED)
         )
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
-        message = await Message.get_or_none(query).select_related(*Message.PREFETCH_FIELDS)
+        message = await MessageRef.get_or_none(query).select_related(*MessageRef.PREFETCH_FIELDS)
     else:
-        message = await Message.get_(request.id, peer, (MessageType.REGULAR, MessageType.SCHEDULED), prefetch_all=True)
+        message = await MessageRef.get_(
+            request.id, peer, (MessageType.REGULAR, MessageType.SCHEDULED), prefetch_all=True,
+        )
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     new_has_media = request.media is not None and not isinstance(request.media, InputMediaEmpty)
-    if message.media_id is None and not request.message and not request.schedule_date:
+    if message.content.media_id is None and not request.message and not request.schedule_date:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
-    elif message.media_id is None and new_has_media:
+    elif message.content.media_id is None and new_has_media:
         raise ErrorRpc(error_code=400, error_message="MEDIA_PREV_INVALID")
-    elif message.media_id is not None and new_has_media and not isinstance(request.media, DocOrPhotoMedia):
+    elif message.content.media_id is not None and new_has_media and not isinstance(request.media, DocOrPhotoMedia):
         raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
-    elif message.media_id is not None and request.media \
-            and message.media.type not in (MediaType.DOCUMENT, MediaType.PHOTO):
+    elif message.content.media_id is not None and request.media \
+            and message.content.media.type not in (MediaType.DOCUMENT, MediaType.PHOTO):
         raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
 
     media = None
     if new_has_media:
         media = await _process_media(user, request.media)
-        if media.id == message.media_id or media.file_id == message.media.file_id:
+        if media.id == message.content.media_id or media.file_id == message.content.media.file_id:
             raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
 
     # For some reason PyCharm keeps complaining about request.message "Expected type 'Sized', got 'Message' instead"
     message_text = cast(str | None, request.message)
 
-    if request.message is not None and len(message_text) > AppConfig.MAX_MESSAGE_LENGTH and not message.media_id:
+    if request.message is not None \
+            and len(message_text) > AppConfig.MAX_MESSAGE_LENGTH \
+            and not message.content.media_id:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
-    elif request.message is not None and len(message_text) > AppConfig.MAX_CAPTION_LENGTH and message.media_id:
+    elif request.message is not None and len(message_text) > AppConfig.MAX_CAPTION_LENGTH and message.content.media_id:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
-    if message.author != user:
+    if message.content.author != user:
         raise ErrorRpc(error_code=403, error_message="MESSAGE_AUTHOR_REQUIRED")
-    if message.message == request.message:
+    if message.content.message == request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
     entities = None
     if message_text is not None:
         entities = await process_message_entities(message_text, request.entities, user)
 
-    reply_markup = message.reply_markup
+    reply_markup = message.content.reply_markup
     if user.bot and request.reply_markup is not None:
         reply_markup = await process_reply_markup(reply_markup, user)
         if reply_markup is not None:
             reply_markup = reply_markup.write()
 
-    def _edit_message(m: Message, new_edit_date: datetime | None) -> None:
+    def _edit_message(m: MessageRef, new_edit_date: datetime | None) -> None:
         if message_text is not None:
             m.message = message_text
             if entities is not None:
@@ -798,8 +811,7 @@ async def save_draft(request: SaveDraft, user: User) -> bool:
     reply_to_message_id = _resolve_reply_id(request)
     reply_to = None
     if reply_to_message_id:
-        peer_filter = Q(peer__channel=peer.channel, peer__owner=None) if peer.type is PeerType.CHANNEL else Q(peer=peer)
-        reply_to = await Message.get_or_none(peer_filter, id=reply_to_message_id)
+        reply_to = await MessageRef.get_or_none(peer.q_this_or_channel(), id=reply_to_message_id)
 
     if not request.message and reply_to is None:
         if (existing_draft := await MessageDraft.get_or_none(peer=peer)) is not None:
@@ -839,7 +851,7 @@ async def forward_messages(
     # TODO: does telegram allow different peers, if from_peer is InputPeerEmpty?
     #  e.g. request.id[0] is from user 123, request.id[1] is from user 456, etc.
     if isinstance(request.from_peer, InputPeerEmpty):
-        first_msg = await Message.get_or_none(peer__owner=user, id=request.id[0]).select_related(
+        first_msg = await MessageRef.get_or_none(peer__owner=user, id=request.id[0]).select_related(
             "peer", "peer__chat", "peer__channel",
         )
         if not first_msg:
@@ -1010,7 +1022,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
         raise ErrorRpc(error_code=400, error_message="MULTI_MEDIA_TOO_LONG")
 
     reply_to_message_id = _resolve_reply_id(request)
-    if reply_to_message_id and not await Message.filter(id=reply_to_message_id, peer=peer).exists():
+    if reply_to_message_id and not await MessageRef.filter(id=reply_to_message_id, peer=peer).exists():
         raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
 
     messages: list[tuple[str, int, MessageMedia, list[dict] | None]] = []
@@ -1046,7 +1058,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
             await process_message_entities(single_media.message, single_media.entities, user),
         ))
 
-    if await Message.filter(peer=peer, random_id__in=[str(random_id) for _, random_id, _, _ in messages]).exists():
+    if await MessageRef.filter(peer=peer, random_id__in=[str(random_id) for _, random_id, _, _ in messages]).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
     group_id = Snowflake.make_id()
@@ -1086,18 +1098,17 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
     if request.max_date:
         query &= Q(date__lte=datetime.fromtimestamp(request.max_date, UTC))
 
-    internal_ids: list[int] = []
+    content_ids: list[int] = []
     messages: defaultdict[User, list[int]] = defaultdict(list)
     offset_id = 0
 
-    message: Message
-    for message in await Message.filter(query).order_by("-id").limit(1001):
+    for message in await MessageRef.filter(query).order_by("-id").limit(1001):
         if len(messages[user]) == 1000:
             offset_id = message.id
             break
 
         messages[user].append(message.id)
-        internal_ids.append(message.internal_id)
+        content_ids.append(message.content_id)
 
     if request.revoke:
         for opposite_peer in await peer.get_opposite():
@@ -1105,7 +1116,7 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
             #  (so messages that current user already deleted without revoke will be deleted too)
             #  (maybe just call delete_history for each user (opposite_peer)?)
 
-            ids = await Message.filter(internal__id__in=internal_ids, peer=opposite_peer).values_list("id", flat=True)
+            ids = await MessageRef.filter(content__id__in=content_ids, peer=opposite_peer).values_list("id", flat=True)
             messages[opposite_peer.owner] = ids
 
     all_ids = [i for ids in messages.values() for i in ids]
@@ -1113,7 +1124,7 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
         updates_state, _ = await State.get_or_create(user=user)
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
 
-    await Message.filter(id__in=all_ids).delete()
+    await MessageRef.filter(id__in=all_ids).delete()
     pts = await upd.delete_messages(user, messages)
 
     if not offset_id:

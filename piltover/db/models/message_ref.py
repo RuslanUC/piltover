@@ -43,7 +43,7 @@ class MessageRef(Model):
     taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
     PREFETCH_FIELDS_MIN = (
-        "peer", "content__author", "content__media",
+        "peer", "content", "content__author", "content__media",
     )
     PREFETCH_FIELDS = (
         *PREFETCH_FIELDS_MIN, "content__media__file", "content__media__file__stickerset", "content__media__poll",
@@ -164,7 +164,7 @@ class MessageRef(Model):
     @classmethod
     async def create_for_peer(
             cls, peer: models.Peer, author: models.User, random_id: int | None = None,
-            reply_to: models.MessageContent | None = None, opposite: bool = True, unhide_dialog: bool = True,
+            opposite: bool = True, unhide_dialog: bool = True,
             **message_kwargs,
     ) -> dict[models.Peer, Self]:
         if random_id is not None and await cls.filter(peer=peer, random_id=random_id).exists():
@@ -172,7 +172,6 @@ class MessageRef(Model):
 
         content = await models.MessageContent.create_for_peer(
             random_id=random_id,
-            reply_to=reply_to,
             author=author,
             **message_kwargs,
         )

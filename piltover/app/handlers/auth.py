@@ -16,8 +16,8 @@ from piltover.app.utils.utils import check_password_internal
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
-from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, Message, TempAuthKey, SentCode, User, \
-    QrLogin, PhoneCodePurpose, Bot, State
+from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, TempAuthKey, SentCode, User, \
+    QrLogin, PhoneCodePurpose, Bot, State, MessageRef
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -93,8 +93,8 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
         peer_system.user = system_user
 
     text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
-    message = await Message.create_for_peer(
-        peer_system, None, None, system_user, False, True,
+    message = await MessageRef.create_for_peer(
+        peer_system, system_user, opposite=False, unhide_dialog=True,
         message=text, entities=entities,
     )
 

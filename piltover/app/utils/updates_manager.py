@@ -7,7 +7,7 @@ from tortoise.transactions import in_transaction
 
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
-from piltover.db.models import User, Message, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
+from piltover.db.models import User, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
     Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule
 from piltover.session_manager import SessionManager
@@ -898,12 +898,12 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
 
 
 @overload
-async def update_channel(channel: Channel, user: User, send_to_users: list[int] | None) -> Updates:
+async def update_channel(channel: Channel, user: User, send_to_users: list[int] | None = None) -> Updates:
     ...
 
 
 @overload
-async def update_channel(channel: Channel, user: None, send_to_users: list[int] | None) -> None:
+async def update_channel(channel: Channel, user: None = None, send_to_users: list[int] | None = None) -> None:
     ...
 
 

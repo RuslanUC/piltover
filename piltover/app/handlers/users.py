@@ -4,8 +4,8 @@ from tortoise.expressions import Q, Subquery
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Message, Channel, BotInfo, \
-    ChatParticipant
+from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Channel, BotInfo, ChatParticipant, \
+    MessageRef
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
@@ -32,17 +32,17 @@ async def get_full_user(request: GetFullUser, user: User):
         "wallpaper", "wallpaper__document", "wallpaper__settings",
     )
 
-    has_scheduled = await Message.filter(peer=peer, scheduled_date__not_isnull=True).exists()
+    has_scheduled = await MessageRef.filter(peer=peer, content__scheduled_date__not_isnull=True).exists()
     pinned_msg_id = cast(
         int | None,
-        await Message.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True),
+        await MessageRef.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True),
     )
 
     personal_channel = await Channel.get_or_none(userpersonalchannels__user=target_user)
     if personal_channel is not None:
         personal_channel_msg_id = cast(
             int | None,
-            await Message.filter(
+            await MessageRef.filter(
                 peer__owner=None, peer__channel=personal_channel,
             ).order_by("-id").first().values_list("id", flat=True),
         )

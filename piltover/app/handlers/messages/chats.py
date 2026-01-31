@@ -10,8 +10,8 @@ from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType, \
     UserStatus, AdminLogEntryAction
-from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, Message, PrivacyRule, \
-    ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry
+from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, PrivacyRule, \
+    ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry, MessageRef, MessageContent
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -298,14 +298,13 @@ async def add_chat_user(request: AddChatUser, user: User):
 
     if request.fwd_limit > 0:
         limit = min(request.fwd_limit, 100)
-        messages_to_forward = await Message.filter(
-            peer=chat_peer, type=MessageType.REGULAR
-        ).order_by("-id").limit(limit).select_related(*Message.PREFETCH_FIELDS)
+        messages_to_forward = await MessageRef.filter(
+            peer=chat_peer, content__type=MessageType.REGULAR
+        ).order_by("-id").limit(limit).select_related(*MessageRef.PREFETCH_FIELDS)
         messages = []
-        for message in reversed(messages_to_forward):
-            messages.append(await message.clone_for_peer(
-                chat_peers[invited_user.id], internal_id=message.internal_id, media_group_id=message.media_group_id,
-            ))
+        # TODO: do this in bulk?
+        for message in messages_to_forward:
+            messages.append(await message.clone_ref_for_peer(chat_peers[invited_user.id]))
 
         await upd.send_messages({chat_peers[invited_user.id]: messages})
 
@@ -337,13 +336,15 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     if target_chat_peer is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
-    messages = await Message.create_for_peer(
-        chat_peer, None, None,
-        author=user, type=MessageType.SERVICE_CHAT_USER_DEL,
+    messages = await MessageRef.create_for_peer(
+        chat_peer, user,
+        type=MessageType.SERVICE_CHAT_USER_DEL,
         extra_info=MessageActionChatDeleteUser(user_id=user_peer.peer_user(user).id).write(),
     )
     await ChatParticipant.filter(chat=chat_peer.chat, user=user_peer.user).delete()
     await Chat.filter(id=chat_peer.chat_id).update(participants_count=F("participants_count") - 1)
+
+    # TODO: remove scheduled messages?
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
 
@@ -517,8 +518,10 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
         await Chat.filter(id=chat.id).update(migrated=True, version=F("version") + 1)
         await chat.refresh_from_db(["migrated", "version"])
 
-        await Message.filter(id__in=Subquery(
-            Message.filter(peer__chat=chat, type=MessageType.SCHEDULED).values_list("id", flat=True)
+        await MessageContent.filter(id__in=Subquery(
+            MessageRef.filter(
+                peer__chat=chat, content__type=MessageType.SCHEDULED,
+            ).values_list("content__id", flat=True)
         )).delete()
         await ChatInvite.filter(chat=chat).update(revoked=True)
         await ChatInviteRequest.filter(id__in=Subquery(

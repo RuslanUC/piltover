@@ -7,8 +7,8 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import PeerType, ChatBannedRights
-from piltover.db.models import Reaction, User, Message, Peer, MessageReaction, ReadState, State, RecentReaction, \
-    UserReactionsSettings
+from piltover.db.models import Reaction, User, Peer, MessageReaction, ReadState, State, RecentReaction, \
+    UserReactionsSettings, MessageRef
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
@@ -64,18 +64,19 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
                 and request.msg_id < channel_min_id:
             raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    if (message := await Message.get_(request.msg_id, peer)) is None:
+    if (message := await MessageRef.get_(request.msg_id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    existing_reaction = await MessageReaction.get_or_none(user=user, message=message)
+    existing_reaction = await MessageReaction.get_or_none(user=user, message__id=message.content_id)
     if (existing_reaction is None and reaction is None) \
             or (existing_reaction is not None and reaction is not None and existing_reaction.reaction_id == reaction.id):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
-    messages: dict[Peer, Message] = {}
+    messages: dict[Peer, MessageRef] = {}
 
     if peer.type is not PeerType.CHANNEL:
-        for opp_message in await Message.filter(internal_id=message.internal_id).select_related("peer", "peer__owner"):
+        opp_messages = await MessageRef.filter(content__id=message.content_id).select_related("peer", "peer__owner")
+        for opp_message in opp_messages:
             messages[opp_message.peer] = opp_message
 
     if existing_reaction is not None:
@@ -83,19 +84,19 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             await existing_reaction.delete()
         else:
             reactions_q = MessageReaction.filter(
-                user=user, message__internal_id=message.internal_id,
+                user=user, message__id=message.content_id,
             ).values_list("id", flat=True)
             await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
     if reaction is not None:
         if peer.type is PeerType.CHANNEL:
             # TODO: send update to message author
-            await MessageReaction.create(user=user, message=message, reaction=reaction)
+            await MessageReaction.create(user=user, message=message.content, reaction=reaction)
             return await upd.update_reactions(user, [message], peer)
 
         reactions_to_create = []
         for opp_message in messages.values():
-            reactions_to_create.append(MessageReaction(user=user, message=opp_message, reaction=reaction))
+            reactions_to_create.append(MessageReaction(user=user, message=opp_message.content, reaction=reaction))
 
         await MessageReaction.bulk_create(reactions_to_create)
 
@@ -144,7 +145,7 @@ async def get_messages_reactions(request: GetMessagesReactions, user: User) -> U
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
-    if (messages := await Message.get_many(request.id, peer)) is None:
+    if (messages := await MessageRef.get_many(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     return await upd.update_reactions(user, messages, peer, False)

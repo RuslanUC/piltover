@@ -19,7 +19,7 @@ from loguru import logger
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType, FileType
-from piltover.db.models import UserPassword, SrpSession, User, Peer, PrivacyRule, File
+from piltover.db.models import UserPassword, User, Peer, PrivacyRule, File
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.storage.base import BaseStorage, StorageType
 from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEntityMention, \

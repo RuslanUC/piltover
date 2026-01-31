@@ -6,7 +6,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages import sending
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import MessageType, PeerType
-from piltover.db.models import User, Peer, Message
+from piltover.db.models import User, Peer, MessageRef, MessageContent
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Updates
 from piltover.tl.functions.messages import GetScheduledHistory, GetScheduledMessages, SendScheduledMessages, \
@@ -18,13 +18,13 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.scheduled")
 
 
-async def _format_messages(user: User, messages: list[Message]) -> Messages:
+async def _format_messages(user: User, messages: list[MessageRef]) -> Messages:
     ucc = UsersChatsChannels()
 
     for message in messages:
         ucc.add_message(message.id)
 
-    messages_tl = await Message.to_tl_bulk(messages, user)
+    messages_tl = await MessageRef.to_tl_bulk(messages, user)
     users, chats, channels = await ucc.resolve()
 
     return Messages(
@@ -38,16 +38,16 @@ async def _format_messages(user: User, messages: list[Message]) -> Messages:
 async def get_scheduled_history(request: GetScheduledHistory, user: User) -> Messages | MessagesNotModified:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
-    message_ids = await Message.filter(
-        peer=peer, type=MessageType.SCHEDULED,
-    ).order_by("scheduled_date").values_list("id", flat=True)
+    message_ids = await MessageRef.filter(
+        peer=peer, content__type=MessageType.SCHEDULED,
+    ).order_by("content__scheduled_date").values_list("id", flat=True)
     messages_hash = telegram_hash(message_ids, 64)
 
     if messages_hash == request.hash:
         return MessagesNotModified(count=len(message_ids))
 
-    messages = await Message.filter(id__in=message_ids).order_by("scheduled_date").select_related(
-        *Message.PREFETCH_FIELDS
+    messages = await MessageRef.filter(id__in=message_ids).order_by("content__scheduled_date").select_related(
+        *MessageRef.PREFETCH_FIELDS
     )
 
     return await _format_messages(user, messages)
@@ -57,9 +57,9 @@ async def get_scheduled_history(request: GetScheduledHistory, user: User) -> Mes
 async def get_scheduled_messages(request: GetScheduledMessages, user: User) -> Messages:
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
-    messages = await Message.filter(
-        peer=peer, type=MessageType.SCHEDULED, id__in=request.id,
-    ).order_by("scheduled_date").select_related(*Message.PREFETCH_FIELDS)
+    messages = await MessageRef.filter(
+        peer=peer, content__type=MessageType.SCHEDULED, id__in=request.id,
+    ).order_by("content__scheduled_date").select_related(*MessageRef.PREFETCH_FIELDS)
 
     return await _format_messages(user, messages)
 
@@ -73,13 +73,13 @@ async def send_scheduled_messages(request: SendScheduledMessages, user: User) ->
     new = []
 
     async with in_transaction():
-        scheduled_messages = await Message.select_for_update(
+        scheduled_messages = await MessageRef.select_for_update(
             skip_locked=True, no_key=True,
         ).get_or_none(
             peer=peer, id__in=request.id[:100],
         ).select_related(
-            "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "author", "media", "reply_to",
-            "fwd_header", "post_info",
+            "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",
+            "content__media", "content__reply_to", "content__fwd_header", "content__post_info",
         )
 
         for scheduled in scheduled_messages:
@@ -88,7 +88,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user: User) ->
             msg_updates = await sending.send_created_messages_internal(
                 messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
             )
-            await scheduled.delete()
+            await scheduled.content.delete()
 
             updates.updates.extend(msg_updates.updates)
             updates.chats.extend(msg_updates.chats)
@@ -113,10 +113,16 @@ async def send_scheduled_messages(request: SendScheduledMessages, user: User) ->
 @handler.on_request(DeleteScheduledMessages, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_scheduled_messages(request: DeleteScheduledMessages, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
-    ids_to_delete = await Message.filter(
-        peer=peer, id__in=request.id, type=MessageType.SCHEDULED,
-    ).values_list("id", flat=True)
+    messages = await MessageRef.filter(
+        peer=peer, id__in=request.id, content__type=MessageType.SCHEDULED,
+    ).values_list("id", "content__id")
 
-    await Message.filter(id__in=ids_to_delete).delete()
+    ids = []
+    content_ids = []
+    for ref_id, content_id in messages:
+        ids.append(ref_id)
+        content_ids.append(content_id)
 
-    return await upd.delete_scheduled_messages(user, peer, ids_to_delete)
+    await MessageContent.filter(id__in=content_ids).delete()
+
+    return await upd.delete_scheduled_messages(user, peer, ids)

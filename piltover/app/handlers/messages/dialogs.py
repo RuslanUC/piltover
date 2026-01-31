@@ -8,7 +8,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.updates import get_state_internal
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, DialogFolderId
-from piltover.db.models import User, Dialog, Peer, SavedDialog, Message, Chat, Channel
+from piltover.db.models import User, Dialog, Peer, SavedDialog, Chat, Channel, MessageRef
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector, \
@@ -45,7 +45,7 @@ async def format_dialogs(
 
     result = {
         "dialogs": [await dialog.to_tl() for dialog in dialogs],
-        "messages": await Message.to_tl_bulk(messages, user),
+        "messages": await MessageRef.to_tl_bulk(messages, user),
         "chats": [*chats, *channels],
         "users": users,
     }
@@ -87,7 +87,9 @@ async def get_dialogs_internal(
         offset_peer = peer_message_id = None
         try:
             offset_peer = await Peer.from_input_peer_raise(user, input_peer)
-            peer_message_id = await Message.filter(peer=offset_peer).order_by("-id").first().values_list("id", flat=True)
+            peer_message_id = await MessageRef.filter(
+                peer=offset_peer,
+            ).order_by("-id").first().values_list("id", flat=True)
         except ErrorRpc:
             pass
 
