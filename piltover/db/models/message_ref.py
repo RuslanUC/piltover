@@ -40,7 +40,6 @@ class MessageRef(Model):
     content_id: int
     peer_id: int
 
-    # ???
     taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
     PREFETCH_FIELDS_MIN = (
@@ -75,7 +74,7 @@ class MessageRef(Model):
         for message_type in types:
             types_query |= Q(content__type=message_type)
 
-        query = peer.q_private_and_channel() & types_query & Q(id=id_)
+        query = peer.q_this_and_channel() & types_query & Q(id=id_)
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.get_or_none(query).select_related(
@@ -84,7 +83,7 @@ class MessageRef(Model):
 
     @classmethod
     async def get_many(cls, ids: list[int], peer: models.Peer, prefetch_all: bool = False) -> list[Self]:
-        query = peer.q_private_and_channel() & Q(id__in=ids, content__type=MessageType.REGULAR)
+        query = peer.q_this_and_channel() & Q(id__in=ids, content__type=MessageType.REGULAR)
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.filter(query).select_related(
@@ -164,19 +163,17 @@ class MessageRef(Model):
 
     @classmethod
     async def create_for_peer(
-            cls, peer: models.Peer, random_id: int | None, reply_to_message_id: int | None,
-            author: models.User, opposite: bool = True, unhide_dialog: bool = True, **message_kwargs
-    ) -> Self:
+            cls, peer: models.Peer, author: models.User, random_id: int | None = None,
+            reply_to: models.MessageContent | None = None, opposite: bool = True, unhide_dialog: bool = True,
+            **message_kwargs,
+    ) -> dict[models.Peer, Self]:
         if random_id is not None and await cls.filter(peer=peer, random_id=random_id).exists():
             raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
         content = await models.MessageContent.create_for_peer(
-            peer=peer,
             random_id=random_id,
-            reply_to_message_id=reply_to_message_id,
+            reply_to=reply_to,
             author=author,
-            opposite=opposite,
-            unhide_dialog=unhide_dialog,
             **message_kwargs,
         )
 

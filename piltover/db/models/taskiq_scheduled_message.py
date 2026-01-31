@@ -15,7 +15,7 @@ class TaskIqScheduledMessage(Model):
     state: TaskIqScheduledState = fields.IntEnumField(TaskIqScheduledState, default=TaskIqScheduledState.SCHEDULED)
     scheduled_time: int = fields.BigIntField(index=True)
     state_updated_at: int = fields.BigIntField(index=True)
-    message: models.Message = fields.OneToOneField("models.Message")
+    message: models.MessageRef = fields.OneToOneField("models.MessageRef")
     mentioned_users: bytes | None = fields.BinaryField(null=True)
     opposite: bool = fields.BooleanField()
 

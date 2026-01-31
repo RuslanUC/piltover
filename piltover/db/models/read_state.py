@@ -26,7 +26,7 @@ class ReadState(Model):
             cls, peer: models.Peer, no_reactions: bool = False, no_mentions: bool = False,
     ) -> tuple[int, int, int, int, int]:
         in_read_state = await cls.for_peer(peer=peer)
-        unread_count = await models.Message.filter(peer=peer, id__gt=in_read_state.last_message_id).count()
+        unread_count = await models.MessageRef.filter(peer=peer, id__gt=in_read_state.last_message_id).count()
         if no_reactions:
             unread_reactions_count = 0
         else:
@@ -52,7 +52,7 @@ class ReadState(Model):
                 peer__chat__id=peer.chat_id, peer__id__not=peer.id
             ).order_by("-last_message_id").first()
             if out_read_state:
-                out_read_max_id = await models.Message.filter(
+                out_read_max_id = await models.MessageRef.filter(
                     peer=peer, id__lte=out_read_state.last_message_id
                 ).order_by("-id").first().values_list("id", flat=True)
                 out_read_max_id = out_read_max_id or 0
@@ -82,4 +82,3 @@ class ReadState(Model):
             unread_reactions_count,
             unread_mentions,
         )
-

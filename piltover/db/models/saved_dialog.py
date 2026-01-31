@@ -15,10 +15,13 @@ class SavedDialog(Model):
 
     peer_id: int
 
-    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.Message]:
-        return models.Message.filter(
-            peer__owner=self.peer.owner, peer__type=PeerType.SELF, fwd_header__saved_peer=self.peer,
-        ).select_related(*(models.Message.PREFETCH_FIELDS if prefetch else ())).order_by("-id").first()
+    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef]:
+        query = models.MessageRef.filter(
+            peer__owner=self.peer.owner, peer__type=PeerType.SELF, content__fwd_header__saved_peer=self.peer,
+        ).order_by("-id").first()
+        if prefetch:
+            return query.select_related(*models.MessageRef.PREFETCH_FIELDS)
+        return query
 
     async def to_tl(self) -> TLSavedDialog:
         top_message_id = await self.top_message_query(False).values_list("id", flat=True)

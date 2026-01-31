@@ -10,7 +10,7 @@ from piltover.db import models
 class CallbackQuery(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.ForeignKeyField("models.User")
-    message: models.Message = fields.ForeignKeyField("models.Message")
+    message: models.MessageRef = fields.ForeignKeyField("models.MessageRef")
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     data: bytes = fields.BinaryField()
 

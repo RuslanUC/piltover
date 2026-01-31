@@ -5,6 +5,7 @@ from datetime import datetime
 from tortoise import fields, Model
 
 from piltover.db import models
+from piltover.db.models.utils import NullableFKSetNull
 from piltover.tl import DraftMessage, InputReplyToMessage, objects
 
 
@@ -13,7 +14,7 @@ class MessageDraft(Model):
     message: str = fields.TextField()
     date: datetime = fields.DatetimeField(default=datetime.now)
     peer: models.Peer = fields.OneToOneField("models.Peer")
-    reply_to: models.Message | None = fields.ForeignKeyField("models.Message", null=True, default=None, on_delete=fields.SET_NULL)
+    reply_to: models.MessageRef | None = NullableFKSetNull("models.MessageRef")
     no_webpage: bool = fields.BooleanField(default=False)
     invert_media: bool = fields.BooleanField(default=False)
     # TODO: use tl for entities

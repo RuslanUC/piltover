@@ -7,7 +7,9 @@ import tortoise
 from pypika_tortoise import SqlContext, Dialects
 from pypika_tortoise.terms import Function as PypikaFunction
 from pypika_tortoise.utils import format_alias_sql
+from tortoise import fields
 from tortoise.expressions import Function
+from tortoise.models import MODEL
 
 IntFlagT = TypeVar("IntFlagT", bound=IntFlag)
 
@@ -84,3 +86,24 @@ class Missing(Enum):
 
 
 MISSING = Missing.MISSING
+
+
+def NullableFK(
+        to: str,
+        **kwargs: Any,
+) -> fields.ForeignKeyNullableRelation[MODEL]:
+    return fields.ForeignKeyField(
+        to=to,
+        **kwargs,
+    )
+
+
+def NullableFKSetNull(
+        to: str,
+        **kwargs: Any,
+) -> fields.ForeignKeyNullableRelation[MODEL]:
+    return NullableFK(
+        to=to,
+        on_delete=fields.SET_NULL,
+        **kwargs,
+    )

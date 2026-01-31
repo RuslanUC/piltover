@@ -4,12 +4,11 @@ from typing import cast, Iterable
 
 from loguru import logger
 from tortoise import fields, Model
-from tortoise.expressions import Q
 from tortoise.queryset import QuerySetSingle
 from tortoise.transactions import in_transaction
 
 from piltover.db import models
-from piltover.db.enums import DialogFolderId, PeerType
+from piltover.db.enums import DialogFolderId
 from piltover.tl import PeerNotifySettings
 from piltover.tl.types import Dialog as TLDialog
 
@@ -25,14 +24,9 @@ class Dialog(Model):
 
     peer_id: int
 
-    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.Message]:
-        if self.peer.type is PeerType.CHANNEL:
-            top_message_q = Q(peer=self.peer) | Q(peer__owner=None, peer__channel__id=self.peer.channel_id)
-        else:
-            top_message_q = Q(peer=self.peer)
-
-        return models.Message.filter(top_message_q).select_related(
-            *(models.Message.PREFETCH_FIELDS if prefetch else ()),
+    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef]:
+        return models.MessageRef.filter(self.peer.q_this_and_channel()).select_related(
+            *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
         ).order_by("-id").first()
 
     async def to_tl(self) -> TLDialog:

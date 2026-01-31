@@ -227,12 +227,12 @@ class Peer(Model):
 
         raise RuntimeError(f".chat_or_channel called on peer with type {self.type}")
 
-    def q_private_or_channel(self) -> Q:
+    def q_this_or_channel(self) -> Q:
         if self.type is PeerType.CHANNEL:
             return Q(peer__owner=None, peer__channel__id=self.channel_id)
         return Q(peer=self)
 
-    def q_private_and_channel(self) -> Q:
+    def q_this_and_channel(self) -> Q:
         q = Q(peer=self)
         if self.type is PeerType.CHANNEL:
             q |= Q(peer__owner=None, peer__channel__id=self.channel_id)

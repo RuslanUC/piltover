@@ -8,9 +8,11 @@ from piltover.db import models
 class MessageReaction(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.ForeignKeyField("models.User")
-    message: models.Message = fields.ForeignKeyField("models.Message")
+    message: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     reaction: models.Reaction = fields.ForeignKeyField("models.Reaction")
 
+    user_id: int
+    message_id: int
     reaction_id: int
 
     class Meta:

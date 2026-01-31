@@ -62,8 +62,8 @@ class Update(Model):
                     pts_count=len(self.related_ids),
                 )
             case UpdateType.MESSAGE_EDIT:
-                message = await models.Message.get_or_none(id=self.related_id).select_related(
-                    *models.Message.PREFETCH_FIELDS,
+                message = await models.MessageRef.get_or_none(id=self.related_id).select_related(
+                    *models.MessageRef.PREFETCH_FIELDS,
                 )
                 if message is None:
                     return None
@@ -144,7 +144,7 @@ class Update(Model):
                 )
 
             case UpdateType.MESSAGE_PIN_UPDATE:
-                message = await models.Message.get_or_none(
+                message = await models.MessageRef.get_or_none(
                     id=self.related_id, peer__owner=user
                 ).select_related("peer")
                 if message is None:
@@ -429,9 +429,9 @@ class Update(Model):
                 )
 
             case UpdateType.NEW_SCHEDULED_MESSAGE:
-                message = await models.Message.get_or_none(
+                message = await models.MessageRef.get_or_none(
                     id=self.related_id, type=MessageType.SCHEDULED, peer__owner=user
-                ).select_related(*models.Message.PREFETCH_FIELDS)
+                ).select_related(*models.MessageRef.PREFETCH_FIELDS)
                 if message is None:
                     return None
 

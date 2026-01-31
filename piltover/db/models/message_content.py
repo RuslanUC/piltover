@@ -4,19 +4,18 @@ from collections import defaultdict
 from datetime import datetime
 from io import BytesIO
 from os import environ
-from typing import cast, Iterable, Any, Self, Annotated
+from typing import cast, Iterable, Self, Annotated
 
 from loguru import logger
 from pytz import UTC
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.functions import Count
-from tortoise.models import MODEL
 
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, FileType
-from piltover.db.models.utils import Missing, MISSING
+from piltover.db.models.utils import Missing, MISSING, NullableFK, NullableFKSetNull
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase, \
@@ -28,36 +27,6 @@ from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatA
 
 MessageIdRef = Annotated[int, "Ref id"]
 MessageIdContent = Annotated[int, "Content id"]
-
-
-def NullableFK(
-        to: str,
-        related_name: str | None = None,
-        on_delete: fields.OnDelete = fields.OnDelete.CASCADE,
-        **kwargs: Any,
-) -> fields.ForeignKeyNullableRelation[MODEL]:
-    return fields.ForeignKeyField(
-        to=to,
-        related_name=related_name,
-        on_delete=on_delete,
-        db_constraint=True,
-        null=True,
-        default=None,
-        **kwargs,
-    )
-
-
-def NullableFKSetNull(
-        to: str,
-        related_name: str | None = None,
-        **kwargs: Any,
-) -> fields.ForeignKeyNullableRelation[MODEL]:
-    return NullableFK(
-        to=to,
-        related_name=related_name,
-        on_delete=fields.SET_NULL,
-        **kwargs,
-    )
 
 
 class MessageContent(Model):
@@ -104,17 +73,6 @@ class MessageContent(Model):
     TTL_MULT = 86400
     if (_ttl_mult := environ.get("DEBUG_MESSAGE_TTL_MULTIPLIER", "")).isdigit():
         TTL_MULT = int(_ttl_mult)
-
-    PREFETCH_FIELDS_MIN = (
-        "peer", "author", "media",
-    )
-    PREFETCH_FIELDS = (
-        *PREFETCH_FIELDS_MIN, "media__file", "media__file__stickerset", "media__poll", "fwd_header",
-        "fwd_header__saved_peer", "post_info", "via_bot", "comments_info",
-    )
-    _PREFETCH_ALL_TOP_FIELDS = (
-        "peer", "author", "media", "fwd_header", "reply_to", "via_bot",
-    )
 
     _cached_reply_markup: ReplyMarkup | None | Missing = MISSING
 
@@ -354,7 +312,7 @@ class MessageContent(Model):
                 else:
                     raise Unreachable
 
-                if key not in last_ids or last_ids[key] < ref.id:
+                if key not in last_ids or last_ids[key] < self.id:
                     media_unreads[ref.id] = True
 
         replies: dict[MessageIdContent, MessageReplies] = {}
@@ -593,24 +551,12 @@ class MessageContent(Model):
         )
 
     @classmethod
-    async def create_for_peer(
-            cls, peer: models.Peer, reply_to_message_id: int | None, author: models.User, **message_kwargs
-    ) -> Self:
-        reply = None
-        if reply_to_message_id:
-            reply = await cls.get_or_none(peer.q_private_or_channel(), id=reply_to_message_id)
-            if reply is None:
-                raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
-
+    async def create_for_peer(cls, **message_kwargs) -> Self:
         related_user_ids: set[int] = set()
         related_chat_ids: set[int] = set()
         related_channel_ids: set[int] = set()
 
-        content = await MessageContent.create(
-            reply_to=reply,
-            author=author,
-            **message_kwargs,
-        )
+        content = await MessageContent.create(**message_kwargs)
 
         content._fill_related(related_user_ids, related_chat_ids, related_channel_ids)
         await cls._create_related_from_ids(content, related_user_ids, related_chat_ids, related_channel_ids)

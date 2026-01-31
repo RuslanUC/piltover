@@ -11,6 +11,6 @@ class TaskIqScheduledDeleteMessage(Model):
     id: UUID = fields.UUIDField(pk=True, default=uuid4)
     scheduled_for: int = fields.BigIntField(index=True)
     start_processing: int | None = fields.BigIntField(null=True, default=None)
-    message: models.Message = fields.OneToOneField("models.Message")
+    message: models.MessageContent = fields.OneToOneField("models.MessageContent")
 
     message_id: int
