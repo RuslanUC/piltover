@@ -775,7 +775,6 @@ async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> No
     assert messages
     assert len(messages) == 3
     assert not messages[1].mentioned
-    logger.info(f"message ids: {[m.id for m in messages ]}")
     assert messages[2].mentioned
 
 

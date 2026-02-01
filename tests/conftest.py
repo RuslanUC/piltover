@@ -15,6 +15,8 @@ from loguru import logger
 from pyrogram.session import Auth
 from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
+from tortoise import connections
+from tortoise.backends.sqlite import SqliteClient
 from tortoise.queryset import AwaitableQuery, BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, \
     ValuesListQuery, CountQuery, DeleteQuery, UpdateQuery, QuerySet, ExistsQuery
 
@@ -98,6 +100,9 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
             run_scheduler=run_scheduler, run_actual_server=USE_REAL_TCP_FOR_TESTING,
         ))
 
+        conn: SqliteClient = connections.get("default")
+        logger.info(f"connection: {conn}, {conn._connection}")
+
         server_reset_token = server_instance.set(test_server)
         skip_auth_reset_token = skipping_auth.set(not real_key_gen and not real_auth)
 
@@ -116,6 +121,8 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
         if not real_key_gen:
             Auth.create = _real_auth_create
             delattr(Auth, "_real_auth")
+
+        # await conn._connection.execute("vacuum main into 'idk.db';")
 
     AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = sched_insta_send_thresh
 
@@ -191,7 +198,7 @@ async def measure_query_stats(request: pytest.FixtureRequest) -> AsyncIterator[N
             return await _call_real(*args, **kwargs)
         finally:
             query_stats_test.add(query_stats)
-            logger.debug(
+            logger.info(
                 f"{self.func.__name__} made {query_stats.execute_count} ({query_stats.make_query_count}) queries "
                 f"that took {query_stats.execute_count:.2f}ms ({query_stats.make_query_time:.2f}ms)"
             )

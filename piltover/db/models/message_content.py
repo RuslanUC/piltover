@@ -16,7 +16,7 @@ from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, FileType
 from piltover.db.models.utils import Missing, MISSING, NullableFK, NullableFKSetNull
-from piltover.exceptions import ErrorRpc, Unreachable
+from piltover.exceptions import Unreachable
 from piltover.tl import MessageReplyHeader, objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase, \
     MessageMedia as MessageMediaBase, MessageEntity as MessageEntityBase
@@ -370,7 +370,7 @@ class MessageContent(Model):
                 reactions = await message.to_tl_reactions(user_id)
             
             if message.id in cached:
-                result.append(cached[message.id])
+                result.append(cached[ref.id])
                 need_recache = False
                 
                 if result[-1].media_unread != msg_media_unread:
