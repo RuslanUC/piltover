@@ -7,7 +7,7 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.chats import resolve_input_chat_photo
-from piltover.app.handlers.messages.history import format_messages_internal
+from piltover.app.handlers.messages.history import format_messages_internal, read_message_contents_internal
 from piltover.app.handlers.messages.invites import user_join_chat_or_channel
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import validate_username, check_password_internal
@@ -36,7 +36,8 @@ from piltover.tl.functions.channels import GetChannelRecommendations, GetAdmined
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
-    GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden
+    GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden, \
+    ReadMessageContents
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -1500,6 +1501,28 @@ async def toggle_participants_hidden(request: ToggleParticipantsHidden, user: Us
     return await upd.update_channel(channel, user)
 
 
+@handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def read_message_contents(request: ReadMessageContents, user: User) -> bool:
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+    )
+    channel = peer.channel
+
+    if not request.id:
+        return True
+
+    valid_refs = await MessageRef.filter(
+        peer__owner=None, peer__channel=channel, id__in=request.id[:100],
+    ).select_related("content", "content__media", "content__media__file")
+
+    message_ids = await read_message_contents_internal(user, valid_refs)
+    if message_ids is None:
+        return True
+
+    await upd.read_channel_messages_contents(user, channel, message_ids)
+
+    return True
+
+
 # TODO: DeleteHistory
 # TODO: DeleteParticipantHistory
-# TODO: ReadMessageContents

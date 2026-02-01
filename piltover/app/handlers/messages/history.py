@@ -697,22 +697,9 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     )
 
 
-@handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def read_message_contents(request: ReadMessageContents, user: User) -> AffectedMessages:
-    if not request.id:
-        return AffectedMessages(
-            pts=await State.add_pts(user, 0),
-            pts_count=0,
-        )
-
-    valid_refs = await MessageRef.filter(peer__owner=user, id__in=request.id[:100]).select_related(
-        "content", "content__media", "content__media__file",
-    )
+async def read_message_contents_internal(user: User, valid_refs: list[MessageRef]) -> list[int] | None:
     if not valid_refs:
-        return AffectedMessages(
-            pts=await State.add_pts(user, 0),
-            pts_count=0,
-        )
+        return None
 
     content_ids = [ref.content_id for ref in valid_refs]
     ref_by_content_id = {ref.content_id: ref for ref in valid_refs}
@@ -732,10 +719,7 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> Aff
         del refs_with_media[read_media.message_id]
 
     if not mentions and not refs_with_media:
-        return AffectedMessages(
-            pts=await State.add_pts(user, 0),
-            pts_count=0,
-        )
+        return None
 
     read_ids = set()
 
@@ -749,10 +733,7 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> Aff
         media_read_to_create.append(MessageMediaRead(user=user, message=ref))
 
     if not read_ids:
-        return AffectedMessages(
-            pts=await State.add_pts(user, 0),
-            pts_count=0,
-        )
+        return None
 
     if mentions:
         await MessageMention.bulk_update(mentions, fields=["read"])
@@ -760,7 +741,28 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> Aff
     if media_read_to_create:
         await MessageMediaRead.bulk_create(media_read_to_create)
 
-    message_ids = list(read_ids)
+    return list(read_ids)
+
+
+@handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def read_message_contents(request: ReadMessageContents, user: User) -> AffectedMessages:
+    if not request.id:
+        return AffectedMessages(
+            pts=await State.add_pts(user, 0),
+            pts_count=0,
+        )
+
+    valid_refs = await MessageRef.filter(peer__owner=user, id__in=request.id[:100]).select_related(
+        "content", "content__media", "content__media__file",
+    )
+
+    message_ids = await read_message_contents_internal(user, valid_refs)
+    if message_ids is None:
+        return AffectedMessages(
+            pts=await State.add_pts(user, 0),
+            pts_count=0,
+        )
+
     pts, _ = await upd.read_messages_contents(user, message_ids)
 
     return AffectedMessages(
