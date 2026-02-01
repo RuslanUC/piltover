@@ -1,5 +1,5 @@
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
-from piltover.db.models import Peer, Message
+from piltover.db.models import Peer, MessageRef
 
 __text, __entities = FormatableTextWithEntities("""
 I can help you create and manage Telegram bots. If you're new to the Bot API, please see the manual (<a>https://core.telegram.org/bots</a>).
@@ -42,6 +42,6 @@ Games
 """.strip()).format()
 
 
-async def botfather_start_command(peer: Peer, _: Message) -> Message | None:
-    messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__text, entities=__entities)
+async def botfather_start_command(peer: Peer, _: MessageRef) -> MessageRef | None:
+    messages = await MessageRef.create_for_peer(peer, peer.user, opposite=False, message=__text, entities=__entities)
     return messages[peer]

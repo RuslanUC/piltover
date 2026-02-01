@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TypeVar, Self
+from typing import TypeVar, Self, Iterable
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
@@ -46,12 +46,12 @@ class MessageRef(Model):
         "peer", "content", "content__author", "content__media",
     )
     PREFETCH_FIELDS = (
-        *PREFETCH_FIELDS_MIN, "content__media__file", "content__media__file__stickerset", "content__media__poll",
-        "content__fwd_header", "content__fwd_header__saved_peer", "content__post_info", "content__via_bot",
-        "content__comments_info",
+        *PREFETCH_FIELDS_MIN, "peer__owner", "content__media__file", "content__media__file__stickerset",
+        "content__media__poll", "content__fwd_header", "content__fwd_header__saved_peer", "content__post_info",
+        "content__via_bot", "content__comments_info",
     )
     _PREFETCH_ALL_TOP_FIELDS = (
-        "content__peer", "content__author", "content__media", "content__fwd_header", "content__reply_to",
+        "peer", "content__author", "content__media", "content__fwd_header", "content__reply_to",
         "content__via_bot",
     )
 
@@ -130,17 +130,19 @@ class MessageRef(Model):
             pinned=self.pinned,
         )
 
-    async def forward_for_peer(
-            self, peer: models.Peer, new_author: models.User | None = None, random_id: int | None = None,
+    async def forward_for_peers(
+            self, to_peer: models.Peer, peers: Iterable[models.Peer], new_author: models.User | None = None,
+            random_id: int | None = None,
             fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
-            reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
+            reply_to_content_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
             is_discussion: bool = False,
-    ) -> Self:
+    ) -> list[Self]:
         content = await self.content.clone_forward(
+            related_peer=to_peer,
             new_author=new_author,
             fwd_header=fwd_header,
-            reply_to_internal_id=reply_to_internal_id,
+            reply_to_content_id=reply_to_content_id,
             drop_captions=drop_captions,
             media_group_id=media_group_id,
             drop_author=drop_author,
@@ -149,14 +151,17 @@ class MessageRef(Model):
             is_discussion=is_discussion,
         )
 
-        message = await models.MessageRef.create(
-            peer=peer,
-            content=content,
-            pinned=self.pinned if pinned is None else pinned,
-            random_id=random_id,
-        )
+        messages = []
+        for peer in peers:
+            # TODO: create in bulk
+            messages.append(await models.MessageRef.create(
+                peer=peer,
+                content=content,
+                pinned=self.pinned if pinned is None else pinned,
+                random_id=random_id if peer == to_peer else None,
+            ))
 
-        return message
+        return messages
 
     async def create_fwd_header(self, to_self: bool, discussion: bool = False) -> models.MessageFwdHeader:
         return await self.content.create_fwd_header(self, to_self, discussion)
@@ -171,6 +176,7 @@ class MessageRef(Model):
             raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
         content = await models.MessageContent.create_for_peer(
+            related_peer=peer,
             random_id=random_id,
             author=author,
             **message_kwargs,

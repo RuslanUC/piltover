@@ -1,7 +1,7 @@
 from piltover.app.bot_handlers.stickers.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import StickersBotState
-from piltover.db.models import Peer, Message, StickersBotUserState
+from piltover.db.models import Peer, StickersBotUserState, MessageRef
 
 __text_no_skip = "Sorry, this step can't be skipped"
 __text_icon_skipped, __text_icon_skipped_entities = FormatableTextWithEntities("""
@@ -16,7 +16,7 @@ For example, this set has the short name 'DuckEmoji': <a>https://telegram.me/add
 """.strip()).format()
 
 
-async def stickers_skip_command(peer: Peer, _: Message) -> Message | None:
+async def stickers_skip_command(peer: Peer, _: MessageRef) -> MessageRef | None:
     state = await StickersBotUserState.get_or_none(user=peer.owner)
     if state is None:
         return await send_bot_message(peer, __text_no_skip)

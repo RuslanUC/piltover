@@ -38,8 +38,7 @@ from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly
 from piltover.utils.debug import measure_time
 
 from piltover.auth_data import AuthData, GenAuthData
-from piltover.db.models import AuthKey, ChatParticipant, Peer, Contact, PrivacyRule, Presence, Message as DbMessage, \
-    PollVote
+from piltover.db.models import AuthKey, ChatParticipant, Peer, Contact, PrivacyRule, Presence, PollVote, MessageRef
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.session import Session
 from piltover.session_manager import SessionManager
@@ -668,8 +667,8 @@ class Client:
 
         if values.messages:
             # TODO: rewrite fetching user-specific fields
-            messages = await DbMessage.filter(id__in=values.messages).select_related(*DbMessage.PREFETCH_FIELDS)
-            for message in await DbMessage.to_tl_bulk(messages, session.user_id):
+            messages = await MessageRef.filter(id__in=values.messages).select_related(*MessageRef.PREFETCH_FIELDS)
+            for message in await MessageRef.to_tl_bulk(messages, session.user_id):
                 result.dumb_messages[message.id] = message
 
         return result

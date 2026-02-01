@@ -4,13 +4,13 @@ from piltover.app.bot_handlers.botfather.text_handler import _bot_privacy_update
     _bot_commands_updated, _bot_commands_updated_entities
 from piltover.app.bot_handlers.botfather.utils import send_bot_message
 from piltover.db.enums import BotFatherState
-from piltover.db.models import Peer, Message, BotFatherUserState, Bot, BotInfo, BotCommand
+from piltover.db.models import Peer, BotFatherUserState, Bot, BotInfo, BotCommand, MessageRef
 from piltover.tl.types.internal_botfather import BotfatherStateEditbot
 
 __text_no_command = "Unrecognized command. Say what?"
 
 
-async def botfather_empty_command(peer: Peer, _: Message) -> Message | None:
+async def botfather_empty_command(peer: Peer, _: MessageRef) -> MessageRef | None:
     state = await BotFatherUserState.get_or_none(user=peer.owner)
     if state is None:
         return await send_bot_message(peer, __text_no_command)

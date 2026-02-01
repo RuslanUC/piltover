@@ -5,6 +5,7 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType
+from piltover.exceptions import Unreachable
 
 
 class ReadState(Model):
@@ -38,9 +39,12 @@ class ReadState(Model):
             unread_reactions_count = await models.MessageReaction.filter(
                 Q(message__author__id=peer.owner_id, id__gt=in_read_state.last_reaction_id)
                 & (
-                    Q(message__peer__owner__id=peer.owner_id, message__peer__channel__id=peer.channel_id)
+                    Q(
+                        message__messagerefs__peer__owner__id=peer.owner_id,
+                        message__messagerefs__peer__channel__id=peer.channel_id
+                    )
                     if peer.type is PeerType.CHANNEL
-                    else Q(message__peer=peer)
+                    else Q(message__messagerefs__peer=peer)
                 )
                 & Q(user__id__not=peer.owner_id),
             ).count()
@@ -73,12 +77,16 @@ class ReadState(Model):
             #     ).order_by("-id").first().values_list("id", flat=True)
             #     out_read_max_id = out_read_max_id or 0
 
-        if no_mentions:
+        if no_mentions or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
             unread_mentions = 0
         else:
-            unread_mentions = await models.MessageMention.filter(
-                peer=peer, id__gt=in_read_state.last_mention_id,
-            ).count()
+            if peer.type is PeerType.CHAT:
+                unread_mentions_query = models.MessageMention.filter(chat__id=peer.chat_id)
+            elif peer.type is PeerType.CHANNEL:
+                unread_mentions_query = models.MessageMention.filter(channel__id=peer.channel_id)
+            else:
+                raise Unreachable
+            unread_mentions = await unread_mentions_query.filter(message__id__gt=in_read_state.last_mention_id).count()
 
         return (
             in_read_state.last_message_id,

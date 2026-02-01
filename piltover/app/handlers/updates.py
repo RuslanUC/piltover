@@ -114,7 +114,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     ucc = UsersChatsChannels()
 
     for message in new_messages_db:
-        ucc.add_message(message.id)
+        ucc.add_message(message.content_id)
 
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_message_ids:
@@ -202,7 +202,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
     ucc = UsersChatsChannels()
 
     for message in new:
-        ucc.add_message(message.id)
+        ucc.add_message(message.content_id)
 
     new_messages = await MessageRef.to_tl_bulk(new, user)
 

@@ -37,7 +37,7 @@ async def format_dialogs(
         message = await dialog.top_message_query()
         if message is not None:
             messages.append(message)
-            ucc.add_message(message.id)
+            ucc.add_message(message.content_id)
         else:
             ucc.add_peer(dialog.peer)
 
@@ -107,7 +107,7 @@ async def get_dialogs_internal(
         query &= Q(**{f"{prefix}__pinned_index__isnull": True})
     date_annotation = {}
     if offset_date:
-        date_annotation["last_message_date"] = Max("messages__date")
+        date_annotation["last_message_date"] = Max("messagerefs__content__date")
         query &= Q(last_message_date__lt=datetime.fromtimestamp(offset_date, UTC))
     if folder_id is not None and issubclass(model, Dialog):
         query &= Q(dialogs__folder_id=DialogFolderId(folder_id))
@@ -117,7 +117,7 @@ async def get_dialogs_internal(
     # Doing it this way because, as far as i know, in Tortoise you cant reference outer-value from inner query
     #  and e.g. do something like
     #  Dialogs.annotate(last_message_id=Subquery(Message.filter(peer=F("peer")).order_by("-id").first().values_list("id", flat=True)))
-    peers_with_dialogs = Peer.annotate(last_message_id=Max("messages__id"), **date_annotation)\
+    peers_with_dialogs = Peer.annotate(last_message_id=Max("messagerefs__id"), **date_annotation)\
         .filter(query).limit(limit).order_by("-last_message_id", "-id")\
         .select_related("owner", "user", "chat", prefix)
 

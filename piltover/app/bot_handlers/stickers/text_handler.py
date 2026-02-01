@@ -9,7 +9,7 @@ from piltover.app.handlers.stickers import validate_png_webp, check_stickerset_s
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import StickersBotState, MediaType, StickerSetType, FileType
-from piltover.db.models import Peer, Message, Stickerset, File, InstalledStickerset
+from piltover.db.models import Peer, Stickerset, File, InstalledStickerset, MessageRef
 from piltover.db.models.stickers_state import StickersBotUserState
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ReplyKeyboardMarkup, ReplyKeyboardHide
@@ -129,19 +129,21 @@ Just make sure they're using an up to date version of the app. At the moment, on
 """.strip())
 
 
-async def _invalid_set_selected(peer: Peer, emoji: bool | None) -> Message:
+async def _invalid_set_selected(peer: Peer, emoji: bool | None) -> MessageRef:
     keyboard_rows = await get_stickerset_selection_keyboard(peer.owner, emoji)
     keyboard = ReplyKeyboardMarkup(rows=keyboard_rows, single_use=True) if keyboard_rows else None
     return await send_bot_message(peer, __addsticker_shortname_invalid, keyboard)
 
 
-async def stickers_text_message_handler(peer: Peer, message: Message) -> Message | None:
+async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> MessageRef | None:
+    content = message.content
+
     state = await StickersBotUserState.get_or_none(user=peer.owner)
     if state is None:
         return None
 
     if state.state is StickersBotState.NEWPACK_WAIT_NAME:
-        pack_name = message.message
+        pack_name = content.message
         if not pack_name or len(pack_name) > 64:
             return await send_bot_message(peer, __newpack_invalid_name)
 
@@ -159,29 +161,29 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
     ):
         is_emoji = state.state in (StickersBotState.NEWEMOJIPACK_WAIT_IMAGE, StickersBotState.ADDEMOJI_WAIT_IMAGE)
 
-        if message.media is None:
+        if content.media is None:
             return await send_bot_message(peer, __newpack_invalid_file)
-        if message.media.type is not MediaType.DOCUMENT:
+        if content.media.type is not MediaType.DOCUMENT:
             return await send_bot_message(peer, __newpack_invalid_file)
 
         try:
-            await validate_png_webp(message.media.file, is_emoji)
+            await validate_png_webp(content.media.file, is_emoji)
         except ErrorRpc:
             return await send_bot_message(peer, __newpack_invalid_file)
 
-        if message.media.file.needs_save:
-            await message.media.file.save(update_fields=["width", "height"])
+        if content.media.file.needs_save:
+            await content.media.file.save(update_fields=["width", "height"])
 
         if state.state is StickersBotState.NEWPACK_WAIT_IMAGE:
             state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
-            state_data.stickers.append(NewpackInputSticker(file_id=message.media.file.id, emoji=""))
+            state_data.stickers.append(NewpackInputSticker(file_id=content.media.file.id, emoji=""))
             await state.update_state(
                 StickersBotState.NEWPACK_WAIT_EMOJI,
                 state_data.serialize(),
             )
         elif state.state is StickersBotState.ADDSTICKER_WAIT_IMAGE:
             state_data = StickersStateAddsticker.deserialize(BytesIO(state.data))
-            state_data.file_id = message.media.file.id
+            state_data.file_id = content.media.file.id
             await state.update_state(
                 StickersBotState.ADDSTICKER_WAIT_EMOJI,
                 state_data.serialize(),
@@ -198,7 +200,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 await old_sticker.save(update_fields=["stickerset_id", "sticker_pos"])
 
                 await make_sticker_from_file(
-                    message.media.file, stickerset, old_sticker.sticker_pos, old_sticker.sticker_alt,
+                    content.media.file, stickerset, old_sticker.sticker_pos, old_sticker.sticker_alt,
                     old_sticker.sticker_is_mask, old_sticker.sticker_mask_coords,
                 )
                 stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
@@ -214,12 +216,12 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             state_data = StickersStateNewemojipack.deserialize(BytesIO(state.data))
             if state_data.stickers is None:
                 state_data.stickers = []
-            state_data.stickers.append(NewpackInputSticker(file_id=message.media.file.id, emoji=""))
+            state_data.stickers.append(NewpackInputSticker(file_id=content.media.file.id, emoji=""))
             await state.update_state(StickersBotState.NEWEMOJIPACK_WAIT_EMOJI, state_data.serialize())
             return await send_bot_message(peer, __newemojipack_send_emoji)
         elif state.state is StickersBotState.ADDEMOJI_WAIT_IMAGE:
             state_data = StickersStateAddemoji.deserialize(BytesIO(state.data))
-            state_data.file_id = message.media.file.id
+            state_data.file_id = content.media.file.id
             await state.update_state(StickersBotState.ADDEMOJI_WAIT_EMOJI, state_data.serialize())
         else:
             raise Unreachable
@@ -231,7 +233,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             StickersBotState.EDITSTICKER_WAIT_EMOJI, StickersBotState.NEWEMOJIPACK_WAIT_EMOJI,
             StickersBotState.ADDEMOJI_WAIT_EMOJI,
     ):
-        emoji = message.message.strip()
+        emoji = content.message.strip()
         if not emoji or not purely_emoji(emoji) or len(emoji) > 4:
             return await send_bot_message(peer, __newpack_send_emoji_invalid)
 
@@ -308,7 +310,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         return await send_bot_message(peer, __text_send_shortname_emoji, entities=__text_send_shortname_emoji_entities)
 
     if state.state in (StickersBotState.NEWPACK_WAIT_SHORT_NAME, StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME):
-        short_name = message.message.strip()
+        short_name = content.message.strip()
 
         try:
             await check_stickerset_short_name(CheckShortName(short_name=short_name))
@@ -382,8 +384,11 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER,
             StickersBotState.REPLACESTICKER_WAIT_PACK_OR_STICKER,
         )
-        if allow_sticker and message.media and message.media.file and message.media.file.type is FileType.DOCUMENT_STICKER:
-            sticker = message.media.file
+        if allow_sticker \
+                and content.media \
+                and content.media.file \
+                and content.media.file.type is FileType.DOCUMENT_STICKER:
+            sticker = content.media.file
             if sticker.stickerset.owner_id != peer.owner_id:
                 return await send_bot_message(peer, __editsticker_not_owner)
             if state.state is StickersBotState.EDITSTICKER_WAIT_PACK_OR_STICKER:
@@ -402,10 +407,10 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
                 return await send_bot_message(peer, text, entities=entities)
             else:
                 raise Unreachable
-        elif allow_sticker and message.media:
+        elif allow_sticker and content.media:
             return await _invalid_set_selected(peer, None if is_any else is_emoji)
 
-        sel_short_name = message.message.strip()
+        sel_short_name = content.message.strip()
         if not sel_short_name:
             return await _invalid_set_selected(peer, None if is_any else is_emoji)
 
@@ -454,10 +459,10 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             raise Unreachable
 
     if state.state in (StickersBotState.EDITSTICKER_WAIT_STICKER, StickersBotState.REPLACESTICKER_WAIT_STICKER):
-        if not message.media or not message.media.file or message.media.file.type is not FileType.DOCUMENT_STICKER:
+        if not content.media or not content.media.file or content.media.file.type is not FileType.DOCUMENT_STICKER:
             return await send_bot_message(peer, __editsticker_send_sticker_invalid)
 
-        sticker = message.media.file
+        sticker = content.media.file
         if sticker.stickerset.owner_id != peer.owner_id:
             return await send_bot_message(peer, __editsticker_not_owner)
 
@@ -478,7 +483,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
             raise Unreachable
 
     if state.state is StickersBotState.DELPACK_WAIT_CONFIRM:
-        if message.message != DELPACK_CONFIRMATION:
+        if content.message != DELPACK_CONFIRMATION:
             return await send_bot_message(peer, __delpack_confirm_invalid, entities=__delpack_confirm_invalid_entities)
 
         state_data = StickersStateDelpack.deserialize(BytesIO(state.data))
@@ -495,7 +500,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         return await send_bot_message(peer, __delpack_deleted)
 
     if state.state is StickersBotState.RENAMEPACK_WAIT_NAME:
-        pack_name = message.message
+        pack_name = content.message
         if not pack_name or len(pack_name) > 64:
             return await send_bot_message(peer, __newpack_invalid_name)
 
@@ -514,7 +519,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         return await send_bot_message(peer, __renamepack_renamed)
 
     if state.state is StickersBotState.NEWEMOJIPACK_WAIT_TYPE:
-        type_ = message.message.strip()
+        type_ = content.message.strip()
         if type_ == "Static emoji":
             pack_type = EmojiPackTypeStatic()
         elif type_ == "Video emoji":
@@ -533,7 +538,7 @@ async def stickers_text_message_handler(peer: Peer, message: Message) -> Message
         )
 
     if state.state is StickersBotState.NEWEMOJIPACK_WAIT_NAME:
-        pack_name = message.message
+        pack_name = content.message
         if not pack_name or len(pack_name) > 64:
             return await send_bot_message(peer, __newpack_invalid_name)
 

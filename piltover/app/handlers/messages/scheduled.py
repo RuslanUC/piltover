@@ -22,7 +22,7 @@ async def _format_messages(user: User, messages: list[MessageRef]) -> Messages:
     ucc = UsersChatsChannels()
 
     for message in messages:
-        ucc.add_message(message.id)
+        ucc.add_message(message.content_id)
 
     messages_tl = await MessageRef.to_tl_bulk(messages, user)
     users, chats, channels = await ucc.resolve()

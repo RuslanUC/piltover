@@ -26,12 +26,11 @@ class State(Model):
 
     @classmethod
     async def add_pts(cls, user: models.User, pts_count: int) -> int:
+        if pts_count <= 0:
+            return cast(int, await cls.get(user=user).values_list("pts", flat=True))
+
         async with in_transaction():
             pts = cast(int, await cls.select_for_update().get(user=user).values_list("pts", flat=True))
-
-            if pts_count <= 0:
-                return pts
-
             new_pts = pts + pts_count
             await cls.filter(user=user).update(pts=new_pts)
 

@@ -2,7 +2,7 @@ from typing import cast
 
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import BotFatherState, BOTFATHER_STATE_TO_COMMAND_NAME
-from piltover.db.models import Peer, Message, BotFatherUserState
+from piltover.db.models import Peer, BotFatherUserState, MessageRef
 
 __text_no_command = """
 No active command to cancel. I wasn't doing anything anyway. Zzzzz...
@@ -14,7 +14,7 @@ Send <c>/help</c> for a list of commands. To learn more about Telegram Bots, see
 """.strip())
 
 
-async def botfather_cancel_command(peer: Peer, _: Message) -> Message | None:
+async def botfather_cancel_command(peer: Peer, _: MessageRef) -> MessageRef | None:
     state = cast(
         BotFatherState | None,
         await BotFatherUserState.filter(user=peer.owner).first().values_list("state", flat=True)
@@ -27,5 +27,5 @@ async def botfather_cancel_command(peer: Peer, _: Message) -> Message | None:
     else:
         text, entities = __text_command_cancel.format(command=command)
 
-    messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=text, entities=entities)
+    messages = await MessageRef.create_for_peer(peer, peer.user, opposite=False, message=text, entities=entities)
     return messages[peer]

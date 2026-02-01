@@ -1,5 +1,6 @@
+from piltover.app.bot_handlers.stickers.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
-from piltover.db.models import Peer, Message
+from piltover.db.models import Peer, MessageRef
 
 __text = FormatableTextWithEntities("""
 Hello, I'm the Sticker Bot! I can create sticker sets and emoji packs from pictures and give you usage stats for your stickers. See this manual for details on creating stickers and emoji:
@@ -38,6 +39,5 @@ Stats
 __text, __entities = __text.format()
 
 
-async def stickers_start_command(peer: Peer, _: Message) -> Message | None:
-    messages = await Message.create_for_peer(peer, None, None, peer.user, False, message=__text, entities=__entities)
-    return messages[peer]
+async def stickers_start_command(peer: Peer, _: MessageRef) -> MessageRef | None:
+    return await send_bot_message(peer, __text, entities=__entities)

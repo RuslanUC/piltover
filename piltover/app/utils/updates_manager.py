@@ -9,7 +9,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
 from piltover.db.models import User, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
-    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule
+    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
@@ -46,11 +46,11 @@ class UpdatesWithDefaults(Updates):
 
 # TODO: move this module to separate worker
 
-async def send_message(user: User | None, messages: dict[Peer, Message], ignore_current: bool = True) -> Updates:
+async def send_message(user: User | None, messages: dict[Peer, MessageRef], ignore_current: bool = True) -> Updates:
     result = None
 
     ucc = UsersChatsChannels()
-    ucc.add_message(next(iter(messages.values())).id)
+    ucc.add_message(next(iter(messages.values())).content_id)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
     updates_to_create = []
@@ -64,7 +64,7 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
                 pts=await State.add_pts(peer.owner, 1),
                 pts_count=1,
                 related_id=message.id,
-                related_ids=[int(message.random_id)],
+                related_ids=[message.random_id],
                 user=peer.owner,
             ))
 
@@ -90,7 +90,7 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
         )
 
         if message.random_id:
-            updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
+            updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=message.random_id))
 
         if peer.owner == user:
             result = updates
@@ -104,8 +104,7 @@ async def send_message(user: User | None, messages: dict[Peer, Message], ignore_
     return result
 
 
-async def send_message_channel(user: User, message: Message) -> Updates:
-    message.peer.channel = channel = await message.peer.channel
+async def send_message_channel(user: User, channel: Channel, message: MessageRef) -> Updates:
     new_pts = await channel.add_pts(1)
     await ChannelUpdate.create(
         channel=channel,
@@ -116,7 +115,7 @@ async def send_message_channel(user: User, message: Message) -> Updates:
     )
 
     ucc = UsersChatsChannels()
-    ucc.add_message(message.id)
+    ucc.add_message(message.content_id)
     users, chats, channels = await ucc.resolve()
 
     chats_and_channels = [*chats, *channels]
@@ -145,7 +144,7 @@ async def send_message_channel(user: User, message: Message) -> Updates:
     ]
 
     if message.random_id:
-        updates.insert(0, UpdateMessageID(id=message.id, random_id=int(message.random_id)))
+        updates.insert(0, UpdateMessageID(id=message.id, random_id=message.random_id))
 
     return UpdatesWithDefaults(
         updates=updates,
@@ -154,12 +153,12 @@ async def send_message_channel(user: User, message: Message) -> Updates:
     )
 
 
-async def send_messages(messages: dict[Peer, list[Message]], user: User | None = None) -> Updates | None:
+async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | None = None) -> Updates | None:
     result_update = None
 
     ucc = UsersChatsChannels()
     for message in next(iter(messages.values())):
-        ucc.add_message(message.id)
+        ucc.add_message(message.content_id)
 
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
@@ -177,7 +176,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
                     pts=await State.add_pts(peer.owner, 1),
                     pts_count=1,
                     related_id=message.id,
-                    related_ids=[int(message.random_id)],
+                    related_ids=[message.random_id],
                     user=peer.owner,
                 ))
 
@@ -191,7 +190,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
             ))
 
             if message.random_id:
-                updates.append(UpdateMessageID(id=message.id, random_id=int(message.random_id)))
+                updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
 
             updates.append(UpdateNewMessage(
                 message=await message.to_tl(peer.owner),
@@ -216,7 +215,7 @@ async def send_messages(messages: dict[Peer, list[Message]], user: User | None =
 
 
 async def send_messages_channel(
-        messages: list[Message], channel: Channel, user: User | None,
+        messages: list[MessageRef], channel: Channel, user: User | None,
 ) -> Updates | None:
     update_messages = []
     updates_to_create = []
@@ -230,7 +229,7 @@ async def send_messages_channel(
         for num, message in enumerate(messages, start=1):
             this_pts = start_pts + num
             update_messages.append((message, this_pts))
-            ucc.add_message(message.id)
+            ucc.add_message(message.content_id)
 
             updates_to_create.append(ChannelUpdate(
                 channel=channel,
@@ -353,12 +352,12 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
     return new_pts
 
 
-async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
+async def edit_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
     updates_to_create = []
     result_update = None
 
     ucc = UsersChatsChannels()
-    ucc.add_message(next(iter(messages.values())).id)
+    ucc.add_message(next(iter(messages.values())).content_id)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
@@ -386,7 +385,7 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
             chats=chats_and_channels,
         )
 
-        if user.id == peer.owner.id:
+        if user.id == peer.owner_id:
             result_update = update
 
         await SessionManager.send(update, peer.owner.id)
@@ -396,16 +395,16 @@ async def edit_message(user: User, messages: dict[Peer, Message]) -> Updates:
 
 
 @overload
-async def edit_message_channel(user: User, channel: Channel, message: Message) -> Updates:
+async def edit_message_channel(user: User, channel: Channel, message: MessageRef) -> Updates:
     ...
 
 
 @overload
-async def edit_message_channel(user: None, channel: Channel, message: Message) -> None:
+async def edit_message_channel(user: None, channel: Channel, message: MessageRef) -> None:
     ...
 
 
-async def edit_message_channel(user: User | None, channel: Channel, message: Message) -> Updates | None:
+async def edit_message_channel(user: User | None, channel: Channel, message: MessageRef) -> Updates | None:
     new_pts = await channel.add_pts(1)
     await ChannelUpdate.create(
         channel=channel,
@@ -416,7 +415,7 @@ async def edit_message_channel(user: User | None, channel: Channel, message: Mes
     )
 
     ucc = UsersChatsChannels()
-    ucc.add_message(message.id)
+    ucc.add_message(message.content_id)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
@@ -540,12 +539,12 @@ async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
     await SessionManager.send(updates, user.id)
 
 
-async def pin_message(user: User, messages: dict[Peer, Message]) -> Updates:
+async def pin_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
     updates_to_create = []
     result_update = None
 
     ucc = UsersChatsChannels()
-    ucc.add_message(next(iter(messages.values())).id)
+    ucc.add_message(next(iter(messages.values())).content_id)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
@@ -1093,12 +1092,12 @@ async def update_folders_order(user: User, folder_ids: list[int]) -> Updates:
     return updates
 
 
-async def update_reactions(user: User, messages: list[Message], peer: Peer, send: bool = True) -> Updates:
+async def update_reactions(user: User, messages: list[MessageRef], peer: Peer, send: bool = True) -> Updates:
     ucc = UsersChatsChannels()
 
     # TODO: add reactions and not messages maybe?
     for message in messages:
-        ucc.add_message(message.id)
+        ucc.add_message(message.content_id)
 
     users, chats, channels = await ucc.resolve()
 
@@ -1107,7 +1106,7 @@ async def update_reactions(user: User, messages: list[Message], peer: Peer, send
             UpdateMessageReactions(
                 peer=peer.to_tl(),
                 msg_id=message.id,
-                reactions=await message.to_tl_reactions(user),
+                reactions=await message.content.to_tl_reactions(user),
             ) for message in messages
         ],
         users=users,
@@ -1371,7 +1370,7 @@ async def read_messages_contents(user: User, message_ids: list[int]) -> tuple[in
     return new_pts, updates
 
 
-async def new_scheduled_message(user: User, message: Message) -> Updates:
+async def new_scheduled_message(user: User, message: MessageRef) -> Updates:
     new_pts = await State.add_pts(user, 1)
 
     await Update.create(
@@ -1508,7 +1507,7 @@ async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
     )
 
     ucc = UsersChatsChannels()
-    ucc.add_message(query.message_id)
+    ucc.add_message(query.message.content_id)
     users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(

@@ -94,6 +94,8 @@ def NullableFK(
 ) -> fields.ForeignKeyNullableRelation[MODEL]:
     return fields.ForeignKeyField(
         to=to,
+        null=True,
+        default=None,
         **kwargs,
     )
 

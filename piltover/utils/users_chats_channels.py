@@ -23,6 +23,7 @@ class UsersChatsChannels:
         self._chat_ids: set[int] = set()
         self._channel_ids: set[int] = set()
         self._message_ids: set[int] = set()
+        self._message_ref_ids: set[int] = set()
         self._peer_ids: dict[PeerType, set[int]] = {}
 
     def add_user(self, user_id: int) -> None:
@@ -36,6 +37,9 @@ class UsersChatsChannels:
 
     def add_message(self, message_id: int) -> None:
         self._message_ids.add(message_id)
+
+    def add_message_ref(self, message_id: int) -> None:
+        self._message_ref_ids.add(message_id)
 
     def add_peer(self, peer: models.Peer) -> None:
         # TODO: probably should also fetch all chat participants
@@ -77,6 +81,12 @@ class UsersChatsChannels:
 
         if self._message_ids is not None:
             base_query = models.MessageRelated.filter(message__id__in=self._message_ids)
+            users_q |= Q(id__in=Subquery(base_query.values_list("user__id")))
+            chats_q |= Q(id__in=Subquery(base_query.values_list("chat__id")))
+            channels_q |= Q(id__in=Subquery(base_query.values_list("channel__id")))
+
+        if self._message_ref_ids is not None:
+            base_query = models.MessageRelated.filter(message__messagerefs__id__in=self._message_ref_ids)
             users_q |= Q(id__in=Subquery(base_query.values_list("user__id")))
             chats_q |= Q(id__in=Subquery(base_query.values_list("chat__id")))
             channels_q |= Q(id__in=Subquery(base_query.values_list("channel__id")))

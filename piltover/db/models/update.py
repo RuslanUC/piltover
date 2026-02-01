@@ -68,7 +68,7 @@ class Update(Model):
                 if message is None:
                     return None
 
-                ucc.add_message(message.id)
+                ucc.add_message(message.content_id)
 
                 return UpdateEditMessage(
                     message=await message.to_tl(user),
@@ -150,7 +150,7 @@ class Update(Model):
                 if message is None:
                     return None
 
-                ucc.add_message(message.id)
+                ucc.add_message(message.content_id)
 
                 return UpdatePinnedMessages(
                     pinned=message.pinned,
@@ -430,12 +430,12 @@ class Update(Model):
 
             case UpdateType.NEW_SCHEDULED_MESSAGE:
                 message = await models.MessageRef.get_or_none(
-                    id=self.related_id, type=MessageType.SCHEDULED, peer__owner=user
+                    id=self.related_id, content__type=MessageType.SCHEDULED, peer__owner=user
                 ).select_related(*models.MessageRef.PREFETCH_FIELDS)
                 if message is None:
                     return None
 
-                ucc.add_message(message.id)
+                ucc.add_message(message.content_id)
 
                 return UpdateNewScheduledMessage(message=await message.to_tl(user))
 
@@ -469,7 +469,7 @@ class Update(Model):
                 if query is None:
                     return None
 
-                ucc.add_message(query.message_id)
+                ucc.add_message_ref(query.message_id)
 
                 return UpdateBotCallbackQuery(
                     query_id=query.id,
@@ -586,7 +586,6 @@ class Update(Model):
                 )
 
             case UpdateType.NEW_MESSAGE:
-                ucc.add_message(self.related_id)
                 return None  # Handled in GetDifference
 
             case UpdateType.UPDATE_MESSAGE_ID:

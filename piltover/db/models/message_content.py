@@ -186,7 +186,7 @@ class MessageContent(Model):
             entities.append(objects[tl_id](**entity))
             entity["_"] = tl_id
 
-        mentioned = await models.MessageMention.filter(peer__owner=current_user, message=self).exists()
+        mentioned = await models.MessageMention.filter(user=current_user, message=self).exists()
 
         media_unread = False
         if self.media \
@@ -299,7 +299,7 @@ class MessageContent(Model):
                 else:
                     raise Unreachable
 
-            for ref in refs:
+            for message, ref in zip(messages, refs):
                 if ref.id not in last_mention_messages_to_check:
                     continue
 
@@ -312,7 +312,7 @@ class MessageContent(Model):
                 else:
                     raise Unreachable
 
-                if key not in last_ids or last_ids[key] < self.id:
+                if key not in last_ids or last_ids[key] < message.id:
                     media_unreads[ref.id] = True
 
         replies: dict[MessageIdContent, MessageReplies] = {}
@@ -362,7 +362,7 @@ class MessageContent(Model):
                 result.append(message.to_tl_service(ref))
                 continue
 
-            msg_media_unread = media_unreads.get(message.id, False)
+            msg_media_unread = media_unreads.get(ref.id, False)
 
             reactions = None
             if with_reactions and message.type is MessageType.REGULAR:
@@ -451,9 +451,9 @@ class MessageContent(Model):
         return content
 
     async def clone_forward(
-            self, new_author: models.User | None = None,
+            self, related_peer: models.Peer, new_author: models.User | None = None,
             fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
-            reply_to_internal_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
+            reply_to_content_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
             is_discussion: bool = False,
     ) -> Self:
@@ -461,10 +461,8 @@ class MessageContent(Model):
             new_author = self.author
 
         reply_to = None
-        if reply_to_internal_id:
-            reply_to = await models.MessageContent.get_or_none(id=reply_to_internal_id)
-        elif self.reply_to_id is not None:
-            reply_to = await models.MessageContent.get_or_none(id=self.reply_to_id)
+        if reply_to_content_id:
+            reply_to = await models.MessageContent.get_or_none(id=reply_to_content_id)
 
         if fwd_header is MISSING:
             # TODO: probably should be prefetched
@@ -492,7 +490,7 @@ class MessageContent(Model):
         related_user_ids = set()
         related_chat_ids = set()
         related_channel_ids = set()
-        content._fill_related(related_user_ids, related_chat_ids, related_channel_ids)
+        content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
         await self._create_related_from_ids(content, related_user_ids, related_chat_ids, related_channel_ids)
 
         return content
@@ -551,14 +549,14 @@ class MessageContent(Model):
         )
 
     @classmethod
-    async def create_for_peer(cls, **message_kwargs) -> Self:
+    async def create_for_peer(cls, related_peer: models.Peer, **message_kwargs) -> Self:
         related_user_ids: set[int] = set()
         related_chat_ids: set[int] = set()
         related_channel_ids: set[int] = set()
 
         content = await MessageContent.create(**message_kwargs)
 
-        content._fill_related(related_user_ids, related_chat_ids, related_channel_ids)
+        content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
         await cls._create_related_from_ids(content, related_user_ids, related_chat_ids, related_channel_ids)
 
         return content
@@ -576,8 +574,10 @@ class MessageContent(Model):
 
     def _fill_related(
             self, user_ids: set[int], chat_ids: set[int], channel_ids: set[int],
+            related_peer: models.Peer | None = None,
     ) -> None:
-        self._fill_related_peer(self.peer, user_ids, chat_ids, channel_ids)
+        if related_peer is not None:
+            self._fill_related_peer(related_peer, user_ids, chat_ids, channel_ids)
 
         if not self.channel_post and self.author_id is not None:
             user_ids.add(self.author_id)

@@ -151,9 +151,10 @@ async def get_messages_query_internal(
             else:
                 raise Unreachable
 
-            query &= Q(id__gt=read_state.last_mention_id)
             query &= Q(content__id__in=Subquery(
-                MessageMention.filter(peer_q, user__id=peer.owner_id).values_list("message__id", flat=True)
+                MessageMention.filter(
+                    peer_q, user__id=peer.owner_id, message__id__gt=read_state.last_mention_id
+                ).values_list("message__id", flat=True)
             ))
         else:
             query = Q(id=0)
@@ -255,7 +256,7 @@ async def format_messages_internal(
     ucc = UsersChatsChannels()
 
     for message in messages:
-        ucc.add_message(message.id)
+        ucc.add_message(message.content_id)
 
     messages_tl = await MessageRef.to_tl_bulk(messages, user, with_reactions)
     users, chats, channels = await ucc.resolve()
@@ -616,7 +617,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     ucc = UsersChatsChannels()
 
     for message in messages:
-        ucc.add_message(message.id)
+        ucc.add_message(message.content_id)
 
     users, chats, channels = await ucc.resolve()
 
@@ -638,7 +639,7 @@ async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Message
     peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
 
     query = await get_messages_query_internal(
-        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, only_mentions=True
+        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, only_mentions=True,
     )
     messages = await query
 
@@ -652,7 +653,7 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
 
     read_state = await ReadState.for_peer(peer=peer)
     mention_ids = await MessageMention.filter(
-        peer=peer, message__id__gt=read_state.last_mention_id,
+        user=user, message__id__gt=read_state.last_mention_id,
     ).values_list("message__id", flat=True)
     logger.trace(f"Unread mentions ids: {mention_ids}")
 
@@ -876,7 +877,7 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
     ).select_related(*MessageRef.PREFETCH_FIELDS)
 
     ucc = UsersChatsChannels()
-    ucc.add_message(discussion_message.id)
+    ucc.add_message(discussion_message.content_id)
     users, chats, channels = await ucc.resolve()
 
     replies_info = await MessageRef.filter(content__reply_to=discussion_message).annotate(

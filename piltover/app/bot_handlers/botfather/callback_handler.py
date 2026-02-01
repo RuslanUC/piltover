@@ -1,11 +1,13 @@
 from loguru import logger
+from tortoise.expressions import F
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.botfather.mybots_command import text_no_bots, text_choose_bot
 from piltover.app.bot_handlers.botfather.utils import get_bot_selection_inline_keyboard, send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import BotFatherState
-from piltover.db.models import Peer, Message, Bot, BotInfo, BotFatherUserState, UserPhoto, BotCommand
+from piltover.db.models import Peer, Bot, BotInfo, BotFatherUserState, UserPhoto, BotCommand, MessageRef
 from piltover.db.models.bot import gen_bot_token
 from piltover.tl import ReplyInlineMarkup, KeyboardButtonRow, KeyboardButtonCallback
 from piltover.tl.types.internal_botfather import BotfatherStateEditbot
@@ -57,7 +59,7 @@ Send <c>/empty</c> to keep the list empty.
 """.strip()).format()
 
 
-async def botfather_callback_query_handler(peer: Peer, message: Message, data: bytes) -> BotCallbackAnswer | None:
+async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data: bytes) -> BotCallbackAnswer | None:
     logger.trace(data)
 
     if data.startswith(b"mybots/page/"):
@@ -71,14 +73,16 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
 
         rows = await get_bot_selection_inline_keyboard(peer.owner, page)
         if rows is None:
-            message.message = text_no_bots
+            message.content.message = text_no_bots
         else:
-            message.message = text_choose_bot
-            message.reply_markup = ReplyInlineMarkup(rows=rows).write()
-        message.version += 1
-        message.invalidate_reply_markup_cache()
+            message.content.message = text_choose_bot
+            message.content.reply_markup = ReplyInlineMarkup(rows=rows).write()
+        message.content.invalidate_reply_markup_cache()
 
-        await message.save(update_fields=["message", "reply_markup", "version"])
+        async with in_transaction():
+            await message.content.save(update_fields=["message", "reply_markup"])
+            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
+            await message.refresh_from_db(["version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -93,10 +97,10 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         if bot is None:
             return None
 
-        message.message, message.entities = __text_bot_selected.format(
+        message.content.message, message.content.entities = __text_bot_selected.format(
             name=bot.bot.first_name, username=bot.bot.usernames.username,
         )
-        message.reply_markup = ReplyInlineMarkup(rows=[
+        message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"API Token", data=f"bots-token/{bot.bot_id}".encode("latin1")),
                 KeyboardButtonCallback(text=f"Edit Bot", data=f"bots-edit/{bot.bot_id}".encode("latin1")),
@@ -113,10 +117,12 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
                 KeyboardButtonCallback(text=f"<- Back to Bot List", data=f"mybots".encode("latin1")),
             ]),
         ]).write()
-        message.version += 1
-        message.invalidate_reply_markup_cache()
+        message.content.invalidate_reply_markup_cache()
 
-        await message.save(update_fields=["message", "entities", "reply_markup", "version"])
+        async with in_transaction():
+            await message.content.save(update_fields=["message", "entities", "reply_markup"])
+            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
+            await message.refresh_from_db(["version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -124,14 +130,16 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
     if data == b"mybots":
         rows = await get_bot_selection_inline_keyboard(peer.owner, 0)
         if rows is None:
-            message.message = text_no_bots
+            message.content.message = text_no_bots
         else:
-            message.message = text_choose_bot
-            message.reply_markup = ReplyInlineMarkup(rows=rows).write()
-        message.version += 1
-        message.invalidate_reply_markup_cache()
+            message.content.message = text_choose_bot
+            message.content.reply_markup = ReplyInlineMarkup(rows=rows).write()
+        message.content.invalidate_reply_markup_cache()
 
-        await message.save(update_fields=["message", "reply_markup", "version"])
+        async with in_transaction():
+            await message.content.save(update_fields=["message", "reply_markup"])
+            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
+            await message.refresh_from_db(["version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -146,10 +154,10 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         if bot is None:
             return None
 
-        message.message, message.entities = __text_bot_token.format(
+        message.content.message, message.content.entities = __text_bot_token.format(
             name=bot.bot.first_name, username=bot.bot.usernames.username, token=f"{bot.bot_id}:{bot.token_nonce}",
         )
-        message.reply_markup = ReplyInlineMarkup(rows=[
+        message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"Revoke current token", data=f"bots-revoke/{bot.bot_id}".encode("latin1")),
             ]),
@@ -157,10 +165,12 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
                 KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot.bot_id}".encode("latin1")),
             ]),
         ]).write()
-        message.version += 1
-        message.invalidate_reply_markup_cache()
+        message.content.invalidate_reply_markup_cache()
 
-        await message.save(update_fields=["message", "entities", "reply_markup", "version"])
+        async with in_transaction():
+            await message.content.save(update_fields=["message", "entities", "reply_markup"])
+            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
+            await message.refresh_from_db(["version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -178,18 +188,20 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         bot.token_nonce = gen_bot_token()
         await bot.save(update_fields=["token_nonce"])
 
-        message.message, message.entities = __text_bot_token_revoked.format(
+        message.content.message, message.content.entities = __text_bot_token_revoked.format(
             name=bot.bot.first_name, username=bot.bot.usernames.username, token=f"{bot.bot_id}:{bot.token_nonce}",
         )
-        message.reply_markup = ReplyInlineMarkup(rows=[
+        message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot.bot_id}".encode("latin1")),
             ]),
         ]).write()
-        message.version += 1
-        message.invalidate_reply_markup_cache()
+        message.content.invalidate_reply_markup_cache()
 
-        await message.save(update_fields=["message", "entities", "reply_markup", "version"])
+        async with in_transaction():
+            await message.content.save(update_fields=["message", "entities", "reply_markup"])
+            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
+            await message.refresh_from_db(["version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -209,7 +221,7 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         commands_count = await BotCommand.filter(bot=bot.bot).count()
         comm_plural_s = "s" if commands_count > 1 else ""
 
-        message.message, message.entities = __text_bot_edit_info.format(
+        message.content.message, message.content.entities = __text_bot_edit_info.format(
             username=bot.bot.usernames.username,
             name=bot.bot.first_name,
             about=bot.bot.about if bot.bot.about else "🚫",
@@ -219,7 +231,7 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
             commands=f"{commands_count} command{comm_plural_s}" if commands_count else "no commands yet",
             privacy_policy=bot_info.privacy_policy_url if bot_info.privacy_policy_url else "🚫",
         )
-        message.reply_markup = ReplyInlineMarkup(rows=[
+        message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"Edit Name", data=f"bots-edit-name/{bot.bot_id}".encode("latin1")),
                 KeyboardButtonCallback(text=f"Edit About", data=f"bots-edit-about/{bot.bot_id}".encode("latin1")),
@@ -240,10 +252,12 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
                 KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot.bot_id}".encode("latin1")),
             ]),
         ]).write()
-        message.version += 1
-        message.invalidate_reply_markup_cache()
+        message.content.invalidate_reply_markup_cache()
 
-        await message.save(update_fields=["message", "entities", "reply_markup", "version"])
+        async with in_transaction():
+            await message.content.save(update_fields=["message", "entities", "reply_markup"])
+            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
+            await message.refresh_from_db(["version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -260,8 +274,8 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         await BotFatherUserState.set_state(
             peer.owner, BotFatherState.EDITBOT_WAIT_NAME, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
-        message = await send_bot_message(peer, __editbot_name)
-        await upd.send_message(None, {peer: message}, False)
+        new_message = await send_bot_message(peer, __editbot_name)
+        await upd.send_message(None, {peer: new_message}, False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -277,8 +291,8 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         await BotFatherUserState.set_state(
             peer.owner, BotFatherState.EDITBOT_WAIT_ABOUT, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
-        message = await send_bot_message(peer, __editbot_about)
-        await upd.send_message(None, {peer: message}, False)
+        new_message = await send_bot_message(peer, __editbot_about)
+        await upd.send_message(None, {peer: new_message}, False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -294,8 +308,8 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         await BotFatherUserState.set_state(
             peer.owner, BotFatherState.EDITBOT_WAIT_DESCRIPTION, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
-        message = await send_bot_message(peer, __editbot_desc)
-        await upd.send_message(None, {peer: message}, False)
+        new_message = await send_bot_message(peer, __editbot_desc)
+        await upd.send_message(None, {peer: new_message}, False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -311,8 +325,8 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         await BotFatherUserState.set_state(
             peer.owner, BotFatherState.EDITBOT_WAIT_PHOTO, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
-        message = await send_bot_message(peer, __editbot_photo)
-        await upd.send_message(None, {peer: message}, False)
+        new_message = await send_bot_message(peer, __editbot_photo)
+        await upd.send_message(None, {peer: new_message}, False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -328,8 +342,8 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         await BotFatherUserState.set_state(
             peer.owner, BotFatherState.EDITBOT_WAIT_PRIVACY, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
-        message = await send_bot_message(peer, __editbot_privacy, entities=__editbot_privacy_entities)
-        await upd.send_message(None, {peer: message}, False)
+        new_message = await send_bot_message(peer, __editbot_privacy, entities=__editbot_privacy_entities)
+        await upd.send_message(None, {peer: new_message}, False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -345,8 +359,8 @@ async def botfather_callback_query_handler(peer: Peer, message: Message, data: b
         await BotFatherUserState.set_state(
             peer.owner, BotFatherState.EDITBOT_WAIT_COMMANDS, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
-        message = await send_bot_message(peer, __editbot_commands, entities=__editbot_commands_entities)
-        await upd.send_message(None, {peer: message}, False)
+        new_message = await send_bot_message(peer, __editbot_commands, entities=__editbot_commands_entities)
+        await upd.send_message(None, {peer: new_message}, False)
 
         return BotCallbackAnswer(cache_time=0)
 

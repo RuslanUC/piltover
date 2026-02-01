@@ -120,7 +120,8 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> 
 
     async with in_transaction():
         query = await CallbackQuery.select_for_update(no_key=True).get_or_none(
-            message__author=user, id=request.query_id, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
+            message__content__author=user, id=request.query_id,
+            created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
         )
         if query is None:
             raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")

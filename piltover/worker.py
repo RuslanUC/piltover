@@ -332,8 +332,9 @@ class Worker(MessageHandler):
                 owner=None, channel__id=message.peer.channel.discussion_id,
             ).select_related("channel")
 
-            discussion_message = await message.forward_for_peer(
-                peer=discussion_peer,
+            discussion_message, = await message.forward_for_peers(
+                to_peer=discussion_peer,
+                peers=[discussion_peer],
                 no_forwards=_resolve_noforwards(discussion_peer, None, False),
                 fwd_header=await message.create_fwd_header(False),
                 is_forward=True,
@@ -343,13 +344,15 @@ class Worker(MessageHandler):
 
             logger.debug(f"Created discussion message {discussion_message.id} for message {message.id}")
 
-            message.edit_date = datetime.now(UTC)
-            message.edit_hide = True
-            message.discussion = discussion_message
-            message.comments_info = await MessageComments.create(
+            message.content.edit_date = datetime.now(UTC)
+            message.content.edit_hide = True
+            message.content.discussion = discussion_message.content
+            message.content.comments_info = await MessageComments.create(
                 discussion_channel=discussion_peer.channel, discussion_pts=discussion_peer.channel.pts,
             )
-            await message.save(update_fields=["discussion_id", "comments_info_id", "edit_date", "edit_hide"])
+            message.version += 1
+            await message.content.save(update_fields=["discussion_id", "comments_info_id", "edit_date", "edit_hide"])
+            await message.save(update_fields=["version"])
 
         await upd.send_messages_channel([discussion_message], discussion_peer.channel, None)
         await upd.edit_message_channel(None, message.peer.channel, message)

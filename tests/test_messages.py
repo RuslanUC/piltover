@@ -18,10 +18,10 @@ from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyT
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
 from pyrogram.types import InputMediaDocument, ChatPermissions
-from tortoise.expressions import F
+from tortoise.expressions import F, Subquery
 
 from piltover.db.enums import PeerType
-from piltover.db.models import Message, Peer, User
+from piltover.db.models import MessageRef, Peer, User, MessageContent
 from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
 from tests.client import TestClient
 
@@ -217,7 +217,9 @@ async def test_internal_message_cache() -> None:
         assert messages[0].id == message.id
         assert messages[0].text == message.text
 
-        await Message.filter(id=message.id).update(message="some another text 123456789")
+        await MessageContent.filter(
+            id=Subquery(MessageRef.filter(id=message.id).first().values_list("content__id", flat=True))
+        ).update(message="some another text 123456789")
 
         messages = [msg async for msg in client.get_chat_history("me")]
         assert len(messages) == 1
@@ -226,7 +228,7 @@ async def test_internal_message_cache() -> None:
         # Text should be same because message is already cached and cache is based on "version" field
         assert messages[0].text == message.text
 
-        await Message.filter(id=message.id).update(version=100)
+        await MessageRef.filter(id=message.id).update(version=F("version") + 1)
 
         messages = [msg async for msg in client.get_chat_history("me")]
         assert len(messages) == 1
@@ -352,9 +354,13 @@ async def test_delete_history() -> None:
     async with TestClient(phone_number="123456789") as client:
         user = await User.get(id=client.me.id)
         peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF)
-        await Message.bulk_create([
-            Message(peer=peer, author=user, internal_id=i, message="test")
+        await MessageContent.bulk_create([
+            MessageContent(author=user, message="test")
             for i in range(1500)
+        ])
+        await MessageRef.bulk_create([
+            MessageRef(peer=peer, content=content)
+            for content in await MessageContent.filter(author=user)
         ])
 
         assert await client.get_chat_history_count("me") == 1500
@@ -769,6 +775,7 @@ async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> No
     assert messages
     assert len(messages) == 3
     assert not messages[1].mentioned
+    logger.info(f"message ids: {[m.id for m in messages ]}")
     assert messages[2].mentioned
 
 
@@ -805,7 +812,10 @@ async def _make_test_get_search_results_calendar_data(client: TestClient) -> lis
     ]
 
     for message, date in zip(messages, _test_get_search_results_calendar_dates):
-        await Message.filter(id=message.id).update(date=date, version=F("version") + 1)
+        await MessageContent.filter(
+            id=Subquery(MessageRef.filter(id=message.id).first().values_list("content__id", flat=True)),
+        ).update(date=date)
+        await MessageRef.filter(id=message.id).update(version=F("version") + 1)
 
     return [message.id for message in messages]
 
@@ -975,7 +985,7 @@ async def test_delete_scheduled_message(exit_stack: AsyncExitStack) -> None:
 @pytest.mark.run_scheduler
 @pytest.mark.asyncio
 async def test_messages_ttl(exit_stack: AsyncExitStack) -> None:
-    Message.TTL_MULT = 1
+    MessageContent.TTL_MULT = 1
 
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 

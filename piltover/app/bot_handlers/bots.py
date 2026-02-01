@@ -23,15 +23,15 @@ from piltover.app.bot_handlers.stickers.skip_command import stickers_skip_comman
 from piltover.app.bot_handlers.stickers.start_command import stickers_start_command
 from piltover.app.bot_handlers.stickers.text_handler import stickers_text_message_handler
 from piltover.app.bot_handlers.test_bot.ping_command import test_bot_ping_command
-from piltover.db.models import Peer, Message, InlineQuery, InlineQueryResult, InlineQueryResultItem
+from piltover.db.models import Peer, InlineQuery, InlineQueryResult, InlineQueryResultItem, MessageRef
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
 
 
-async def _awaitable_none(_p: Peer, _m: Message) -> None:
+async def _awaitable_none(_p: Peer, _m: MessageRef) -> None:
     return None
 
 
-HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None]]]] = {
+HANDLERS: dict[str, dict[str, Callable[[Peer, MessageRef], Awaitable[MessageRef | None]]]] = {
     "test_bot": {
         "__text": _awaitable_none,
         "ping": test_bot_ping_command,
@@ -63,7 +63,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, Message], Awaitable[Message | None
         "addemoji": stickers_addemoji_command,
     }
 }
-CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, Message, bytes], Awaitable[BotCallbackAnswer | None]]] = {
+CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, MessageRef, bytes], Awaitable[BotCallbackAnswer | None]]] = {
     "botfather": botfather_callback_query_handler,
 }
 INLINE_QUERY_HANDLERS: dict[str, Callable[[InlineQuery], Awaitable[tuple[BotResults, bool] | None]]] = {
@@ -71,15 +71,15 @@ INLINE_QUERY_HANDLERS: dict[str, Callable[[InlineQuery], Awaitable[tuple[BotResu
 }
 
 
-async def process_message_to_bot(peer: Peer, message: Message) -> Message | None:
+async def process_message_to_bot(peer: Peer, message: MessageRef) -> MessageRef | None:
     if not peer.user.bot or await peer.user.get_raw_username() not in HANDLERS:
         return None
-    if message.message is None:
+    if message.content.message is None:
         return None
 
     bot_username = await peer.user.get_raw_username()
 
-    text = cast(str, message.message)
+    text = cast(str, message.content.message)
     if not text.startswith("/"):
         return await HANDLERS[bot_username]["__text"](peer, message)
 
@@ -90,10 +90,10 @@ async def process_message_to_bot(peer: Peer, message: Message) -> Message | None
     return await HANDLERS[bot_username][command_name](peer, message)
 
 
-async def process_callback_query(peer: Peer, message: Message, data: bytes) -> BotCallbackAnswer | None:
+async def process_callback_query(peer: Peer, message: MessageRef, data: bytes) -> BotCallbackAnswer | None:
     if not peer.user.bot or await peer.user.get_raw_username() not in CALLBACK_QUERY_HANDLERS:
         return None
-    if message.message is None:
+    if message.content.message is None:
         return None
 
     bot_username = await peer.user.get_raw_username()

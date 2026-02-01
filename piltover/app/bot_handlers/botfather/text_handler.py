@@ -2,6 +2,7 @@ from asyncio import sleep
 from io import BytesIO
 from urllib.parse import urlparse
 
+from tortoise.expressions import F
 from tortoise.transactions import in_transaction
 
 from piltover.app.bot_handlers.botfather.utils import send_bot_message
@@ -9,8 +10,8 @@ from piltover.app.utils.formatable_text_with_entities import FormatableTextWithE
 from piltover.app.utils.utils import is_username_valid
 from piltover.context import request_ctx
 from piltover.db.enums import BotFatherState, MediaType
-from piltover.db.models import Peer, Message, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto, BotCommand, \
-    State
+from piltover.db.models import Peer, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto, BotCommand, State, \
+    MessageRef
 from piltover.tl.types.internal_botfather import BotfatherStateNewbot, BotfatherStateEditbot
 
 __bot_name_invalid = "Sorry, this isn't a proper name for a bot."
@@ -63,13 +64,13 @@ Send <c>/empty</c> to keep the list empty.
 """.strip()).format()
 
 
-async def botfather_text_message_handler(peer: Peer, message: Message) -> Message | None:
+async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> MessageRef | None:
     state = await BotFatherUserState.get_or_none(user=peer.owner)
     if state is None:
         return None
 
     if state.state is BotFatherState.NEWBOT_WAIT_NAME:
-        first_name = message.message
+        first_name = message.content.message
         if len(first_name) > 64:
             return await send_bot_message(peer, __bot_name_invalid)
 
@@ -78,7 +79,7 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
         return await send_bot_message(peer, __bot_wait_username)
 
     if state.state is BotFatherState.NEWBOT_WAIT_USERNAME:
-        username = message.message
+        username = message.content.message
         if not is_username_valid(username):
             return await send_bot_message(peer, __bot_username_invalid)
         if not username.endswith("bot"):
@@ -93,13 +94,14 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             await State.create(user=bot_user)
             await Username.create(user=bot_user, username=username)
             bot = await Bot.create(owner=peer.owner, bot=bot_user)
+            await BotInfo.create(user=bot_user)
             await state.delete()
 
         text, entities = __bot_created.format(username=username, token=f"{bot_user.id}:{bot.token_nonce}")
         return await send_bot_message(peer, text, entities=entities)
 
     if state.state is BotFatherState.EDITBOT_WAIT_NAME:
-        first_name = message.message
+        first_name = message.content.message
         if len(first_name) > 64:
             return await send_bot_message(peer, __bot_name_invalid)
 
@@ -109,15 +111,13 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             return await send_bot_message(peer, "Bot does not exist (?)")
 
         async with in_transaction():
-            bot.bot.first_name = first_name
-            bot.bot.version += 1
-            await bot.save(update_fields=["first_name", "version"])
+            await User.filter(id=bot.bot.id).update(first_name=first_name, version=F("version") + 1)
             await state.delete()
 
         return await send_bot_message(peer, __bot_name_updated, entities=__bot_name_updated_entities)
 
     if state.state is BotFatherState.EDITBOT_WAIT_ABOUT:
-        about = message.message
+        about = message.content.message
         if len(about) > 120:
             return await send_bot_message(peer, __bot_about_invalid)
 
@@ -127,15 +127,13 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             return await send_bot_message(peer, "Bot does not exist (?)")
 
         async with in_transaction():
-            bot.bot.about = about
-            bot.bot.version += 1
-            await bot.save(update_fields=["about", "version"])
+            await User.filter(id=bot.bot.id).update(about=about, version=F("version") + 1)
             await state.delete()
 
         return await send_bot_message(peer, __bot_about_updated, entities=__bot_about_updated_entities)
 
     if state.state is BotFatherState.EDITBOT_WAIT_DESCRIPTION:
-        description = message.message
+        description = message.content.message
         if len(description) > 120:
             return await send_bot_message(peer, __bot_desc_invalid)
 
@@ -145,18 +143,14 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             return await send_bot_message(peer, "Bot does not exist (?)")
 
         async with in_transaction():
-            info, _ = await BotInfo.get_or_create(user=bot.bot)
-            info.version += 1
-            info.description = description
-            bot.bot.version += 1
-            await bot.save(update_fields=["version"])
-            await info.save(update_fields=["description", "version"])
+            await User.filter(id=bot.bot.id).update(version=F("version") + 1)
+            await BotInfo.filter(user__id=bot.bot.id).update(description=description, version=F("version") + 1)
             await state.delete()
 
         return await send_bot_message(peer, __bot_desc_updated, entities=__bot_desc_updated_entities)
 
     if state.state is BotFatherState.EDITBOT_WAIT_PHOTO:
-        if not message.media or message.media.type is not MediaType.PHOTO:
+        if not message.content.media or message.content.media.type is not MediaType.PHOTO:
             return await send_bot_message(peer, __bot_photo_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
@@ -166,25 +160,24 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
 
         storage = request_ctx.get().storage
 
-        file = message.media.file
+        file = message.content.media.file
         photo = file.clone()
         if not await photo.make_thumbs(storage, profile_photo=True):
             return await send_bot_message(peer, __bot_photo_invalid)
 
         async with in_transaction():
-            bot.bot.version += 1
-            await bot.save(update_fields=["version"])
             await photo.save()
             await UserPhoto.filter(user=bot.bot).delete()
             await UserPhoto.create(user=bot.bot, file=photo, current=True)
+            await User.filter(id=bot.bot.id).update(version=F("version") + 1)
 
         await state.delete()
 
         return await send_bot_message(peer, __bot_photo_updated, entities=__bot_photo_updated_entities)
 
     if state.state is BotFatherState.EDITBOT_WAIT_PRIVACY:
-        parsed = urlparse(message.message)
-        if not parsed.netloc or parsed.scheme != "https" or len(message.message) > 240:
+        parsed = urlparse(message.content.message)
+        if not parsed.netloc or parsed.scheme != "https" or len(message.content.message) > 240:
             return await send_bot_message(peer, __bot_privacy_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
@@ -193,12 +186,10 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
             return await send_bot_message(peer, "Bot does not exist (?)")
 
         async with in_transaction():
-            info, _ = await BotInfo.get_or_create(user=bot.bot)
-            info.version += 1
-            info.privacy_policy_url = message.message
-            bot.bot.version += 1
-            await bot.save(update_fields=["version"])
-            await info.save(update_fields=["privacy_policy_url", "version"])
+            await User.filter(id=bot.bot.id).update(version=F("version") + 1)
+            await BotInfo.filter(user__id=bot.bot.id).update(
+                privacy_policy_url=message.content.message, version=F("version") + 1,
+            )
             await state.delete()
 
         return await send_bot_message(peer, _bot_privacy_updated, entities=_bot_privacy_updated_entities)
@@ -206,7 +197,7 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
     if state.state is BotFatherState.EDITBOT_WAIT_COMMANDS:
         commands = {}
 
-        for command in message.message.split("\n"):
+        for command in message.content.message.split("\n"):
             await sleep(0)
             name, _, description = command.partition(" - ")
             # TODO: validate command name
@@ -230,9 +221,8 @@ async def botfather_text_message_handler(peer: Peer, message: Message) -> Messag
                 for command_name, command_description in commands.items()
             ])
 
-            info, _ = await BotInfo.get_or_create(user=bot.bot)
-            info.version += 1
-            await info.save(update_fields=["version"])
+            await User.filter(id=bot.bot.id).update(version=F("version") + 1)
+            await BotInfo.filter(user__id=bot.bot.id).update(version=F("version") + 1)
             await state.delete()
 
         return await send_bot_message(peer, _bot_commands_updated, entities=_bot_commands_updated_entities)

@@ -3,7 +3,7 @@ from io import BytesIO
 from piltover.app.bot_handlers.stickers.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import StickersBotState
-from piltover.db.models import Peer, Message, StickersBotUserState
+from piltover.db.models import Peer, StickersBotUserState, MessageRef
 from piltover.exceptions import Unreachable
 from piltover.tl.types.internal_stickersbot import StickersStateNewpack, StickersStateNewemojipack
 
@@ -24,7 +24,7 @@ You can also <c>/skip</c> this step. If you do, apps will use the first emoji of
 """.strip()).format()
 
 
-async def stickers_publish_command(peer: Peer, _: Message) -> Message | None:
+async def stickers_publish_command(peer: Peer, _: MessageRef) -> MessageRef | None:
     state = await StickersBotUserState.get_or_none(user=peer.owner)
     if state is None or state.state not in (
             StickersBotState.NEWPACK_WAIT_IMAGE, StickersBotState.NEWPACK_WAIT_EMOJI,

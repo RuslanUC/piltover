@@ -31,6 +31,7 @@ from .send_as_peers_downgrade import *
 from .stickerset_downgrade import *
 from .update_delete_scheduled_messages_downgrade import *
 from .update_peer_blocked_downgrade import *
+from .update_read_messages_contents_downgrade import *
 from .user_downgrade import *
 from .userfull_downgrade import *
 from .wallpaper_settings_downgrade import *
@@ -216,3 +217,7 @@ LayerConverter.register_for_downgrade(DraftMessageDontDowngrade)
 LayerConverter.register_for_downgrade(BotResultsDowngradeTo133)
 LayerConverter.register_for_downgrade(BotResultsDontDowngrade155)
 LayerConverter.register_for_downgrade(BotResultsDontDowngrade)
+
+LayerConverter.register_for_downgrade(UpdateReadMessagesContentsDowngradeTo133)
+LayerConverter.register_for_downgrade(UpdateReadMessagesContentsDontDowngrade163)
+LayerConverter.register_for_downgrade(UpdateReadMessagesContentsDontDowngrade)

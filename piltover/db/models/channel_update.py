@@ -6,7 +6,6 @@ from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
-from piltover.db.models import Message
 from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage, Long
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
@@ -36,10 +35,10 @@ class ChannelUpdate(Model):
             case ChannelUpdateType.NEW_MESSAGE:
                 return None
             case ChannelUpdateType.EDIT_MESSAGE:
-                message = await Message.get(
+                message = await models.MessageRef.get(
                     id=self.related_id, peer__channel__id=self.channel_id,
-                ).select_related(*Message.PREFETCH_FIELDS)
-                ucc.add_message(message.id)
+                ).select_related(*models.MessageRef.PREFETCH_FIELDS)
+                ucc.add_message(message.content_id)
 
                 return UpdateEditChannelMessage(
                     message=await message.to_tl(user),

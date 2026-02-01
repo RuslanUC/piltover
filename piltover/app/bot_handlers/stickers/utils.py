@@ -1,6 +1,6 @@
 from tortoise.expressions import Q
 
-from piltover.db.models import User, Peer, Message, Stickerset
+from piltover.db.models import User, Peer, Stickerset, MessageRef
 from piltover.tl import KeyboardButtonRow, KeyboardButton, ReplyInlineMarkup, ReplyKeyboardMarkup, ReplyKeyboardHide
 
 
@@ -25,9 +25,9 @@ async def get_stickerset_selection_keyboard(user: User, emoji: bool | None = Fal
 async def send_bot_message(
         peer: Peer, text: str, keyboard: ReplyInlineMarkup | ReplyKeyboardMarkup | ReplyKeyboardHide | None = None,
         entities: list[dict[str, str | int]] | None = None,
-) -> Message:
-    messages = await Message.create_for_peer(
-        peer, None, None, peer.user, False,
+) -> MessageRef:
+    messages = await MessageRef.create_for_peer(
+        peer, peer.user, opposite=False,
         message=text, reply_markup=keyboard.write() if keyboard else None, entities=entities,
     )
     return messages[peer]

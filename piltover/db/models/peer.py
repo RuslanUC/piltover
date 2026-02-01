@@ -139,12 +139,12 @@ class Peer(Model):
             return peer_
         raise ErrorRpc(error_code=code, error_message=message)
 
-    async def get_opposite(self) -> list[Peer]:
+    async def get_opposite(self, allow_blocked: bool = False) -> list[Peer]:
         if self.type is PeerType.USER:
             if self.user_id == 777000:
                 return []
             peer, created = await Peer.get_or_create(type=PeerType.USER, owner=self.user, user=self.owner)
-            if peer.blocked_at is not None:
+            if peer.blocked_at is not None and not allow_blocked:
                 return []
             if not created:
                 peer.owner = self.user

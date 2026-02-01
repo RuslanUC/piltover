@@ -1,8 +1,9 @@
 from typing import cast
 
+from piltover.app.bot_handlers.stickers.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import StickersBotState, STICKERS_STATE_TO_COMMAND_NAME
-from piltover.db.models import Peer, Message
+from piltover.db.models import Peer, MessageRef
 from piltover.db.models.stickers_state import StickersBotUserState
 
 __text_no_command = """
@@ -15,7 +16,7 @@ Send <c>/help</c> for a list of commands.
 """.strip())
 
 
-async def stickers_cancel_command(peer: Peer, _: Message) -> Message | None:
+async def stickers_cancel_command(peer: Peer, _: MessageRef) -> MessageRef | None:
     state = cast(
         StickersBotState | None,
         await StickersBotUserState.filter(user=peer.owner).first().values_list("state", flat=True)
@@ -29,7 +30,4 @@ async def stickers_cancel_command(peer: Peer, _: Message) -> Message | None:
     if command is not None:
         text, entities = __text_command_cancel.format(command=command)
 
-    messages = await Message.create_for_peer(
-        peer, None, None, peer.user, False, message=text, entities=entities or None,
-    )
-    return messages[peer]
+    return await send_bot_message(peer, text, entities=entities)
