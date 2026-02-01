@@ -78,7 +78,7 @@ async def accept_encryption(request: AcceptEncryption, user: User):
     async with in_transaction():
         chat = await EncryptedChat.select_for_update().get_or_none(
             id=request.peer.chat_id, access_hash=request.peer.access_hash, to_user=user,
-        ).select_related("from_user")
+        ).select_related("from_user", "to_user")
         if chat is None:
             raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
 

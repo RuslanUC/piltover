@@ -311,8 +311,10 @@ async def delete_messages(user: User | None, messages: dict[User, list[int]]) ->
             user_new_pts = new_pts
 
     all_ids = [i for ids in messages.values() for i in ids]
-    # TODO: also filter by type?
-    await Update.filter(related_id__in=all_ids).delete()
+    await Update.filter(
+        Q(update_type=UpdateType.NEW_MESSAGE) | Q(update_type=UpdateType.MESSAGE_EDIT),
+        related_id__in=all_ids,
+    ).delete()
     await Update.bulk_create(updates_to_create)
 
     return user_new_pts
@@ -330,8 +332,8 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
     )
 
     await ChannelUpdate.filter(
+        type__in=(ChannelUpdateType.NEW_MESSAGE, ChannelUpdateType.EDIT_MESSAGE),
         channel=channel, related_id__in=messages,
-        type__in=(ChannelUpdateType.NEW_MESSAGE, ChannelUpdateType.EDIT_MESSAGE)
     ).delete()
 
     await SessionManager.send(
@@ -1132,9 +1134,7 @@ async def encryption_update(user: User, chat: EncryptedChat) -> None:
     )
     logger.trace(f"Sending UPDATE_ENCRYPTION to user {user.id}")
 
-    # TODO: prefetch outside of this function
     other_user = chat.from_user if user.id == chat.to_user_id else chat.to_user
-    other_user = await other_user
 
     await SessionManager.send(
         UpdatesWithDefaults(
