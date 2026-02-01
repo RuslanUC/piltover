@@ -100,8 +100,8 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
             run_scheduler=run_scheduler, run_actual_server=USE_REAL_TCP_FOR_TESTING,
         ))
 
-        conn: SqliteClient = connections.get("default")
-        logger.info(f"connection: {conn}, {conn._connection}")
+        # conn: SqliteClient = connections.get("default")
+        # logger.info(f"connection: {conn}, {conn._connection}")
 
         server_reset_token = server_instance.set(test_server)
         skip_auth_reset_token = skipping_auth.set(not real_key_gen and not real_auth)

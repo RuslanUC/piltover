@@ -9,9 +9,10 @@ from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction
+from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction, \
+    READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
-    ReadHistoryChunk, AdminLogEntry, MessageRef
+    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead
 from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -142,8 +143,6 @@ async def get_messages_query_internal(
 
     if only_mentions:
         if isinstance(peer, Peer) and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
-            read_state = await ReadState.for_peer(peer=peer)
-
             if peer.type is PeerType.CHAT:
                 peer_q = Q(chat__id=peer.chat_id)
             elif peer.type is PeerType.CHANNEL:
@@ -152,9 +151,7 @@ async def get_messages_query_internal(
                 raise Unreachable
 
             query &= Q(content__id__in=Subquery(
-                MessageMention.filter(
-                    peer_q, user__id=peer.owner_id, message__id__gt=read_state.last_mention_id
-                ).values_list("message__id", flat=True)
+                MessageMention.filter(peer_q, user__id=peer.owner_id, read=False).values_list("message__id", flat=True)
             ))
         else:
             query = Q(id=0)
@@ -651,29 +648,47 @@ async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Message
 async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
 
-    read_state = await ReadState.for_peer(peer=peer)
-    mention_ids = await MessageMention.filter(
-        user=user, message__id__gt=read_state.last_mention_id,
-    ).values_list("message__id", flat=True)
-    logger.trace(f"Unread mentions ids: {mention_ids}")
-
-    pts_count = len(mention_ids)
-
-    if not mention_ids:
+    if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         return AffectedHistory(
             pts=await State.add_pts(user, 0),
             pts_count=0,
             offset=0,
         )
 
-    await ReadState.filter(id=read_state.id).update(last_mention_id=max(mention_ids))
+    mentioned_ids = await MessageMention.filter(
+        user=user, chat__id=peer.chat_id, channel__id=peer.channel_id, read=False,
+    ).values_list("message__id", flat=True)
+    logger.trace(f"Unread mentioned ids: {mentioned_ids}")
 
-    # TODO: check if in channels, other updates are emitted
-    #  (because UpdateReadMessagesContents is for common (user-specific) message box only)
-    if peer.type is not PeerType.CHANNEL:
-        pts, _ = await upd.read_messages_contents(user, mention_ids)
+    if not mentioned_ids:
+        if peer.type is PeerType.CHANNEL:
+            pts = peer.channel.pts
+        else:
+            pts = await State.add_pts(user, 0)
+        return AffectedHistory(
+            pts=pts,
+            pts_count=0,
+            offset=0,
+        )
+
+    await MessageMention.filter(user_id=user.id, message_id__in=mentioned_ids).update(read=True)
+
+    if peer.type is PeerType.CHAT:
+        ref_ids_query = MessageRef.filter(peer=peer, content__id__in=mentioned_ids)
+    elif peer.type is PeerType.CHANNEL:
+        ref_ids_query = MessageRef.filter(peer__owner=None, peer__channel__id=peer.channel_id)
     else:
-        pts = await State.add_pts(user, pts_count)
+        raise Unreachable
+
+    ref_ids = await ref_ids_query.values_list("id", flat=True)
+    pts_count = len(ref_ids)
+
+    if peer.type is PeerType.CHANNEL:
+        pts = peer.channel.pts
+        pts_count = 0
+        await upd.read_channel_messages_contents(user, peer.channel, ref_ids)
+    else:
+        pts, _ = await upd.read_messages_contents(user, ref_ids)
 
     return AffectedHistory(
         pts=pts,
@@ -684,44 +699,68 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
 
 @handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_message_contents(request: ReadMessageContents, user: User) -> AffectedMessages:
-    # TODO: actually read media (mark message media_read as True)
-
     if not request.id:
         return AffectedMessages(
             pts=await State.add_pts(user, 0),
             pts_count=0,
         )
 
-    mentions = await MessageMention.filter(
-        user=user, message__messagerefs__id__in=request.id[:100],
-    ).select_related("peer")
-
-    if not mentions:
+    valid_refs = await MessageRef.filter(peer__owner=user, id__in=request.id[:100]).select_related(
+        "content", "content__media", "content__media__file",
+    )
+    if not valid_refs:
         return AffectedMessages(
             pts=await State.add_pts(user, 0),
             pts_count=0,
         )
 
-    max_mention_id_by_chat = {}
-    message_ids = set()
+    content_ids = [ref.content_id for ref in valid_refs]
+    ref_by_content_id = {ref.content_id: ref for ref in valid_refs}
+
+    mentions = await MessageMention.filter(user=user, message__id__in=content_ids, read=False)
+    refs_with_media = {
+        ref.id: ref
+        for ref in valid_refs
+        if (
+                ref.content.media is not None
+                and ref.content.media.file is not None
+                and ref.content.media.file.type in READABLE_FILE_TYPES
+        )
+    }
+
+    for read_media in await MessageMediaRead.filter(user=user, message__in=list(refs_with_media)):
+        del refs_with_media[read_media.message_id]
+
+    if not mentions and not refs_with_media:
+        return AffectedMessages(
+            pts=await State.add_pts(user, 0),
+            pts_count=0,
+        )
+
+    read_ids = set()
 
     for mention in mentions:
-        message_ids.add(mention.message_id)
-        chat_id = mention.chat_id
-        if chat_id not in max_mention_id_by_chat or mention.id > max_mention_id_by_chat[chat_id]:
-            max_mention_id_by_chat[chat_id] = mention.id
+        mention.read = True
+        read_ids.add(ref_by_content_id[mention.message_id].id)
 
-    to_update = []
-    for chat_id, max_mention_id in max_mention_id_by_chat.items():
-        read_state = await ReadState.for_peer_chat(user.id, chat_id)
-        if max_mention_id > read_state.last_mention_id:
-            read_state.last_mention_id = max_mention_id
-            to_update.append(read_state)
+    media_read_to_create = []
+    for ref in refs_with_media.values():
+        read_ids.add(ref.id)
+        media_read_to_create.append(MessageMediaRead(user=user, message=ref))
 
-    if to_update:
-        await ReadState.bulk_update(to_update, fields=["last_mention_id"])
+    if not read_ids:
+        return AffectedMessages(
+            pts=await State.add_pts(user, 0),
+            pts_count=0,
+        )
 
-    message_ids = list(message_ids)
+    if mentions:
+        await MessageMention.bulk_update(mentions, fields=["read"])
+
+    if media_read_to_create:
+        await MessageMediaRead.bulk_create(media_read_to_create)
+
+    message_ids = list(read_ids)
     pts, _ = await upd.read_messages_contents(user, message_ids)
 
     return AffectedMessages(

@@ -76,6 +76,9 @@ class FileType(IntEnum):
     ENCRYPTED = 100
 
 
+READABLE_FILE_TYPES = FileType.DOCUMENT_VOICE, FileType.DOCUMENT_VIDEO_NOTE
+
+
 class MediaType(IntEnum):
     DOCUMENT = 0
     PHOTO = 1
@@ -136,6 +139,7 @@ class UpdateType(IntEnum):
     UPDATE_PRIVACY = 43
     NEW_MESSAGE = 44
     UPDATE_MESSAGE_ID = 45
+    READ_CHANNEL_MESSAGES_CONTENTS = 46
 
 
 class SecretUpdateType(IntEnum):

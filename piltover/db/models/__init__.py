@@ -87,3 +87,4 @@ from .system_object_id import SystemObjectId
 from .message_comments import MessageComments
 from .message_content import MessageContent
 from .message_ref import MessageRef
+from .message_media_read import MessageMediaRead

@@ -4,19 +4,17 @@ from collections import defaultdict
 from datetime import datetime
 from io import BytesIO
 from os import environ
-from typing import cast, Iterable, Self, Annotated
+from typing import Iterable, Self, Annotated
 
 from loguru import logger
 from pytz import UTC
 from tortoise import fields, Model
-from tortoise.expressions import Q
 from tortoise.functions import Count
 
 from piltover.cache import Cache
 from piltover.db import models
-from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, FileType
+from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, READABLE_FILE_TYPES
 from piltover.db.models.utils import Missing, MISSING, NullableFK, NullableFKSetNull
-from piltover.exceptions import Unreachable
 from piltover.tl import MessageReplyHeader, objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase, \
     MessageMedia as MessageMediaBase, MessageEntity as MessageEntityBase
@@ -186,23 +184,18 @@ class MessageContent(Model):
             entities.append(objects[tl_id](**entity))
             entity["_"] = tl_id
 
-        mentioned = await models.MessageMention.filter(user=current_user, message=self).exists()
+        mention_read = await models.MessageMention.filter(
+            user=current_user, message=self
+        ).first().values_list("read", flat=True)
+        mentioned = mention_read is not None
+        if not mentioned:
+            mention_read = True
 
         media_unread = False
         if self.media \
                 and self.media.file \
-                and self.media.file.type in (FileType.DOCUMENT_VOICE, FileType.DOCUMENT_VIDEO_NOTE):
-            media_unread = not ref.media_read
-        elif mentioned:
-            if ref.peer.type is PeerType.CHANNEL:
-                readstate_peer = Q(peer__owner=current_user, peer__channel__id=ref.peer.channel_id)
-            else:
-                readstate_peer = Q(peer=ref.peer)
-            last_id = cast(
-                int | None,
-                await models.ReadState.filter(readstate_peer).first().values_list("last_mention_id", flat=True)
-            )
-            media_unread = last_id is None or last_id < ref.id
+                and self.media.file.type in READABLE_FILE_TYPES:
+            media_unread = not await models.MessageMediaRead.filter(user__id=current_user.id, message=ref).exists()
 
         replies = None
         if self.is_discussion:
@@ -226,7 +219,7 @@ class MessageContent(Model):
             entities=entities,
             reactions=reactions,
             mentioned=mentioned,
-            media_unread=media_unread,
+            media_unread=media_unread if media_unread else not mention_read,
             replies=replies,
         )
 
@@ -255,65 +248,31 @@ class MessageContent(Model):
             if message.id not in cached and not message.is_service()
         }
 
-        mentioned: set[MessageIdContent]
+        mentioned: dict[MessageIdContent, bool] = {}
+
         if message_content_ids:
-            mentioned = set(await models.MessageMention.filter(
+            mentions_info = await models.MessageMention.filter(
                 user__id=user_id, message__id__in=message_content_ids,
+            ).values_list("message__id", "read")
+            for message_id, read in mentions_info:
+                mentioned[message_id] = read
+
+        valid_media_ref_ids = [
+            ref.id
+            for ref in refs
+            if (
+                    ref.content.media is not None
+                    and ref.content.media.file is not None
+                    and ref.content.media.file.type in READABLE_FILE_TYPES
+            )
+        ]
+
+        if valid_media_ref_ids:
+            media_read = set(await models.MessageMediaRead.filter(
+                user__id=user_id, message__id__in=valid_media_ref_ids,
             ).values_list("message__id", flat=True))
         else:
-            mentioned = set()
-
-        media_unreads: dict[MessageIdRef, bool] = {}
-        last_mention_peers_to_fetch = set()
-        last_mention_messages_to_check: set[MessageIdRef] = set()
-        for message, ref in zip(messages, refs):
-            if message.is_service():
-                continue
-            if message.media \
-                    and message.media.file \
-                    and message.media.file.type in (FileType.DOCUMENT_VOICE, FileType.DOCUMENT_VIDEO_NOTE):
-                media_unreads[ref.id] = not ref.media_read
-            elif message.id in mentioned:
-                last_mention_peers_to_fetch.add(ref.peer)
-                last_mention_messages_to_check.add(ref.id)
-
-        if last_mention_peers_to_fetch:
-            last_mentions_q = Q()
-            for peer in last_mention_peers_to_fetch:
-                if peer.type is PeerType.CHANNEL:
-                    last_mentions_q |= Q(peer__channel__id=peer.channel_id)
-                else:
-                    last_mentions_q |= Q(peer=peer)
-
-            last_ids_result = await models.ReadState.filter(last_mentions_q, peer__owner__id=user_id).values_list(
-                "peer__type", "peer__user__id", "peer__chat__id", "peer__channel__id", "last_mention_id"
-            )
-            last_ids = {}
-            for peer_type, peer_user, peer_chat, peer_channel, last_id in last_ids_result:
-                if peer_type in (PeerType.SELF, PeerType.USER):
-                    last_ids[(peer_type, peer_user)] = last_id
-                elif peer_type is PeerType.CHAT:
-                    last_ids[(peer_type, peer_chat)] = last_id
-                elif peer_type is PeerType.CHANNEL:
-                    last_ids[(peer_type, peer_channel)] = last_id
-                else:
-                    raise Unreachable
-
-            for message, ref in zip(messages, refs):
-                if ref.id not in last_mention_messages_to_check:
-                    continue
-
-                if ref.peer.type in (PeerType.SELF, PeerType.USER):
-                    key = (ref.peer.type, ref.peer.user_id)
-                elif ref.peer.type is PeerType.CHAT:
-                    key = (ref.peer.type, ref.peer.chat_id)
-                elif ref.peer.type is PeerType.CHANNEL:
-                    key = (ref.peer.type, ref.peer.channel_id)
-                else:
-                    raise Unreachable
-
-                if key not in last_ids or last_ids[key] < message.id:
-                    media_unreads[ref.id] = True
+            media_read = set()
 
         replies: dict[MessageIdContent, MessageReplies] = {}
         replies_count_to_fetch: dict[MessageIdContent, list[MessageIdContent]] = defaultdict(list)
@@ -362,7 +321,7 @@ class MessageContent(Model):
                 result.append(message.to_tl_service(ref))
                 continue
 
-            msg_media_unread = media_unreads.get(ref.id, False)
+            msg_media_unread = ref.id not in media_read and not mentioned.get(message.id, True)
 
             reactions = None
             if with_reactions and message.type is MessageType.REGULAR:

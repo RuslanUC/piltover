@@ -1502,3 +1502,4 @@ async def toggle_participants_hidden(request: ToggleParticipantsHidden, user: Us
 
 # TODO: DeleteHistory
 # TODO: DeleteParticipantHistory
+# TODO: ReadMessageContents

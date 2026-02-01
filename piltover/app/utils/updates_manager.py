@@ -23,7 +23,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
-    UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy
+    UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents
 from piltover.tl.to_format import DumbChannelMessageToFormat
 from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
@@ -1368,6 +1368,32 @@ async def read_messages_contents(user: User, message_ids: list[int]) -> tuple[in
     await SessionManager.send(updates, user.id)
 
     return new_pts, updates
+
+
+async def read_channel_messages_contents(user: User, channel: Channel, message_ids: list[int]) -> None:
+    # TODO: do we save it in database?
+    #  if yes - what pts sequence do we even use?
+    #  if no - that's stupid, no?
+    #  await Update.create(
+    #      user=user,
+    #      update_type=UpdateType.READ_CHANNEL_MESSAGES_CONTENTS,
+    #      pts=new_pts,
+    #      pts_count=pts_count,
+    #      related_id=channel.id,
+    #      related_ids=message_ids,
+    #  )
+
+    await SessionManager.send(
+        UpdatesWithDefaults(
+            updates=[
+                UpdateChannelReadMessagesContents(
+                    messages=message_ids,
+                    channel_id=channel.id,
+                )
+            ],
+        ),
+        user.id
+    )
 
 
 async def new_scheduled_message(user: User, message: MessageRef) -> Updates:

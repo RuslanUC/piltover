@@ -12,7 +12,6 @@ class ReadState(Model):
     id: int = fields.BigIntField(pk=True)
     last_message_id: int = fields.BigIntField(default=0)
     last_reaction_id: int = fields.BigIntField(default=0)
-    last_mention_id: int = fields.BigIntField(default=0)
     peer: models.Peer = fields.OneToOneField("models.Peer")
 
     peer_id: int
@@ -86,7 +85,7 @@ class ReadState(Model):
                 unread_mentions_query = models.MessageMention.filter(channel__id=peer.channel_id)
             else:
                 raise Unreachable
-            unread_mentions = await unread_mentions_query.filter(message__id__gt=in_read_state.last_mention_id).count()
+            unread_mentions = await unread_mentions_query.filter(read=False, user__id=peer.owner_id).count()
 
         return (
             in_read_state.last_message_id,

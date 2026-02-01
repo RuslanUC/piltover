@@ -34,7 +34,6 @@ class MessageRef(Model):
     random_id: int | None = fields.BigIntField(null=True, default=None)
     pinned: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
-    media_read: bool = fields.BooleanField(default=False)
     from_scheduled: bool = fields.BooleanField(default=False)
 
     content_id: int
