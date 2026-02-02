@@ -726,6 +726,60 @@ async def test_get_unread_mentions_and_read_them_in_chat(exit_stack: AsyncExitSt
 
 
 @pytest.mark.asyncio
+async def test_get_unread_mentions_and_read_them_in_channel(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))
+
+    await client1.set_username("test1_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
+
+    await client2.set_username("test2_username")
+
+    group = await client1.create_supergroup("idk")
+    await client2.join_chat(await group.export_invite_link())
+
+    assert await client1.send_message(group.id, "test no mention")
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer(group.id),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 0
+
+    assert await client1.send_message(group.id, "test @test2_username mention")
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer(group.id),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 1
+
+    assert await client2.invoke(ReadMentions(peer=await client2.resolve_peer(group.id)))
+
+    unread: Messages = await client2.invoke(GetUnreadMentions(
+        peer=await client2.resolve_peer(group.id),
+        offset_id=0,
+        add_offset=0,
+        limit=10,
+        max_id=0,
+        min_id=0,
+    ))
+    assert len(unread.messages) == 0
+
+
+@pytest.mark.asyncio
 async def test_mention_user_in_chat_with_reply(exit_stack: AsyncExitStack) -> None:
     client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
     client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="1234567890"))

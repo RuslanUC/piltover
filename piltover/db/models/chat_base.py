@@ -152,10 +152,12 @@ class ChatBase(Model):
             query = query.filter(left=False)
         return await query.get_or_none(**self.or_channel(self), user=user)
 
-    async def get_participant_raise(self, user: models.User) -> models.ChatParticipant:
+    async def get_participant_raise(
+            self, user: models.User, message: str = "CHAT_RESTRICTED",
+    ) -> models.ChatParticipant:
         if (participant := await self.get_participant(user)) is not None:
             return participant
-        raise ErrorRpc(error_code=400, error_message="CHAT_RESTRICTED")
+        raise ErrorRpc(error_code=400, error_message=message)
 
     def user_has_permission(self, participant: models.ChatParticipant, permission: ChatBannedRights) -> bool:
         if isinstance(self, models.Channel) \
