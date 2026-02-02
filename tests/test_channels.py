@@ -5,11 +5,12 @@ from typing import cast
 import pytest
 from PIL import Image
 from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInvalid, \
-    ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden, InviteHashExpired
+    ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden, InviteHashExpired, UsernameNotModified, \
+    ChatTitleEmpty, ChatAboutTooLong
 from pyrogram.raw.functions.account import GetPassword
 from pyrogram.raw.functions.channels import EditCreator
 from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser, \
-    InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
+    InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputChannel, InputPeerChannel
 from pyrogram.types import ChatMember, ChatPrivileges
 from pyrogram.utils import compute_password_check
 
@@ -26,6 +27,27 @@ async def test_create_channel() -> None:
         async with client.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
             channel = await client.create_channel("idk")
         assert channel.title == "idk"
+
+
+@pytest.mark.asyncio
+async def test_create_channel_empty_name() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        with pytest.raises(ChatTitleEmpty):
+            await client.create_channel("")
+
+
+@pytest.mark.asyncio
+async def test_create_channel_name_too_long() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        with pytest.raises(ChatTitleEmpty):
+            await client.create_channel("1234" * 16 + "1")
+
+
+@pytest.mark.asyncio
+async def test_create_channel_description_too_long() -> None:
+    async with TestClient(phone_number="123456789") as client:
+        with pytest.raises(ChatAboutTooLong):
+            await client.create_channel("test name", description="1234" * 64)
 
 
 @pytest.mark.asyncio
@@ -579,6 +601,79 @@ async def test_channel_supergroup_unban_user(exit_stack: AsyncExitStack) -> None
     await client1.unban_chat_member(channel.id, "test2_username")
 
     await client2.join_chat(invite_link)
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_same(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    async with client.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client.create_channel("idk")
+    assert channel.username is None
+
+    assert await client.set_chat_username(channel.id, "test_channel")
+    await client.expect_update(UpdateChannel)
+    channel = await client.get_chat(channel.id)
+    assert channel.username == "test_channel"
+
+    with pytest.raises(UsernameNotModified):
+        assert await client.set_chat_username(channel.id, "test_channel")
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_empty(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    async with client.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client.create_channel("idk")
+    assert channel.username is None
+
+    assert await client.set_chat_username(channel.id, "test_channel")
+    await client.expect_update(UpdateChannel)
+    channel = await client.get_chat(channel.id)
+    assert channel.username == "test_channel"
+
+    assert await client.set_chat_username(channel.id, None)
+    await client.expect_update(UpdateChannel)
+    channel = await client.get_chat(channel.id)
+    assert channel.username is None
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_empty_from_empty(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    async with client.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client.create_channel("idk")
+    assert channel.username is None
+
+    with pytest.raises(UsernameNotModified):
+        assert await client.set_chat_username(channel.id, None)
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_different_one(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    async with client.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
+        channel = await client.create_channel("idk")
+    assert channel.username is None
+
+    for username in ("test_channel", "test_channel1"):
+        assert await client.set_chat_username(channel.id, username)
+        await client.expect_update(UpdateChannel)
+        channel = await client.get_chat(channel.id)
+        assert channel.username == username
+
+
+@pytest.mark.asyncio
+async def test_channel_trigger_pyrogram_getchannels(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    channel = await client.create_channel("test name")
+
+    another_client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    peer = await another_client.resolve_peer(channel.id)
+    assert isinstance(peer, InputPeerChannel)
 
 
 # TODO: add tests for restricting chat members (including restricting before join)
