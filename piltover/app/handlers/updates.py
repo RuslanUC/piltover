@@ -63,7 +63,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
     server_pts = cast(
         int | None,
-        await Update.filter(user=user).annotate(max_pts=Max("pts")).values_list("max_pts", flat=True)
+        await Update.filter(user=user).annotate(max_pts=Max("pts")).first().values_list("max_pts", flat=True)
     ) or 0
 
     if request.pts_total_limit is not None:
@@ -82,7 +82,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     last_local_secret_id = last_local_secret_update.id if last_local_secret_update is not None else 0
     logger.trace(f"User's {user.id} last secret id is {last_local_secret_id}")
 
-    if request.pts_limit is not None:
+    if isinstance(request, GetDifference) and request.pts_limit is not None:
         max_pts = request.pts + request.pts_limit
     else:
         max_pts = server_pts

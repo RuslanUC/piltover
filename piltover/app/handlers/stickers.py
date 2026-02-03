@@ -604,7 +604,7 @@ async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers |
         .select_related("set")
     sets_hash = telegram_hash((stickerset.set.id for stickerset in sets), 64)
 
-    if sets_hash == request.hash:
+    if request.hash != 0 and sets_hash == request.hash:
         return AllStickersNotModified()
 
     return AllStickers(

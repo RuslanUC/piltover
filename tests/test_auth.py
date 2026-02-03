@@ -340,4 +340,14 @@ async def test_login_token_export_accept_2fa(exit_stack: AsyncExitStack) -> None
 
     await client2.disconnect()
 
-    
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_auth_reconnect_with_same_authkey() -> None:
+    client = TestClient(phone_number="123456789")
+
+    async with client:
+        await client.get_me()
+
+    async with client:
+        await client.get_me()

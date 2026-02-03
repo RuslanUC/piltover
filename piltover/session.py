@@ -185,7 +185,8 @@ class Session:
             self._reset_auth()
             return
 
-        if (time() - self.auth_loaded_at) > 60 or force_refresh_auth:
+        # TODO: dont try to refetch auth every time if it is None?
+        if (time() - self.auth_loaded_at) > 60 or force_refresh_auth or self.auth_id is None:
             logger.trace("Refreshing auth...")
             self.auth_loaded_at = time()
 

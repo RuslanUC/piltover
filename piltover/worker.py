@@ -183,6 +183,8 @@ class Worker(MessageHandler):
         with measure_time("read CallRpc"):
             call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
 
+        logger.trace(f"Got request: {call!r}")
+
         if not (handler := self.request_handlers.get(call.obj.tlid())):
             logger.warning(f"No handler found for obj: {call.obj}")
             return self._err_response(call.message_id, 500, "NOT_IMPLEMENTED")
