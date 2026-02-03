@@ -19,7 +19,7 @@ from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Rea
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
     Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent
 from piltover.db.models.channel import CREATOR_RIGHTS
-from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
+from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session_manager import SessionManager

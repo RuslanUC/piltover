@@ -5,7 +5,7 @@ from tortoise.expressions import Q
 import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, PollAnswer, PollVote, MessageRef
-from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
+from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, PeerUser, MessagePeerVoteInputOption, MessagePeerVote, Updates

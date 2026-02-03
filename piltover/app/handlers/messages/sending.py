@@ -21,7 +21,7 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
     SlowmodeLastMessage, MessageRef, MessageContent
-from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
+from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \

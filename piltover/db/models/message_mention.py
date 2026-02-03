@@ -3,7 +3,7 @@ from __future__ import annotations
 from tortoise import Model, fields
 
 from piltover.db import models
-from piltover.db.models.message import NullableFK
+from piltover.db.models.utils import NullableFK
 
 
 class MessageMention(Model):

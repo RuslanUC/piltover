@@ -13,7 +13,7 @@ from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAd
     READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
     ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead
-from piltover.db.models.message import append_channel_min_message_id_to_query_maybe
+from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable

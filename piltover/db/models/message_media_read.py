@@ -3,7 +3,6 @@ from __future__ import annotations
 from tortoise import Model, fields
 
 from piltover.db import models
-from piltover.db.models.message import NullableFK
 
 
 class MessageMediaRead(Model):
