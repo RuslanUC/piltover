@@ -388,6 +388,7 @@ class PollResultsToFormat(types.PollResultsToFormatInternal):
                 total_voters=self.total_voters,
                 # TODO: only show solution if incorrect option was selected
                 solution=self.solution,
+                solution_entities=self.solution_entities,
             ),
             to_layer=ctx.layer,
         ).write()

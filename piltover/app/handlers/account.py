@@ -39,7 +39,6 @@ from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms
 from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
-from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("account")
@@ -190,7 +189,7 @@ async def get_password_settings(request: GetPasswordSettings, user: User) -> Pas
 
 
 async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRules:
-    rule = await PrivacyRule.get_or_none(user=user, key=key).prefetch_related("exceptions")
+    rule = await PrivacyRule.get_or_none(user=user, key=key).prefetch_related("exceptions", "exceptions__user")
     if rule is None:
         return PrivacyRules(
             rules=[PrivacyValueDisallowAll()],
@@ -198,18 +197,10 @@ async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRu
             users=[],
         )
 
-    # TODO: probably it is possible to not use UCC here (just prefetch exceptions__user)
-    ucc = UsersChatsChannels()
-
-    for exc in rule.exceptions:
-        if exc.user_id is not None:
-            ucc.add_user(exc.user_id)
-
-    users, chats, channels = await ucc.resolve()
-
+    users = await User.to_tl_bulk([exception.user for exception in rule.exceptions])
     return PrivacyRules(
         rules=rule.to_tl_rules(),
-        chats=[*chats, *channels],
+        chats=[],
         users=users,
     )
 
@@ -651,7 +642,7 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
 
 
 @handler.on_request(GetWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_wallpaper(request: GetWallPaper, user: User) -> WallPaper:
+async def get_wallpaper(request: GetWallPaper) -> WallPaper:
     wallpaper = await Wallpaper.from_input(request.wallpaper)
     if wallpaper is None:
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")

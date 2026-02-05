@@ -176,7 +176,8 @@ async def sign_up(request: SignUp | SignUp_133):
     key = await AuthKey.get(id=request_ctx.get().perm_auth_key_id)
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 
-    # TODO: send notification to all users that have new user's number as contact if no_joined_notifications is False
+    # TODO: send MessageActionContactSignUp to all users
+    #  that have new user's number as contact if no_joined_notifications is False
 
     return AuthAuthorization(user=await user.to_tl())
 

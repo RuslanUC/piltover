@@ -9,7 +9,7 @@ from tortoise.functions import Count
 
 from piltover.cache import Cache
 from piltover.db import models
-from piltover.tl import Poll as TLPoll, TextWithEntities
+from piltover.tl import Poll as TLPoll, TextWithEntities, objects
 from piltover.tl.base import PollResults as PollResultsBase
 from piltover.tl.to_format import PollResultsToFormat, PollAnswerVotersToFormat
 
@@ -21,8 +21,9 @@ class Poll(Model):
     public_voters: bool = fields.BooleanField(default=False)
     multiple_choices: bool = fields.BooleanField(default=False)
     question: str = fields.CharField(max_length=255)
-    # TODO: solution entities
+    question_entities: list | None = fields.JSONField(null=True)
     solution: str | None = fields.CharField(max_length=200, null=True, default=None)
+    solution_entities: list | None = fields.JSONField(null=True)
     ends_at: datetime | None = fields.DatetimeField(null=True, default=None)
     version: int = fields.IntField(default=0)
     pollanswers: fields.ReverseRelation[models.PollAnswer]
@@ -37,13 +38,19 @@ class Poll(Model):
         if not self.pollanswers._fetched:
             raise RuntimeError("Poll answers must be prefetched")
 
+        question_entities = []
+        for entity in (self.question_entities or []):
+            tl_id = entity.pop("_")
+            question_entities.append(objects[tl_id](**entity))
+            entity["_"] = tl_id
+
         return TLPoll(
             id=self.id,
             closed=self.is_closed_fr,
             public_voters=self.public_voters,
             multiple_choice=self.multiple_choices,
             quiz=self.quiz,
-            question=TextWithEntities(text=self.question, entities=[]),
+            question=TextWithEntities(text=self.question, entities=question_entities),
             answers=[
                 answer.to_tl()
                 for answer in self.pollanswers
@@ -70,6 +77,14 @@ class Poll(Model):
             ).group_by("answer__id").annotate(voters=Count("id")).values_list("answer__id", "voters")
         }
 
+        solution_entities = None
+        if self.quiz and self.solution is not None:
+            solution_entities = []
+            for entity in (self.solution_entities or []):
+                tl_id = entity.pop("_")
+                solution_entities.append(objects[tl_id](**entity))
+                entity["_"] = tl_id
+
         results = PollResultsToFormat(
             id=self.id,
             results=[
@@ -84,6 +99,7 @@ class Poll(Model):
             ],
             total_voters=await models.User.filter(pollvotes__answer__poll=self).distinct().count(),
             solution=self.solution if self.quiz else None,
+            solution_entities=solution_entities,
         )
 
         await Cache.obj.set(cache_key, results)
@@ -135,6 +151,14 @@ class Poll(Model):
                 tl.append(cached[poll.id])
                 continue
 
+            solution_entities = None
+            if poll.quiz and poll.solution is not None:
+                solution_entities = []
+                for entity in (poll.solution_entities or []):
+                    tl_id = entity.pop("_")
+                    solution_entities.append(objects[tl_id](**entity))
+                    entity["_"] = tl_id
+
             tl.append(PollResultsToFormat(
                 id=poll.id,
                 results=[
@@ -149,6 +173,7 @@ class Poll(Model):
                 ],
                 total_voters=total_counts.get(poll.id, 0),
                 solution=poll.solution if poll.quiz else None,
+                solution_entities=solution_entities,
             ))
             to_cache.append((poll._cache_key(), tl[-1]))
 

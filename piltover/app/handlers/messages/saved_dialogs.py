@@ -62,17 +62,19 @@ async def delete_saved_history(request: DeleteSavedHistory, user: User) -> Affec
     if request.min_date:
         query &= Q(content__date__gt=datetime.fromtimestamp(request.min_date, UTC))
 
-    # TODO: delete as in DeleteHistory, chunk-by-chunk
-
-    ids = await MessageRef.filter(query).values_list("id", flat=True)
+    ids = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", flat=True)
     if not ids:
-        updates_state, _ = await State.get_or_create(user=user)
+        updates_state = await State.get(user=user)
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
+
+    offset = 0
+    if len(ids) > 1000:
+        offset = ids.pop()
 
     await MessageRef.filter(id__in=ids).delete()
     pts = await upd.delete_messages(user, {user: ids})
 
-    return AffectedHistory(pts=pts, pts_count=len(ids), offset=0)
+    return AffectedHistory(pts=pts, pts_count=len(ids), offset=offset)
 
 
 @handler.on_request(GetPinnedSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)

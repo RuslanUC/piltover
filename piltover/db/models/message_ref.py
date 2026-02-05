@@ -152,7 +152,6 @@ class MessageRef(Model):
 
         messages = []
         for peer in peers:
-            # TODO: create in bulk
             messages.append(await models.MessageRef.create(
                 peer=peer,
                 content=content,
@@ -190,11 +189,11 @@ class MessageRef(Model):
         messages: dict[models.Peer, MessageRef] = {}
 
         for to_peer in peers:
+            # TODO: probably create in bulk too?
             messages[to_peer] = await cls.create(
                 peer=to_peer,
                 content=content,
-                random_id=str(random_id) if to_peer == peer and random_id is not None else None,
-
+                random_id=random_id if to_peer == peer else None,
             )
 
         if unhide_dialog:

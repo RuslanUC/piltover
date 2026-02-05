@@ -381,8 +381,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     messages = {peer: message}
 
     opposite_peers = await peer.get_opposite()
-    # TODO: set pm_oneside to True in channel peers
-    if not request.pm_oneside and opposite_peers:
+    if (not request.pm_oneside or peer.type is PeerType.CHANNEL) and opposite_peers:
         other_messages = await MessageRef.filter(
             peer__in=opposite_peers, content__id=message.content_id,
         ).select_related("peer", "peer__owner")
@@ -406,8 +405,6 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
 @handler.on_request(DeleteMessages)
 async def delete_messages(request: DeleteMessages, user: User):
-    # TODO: check if message peer is chat and user has permission to revoke messages (if request.revoke is True)
-
     ids = request.id[:100]
     messages = defaultdict(list)
     for message in await MessageRef.filter(id__in=ids, peer__owner=user).select_related(
@@ -675,7 +672,6 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 
         media_type = MediaType.PHOTO if isinstance(media, InputMediaPhoto) else MediaType.DOCUMENT
     elif isinstance(media, InputMediaPoll):
-        # TODO: support poll question entities
         if isinstance(media.poll.question, TextWithEntities):
             poll_question_text = media.poll.question.text
         else:
@@ -723,12 +719,20 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
                 quiz=media.poll.quiz,
                 public_voters=media.poll.public_voters,
                 multiple_choices=media.poll.multiple_choice,
-                question=media.poll.question,
+                question=media.poll.question.text,
+                question_entities=[],  # TODO: process question entities
                 solution=media.solution if media.poll.quiz else None,
+                solution_entities=[],  # TODO: process solution entities
                 ends_at=ends_at,
             )
             await PollAnswer.bulk_create([
-                PollAnswer(poll=poll, text=answer.text, option=answer.option, correct=answer.option == correct_option)
+                PollAnswer(
+                    poll=poll,
+                    text=answer.text,
+                    entities=[],  # TODO: process answer entities
+                    option=answer.option,
+                    correct=answer.option == correct_option,
+                )
                 for answer in media.poll.answers
             ])
     elif isinstance(media, InputMediaContact):
@@ -1125,8 +1129,8 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
     messages: defaultdict[User, list[int]] = defaultdict(list)
     offset_id = 0
 
-    messages_to_deletel = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", "content__id")
-    for message_id, content_id in messages_to_deletel:
+    messages_to_delete = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", "content__id")
+    for message_id, content_id in messages_to_delete:
         if len(messages[user]) == 1000:
             offset_id = message_id
             break
