@@ -37,11 +37,12 @@ from piltover.tl.functions.channels import GetChannelRecommendations, GetAdmined
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
     GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden, \
-    ReadMessageContents
+    ReadMessageContents, DeleteHistory, DeleteParticipantHistory
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
-from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers
+from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers, \
+    AffectedHistory
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -1524,5 +1525,45 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> boo
     return True
 
 
-# TODO: DeleteHistory
-# TODO: DeleteParticipantHistory
+#@handler.on_request(DeleteHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def delete_history(request: DeleteHistory, user: User) -> Updates:
+    if not request.for_everyone:
+        ...  # TODO: change participant min_message_id to max id before request.max_id
+    else:
+        ...  # TODO: delete messages
+
+
+@handler.on_request(DeleteParticipantHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def delete_participant_history(request: DeleteParticipantHistory, user: User) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+    )
+    channel = peer.channel
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    target_peer = await Peer.from_input_peer_raise(
+        user, request.participant, message="PARTICIPANT_ID_INVALID", code=400,
+        peer_types=(PeerType.SELF, PeerType.USER,)
+    )
+
+    messages_to_delete = await MessageRef.filter(
+        peer__owner=None, peer__channel=channel, content__author__id=target_peer.user_id
+    ).order_by("-id").limit(1001).values_list("id")
+
+    if not messages_to_delete:
+        return AffectedHistory(pts=channel.pts, pts_count=0, offset=0)
+
+    offset_id = 0
+    if len(messages_to_delete) > 1000:
+        offset_id = messages_to_delete.pop(-1)
+
+    await MessageRef.filter(id__in=messages_to_delete).delete()
+
+    new_pts = await upd.delete_messages_channel(channel, messages_to_delete)
+    return AffectedHistory(
+        pts=new_pts,
+        pts_count=len(messages_to_delete),
+        offset=offset_id,
+    )
