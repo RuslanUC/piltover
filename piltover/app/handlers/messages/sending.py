@@ -714,21 +714,38 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             if 5 < (close_datetime - datetime.now(UTC)).seconds <= 600:
                 ends_at = datetime.fromtimestamp(media.poll.close_date, UTC)
 
+        # TODO: process question entities
+        question_entities = []
+        if isinstance(media.poll.question, TextWithEntities):
+            question_text = media.poll.question.text
+        else:
+            question_text = media.poll.question
+
+        solution_text = None
+        solution_entities = None
+        if media.poll.quiz:
+            # TODO: process solution entities
+            solution_entities = []
+            if isinstance(media.solution, TextWithEntities):
+                solution_text = media.solution.text
+            else:
+                solution_text = media.solution
+
         async with in_transaction():
             poll = await Poll.create(
                 quiz=media.poll.quiz,
                 public_voters=media.poll.public_voters,
                 multiple_choices=media.poll.multiple_choice,
-                question=media.poll.question.text,
-                question_entities=[],  # TODO: process question entities
-                solution=media.solution if media.poll.quiz else None,
-                solution_entities=[],  # TODO: process solution entities
+                question=question_text,
+                question_entities=question_entities,
+                solution=solution_text,
+                solution_entities=solution_entities,
                 ends_at=ends_at,
             )
             await PollAnswer.bulk_create([
                 PollAnswer(
                     poll=poll,
-                    text=answer.text,
+                    text=answer.text.text if isinstance(answer.text, TextWithEntities) else answer.text,
                     entities=[],  # TODO: process answer entities
                     option=answer.option,
                     correct=answer.option == correct_option,
