@@ -17,14 +17,11 @@ class UserPhoto(Model):
     user_id: int
 
     def to_tl(self) -> TLPhoto:
-        photo = self.file.to_tl_photo()
-        photo.id = self.id
-        return photo
+        return self.file.to_tl_photo()
 
     def to_tl_profile(self) -> UserProfilePhoto:
         return UserProfilePhoto(
-            # TODO: shouldn't it be self.file_id?
-            photo_id=self.id,
+            photo_id=self.file_id,
             dc_id=2,
             stripped_thumb=self.file.photo_stripped,
         )

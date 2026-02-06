@@ -93,17 +93,17 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     if isinstance(location, InputPeerPhotoFileLocation):
         peer = await Peer.from_input_peer_raise(user, location.peer)
         if peer.type in (PeerType.SELF, PeerType.USER):
-            q = {"userphotos__id": location.photo_id, "userphotos__user": peer.peer_user(user)}
+            q = Q(userphotos__file__id=location.photo_id, userphotos__user__id=peer.user_id)
         elif peer.type is PeerType.CHAT:
-            q = {"chats__photo__id": location.photo_id, "chats__id": peer.chat_id}
+            q = Q(chats__photo__id=location.photo_id, chats__id=peer.chat_id)
         elif peer.type is PeerType.CHANNEL:
-            q = {"channels__photo__id": location.photo_id, "channels__id": peer.channel_id}
+            q = Q(channels__photo__id=location.photo_id, channels__id=peer.channel_id)
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     elif isinstance(location, InputEncryptedFileLocation):
         if not File.check_access_hash(user.id, ctx.auth_id, location.id, location.access_hash):
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
-        q = {"id": location.id, "type": FileType.ENCRYPTED}
+        q = Q(id=location.id, type=FileType.ENCRYPTED)
     elif isinstance(location, InputStickerSetThumb):
         set_q = Stickerset.from_input_q(location.stickerset, prefix="stickersetthumbs__set")
         if set_q is None:
@@ -115,24 +115,23 @@ async def get_file(request: GetFile, user: User) -> TLFile:
             raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED", reason="file ref is invalid")
 
         if const:
-            q = {
-                "id": location.id, "type__not": FileType.ENCRYPTED, "constant_access_hash": location.access_hash,
-                "constant_file_ref": UUID(bytes=location.file_reference[12:]),
-            }
+            q = Q(
+                id=location.id,
+                type__not=FileType.ENCRYPTED,
+                constant_access_hash=location.access_hash,
+                constant_file_ref=UUID(bytes=location.file_reference[12:]),
+            )
         else:
             if not File.check_access_hash(user.id, ctx.auth_id, location.id, location.access_hash):
                 raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
-            q = {"id": location.id, "type__not": FileType.ENCRYPTED}
+            q = Q(id=location.id, type__not=FileType.ENCRYPTED)
 
-    if isinstance(location, InputStickerSetThumb):
-        file = await File.get_or_none(q)
-        if file is None:
-            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
-    else:
-        file = await File.get_or_none(**q)
-
+    file = await File.get_or_none(q)
     if file is None:
-        raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED", reason="file is None")
+        if isinstance(location, InputStickerSetThumb):
+            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
+        else:
+            raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED", reason="file is None")
 
     if request.offset >= file.size:
         return TLFile(type_=FilePartial(), mtime=int(time()), bytes_=b"")

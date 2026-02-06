@@ -731,24 +731,23 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     if request.max_id <= read_state.last_message_id:
         return True
 
-    unread_ids = await MessageRef.filter(
-        id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
-    ).order_by("-id").first().values_list("id", "internal_id")
-    if not unread_ids:
+    unread_max_id = cast(
+        int | None,
+        await MessageRef.filter(
+            id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
+        ).order_by("-id").first().values_list("id", flat=True)
+    )
+    if not unread_max_id:
         return True
 
-    message_id, internal_id = unread_ids
-    if not message_id:
-        return True
+    unread_count = await MessageRef.filter(peer__owner=None, peer__channel=peer.channel, id__gt=unread_max_id).count()
 
-    unread_count = await MessageRef.filter(peer__owner=None, peer__channel=peer.channel, id__gt=message_id).count()
-
-    read_state.last_message_id = message_id
+    read_state.last_message_id = unread_max_id
     await read_state.save(update_fields=["last_message_id"])
 
     # TODO: create and send outbox read update if supergroup
 
-    await upd.update_read_history_inbox_channel(peer, message_id, unread_count)
+    await upd.update_read_history_inbox_channel(peer, unread_max_id, unread_count)
 
     return True
 
@@ -1549,7 +1548,7 @@ async def delete_participant_history(request: DeleteParticipantHistory, user: Us
     )
 
     messages_to_delete = await MessageRef.filter(
-        peer__owner=None, peer__channel=channel, content__author__id=target_peer.user_id
+        peer__owner=None, peer__channel=channel, content__author__id=target_peer.user_id,
     ).order_by("-id").limit(1001).values_list("id")
 
     if not messages_to_delete:

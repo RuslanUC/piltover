@@ -65,7 +65,6 @@ async def get_full_user(request: GetFullUser, user: User):
         birthday = target_user.to_tl_birthday_noprivacycheck()
 
     photo = None
-    fallback_photo = None
     photo_db, photo_fallback_db = await target_user.get_db_photos()
     if privacy_rules[PrivacyRuleKeyType.PROFILE_PHOTO] and photo_db is not None:
         photo = photo_db.to_tl()
@@ -93,7 +92,7 @@ async def get_full_user(request: GetFullUser, user: User):
             blocked=peer.blocked_at is not None,
             phone_calls_available=True,
             phone_calls_private=False,
-            fallback_photo=photo_fallback_db.to_tl() if fallback_photo is not None else None,
+            fallback_photo=photo_fallback_db.to_tl() if photo_fallback_db is not None else None,
             # video_calls_available=True,
         ),
         chats=[await personal_channel.to_tl()] if personal_channel is not None else [],

@@ -343,7 +343,7 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
                     channel_id=channel.make_id(),
                     messages=messages,
                     pts=new_pts,
-                    pts_count=1,
+                    pts_count=len(messages),
                 ),
             ],
             chats=[await channel.to_tl()],
