@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from io import BytesIO
 from os import urandom
 
+from loguru import logger
 from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import CallDiscardReason, CALL_DISCARD_REASON_TO_TL
-from piltover.tl import Long, PhoneCallDiscarded
+from piltover.exceptions import InvalidConstructorException
+from piltover.tl import Long, PhoneCallDiscarded, PhoneCallProtocol, PhoneCallDiscardReasonDisconnect
 from piltover.tl.base import EncryptedChat as EncryptedChatBase
 from piltover.tl.to_format import PhoneCallToFormat
 
@@ -27,11 +30,19 @@ class PhoneCall(Model):
     key_fp: int | None = fields.BigIntField(null=True, default=None)
     discard_reason: CallDiscardReason | None = fields.IntEnumField(CallDiscardReason, null=True, default=None)
     duration: int | None = fields.IntField(null=True, default=None)
+    protocol: bytes = fields.BinaryField()
 
     from_user_id: int
     from_sess_id: int
     to_user_id: int
     to_sess_id: int | None
+
+    def protocol_tl(self) -> PhoneCallProtocol | None:
+        try:
+            return PhoneCallProtocol.read(BytesIO(self.protocol))
+        except InvalidConstructorException as e:
+            logger.opt(exception=e).error("Failed to read phone call protocol")
+            return None
 
     def to_tl(self) -> EncryptedChatBase:
         if self.discard_reason is not None:
@@ -39,6 +50,12 @@ class PhoneCall(Model):
                 id=self.id,
                 reason=CALL_DISCARD_REASON_TO_TL[self.discard_reason],
                 duration=self.duration,
+            )
+
+        if (protocol := self.protocol_tl()) is None:
+            return PhoneCallDiscarded(
+                id=self.id,
+                reason=PhoneCallDiscardReasonDisconnect(),
             )
 
         return PhoneCallToFormat(
@@ -53,7 +70,7 @@ class PhoneCall(Model):
             g_a_hash=self.g_a_hash,
             g_b=self.g_b,
             key_fingerprint=self.key_fp,
-            protocol=None,
+            protocol=protocol,
             connections=None,
             start_date=int(self.started_at.timestamp()) if self.started_at else None,
         )

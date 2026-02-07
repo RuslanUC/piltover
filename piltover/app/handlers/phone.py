@@ -9,13 +9,24 @@ from piltover.db.enums import PeerType, PrivacyRuleKeyType, CallDiscardReason
 from piltover.db.models import User, Peer, PrivacyRule, UserAuthorization, PhoneCall
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect
-from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall
+from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect, PhoneCallProtocol
+from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall, AcceptCall
 from piltover.tl.types.phone import PhoneCall as PhonePhoneCall
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("phone")
 
+SUPPORTED_LIBRARY_VERSIONS = {
+    "2.4.4",  # protocol V0?
+    "2.7.7",  # protocol V0, signaling V0? (seq + ??? + type? + length + raw sdp parts)
+    "5.0.0",  # protocol V1, signaling V0? (seq + ??? + type? + length + raw sdp parts)
+    "7.0.0",  # protocol V2, signaling V1 (seq + json)
+    "8.0.0",  # protocol V2, signaling V2 (seq(+flags) + type + length + json)
+    "9.0.0",  # protocol V2, signaling V2 (seq(+flags) + type + length + json)
+    "11.0.0",  # protocol V2, signaling V2.5/V3?
+    "12.0.0",  # protocol V2, signaling V3, not supported on tdesktop 5.13 so no idea
+    "13.0.0",  # protocol V2, signaling V3, not supported on tdesktop 5.13 so no idea
+}
 CALL_CONFIG = json.dumps({
     "enable_vp8_encoder": True,
     "enable_vp8_decoder": True,
@@ -61,12 +72,45 @@ async def get_call_config() -> DataJSON:
     return DataJSON(data=CALL_CONFIG)
 
 
+def _check_protocol(protocol: PhoneCallProtocol) -> None:
+    if not protocol.udp_p2p and not protocol.udp_reflector:
+        raise ErrorRpc(error_code=400, error_message="CALL_PROTOCOL_FLAGS_INVALID")
+
+    if protocol.min_layer > protocol.max_layer:
+        raise ErrorRpc(error_code=400, error_message="CALL_PROTOCOL_LAYER_INVALID")
+    if protocol.min_layer < 65 or protocol.max_layer > 92:
+        raise ErrorRpc(error_code=400, error_message="CALL_PROTOCOL_LAYER_INVALID")
+
+    versions = list(set(protocol.library_versions) & SUPPORTED_LIBRARY_VERSIONS)
+    if not versions:
+        versions = ["2.4.4"]
+
+    protocol.library_versions = versions
+
+
+def _merge_protocols(a: PhoneCallProtocol, b: PhoneCallProtocol):
+    merged_min_layer = max(a.min_layer, b.min_layer)
+    merged_max_layer = min(a.max_layer, b.max_layer)
+    if merged_min_layer > merged_max_layer:
+        raise ErrorRpc(error_code=406, error_message="CALL_PROTOCOL_COMPAT_LAYER_INVALID")
+
+    versions = list(set(a.library_versions) & set(b.library_versions))
+    if not versions:
+        versions = ["2.4.4"]
+
+    return PhoneCallProtocol(
+        # TODO: figure out how this is calculated by telegram
+        udp_p2p=True,
+        udp_reflector=True,
+        min_layer=merged_min_layer,
+        max_layer=merged_max_layer,
+        library_versions=versions,
+    )
+
+
 @handler.on_request(RequestCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def request_call(request: RequestCall, user: User) -> PhonePhoneCall:
-    if request.protocol.min_layer > request.protocol.max_layer:
-        raise ErrorRpc(error_code=400, error_message="CALL_PROTOCOL_LAYER_INVALID")
-    if request.protocol.min_layer < 65 or request.protocol.max_layer > 92:
-        raise ErrorRpc(error_code=400, error_message="CALL_PROTOCOL_LAYER_INVALID")
+    _check_protocol(request.protocol)
 
     if len(request.g_a_hash) != 32:
         raise ErrorRpc(error_code=400, error_message="G_A_HASH_INVALID")
@@ -90,6 +134,7 @@ async def request_call(request: RequestCall, user: User) -> PhonePhoneCall:
         to_sess=None,
         g_a_hash=request.g_a_hash,
         discard_reason=None if target_authorizations else CallDiscardReason.MISSED,
+        protocol=request.protocol.write(),
     )
 
     # TODO: send service message if discard_reason is not None
@@ -137,3 +182,41 @@ async def discard_call(request: DiscardCall, user: User) -> Updates:
 
     await upd.phone_call_update(call.to_user, call, target_authorizations)
     return await upd.phone_call_update(user, call, [])
+
+
+@handler.on_request(AcceptCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def accept_call(request: AcceptCall, user: User) -> PhonePhoneCall:
+    call = await PhoneCall.get_or_none(
+        to_user=user, id=request.peer.id, access_hash=request.peer.access_hash,
+    ).select_related("from_user")
+    if call is None:
+        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
+
+    if call.discard_reason is not None:
+        raise ErrorRpc(error_code=400, error_message="CALL_ALREADY_DECLINED")
+    if call.g_b is not None:
+        raise ErrorRpc(error_code=400, error_message="CALL_ALREADY_ACCEPTED")
+
+    _check_protocol(request.protocol)
+
+    ctx = request_ctx.get()
+    call.to_sess = await UserAuthorization.get(user=user, id=ctx.auth_id)
+    call.g_b = request.g_b
+    call.protocol = _merge_protocols(call.protocol_tl(), request.protocol).write()
+    await call.save(update_fields=["to_sess_id", "g_b", "protocol"])
+
+    target_authorizations = await UserAuthorization.filter(
+        user=call.to_user, allow_call_requests=True,
+    ).values_list("id")
+
+    await upd.phone_call_update(user, call, target_authorizations)
+    await upd.phone_call_update(call.from_user, call, [call.from_sess_id])
+
+    return PhonePhoneCall(
+        phone_call=call.to_tl(),
+        users=[
+            await user.to_tl(),
+            await call.from_user.to_tl(),
+        ],
+    )
+
