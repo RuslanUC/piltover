@@ -198,6 +198,7 @@ encryptedChatToFormatInternal#44045474 flags:# id:long access_hash:long date:lon
 dumbChannelMessageToFormatInternal#6afa05f5 id:long = Message;
 pollResultsToFormatInternal#fb007fa4 flags:# id:long results:Vector<PollAnswerVoters> total_voters:int solution:flags.0?string solution_entities:flags.0?Vector<MessageEntities> = PollResults;
 pollAnswerVotersToFormatInternal#a6ad847b flags:# id:long poll_id:long correct:flags.0?true option:bytes voters:int = PollAnswerVoters;
+phoneCallToFormatInternal#94e4f3ed flags:# id:long access_hash:long date:long admin_id:long participant_id:long admin_sess_id:long participant_sess_id:flags.0?long g_a:flags.1?bytes g_a_hash:flags.2?bytes g_b:flags.3?bytes key_fingerprint:flags.4?long protocol:PhoneCallProtocol connections:flags.5?Vector<PhoneConnection> start_date:flags.6?int = PhoneCall;
 
 ---functions---
 

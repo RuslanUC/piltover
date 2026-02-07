@@ -88,3 +88,4 @@ from .message_comments import MessageComments
 from .message_content import MessageContent
 from .message_ref import MessageRef
 from .message_media_read import MessageMediaRead
+from .phone_call import PhoneCall

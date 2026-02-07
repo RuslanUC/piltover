@@ -7,7 +7,9 @@ from piltover.tl import ChatBannedRights as TLChatBannedRights, Int, ChatAdminRi
     InputPrivacyKeyForwards, InputPrivacyKeyProfilePhoto, InputPrivacyKeyPhoneNumber, InputPrivacyKeyAddedByPhone, \
     InputPrivacyKeyVoiceMessages, InputPrivacyKeyAbout, InputPrivacyKeyBirthday, PrivacyKeyStatusTimestamp, \
     PrivacyKeyChatInvite, PrivacyKeyPhoneCall, PrivacyKeyPhoneP2P, PrivacyKeyForwards, PrivacyKeyProfilePhoto, \
-    PrivacyKeyPhoneNumber, PrivacyKeyAddedByPhone, PrivacyKeyVoiceMessages, PrivacyKeyAbout, PrivacyKeyBirthday
+    PrivacyKeyPhoneNumber, PrivacyKeyAddedByPhone, PrivacyKeyVoiceMessages, PrivacyKeyAbout, PrivacyKeyBirthday, \
+    PhoneCallDiscardReasonMissed, PhoneCallDiscardReasonDisconnect, PhoneCallDiscardReasonHangup, \
+    PhoneCallDiscardReasonBusy
 from piltover.tl.base import InputPrivacyKey, PrivacyKey
 
 
@@ -140,6 +142,7 @@ class UpdateType(IntEnum):
     NEW_MESSAGE = 44
     UPDATE_MESSAGE_ID = 45
     READ_CHANNEL_MESSAGES_CONTENTS = 46
+    PHONE_CALL = 47
 
 
 class SecretUpdateType(IntEnum):
@@ -487,3 +490,25 @@ class StickerSetOfficialType(IntEnum):
     DICE_SLOTMACHINE = 10
     DICE_BOWLING = 11
     EMOJI_CATEGORIES = 12
+
+
+class CallDiscardReason(IntEnum):
+    MISSED = 0
+    DISCONNECT = 1
+    HANGUP = 2
+    BUSY = 3
+
+
+CALL_DISCARD_REASON_TO_TL = {
+    CallDiscardReason.MISSED: PhoneCallDiscardReasonMissed(),
+    CallDiscardReason.DISCONNECT: PhoneCallDiscardReasonDisconnect(),
+    CallDiscardReason.HANGUP: PhoneCallDiscardReasonHangup(),
+    CallDiscardReason.BUSY: PhoneCallDiscardReasonBusy(),
+}
+
+CALL_DISCARD_REASON_FROM_TL = {
+    PhoneCallDiscardReasonMissed: CallDiscardReason.MISSED,
+    PhoneCallDiscardReasonDisconnect: CallDiscardReason.DISCONNECT,
+    PhoneCallDiscardReasonHangup: CallDiscardReason.HANGUP,
+    PhoneCallDiscardReasonBusy: CallDiscardReason.BUSY,
+}

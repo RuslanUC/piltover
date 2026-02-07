@@ -9,6 +9,7 @@ REPLACE_CONSTRUCTORS = {
     0x6afa05f5: "to_format.DumbChannelMessageToFormat",
     0xfb007fa4: "to_format.PollResultsToFormat",
     0xa6ad847b: "to_format.PollAnswerVotersToFormat",
+    0x94e4f3ed: "to_format.PhoneCallToFormat",
 }
 
 BASE_CLASSES_NEED_CONTEXT = {"Chat", "User", "Message", "PollResults"}

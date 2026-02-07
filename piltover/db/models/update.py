@@ -17,7 +17,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
-    UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID
+    UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID, UpdatePhoneCall
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -30,7 +30,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
               | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers \
               | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs | UpdatePrivacy \
-              | UpdateMessageID
+              | UpdateMessageID | UpdatePhoneCall
 
 
 class Update(Model):
@@ -592,6 +592,18 @@ class Update(Model):
                 return UpdateMessageID(
                     id=self.related_id,
                     random_id=self.related_ids[0],
+                )
+
+            case UpdateType.PHONE_CALL:
+                call = await models.PhoneCall.get_or_none(Q(from_user=user) | Q(to_user=user), id=self.related_id)
+                if call is None:
+                    return None
+
+                ucc.add_user(call.from_user_id)
+                ucc.add_user(call.to_user_id)
+
+                return UpdatePhoneCall(
+                    phone_call=call.to_tl(),
                 )
 
         return None

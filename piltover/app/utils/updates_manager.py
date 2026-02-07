@@ -9,7 +9,8 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
 from piltover.db.models import User, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
-    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef
+    Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef, \
+    PhoneCall
 from piltover.session_manager import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
@@ -24,7 +25,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents, \
-    UpdateChannelAvailableMessages
+    UpdateChannelAvailableMessages, UpdatePhoneCall
 from piltover.tl.to_format import DumbChannelMessageToFormat
 from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
@@ -1796,3 +1797,30 @@ async def update_channel_available_messages(
     )
 
     return updates
+
+
+async def phone_call_update(user: User, call: PhoneCall, sessions: list[int] | None = None) -> None:
+    new_pts = await State.add_pts(user, 1)
+    await Update.create(
+        user=user,
+        update_type=UpdateType.PHONE_CALL,
+        pts=new_pts,
+        pts_count=1,
+        related_id=call.id,
+    )
+
+    await SessionManager.send(
+        UpdatesWithDefaults(
+            updates=[
+                UpdatePhoneCall(
+                    phone_call=call.to_tl(),
+                ),
+            ],
+            users=[
+                await call.from_user.to_tl(),
+                await call.to_user.to_tl(),
+            ],
+        ),
+        user_id=user.id if sessions is not None else None,
+        auth_id=sessions,
+    )
