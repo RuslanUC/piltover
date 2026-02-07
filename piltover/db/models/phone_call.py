@@ -26,6 +26,7 @@ class PhoneCall(Model):
     g_b: bytes | None = fields.BinaryField(null=True, default=None)
     key_fp: int | None = fields.BigIntField(null=True, default=None)
     discard_reason: CallDiscardReason | None = fields.IntEnumField(CallDiscardReason, null=True, default=None)
+    duration: int | None = fields.IntField(null=True, default=None)
 
     from_user_id: int
     from_sess_id: int
@@ -37,6 +38,7 @@ class PhoneCall(Model):
             return PhoneCallDiscarded(
                 id=self.id,
                 reason=CALL_DISCARD_REASON_TO_TL[self.discard_reason],
+                duration=self.duration,
             )
 
         return PhoneCallToFormat(

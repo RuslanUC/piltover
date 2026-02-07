@@ -1799,7 +1799,7 @@ async def update_channel_available_messages(
     return updates
 
 
-async def phone_call_update(user: User, call: PhoneCall, sessions: list[int] | None = None) -> None:
+async def phone_call_update(user: User, call: PhoneCall, sessions: list[int] | None = None) -> Updates:
     new_pts = await State.add_pts(user, 1)
     await Update.create(
         user=user,
@@ -1809,18 +1809,22 @@ async def phone_call_update(user: User, call: PhoneCall, sessions: list[int] | N
         related_id=call.id,
     )
 
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdatePhoneCall(
+                phone_call=call.to_tl(),
+            ),
+        ],
+        users=[
+            await call.from_user.to_tl(),
+            await call.to_user.to_tl(),
+        ],
+    )
+
     await SessionManager.send(
-        UpdatesWithDefaults(
-            updates=[
-                UpdatePhoneCall(
-                    phone_call=call.to_tl(),
-                ),
-            ],
-            users=[
-                await call.from_user.to_tl(),
-                await call.to_user.to_tl(),
-            ],
-        ),
+        updates,
         user_id=user.id if sessions is not None else None,
         auth_id=sessions,
     )
+
+    return updates

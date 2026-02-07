@@ -1,4 +1,7 @@
 import json
+from datetime import datetime, UTC
+
+from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
 from piltover.context import request_ctx
@@ -6,8 +9,8 @@ from piltover.db.enums import PeerType, PrivacyRuleKeyType, CallDiscardReason
 from piltover.db.models import User, Peer, PrivacyRule, UserAuthorization, PhoneCall
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import DataJSON
-from piltover.tl.functions.phone import GetCallConfig, RequestCall
+from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect
+from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall
 from piltover.tl.types.phone import PhoneCall as PhonePhoneCall
 from piltover.worker import MessageHandler
 
@@ -101,3 +104,36 @@ async def request_call(request: RequestCall, user: User) -> PhonePhoneCall:
             await peer.user.to_tl(),
         ],
     )
+
+
+@handler.on_request(DiscardCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def discard_call(request: DiscardCall, user: User) -> Updates:
+    call = await PhoneCall.get_or_none(
+        Q(from_user=user, to_user=user, join_type=Q.OR),
+        id=request.peer.id, access_hash=request.peer.access_hash, discard_call__not_isnull=True,
+    ).select_related("to_user")
+    if call is None:
+        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
+
+    if call.to_sess_id is None:
+        target_authorizations = await UserAuthorization.filter(
+            user=call.to_user, allow_call_requests=True,
+        ).values_list("id")
+        if user.id == call.from_user_id:
+            reason = CallDiscardReason.MISSED
+        else:
+            reason = CallDiscardReason.BUSY
+    else:
+        target_authorizations = [call.to_sess_id]
+        if isinstance(request.reason, PhoneCallDiscardReasonDisconnect):
+            reason = CallDiscardReason.DISCONNECT
+        else:
+            reason = CallDiscardReason.HANGUP
+
+    call.discard_reason = reason
+    if call.started_at:
+        call.duration = int((datetime.now(UTC) - call.started_at).total_seconds())
+    await call.save(update_fields=["discard_reason"])
+
+    await upd.phone_call_update(call.to_user, call, target_authorizations)
+    return await upd.phone_call_update(user, call, [])
