@@ -23,7 +23,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
-    UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents
+    UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents, \
+    UpdateChannelAvailableMessages
 from piltover.tl.to_format import DumbChannelMessageToFormat
 from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
@@ -1766,5 +1767,32 @@ async def update_privacy(user: User, rule: PrivacyRule, rules: PrivacyRules) -> 
     )
 
     await SessionManager.send(updates, user.id)
+
+    return updates
+
+
+async def update_channel_available_messages(
+        channel: Channel, min_id: int, for_user: int | None = None,
+) -> Updates | None:
+    # TODO: create user update if `for_user` is not None
+    new_pts = await channel.add_pts(1)
+    await ChannelUpdate.create(
+        channel=channel,
+        type=ChannelUpdateType.UPDATE_CHANNEL,
+        related_id=None,
+        pts=new_pts,
+        pts_count=1,
+    )
+
+    updates = UpdatesWithDefaults(
+            updates=[UpdateChannelAvailableMessages(channel_id=channel.make_id(), available_min_id=min_id)],
+            chats=[await channel.to_tl()],
+        )
+
+    await SessionManager.send(
+        updates,
+        channel_id=channel.id if for_user is None else None,
+        user_id=for_user,
+    )
 
     return updates
