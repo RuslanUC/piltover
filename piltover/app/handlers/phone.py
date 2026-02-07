@@ -190,7 +190,7 @@ async def discard_call(request: DiscardCall, user: User) -> Updates:
     peer.owner = user
     peer.user = call.other_user(user)
     await send_message_internal(
-        user, peer, None, None, False, author=user, type=MessageType.SERVICE_PHONE_CALL,
+        user, peer, None, None, False, author=call.from_user, type=MessageType.SERVICE_PHONE_CALL,
         extra_info=MessageActionPhoneCall(
             call_id=call.id,
             reason=CALL_DISCARD_REASON_TO_TL[reason],
