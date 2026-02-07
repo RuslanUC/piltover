@@ -24,6 +24,11 @@ from .messages_stickerset_downgrade import *
 from .peer_color_option_downgrade import *
 from .peernotifysettings_downgrade import *
 from .peersettings_downgrade import *
+from .phone_call_requested_downgrade import *
+from .phone_call_waiting_downgrade import *
+from .phone_call_accepted_downgrade import *
+from .phone_call_discarded_downgrade import *
+from .phone_call_downgrade import *
 from .poll_answer_downgrade import *
 from .poll_downgrade import *
 from .poll_results_downgrade import *
@@ -221,3 +226,23 @@ LayerConverter.register_for_downgrade(BotResultsDontDowngrade)
 LayerConverter.register_for_downgrade(UpdateReadMessagesContentsDowngradeTo133)
 LayerConverter.register_for_downgrade(UpdateReadMessagesContentsDontDowngrade163)
 LayerConverter.register_for_downgrade(UpdateReadMessagesContentsDontDowngrade)
+
+LayerConverter.register_for_downgrade(PhoneCallRequestedDowngradeTo133)
+LayerConverter.register_for_downgrade(PhoneCallRequestedDontDowngrade196)
+LayerConverter.register_for_downgrade(PhoneCallRequestedDontDowngrade)
+
+LayerConverter.register_for_downgrade(PhoneCallWaitingDowngradeTo133)
+LayerConverter.register_for_downgrade(PhoneCallWaitingDontDowngrade196)
+LayerConverter.register_for_downgrade(PhoneCallWaitingDontDowngrade)
+
+LayerConverter.register_for_downgrade(PhoneCallAcceptedDowngradeTo133)
+LayerConverter.register_for_downgrade(PhoneCallAcceptedDontDowngrade196)
+LayerConverter.register_for_downgrade(PhoneCallAcceptedDontDowngrade)
+
+LayerConverter.register_for_downgrade(PhoneCallDiscardedDowngradeTo133)
+LayerConverter.register_for_downgrade(PhoneCallDiscardedDontDowngrade196)
+LayerConverter.register_for_downgrade(PhoneCallDiscardedDontDowngrade)
+
+LayerConverter.register_for_downgrade(PhoneCallDowngradeTo133)
+LayerConverter.register_for_downgrade(PhoneCallDontDowngrade196)
+LayerConverter.register_for_downgrade(PhoneCallDontDowngrade)

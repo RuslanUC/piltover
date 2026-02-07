@@ -11,7 +11,8 @@ from piltover.db.models import User, Peer, PrivacyRule, UserAuthorization, Phone
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect, PhoneCallProtocol
-from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall, AcceptCall, ConfirmCall
+from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall, AcceptCall, ConfirmCall, \
+    RequestCall_133
 from piltover.tl.types.phone import PhoneCall as PhonePhoneCall
 from piltover.worker import MessageHandler
 
@@ -109,8 +110,9 @@ def _merge_protocols(a: PhoneCallProtocol, b: PhoneCallProtocol):
     )
 
 
+@handler.on_request(RequestCall_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(RequestCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def request_call(request: RequestCall, user: User) -> PhonePhoneCall:
+async def request_call(request: RequestCall | RequestCall_133, user: User) -> PhonePhoneCall:
     _check_protocol(request.protocol)
 
     if len(request.g_a_hash) != 32:
@@ -128,6 +130,7 @@ async def request_call(request: RequestCall, user: User) -> PhonePhoneCall:
     this_auth = await UserAuthorization.get(user=user, id=ctx.auth_id)
     target_authorizations = await UserAuthorization.filter(user=peer.user, allow_call_requests=True).values_list("id")
 
+    # TODO: save random_id
     call = await PhoneCall.create(
         from_user=user,
         from_sess=this_auth,
