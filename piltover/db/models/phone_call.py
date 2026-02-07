@@ -44,6 +44,12 @@ class PhoneCall(Model):
             logger.opt(exception=e).error("Failed to read phone call protocol")
             return None
 
+    def other_user_id(self, current: int) -> int:
+        return self.to_user_id if current == self.from_user_id else self.from_user_id
+
+    def other_user(self, current: models.User) -> models.User:
+        return self.to_user if current.id == self.from_user_id else self.from_user
+
     def to_tl(self) -> EncryptedChatBase:
         if self.discard_reason is not None:
             return PhoneCallDiscarded(

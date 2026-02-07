@@ -5,12 +5,13 @@ from datetime import datetime, UTC
 from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
+from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType, PrivacyRuleKeyType, CallDiscardReason
+from piltover.db.enums import PeerType, PrivacyRuleKeyType, CallDiscardReason, MessageType, CALL_DISCARD_REASON_TO_TL
 from piltover.db.models import User, Peer, PrivacyRule, UserAuthorization, PhoneCall
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect, PhoneCallProtocol
+from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect, PhoneCallProtocol, MessageActionPhoneCall
 from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall, AcceptCall, ConfirmCall, \
     RequestCall_133
 from piltover.tl.types.phone import PhoneCall as PhonePhoneCall
@@ -157,10 +158,11 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
 
 @handler.on_request(DiscardCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def discard_call(request: DiscardCall, user: User) -> Updates:
+    ctx = request_ctx.get()
     call = await PhoneCall.get_or_none(
-        Q(from_user=user, to_user=user, join_type=Q.OR),
-        id=request.peer.id, access_hash=request.peer.access_hash, discard_call__not_isnull=True,
-    ).select_related("to_user")
+        Q(from_user=user, from_sess__id=ctx.auth_id) | Q(to_user=user),
+        id=request.peer.id, access_hash=request.peer.access_hash, discard_reason__isnull=True,
+    ).select_related("from_user", "to_user")
     if call is None:
         raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
 
@@ -184,6 +186,18 @@ async def discard_call(request: DiscardCall, user: User) -> Updates:
         call.duration = int((datetime.now(UTC) - call.started_at).total_seconds())
     await call.save(update_fields=["discard_reason"])
 
+    peer, _ = await Peer.get_or_create(owner=user, user=call.other_user(user), defaults={"type": PeerType.USER})
+    peer.owner = user
+    peer.user = call.other_user(user)
+    await send_message_internal(
+        user, peer, None, None, False, author=user, type=MessageType.SERVICE_PHONE_CALL,
+        extra_info=MessageActionPhoneCall(
+            call_id=call.id,
+            reason=CALL_DISCARD_REASON_TO_TL[reason],
+            duration=call.duration,
+        ).write(),
+    )
+
     await upd.phone_call_update(call.to_user, call, target_authorizations)
     return await upd.phone_call_update(user, call, [])
 
@@ -192,7 +206,7 @@ async def discard_call(request: DiscardCall, user: User) -> Updates:
 async def accept_call(request: AcceptCall, user: User) -> PhonePhoneCall:
     call = await PhoneCall.get_or_none(
         to_user=user, id=request.peer.id, access_hash=request.peer.access_hash,
-    ).select_related("from_user")
+    ).select_related("from_user", "to_user")
     if call is None:
         raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
 
@@ -229,7 +243,7 @@ async def accept_call(request: AcceptCall, user: User) -> PhonePhoneCall:
 async def confirm_call(request: ConfirmCall, user: User) -> PhonePhoneCall:
     call = await PhoneCall.get_or_none(
         from_user=user, id=request.peer.id, access_hash=request.peer.access_hash,
-    ).select_related("to_user")
+    ).select_related("to_user", "from_user")
     if call is None:
         raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
 
