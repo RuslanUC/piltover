@@ -5,10 +5,10 @@ from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, Get
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSuggestedDialogFilters, GetSavedReactionTags, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
-    GetEmojiKeywordsDifference
+    GetEmojiKeywordsDifference, GetAvailableEffects
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
     Stickers, FeaturedStickers, MessageEditData, \
-    QuickReplies
+    QuickReplies, AvailableEffects
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
@@ -118,4 +118,13 @@ async def get_emoji_keywords_difference(
         from_version=request.from_version,
         version=request.from_version,
         keywords=[],
+    )
+
+
+@handler.on_request(GetAvailableEffects, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_available_effects() -> AvailableEffects:  # pragma: no cover
+    return AvailableEffects(
+        hash=0,
+        effects=[],
+        documents=[],
     )

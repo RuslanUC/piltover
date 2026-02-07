@@ -21,6 +21,13 @@ class PeerNotifySettingsDowngradeTo140(AutoDowngrader):
     }
 
 
+class PeerNotifySettingsDontDowngrade160(AutoDowngrader):
+    BASE_TYPE = PeerNotifySettings
+    TARGET_LAYER = 160
+    TARGET_TYPE = PeerNotifySettings
+    REMOVE_FIELDS = set()
+
+
 class PeerNotifySettingsDontDowngrade(AutoDowngrader):
     BASE_TYPE = PeerNotifySettings
     TARGET_LAYER = 201

@@ -12,6 +12,13 @@ class DialogFiltersDowngradeTo136(BaseDowngrader):
         return from_obj.filters
 
 
+class DialogFiltersDontDowngrade176(AutoDowngrader):
+    BASE_TYPE = DialogFilters
+    TARGET_TYPE = DialogFilters
+    TARGET_LAYER = 176
+    REMOVE_FIELDS = set()
+
+
 class DialogFiltersDontDowngrade(AutoDowngrader):
     BASE_TYPE = DialogFilters
     TARGET_TYPE = DialogFilters

@@ -80,6 +80,13 @@ class UserDowngradeTo196(AutoDowngrader):
     REMOVE_FIELDS = {"send_paid_messages_stars"}
 
 
+class UserDontDowngrade200(AutoDowngrader):
+    BASE_TYPE = User
+    TARGET_LAYER = 200
+    TARGET_TYPE = User
+    REMOVE_FIELDS = set()
+
+
 class UserDontDowngrade(AutoDowngrader):
     BASE_TYPE = User
     TARGET_LAYER = 201

@@ -1,8 +1,11 @@
 from piltover.enums import ReqHandlerFlags
+from piltover.tl import StarsAmount
 from piltover.tl.functions.channels import GetSponsoredMessages_133
 from piltover.tl.functions.messages import GetSponsoredMessages
+from piltover.tl.functions.payments import GetStarsStatus
 from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts
 from piltover.tl.types.messages import SponsoredMessages, SponsoredMessagesEmpty
+from piltover.tl.types.payments import StarsStatus
 from piltover.tl.types.premium import BoostsStatus, MyBoosts
 from piltover.worker import MessageHandler
 
@@ -26,5 +29,14 @@ async def get_sponsored_messages() -> SponsoredMessages | SponsoredMessagesEmpty
 
 
 @handler.on_request(GetMyBoosts, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_my_boosts() -> MyBoosts:
+async def get_my_boosts() -> MyBoosts:  # pragma: no cover
     return MyBoosts(my_boosts=[], chats=[], users=[])
+
+
+@handler.on_request(GetStarsStatus, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_stars_status() -> StarsStatus:  # pragma: no cover
+    return StarsStatus(
+        balance=StarsAmount(amount=1000000, nanos=0),
+        chats=[],
+        users=[],
+    )

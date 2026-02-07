@@ -28,6 +28,13 @@ class DialogFilterDowngradeTo176(AutoDowngrader):
         return target
 
 
+class DialogFilterDontDowngrade196(AutoDowngrader):
+    BASE_TYPE = DialogFilter
+    TARGET_TYPE = DialogFilter
+    TARGET_LAYER = 196
+    REMOVE_FIELDS = set()
+
+
 class DialogFilterDontDowngrade(AutoDowngrader):
     BASE_TYPE = DialogFilter
     TARGET_TYPE = DialogFilter

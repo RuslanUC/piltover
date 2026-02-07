@@ -69,6 +69,13 @@ class ChannelDowngradeTo196(AutoDowngrader):
     REMOVE_FIELDS = {"send_paid_messages_stars"}
 
 
+class ChannelDontDowngrade200(AutoDowngrader):
+    BASE_TYPE = Channel
+    TARGET_LAYER = 200
+    TARGET_TYPE = Channel
+    REMOVE_FIELDS = set()
+
+
 class ChannelDontDowngrade(AutoDowngrader):
     BASE_TYPE = Channel
     TARGET_LAYER = 201

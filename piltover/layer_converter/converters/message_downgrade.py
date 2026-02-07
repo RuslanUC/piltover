@@ -78,6 +78,13 @@ class MessageDowngradeTo196(AutoDowngrader):
     REMOVE_FIELDS = {"paid_message_stars"}
 
 
+class MessageDontDowngrade200(AutoDowngrader):
+    BASE_TYPE = Message
+    TARGET_LAYER = 200
+    TARGET_TYPE = Message
+    REMOVE_FIELDS = set()
+
+
 class MessageDontDowngrade(AutoDowngrader):
     BASE_TYPE = Message
     TARGET_LAYER = 201

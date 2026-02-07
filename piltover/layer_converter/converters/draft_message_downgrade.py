@@ -16,6 +16,13 @@ class DraftMessageDowngradeTo166(AutoDowngrader):
     REMOVE_FIELDS = {"effect"}
 
 
+class DraftMessageDontDowngrade182(AutoDowngrader):
+    BASE_TYPE = DraftMessage
+    TARGET_TYPE = DraftMessage
+    TARGET_LAYER = 182
+    REMOVE_FIELDS = set()
+
+
 class DraftMessageDontDowngrade(AutoDowngrader):
     BASE_TYPE = DraftMessage
     TARGET_TYPE = DraftMessage

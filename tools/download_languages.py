@@ -50,11 +50,11 @@ async def main() -> None:
     args = parser.parse_args(namespace=ArgsNamespace())
 
     out_dir = args.data_dir / "languages"
-    if out_dir.exists():
+    platform_dir = out_dir / args.platform
+    if platform_dir.exists():
         shutil.rmtree(out_dir)
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / args.platform).mkdir(parents=True, exist_ok=True)
+    platform_dir.mkdir(parents=True, exist_ok=True)
 
     with open(out_dir / ".gitignore", "w") as f:
         f.write("*\n")

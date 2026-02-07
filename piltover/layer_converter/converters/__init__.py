@@ -33,6 +33,7 @@ from .poll_answer_downgrade import *
 from .poll_downgrade import *
 from .poll_results_downgrade import *
 from .send_as_peers_downgrade import *
+from .stars_status_downgrade import *
 from .stickerset_downgrade import *
 from .update_delete_scheduled_messages_downgrade import *
 from .update_peer_blocked_downgrade import *
@@ -51,6 +52,7 @@ LayerConverter.register_for_downgrade(UserDowngradeTo166)
 LayerConverter.register_for_downgrade(UserDowngradeTo167)
 LayerConverter.register_for_downgrade(UserDowngradeTo185)
 LayerConverter.register_for_downgrade(UserDowngradeTo196)
+LayerConverter.register_for_downgrade(UserDontDowngrade200)
 LayerConverter.register_for_downgrade(UserDontDowngrade)
 
 LayerConverter.register_for_downgrade(UserFullDowngradeTo135)
@@ -70,6 +72,7 @@ LayerConverter.register_for_downgrade(UserFullDontDowngrade)
 
 LayerConverter.register_for_downgrade(PeerNotifySettingsDowngradeTo133)
 LayerConverter.register_for_downgrade(PeerNotifySettingsDowngradeTo140)
+LayerConverter.register_for_downgrade(PeerNotifySettingsDontDowngrade160)
 LayerConverter.register_for_downgrade(PeerNotifySettingsDontDowngrade)
 
 LayerConverter.register_for_downgrade(PeerSettingsDowngradeTo133)
@@ -85,6 +88,7 @@ LayerConverter.register_for_downgrade(MessageDowngradeTo176)
 LayerConverter.register_for_downgrade(MessageDowngradeTo177)
 LayerConverter.register_for_downgrade(MessageDowngradeTo181)
 LayerConverter.register_for_downgrade(MessageDowngradeTo196)
+LayerConverter.register_for_downgrade(MessageDontDowngrade200)
 LayerConverter.register_for_downgrade(MessageDontDowngrade)
 
 LayerConverter.register_for_downgrade(MessageMediaDocumentDowngradeTo133)
@@ -116,6 +120,7 @@ LayerConverter.register_for_downgrade(ChannelDowngradeTo166)
 LayerConverter.register_for_downgrade(ChannelDowngradeTo167)
 LayerConverter.register_for_downgrade(ChannelDowngradeTo186)
 LayerConverter.register_for_downgrade(ChannelDowngradeTo196)
+LayerConverter.register_for_downgrade(ChannelDontDowngrade200)
 LayerConverter.register_for_downgrade(ChannelDontDowngrade)
 
 LayerConverter.register_for_downgrade(ChannelFullDowngradeTo133)
@@ -135,10 +140,12 @@ LayerConverter.register_for_downgrade(PollResultsDowngradeTo133)
 LayerConverter.register_for_downgrade(PollResultsDontDowngrade)
 
 LayerConverter.register_for_downgrade(DialogFiltersDowngradeTo136)
+LayerConverter.register_for_downgrade(DialogFiltersDontDowngrade176)
 LayerConverter.register_for_downgrade(DialogFiltersDontDowngrade)
 
 LayerConverter.register_for_downgrade(DialogFilterDowngradeTo133)
 LayerConverter.register_for_downgrade(DialogFilterDowngradeTo176)
+LayerConverter.register_for_downgrade(DialogFilterDontDowngrade196)
 LayerConverter.register_for_downgrade(DialogFilterDontDowngrade)
 
 LayerConverter.register_for_downgrade(MessageServiceDowngradeTo133)
@@ -217,6 +224,7 @@ LayerConverter.register_for_downgrade(SendAsPeersDontDowngrade)
 
 LayerConverter.register_for_downgrade(DraftMessageDowngradeTo133)
 LayerConverter.register_for_downgrade(DraftMessageDowngradeTo166)
+LayerConverter.register_for_downgrade(DraftMessageDontDowngrade182)
 LayerConverter.register_for_downgrade(DraftMessageDontDowngrade)
 
 LayerConverter.register_for_downgrade(BotResultsDowngradeTo133)
@@ -246,3 +254,8 @@ LayerConverter.register_for_downgrade(PhoneCallDiscardedDontDowngrade)
 LayerConverter.register_for_downgrade(PhoneCallDowngradeTo133)
 LayerConverter.register_for_downgrade(PhoneCallDontDowngrade196)
 LayerConverter.register_for_downgrade(PhoneCallDontDowngrade)
+
+LayerConverter.register_for_downgrade(StarsStatusDowngradeTo181)
+LayerConverter.register_for_downgrade(StarsStatusDowngradeTo186)
+LayerConverter.register_for_downgrade(StarsStatusDontDowngrade195)
+LayerConverter.register_for_downgrade(StarsStatusDontDowngrade)

@@ -9,10 +9,11 @@ from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscrip
     JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
-    GetPeerProfileColors, DismissSuggestion
+    GetPeerProfileColors, DismissSuggestion, GetTimezonesList
 from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
     PeerColors, PeerColorOption as TLPeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified, \
-    AppConfigNotModified, PeerColorsNotModified
+    AppConfigNotModified, PeerColorsNotModified, TimezonesList
+from piltover.tl.types.payments import StarsStatus
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("help")
@@ -440,4 +441,12 @@ async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> Peer
 @handler.on_request(DismissSuggestion, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def dismiss_suggestion() -> bool:  # pragma: no cover
     return True
+
+
+@handler.on_request(GetTimezonesList, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_timezones_list() -> TimezonesList:  # pragma: no cover
+    return TimezonesList(
+        hash=0,
+        timezones=[],
+    )
 
