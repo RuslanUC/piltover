@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import datetime, UTC
 
@@ -10,7 +11,7 @@ from piltover.db.models import User, Peer, PrivacyRule, UserAuthorization, Phone
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect, PhoneCallProtocol
-from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall, AcceptCall
+from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall, AcceptCall, ConfirmCall
 from piltover.tl.types.phone import PhoneCall as PhonePhoneCall
 from piltover.worker import MessageHandler
 
@@ -211,6 +212,43 @@ async def accept_call(request: AcceptCall, user: User) -> PhonePhoneCall:
 
     await upd.phone_call_update(user, call, target_authorizations)
     await upd.phone_call_update(call.from_user, call, [call.from_sess_id])
+
+    return PhonePhoneCall(
+        phone_call=call.to_tl(),
+        users=[
+            await user.to_tl(),
+            await call.from_user.to_tl(),
+        ],
+    )
+
+
+@handler.on_request(ConfirmCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def confirm_call(request: ConfirmCall, user: User) -> PhonePhoneCall:
+    call = await PhoneCall.get_or_none(
+        from_user=user, id=request.peer.id, access_hash=request.peer.access_hash,
+    ).select_related("to_user")
+    if call is None:
+        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
+
+    if call.discard_reason is not None:
+        raise ErrorRpc(error_code=400, error_message="CALL_ALREADY_DECLINED")
+    if call.g_b is not None:
+        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
+
+    _check_protocol(request.protocol)
+
+    if hashlib.sha256(request.g_a).digest() != call.g_a_hash:
+        raise ErrorRpc(error_code=400, error_message="G_A_INVALID")
+
+    call.g_a = request.g_a
+    call.key_fp = request.key_fingerprint
+    call.protocol = _merge_protocols(call.protocol_tl(), request.protocol).write()
+    await call.save(update_fields=["g_a", "key_fp", "protocol"])
+
+    await upd.phone_call_update(user, call, [])
+    await upd.phone_call_update(call.to_user, call, [call.to_sess_id])
+
+    # TODO: add connections to call
 
     return PhonePhoneCall(
         phone_call=call.to_tl(),
