@@ -14,7 +14,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [ ] Add caching of some tl objects (e.g. piltover.tl.types.User, piltover.tl.types.Chat, piltover.tl.types.Message, etc.) based on versions (i think maybe add `version` field to db models and cache to_tl method results to key `[current_user_id]:[to_tl_user_id]:[version]` or something like that)
 - [x] Add proper privacy rules handling
 - [x] Channels
-- [ ] Supergroups
+- [x] Supergroups
 - [x] Scheduled messages
 - [x] Bots
 - [x] Dialog filters (folders)
@@ -28,9 +28,9 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [x] Rewrite related users/chats/channels collection code, cache (or write to database) related ids
 - [x] Channel admin log
 - [ ] [Min constructors](https://core.telegram.org/api/min)
-- [ ] Channel discussions
-- [ ] [WebK](https://github.com/morethanwords/tweb) hangs on some requests (such as GetDialogs), probably seqno or message_id fields are wrong in our mtproto implementation
-- [ ] Refactor channels permission system and probably rewrite according to [channels-access.md](notes/channels-access.md) 
+- [x] Channel discussions
+- [ ] [WebK](https://github.com/morethanwords/tweb) hangs on some requests, logs errors about wrong auth key id and/or session id???
+- [x] Refactor channels permission system and probably rewrite according to [channels-access.md](notes/channels-access.md) 
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
@@ -227,7 +227,32 @@ $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
 
 ### **Telegram WebZ**
 
-- #TODO: WebZ instructions
+- Clone repo (at specific api layer, example uses 201) and install dependencies:
+  - ```shell
+    $ git clone --depth 1 --revision 92d9f0736c3e890af0e1eca37f95fbcee3cd39c3 https://github.com/Ajaxy/telegram-tt
+    $ cd telegram-tt
+    $ npm i
+    ```
+- Edit the values in [this file](https://github.com/Ajaxy/telegram-tt/blob/92d9f0736c3e890af0e1eca37f95fbcee3cd39c3/src/lib/gramjs/Utils.ts#L201):
+  - Change every datacenter ip and port below, respectively to `127.0.0.1`
+    (localhost) and `3000` (websocket proxy port) 
+    [here](https://github.com/Ajaxy/telegram-tt/blob/92d9f0736c3e890af0e1eca37f95fbcee3cd39c3/src/lib/gramjs/Utils.ts#L204-L233).
+- Change `this._args.useWSS ? 443 : 80` 
+  in [this line](https://github.com/Ajaxy/telegram-tt/blob/92d9f0736c3e890af0e1eca37f95fbcee3cd39c3/src/lib/gramjs/client/TelegramClient.ts#L353)
+  to `DC.port`
+- Edit the values in [this file](https://github.com/Ajaxy/telegram-tt/blob/92d9f0736c3e890af0e1eca37f95fbcee3cd39c3/src/lib/gramjs/crypto/RSA.ts/#L10):
+  - Change the `fingerprint` to **decimal** unsigned fingerprint obtained previously.
+  - Change the `n` to the **decimal** string of `prime` obtained previously.
+- Change line (whole line) starting with `connect-src` 
+  in [this file](https://github.com/Ajaxy/telegram-tt/blob/92d9f0736c3e890af0e1eca37f95fbcee3cd39c3/webpack.config.ts#L43)
+  to `connect-src *;`
+- Run the websocket proxy from piltover
+  - ```shell
+    $ poetry run python tools/websocket_proxy.py
+    ```
+- Run with `npm run dev`
+- Wait some time for the app to compile
+- Open the app in your browser (usually `http://127.0.0.1:1234/`)
 
 ### **Nimgram**
 

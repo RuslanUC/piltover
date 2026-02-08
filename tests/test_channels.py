@@ -723,4 +723,5 @@ async def test_supergroup_delete_history(
     assert after_message_ids_2 == message_ids[after_start_idx_other:]
 
 
+# TODO: add test for DeleteParticipantHistory
 # TODO: add tests for restricting chat members (including restricting before join)

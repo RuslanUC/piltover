@@ -40,7 +40,7 @@ async def main():
 
     async with serve(
         proxy,
-        "localhost",
+        "0.0.0.0",
         3000,
         subprotocols=[Subprotocol("binary")],
         select_subprotocol=lambda subprotocols, _: Subprotocol("binary"),
