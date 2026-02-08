@@ -1540,9 +1540,9 @@ async def delete_history(request: DeleteHistory, user: User) -> Updates:
     ) or 0
 
     if not request.for_everyone:
-        if new_min_available_id < participant.min_message_id:
+        if new_min_available_id < (participant.min_message_id or 0):
             return upd.UpdatesWithDefaults(updates=[])
-        participant.min_message_id = new_min_available_id
+        participant.min_message_id = new_min_available_id or None
         await participant.save(update_fields=["min_message_id"])
         return await upd.update_channel_participant_available_message(user, channel, new_min_available_id)
 
@@ -1551,10 +1551,10 @@ async def delete_history(request: DeleteHistory, user: User) -> Updates:
 
     message_ids = await MessageRef.filter(
         peer__owner=None, peer__channel=channel, id__lte=request.max_id,
-    ).order_by("-id").limit(1001).values_list("id")
+    ).order_by("-id").limit(1001).values_list("id", flat=True)
     if len(message_ids) > 1000:
-        channel.min_available_id_force = message_ids[0]
-        await channel.save(update_fields=["min_available_id_force"])
+        channel.min_available_id = channel.min_available_id_force = message_ids[0]
+        await channel.save(update_fields=["min_available_id", "min_available_id_force"])
         return await upd.update_channel_available_messages(channel, new_min_available_id)
 
     message_ids.pop(0)

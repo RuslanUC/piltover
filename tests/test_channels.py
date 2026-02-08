@@ -8,7 +8,7 @@ from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInval
     ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden, InviteHashExpired, UsernameNotModified, \
     ChatTitleEmpty, ChatAboutTooLong
 from pyrogram.raw.functions.account import GetPassword
-from pyrogram.raw.functions.channels import EditCreator
+from pyrogram.raw.functions.channels import EditCreator, DeleteHistory
 from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser, \
     InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputChannel, InputPeerChannel
 from pyrogram.types import ChatMember, ChatPrivileges
@@ -674,6 +674,53 @@ async def test_channel_trigger_pyrogram_getchannels(exit_stack: AsyncExitStack) 
     another_client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
     peer = await another_client.resolve_peer(channel.id)
     assert isinstance(peer, InputPeerChannel)
+
+
+@pytest.mark.parametrize(
+    ("for_me", "after_start_idx_me", "after_start_idx_other",),
+    [
+        (True, 5, 0,),
+        (False, 5, 5,),
+    ],
+    ids=("for me", "for everyone",),
+)
+@pytest.mark.asyncio
+async def test_supergroup_delete_history(
+        exit_stack: AsyncExitStack, for_me: bool, after_start_idx_me: int, after_start_idx_other: int,
+) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    async with client1.expect_updates_m(UpdateUserName):
+        await client1.set_username("test1_username")
+    async with client2.expect_updates_m(UpdateUserName):
+        await client2.set_username("test2_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
+
+    group = await client1.create_supergroup("test")
+    await group.add_members("test2_username")
+
+    messages = [
+        await client1.send_message(group.id, f"test {num}")
+        for num in range(10)
+    ]
+    message_ids = [message.id for message in messages]
+
+    await client1.invoke(DeleteHistory(
+        for_everyone=not for_me,
+        channel=await client1.resolve_peer(group.id),
+        max_id=message_ids[5],
+    ))
+
+    after_message_ids_1 = [message.id async for message in client1.get_chat_history(group.id, 10)][::-1]
+    after_message_ids_2 = [message.id async for message in client2.get_chat_history(group.id, 10)][::-1]
+
+    assert after_message_ids_1 == message_ids[after_start_idx_me:]
+    assert after_message_ids_2 == message_ids[after_start_idx_other:]
 
 
 # TODO: add tests for restricting chat members (including restricting before join)
