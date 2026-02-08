@@ -14,7 +14,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect, PhoneCallProtocol, MessageActionPhoneCall
 from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall, AcceptCall, ConfirmCall, \
-    RequestCall_133
+    RequestCall_133, ReceivedCall
 from piltover.tl.types.phone import PhoneCall as PhonePhoneCall
 from piltover.worker import MessageHandler
 
@@ -279,6 +279,12 @@ async def confirm_call(request: ConfirmCall, user: User) -> PhonePhoneCall:
             await call.from_user.to_tl(),
         ],
     )
+
+
+@handler.on_request(ReceivedCall)
+async def received_call() -> bool:
+    # What does this method even do?
+    return True
 
 
 # TODO: ReceivedCall

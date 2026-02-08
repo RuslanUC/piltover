@@ -464,8 +464,46 @@ def start():
 
         placeholders = PLACEHOLDERS.get(int(c.id[2:], 16), {})
 
+        fields_by_name = {
+            field.name: field
+            for field in c.fields
+        }
+
         serialize_body = []
         deserialize_body = []
+
+        fields_by_flag = defaultdict(list)
+        for field in c.fields:
+            if field.flag_num is None or field.flag_bit is None:
+                continue
+            fields_by_flag[(field.flag_num, field.flag_bit)].append(field.name)
+
+        for same_flag_fields in fields_by_flag.values():
+            if len(same_flag_fields) < 2:
+                continue
+            fields_empty = [
+                (
+                    f"self.{field_name} is False" if fields_by_name[field_name].type() == "true"
+                    else f"self.{field_name} is None"
+                )
+                for field_name in same_flag_fields
+            ]
+            fields_not_empty = [
+                (
+                    f"self.{field_name} is True" if fields_by_name[field_name].type() == "true"
+                    else f"self.{field_name} is not None"
+                )
+                for field_name in same_flag_fields
+            ]
+            serialize_body.append(f"_flags_fields_empty = ({', '.join(fields_empty)})")
+            serialize_body.append(f"_flags_fields_not_empty = ({', '.join(fields_not_empty)})")
+            serialize_body.append(f"if not (all(_flags_fields_empty) or all(_flags_fields_not_empty)):")
+            serialize_body.append(
+                f"    raise ValueError("
+                f"\"Some of the optional fields are empty and some are not empty: {', '.join(same_flag_fields)}\""
+                f")"
+            )
+
         for field in c.fields:
             tmp_ = field.type().split("Vector<")
 

@@ -404,7 +404,7 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     )
 
     participant = await peer.channel.get_participant(user, True)
-    participant_is_banned = bool(participant.banned_rights & ChatBannedRights.VIEW_MESSAGES)
+    participant_is_banned = participant is not None and bool(participant.banned_rights & ChatBannedRights.VIEW_MESSAGES)
     channel_is_public = peer.channel.nojoin_allow_view or await Username.filter(channel=peer.channel).exists()
     if (not channel_is_public and participant is None) or participant_is_banned:
         raise ErrorRpc(error_code=400, error_message="CHAT_RESTRICTED")

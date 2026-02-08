@@ -45,7 +45,7 @@ async def get_full_user(request: GetFullUser, user: User):
             await MessageRef.filter(
                 peer__owner=None, peer__channel=personal_channel,
             ).order_by("-id").first().values_list("id", flat=True),
-        )
+        ) or 0
     else:
         personal_channel_msg_id = None
 
