@@ -112,7 +112,9 @@ async def send_vote(request: SendVote, user: User) -> Updates:
     if message.content.media.poll.is_closed_fr:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_POLL_CLOSED")
     if not request.options:
-        vote_ids = await PollVote.filter(answer__poll=message.content.media.poll, user=user).values_list("id", flat=True)
+        vote_ids = await PollVote.filter(
+            answer__poll=message.content.media.poll, user=user,
+        ).values_list("id", flat=True)
         if not vote_ids:
             raise ErrorRpc(error_code=400, error_message="OPTION_INVALID")
         await PollVote.filter(id__in=vote_ids).delete()

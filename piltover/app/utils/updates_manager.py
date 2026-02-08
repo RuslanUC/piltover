@@ -322,7 +322,7 @@ async def delete_messages(user: User | None, messages: dict[User, list[int]]) ->
     return user_new_pts
 
 
-async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
+async def delete_messages_channel(channel: Channel, messages: list[int]) -> tuple[Updates, int]:
     new_pts = await channel.add_pts(len(messages))
     await ChannelUpdate.create(
         channel=channel,
@@ -338,22 +338,21 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> int:
         channel=channel, related_id__in=messages,
     ).delete()
 
-    await SessionManager.send(
-        UpdatesWithDefaults(
-            updates=[
-                UpdateDeleteChannelMessages(
-                    channel_id=channel.make_id(),
-                    messages=messages,
-                    pts=new_pts,
-                    pts_count=len(messages),
-                ),
-            ],
-            chats=[await channel.to_tl()],
-        ),
-        channel_id=channel.id,
+    updates = UpdatesWithDefaults(
+        updates=[
+            UpdateDeleteChannelMessages(
+                channel_id=channel.make_id(),
+                messages=messages,
+                pts=new_pts,
+                pts_count=len(messages),
+            ),
+        ],
+        chats=[await channel.to_tl()],
     )
 
-    return new_pts
+    await SessionManager.send(updates, channel_id=channel.id)
+
+    return updates, new_pts
 
 
 async def edit_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
@@ -1772,29 +1771,48 @@ async def update_privacy(user: User, rule: PrivacyRule, rules: PrivacyRules) -> 
     return updates
 
 
-async def update_channel_available_messages(
-        channel: Channel, min_id: int, for_user: int | None = None,
-) -> Updates | None:
-    # TODO: create user update if `for_user` is not None
-    new_pts = await channel.add_pts(1)
+async def update_channel_available_messages(channel: Channel, min_id: int) -> Updates | None:
     await ChannelUpdate.create(
         channel=channel,
-        type=ChannelUpdateType.UPDATE_CHANNEL,
+        type=ChannelUpdateType.UPDATE_MIN_AVAILABLE_ID,
         related_id=None,
-        pts=new_pts,
+        pts=await channel.add_pts(1),
         pts_count=1,
+        extra_data=Long.write(min_id),
     )
 
     updates = UpdatesWithDefaults(
-            updates=[UpdateChannelAvailableMessages(channel_id=channel.make_id(), available_min_id=min_id)],
-            chats=[await channel.to_tl()],
-        )
-
-    await SessionManager.send(
-        updates,
-        channel_id=channel.id if for_user is None else None,
-        user_id=for_user,
+        updates=[UpdateChannelAvailableMessages(
+            channel_id=channel.make_id(),
+            available_min_id=min_id,
+        )],
+        chats=[await channel.to_tl()],
     )
+
+    await SessionManager.send(updates, channel_id=channel.id)
+
+    return updates
+
+
+async def update_channel_participant_available_message(user: User, channel: Channel, min_id: int) -> Updates:
+    await Update.create(
+        user=user,
+        update_type=UpdateType.UPDATE_CHANNEL_MIN_AVAILABLE_ID,
+        pts=await State.add_pts(user, 1),
+        pts_count=1,
+        related_id=channel.id,
+        additional_data=[min_id],
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[UpdateChannelAvailableMessages(
+            channel_id=channel.make_id(),
+            available_min_id=min_id,
+        )],
+        chats=[await channel.to_tl()],
+    )
+
+    await SessionManager.send(updates, user_id=user.id)
 
     return updates
 

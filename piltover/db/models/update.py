@@ -17,7 +17,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
-    UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID, UpdatePhoneCall
+    UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID, UpdatePhoneCall, UpdateChannelAvailableMessages
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -30,7 +30,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
               | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers \
               | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs | UpdatePrivacy \
-              | UpdateMessageID | UpdatePhoneCall
+              | UpdateMessageID | UpdatePhoneCall | UpdateChannelAvailableMessages
 
 
 class Update(Model):
@@ -604,6 +604,17 @@ class Update(Model):
 
                 return UpdatePhoneCall(
                     phone_call=call.to_tl(),
+                )
+
+            case UpdateType.UPDATE_CHANNEL_MIN_AVAILABLE_ID:
+                if not self.additional_data:
+                    return None
+
+                ucc.add_channel(self.related_id)
+
+                return UpdateChannelAvailableMessages(
+                    channel_id=models.Channel.make_id_from(self.related_id),
+                    available_min_id=self.additional_data[0],
                 )
 
         return None

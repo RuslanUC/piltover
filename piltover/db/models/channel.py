@@ -72,6 +72,7 @@ class Channel(ChatBase):
     nojoin_allow_view: bool = fields.BooleanField(default=False)
     hidden_prehistory: bool = fields.BooleanField(default=False)
     min_available_id: int | None = fields.BigIntField(null=True, default=None)
+    min_available_id_force: int | None = fields.BigIntField(null=True, default=None)
     migrated_from: models.Chat | None = fields.OneToOneField("models.Chat", null=True, default=None)
     join_to_send: bool = fields.BooleanField(default=True)
     join_request: bool = fields.BooleanField(default=False)
@@ -191,9 +192,10 @@ class Channel(ChatBase):
         return tl
 
     def min_id(self, participant: models.ChatParticipant) -> int | None:
+        min_available_id_force = self.min_available_id_force or 0
         if participant is not None:
-            return participant.min_message_id
-        return self.min_available_id
+            return max(min_available_id_force, participant.min_message_id or 0) or None
+        return max(min_available_id_force, self.min_available_id or 0) or None
 
     @staticmethod
     def make_access_hash(user: int, auth: int, channel: int) -> int:

@@ -15,8 +15,6 @@ from loguru import logger
 from pyrogram.session import Auth
 from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
-from tortoise import connections
-from tortoise.backends.sqlite import SqliteClient
 from tortoise.queryset import AwaitableQuery, BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, \
     ValuesListQuery, CountQuery, DeleteQuery, UpdateQuery, QuerySet, ExistsQuery
 
@@ -78,6 +76,7 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
     create_system_stickersets = "create_system_stickersets" in marks
     create_emoji_groups = "create_emoji_groups" in marks
     run_scheduler = "run_scheduler" in marks
+    dont_create_sys_user = "dont_create_sys_user" in marks
 
     sched_insta_send_thresh = AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD
     AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = -30
@@ -98,6 +97,7 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
             create_peer_colors=create_peer_colors, create_languages=create_languages,
             create_system_stickersets=create_system_stickersets, create_emoji_groups=create_emoji_groups,
             run_scheduler=run_scheduler, run_actual_server=USE_REAL_TCP_FOR_TESTING,
+            create_sys_user=not dont_create_sys_user,
         ))
 
         # conn: SqliteClient = connections.get("default")

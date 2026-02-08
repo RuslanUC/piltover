@@ -143,6 +143,7 @@ class UpdateType(IntEnum):
     UPDATE_MESSAGE_ID = 45
     READ_CHANNEL_MESSAGES_CONTENTS = 46
     PHONE_CALL = 47
+    UPDATE_CHANNEL_MIN_AVAILABLE_ID = 48
 
 
 class SecretUpdateType(IntEnum):
@@ -221,6 +222,7 @@ class ChannelUpdateType(IntEnum):
     NEW_MESSAGE = 1
     EDIT_MESSAGE = 2
     DELETE_MESSAGES = 3
+    UPDATE_MIN_AVAILABLE_ID = 4
 
 
 class DialogFolderId(IntEnum):

@@ -6,10 +6,11 @@ from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
-from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage, Long
+from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage, Long, \
+    UpdateChannelAvailableMessages
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
-UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMessage
+UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMessage | UpdateChannelAvailableMessages
 
 
 class ChannelUpdate(Model):
@@ -31,7 +32,9 @@ class ChannelUpdate(Model):
 
         match self.type:
             case ChannelUpdateType.UPDATE_CHANNEL:
-                return UpdateChannel(channel_id=self.channel_id)
+                return UpdateChannel(
+                    channel_id=models.Channel.make_id_from(self.channel_id),
+                )
             case ChannelUpdateType.NEW_MESSAGE:
                 return None
             case ChannelUpdateType.EDIT_MESSAGE:
@@ -49,10 +52,15 @@ class ChannelUpdate(Model):
                 message_ids = [Long.read_bytes(self.extra_data[i * 8:(i + 1) * 8]) for i in range(self.pts_count)]
 
                 return UpdateDeleteChannelMessages(
-                    channel_id=self.channel_id,
+                    channel_id=models.Channel.make_id_from(self.channel_id),
                     messages=message_ids,
                     pts=self.pts,
                     pts_count=1,
+                )
+            case ChannelUpdateType.UPDATE_MIN_AVAILABLE_ID:
+                return UpdateChannelAvailableMessages(
+                    channel_id=models.Channel.make_id_from(self.channel_id),
+                    available_min_id=Long.read_bytes(self.extra_data),
                 )
 
         return None

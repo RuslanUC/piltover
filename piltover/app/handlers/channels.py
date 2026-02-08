@@ -462,7 +462,7 @@ async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessag
         return AffectedMessages(pts=peer.channel.pts, pts_count=0)
 
     await MessageRef.filter(id__in=message_ids).delete()
-    pts = await upd.delete_messages_channel(peer.channel, message_ids)
+    _, pts = await upd.delete_messages_channel(peer.channel, message_ids)
 
     return AffectedMessages(pts=pts, pts_count=len(message_ids))
 
@@ -1524,12 +1524,43 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> boo
     return True
 
 
-#@handler.on_request(DeleteHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(DeleteHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_history(request: DeleteHistory, user: User) -> Updates:
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+    )
+    channel = peer.channel
+    participant = await channel.get_participant_raise(user)
+
+    new_min_available_id = cast(
+        int | None,
+        await MessageRef.filter(
+            peer__owner=None, peer__channel=channel, id__lte=request.max_id,
+        ).order_by("-id").first().values_list("id", flat=True),
+    ) or 0
+
     if not request.for_everyone:
-        ...  # TODO: change participant min_message_id to max id before request.max_id
-    else:
-        ...  # TODO: delete messages
+        if new_min_available_id < participant.min_message_id:
+            return upd.UpdatesWithDefaults(updates=[])
+        participant.min_message_id = new_min_available_id
+        await participant.save(update_fields=["min_message_id"])
+        return await upd.update_channel_participant_available_message(user, channel, new_min_available_id)
+
+    if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    message_ids = await MessageRef.filter(
+        peer__owner=None, peer__channel=channel, id__lte=request.max_id,
+    ).order_by("-id").limit(1001).values_list("id")
+    if len(message_ids) > 1000:
+        channel.min_available_id_force = message_ids[0]
+        await channel.save(update_fields=["min_available_id_force"])
+        return await upd.update_channel_available_messages(channel, new_min_available_id)
+
+    message_ids.pop(0)
+    await MessageRef.filter(id__in=message_ids).delete()
+    updates, _ = await upd.delete_messages_channel(channel, message_ids)
+    return updates
 
 
 @handler.on_request(DeleteParticipantHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -1560,7 +1591,7 @@ async def delete_participant_history(request: DeleteParticipantHistory, user: Us
 
     await MessageRef.filter(id__in=messages_to_delete).delete()
 
-    new_pts = await upd.delete_messages_channel(channel, messages_to_delete)
+    _, new_pts = await upd.delete_messages_channel(channel, messages_to_delete)
     return AffectedHistory(
         pts=new_pts,
         pts_count=len(messages_to_delete),
