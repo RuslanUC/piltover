@@ -413,13 +413,18 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user: User)
     auth_id = request_ctx.get().auth_id
     this_auth = await UserAuthorization.get_or_none(id=auth_id)
 
-    auth_hash_hex = Long.write(request.hash).hex()
-    auth = await UserAuthorization.get_or_none(user=user, hash__startswith=auth_hash_hex)
-    if auth is None or auth == this_auth or this_auth.created_at > auth.created_at:
+    if request.hash == 0:
+        auth = this_auth
+    else:
+        auth_hash_hex = Long.write(request.hash).hex()
+        auth = await UserAuthorization.get_or_none(user=user, hash__startswith=auth_hash_hex)
+    if auth is None:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
     to_update = []
     if not auth.confirmed and request.confirmed:
+        if auth == this_auth or this_auth.created_at > auth.created_at:
+            raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
         auth.confirmed = True
         to_update.append("confirmed")
 

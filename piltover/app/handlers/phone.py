@@ -2,6 +2,7 @@ import hashlib
 import json
 from datetime import datetime, UTC
 
+from loguru import logger
 from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
@@ -129,7 +130,9 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
 
     ctx = request_ctx.get()
     this_auth = await UserAuthorization.get(user=user, id=ctx.auth_id)
-    target_authorizations = await UserAuthorization.filter(user=peer.user, allow_call_requests=True).values_list("id")
+    target_authorizations = await UserAuthorization.filter(
+        user=peer.user, allow_call_requests=True
+    ).values_list("id", flat=True)
 
     # TODO: save random_id
     call = await PhoneCall.create(
@@ -141,6 +144,8 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
         discard_reason=None if target_authorizations else CallDiscardReason.MISSED,
         protocol=request.protocol.write(),
     )
+
+    logger.info(f"Sending phone call update to authorizations: {target_authorizations}")
 
     # TODO: send service message if discard_reason is not None
 
@@ -275,3 +280,5 @@ async def confirm_call(request: ConfirmCall, user: User) -> PhonePhoneCall:
         ],
     )
 
+
+# TODO: ReceivedCall

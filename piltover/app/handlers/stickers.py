@@ -20,7 +20,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
     InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty, \
-    Document, TLObjectVector
+    Document, TLObjectVector, InputStickerSetPremiumGifts, StickerSet
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets, GetRecentStickers, \
     ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers, GetCustomEmojiDocuments, GetEmojiStickers
@@ -526,6 +526,22 @@ async def change_sticker(request: ChangeSticker, user: User) -> MessagesStickerS
 
 @handler.on_request(GetStickerSet)
 async def get_stickerset(request: GetStickerSet, user: User) -> MessagesStickerSet | StickerSetNotModified:
+    if isinstance(request.stickerset, InputStickerSetPremiumGifts):
+        return MessagesStickerSet(
+            set=StickerSet(
+                id=1000000000,
+                access_hash=1,
+                title="WebZ crashes without this stickerset",
+                short_name="__webz_dont_crash__",
+                official=True,
+                count=0,
+                hash=1,
+            ),
+            packs=[],
+            keywords=[],  # TODO: add support for keywords
+            documents=[],
+        )
+
     stickerset = await Stickerset.from_input(request.stickerset)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")

@@ -167,7 +167,7 @@ async def get_messages_query_internal(
 
     limit = max(min(100, limit), 1)
 
-    if not offset_id or add_offset >= 0:
+    if (not offset_id and add_offset >= 0) or add_offset >= 0:
         if offset_id:
             query &= Q(id__lt=offset_id)
 
