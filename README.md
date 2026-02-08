@@ -123,8 +123,7 @@ run both `piltover.app.app` and `piltover.app.worker` with `--rabbitmq-address` 
 ### **Pyrogram**
 
 - `git clone --depth=1 https://github.com/pyrogram/pyrogram`
-- Edit this dictionary:
-  https://github.com/pyrogram/pyrogram/blob/b19764d5dc9e2d59a4ccbb7f520f78505800656b/pyrogram/crypto/rsa.py#L33
+- Edit [this dictionary](https://github.com/pyrogram/pyrogram/blob/b19764d5dc9e2d59a4ccbb7f520f78505800656b/pyrogram/crypto/rsa.py#L33):
   - The key is the **server fingerprint**, the value is formed by this
     expression: `PublicKey(int(` **prime** `16), int(` **exponent** `, 16))`
   - Replace those values, (optional: delete the rest of the keys)
@@ -139,8 +138,7 @@ run both `piltover.app.app` and `piltover.app.worker` with `--rabbitmq-address` 
 ### **Telethon**
 
 - `git clone --depth=1 https://github.com/LonamiWebs/telethon`
-- Edit these variables:
-  https://github.com/LonamiWebs/Telethon/blob/2007c83c9e1b1c85e60e4eca8e8651fcb120ee88/telethon/client/telegrambaseclient.py#L21-L24
+- Edit [these variables](https://github.com/LonamiWebs/Telethon/blob/2007c83c9e1b1c85e60e4eca8e8651fcb120ee88/telethon/client/telegrambaseclient.py#L21-L24):
   - ```python
     DEFAULT_DC_ID = 2
     DEFAULT_IPV4_IP = '127.0.0.1'
@@ -150,18 +148,17 @@ run both `piltover.app.app` and `piltover.app.worker` with `--rabbitmq-address` 
   - Just make sure that the default dc is 2, the ipv4 is localhost, and the
     default port is 4430. We don't really use ipv6 anyway...
 - Add the rsa public key:
-  - Edit this file:
-    https://github.com/LonamiWebs/Telethon/blob/2007c83c9e1b1c85e60e4eca8e8651fcb120ee88/telethon/crypto/rsa.py#L85
-  - Ideally, delete all the existing keys
-  - Take your server's public key from the `data/secrets/pubkey.asc` file, and
-    add it there with `add_key("""` **key here** `""", old=False)`
+  - Edit [this file](https://github.com/LonamiWebs/Telethon/blob/2007c83c9e1b1c85e60e4eca8e8651fcb120ee88/telethon/crypto/rsa.py#L85):
+    - Ideally, delete all the existing keys
+    - Take your server's public key from the `data/secrets/pubkey.asc` file, and
+      add it there with `add_key("""` **key here** `""", old=False)`
 - Install in development mode with `python3 -m pip install -e .`
 - Ready to use, run the server and check if `telethon_test.py` works
 
 ### **Telegram Desktop**
 
 - Edit
-  [this file](https://github.com/telegramdesktop/tdesktop/blob/2acedca6b740f6471b6ebe2e0c500bec32a0a94c/Telegram/SourceFiles/mtproto/mtproto_dc_options.cpp#L31-L78):
+  [this file](https://github.com/telegramdesktop/tdesktop/blob/e3c3a685661a4c76be735c293efdb47c9e2d2361/Telegram/SourceFiles/mtproto/mtproto_dc_options.cpp#L31-L78):
   - As always, replace every ip with `127.0.0.1` (localhost), and every port
     with `4430`
   - Remove the existing rsa keys, and replace them with your own, taken from the
@@ -169,26 +166,17 @@ run both `piltover.app.app` and `piltover.app.worker` with `--rabbitmq-address` 
     the newlines thoroughly and make sure they are there, or it won't work.
 - Build the program, ideally with GitHub Actions
 - Put the executable in a folder, e.g. `tdesk`
-- ~~Since we don't save the auth keys, you should delete the leftover files from
-  tdesktop at every run. You can do this conveniently and run your custom
-  TDesktop with this command:~~
-
-```shell
-$ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
-```
 
 ### **Telegram Android (recommended: Owlgram)**
 
 - Clone the repo and follow the basic setup instructions
-- Edit this file:
-  https://github.com/OwlGramDev/OwlGram/blob/master/TMessagesProj/jni/tgnet/ConnectionsManager.cpp#L1702-L1756
+- Edit [this file](https://github.com/OwlGramDev/OwlGram/blob/master/TMessagesProj/jni/tgnet/ConnectionsManager.cpp#L1702-L1756):
   - Replace every ip with your local ip address. It can be `127.0.0.1`
     (localhost) only in the case you're running the app with an emulator on the
     same machine the server is running. Otherwise, change it with e.g.
     `192.168.1.35` (the LAN ip address of your machine).
   - Replace every port with `4430`
-- Edit this file:
-  https://github.com/OwlGramDev/OwlGram/blob/master/TMessagesProj/jni/tgnet/Handshake.cpp#L355-L372
+- Edit [this file](https://github.com/OwlGramDev/OwlGram/blob/master/TMessagesProj/jni/tgnet/Handshake.cpp#L355-L372):
   - Remove the existing rsa keys, and replace them with your own, taken from the
     `data/secrets/pubkey.asc` file on your piltover folder. **Important:** check
     the newlines thoroughly and make sure they are there, or it won't work. This
@@ -197,7 +185,6 @@ $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
 - Build the app, and see if it works.
 
 ### **Telegram WebK**
-
 - Clone repo and install dependencies:
   - ```shell
     $ git clone https://github.com/morethanwords/tweb
@@ -205,17 +192,14 @@ $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
     $ npm i -g pnpm
     $ pnpm install
     ```
-- Edit the values in this file:
-  https://github.com/morethanwords/tweb/blob/f2827d9c19616a560346bd1662665ca30dc54668/src/lib/mtproto/dcConfigurator.ts#L50
+- Edit the values in [this file](https://github.com/morethanwords/tweb/blob/f2827d9c19616a560346bd1662665ca30dc54668/src/lib/mtproto/dcConfigurator.ts#L50):
   - Change `` const chosenServer = `wss://...` `` to:
   - ```typescript
     const chosenServer = `ws://127.0.0.1:3000/proxy`;
     ```
   - Change every datacenter ip and port below, respectively to `127.0.0.1`
-    (localhost) and `3000` (websocket proxy port)
-    https://github.com/morethanwords/tweb/blob/f2827d9c19616a560346bd1662665ca30dc54668/src/lib/mtproto/dcConfigurator.ts#L58-L70
-- Edit the values in this file:
-  https://github.com/morethanwords/tweb/blob/f2827d9c19616a560346bd1662665ca30dc54668/src/lib/mtproto/rsaKeysManager.ts#L69-L78
+    (localhost) and `3000` (websocket proxy port) [here](https://github.com/morethanwords/tweb/blob/f2827d9c19616a560346bd1662665ca30dc54668/src/lib/mtproto/dcConfigurator.ts#L58-L70).
+- Edit the values in [this file](https://github.com/morethanwords/tweb/blob/f2827d9c19616a560346bd1662665ca30dc54668/src/lib/mtproto/rsaKeysManager.ts#L69-L78):
   - Change the `modulus` to the **lowercase** string of `prime` obtained previously
 - Run the websocket proxy from piltover
   - ```shell
@@ -226,7 +210,6 @@ $ rm -rf tdata/ DebugLogs/ log.txt && c && ./Telegram
 - Open the app in your browser (usually `https://0.0.0.0:8080/`)
 
 ### **Telegram WebZ**
-
 - Clone repo (at specific api layer, example uses 201) and install dependencies:
   - ```shell
     $ git clone --depth 1 --revision 92d9f0736c3e890af0e1eca37f95fbcee3cd39c3 https://github.com/Ajaxy/telegram-tt
