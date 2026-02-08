@@ -46,14 +46,20 @@ class PhoneCallToFormat(types.PhoneCallToFormatInternal):
                     protocol=self.protocol,
                 )
             elif self.participant_sess_id == ctx.auth_id:
-                call = types.PhoneCall(
-                    **common_kwargs,
-                    g_a_or_b=self.g_a,
-                    key_fingerprint=self.key_fingerprint or 0,
-                    protocol=self.protocol,
-                    connections=self.connections or [],
-                    start_date=self.start_date or 0,
-                )
+                if self.g_a is None:
+                    call = types.PhoneCallWaiting(
+                        **common_kwargs,
+                        protocol=self.protocol,
+                    )
+                else:
+                    call = types.PhoneCall(
+                        **common_kwargs,
+                        g_a_or_b=self.g_a,
+                        key_fingerprint=self.key_fingerprint or 0,
+                        protocol=self.protocol,
+                        connections=self.connections or [],
+                        start_date=self.start_date or 0,
+                    )
             else:
                 call = types.PhoneCallDiscarded(
                     id=self.id,

@@ -100,6 +100,7 @@ def _merge_protocols(a: PhoneCallProtocol, b: PhoneCallProtocol):
 
     versions = list(set(a.library_versions) & set(b.library_versions))
     if not versions:
+        # TODO: send CALL_PROTOCOL_COMPAT_LAYER_INVALID instead?
         versions = ["2.4.4"]
 
     return PhoneCallProtocol(
