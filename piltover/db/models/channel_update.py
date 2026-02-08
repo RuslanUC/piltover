@@ -15,7 +15,7 @@ UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMes
 
 class ChannelUpdate(Model):
     id: int = fields.BigIntField(pk=True)
-    type: ChannelUpdateType = fields.IntEnumField(ChannelUpdateType)
+    type: ChannelUpdateType = fields.IntEnumField(ChannelUpdateType, description="")
     pts: int = fields.BigIntField()
     pts_count: int = fields.IntField(default=0)
     date: datetime = fields.DatetimeField(auto_now_add=True)

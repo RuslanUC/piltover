@@ -35,7 +35,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
 
 class Update(Model):
     id: int = fields.BigIntField(pk=True)
-    update_type: UpdateType = fields.IntEnumField(UpdateType)
+    update_type: UpdateType = fields.IntEnumField(UpdateType, description="")
     pts: int = fields.BigIntField()
     pts_count: int = fields.IntField(default=0)
     date: datetime = fields.DatetimeField(auto_now_add=True)
