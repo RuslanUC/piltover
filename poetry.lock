@@ -3019,12 +3019,14 @@ name = "tg-secret"
 version = "0.1.3"
 description = "Secret chats support for Telegram (MTProto) client libraries"
 optional = false
-python-versions = "<4.0,>=3.11"
-groups = ["dev"]
-files = [
-    {file = "tg_secret-0.1.3-py3-none-any.whl", hash = "sha256:3bf52aa3a60f29cf16c3c5a3a07547106f55a7ab23eb8a9c7689c5686516bd42"},
-    {file = "tg_secret-0.1.3.tar.gz", hash = "sha256:62511e1308c1ac7d1b32a09ab92b5d90ba484a3c12b9c52a8798614b16e61d3a"},
-]
+python-versions = "^3.11"
+groups = ["test", "test-local"]
+files = []
+develop = true
+
+[package.source]
+type = "directory"
+url = "../tg-secret"
 
 [[package]]
 name = "tgcrypto"
@@ -3673,4 +3675,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11.1"
-content-hash = "7f2c15f3fd2c3daf2596271228d2f91d0e1414b7d6886da1bdcea30ccdd9edd4"
+content-hash = "4686281e8784002ac949a33ed9be8cbdfde312ba13646b72124aa727dc4d79aa"

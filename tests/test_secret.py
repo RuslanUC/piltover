@@ -173,7 +173,6 @@ async def test_secret_chat_rekey(exit_stack: AsyncExitStack) -> None:
     async def secret_chat_request(_: SecretChat) -> ChatRequestResult:
         return ChatRequestResult.ACCEPT
 
-
     chat = await secret1.request_encryption("client2_username")
     assert chat is not None
 

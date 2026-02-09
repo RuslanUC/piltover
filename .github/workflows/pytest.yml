@@ -26,7 +26,7 @@ jobs:
           cache: "poetry"
 
       - name: Install dependencies
-        run: poetry install --no-root --no-interaction --all-extras
+        run: poetry install --no-root --no-interaction --all-extras --without test-local
 
       - name: Generate tl
         run: poetry run python tools/tl_gen.py

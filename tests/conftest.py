@@ -306,6 +306,7 @@ InterceptHandler.redirect_to_loguru("aiocache.base", logging.DEBUG)
 InterceptHandler.redirect_to_loguru("taskiq", logging.WARNING)
 InterceptHandler.redirect_to_loguru(taskiq_sched_logger.name, logging.DEBUG)
 InterceptHandler.redirect_to_loguru("asyncio", logging.WARNING)
+InterceptHandler.redirect_to_loguru("tg_secret.client", logging.DEBUG)
 
 
 def _async_task_done_callback(task: Task) -> None:
