@@ -1580,7 +1580,7 @@ async def delete_participant_history(request: DeleteParticipantHistory, user: Us
 
     messages_to_delete = await MessageRef.filter(
         peer__owner=None, peer__channel=channel, content__author__id=target_peer.user_id,
-    ).order_by("-id").limit(1001).values_list("id")
+    ).order_by("-id").limit(1001).values_list("id", flat=True)
 
     if not messages_to_delete:
         return AffectedHistory(pts=channel.pts, pts_count=0, offset=0)

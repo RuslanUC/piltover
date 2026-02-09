@@ -723,5 +723,39 @@ async def test_supergroup_delete_history(
     assert after_message_ids_2 == message_ids[after_start_idx_other:]
 
 
-# TODO: add test for DeleteParticipantHistory
+@pytest.mark.asyncio
+async def test_supergroup_delete_participant_history(exit_stack: AsyncExitStack) -> None:
+    client1: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    client2: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456780"))
+
+    async with client1.expect_updates_m(UpdateUserName):
+        await client1.set_username("test1_username")
+    async with client2.expect_updates_m(UpdateUserName):
+        await client2.set_username("test2_username")
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer("test1_username")]),
+    )
+
+    group = await client1.create_supergroup("test")
+    await group.add_members("test2_username")
+
+    for i in range(20):
+        if i % 2:
+            await client1.send_message(group.id, f"test {i}")
+        else:
+            await client2.send_message(group.id, f"test {i}")
+
+    await client1.delete_user_history(group.id, "test2_username")
+
+    after_messages = [
+        (message.from_user.id, message.id)
+        async for message in client1.get_chat_history(group.id, 10)
+    ]
+
+    assert all(author_id == client1.me.id for author_id, _ in after_messages)
+    assert len(after_messages) == 10
+
+
 # TODO: add tests for restricting chat members (including restricting before join)
