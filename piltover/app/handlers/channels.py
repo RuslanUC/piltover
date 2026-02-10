@@ -896,6 +896,7 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user:
             if isinstance(reaction, ReactionEmoji):
                 reactions_emoticons.append(Reaction.reaction_to_uuid(reaction.emoticon))
             elif isinstance(reaction, ReactionCustomEmoji):
+                # TODO: allow custom reactions
                 raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
         new_reactions = await Reaction.filter(reaction_id__in=reactions_emoticons)

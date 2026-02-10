@@ -8,7 +8,7 @@ from piltover.app.handlers.messages.history import format_messages_internal, get
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import PeerType, ChatBannedRights
 from piltover.db.models import Reaction, User, Peer, MessageReaction, ReadState, State, RecentReaction, \
-    UserReactionsSettings, MessageRef
+    UserReactionsSettings, MessageRef, AvailableChannelReaction
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
@@ -48,6 +48,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         if isinstance(request.reaction[0], ReactionEmoji):
             reaction = await Reaction.get_or_none(Reaction.q_from_reaction(request.reaction[0].emoticon))
         elif isinstance(request.reaction[0], ReactionCustomEmoji):
+            # TODO: allow custom emoji as reactions
             raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
@@ -55,7 +56,6 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
         # TODO: check if this is correct permission
-        # TODO: check if reaction is in allowed reactions list
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         channel_min_id = 0
@@ -66,6 +66,10 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
 
     if (message := await MessageRef.get_(request.msg_id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
+
+    if peer.type is PeerType.CHANNEL and not peer.channel.all_reactions:
+        if not await AvailableChannelReaction.filter(channel=peer.channel, reaction=reaction).exists():
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
     existing_reaction = await MessageReaction.get_or_none(user=user, message__id=message.content_id)
     if (existing_reaction is None and reaction is None) \
