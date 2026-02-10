@@ -12,7 +12,7 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction, \
     READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
-    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead
+    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -23,13 +23,14 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
     InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo, \
-    InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition, Int, InputMessagesFilterPhoneCalls
+    InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition, Int, InputMessagesFilterPhoneCalls, \
+    ReadParticipantDate
 from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDate
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
     ReadMessageContents, SetHistoryTTL, GetSearchResultsPositions, GetSearchResultsPositions_134, GetDiscussionMessage, \
-    GetReplies
+    GetReplies, GetMessageReadParticipants
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory, SearchResultsPositions, \
     DiscussionMessage
@@ -955,4 +956,35 @@ async def get_replies(request: GetReplies, user: User) -> Messages:
     return await format_messages_internal(user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id)
 
 
-# TODO: GetMessageReadParticipants
+@handler.on_request(GetMessageReadParticipants, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_message_read_participants(request: GetMessageReadParticipants, user: User) -> list[ReadParticipantDate]:
+    peer = await Peer.from_input_peer_raise(
+        user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL)
+    )
+
+    if await ChatParticipant.filter(**peer.query_chat_or_channel()).count() > 100:
+        raise ErrorRpc(error_code=400, error_message="CHAT_TOO_BIG")
+
+    message = await MessageRef.get_or_none(peer=peer, id=request.msg_id, content__author=user)
+    if message is None:
+        raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
+
+    if peer.type is PeerType.CHAT:
+        peer_q = Q(peer__chat=peer.chat, peer__owner__not=peer.owner)
+    elif peer.type is PeerType.CHANNEL:
+        peer_q = Q(peer__channel=peer.channel, peer__owner__not=peer.owner)
+    else:
+        raise Unreachable
+
+    read_dates = await ReadHistoryChunk.filter(
+        peer_q, peer__owner__read_dates_private=False, read_content_id__gte=message.content_id,
+    ).group_by("peer__owner__id").annotate(read_at=Min("read_at")).values_list("peer__owner__id", "read_date")
+
+    result = TLObjectVector()
+    for user_id, read_at in read_dates:
+        result.append(ReadParticipantDate(
+            user_id=user_id,
+            date=read_at,
+        ))
+
+    return result

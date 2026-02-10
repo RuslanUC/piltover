@@ -227,6 +227,14 @@ class Peer(Model):
 
         raise RuntimeError(f".chat_or_channel called on peer with type {self.type}")
 
+    def query_chat_or_channel(self) -> dict:
+        if self.type is PeerType.CHAT:
+            return {"chat__id": self.chat_id}
+        if self.type is PeerType.CHANNEL:
+            return {"channel__id": self.channel_id}
+
+        raise NotImplementedError
+
     def q_this_or_channel(self) -> Q:
         if self.type is PeerType.CHANNEL:
             return Q(peer__owner=None, peer__channel__id=self.channel_id)
