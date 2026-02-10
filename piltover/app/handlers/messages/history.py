@@ -23,7 +23,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterGif, InputMessagesFilterVoice, InputMessagesFilterMusic, MessageViews, \
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
     InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo, \
-    InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition, Int
+    InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition, Int, InputMessagesFilterPhoneCalls
 from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDate
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
@@ -88,8 +88,9 @@ def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | Non
         return Q(content__media__type=MediaType.CONTACT)
     elif isinstance(filter_, InputMessagesFilterGeo):
         return Q(content__media__type=MediaType.GEOPOINT)
+    elif isinstance(filter_, InputMessagesFilterPhoneCalls):
+        return Q(content__type=MessageType.SERVICE_PHONE_CALL)
     elif filter_ is not None and not isinstance(filter_, InputMessagesFilterEmpty):
-        # TODO: InputMessagesFilterPhoneCalls
         logger.warning(f"Unsupported filter: {filter_}")
         return Q(id=0)
 

@@ -42,8 +42,6 @@ class UsersChatsChannels:
         self._message_ref_ids.add(message_id)
 
     def add_peer(self, peer: models.Peer) -> None:
-        # TODO: probably should also fetch all chat participants
-
         peer_type = peer.type
         if peer_type is PeerType.SELF:
             peer_type = PeerType.USER

@@ -38,7 +38,6 @@ class PhoneCallToFormat(types.PhoneCallToFormatInternal):
                     start_date=self.start_date or 0,
                 )
         elif ctx.user_id == self.participant_id:
-            # TODO: what do we send when `from_user` haven't confirmed the call yet?
             if self.participant_sess_id is None:
                 call = types.PhoneCallRequested(
                     **common_kwargs,
