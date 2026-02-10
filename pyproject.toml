@@ -27,7 +27,7 @@ tgcrypto = "^1.2.5"
 uvloop = { version = "^0.22.1", markers = "sys_platform != 'win32'" }
 loguru = "^0.7.3"
 # branch "allow-joining-same-table-twice"
-tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", extras = ["asyncmy", "accel"], rev = "0653a5500b38597779ffbc15359fe8799ec05fa0"}
+tortoise-orm = {git = "https://github.com/RuslanUC/tortoise-orm.git", extras = ["asyncmy", "accel"], rev = "4f71cc7406e34f24f2c5310ed1b18d2592948cf2"}
 aerich = "^0.9.2"
 pillow = "^12.1.0"
 # TODO: upgrade to 0.2.x and use Session from mtproto in Gateway from piltover

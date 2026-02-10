@@ -224,3 +224,15 @@ class MessageRef(Model):
             ).select_related(*self.PREFETCH_FIELDS_MIN)
 
         raise Unreachable
+
+    def peer_key(self) -> tuple[PeerType, int]:
+        if self.peer.type in (PeerType.SELF, PeerType.USER):
+            peer_id = self.peer.user_id
+        elif self.peer.type is PeerType.CHAT:
+            peer_id = self.peer.chat_id
+        elif self.peer.type is PeerType.CHANNEL:
+            peer_id = self.peer.channel_id
+        else:
+            raise Unreachable
+
+        return self.peer.type, peer_id

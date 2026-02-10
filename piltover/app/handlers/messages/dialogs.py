@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
 from typing import cast, TypeVar
 
+from loguru import logger
 from tortoise.expressions import Q
 from tortoise.functions import Max
 
@@ -10,7 +11,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Chat, Channel, MessageRef
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector, \
     InputPeerChannel
 from piltover.tl.functions.folders import EditPeerFolders
@@ -28,27 +29,40 @@ async def format_dialogs(
         model: type[DialogT], user: User, dialogs: list[DialogT], allow_slicing: bool = False,
         folder_id: int | None = None,
 ) -> dict[str, list]:
-    messages = []
+    if dialogs:
+        ucc = UsersChatsChannels()
 
-    ucc = UsersChatsChannels()
+        dialog_by_peer: dict[tuple[PeerType, int], tuple[DialogT, MessageRef | None]] = {}
+        for dialog in dialogs:
+            dialog_by_peer[dialog.peer_key()] = (dialog, None)
 
-    for dialog in dialogs:
-        # TODO: fetch in bulk
-        message = await dialog.top_message_query()
-        if message is not None:
-            messages.append(message)
+        messages = await model.top_message_query_bulk(user, dialogs)
+        for message in messages:
             ucc.add_message(message.content_id)
-        else:
+            peer_key = message.peer_key()
+            dialog, _ = dialog_by_peer[peer_key]
+            dialog_by_peer[peer_key] = dialog, message
+
+        for dialog, message in dialog_by_peer.values():
+            if message is not None:
+                continue
             ucc.add_peer(dialog.peer)
 
-    users, chats, channels = await ucc.resolve()
+        users, chats, channels = await ucc.resolve()
 
-    result = {
-        "dialogs": [await dialog.to_tl() for dialog in dialogs],
-        "messages": await MessageRef.to_tl_bulk(messages, user),
-        "chats": [*chats, *channels],
-        "users": users,
-    }
+        result = {
+            "dialogs": await model.to_tl_bulk(dialogs, dialog_by_peer),
+            "messages": await MessageRef.to_tl_bulk(messages, user),
+            "chats": [*chats, *channels],
+            "users": users,
+        }
+    else:
+        result = {
+            "dialogs": [],
+            "messages": [],
+            "chats": [],
+            "users": [],
+        }
 
     if not allow_slicing:
         return result

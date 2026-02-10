@@ -3118,10 +3118,10 @@ files = [
 
 [[package]]
 name = "tortoise-orm"
-version = "0.25.3"
+version = "0.25.4"
 description = "Easy async ORM for python, built with relations in mind"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = []
 develop = false
@@ -3129,27 +3129,28 @@ develop = false
 [package.dependencies]
 aiosqlite = ">=0.16.0,<1.0.0"
 anyio = "*"
-asyncmy = {version = ">=0.2.8,<1.0.0", optional = true, markers = "python_version < \"4.0\" and extra == \"asyncmy\""}
+asyncmy = {version = ">=0.2.11,<1.0.0", optional = true, markers = "extra == \"asyncmy\""}
 ciso8601 = {version = "*", optional = true, markers = "sys_platform != \"win32\" and implementation_name == \"cpython\" and extra == \"accel\""}
 iso8601 = {version = ">=2.1.0,<3.0.0", markers = "python_version < \"4.0\""}
 orjson = {version = "*", optional = true, markers = "extra == \"accel\""}
 pypika-tortoise = ">=0.6.3,<1.0.0"
-pytz = "*"
 uvloop = {version = "*", optional = true, markers = "sys_platform != \"win32\" and implementation_name == \"cpython\" and extra == \"accel\""}
 
 [package.extras]
 accel = ["ciso8601 ; sys_platform != \"win32\" and implementation_name == \"cpython\"", "orjson", "uvloop ; sys_platform != \"win32\" and implementation_name == \"cpython\""]
 aiomysql = ["aiomysql"]
-asyncmy = ["asyncmy (>=0.2.8,<1.0.0) ; python_version < \"4.0\""]
+asyncmy = ["asyncmy (>=0.2.11,<1.0.0)"]
 asyncodbc = ["asyncodbc (>=0.1.1,<1.0.0) ; python_version < \"4.0\""]
 asyncpg = ["asyncpg"]
+ipython = ["ipython", "nest-asyncio (>=1.6.0)"]
 psycopg = ["psycopg[binary,pool] (>=3.0.12,<4.0.0)"]
+ptpython = ["ptpython (>=3.0.0)"]
 
 [package.source]
 type = "git"
 url = "https://github.com/RuslanUC/tortoise-orm.git"
-reference = "0653a5500b38597779ffbc15359fe8799ec05fa0"
-resolved_reference = "0653a5500b38597779ffbc15359fe8799ec05fa0"
+reference = "4f71cc7406e34f24f2c5310ed1b18d2592948cf2"
+resolved_reference = "4f71cc7406e34f24f2c5310ed1b18d2592948cf2"
 
 [[package]]
 name = "tqdm"
@@ -3675,4 +3676,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11.1"
-content-hash = "4686281e8784002ac949a33ed9be8cbdfde312ba13646b72124aa727dc4d79aa"
+content-hash = "80a1bcadf0bbf546bb0f9543b34693b93743c94eb1e7e3fcd900418586c1f196"
