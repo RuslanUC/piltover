@@ -5,7 +5,7 @@ from typing import cast, Iterable
 from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q, Subquery
-from tortoise.functions import Min
+from tortoise.functions import Max
 from tortoise.queryset import QuerySetSingle, QuerySet
 from tortoise.transactions import in_transaction
 
@@ -47,7 +47,7 @@ class Dialog(Model):
             id__in=Subquery(
                 models.MessageRef.filter(
                     Q(*peers_q, join_type=Q.OR)
-                ).group_by("peer__id").annotate(min_id=Min("id")).values("min_id")
+                ).group_by("peer__id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
             *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),

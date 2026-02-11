@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from tortoise import fields, Model
 from tortoise.expressions import Subquery
-from tortoise.functions import Min
+from tortoise.functions import Max
 from tortoise.queryset import QuerySetSingle, QuerySet
 
 from piltover.db import models
@@ -35,7 +35,7 @@ class SavedDialog(Model):
             id__in=Subquery(
                 models.MessageRef.filter(
                     peer__owner=user, peer__type=PeerType.SELF, content__fwd_header__saved_peer__id__in=peer_ids,
-                ).group_by("content__fwd_header__saved_peer__id").annotate(min_id=Min("id")).values("min_id")
+                ).group_by("content__fwd_header__saved_peer__id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
             *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
