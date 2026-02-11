@@ -251,12 +251,14 @@ async def confirm_call(request: ConfirmCall, user: User) -> PhonePhoneCall:
         from_user=user, id=request.peer.id, access_hash=request.peer.access_hash,
     ).select_related("to_user", "from_user")
     if call is None:
-        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
+        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID", reason="call is None")
 
     if call.discard_reason is not None:
         raise ErrorRpc(error_code=400, error_message="CALL_ALREADY_DECLINED")
-    if call.g_b is not None:
-        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
+    if call.g_b is None:
+        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID", reason="call.g_b is None")
+    if call.g_a is not None:
+        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID", reason="call.g_a is not None")
 
     _check_protocol(request.protocol)
 
@@ -288,4 +290,4 @@ async def received_call() -> bool:
     return True
 
 
-# TODO: ReceivedCall
+# TODO: SendSignalingData

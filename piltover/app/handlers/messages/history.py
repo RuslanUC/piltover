@@ -393,9 +393,9 @@ async def read_history(request: ReadHistory, user: User):
 
     max_id = request.max_id
     if max_id == 0:
-        query = MessageRef.filter(peer=peer)
+        query = MessageRef.filter(peer.q_this_or_channel())
     else:
-        query = MessageRef.filter(id__lte=request.max_id, peer=peer.q_this_or_channel())
+        query = MessageRef.filter(peer.q_this_or_channel(), id__lte=request.max_id)
 
     max_id, content_id = await query.order_by("-id").first().values_list("id", "content__id")
     logger.debug(f"Actual max_id is {max_id} (content id is {content_id})")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import struct
 from io import BytesIO
 from pathlib import Path
 from time import time
@@ -460,11 +461,16 @@ class Client:
             if await self._is_message_bad(decrypted, session, check_salt):
                 return
 
-            message = Message(
-                message_id=decrypted.message_id,
-                seq_no=decrypted.seq_no,
-                obj=TLObject.read(BytesIO(decrypted.data)),
-            )
+            try:
+                message = Message(
+                    message_id=decrypted.message_id,
+                    seq_no=decrypted.seq_no,
+                    obj=TLObject.read(BytesIO(decrypted.data)),
+                )
+            except (struct.error, ValueError, InvalidConstructorException) as e:
+                logger.opt(exception=e).error(f"Failed to read object. Raw data: {decrypted.data}")
+                # TODO: send "FETCH_FAILED_..." or whatever error that means "invalid constructor"
+                raise
 
             if not session.min_msg_id:
                 session.min_msg_id = message.message_id
