@@ -385,6 +385,7 @@ async def read_history(request: ReadHistory, user: User):
     state, _ = await State.get_or_create(user=user)
 
     if request.max_id and request.max_id <= read_state.last_message_id:
+        logger.debug(f"Ignoring ReadHistory, {request.max_id} <= {read_state.last_message_id}")
         return AffectedMessages(
             pts=state.pts,
             pts_count=0,
@@ -394,11 +395,13 @@ async def read_history(request: ReadHistory, user: User):
     if max_id == 0:
         query = MessageRef.filter(peer=peer)
     else:
-        query = MessageRef.filter(id__lte=request.max_id, peer=peer)
+        query = MessageRef.filter(id__lte=request.max_id, peer=peer.q_this_or_channel())
 
     max_id, content_id = await query.order_by("-id").first().values_list("id", "content__id")
+    logger.debug(f"Actual max_id is {max_id} (content id is {content_id})")
 
     if not max_id or max_id <= read_state.last_message_id:
+        logger.debug(f"Ignoring ReadHistory, (actual) {max_id} <= {read_state.last_message_id}")
         return AffectedMessages(
             pts=state.pts,
             pts_count=0,
