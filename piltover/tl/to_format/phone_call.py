@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from piltover.context import serialization_ctx
 from piltover.exceptions import Unreachable
 from piltover.layer_converter.manager import LayerConverter
@@ -14,26 +16,25 @@ class PhoneCallToFormat(types.PhoneCallToFormatInternal):
             "date": self.date,
             "admin_id": self.admin_id,
             "participant_id": self.participant_id,
+            "protocol": self.protocol,
         }
 
         if ctx.user_id == self.admin_id:
             if self.participant_sess_id is None:
                 call = types.PhoneCallWaiting(
                     **common_kwargs,
-                    protocol=self.protocol,
                 )
             elif self.g_a is None:
                 call = types.PhoneCallAccepted(
                     **common_kwargs,
                     g_b=self.g_b,
-                    protocol=self.protocol,
                 )
             else:
                 call = types.PhoneCall(
                     **common_kwargs,
+                    p2p_allowed=False,
                     g_a_or_b=self.g_b,
                     key_fingerprint=self.key_fingerprint or 0,
-                    protocol=self.protocol,
                     connections=self.connections or [],
                     start_date=self.start_date or 0,
                 )
@@ -42,20 +43,17 @@ class PhoneCallToFormat(types.PhoneCallToFormatInternal):
                 call = types.PhoneCallRequested(
                     **common_kwargs,
                     g_a_hash=self.g_a_hash,
-                    protocol=self.protocol,
                 )
             elif self.participant_sess_id == ctx.auth_id:
                 if self.g_a is None:
                     call = types.PhoneCallWaiting(
                         **common_kwargs,
-                        protocol=self.protocol,
                     )
                 else:
                     call = types.PhoneCall(
                         **common_kwargs,
                         g_a_or_b=self.g_a,
                         key_fingerprint=self.key_fingerprint or 0,
-                        protocol=self.protocol,
                         connections=self.connections or [],
                         start_date=self.start_date or 0,
                     )

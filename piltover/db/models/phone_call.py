@@ -10,7 +10,8 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import CallDiscardReason, CALL_DISCARD_REASON_TO_TL
 from piltover.exceptions import InvalidConstructorException
-from piltover.tl import Long, PhoneCallDiscarded, PhoneCallProtocol, PhoneCallDiscardReasonDisconnect, PhoneConnection
+from piltover.tl import Long, PhoneCallDiscarded, PhoneCallProtocol, PhoneCallDiscardReasonDisconnect, PhoneConnection, \
+    PhoneConnectionWebrtc
 from piltover.tl.base import EncryptedChat as EncryptedChatBase
 from piltover.tl.to_format import PhoneCallToFormat
 
@@ -78,6 +79,16 @@ class PhoneCall(Model):
             key_fingerprint=self.key_fp,
             protocol=protocol,
             connections=[
+                PhoneConnectionWebrtc(
+                    id=1,
+                    ip="192.168.0.111",
+                    ipv6="::1",
+                    port=12346,
+                    username="test",
+                    password="test",
+                    turn=True,
+                    stun=True,
+                ),
                 PhoneConnection(
                     tcp=False,
                     id=1,
@@ -85,7 +96,7 @@ class PhoneCall(Model):
                     ipv6="::1",
                     port=12345,
                     peer_tag=b"0123456789abcdef",
-                )
+                ),
             ],
             start_date=int(self.started_at.timestamp()) if self.started_at else None,
         )

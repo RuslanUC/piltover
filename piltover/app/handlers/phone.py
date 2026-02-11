@@ -92,7 +92,7 @@ def _check_protocol(protocol: PhoneCallProtocol) -> None:
     protocol.library_versions = versions
 
 
-def _merge_protocols(a: PhoneCallProtocol, b: PhoneCallProtocol):
+def _merge_protocols(a: PhoneCallProtocol, b: PhoneCallProtocol, final: bool = False):
     merged_min_layer = max(a.min_layer, b.min_layer)
     merged_max_layer = min(a.max_layer, b.max_layer)
     if merged_min_layer > merged_max_layer:
@@ -103,9 +103,17 @@ def _merge_protocols(a: PhoneCallProtocol, b: PhoneCallProtocol):
         # TODO: send CALL_PROTOCOL_COMPAT_LAYER_INVALID instead?
         versions = ["2.4.4"]
 
+    if final:
+        versions_num = [
+            tuple(map(int, version.split(".")))
+            for version in versions
+        ]
+        versions_num.sort()
+        versions = [".".join(map(str, versions_num[-1]))]
+
     return PhoneCallProtocol(
         # TODO: figure out how this is calculated by telegram
-        udp_p2p=True,
+        udp_p2p=False,
         udp_reflector=True,
         min_layer=merged_min_layer,
         max_layer=merged_max_layer,
@@ -267,10 +275,11 @@ async def confirm_call(request: ConfirmCall, user: User) -> PhonePhoneCall:
 
     call.g_a = request.g_a
     call.key_fp = request.key_fingerprint
-    call.protocol = _merge_protocols(call.protocol_tl(), request.protocol).write()
-    await call.save(update_fields=["g_a", "key_fp", "protocol"])
+    call.protocol = _merge_protocols(call.protocol_tl(), request.protocol, True).write()
+    call.started_at = datetime.now(UTC)
+    await call.save(update_fields=["g_a", "key_fp", "protocol", "started_at"])
 
-    await upd.phone_call_update(user, call, [])
+    await upd.phone_call_update(user, call, [call.from_sess_id])
     await upd.phone_call_update(call.to_user, call, [call.to_sess_id])
 
     # TODO: add connections to call
