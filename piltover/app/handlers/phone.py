@@ -14,7 +14,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DataJSON, Updates, PhoneCallDiscardReasonDisconnect, PhoneCallProtocol, MessageActionPhoneCall
 from piltover.tl.functions.phone import GetCallConfig, RequestCall, DiscardCall, AcceptCall, ConfirmCall, \
-    RequestCall_133, ReceivedCall
+    RequestCall_133, ReceivedCall, SendSignalingData
 from piltover.tl.types.phone import PhoneCall as PhonePhoneCall
 from piltover.worker import MessageHandler
 
@@ -290,4 +290,20 @@ async def received_call() -> bool:
     return True
 
 
-# TODO: SendSignalingData
+@handler.on_request(SendSignalingData)
+async def send_signaling_data(request: SendSignalingData, user: User) -> bool:
+    ctx = request_ctx.get()
+    call = await PhoneCall.get_or_none(
+        Q(from_user=user, from_sess__id=ctx.auth_id) | Q(to_user=user, to_sess__id=ctx.auth_id),
+        id=request.peer.id, access_hash=request.peer.access_hash, discard_reason__isnull=True,
+    ).select_related()
+    if call is None:
+        raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
+
+    if user.id == call.from_user_id:
+        session_id = call.to_sess_id
+    else:
+        session_id = call.from_sess_id
+
+    await upd.phone_signaling_update(session_id, call.id, request.data)
+    return True

@@ -25,7 +25,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents, \
-    UpdateChannelAvailableMessages, UpdatePhoneCall
+    UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData
 from piltover.tl.to_format import DumbChannelMessageToFormat
 from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
@@ -1846,3 +1846,17 @@ async def phone_call_update(user: User, call: PhoneCall, sessions: list[int] | N
     )
 
     return updates
+
+
+async def phone_signaling_update(session_id: int, call_id: int, data: bytes) -> None:
+    await SessionManager.send(
+        UpdatesWithDefaults(
+            updates=[
+                UpdatePhoneCallSignalingData(
+                    phone_call_id=call_id,
+                    data=data,
+                ),
+            ],
+        ),
+        auth_id=[session_id],
+    )
