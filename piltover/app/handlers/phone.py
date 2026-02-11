@@ -113,7 +113,7 @@ def _merge_protocols(a: PhoneCallProtocol, b: PhoneCallProtocol, final: bool = F
 
     return PhoneCallProtocol(
         # TODO: figure out how this is calculated by telegram
-        udp_p2p=False,
+        udp_p2p=True,
         udp_reflector=True,
         min_layer=merged_min_layer,
         max_layer=merged_max_layer,

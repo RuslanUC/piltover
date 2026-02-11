@@ -32,7 +32,7 @@ class PhoneCallToFormat(types.PhoneCallToFormatInternal):
             else:
                 call = types.PhoneCall(
                     **common_kwargs,
-                    p2p_allowed=False,
+                    p2p_allowed=True,
                     g_a_or_b=self.g_b,
                     key_fingerprint=self.key_fingerprint or 0,
                     connections=self.connections or [],
@@ -52,6 +52,7 @@ class PhoneCallToFormat(types.PhoneCallToFormatInternal):
                 else:
                     call = types.PhoneCall(
                         **common_kwargs,
+                        p2p_allowed=True,
                         g_a_or_b=self.g_a,
                         key_fingerprint=self.key_fingerprint or 0,
                         connections=self.connections or [],

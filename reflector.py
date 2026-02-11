@@ -3,11 +3,11 @@ import socket
 from collections import defaultdict
 from time import time
 
-from aioudp import open_local_endpoint
+from aioudp import open_local_endpoint, open_remote_endpoint
 
 
 async def reflector() -> None:
-    server = await open_local_endpoint(port=12345)
+    server = await open_local_endpoint(port=22345)
     print(f"Running udp reflector on {server.address}")
 
     clients: dict[bytes, set[tuple[str, int]]] = defaultdict(set)
@@ -49,5 +49,12 @@ async def reflector() -> None:
             server.send(other_peer + data, other_peer)
 
 
+async def idk() -> None:
+    client = await open_remote_endpoint("91.108.17.38", 599)
+    client.send(b'\x00\x01\x00\x00!\x12\xa4BleUerfnG')
+    print(await client.receive())
+
+
 if __name__ == "__main__":
     asyncio.new_event_loop().run_until_complete(reflector())
+    # asyncio.new_event_loop().run_until_complete(idk())
