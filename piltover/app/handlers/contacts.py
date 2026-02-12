@@ -406,7 +406,7 @@ async def import_contact_token(request: ImportContactToken, user: User) -> TLUse
     if signature != hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest():
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="invalid signature")
 
-    if (target_user := await User.get_or_none(id=target_user_id)) is None:
+    if (target_user := await User.get_or_none(id=target_user_id, deleted=False)) is None:
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="user does not exist")
 
     if target_user == user:

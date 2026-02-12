@@ -25,7 +25,7 @@ from pyrogram.raw.types import Updates, InputPrivacyKeyAddedByPhone, InputPrivac
     InputPrivacyKeyVoiceMessages, InputPrivacyKeyPhoneP2P, InputPrivacyValueAllowAll, InputPrivacyValueAllowUsers, \
     InputPrivacyValueDisallowChatParticipants, InputPrivacyValueDisallowUsers, InputPrivacyValueDisallowContacts, \
     InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts, UpdateShort, \
-    UpdatesCombined, ExportedContactToken
+    UpdatesCombined, ExportedContactToken, UpdatesTooLong
 from pyrogram.session import Session as PyroSession, Auth
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
@@ -370,6 +370,8 @@ class TestClient(Client):
             _updates = updates.updates
         elif isinstance(updates, UpdateShort):
             _updates = [updates.update]
+        elif isinstance(updates, UpdatesTooLong):
+            return
         else:
             _updates = updates
 
@@ -459,6 +461,14 @@ class TestClient(Client):
 
         await self.invoke(SetPrivacy(key=key, rules=rules))
 
+    async def export_contact_token(self) -> ExportedContactToken:
+        return cast(ExportedContactToken, await self.invoke(ExportContactToken()))
+
+    @staticmethod
+    def parse_contact_token_url(token: ExportedContactToken | str) -> str:
+        token = token.url if isinstance(token, ExportedContactToken) else token
+        return parse_qs(urlparse(token).query)["token"][0]
+
     @overload
     async def resolve_user(self, other: Client, get: Literal[True] = True) -> User:
         ...
@@ -467,9 +477,9 @@ class TestClient(Client):
     async def resolve_user(self, other: Client, get: Literal[False] = False) -> None:
         ...
 
-    async def resolve_user(self, other: Client, get: bool = True) -> User | None:
-        exported_token = cast(ExportedContactToken, await other.invoke(ExportContactToken()))
-        contact_token = parse_qs(urlparse(exported_token.url).query)["token"][0]
+    async def resolve_user(self, other: TestClient, get: bool = True) -> User | None:
+        exported_token = await other.export_contact_token()
+        contact_token = self.parse_contact_token_url(exported_token)
         user = await self.invoke(ImportContactToken(token=contact_token))
         await self.fetch_peers([user])
         if get:

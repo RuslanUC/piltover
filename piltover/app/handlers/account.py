@@ -561,7 +561,7 @@ async def _delete_account(user: User) -> None:
         "deleted", "phone_number", "first_name", "last_name", "about", "birthday", "version"
     ])
 
-    auths = await UserAuthorization.get_or_none(user=user).select_related("key")
+    auths = await UserAuthorization.filter(user=user).select_related("key")
 
     auth_ids = []
     keys = []
