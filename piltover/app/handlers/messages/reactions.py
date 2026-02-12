@@ -76,13 +76,6 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             or (existing_reaction is not None and reaction is not None and existing_reaction.reaction_id == reaction.id):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
-    messages: dict[Peer, MessageRef] = {}
-
-    if peer.type is not PeerType.CHANNEL:
-        opp_messages = await MessageRef.filter(content__id=message.content_id).select_related("peer", "peer__owner")
-        for opp_message in opp_messages:
-            messages[opp_message.peer] = opp_message
-
     if existing_reaction is not None:
         if peer.type is PeerType.CHANNEL:
             await existing_reaction.delete()
@@ -93,23 +86,19 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
     if reaction is not None:
+        await MessageReaction.create(user=user, message=message.content, reaction=reaction)
+
         if peer.type is PeerType.CHANNEL:
             # TODO: send update to message author
-            await MessageReaction.create(user=user, message=message.content, reaction=reaction)
             return await upd.update_reactions(user, [message], peer)
-
-        reactions_to_create = []
-        for opp_message in messages.values():
-            reactions_to_create.append(MessageReaction(user=user, message=opp_message.content, reaction=reaction))
-
-        await MessageReaction.bulk_create(reactions_to_create)
 
     result = await upd.update_reactions(user, [message], peer)
 
-    for opp_peer, opp_message in messages.items():
-        if opp_peer.owner == user:
-            continue
-        await upd.update_reactions(opp_peer.owner, [opp_message], opp_peer)
+    if peer.type is not PeerType.CHANNEL:
+        for opp_message in await MessageRef.filter(
+            content__id=message.content_id,
+        ).select_related("peer", "peer__owner", "content"):
+            await upd.update_reactions(opp_message.peer.owner, [opp_message], opp_message.peer)
 
     if reaction is not None and request.add_to_recent:
         await RecentReaction.update_time_or_create(user, reaction, datetime.now(UTC))
@@ -181,9 +170,9 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
     read_state, _ = await ReadState.get_or_create(peer=peer)
 
     reaction_query = Q(message__author=user) & (
-        Q(message__peer__owner=user, message__peer__channel__id=peer.channel_id)
+        Q(message__messagerefs__peer__owner=user, message__messagerefs__peer__channel__id=peer.channel_id)
         if peer.type is PeerType.CHANNEL
-        else Q(message__peer=peer)
+        else Q(message__messagerefs__peer=peer)
     )
     new_last_reaction_id = await MessageReaction.filter(reaction_query).order_by("-id").first().values_list("id", flat=True)
     new_last_reaction_id = new_last_reaction_id or read_state.last_reaction_id

@@ -55,6 +55,7 @@ class MessageContent(Model):
     via_bot: models.User | None = NullableFKSetNull("models.User", related_name="msg_via_bot")
     discussion: models.MessageContent | None = NullableFKSetNull("models.MessageContent", related_name="msg_discussion_message")
     comments_info: models.MessageComments | None = NullableFK("models.MessageComments")
+    # TODO: move to MessageRef model?
     top_message: models.MessageContent | None = NullableFKSetNull("models.MessageContent", related_name="msg_top_message")
     is_discussion: bool = fields.BooleanField(default=False)
 
