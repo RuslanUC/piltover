@@ -248,9 +248,12 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     if channel.migrated_from_id is not None \
             and (chat_peer := await Peer.get_or_none(owner=user, chat__id=channel.migrated_from_id)) is not None:
         migrated_from_chat_id = channel.migrated_from_id
-        migrated_from_max_id = await MessageRef.filter(
-            peer=chat_peer,
-        ).order_by("-id").first().values_list("id", flat=True)
+        migrated_from_max_id = cast(
+            int | None,
+            await MessageRef.filter(
+                peer=chat_peer,
+            ).order_by("-id").first().values_list("id", flat=True)
+        ) or 0
 
     channels_to_tl = [channel]
 
@@ -1457,7 +1460,7 @@ async def toggle_slowmode(request: ToggleSlowMode, user: User) -> Updates:
     new_seconds = request.seconds or None
     if channel.slowmode_seconds == request.seconds:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-    if new_seconds % 60 != 0 or new_seconds < 0 or new_seconds > 60 * 60:
+    if new_seconds < 0 or new_seconds > 60 * 60:
         raise ErrorRpc(error_code=400, error_message="SECONDS_INVALID")
 
     participant = await channel.get_participant_raise(user)

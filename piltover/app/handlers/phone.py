@@ -158,7 +158,7 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
 
     # TODO: send service message if discard_reason is not None
 
-    await upd.phone_call_update(user, call, [])
+    await upd.phone_call_update(user, call, [ctx.auth_id])
     await upd.phone_call_update(peer.user, call, target_authorizations)
 
     return PhonePhoneCall(
@@ -213,7 +213,7 @@ async def discard_call(request: DiscardCall, user: User) -> Updates:
     )
 
     await upd.phone_call_update(call.to_user, call, target_authorizations)
-    return await upd.phone_call_update(user, call, [])
+    return await upd.phone_call_update(user, call, [call.from_sess_id])
 
 
 @handler.on_request(AcceptCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
