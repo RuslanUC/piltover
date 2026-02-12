@@ -240,7 +240,7 @@ async def send_message_internal(
     if not unread_count:
         if peer.type is PeerType.CHANNEL:
             message = next(iter(messages.values()))
-            readstate_updates = await upd.update_read_history_inbox_channel(peer, message.id, 0)
+            readstate_updates = await upd.update_read_history_inbox_channel(user, peer.channel_id, message.id, 0)
         else:
             message = messages[peer]
             _, readstate_updates = await upd.update_read_history_inbox(peer, message.id, 0)

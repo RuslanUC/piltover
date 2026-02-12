@@ -161,7 +161,7 @@ async def get_messages_query_internal(
     if reply_to_id:
         query &= Q(content__reply_to__id=Subquery(
             MessageRef.filter(
-                peer.q_this_or_channel(), content__id=reply_to_id,
+                peer.q_this_or_channel(), id=reply_to_id,
             ).first().values_list("content__id", flat=True)
         ))
 
@@ -720,7 +720,7 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
         )
     }
 
-    for read_media in await MessageMediaRead.filter(user=user, message__in=list(refs_with_media)):
+    for read_media in await MessageMediaRead.filter(user=user, message__id__in=list(refs_with_media)):
         del refs_with_media[read_media.message_id]
 
     if not mentions and not refs_with_media:
@@ -926,7 +926,7 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
     ucc.add_message(discussion_message.content_id)
     users, chats, channels = await ucc.resolve()
 
-    replies_info = await MessageRef.filter(content__reply_to=discussion_message).annotate(
+    replies_info = await MessageRef.filter(content__reply_to__id=discussion_message.content_id).annotate(
         total=Count("id"), max_id=Max("id"),
     ).first().values_list("total", "max_id")
     if replies_info is not None:

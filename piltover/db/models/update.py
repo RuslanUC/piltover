@@ -283,6 +283,18 @@ class Update(Model):
                     pts_count=self.pts_count,
                 )
 
+            case UpdateType.READ_INBOX_CHANNEL:
+                if not self.additional_data or len(self.additional_data) != 2:
+                    return None
+
+                ucc.add_channel(self.related_id)
+                return UpdateReadChannelInbox(
+                    channel_id=self.related_id,
+                    max_id=self.additional_data[0],
+                    still_unread_count=self.additional_data[1],
+                    pts=self.pts,
+                )
+
             case UpdateType.READ_OUTBOX:
                 if not self.additional_data or len(self.additional_data) != 1:
                     return None

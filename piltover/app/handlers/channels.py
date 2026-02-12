@@ -37,7 +37,7 @@ from piltover.tl.functions.channels import GetChannelRecommendations, GetAdmined
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
     GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden, \
-    ReadMessageContents, DeleteHistory, DeleteParticipantHistory
+    ReadMessageContents, DeleteHistory, DeleteParticipantHistory, ReorderUsernames
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -750,7 +750,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
 
     # TODO: create and send outbox read update if supergroup
 
-    await upd.update_read_history_inbox_channel(peer, unread_max_id, unread_count)
+    await upd.update_read_history_inbox_channel(user, peer.channel_id, unread_max_id, unread_count)
 
     return True
 
@@ -1601,3 +1601,8 @@ async def delete_participant_history(request: DeleteParticipantHistory, user: Us
         pts_count=len(messages_to_delete),
         offset=offset_id,
     )
+
+
+@handler.on_request(ReorderUsernames)
+async def reorder_usernames() -> bool:
+    return True

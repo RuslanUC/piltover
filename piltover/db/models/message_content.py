@@ -48,6 +48,7 @@ class MessageContent(Model):
 
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     media: models.MessageMedia | None = NullableFK("models.MessageMedia")
+    # TODO: move to MessageRef model because resulting id is peer-dependent?
     reply_to: models.MessageContent | None = NullableFKSetNull("models.MessageContent", related_name="msg_reply_to")
     fwd_header: models.MessageFwdHeader | None = NullableFK("models.MessageFwdHeader")
     post_info: models.ChannelPostInfo | None = NullableFK("models.ChannelPostInfo")
@@ -74,19 +75,30 @@ class MessageContent(Model):
 
     _cached_reply_markup: ReplyMarkup | None | Missing = MISSING
 
-    def make_reply_to_header(self) -> MessageReplyHeader | None:
+    async def _make_reply_to_header(self, peer: models.Peer) -> MessageReplyHeader | None:
         if self.reply_to_id is None and self.top_message_id is None:
             return None
 
-        return MessageReplyHeader(
-            reply_to_msg_id=self.reply_to_id,
-            reply_to_top_id=self.top_message_id,
-        )
+        content_ids: set[int | None] = {self.reply_to_id, self.top_message_id}
+        content_ids.discard(None)
+
+        ids = await models.MessageRef.filter(content__id__in=content_ids, peer=peer).values_list("id", "content__id")
+        if not ids:
+            return None
+
+        header = MessageReplyHeader()
+        for ref_id, content_id in ids:
+            if content_id == self.reply_to_id:
+                header.reply_to_msg_id = ref_id
+            elif content_id == self.top_message_id:
+                header.reply_to_top_id = ref_id
+
+        return header
 
     def is_service(self) -> bool:
         return self.type not in (MessageType.REGULAR, MessageType.SCHEDULED)
 
-    def to_tl_service(self, ref: models.MessageRef) -> MessageServiceToFormat:
+    async def to_tl_service(self, ref: models.MessageRef) -> MessageServiceToFormat:
         action = TLObject.read(BytesIO(self.extra_info))
         if not isinstance(action, MessageActionInst):
             logger.error(
@@ -108,7 +120,7 @@ class MessageContent(Model):
             date=int(self.date.timestamp()),
             action=action,
             author_id=self.author_id,
-            reply_to=self.make_reply_to_header(),
+            reply_to=await self._make_reply_to_header(ref.peer),
             from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
@@ -116,7 +128,7 @@ class MessageContent(Model):
     def _to_tl(
             self, ref: models.MessageRef, out: bool, media: MessageMediaBase,
             entities: list[MessageEntityBase] | None, reactions: MessageReactions | None, mentioned: bool,
-            media_unread: bool, replies: MessageReplies | None,
+            media_unread: bool, replies: MessageReplies | None, reply_to: MessageReplyHeader | None,
     ) -> TLMessage:
         ttl_period = None
         if self.ttl_period_days is not None and self.type is not MessageType.SCHEDULED:
@@ -131,7 +143,7 @@ class MessageContent(Model):
             out=out,
             media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
-            reply_to=self.make_reply_to_header(),
+            reply_to=reply_to,
             fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
             from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
             entities=entities,
@@ -161,7 +173,7 @@ class MessageContent(Model):
     ) -> TLMessageBase:
         # This function call is probably much cheaper than cache lookup, so doing this before Cache.obj.get(...)
         if self.is_service():
-            return self.to_tl_service(ref)
+            return await self.to_tl_service(ref)
 
         reactions = None
         if with_reactions and self.type is MessageType.REGULAR:
@@ -203,11 +215,23 @@ class MessageContent(Model):
                 replies=await models.MessageContent.filter(reply_to=self).count(),
                 # TODO: probably handle pts
                 replies_pts=0,
+                # max_id=cast(
+                #     int | None,
+                #     await models.MessageRef.filter(
+                #         content__reply_to=self,
+                #     ).order_by("-id").first().values_list("id", flat=True),
+                # ),
             )
         elif self.discussion_id is not None and self.comments_info_id is not None:
             replies = MessageReplies(
                 replies=await models.MessageContent.filter(reply_to__id=self.discussion_id).count(),
                 replies_pts=self.comments_info.discussion_pts,
+                # max_id=cast(
+                #     int | None,
+                #     await models.MessageRef.filter(
+                #         content__reply_to__id=self.discussion_id,
+                #     ).order_by("-id").first().values_list("id", flat=True),
+                # ),
                 comments=True,
                 channel_id=models.Channel.make_id_from(self.comments_info.discussion_channel_id),
             )
@@ -221,6 +245,7 @@ class MessageContent(Model):
             mentioned=mentioned,
             media_unread=media_unread if media_unread else not mention_read,
             replies=replies,
+            reply_to=await self._make_reply_to_header(ref.peer),
         )
 
         await Cache.obj.set(cache_key, message)
@@ -283,6 +308,7 @@ class MessageContent(Model):
                 replies_count_to_fetch[message.id].append(message.id)
                 replies[message.id] = MessageReplies(
                     replies=0,
+                    # max_id=0,
                     # TODO: probably handle pts
                     replies_pts=0,
                 )
@@ -290,6 +316,7 @@ class MessageContent(Model):
                 replies_count_to_fetch[message.discussion_id].append(message.id)
                 replies[message.id] = MessageReplies(
                     replies=0,
+                    # max_id=0,
                     replies_pts=message.comments_info.discussion_pts,
                     comments=True,
                     channel_id=models.Channel.make_id_from(message.comments_info.discussion_channel_id),
@@ -300,12 +327,17 @@ class MessageContent(Model):
                 reply_to_id: count
                 for reply_to_id, count in await cls.filter(
                     reply_to__id__in=list(replies_count_to_fetch),
-                ).group_by("reply_to__id").annotate(count=Count("id")).values_list("reply_to__id", "count")
+                ).group_by("reply_to__id").annotate(
+                    count=Count("id"), #max_id=Max("messagerefs__id"),
+                ).values_list(
+                    "reply_to__id", "count", #"max_id"
+                )
             }
             for reply_to_id, ids in replies_count_to_fetch.items():
                 count = counts.get(reply_to_id, 0)
                 for message_id in ids:
                     replies[message_id].replies = count
+                    # replies[message_id].max_id = max_id
 
         medias_ = [message.media for message in messages if message.media is not None]
         medias = {
@@ -318,7 +350,8 @@ class MessageContent(Model):
         result = []
         for message, ref in zip(messages, refs):
             if message.is_service():
-                result.append(message.to_tl_service(ref))
+                # TODO: probably cache it?
+                result.append(await message.to_tl_service(ref))
                 continue
 
             msg_media_unread = ref.id not in media_read and not mentioned.get(message.id, True)
@@ -360,6 +393,8 @@ class MessageContent(Model):
                 mentioned=message.id in mentioned,
                 media_unread=msg_media_unread,
                 replies=replies.get(message.id, None),
+                # TODO: move out of the loop
+                reply_to=await message._make_reply_to_header(ref.peer),
             ))
 
             to_cache.append((ref.cache_key(user_id), result[-1]))

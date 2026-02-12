@@ -841,22 +841,22 @@ async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) 
     return pts, updates
 
 
-async def update_read_history_inbox_channel(peer: Peer, max_id: int, unread_count: int) -> Updates:
-    pts = await State.add_pts(peer.owner, 1)
+async def update_read_history_inbox_channel(user: User, channel_id: int, max_id: int, unread_count: int) -> Updates:
+    pts = await State.add_pts(user, 1)
     await Update.create(
-        user=peer.owner, update_type=UpdateType.READ_INBOX, pts=pts, pts_count=1, related_id=peer.id,
+        user=user, update_type=UpdateType.READ_INBOX_CHANNEL, pts=pts, pts_count=1, related_id=channel_id,
         additional_data=[max_id, unread_count],
     )
 
     ucc = UsersChatsChannels()
-    ucc.add_peer(peer)
+    ucc.add_channel(channel_id)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
     updates = UpdatesWithDefaults(
         updates=[
             UpdateReadChannelInbox(
-                channel_id=Channel.make_id_from(peer.channel_id),
+                channel_id=Channel.make_id_from(channel_id),
                 max_id=max_id,
                 still_unread_count=unread_count,
                 pts=pts,
@@ -866,7 +866,7 @@ async def update_read_history_inbox_channel(peer: Peer, max_id: int, unread_coun
         chats=chats_and_channels,
     )
 
-    await SessionManager.send(updates, peer.owner.id)
+    await SessionManager.send(updates, user.id)
 
     return updates
 
