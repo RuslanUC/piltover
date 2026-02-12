@@ -20,7 +20,7 @@ from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
-    SlowmodeLastMessage, MessageRef, MessageContent
+    SlowmodeLastMessage, MessageRef, MessageContent, ReadState
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -157,7 +157,7 @@ async def send_created_messages_internal(
             update.chats.extend(bot_upd.chats)
             update.updates.extend(bot_upd.updates)
 
-    return cast(Updates, update)
+    return update
 
 
 async def send_message_internal(
@@ -234,7 +234,24 @@ async def send_message_internal(
 
         return await upd.new_scheduled_message(user, message)
 
-    return await send_created_messages_internal(messages, opposite, peer, user, clear_draft, mentioned_user_ids)
+    updates = await send_created_messages_internal(messages, opposite, peer, user, clear_draft, mentioned_user_ids)
+
+    _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(peer, True, True, True)
+    if not unread_count:
+        if peer.type is PeerType.CHANNEL:
+            message = next(iter(messages.values()))
+            readstate_updates = await upd.update_read_history_inbox_channel(peer, message.id, 0)
+        else:
+            message = messages[peer]
+            _, readstate_updates = await upd.update_read_history_inbox(peer, message.id, 0)
+
+        await ReadState.update_or_create(peer=peer, defaults={
+            "last_message_id": message.id,
+        })
+
+        updates.updates.extend(readstate_updates.updates)
+
+    return updates
 
 
 SendMessageTypes = SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia \
@@ -303,9 +320,9 @@ async def _check_channel_slowmode(channel: Channel, participant: ChatParticipant
     if last_date is None:
         return
     now = datetime.now(UTC)
-    next_time = last_date + timedelta(seconds=channel.slowmode_seconds)
+    next_time = last_date + timedelta(seconds=channel.slowmode_seconds - 1)
     if next_time > now:
-        wait = (now - next_time).seconds
+        wait = (now - next_time).total_seconds()
         raise ErrorRpc(error_code=420, error_message=f"SLOWMODE_WAIT_{wait}")
 
 

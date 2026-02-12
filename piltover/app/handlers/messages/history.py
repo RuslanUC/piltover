@@ -434,7 +434,7 @@ async def read_history(request: ReadHistory, user: User):
     for peer_id, max_read_id in counts:
         messages_out[peers_by_id[peer_id]] = max_read_id
 
-    pts = await upd.update_read_history_inbox(peer, max_id, unread_count)
+    pts, _ = await upd.update_read_history_inbox(peer, max_id, unread_count)
     if messages_out:
         await upd.update_read_history_outbox(messages_out)
 

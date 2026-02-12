@@ -28,11 +28,11 @@ class ReadState(Model):
 
     @classmethod
     async def get_in_out_ids_and_unread(
-            cls, peer: models.Peer, no_reactions: bool = False, no_mentions: bool = False,
+            cls, peer: models.Peer, no_reactions: bool = False, no_mentions: bool = False, no_out_id: bool = False
     ) -> tuple[int, int, int, int, int]:
         in_read_state = await cls.for_peer(peer=peer)
         unread_count = await models.MessageRef.filter(
-            peer.q_this_or_channel(), id__gt=in_read_state.last_message_id
+            peer.q_this_or_channel(), id__gt=in_read_state.last_message_id, content__author__id__not=peer.owner_id,
         ).count()
         if no_reactions:
             unread_reactions_count = 0
@@ -51,32 +51,34 @@ class ReadState(Model):
             ).count()
 
         out_read_max_id = 0
-        if peer.type is PeerType.SELF:
-            out_read_max_id = in_read_state.last_message_id
-        elif peer.type is PeerType.USER:
-            out_read_max_id = await models.ReadState.filter(
-                peer__owner__id=peer.user_id, peer__user__id=peer.owner_id
-            ).first().values_list("last_message_id", flat=True) or 0
-        elif peer.type is PeerType.CHAT:
-            out_read_state = await models.ReadState.filter(
-                peer__chat__id=peer.chat_id, peer__id__not=peer.id
-            ).order_by("-last_message_id").first()
-            if out_read_state:
-                out_read_max_id = await models.MessageRef.filter(
-                    peer=peer, id__lte=out_read_state.last_message_id
-                ).order_by("-id").first().values_list("id", flat=True)
-                out_read_max_id = out_read_max_id or 0
-        elif peer.type is PeerType.CHANNEL:
-            out_read_max_id = 0
-            # TODO: if supergroup, do same as in case with PeerType.CHAT
-            # out_read_state = await models.ReadState.filter(
-            #     peer__channel__id=self.peer.channel_id, peer__id__not=self.peer.id
-            # ).order_by("-last_message_id").first()
-            # if out_read_state:
-            #     out_read_max_id = await models.Message.filter(
-            #         peer=self.peer, id__lte=out_read_state.last_message_id
-            #     ).order_by("-id").first().values_list("id", flat=True)
-            #     out_read_max_id = out_read_max_id or 0
+        if not no_out_id:
+            if peer.type is PeerType.SELF:
+                out_read_max_id = in_read_state.last_message_id
+            elif peer.type is PeerType.USER:
+                out_read_max_id = await models.ReadState.filter(
+                    peer__owner__id=peer.user_id, peer__user__id=peer.owner_id
+                ).first().values_list("last_message_id", flat=True) or 0
+            elif peer.type is PeerType.CHAT:
+                # TODO: probably can be done in one query?
+                out_read_state = await models.ReadState.filter(
+                    peer__chat__id=peer.chat_id, peer__id__not=peer.id
+                ).order_by("-last_message_id").first()
+                if out_read_state:
+                    out_read_max_id = await models.MessageRef.filter(
+                        peer=peer, id__lte=out_read_state.last_message_id
+                    ).order_by("-id").first().values_list("id", flat=True)
+                    out_read_max_id = out_read_max_id or 0
+            elif peer.type is PeerType.CHANNEL:
+                out_read_max_id = 0
+                # TODO: if supergroup, do same as in case with PeerType.CHAT
+                # out_read_state = await models.ReadState.filter(
+                #     peer__channel__id=self.peer.channel_id, peer__id__not=self.peer.id
+                # ).order_by("-last_message_id").first()
+                # if out_read_state:
+                #     out_read_max_id = await models.Message.filter(
+                #         peer=self.peer, id__lte=out_read_state.last_message_id
+                #     ).order_by("-id").first().values_list("id", flat=True)
+                #     out_read_max_id = out_read_max_id or 0
 
         if no_mentions or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
             unread_mentions = 0

@@ -245,3 +245,15 @@ class Peer(Model):
         if self.type is PeerType.CHANNEL:
             q |= Q(peer__owner=None, peer__channel__id=self.channel_id)
         return q
+
+    def __repr__(self) -> str:
+        if self.type in (PeerType.SELF, PeerType.USER):
+            peer_id = f"user_id={self.user_id}"
+        elif self.type is PeerType.CHAT:
+            peer_id = f"chat_id={self.chat_id}"
+        elif self.type is PeerType.CHANNEL:
+            peer_id = f"channel_id={self.channel_id}"
+        else:
+            raise Unreachable
+
+        return f"{self.__class__.__name__}(id={self.id!r}, owner_id={self.owner_id!r}, type={self.type!r}, {peer_id})"

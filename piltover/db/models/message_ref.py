@@ -175,7 +175,6 @@ class MessageRef(Model):
 
         content = await models.MessageContent.create_for_peer(
             related_peer=peer,
-            random_id=random_id,
             author=author,
             **message_kwargs,
         )
@@ -193,7 +192,7 @@ class MessageRef(Model):
             messages[to_peer] = await cls.create(
                 peer=to_peer,
                 content=content,
-                random_id=random_id if to_peer == peer else None,
+                random_id=random_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
             )
 
         if unhide_dialog:
