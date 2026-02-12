@@ -6,13 +6,13 @@ from piltover.app_config import AppConfig
 from piltover.db.models import AuthCountry, User, Reaction, UserReactionsSettings, PeerColorOption
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, JsonNumber, \
-    JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji
+    JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji, DataJSON, PeerUser
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
-    GetPeerProfileColors, DismissSuggestion, GetTimezonesList
+    GetPeerProfileColors, DismissSuggestion, GetTimezonesList, AcceptTermsOfService, HidePromoData
 from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
     PeerColors, PeerColorOption as TLPeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified, \
-    AppConfigNotModified, PeerColorsNotModified, TimezonesList
+    AppConfigNotModified, PeerColorsNotModified, TimezonesList, TermsOfServiceUpdate, TermsOfService, PromoData
 from piltover.tl.types.payments import StarsStatus
 from piltover.worker import MessageHandler
 
@@ -368,12 +368,35 @@ async def get_countries_list(request: GetCountriesList) -> CountriesList | Count
 
 @handler.on_request(GetTermsOfServiceUpdate, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_terms_of_service_update():  # pragma: no cover
-    return TermsOfServiceUpdateEmpty(expires=int(time() + 9000))
+    # TODO: implement actual TOS get
+    # return TermsOfServiceUpdate(
+    #     expires=int(time() + 3600),
+    #     terms_of_service=TermsOfService(
+    #         popup=True,
+    #         id=DataJSON(data="{'idk':123}"),
+    #         text="this is test TOS",
+    #         entities=[],
+    #         min_age_confirm=18,
+    #     ),
+    # )
+
+    return TermsOfServiceUpdateEmpty(expires=int(time() + 3600))
+
+
+@handler.on_request(AcceptTermsOfService, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def accept_terms_of_service() -> bool:
+    # TODO: implement actual TOS accept
+    return True
 
 
 @handler.on_request(GetPromoData, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_promo_data():  # pragma: no cover
-    return PromoDataEmpty(expires=int(time() + 9000))
+    return PromoDataEmpty(expires=int(time() + 3600))
+
+
+@handler.on_request(HidePromoData, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def hide_promo_data() -> bool:
+    return True
 
 
 @handler.on_request(GetPremiumPromo, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
