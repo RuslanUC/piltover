@@ -353,7 +353,7 @@ async def test_send_message_in_channel() -> None:
 async def test_delete_history() -> None:
     async with TestClient(phone_number="123456789") as client:
         user = await User.get(id=client.me.id)
-        peer, _ = await Peer.get_or_create(owner=user, type=PeerType.SELF)
+        peer = await Peer.get(owner=user, type=PeerType.SELF)
         await MessageContent.bulk_create([
             MessageContent(author=user, message="test")
             for i in range(1500)

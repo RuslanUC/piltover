@@ -46,7 +46,7 @@ async def get_contacts(user: User):
 
 async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
     if resolved.user == user:
-        peer, _ = await Peer.get_or_create(owner=user, user=user, type=PeerType.SELF)
+        peer = await Peer.get(owner=user, user=user, type=PeerType.SELF)
     elif resolved.user is not None:
         peer, _ = await Peer.get_or_create(owner=user, user=resolved.user, type=PeerType.USER)
     elif resolved.channel is not None:
@@ -65,7 +65,7 @@ async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
 
 async def _format_resolved_peer_by_phone(user: User, resolved: User) -> ResolvedPeer:
     if resolved == user:
-        peer, _ = await Peer.get_or_create(owner=user, user=user, type=PeerType.SELF)
+        peer = await Peer.get(owner=user, user=user, type=PeerType.SELF)
     else:
         peer, _ = await Peer.get_or_create(owner=user, user=resolved, type=PeerType.USER)
 
@@ -409,10 +409,8 @@ async def import_contact_token(request: ImportContactToken, user: User) -> TLUse
     if (target_user := await User.get_or_none(id=target_user_id, deleted=False)) is None:
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="user does not exist")
 
-    if target_user == user:
-        peer, _ = await Peer.get_or_create(owner=user, user=user, type=PeerType.SELF)
-    else:
-        peer, _ = await Peer.get_or_create(owner=user, user=target_user, type=PeerType.USER)
+    if target_user != user:
+        await Peer.get_or_create(owner=user, user=target_user, type=PeerType.USER)
 
     return await target_user.to_tl()
 

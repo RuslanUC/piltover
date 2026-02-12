@@ -6,7 +6,8 @@ from pyrogram.raw.types import UpdateNewMessage, UpdateEditMessage
 from pyrogram.raw.types.messages import BotCallbackAnswer
 from pyrogram.types import Message as PyroMessage, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-from piltover.db.models import User, Username, Bot, State
+from piltover.db.enums import PeerType
+from piltover.db.models import User, Username, Bot, State, Peer
 from tests.client import TestClient
 
 
@@ -57,16 +58,19 @@ async def _create_bots(owner: User, count: int, username_prefix: str = "") -> li
     usernames_to_create = []
     bots_to_create = []
     states_to_create = []
+    peers_to_create = []
 
     for bot_user in await User.filter(bot=True, first_name__startswith="Bot #"):
         num = int(bot_user.first_name.replace("Bot #", ""))
         usernames_to_create.append(Username(user=bot_user, username=f"{username_prefix}test_{num}_bot"))
         bots_to_create.append(Bot(owner=owner, bot=bot_user))
         states_to_create.append(State(user=bot_user))
+        peers_to_create.append(Peer(owner=bot_user, type=PeerType.SELF, user=bot_user))
 
     await Username.bulk_create(usernames_to_create)
     await Bot.bulk_create(bots_to_create)
     await State.bulk_create(states_to_create)
+    await Peer.bulk_create(peers_to_create)
 
     return await Bot.filter(owner=owner)
 

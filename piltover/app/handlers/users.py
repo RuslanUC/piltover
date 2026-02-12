@@ -121,7 +121,6 @@ async def get_users(request: GetUsers, user: User):
         is_self = isinstance(peer, _InputUsersSelf) \
                   or (isinstance(peer, _InputUsersInclMessage) and peer.user_id == user.id)
         if is_self and user.id not in user_ids:
-            await Peer.get_or_create(owner=user, user=user, type=PeerType.SELF)
             user_ids.add(user.id)
             continue
 

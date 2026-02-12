@@ -9,7 +9,7 @@ from piltover.app.bot_handlers.botfather.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import is_username_valid
 from piltover.context import request_ctx
-from piltover.db.enums import BotFatherState, MediaType
+from piltover.db.enums import BotFatherState, MediaType, PeerType
 from piltover.db.models import Peer, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto, BotCommand, State, \
     MessageRef
 from piltover.tl.types.internal_botfather import BotfatherStateNewbot, BotfatherStateEditbot
@@ -92,6 +92,7 @@ async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> Mes
         async with in_transaction():
             bot_user = await User.create(phone_number=None, first_name=state_data.name, bot=True)
             await State.create(user=bot_user)
+            await Peer.create(owner=bot_user, type=PeerType.SELF, user=bot_user)
             await Username.create(user=bot_user, username=username)
             bot = await Bot.create(owner=peer.owner, bot=bot_user)
             await BotInfo.create(user=bot_user)

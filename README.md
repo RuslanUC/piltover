@@ -31,7 +31,7 @@ An experimental Telegram server written from scratch in Python. Development chat
 - [x] Channel discussions
 - [ ] [WebK](https://github.com/morethanwords/tweb) hangs on some requests, logs errors about wrong auth key id and/or session id???
 - [x] Refactor channels permission system and probably rewrite according to [channels-access.md](notes/channels-access.md) 
-- [ ] Create "SELF" Peer when user is created
+- [x] Create "SELF" Peer when user is created
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 

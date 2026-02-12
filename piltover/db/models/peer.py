@@ -46,7 +46,7 @@ class Peer(Model):
     @classmethod
     async def from_user_id(cls, user: models.User, user_id: int) -> Peer | None:
         if user.id == user_id:
-            return await Peer.get_or_none(owner=user, type=PeerType.SELF)
+            return await Peer.get(owner=user, type=PeerType.SELF)
         return await Peer.get_or_none(owner=user, user__id=user_id, type=PeerType.USER).select_related("user")
 
     @classmethod
@@ -90,9 +90,8 @@ class Peer(Model):
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user.id):
             if peer_types is not None and PeerType.SELF not in peer_types:
                 return None
-            peer, created = await Peer.get_or_create(owner=user, type=PeerType.SELF, user=user)
-            if not created:
-                peer.owner = peer.user = user
+            peer = await Peer.get(owner=user, type=PeerType.SELF, user=user)
+            peer.owner = peer.user = user
             return peer
 
         if isinstance(input_peer, (InputPeerUser, InputUser)):

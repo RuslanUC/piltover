@@ -173,6 +173,7 @@ async def sign_up(request: SignUp | SignUp_133):
         last_name=request.last_name
     )
     await State.create(user=user)
+    await Peer.create(owner=user, type=PeerType.SELF, user=user)
     key = await AuthKey.get(id=request_ctx.get().perm_auth_key_id)
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 

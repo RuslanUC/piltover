@@ -29,7 +29,7 @@ async def get_saved_dialogs(request: GetSavedDialogs, user: User) -> SavedDialog
 
 @handler.on_request(GetSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_saved_history(request: GetSavedHistory, user: User) -> Messages:
-    self_peer = await Peer.get_or_none(owner=user, type=PeerType.SELF)
+    self_peer = await Peer.get(owner=user, type=PeerType.SELF)
     if self_peer is None:
         return Messages(messages=[], chats=[], users=[])
 
@@ -48,7 +48,7 @@ async def get_saved_history(request: GetSavedHistory, user: User) -> Messages:
 
 @handler.on_request(DeleteSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_saved_history(request: DeleteSavedHistory, user: User) -> AffectedHistory:
-    self_peer = await Peer.get_or_none(owner=user, type=PeerType.SELF)
+    self_peer = await Peer.get(owner=user, type=PeerType.SELF)
     if self_peer is None:
         updates_state, _ = await State.get_or_create(user=user)
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)

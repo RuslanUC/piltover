@@ -19,7 +19,8 @@ from tortoise.queryset import AwaitableQuery, BulkCreateQuery, BulkUpdateQuery, 
     ValuesListQuery, CountQuery, DeleteQuery, UpdateQuery, QuerySet, ExistsQuery
 
 from piltover.app_config import AppConfig
-from piltover.db.models import User, UserAuthorization, State
+from piltover.db.enums import PeerType
+from piltover.db.models import User, UserAuthorization, State, Peer
 from piltover.exceptions import Unreachable
 from piltover.utils.debug import measure_time_with_result
 from piltover.worker import RequestHandler
@@ -49,6 +50,7 @@ async def _custom_auth_create(self: Auth) -> bytes:
         })
         if created:
             await State.create(user=user)
+            await Peer.create(owner=user, type=PeerType.SELF, user=user)
         await UserAuthorization.create(user=user, key=auth_key, ip="0.0.0.0")
 
     return key
