@@ -24,7 +24,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterMyMentions, SearchResultsCalendarPeriod, TLObjectVector, MessageActionSetMessagesTTL, \
     InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo, \
     InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition, Int, InputMessagesFilterPhoneCalls, \
-    ReadParticipantDate
+    ReadParticipantDate, InputPeerEmpty
 from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDate
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
@@ -446,16 +446,23 @@ async def read_history(request: ReadHistory, user: User):
 
 @handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def messages_search(request: Search, user: User) -> Messages:
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
     saved_peer = None
-    if peer.type is PeerType.SELF and request.saved_peer_id:
-        saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
+
+    if isinstance(request.peer, InputPeerEmpty):
+        peer = None
+    else:
+        peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+        if peer.type is PeerType.SELF and request.saved_peer_id:
+            saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
 
     from_user_id = None
     if isinstance(request.from_id, InputPeerUser):
         from_user_id = request.from_id.user_id
     elif isinstance(request.from_id, InputPeerSelf):
         from_user_id = user.id
+
+    if peer is None:
+        peer = user
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, from_user_id,

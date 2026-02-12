@@ -109,7 +109,7 @@ async def gif_inline_query_handler(
 
     params = {
         "key": api_key,
-        "limit": "32",
+        "limit": "8",
         "media_filter": "mp4",
     }
     if inline_query.query:
