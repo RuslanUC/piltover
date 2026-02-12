@@ -7,7 +7,8 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from io import BytesIO
 from time import time
-from typing import TypeVar, Self, TYPE_CHECKING, Any
+from typing import TypeVar, Self, TYPE_CHECKING, Any, cast, overload, Literal
+from urllib.parse import parse_qs, urlparse
 
 from loguru import logger
 from pyrogram import Client
@@ -18,12 +19,13 @@ from pyrogram.raw.base import InputPrivacyKey
 from pyrogram.raw.core import TLObject as PyroTLObject
 from pyrogram.raw.functions import InvokeWithLayer
 from pyrogram.raw.functions.account import SetPrivacy
+from pyrogram.raw.functions.contacts import ExportContactToken, ImportContactToken
 from pyrogram.raw.types import Updates, InputPrivacyKeyAddedByPhone, InputPrivacyKeyChatInvite, InputPrivacyKeyForwards, \
     InputPrivacyKeyPhoneNumber, InputPrivacyKeyPhoneCall, InputPrivacyKeyProfilePhoto, InputPrivacyKeyStatusTimestamp, \
     InputPrivacyKeyVoiceMessages, InputPrivacyKeyPhoneP2P, InputPrivacyValueAllowAll, InputPrivacyValueAllowUsers, \
     InputPrivacyValueDisallowChatParticipants, InputPrivacyValueDisallowUsers, InputPrivacyValueDisallowContacts, \
     InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts, UpdateShort, \
-    UpdatesCombined
+    UpdatesCombined, ExportedContactToken
 from pyrogram.session import Session as PyroSession, Auth
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
@@ -456,3 +458,19 @@ class TestClient(Client):
             rules = [rules]
 
         await self.invoke(SetPrivacy(key=key, rules=rules))
+
+    @overload
+    async def resolve_user(self, other: Client, get: Literal[True] = True) -> User:
+        ...
+
+    @overload
+    async def resolve_user(self, other: Client, get: Literal[False] = False) -> None:
+        ...
+
+    async def resolve_user(self, other: Client, get: bool = True) -> User | None:
+        exported_token = cast(ExportedContactToken, await other.invoke(ExportContactToken()))
+        contact_token = parse_qs(urlparse(exported_token.url).query)["token"][0]
+        user = await self.invoke(ImportContactToken(token=contact_token))
+        await self.fetch_peers([user])
+        if get:
+            return await self.get_users(user.id)

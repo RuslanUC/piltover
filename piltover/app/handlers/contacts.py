@@ -390,24 +390,24 @@ async def import_contact_token(request: ImportContactToken, user: User) -> TLUse
     try:
         token_bytes = urlsafe_b64decode(request.token)
     except ValueError:
-        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="invalid token")
 
     if len(token_bytes) != (8 + 8 + 256 // 8):
-        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="length is invalid")
 
     target_user_id = Long.read_bytes(token_bytes[:8])
     created_at = Long.read_bytes(token_bytes[8:16])
     payload = token_bytes[:16]
     signature = token_bytes[16:]
 
-    if (created_at + AppConfig.CONTACT_TOKEN_EXPIRE_SECONDS) > time():
-        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+    if (created_at + AppConfig.CONTACT_TOKEN_EXPIRE_SECONDS) < time():
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="expired")
 
     if signature != hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest():
-        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="invalid signature")
 
     if (target_user := await User.get_or_none(id=target_user_id)) is None:
-        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID")
+        raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="user does not exist")
 
     if target_user == user:
         peer, _ = await Peer.get_or_create(owner=user, user=user, type=PeerType.SELF)
