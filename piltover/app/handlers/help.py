@@ -6,14 +6,13 @@ from piltover.app_config import AppConfig
 from piltover.db.models import AuthCountry, User, Reaction, UserReactionsSettings, PeerColorOption
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, JsonNumber, \
-    JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji, DataJSON, PeerUser
+    JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
     GetPeerProfileColors, DismissSuggestion, GetTimezonesList, AcceptTermsOfService, HidePromoData
 from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
     PeerColors, PeerColorOption as TLPeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified, \
-    AppConfigNotModified, PeerColorsNotModified, TimezonesList, TermsOfServiceUpdate, TermsOfService, PromoData
-from piltover.tl.types.payments import StarsStatus
+    AppConfigNotModified, PeerColorsNotModified, TimezonesList
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("help")
@@ -51,9 +50,9 @@ async def get_config(user: User | None):
         chat_size_max=AppConfig.BASIC_GROUP_MEMBER_LIMIT,  # Telegram default is 200
         megagroup_size_max=AppConfig.SUPER_GROUP_MEMBER_LIMIT,  # Telegram default is 200000
         forwarded_count_max=100,  # Telegram default is 100
-        online_update_period_ms=30_000,  # Telegram default is 210000
-        offline_blur_timeout_ms=30_000,  # Telegram default is 5000
-        offline_idle_timeout_ms=30_000,  # Telegram default is 30000
+        online_update_period_ms=60_000,  # Telegram default is 210000
+        offline_blur_timeout_ms=60_000,  # Telegram default is 5000
+        offline_idle_timeout_ms=60_000,  # Telegram default is 30000
         online_cloud_timeout_ms=30_000,  # Telegram default is 300000
         notify_cloud_delay_ms=60_000,  # Telegram default is 30000
         notify_default_delay_ms=10_000,  # Telegram default is 1500
@@ -76,6 +75,7 @@ async def get_config(user: User | None):
         preload_featured_stickers=False,
         revoke_pm_inbox=True,
         reactions_default=ReactionEmoji(emoticon=default_reaction.reaction) if default_reaction is not None else None,
+        gif_search_username="gif",  # TODO: only include this if bot exists?
     )
 
 
@@ -167,7 +167,7 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="emojies_sounds", value=JsonArray(value=[])),
     JsonObjectValue(key="factcheck_length_limit", value=JsonNumber(value=1024.0)),
     JsonObjectValue(key="fragment_prefixes", value=JsonArray(value=[JsonString(value="888")])),
-    JsonObjectValue(key="gif_search_branding", value=JsonString(value="tenor")),
+    JsonObjectValue(key="gif_search_branding", value=JsonString(value=AppConfig.GIFS_PROVIDER)),
     JsonObjectValue(key="gif_search_emojies", value=JsonArray(value=[
         JsonString(value="\U0001F44D"),
         JsonString(value="\U0001F618"),

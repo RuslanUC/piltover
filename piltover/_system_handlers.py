@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from asyncio import get_running_loop
-from datetime import datetime
+from datetime import datetime, UTC
 from time import time
 from typing import TYPE_CHECKING, Awaitable, Callable
 
@@ -67,7 +67,7 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
     authorization = await UserAuthorization.get_or_none(key__id=session.auth_data.perm_auth_key_id)
     if authorization is not None:
         # TODO: set api id
-        authorization.active_at = datetime.now()
+        authorization.active_at = datetime.now(UTC)
         authorization.device_model = request.obj.device_model
         authorization.system_version = request.obj.system_version
         authorization.app_version = request.obj.app_version

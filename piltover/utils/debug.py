@@ -20,7 +20,7 @@ def measure_time(
     level = _measure_time_level.get()
     hyphens = "-" * level * 2
 
-    logger.log(loglevel, f"---{hyphens}> running {name}...")
+    logger.opt(depth=2).log(loglevel, f"---{hyphens}> running {name}...")
     token = _measure_time_level.set(level + 1)
     start = perf_counter()
 
@@ -29,7 +29,7 @@ def measure_time(
     finally:
         end = perf_counter()
         _measure_time_level.reset(token)
-        logger.log(end_loglevel, f"<---{hyphens} {name} took {(end - start) * 1000:.2f}ms")
+        logger.opt(depth=2).log(end_loglevel, f"<---{hyphens} {name} took {(end - start) * 1000:.2f}ms")
 
 
 @contextmanager
@@ -40,7 +40,7 @@ def measure_time_with_result(
     level = _measure_time_level.get()
     hyphens = "-" * level * 2
 
-    logger.log(loglevel, f"---{hyphens}> running {name}...")
+    logger.opt(depth=2).log(loglevel, f"---{hyphens}> running {name}...")
     token = _measure_time_level.set(level + 1)
     start = perf_counter()
 
@@ -55,5 +55,5 @@ def measure_time_with_result(
         end = perf_counter()
         time_spent_ms = (end - start) * 1000
         _measure_time_level.reset(token)
-        logger.log(end_loglevel, f"<---{hyphens} {name} took {time_spent_ms:.2f}ms")
+        logger.opt(depth=2).log(end_loglevel, f"<---{hyphens} {name} took {time_spent_ms:.2f}ms")
         fut.set_result(time_spent_ms)
