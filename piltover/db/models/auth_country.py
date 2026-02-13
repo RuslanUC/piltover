@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from tortoise import Model, fields
 
 from piltover.db import models
@@ -10,25 +12,25 @@ class AuthCountry(Model):
     name: str = fields.CharField(max_length=128)
     hidden: bool = fields.BooleanField(default=False)
 
-    _country_codes_cached = None
+    authcountrycodes: fields.ReverseRelation[models.AuthCountryCode]
 
-    async def to_tl(self) -> Country:
-        if self._country_codes_cached is None:
-            self._country_codes_cached = await models.AuthCountryCode.filter(country=self).order_by("id")
+    def to_tl(self) -> Country:
+        if not self.authcountrycodes._fetched:
+            raise RuntimeError("Auth country codes must be prefetched")
 
         return Country(
             iso2=self.iso2,
             default_name=self.name,
-            country_codes=[code.to_tl() for code in self._country_codes_cached],
+            country_codes=[code.to_tl() for code in self.authcountrycodes],
             hidden=self.hidden,
         )
 
-    async def get_internal_hash(self) -> int:
-        if self._country_codes_cached is None:
-            self._country_codes_cached = await models.AuthCountryCode.filter(country=self).order_by("id")
+    def get_internal_hash(self) -> int:
+        if not self.authcountrycodes._fetched:
+            raise RuntimeError("Auth country codes must be prefetched")
 
         int_hash = self.id
-        for code in self._country_codes_cached:
+        for code in self.authcountrycodes:
             int_hash ^= int_hash >> 21
             int_hash ^= int_hash << 35
             int_hash ^= int_hash >> 4
