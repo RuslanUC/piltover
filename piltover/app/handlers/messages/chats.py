@@ -63,7 +63,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 
     invited_peers: list[Peer] = []
     if invited_user_ids:
-        invited_peers = await Peer.filter(owner=user, user__id__in=invited_user_ids).select_related("user")
+        invited_peers = await Peer.filter(owner=user, user_id__in=invited_user_ids).select_related("user")
 
     invited_users = []
     for invited_peer in invited_peers:
@@ -119,7 +119,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 @handler.on_request(GetChats)
 async def get_chats(request: GetChats, user: User) -> Chats:
     chat_ids = [Chat.norm_id(chat_id) for chat_id in request.id]
-    peers = await Peer.filter(owner=user, chat__id__in=chat_ids).select_related("chat")
+    peers = await Peer.filter(owner=user, chat_id__in=chat_ids).select_related("chat")
 
     return Chats(
         chats=await Chat.to_tl_bulk([peer.chat for peer in peers]),
@@ -215,7 +215,7 @@ async def resolve_input_chat_photo(
     if isinstance(photo, InputChatPhotoEmpty):
         return None
     elif isinstance(photo, InputChatPhoto):
-        if not await Peer.filter(owner=user, chat__photo__id=photo.id).exists():
+        if not await Peer.filter(owner=user, chat__photo_id=photo.id).exists():
             raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
         return await File.get_or_none(id=photo.id)
     elif isinstance(photo, InputChatUploadedPhoto):
@@ -509,7 +509,7 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
             ))
 
         await Peer.bulk_create(peers_to_create)
-        new_peers = await Peer.filter(channel=channel, owner__id__not_isnull=True)
+        new_peers = await Peer.filter(channel=channel, owner_id__not_isnull=True)
 
         dialogs_to_create = []
         for new_peer in new_peers:
@@ -521,7 +521,7 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
         await MessageContent.filter(id__in=Subquery(
             MessageRef.filter(
                 peer__chat=chat, content__type=MessageType.SCHEDULED,
-            ).values_list("content__id", flat=True)
+            ).values_list("content_id", flat=True)
         )).delete()
         await ChatInvite.filter(chat=chat).update(revoked=True)
         await ChatInviteRequest.filter(id__in=Subquery(
@@ -561,10 +561,10 @@ async def get_onlines(request: GetOnlines, user: User) -> ChatOnlines:
     peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
     onlines = await Presence.filter(
-        status=UserStatus.ONLINE, last_seen__gt=datetime.now(UTC) - timedelta(minutes=1), user__id__in=Subquery(
+        status=UserStatus.ONLINE, last_seen__gt=datetime.now(UTC) - timedelta(minutes=1), user_id__in=Subquery(
             ChatParticipant.filter(
                 **Chat.or_channel(peer.chat_or_channel), left=False,
-            ).values_list("user__id", flat=True)
+            ).values_list("user_id", flat=True)
         )
     ).count()
 

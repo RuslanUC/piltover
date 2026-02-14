@@ -616,8 +616,8 @@ class Client:
 
         if values.poll_answers:
             selected_answers = await PollVote.filter(
-                answer__poll__id__in=values.poll_answers, user__id=session.user_id,
-            ).values_list("answer__poll__id", "answer__id")
+                answer__poll_id__in=values.poll_answers, user_id=session.user_id,
+            ).values_list("answer__poll_id", "answer_id")
             for poll_id, answer_id in selected_answers:
                 if poll_id not in result.poll_answers:
                     result.poll_answers[poll_id] = set()
@@ -627,11 +627,11 @@ class Client:
 
         if values.chat_participants or values.channel_participants:
             if values.chat_participants:
-                peers_q |= Q(chat__id__in=values.chat_participants)
+                peers_q |= Q(chat_id__in=values.chat_participants)
             if values.channel_participants:
-                peers_q |= Q(channel__id__in=values.channel_participants)
+                peers_q |= Q(channel_id__in=values.channel_participants)
 
-            participants = await ChatParticipant.filter(peers_q, user__id=session.user_id)
+            participants = await ChatParticipant.filter(peers_q, user_id=session.user_id)
             for participant in participants:
                 if participant.chat_id is not None:
                     result.chat_participants[participant.chat_id] = participant
@@ -639,12 +639,12 @@ class Client:
                     result.channel_participants[participant.channel_id] = participant
 
         if values.users:
-            peers_q |= Q(user__id__in=values.users)
+            peers_q |= Q(user_id__in=values.users)
 
             contact_ids = set()
             for contact in await Contact.filter(
-                Q(owner__id=session.user_id, target__id__in=values.users)
-                | Q(owner__id__in=values.users, target__id=session.user_id)
+                Q(owner_id=session.user_id, target_id__in=values.users)
+                | Q(owner_id__in=values.users, target_id=session.user_id)
             ):
                 result.contacts[(contact.owner_id, contact.target_id)] = contact
                 if contact.owner_id != session.user_id:
@@ -662,13 +662,13 @@ class Client:
                 contacts=contact_ids,
             )
 
-            for presence in await Presence.filter(user__id__in=values.users):
+            for presence in await Presence.filter(user_id__in=values.users):
                 result.presences[presence.user_id] = presence
 
         if peers_q.children:
             result.peers.update({
                 (peer.type, peer.target_id_raw()): peer
-                for peer in await Peer.filter(peers_q, owner__id=session.user_id)
+                for peer in await Peer.filter(peers_q, owner_id=session.user_id)
             })
 
         if values.messages:

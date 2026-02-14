@@ -107,7 +107,7 @@ async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> Mes
             return await send_bot_message(peer, __bot_name_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).select_related("bot")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -123,7 +123,7 @@ async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> Mes
             return await send_bot_message(peer, __bot_about_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).select_related("bot")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -139,13 +139,13 @@ async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> Mes
             return await send_bot_message(peer, __bot_desc_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).select_related("bot")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
         async with in_transaction():
             await User.filter(id=bot.bot.id).update(version=F("version") + 1)
-            await BotInfo.filter(user__id=bot.bot.id).update(description=description, version=F("version") + 1)
+            await BotInfo.filter(user_id=bot.bot.id).update(description=description, version=F("version") + 1)
             await state.delete()
 
         return await send_bot_message(peer, __bot_desc_updated, entities=__bot_desc_updated_entities)
@@ -155,7 +155,7 @@ async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> Mes
             return await send_bot_message(peer, __bot_photo_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).select_related("bot")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -182,13 +182,13 @@ async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> Mes
             return await send_bot_message(peer, __bot_privacy_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).select_related("bot")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
         async with in_transaction():
             await User.filter(id=bot.bot.id).update(version=F("version") + 1)
-            await BotInfo.filter(user__id=bot.bot.id).update(
+            await BotInfo.filter(user_id=bot.bot.id).update(
                 privacy_policy_url=message.content.message, version=F("version") + 1,
             )
             await state.delete()
@@ -210,7 +210,7 @@ async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> Mes
             return await send_bot_message(peer, __bot_commands_invalid, entities=__bot_commands_invalid_entities)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).select_related("bot")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -223,7 +223,7 @@ async def botfather_text_message_handler(peer: Peer, message: MessageRef) -> Mes
             ])
 
             await User.filter(id=bot.bot.id).update(version=F("version") + 1)
-            await BotInfo.filter(user__id=bot.bot.id).update(version=F("version") + 1)
+            await BotInfo.filter(user_id=bot.bot.id).update(version=F("version") + 1)
             await state.delete()
 
         return await send_bot_message(peer, _bot_commands_updated, entities=_bot_commands_updated_entities)

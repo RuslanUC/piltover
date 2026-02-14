@@ -174,7 +174,7 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
 async def discard_call(request: DiscardCall, user: User) -> Updates:
     ctx = request_ctx.get()
     call = await PhoneCall.get_or_none(
-        Q(from_user=user, from_sess__id=ctx.auth_id) | Q(to_user=user),
+        Q(from_user=user, from_sess_id=ctx.auth_id) | Q(to_user=user),
         id=request.peer.id, access_hash=request.peer.access_hash, discard_reason__isnull=True,
     ).select_related("from_user", "to_user")
     if call is None:
@@ -303,7 +303,7 @@ async def received_call() -> bool:
 async def send_signaling_data(request: SendSignalingData, user: User) -> bool:
     ctx = request_ctx.get()
     call = await PhoneCall.get_or_none(
-        Q(from_user=user, from_sess__id=ctx.auth_id) | Q(to_user=user, to_sess__id=ctx.auth_id),
+        Q(from_user=user, from_sess_id=ctx.auth_id) | Q(to_user=user, to_sess_id=ctx.auth_id),
         id=request.peer.id, access_hash=request.peer.access_hash, discard_reason__isnull=True,
     ).select_related()
     if call is None:

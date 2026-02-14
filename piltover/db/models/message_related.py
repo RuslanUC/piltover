@@ -25,7 +25,7 @@ class MessageRelated(Model):
         chat_ids = set()
         channel_ids = set()
 
-        related = await cls.filter(message=message).values_list("user__id", "chat__id", "channel__id")
+        related = await cls.filter(message=message).values_list("user_id", "chat_id", "channel_id")
         for user_id, chat_id, channel_id in related:
             if user_id is not None:
                 user_ids.add(user_id)

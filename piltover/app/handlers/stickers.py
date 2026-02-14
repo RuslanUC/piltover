@@ -466,7 +466,7 @@ async def delete_stickerset(request: DeleteStickerSet, user: User) -> bool:
 
 async def _make_covered_list(sets: list[Stickerset], user: User) -> list[StickerSetCovered | StickerSetNoCovered]:
     sets_ids = [sset.id for sset in sets]
-    covers = {file.stickerset_id: file for file in await File.filter(stickerset__id__in=sets_ids, sticker_pos=0)}
+    covers = {file.stickerset_id: file for file in await File.filter(stickerset_id__in=sets_ids, sticker_pos=0)}
 
     result = []
     for stickerset in sets:
@@ -712,10 +712,10 @@ async def reorder_sticker_sets(request: ReorderStickerSets, user: User) -> bool:
 @handler.on_request(GetArchivedStickers, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_archived_stickers(request: GetArchivedStickers, user: User) -> ArchivedStickers:
     limit = max(1, min(50, request.limit))
-    id_filter = Q(set__id__lt=request.offset_id) if request.offset_id else Q()
+    id_filter = Q(set_id__lt=request.offset_id) if request.offset_id else Q()
     installed_sets = await InstalledStickerset.filter(id_filter, user=user, archived=True, set__deleted=False)\
         .select_related("set")\
-        .order_by("-set__id")\
+        .order_by("-set_id")\
         .limit(limit)
 
     return ArchivedStickers(
@@ -737,7 +737,7 @@ async def toggle_sticker_sets(request: ToggleStickerSets, user: User) -> bool:
         if isinstance(input_set, InputStickerSetEmpty):
             continue
         elif isinstance(input_set, InputStickerSetID):
-            sets_q |= Q(set__id=input_set.id, set__access_hash=input_set.access_hash, set__deleted=False)
+            sets_q |= Q(set_id=input_set.id, set__access_hash=input_set.access_hash, set__deleted=False)
         elif isinstance(input_set, InputStickerSetShortName):
             sets_q |= Q(set__short_name=input_set.short_name, set__deleted=False)
 
@@ -839,9 +839,7 @@ async def save_recent_stickers(request: SaveRecentSticker, user: User) -> bool:
         return True
 
     if request.unsave:
-        await RecentSticker.filter(id__in=Subquery(
-            RecentSticker.filter(user=user, sticker__id=request.id.id).values_list("id", flat=True)
-        )).delete()
+        await RecentSticker.filter(user_id=user.id, sticker_id=request.id.id).delete()
         await upd.update_recent_stickers(user)
         return True
 
@@ -863,9 +861,7 @@ async def save_recent_stickers(request: SaveRecentSticker, user: User) -> bool:
 @handler.on_request(FaveSticker)
 async def fave_sticker(request: FaveSticker, user: User) -> bool:
     if request.unfave:
-        await FavedSticker.filter(id__in=Subquery(
-            FavedSticker.filter(user=user, sticker__id=request.id.id).values_list("id", flat=True)
-        )).delete()
+        await FavedSticker.filter(user_id=user.id, sticker_id=request.id.id).delete()
         await upd.update_faved_stickers(user)
         return True
 

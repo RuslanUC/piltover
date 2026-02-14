@@ -114,10 +114,10 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user: User) -> 
 
     invites = await ChatInvite.filter(
         **Chat.or_channel(peer.chat_or_channel),
-        user__id__in=Subquery(
+        user_id__in=Subquery(
             ChatParticipant.filter(
                 **Chat.or_channel(peer.chat_or_channel), admin_rights__gt=0,
-            ).values_list("user__id", flat=True)
+            ).values_list("user_id", flat=True)
         )
     ).select_related("user")
 
@@ -246,7 +246,7 @@ def _get_invite_hash_from_link(invite_link: str) -> str | None:
 
 async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_invite: ChatInvite | None) -> Updates:
     if isinstance(chat_or_channel, Channel):
-        channels_count = await ChatParticipant.filter(user=user, channel__id__not=None, left=False).count()
+        channels_count = await ChatParticipant.filter(user=user, channel_id__not=None, left=False).count()
         if channels_count > AppConfig.CHANNELS_PER_USER_LIMIT:
             raise ErrorRpc(error_code=400, error_message="CHANNELS_TOO_MUCH")
 
@@ -455,7 +455,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
     new_peers = {
         peer.owner.id: peer
         for peer in await Peer.filter(
-            owner__id__in=requested_users, type=peer_type, **Chat.or_channel(chat)
+            owner_id__in=requested_users, type=peer_type, **Chat.or_channel(chat)
         ).select_related("owner")
     }
     participants_to_create = []
@@ -472,7 +472,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
     await ChatParticipant.bulk_create(participants_to_create, ignore_conflicts=True)
     await ChatInviteRequest.filter(id__in=Subquery(
         ChatInviteRequest.filter(
-            Chat.query(chat, "invite") & Q(user__id__in=requested_users)
+            Chat.query(chat, "invite") & Q(user_id__in=requested_users)
         ).values_list("id", flat=True)
     )).delete()
 
@@ -513,7 +513,7 @@ async def hide_chat_join_request(request: HideChatJoinRequest, user: User) -> Up
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     invite_request = await ChatInviteRequest.filter(
-        Chat.query(peer.chat_or_channel, "invite") & Q(user__id=request.user_id.user_id)
+        Chat.query(peer.chat_or_channel, "invite") & Q(user_id=request.user_id.user_id)
     ).select_related("user", "invite").first()
     if invite_request is None:
         raise ErrorRpc(error_code=400, error_message="HIDE_REQUESTER_MISSING")

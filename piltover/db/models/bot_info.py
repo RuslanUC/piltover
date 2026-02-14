@@ -19,7 +19,7 @@ class BotInfo(Model):
     description_photo_id: int | None
 
     async def to_tl(self) -> TLBotInfo:
-        commands = await models.BotCommand.filter(bot__id=self.user_id)
+        commands = await models.BotCommand.filter(bot_id=self.user_id)
 
         return TLBotInfo(
             user_id=self.user_id,

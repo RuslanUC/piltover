@@ -26,7 +26,7 @@ CHANNEL_UPDATES_TIMEOUT = 300  # it seems like 300 is default Telegram value
 async def get_seq_qts() -> tuple[int, int]:
     ctx = request_ctx.get()
     seq_qts = await UserAuthorization.filter(
-        key__id=ctx.perm_auth_key_id,
+        key_id=ctx.perm_auth_key_id,
     ).first().values_list("upd_seq", "upd_qts")
     if seq_qts is None:  # pragma: no cover
         logger.warning(
@@ -77,7 +77,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
     logger.trace(f"User {user.id} requested GetDifference with qts {request.qts}")
 
-    last_local_secret_update = await SecretUpdate.filter(authorization__id=ctx.auth_id, qts__lte=request.qts)\
+    last_local_secret_update = await SecretUpdate.filter(authorization_id=ctx.auth_id, qts__lte=request.qts)\
         .order_by("-qts").first()
     last_local_secret_id = last_local_secret_update.id if last_local_secret_update is not None else 0
     logger.trace(f"User's {user.id} last secret id is {last_local_secret_id}")
@@ -89,7 +89,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
     new_updates = await Update.filter(user=user, pts__gt=request.pts, pts__lte=max_pts).order_by("pts")
     new_secret = await SecretUpdate.filter(
-        authorization__id=ctx.auth_id, id__gt=last_local_secret_id
+        authorization_id=ctx.auth_id, id__gt=last_local_secret_id
     ).select_related("message_file", "message_file__file")
     logger.trace(f"User {user.id} has {len(new_secret)} secret updates")
 
@@ -139,7 +139,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
     channel_states = await ChannelUpdate.annotate(min_pts=Min("pts")).filter(
         channel__peers__owner=user, date__gt=date,
-    ).group_by("channel__id").values_list("channel__id", "min_pts")
+    ).group_by("channel_id").values_list("channel_id", "min_pts")
     for channel_id, channel_pts in channel_states:
         # TODO: replace with UpdateChannel?
         other_updates.append(UpdateChannelTooLong(channel_id=channel_id, pts=channel_pts))

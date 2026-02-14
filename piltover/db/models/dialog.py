@@ -39,15 +39,15 @@ class Dialog(Model):
         peers_q = []
         for dialog in dialogs:
             if dialog.peer.type is PeerType.CHANNEL:
-                peers_q.append(Q(peer__owner=None, peer__channel__id=dialog.peer.channel_id))
+                peers_q.append(Q(peer__owner=None, peer__channel_id=dialog.peer.channel_id))
             else:
-                peers_q.append(Q(peer__id=dialog.peer_id))
+                peers_q.append(Q(peer_id=dialog.peer_id))
 
         return models.MessageRef.filter(
             id__in=Subquery(
                 models.MessageRef.filter(
                     Q(*peers_q, join_type=Q.OR)
-                ).group_by("peer__id").annotate(max_id=Max("id")).values("max_id")
+                ).group_by("peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
             *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
@@ -101,7 +101,7 @@ class Dialog(Model):
     ) -> list[TLDialog]:
         drafts = {
             draft.peer_id: draft
-            for draft in await models.MessageDraft.filter(peer__id__in=[dialog.peer_id for dialog in dialogs])
+            for draft in await models.MessageDraft.filter(peer_id__in=[dialog.peer_id for dialog in dialogs])
         }
 
         tl = []
@@ -164,7 +164,7 @@ class Dialog(Model):
         async with in_transaction():
             existing = {
                 dialog.peer_id: dialog
-                for dialog in await cls.select_for_update().filter(peer__id__in=[peer.id for peer in valid_peers])
+                for dialog in await cls.select_for_update().filter(peer_id__in=[peer.id for peer in valid_peers])
             }
 
             to_create = [cls(peer=peer, visible=True) for peer in valid_peers if peer.id not in existing]

@@ -327,7 +327,7 @@ async def _validate_message_entities(text: str, entities: list[MessageEntityBase
             # TODO: InputUserFromMessage
 
         if users_ids:
-            got_users.update(await Peer.filter(owner=user, user__id__in=users_ids).values_list("user__id", flat=True))
+            got_users.update(await Peer.filter(owner=user, user_id__in=users_ids).values_list("user_id", flat=True))
 
         for input_user, idx in reversed(fetch_users):
             # entity = cast(MessageEntityMentionName, result[idx])

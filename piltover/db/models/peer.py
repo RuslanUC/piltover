@@ -47,7 +47,7 @@ class Peer(Model):
     async def from_user_id(cls, user: models.User, user_id: int) -> Peer | None:
         if user.id == user_id:
             return await Peer.get(owner=user, type=PeerType.SELF)
-        return await Peer.get_or_none(owner=user, user__id=user_id, type=PeerType.USER).select_related("user")
+        return await Peer.get_or_none(owner=user, user_id=user_id, type=PeerType.USER).select_related("user")
 
     @classmethod
     async def from_chat_id(
@@ -55,7 +55,7 @@ class Peer(Model):
             select_related: tuple[str, ...] | None = None,
     ) -> Peer | None:
         chat_id = models.Chat.norm_id(chat_id)
-        query = Q(owner=user, chat__id=chat_id, type=PeerType.CHAT)
+        query = Q(owner=user, chat_id=chat_id, type=PeerType.CHAT)
         if not allow_migrated:
             query &= Q(chat__migrated=False)
 
@@ -99,7 +99,7 @@ class Peer(Model):
                 return None
             if not models.User.check_access_hash(user.id, ctx.auth_id, input_peer.user_id, input_peer.access_hash):
                 return None
-            query = Q(owner=user, user__id=input_peer.user_id)
+            query = Q(owner=user, user_id=input_peer.user_id)
             if not allow_bot:
                 query &= Q(user__bot=False)
             return await Peer.get_or_none(query).select_related("owner", "user", *select_related)
@@ -108,7 +108,7 @@ class Peer(Model):
             if peer_types is not None and PeerType.CHAT not in peer_types:
                 return None
             chat_id = models.Chat.norm_id(input_peer.chat_id)
-            query = Q(owner=user, chat__id=chat_id)
+            query = Q(owner=user, chat_id=chat_id)
             if not allow_migrated_chat:
                 query &= Q(chat__migrated=False)
             return await Peer.get_or_none(query).select_related("owner", "chat", *select_related)
@@ -120,7 +120,7 @@ class Peer(Model):
             if not models.Channel.check_access_hash(user.id, ctx.auth_id, channel_id, input_peer.access_hash):
                 return None
             return await Peer.get_or_none(
-                owner=user, channel__id=channel_id, channel__deleted=False,
+                owner=user, channel_id=channel_id, channel__deleted=False,
             ).select_related("owner", "channel", *select_related)
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
@@ -150,7 +150,7 @@ class Peer(Model):
             return [peer]
         elif self.type is PeerType.CHAT:
             return await Peer.filter(
-                type=PeerType.CHAT, owner__id__not=self.owner.id, chat__id=self.chat_id,
+                type=PeerType.CHAT, owner_id__not=self.owner.id, chat_id=self.chat_id,
             ).select_related("owner", "chat")
 
         return []
@@ -160,15 +160,15 @@ class Peer(Model):
             return self
         if self.type is PeerType.SELF or self.type is PeerType.USER:
             return await Peer.get_or_none(
-                owner=for_user, user__id=self.user_id,
+                owner=for_user, user_id=self.user_id,
             ).select_related("owner", "user")
         elif self.type is PeerType.CHAT:
             return await Peer.get_or_none(
-                type=PeerType.CHAT, owner=for_user, chat__id=self.chat_id,
+                type=PeerType.CHAT, owner=for_user, chat_id=self.chat_id,
             ).select_related("owner", "chat")
         elif self.type is PeerType.CHANNEL:
             return await Peer.get_or_none(
-                type=PeerType.CHANNEL, owner=for_user, channel__id=self.channel_id,
+                type=PeerType.CHANNEL, owner=for_user, channel_id=self.channel_id,
             ).select_related("owner", "channel")
         raise Unreachable
 
@@ -228,21 +228,21 @@ class Peer(Model):
 
     def query_chat_or_channel(self) -> dict:
         if self.type is PeerType.CHAT:
-            return {"chat__id": self.chat_id}
+            return {"chat_id": self.chat_id}
         if self.type is PeerType.CHANNEL:
-            return {"channel__id": self.channel_id}
+            return {"channel_id": self.channel_id}
 
         raise NotImplementedError
 
     def q_this_or_channel(self) -> Q:
         if self.type is PeerType.CHANNEL:
-            return Q(peer__owner=None, peer__channel__id=self.channel_id)
+            return Q(peer__owner=None, peer__channel_id=self.channel_id)
         return Q(peer=self)
 
     def q_this_and_channel(self) -> Q:
         q = Q(peer=self)
         if self.type is PeerType.CHANNEL:
-            q |= Q(peer__owner=None, peer__channel__id=self.channel_id)
+            q |= Q(peer__owner=None, peer__channel_id=self.channel_id)
         return q
 
     def __repr__(self) -> str:

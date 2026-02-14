@@ -23,7 +23,7 @@ class ReadState(Model):
 
     @classmethod
     async def for_peer_chat(cls, user_id: int, chat_id: int) -> ReadState:
-        read_state, _ = await models.ReadState.get_or_create(peer__owner__id=user_id, peer__chat__id=chat_id)
+        read_state, _ = await models.ReadState.get_or_create(peer__owner_id=user_id, peer__chat_id=chat_id)
         return read_state
 
     @classmethod
@@ -32,22 +32,22 @@ class ReadState(Model):
     ) -> tuple[int, int, int, int, int]:
         in_read_state = await cls.for_peer(peer=peer)
         unread_count = await models.MessageRef.filter(
-            peer.q_this_or_channel(), id__gt=in_read_state.last_message_id, content__author__id__not=peer.owner_id,
+            peer.q_this_or_channel(), id__gt=in_read_state.last_message_id, content__author_id__not=peer.owner_id,
         ).count()
         if no_reactions:
             unread_reactions_count = 0
         else:
             unread_reactions_count = await models.MessageReaction.filter(
-                Q(message__author__id=peer.owner_id, id__gt=in_read_state.last_reaction_id)
+                Q(message__author_id=peer.owner_id, id__gt=in_read_state.last_reaction_id)
                 & (
                     Q(
-                        message__messagerefs__peer__owner__id=peer.owner_id,
-                        message__messagerefs__peer__channel__id=peer.channel_id
+                        message__messagerefs__peer__owner_id=peer.owner_id,
+                        message__messagerefs__peer__channel_id=peer.channel_id
                     )
                     if peer.type is PeerType.CHANNEL
                     else Q(message__messagerefs__peer=peer)
                 )
-                & Q(user__id__not=peer.owner_id),
+                & Q(user_id__not=peer.owner_id),
             ).count()
 
         out_read_max_id = 0
@@ -56,12 +56,12 @@ class ReadState(Model):
                 out_read_max_id = in_read_state.last_message_id
             elif peer.type is PeerType.USER:
                 out_read_max_id = await models.ReadState.filter(
-                    peer__owner__id=peer.user_id, peer__user__id=peer.owner_id
+                    peer__owner_id=peer.user_id, peer__user_id=peer.owner_id
                 ).first().values_list("last_message_id", flat=True) or 0
             elif peer.type is PeerType.CHAT:
                 # TODO: probably can be done in one query?
                 out_read_state = await models.ReadState.filter(
-                    peer__chat__id=peer.chat_id, peer__id__not=peer.id
+                    peer__chat_id=peer.chat_id, peer_id__not=peer.id
                 ).order_by("-last_message_id").first()
                 if out_read_state:
                     out_read_max_id = await models.MessageRef.filter(
@@ -72,7 +72,7 @@ class ReadState(Model):
                 out_read_max_id = 0
                 # TODO: if supergroup, do same as in case with PeerType.CHAT
                 # out_read_state = await models.ReadState.filter(
-                #     peer__channel__id=self.peer.channel_id, peer__id__not=self.peer.id
+                #     peer__channel_id=self.peer.channel_id, peer_id__not=self.peer.id
                 # ).order_by("-last_message_id").first()
                 # if out_read_state:
                 #     out_read_max_id = await models.Message.filter(
@@ -84,12 +84,12 @@ class ReadState(Model):
             unread_mentions = 0
         else:
             if peer.type is PeerType.CHAT:
-                unread_mentions_query = models.MessageMention.filter(chat__id=peer.chat_id)
+                unread_mentions_query = models.MessageMention.filter(chat_id=peer.chat_id)
             elif peer.type is PeerType.CHANNEL:
-                unread_mentions_query = models.MessageMention.filter(channel__id=peer.channel_id)
+                unread_mentions_query = models.MessageMention.filter(channel_id=peer.channel_id)
             else:
                 raise Unreachable
-            unread_mentions = await unread_mentions_query.filter(read=False, user__id=peer.owner_id).count()
+            unread_mentions = await unread_mentions_query.filter(read=False, user_id=peer.owner_id).count()
 
         return (
             in_read_state.last_message_id,

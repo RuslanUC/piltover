@@ -71,7 +71,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         if not await AvailableChannelReaction.filter(channel=peer.channel, reaction=reaction).exists():
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
-    existing_reaction = await MessageReaction.get_or_none(user=user, message__id=message.content_id)
+    existing_reaction = await MessageReaction.get_or_none(user=user, message_id=message.content_id)
     if (existing_reaction is None and reaction is None) \
             or (existing_reaction is not None and reaction is not None and existing_reaction.reaction_id == reaction.id):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
@@ -81,7 +81,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             await existing_reaction.delete()
         else:
             reactions_q = MessageReaction.filter(
-                user=user, message__id=message.content_id,
+                user=user, message_id=message.content_id,
             ).values_list("id", flat=True)
             await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
@@ -96,7 +96,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
 
     if peer.type is not PeerType.CHANNEL:
         for opp_message in await MessageRef.filter(
-            content__id=message.content_id,
+            content_id=message.content_id,
         ).select_related("peer", "peer__owner", "content"):
             await upd.update_reactions(opp_message.peer.owner, [opp_message], opp_message.peer)
 
@@ -170,7 +170,7 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
     read_state, _ = await ReadState.get_or_create(peer=peer)
 
     reaction_query = Q(message__author=user) & (
-        Q(message__messagerefs__peer__owner=user, message__messagerefs__peer__channel__id=peer.channel_id)
+        Q(message__messagerefs__peer__owner=user, message__messagerefs__peer__channel_id=peer.channel_id)
         if peer.type is PeerType.CHANNEL
         else Q(message__messagerefs__peer=peer)
     )

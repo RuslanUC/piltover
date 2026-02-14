@@ -141,9 +141,9 @@ class ChatParticipant(Model):
             cls, user_id: int, other_user_id: int, max_id: int | None = None,
     ) -> QuerySet[ChatParticipant]:
         chat_query = ChatParticipant.filter(
-            user__id__in=[user_id, other_user_id], left=False,
+            user_id__in=[user_id, other_user_id], left=False,
         ).annotate(
-            user_count=Count("user__id", distinct=True),
+            user_count=Count("user_id", distinct=True),
         ).group_by(
             "chat_channel_id"
         ).filter(
@@ -156,7 +156,7 @@ class ChatParticipant(Model):
         chat_query = chat_query.values("chat_channel_id")
 
         return ChatParticipant.filter(
-            user__id=user_id,
+            user_id=user_id,
             chat_channel_id__in=Subquery(chat_query)
         ).select_related(
             "chat", "chat__photo", "channel", "channel__photo",

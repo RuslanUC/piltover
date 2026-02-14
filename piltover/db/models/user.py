@@ -176,7 +176,7 @@ class User(Model):
             usernames = {
                 user_id: username
                 for user_id, username in await models.Username.filter(
-                    user__id__in=all_ids,
+                    user_id__in=all_ids,
                 ).values_list("user_id", "username")
             }
         else:
@@ -185,7 +185,7 @@ class User(Model):
         if user_ids:
             background_emojis = {
                 emojis.user_id: emojis
-                for emojis in await models.UserBackgroundEmojis.filter(user__id__in=user_ids)
+                for emojis in await models.UserBackgroundEmojis.filter(user_id__in=user_ids)
             }
         else:
             background_emojis = {}
@@ -194,7 +194,7 @@ class User(Model):
             bot_versions = {
                 user_id: version
                 for user_id, version in await models.BotInfo.filter(
-                    user__id__in=bot_ids,
+                    user_id__in=bot_ids,
                 ).values_list("user_id", "version")
             }
         else:
@@ -204,7 +204,7 @@ class User(Model):
             photos = {
                 photo.user_id: photo
                 for photo in await models.UserPhoto.filter(
-                    user__id__in=all_ids, current=True,
+                    user_id__in=all_ids, current=True,
                 ).select_related("file")
             }
         else:

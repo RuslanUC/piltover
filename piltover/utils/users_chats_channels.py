@@ -78,28 +78,28 @@ class UsersChatsChannels:
             channels_q |= Q(id__in=self._channel_ids)
 
         if self._message_ids is not None:
-            base_query = models.MessageRelated.filter(message__id__in=self._message_ids)
-            users_q |= Q(id__in=Subquery(base_query.values_list("user__id")))
-            chats_q |= Q(id__in=Subquery(base_query.values_list("chat__id")))
-            channels_q |= Q(id__in=Subquery(base_query.values_list("channel__id")))
+            base_query = models.MessageRelated.filter(message_id__in=self._message_ids)
+            users_q |= Q(id__in=Subquery(base_query.values("user_id")))
+            chats_q |= Q(id__in=Subquery(base_query.values("chat_id")))
+            channels_q |= Q(id__in=Subquery(base_query.values("channel_id")))
 
         if self._message_ref_ids is not None:
             base_query = models.MessageRelated.filter(message__messagerefs__id__in=self._message_ref_ids)
-            users_q |= Q(id__in=Subquery(base_query.values_list("user__id")))
-            chats_q |= Q(id__in=Subquery(base_query.values_list("chat__id")))
-            channels_q |= Q(id__in=Subquery(base_query.values_list("channel__id")))
+            users_q |= Q(id__in=Subquery(base_query.values("user_id")))
+            chats_q |= Q(id__in=Subquery(base_query.values("chat_id")))
+            channels_q |= Q(id__in=Subquery(base_query.values("channel_id")))
 
         if PeerType.USER in self._peer_ids:
             users_q |= Q(id__in=Subquery(
-                models.Peer.filter(id__in=self._peer_ids[PeerType.USER]).values_list("user__id")
+                models.Peer.filter(id__in=self._peer_ids[PeerType.USER]).values("user_id")
             ))
         if PeerType.CHAT in self._peer_ids:
             chats_q |= Q(id__in=Subquery(
-                models.Peer.filter(id__in=self._peer_ids[PeerType.CHAT]).values_list("chat__id")
+                models.Peer.filter(id__in=self._peer_ids[PeerType.CHAT]).values("chat_id")
             ))
         if PeerType.CHANNEL in self._peer_ids:
             channels_q |= Q(id__in=Subquery(
-                models.Peer.filter(id__in=self._peer_ids[PeerType.CHANNEL]).values_list("channel__id")
+                models.Peer.filter(id__in=self._peer_ids[PeerType.CHANNEL]).values("channel_id")
             ))
 
         return (

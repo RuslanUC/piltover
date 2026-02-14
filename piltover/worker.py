@@ -296,7 +296,7 @@ class Worker(MessageHandler):
         async with in_transaction():
             to_delete = await MessageRef.select_for_update(
                 skip_locked=True, no_key=True,
-            ).filter(content__id=message_id).select_related("peer", "peer__owner", "peer__channel")
+            ).filter(content_id=message_id).select_related("peer", "peer__owner", "peer__channel")
 
             all_ids = []
             regular_messages = defaultdict(list)
@@ -331,7 +331,7 @@ class Worker(MessageHandler):
                 return
 
             discussion_peer = await Peer.get_or_none(
-                owner=None, channel__id=message.peer.channel.discussion_id,
+                owner=None, channel_id=message.peer.channel.discussion_id,
             ).select_related("channel")
 
             discussion_message, = await message.forward_for_peers(

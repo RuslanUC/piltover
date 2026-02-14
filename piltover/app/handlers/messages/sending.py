@@ -86,7 +86,7 @@ async def send_created_messages_internal(
 
     if opposite and peer.type is PeerType.CHAT and mentioned_user_ids:
         message = next(iter(messages.values())).content
-        mentioned_users = await User.filter(owner__chat__id=peer.chat_id, id__in=mentioned_user_ids)
+        mentioned_users = await User.filter(owner__chat_id=peer.chat_id, id__in=mentioned_user_ids)
         unread_mentions_to_create = []
         for mentioned_user in mentioned_users:
             unread_mentions_to_create.append(MessageMention(
@@ -125,7 +125,7 @@ async def send_created_messages_internal(
 
         if mentioned_user_ids:
             mentioned_users = await User.filter(
-                id__in=mentioned_user_ids, owner__channel__id=peer.channel_id,
+                id__in=mentioned_user_ids, owner__channel_id=peer.channel_id,
             )
             unread_mentions_to_create = []
             for mentioned_user in mentioned_users:
@@ -315,7 +315,7 @@ async def _check_channel_slowmode(channel: Channel, participant: ChatParticipant
     if participant.is_admin:
         return
     last_date = cast(datetime | None, await SlowmodeLastMessage.get_or_none(
-        channel=channel, user__id=participant.user_id,
+        channel=channel, user_id=participant.user_id,
     ).values_list("last_message", flat=True))
     if last_date is None:
         return
@@ -400,7 +400,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     opposite_peers = await peer.get_opposite()
     if (not request.pm_oneside or peer.type is PeerType.CHANNEL) and opposite_peers:
         other_messages = await MessageRef.filter(
-            peer__in=opposite_peers, content__id=message.content_id,
+            peer__in=opposite_peers, content_id=message.content_id,
         ).select_related("peer", "peer__owner")
         for other_message in other_messages:
             other_message.pinned = message.pinned
@@ -556,17 +556,17 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
     peers_q = None
     if peer.type is PeerType.SELF:
-        peers_q = Q(peer__id=peer.id)
+        peers_q = Q(peer_id=peer.id)
     if peer.type is PeerType.USER:
-        peers_q = Q(peer__owner__id=peer.user_id, peer__user__id=peer.owner_id) | Q(peer__id=peer.id)
+        peers_q = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id) | Q(peer_id=peer.id)
     elif peer.type is PeerType.CHAT:
-        peers_q = Q(peer__chat__id=peer.chat_id)
+        peers_q = Q(peer__chat_id=peer.chat_id)
     elif peer.type is PeerType.CHANNEL and content.type is MessageType.SCHEDULED:
-        peers_q = Q(peer__id=peer.id)
+        peers_q = Q(peer_id=peer.id)
     elif peer.type is PeerType.CHANNEL:
-        peers_q = Q(peer__owner=None, peer__channel__id=peer.channel_id)
+        peers_q = Q(peer__owner=None, peer__channel_id=peer.channel_id)
 
-    refs = await MessageRef.filter(peers_q, content__id=content.id).select_related(*MessageRef.PREFETCH_FIELDS)
+    refs = await MessageRef.filter(peers_q, content_id=content.id).select_related(*MessageRef.PREFETCH_FIELDS)
     messages = {
         ref.peer: ref
         for ref in refs
@@ -1101,7 +1101,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
         valid, const = File.is_file_ref_valid(media_id.file_reference, user.id, media_id.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
-        media_q = Q(file__id=media_id.id)
+        media_q = Q(file_id=media_id.id)
         if const:
             file_ref = media_id.file_reference[12:]
             media_q &= Q(file__constant_access_hash=media_id.access_hash, file__constant_file_ref=UUID(bytes=file_ref))
@@ -1163,7 +1163,7 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
     messages: defaultdict[User, list[int]] = defaultdict(list)
     offset_id = 0
 
-    messages_to_delete = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", "content__id")
+    messages_to_delete = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", "content_id")
     for message_id, content_id in messages_to_delete:
         if len(messages[user]) == 1000:
             offset_id = message_id
@@ -1178,15 +1178,15 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
     if request.revoke:
         peers_q = None
         if peer.type is PeerType.USER:
-            peers_q = Q(peer__owner__id=peer.user_id, peer__user__id=peer.owner_id)
+            peers_q = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id)
         elif peer.type is PeerType.CHAT:
-            peers_q = Q(peer__owner__id__not=peer.owner_id, peer__chat__id=peer.chat_id)
+            peers_q = Q(peer__owner_id__not=peer.owner_id, peer__chat_id=peer.chat_id)
 
         if peers_q is not None:
             # TODO: delete history for each user separately if request.revoke
             #  (so messages that current user already deleted without revoke will be deleted too)
             #  (maybe just call delete_history for each user (opposite_peer)?)
-            refs = await MessageRef.filter(peers_q, content__id__in=content_ids).select_related("peer", "peer__owner")
+            refs = await MessageRef.filter(peers_q, content_id__in=content_ids).select_related("peer", "peer__owner")
             for ref in refs:
                 messages[ref.peer.owner].append(ref.id)
 
@@ -1221,7 +1221,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
 
     item = await InlineQueryResultItem.get_or_none(
         Q(result__private=True, result__query__user=user) | Q(result__private=False),
-        result__query__id=request.query_id, item_id=request.id,
+        result__query_id=request.query_id, item_id=request.id,
     ).select_related(
         "photo", "document", "document__stickerset", "result", "result__query", "result__query__bot"
     )

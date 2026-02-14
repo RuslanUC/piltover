@@ -39,7 +39,7 @@ class ChannelUpdate(Model):
                 return None
             case ChannelUpdateType.EDIT_MESSAGE:
                 message = await models.MessageRef.get(
-                    id=self.related_id, peer__channel__id=self.channel_id,
+                    id=self.related_id, peer__channel_id=self.channel_id,
                 ).select_related(*models.MessageRef.PREFETCH_FIELDS)
                 ucc.add_message(message.content_id)
 

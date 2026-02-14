@@ -15,6 +15,7 @@ from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, Input
 from piltover.tl.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
 from piltover.tl.types.storage import FileUnknown, FilePartial, FileJpeg
 from piltover.tl.types.upload import File as TLFile
+from piltover.utils.debug import measure_time
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("upload")
@@ -67,7 +68,8 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
 
     storage = request_ctx.get().storage
-    await storage.save_part(file.physical_id, request.file_part, request.bytes_, maybe_last)
+    with measure_time("storage.save_part(...)"):
+        await storage.save_part(file.physical_id, request.file_part, request.bytes_, maybe_last)
 
     return True
 
@@ -93,11 +95,11 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     if isinstance(location, InputPeerPhotoFileLocation):
         peer = await Peer.from_input_peer_raise(user, location.peer)
         if peer.type in (PeerType.SELF, PeerType.USER):
-            q = Q(userphotos__file__id=location.photo_id, userphotos__user__id=peer.user_id)
+            q = Q(userphotos__file_id=location.photo_id, userphotos__user_id=peer.user_id)
         elif peer.type is PeerType.CHAT:
-            q = Q(chats__photo__id=location.photo_id, chats__id=peer.chat_id)
+            q = Q(chats__photo_id=location.photo_id, chats__id=peer.chat_id)
         elif peer.type is PeerType.CHANNEL:
-            q = Q(channels__photo__id=location.photo_id, channels__id=peer.channel_id)
+            q = Q(channels__photo_id=location.photo_id, channels__id=peer.channel_id)
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     elif isinstance(location, InputEncryptedFileLocation):

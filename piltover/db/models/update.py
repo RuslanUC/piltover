@@ -79,7 +79,7 @@ class Update(Model):
             case UpdateType.READ_HISTORY_INBOX:
                 query = Q(owner=user)
                 if self.related_id:
-                    query &= Q(user__id=self.related_id) | Q(chat__id=self.related_id)
+                    query &= Q(user_id=self.related_id) | Q(chat_id=self.related_id)
                 else:
                     query &= Q(type=PeerType.SELF)
                 if (peer := await models.Peer.get_or_none(query)) is None:
@@ -181,7 +181,7 @@ class Update(Model):
                 participants = []
                 participant: models.ChatParticipant
 
-                for participant in await models.ChatParticipant.filter(chat=peer.chat, user__id__in=self.related_ids):
+                for participant in await models.ChatParticipant.filter(chat=peer.chat, user_id__in=self.related_ids):
                     participants.append(participant.to_tl_chat_with_creator(peer.chat.creator_id))
                     user_ids.remove(participant.user_id)
 
@@ -219,7 +219,7 @@ class Update(Model):
                 )
 
             case UpdateType.UPDATE_CONTACT:
-                if (contact := await models.Contact.get_or_none(owner=user, target__id=self.related_id)) is None:
+                if (contact := await models.Contact.get_or_none(owner=user, target_id=self.related_id)) is None:
                     return None
 
                 ucc.add_user(contact.target_id)
@@ -315,7 +315,7 @@ class Update(Model):
 
                 dialog: models.Dialog
                 async for dialog in models.Dialog.filter(
-                        peer__id__in=self.related_ids, visible=True,
+                        peer_id__in=self.related_ids, visible=True,
                 ).select_related("peer"):
                     folder_peers.append(FolderPeer(peer=dialog.peer.to_tl(), folder_id=dialog.folder_id.value))
                     ucc.add_peer(dialog.peer)
@@ -507,7 +507,7 @@ class Update(Model):
                 peer = not_peer = None
                 if self.related_id is not None:
                     settings = await models.PeerNotifySettings.get_or_none(
-                        user=user, peer__owner=user, peer__id=self.related_id,
+                        user=user, peer__owner=user, peer_id=self.related_id,
                     ).select_related("peer")
                     if settings is not None and settings.peer is not None:
                         peer = settings.peer
@@ -554,7 +554,7 @@ class Update(Model):
 
             case UpdateType.SAVED_DIALOG_PIN:
                 saved_dialog = await models.SavedDialog.get_or_none(
-                    peer__owner=user, peer__id=self.related_id,
+                    peer__owner=user, peer_id=self.related_id,
                 ).select_related("peer")
                 if saved_dialog is None:
                     return None

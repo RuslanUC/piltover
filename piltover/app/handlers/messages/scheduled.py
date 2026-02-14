@@ -115,7 +115,7 @@ async def delete_scheduled_messages(request: DeleteScheduledMessages, user: User
     peer = await Peer.from_input_peer_raise(user, request.peer)
     messages = await MessageRef.filter(
         peer=peer, id__in=request.id, content__type=MessageType.SCHEDULED,
-    ).values_list("id", "content__id")
+    ).values_list("id", "content_id")
 
     ids = []
     content_ids = []

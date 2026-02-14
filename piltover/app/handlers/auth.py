@@ -188,7 +188,7 @@ async def sign_up(request: SignUp | SignUp_133):
 )
 async def check_password(request: CheckPassword, user: User):
     ctx = request_ctx.get()
-    auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
+    auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user_id=ctx.user_id)
     if not auth.mfa_pending:  # ??
         return AuthAuthorization(user=await user.to_tl())
 
@@ -254,9 +254,9 @@ async def export_login_token():
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         return LoginTokenSuccess(authorization=AuthAuthorization(user=await auth.user.to_tl()))
 
-    login_q = Q(key__id=ctx.perm_auth_key_id) & (
+    login_q = Q(key_id=ctx.perm_auth_key_id) & (
         Q(created_at__gt=datetime.now(UTC) - timedelta(seconds=QrLogin.EXPIRE_TIME))
-        | Q(auth__id__not=None)
+        | Q(auth_id__not=None)
     )
 
     login = await QrLogin.get_or_none(login_q).select_related("auth", "auth__user")
@@ -303,11 +303,7 @@ async def accept_login_token(request: AcceptLoginToken, user: User) -> Authoriza
 
 @handler.on_request(LogOut, ReqHandlerFlags.REFRESH_SESSION)
 async def log_out() -> LoggedOut:
-    await UserAuthorization.filter(
-        id__in=Subquery(
-            UserAuthorization.filter(key__id=request_ctx.get().perm_auth_key_id).values_list("id", flat=True)
-        )
-    ).delete()
+    await UserAuthorization.filter(key_id=request_ctx.get().perm_auth_key_id).delete()
     return LoggedOut()
 
 
@@ -322,7 +318,7 @@ async def reset_authorizations(user: User) -> bool:
     auths = await UserAuthorization.filter(user=user, id__not=auth_id).select_related("key")
 
     keys = [auth.key.id for auth in auths]
-    temp_keys_ids = await TempAuthKey.filter(perm_key__id__in=keys).values_list("id", flat=True)
+    temp_keys_ids = await TempAuthKey.filter(perm_key_id__in=keys).values_list("id", flat=True)
     keys.extend(temp_keys_ids)
 
     await UserAuthorization.filter(id__in=[auth.id for auth in auths]).delete()
@@ -359,7 +355,7 @@ async def import_bot_authorization(request: ImportBotAuthorization) -> AuthAutho
     if not bot_id.isdigit():
         raise ErrorRpc(error_code=400, error_message="ACCESS_TOKEN_INVALID")
 
-    bot = await Bot.get_or_none(bot__id=int(bot_id), token_nonce=token_nonce).select_related("bot")
+    bot = await Bot.get_or_none(bot_id=int(bot_id), token_nonce=token_nonce).select_related("bot")
     if bot is None:
         raise ErrorRpc(error_code=400, error_message="ACCESS_TOKEN_INVALID")
 

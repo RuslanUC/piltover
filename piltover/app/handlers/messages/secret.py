@@ -57,7 +57,7 @@ async def request_encryption(request: RequestEncryption, user: User):
     ctx = request_ctx.get()
     chat = await EncryptedChat.create(
         from_user=user,
-        from_sess=await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id),
+        from_sess=await UserAuthorization.get_or_none(id=ctx.auth_id, user_id=ctx.user_id),
         to_user=peer.user,
         to_sess=None,
         dh_version=CURRENT_DH_VERSION,
@@ -88,7 +88,7 @@ async def accept_encryption(request: AcceptEncryption, user: User):
             raise ErrorRpc(error_code=400, error_message="ENCRYPTION_ALREADY_DECLINED")
 
         ctx = request_ctx.get()
-        current_auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
+        current_auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user_id=ctx.user_id)
 
         chat.g_b = request.g_b
         chat.to_sess = current_auth
@@ -108,7 +108,7 @@ async def discard_encryption(request: DiscardEncryption, user: User):
 
     async with in_transaction():
         chat = await EncryptedChat.get_or_none(
-            Q(from_user=user, from_sess__id=ctx.auth_id) | Q(to_user=user),
+            Q(from_user=user, from_sess_id=ctx.auth_id) | Q(to_user=user),
             id=request.chat_id,
         ).select_related("from_user", "to_user")
 
@@ -170,7 +170,7 @@ async def _resolve_file(input_file: InputEncryptedFileT, user: User) -> Encrypte
         if not File.check_access_hash(user.id, ctx.auth_id, input_file.id, input_file.access_hash):
             raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
         file = await EncryptedFile.get_or_none(
-            file__id=input_file.id, file__type=FileType.ENCRYPTED,
+            file_id=input_file.id, file__type=FileType.ENCRYPTED,
         ).select_related("file")
         if file is None:
             raise ErrorRpc(error_code=400, error_message="FILE_EMTPY")
@@ -229,7 +229,7 @@ async def send_encrypted(request: SendEncrypted | SendEncryptedService | SendEnc
 @handler.on_request(ReceivedQueue, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def received_queue(request: ReceivedQueue):
     ctx = request_ctx.get()
-    current_auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user__id=ctx.user_id)
+    current_auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user_id=ctx.user_id)
 
     if request.max_qts > current_auth.upd_qts or request.max_qts <= 0:
         raise ErrorRpc(error_code=400, error_message="MAX_QTS_INVALID")

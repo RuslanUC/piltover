@@ -218,7 +218,7 @@ async def test_internal_message_cache() -> None:
         assert messages[0].text == message.text
 
         await MessageContent.filter(
-            id=Subquery(MessageRef.filter(id=message.id).first().values_list("content__id", flat=True))
+            id=Subquery(MessageRef.filter(id=message.id).first().values_list("content_id", flat=True))
         ).update(message="some another text 123456789")
 
         messages = [msg async for msg in client.get_chat_history("me")]
@@ -866,7 +866,7 @@ async def _make_test_get_search_results_calendar_data(client: TestClient) -> lis
 
     for message, date in zip(messages, _test_get_search_results_calendar_dates):
         await MessageContent.filter(
-            id=Subquery(MessageRef.filter(id=message.id).first().values_list("content__id", flat=True)),
+            id=Subquery(MessageRef.filter(id=message.id).first().values_list("content_id", flat=True)),
         ).update(date=date)
         await MessageRef.filter(id=message.id).update(version=F("version") + 1)
 

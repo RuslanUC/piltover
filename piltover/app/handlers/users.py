@@ -134,7 +134,7 @@ async def get_users(request: GetUsers, user: User):
     users = await User.filter(
         Q(id__in=user_ids)
         | Q(id__in=Subquery(
-            Contact.filter(owner=user, target__id__in=contact_ids).values_list("target_id", flat=True)
+            Contact.filter(owner=user, target_id__in=contact_ids).values_list("target_id", flat=True)
         ))
     )
 

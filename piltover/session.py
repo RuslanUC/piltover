@@ -190,7 +190,7 @@ class Session:
             logger.trace("Refreshing auth...")
             self.auth_loaded_at = time()
 
-            auth = await UserAuthorization.get_or_none(key__id=perm_auth_key_id).select_related("user")
+            auth = await UserAuthorization.get_or_none(key_id=perm_auth_key_id).select_related("user")
             if auth is not None:
                 self.user_id = auth.user_id
                 self.auth_id = auth.id
@@ -209,7 +209,7 @@ class Session:
                 channel_ids = TaggedLongVector(vec=[
                     channel_id
                     for channel_id in await ChatParticipant.filter(
-                        channel_id__not_isnull=True, user__id=self.user_id, left=False,
+                        channel_id__not_isnull=True, user_id=self.user_id, left=False,
                     ).values_list("channel_id", flat=True)
                 ])
                 await Cache.obj.set(f"channels:{self.user_id}", channel_ids, ttl=60 * 10)

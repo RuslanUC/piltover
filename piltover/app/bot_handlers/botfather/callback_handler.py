@@ -93,7 +93,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, bot__id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__usernames")
         if bot is None:
             return None
 
@@ -150,7 +150,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, bot__id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__usernames")
         if bot is None:
             return None
 
@@ -181,7 +181,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, bot__id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__usernames")
         if bot is None:
             return None
 
@@ -212,7 +212,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, bot__id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__usernames")
         if bot is None:
             return None
 
@@ -268,7 +268,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+        if not await Bot.filter(owner=peer.owner, bot_id=bot_id).exists():
             return None
 
         await BotFatherUserState.set_state(
@@ -285,7 +285,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+        if not await Bot.filter(owner=peer.owner, bot_id=bot_id).exists():
             return None
 
         await BotFatherUserState.set_state(
@@ -302,7 +302,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+        if not await Bot.filter(owner=peer.owner, bot_id=bot_id).exists():
             return None
 
         await BotFatherUserState.set_state(
@@ -319,7 +319,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+        if not await Bot.filter(owner=peer.owner, bot_id=bot_id).exists():
             return None
 
         await BotFatherUserState.set_state(
@@ -336,7 +336,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+        if not await Bot.filter(owner=peer.owner, bot_id=bot_id).exists():
             return None
 
         await BotFatherUserState.set_state(
@@ -353,7 +353,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        if not await Bot.filter(owner=peer.owner, bot__id=bot_id).exists():
+        if not await Bot.filter(owner=peer.owner, bot_id=bot_id).exists():
             return None
 
         await BotFatherUserState.set_state(

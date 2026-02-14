@@ -28,7 +28,7 @@ handler = MessageHandler("contacts")
 
 @handler.on_request(GetContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_contacts(user: User):
-    contacts = await Contact.filter(owner=user, target__id__not_isnull=True).select_related("target")
+    contacts = await Contact.filter(owner=user, target_id__not_isnull=True).select_related("target")
 
     contacts_tl = []
     users_to_tl = []
@@ -121,8 +121,8 @@ async def contacts_search(request: Search, user: User) -> Found:
     limit = max(1, min(100, request.limit))
 
     results = await Username.filter(
-        user__id__not_in=Subquery(Contact.filter(owner=user).values_list("target__id", flat=True)),
-        user__id__not=user.id,
+        user_id__not_in=Subquery(Contact.filter(owner=user).values("target_id")),
+        user_id__not=user.id,
     ).filter(
         Q(
             username__icontains=request.q,
@@ -149,7 +149,7 @@ async def contacts_search(request: Search, user: User) -> Found:
     users_by_id = {result_user.id: result_user for result_user in users}
     channels_by_id = {result_channel.id: result_channel for result_channel in channels}
     for existing_peer in await Peer.filter(
-        Q(join_type=Q.OR, user__id__in=list(users_by_id.keys()), channel__id__in=list(channels_by_id.keys())),
+        Q(join_type=Q.OR, user_id__in=list(users_by_id.keys()), channel_id__in=list(channels_by_id.keys())),
         owner=user,
     ):
         if existing_peer.type is PeerType.USER:
@@ -186,8 +186,8 @@ async def get_top_peers():  # pragma: no cover
 
 @handler.on_request(GetStatuses, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_statuses(user: User) -> list[ContactStatus]:
-    statuses = await Presence.filter(user__id__in=Subquery(
-        Contact.filter(owner=user).values_list("target__id", flat=True)
+    statuses = await Presence.filter(user_id__in=Subquery(
+        Contact.filter(owner=user).values_list("target_id", flat=True)
     ))
 
     return TLObjectVector([
@@ -274,7 +274,7 @@ async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
 
         peers[peer.user.id] = peer
 
-    contacts = await Contact.filter(owner=user, target__id__in=list(peers.keys())).values_list("id", "target__id")
+    contacts = await Contact.filter(owner=user, target_id__in=list(peers.keys())).values_list("id", "target_id")
     contact_ids = {contact_id for contact_id, _ in contacts}
     user_ids = {user_id for _, user_id in contacts}
 
@@ -321,7 +321,7 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
     }
     existing_contacts = {
         contact.target_id: contact
-        for contact in await Contact.filter(owner=user, target__id__in=list(users.keys()))
+        for contact in await Contact.filter(owner=user, target_id__in=list(users.keys()))
     }
     not_allowed = await PrivacyRule.has_access_to_bulk(users.values(), user, [PrivacyRuleKeyType.ADDED_BY_PHONE])
     for user_id, privacy in not_allowed.items():

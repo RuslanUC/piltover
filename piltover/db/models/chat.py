@@ -81,7 +81,7 @@ class Chat(ChatBase):
             migrated_tos = {
                 migrated_from: migrated_to
                 for migrated_from, migrated_to in await models.Channel.filter(
-                    migrated_from__id__in=chat_ids,
+                    migrated_from_id__in=chat_ids,
                 ).values_list("migrated_from_id", "id")
             }
         else:

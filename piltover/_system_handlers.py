@@ -64,7 +64,7 @@ async def invoke_without_updates(client: Client, request: Message[InvokeWithoutU
 async def init_connection(client: Client, request: Message[InitConnection], session: Session) -> RpcResult:
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
-    authorization = await UserAuthorization.get_or_none(key__id=session.auth_data.perm_auth_key_id)
+    authorization = await UserAuthorization.get_or_none(key_id=session.auth_data.perm_auth_key_id)
     if authorization is not None:
         # TODO: set api id
         authorization.active_at = datetime.now(UTC)

@@ -86,24 +86,20 @@ class DialogFolder(Model):
         for input_peer in input_peers:
             if isinstance(input_peer, InputPeerSelf) \
                     or (isinstance(input_peer, InputPeerUser) and input_peer.user_id == self.owner_id):
-                query |= Q(owner__id=self.owner_id, type=PeerType.SELF)
+                query |= Q(owner_id=self.owner_id, type=PeerType.SELF)
             elif isinstance(input_peer, InputPeerUser):
                 if models.User.check_access_hash(
                         self.owner_id, ctx.auth_id, input_peer.user_id, input_peer.access_hash
                 ):
-                    query |= Q(owner__id=self.owner_id, user__id=input_peer.user_id, type=PeerType.USER)
+                    query |= Q(owner_id=self.owner_id, user_id=input_peer.user_id, type=PeerType.USER)
             elif isinstance(input_peer, InputPeerChat):
                 query |= Q(
-                    owner__id=self.owner_id, chat__id=models.Chat.norm_id(input_peer.chat_id), type=PeerType.CHAT
+                    owner_id=self.owner_id, chat_id=models.Chat.norm_id(input_peer.chat_id), type=PeerType.CHAT
                 )
             elif isinstance(input_peer, InputPeerChannel):
                 channel_id = models.Channel.norm_id(input_peer.channel_id)
-                if models.Channel.check_access_hash(
-                        self.owner_id, ctx.auth_id, channel_id, input_peer.access_hash
-                ):
-                    query |= Q(
-                        owner__id=self.owner_id, channel__id=channel_id, type=PeerType.CHANNEL
-                    )
+                if models.Channel.check_access_hash(self.owner_id, ctx.auth_id, channel_id, input_peer.access_hash):
+                    query |= Q(owner_id=self.owner_id, channel_id=channel_id, type=PeerType.CHANNEL)
 
         return await models.Peer.filter(query)
 

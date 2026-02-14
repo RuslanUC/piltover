@@ -76,14 +76,14 @@ def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | Non
             return Q(id=0)
 
         if peer.type is PeerType.CHAT:
-            peer_q = Q(chat__id=peer.chat_id)
+            peer_q = Q(chat_id=peer.chat_id)
         elif peer.type is PeerType.CHANNEL:
-            peer_q = Q(channel__id=peer.channel_id)
+            peer_q = Q(channel_id=peer.channel_id)
         else:
             raise Unreachable
 
-        return Q(content__id__in=Subquery(
-            MessageMention.filter(peer_q, user__id=peer.owner_id).values_list("message__id", flat=True)
+        return Q(content_id__in=Subquery(
+            MessageMention.filter(peer_q, user_id=peer.owner_id).values_list("message_id", flat=True)
         ))
     elif isinstance(filter_, InputMessagesFilterContacts):
         return Q(content__media__type=MediaType.CONTACT)
@@ -108,7 +108,7 @@ async def get_messages_query_internal(
 ) -> QuerySet[MessageRef]:
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
     if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
-        query |= Q(peer__owner=None, peer__channel__id=peer.channel_id)
+        query |= Q(peer__owner=None, peer__channel_id=peer.channel_id)
 
     has_filter = False
     if filter_ is not None and (filter_query := message_filter_to_query(filter_, peer)) is not None:
@@ -124,7 +124,7 @@ async def get_messages_query_internal(
         query &= Q(content__message__istartswith=q)
 
     if from_user_id:
-        query &= Q(content__author__id=from_user_id)
+        query &= Q(content__author_id=from_user_id)
 
     if min_date:
         query &= Q(content__date__gt=datetime.fromtimestamp(min_date, UTC))
@@ -141,28 +141,28 @@ async def get_messages_query_internal(
 
     if after_reaction_id is not None:
         user_id = peer.owner_id if isinstance(peer, Peer) else peer.id
-        query &= Q(content__messagereactions__id__gt=after_reaction_id, content__author__id__not=user_id)
+        query &= Q(content__messagereactions_id__gt=after_reaction_id, content__author_id__not=user_id)
 
     if only_mentions:
         if isinstance(peer, Peer) and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
             if peer.type is PeerType.CHAT:
-                peer_q = Q(chat__id=peer.chat_id)
+                peer_q = Q(chat_id=peer.chat_id)
             elif peer.type is PeerType.CHANNEL:
-                peer_q = Q(channel__id=peer.channel_id)
+                peer_q = Q(channel_id=peer.channel_id)
             else:
                 raise Unreachable
 
-            query &= Q(content__id__in=Subquery(
-                MessageMention.filter(peer_q, user__id=peer.owner_id, read=False).values_list("message__id", flat=True)
+            query &= Q(content_id__in=Subquery(
+                MessageMention.filter(peer_q, user_id=peer.owner_id, read=False).values_list("message_id", flat=True)
             ))
         else:
             query = Q(id=0)
 
     if reply_to_id:
-        query &= Q(content__reply_to__id=Subquery(
+        query &= Q(content__reply_to_id=Subquery(
             MessageRef.filter(
                 peer.q_this_or_channel(), id=reply_to_id,
-            ).first().values_list("content__id", flat=True)
+            ).first().values_list("content_id", flat=True)
         ))
 
     query = await append_channel_min_message_id_to_query_maybe(peer, query)
@@ -354,10 +354,10 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     if ids:
         query |= Q(id__in=ids)
     if reply_ids:
-        query |= Q(content__id__in=Subquery(
+        query |= Q(content_id__in=Subquery(
             MessageRef.filter(
                 peer__owner=user, peer__type__not=PeerType.CHANNEL, id__in=reply_ids,
-            ).values_list("content__reply_to__id", flat=True)
+            ).values_list("content__reply_to_id", flat=True)
         ))
 
     query &= Q(peer__owner=user, peer__type__not=PeerType.CHANNEL)
@@ -397,7 +397,7 @@ async def read_history(request: ReadHistory, user: User):
     else:
         query = MessageRef.filter(peer.q_this_or_channel(), id__lte=request.max_id)
 
-    max_id, content_id = await query.order_by("-id").first().values_list("id", "content__id")
+    max_id, content_id = await query.order_by("-id").first().values_list("id", "content_id")
     logger.debug(f"Actual max_id is {max_id} (content id is {content_id})")
 
     if not max_id or max_id <= read_state.last_message_id:
@@ -424,10 +424,10 @@ async def read_history(request: ReadHistory, user: User):
     # TODO: this is probably wrong? we need to search by author, not peer probably
     if peers:
         counts = await MessageRef.filter(
-            peer__id__in=list(peers_by_id), id__gt=old_last_message_id, content__id__lte=content_id,
-        ).group_by("peer__id").annotate(
+            peer_id__in=list(peers_by_id), id__gt=old_last_message_id, content_id__lte=content_id,
+        ).group_by("peer_id").annotate(
             read_count=Count("id"), max_read=Max("id"),
-        ).values_list("peer__id", "read_count", "max_read")
+        ).values_list("peer_id", "read_count", "max_read")
         counts = [(peer_id, max_read) for peer_id, read_count, max_read in counts if read_count]
 
     peers_by_id = {peer.id: peer for peer in peers}
@@ -668,8 +668,8 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
         )
 
     mentioned_ids = await MessageMention.filter(
-        user=user, chat__id=peer.chat_id, channel__id=peer.channel_id, read=False,
-    ).values_list("message__id", flat=True)
+        user=user, chat_id=peer.chat_id, channel_id=peer.channel_id, read=False,
+    ).values_list("message_id", flat=True)
     logger.trace(f"Unread mentioned ids: {mentioned_ids}")
 
     if not mentioned_ids:
@@ -686,9 +686,9 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     await MessageMention.filter(user_id=user.id, message_id__in=mentioned_ids).update(read=True)
 
     if peer.type is PeerType.CHAT:
-        ref_ids_query = MessageRef.filter(peer=peer, content__id__in=mentioned_ids)
+        ref_ids_query = MessageRef.filter(peer=peer, content_id__in=mentioned_ids)
     elif peer.type is PeerType.CHANNEL:
-        ref_ids_query = MessageRef.filter(peer__owner=None, peer__channel__id=peer.channel_id)
+        ref_ids_query = MessageRef.filter(peer__owner=None, peer__channel_id=peer.channel_id)
     else:
         raise Unreachable
 
@@ -716,7 +716,7 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
     content_ids = [ref.content_id for ref in valid_refs]
     ref_by_content_id = {ref.content_id: ref for ref in valid_refs}
 
-    mentions = await MessageMention.filter(user=user, message__id__in=content_ids, read=False)
+    mentions = await MessageMention.filter(user=user, message_id__in=content_ids, read=False)
     refs_with_media = {
         ref.id: ref
         for ref in valid_refs
@@ -727,7 +727,7 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
         )
     }
 
-    for read_media in await MessageMediaRead.filter(user=user, message__id__in=list(refs_with_media)):
+    for read_media in await MessageMediaRead.filter(user=user, message_id__in=list(refs_with_media)):
         del refs_with_media[read_media.message_id]
 
     if not mentions and not refs_with_media:
@@ -926,14 +926,14 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
 
     discussion_message = await MessageRef.get(
-        content__id=message.content.discussion_id,
+        content_id=message.content.discussion_id,
     ).select_related(*MessageRef.PREFETCH_FIELDS)
 
     ucc = UsersChatsChannels()
     ucc.add_message(discussion_message.content_id)
     users, chats, channels = await ucc.resolve()
 
-    replies_info = await MessageRef.filter(content__reply_to__id=discussion_message.content_id).annotate(
+    replies_info = await MessageRef.filter(content__reply_to_id=discussion_message.content_id).annotate(
         total=Count("id"), max_id=Max("id"),
     ).first().values_list("total", "max_id")
     if replies_info is not None:
@@ -988,7 +988,7 @@ async def get_message_read_participants(request: GetMessageReadParticipants, use
 
     read_dates = await ReadHistoryChunk.filter(
         peer_q, peer__owner__read_dates_private=False, read_content_id__gte=message.content_id,
-    ).group_by("peer__owner__id").annotate(read_at=Min("read_at")).values_list("peer__owner__id", "read_date")
+    ).group_by("peer__owner_id").annotate(read_at=Min("read_at")).values_list("peer__ownerid", "read_date")
 
     result = TLObjectVector()
     for user_id, read_at in read_dates:

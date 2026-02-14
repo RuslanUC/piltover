@@ -105,7 +105,7 @@ class MessageRef(Model):
         if opposite and self.peer.type is not PeerType.CHANNEL:
             peers.extend(await self.peer.get_opposite())
         elif opposite and self.peer.type is PeerType.CHANNEL:
-            peers = [await models.Peer.get_or_none(owner=None, channel__id=self.peer.channel_id, type=PeerType.CHANNEL)]
+            peers = [await models.Peer.get_or_none(owner=None, channel_id=self.peer.channel_id, type=PeerType.CHANNEL)]
 
         messages: dict[models.Peer, MessageRef] = {}
 
@@ -214,12 +214,12 @@ class MessageRef(Model):
 
         if self.peer.type is PeerType.USER:
             return await MessageRef.get_or_none(
-                peer__owner=for_user, peer__user=self.peer.owner_id, content__id=self.content_id,
+                peer__owner=for_user, peer__user=self.peer.owner_id, content_id=self.content_id,
             ).select_related(*self.PREFETCH_FIELDS_MIN)
 
         if self.peer.type is PeerType.CHAT:
             return await MessageRef.get_or_none(
-                peer__owner=for_user, peer__chat__id=self.peer.chat_id, content__id=self.content_id,
+                peer__owner=for_user, peer__chat_id=self.peer.chat_id, content_id=self.content_id,
             ).select_related(*self.PREFETCH_FIELDS_MIN)
 
         raise Unreachable

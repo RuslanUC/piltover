@@ -83,7 +83,7 @@ class MessageContent(Model):
         content_ids: set[int | None] = {self.reply_to_id, self.top_message_id}
         content_ids.discard(None)
 
-        ids = await models.MessageRef.filter(content__id__in=content_ids, peer=peer).values_list("id", "content__id")
+        ids = await models.MessageRef.filter(content_id__in=content_ids, peer=peer).values_list("id", "content_id")
         if not ids:
             return None
 
@@ -208,7 +208,7 @@ class MessageContent(Model):
         if self.media \
                 and self.media.file \
                 and self.media.file.type in READABLE_FILE_TYPES:
-            media_unread = not await models.MessageMediaRead.filter(user__id=current_user.id, message=ref).exists()
+            media_unread = not await models.MessageMediaRead.filter(user_id=current_user.id, message=ref).exists()
 
         replies = None
         if self.is_discussion:
@@ -225,12 +225,12 @@ class MessageContent(Model):
             )
         elif self.discussion_id is not None and self.comments_info_id is not None:
             replies = MessageReplies(
-                replies=await models.MessageContent.filter(reply_to__id=self.discussion_id).count(),
+                replies=await models.MessageContent.filter(reply_to_id=self.discussion_id).count(),
                 replies_pts=self.comments_info.discussion_pts,
                 # max_id=cast(
                 #     int | None,
                 #     await models.MessageRef.filter(
-                #         content__reply_to__id=self.discussion_id,
+                #         content__reply_to_id=self.discussion_id,
                 #     ).order_by("-id").first().values_list("id", flat=True),
                 # ),
                 comments=True,
@@ -278,8 +278,8 @@ class MessageContent(Model):
 
         if message_content_ids:
             mentions_info = await models.MessageMention.filter(
-                user__id=user_id, message__id__in=message_content_ids,
-            ).values_list("message__id", "read")
+                user_id=user_id, message_id__in=message_content_ids,
+            ).values_list("message_id", "read")
             for message_id, read in mentions_info:
                 mentioned[message_id] = read
 
@@ -295,8 +295,8 @@ class MessageContent(Model):
 
         if valid_media_ref_ids:
             media_read = set(await models.MessageMediaRead.filter(
-                user__id=user_id, message__id__in=valid_media_ref_ids,
-            ).values_list("message__id", flat=True))
+                user_id=user_id, message_id__in=valid_media_ref_ids,
+            ).values_list("message_id", flat=True))
         else:
             media_read = set()
 
@@ -327,18 +327,17 @@ class MessageContent(Model):
             counts = {
                 reply_to_id: count
                 for reply_to_id, count in await cls.filter(
-                    reply_to__id__in=list(replies_count_to_fetch),
-                ).group_by("reply_to__id").annotate(
-                    count=Count("id"), #max_id=Max("messagerefs__id"),
+                    reply_to_id__in=list(replies_count_to_fetch),
+                ).group_by("reply_to_id").annotate(
+                    count=Count("id"),
                 ).values_list(
-                    "reply_to__id", "count", #"max_id"
+                    "reply_to_id", "count",
                 )
             }
             for reply_to_id, ids in replies_count_to_fetch.items():
                 count = counts.get(reply_to_id, 0)
                 for message_id in ids:
                     replies[message_id].replies = count
-                    # replies[message_id].max_id = max_id
 
         medias_ = [message.media for message in messages if message.media is not None]
         medias = {
@@ -652,7 +651,7 @@ class MessageContent(Model):
         user_id = user.id if isinstance(user, models.User) else user
 
         # TODO: send min MessageReactions if current user didn't send reaction to message
-        user_reaction = await models.MessageReaction.get_or_none(user__id=user_id, message=self)
+        user_reaction = await models.MessageReaction.get_or_none(user_id=user_id, message=self)
         reactions = await models.MessageReaction\
             .annotate(msg_count=Count("id"))\
             .filter(message=self)\

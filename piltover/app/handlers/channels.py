@@ -179,7 +179,7 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
             else:
                 if not Channel.check_access_hash(user.id, ctx.auth_id, channel_id, input_channel.access_hash):
                     continue
-                channels_q |= Q(peers__owner=user, peers__channel__id=channel_id)
+                channels_q |= Q(peers__owner=user, peers__channel_id=channel_id)
         elif isinstance(input_channel, InputChannelFromMessage):
             ...  # TODO: support channels from message
 
@@ -246,7 +246,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
 
     migrated_from_chat_id = migrated_from_max_id = None
     if channel.migrated_from_id is not None \
-            and (chat_peer := await Peer.get_or_none(owner=user, chat__id=channel.migrated_from_id)) is not None:
+            and (chat_peer := await Peer.get_or_none(owner=user, chat_id=channel.migrated_from_id)) is not None:
         migrated_from_chat_id = channel.migrated_from_id
         migrated_from_max_id = cast(
             int | None,
@@ -432,10 +432,10 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     if ids:
         query |= Q(id__in=ids)
     if reply_ids:
-        query |= Q(content__id__in=Subquery(
+        query |= Q(content_id__in=Subquery(
             MessageRef.filter(
                 peer__channel=peer.channel, id__in=reply_ids,
-            ).values_list("content__reply_to__id", flat=True)
+            ).values_list("content__reply_to_id", flat=True)
         ))
 
     query &= Q(peer__channel=peer.channel)
@@ -632,19 +632,19 @@ async def get_participants(request: GetParticipants, user: User):
     if isinstance(filt, ChannelParticipantsRecent):
         query = query.order_by("-invited_at")
     elif isinstance(filt, ChannelParticipantsAdmins):
-        query = query.filter(admin_rights__gt=0).order_by("user__id")
+        query = query.filter(admin_rights__gt=0).order_by("user_id")
     elif isinstance(filt, ChannelParticipantsSearch):
         ...  # Handled below
     elif isinstance(filt, ChannelParticipantsBots):
-        query = query.filter(user__bot=True).order_by("user__id")
+        query = query.filter(user__bot=True).order_by("user_id")
     elif isinstance(filt, ChannelParticipantsContacts):
-        query = query.filter(user__id__in=Subquery(Contact.filter(owner=user).values_list("target__id", flat=True)))
+        query = query.filter(user_id__in=Subquery(Contact.filter(owner=user).values_list("target_id", flat=True)))
     elif isinstance(filt, ChannelParticipantsMentions):
         if filt.top_msg_id:
-            query = query.filter(user__id__in=Subquery(
+            query = query.filter(user_id__in=Subquery(
                 MessageRef.filter(
-                    peer__owner=None, peer__channel=peer.channel, content__reply_to__id=filt.top_msg_id,
-                ).distinct().values_list("author__id", flat=True)
+                    peer__owner=None, peer__channel=peer.channel, content__reply_to_id=filt.top_msg_id,
+                ).distinct().values_list("author_id", flat=True)
             ))
     elif isinstance(filt, ChannelParticipantsBanned):
         query = query.annotate(
@@ -666,7 +666,7 @@ async def get_participants(request: GetParticipants, user: User):
                 user__first_name__icontains=filt.q,
                 user__usernames__username__icontains=filt.q,
             ))
-        query = query.order_by("user__id")
+        query = query.order_by("user_id")
 
     limit = max(min(request.limit, 100), 1)
     participants = await query.select_related("user").limit(limit).offset(request.offset)
@@ -802,7 +802,7 @@ async def invite_to_channel(request: InviteToChannel, user: User):
         await ChatParticipant.bulk_update(participants_to_update, fields=["left"])
     await ChatInviteRequest.filter(id__in=Subquery(
         ChatInviteRequest.filter(
-            user__id__in=[added_user.id for added_user in added_users], invite__channel=channel,
+            user_id__in=[added_user.id for added_user in added_users], invite__channel=channel,
         ).values_list("id", flat=True)
     )).delete()
 
@@ -905,7 +905,7 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user:
         new_reactions = await Reaction.filter(reaction_id__in=reactions_emoticons)
         current_reactions = dict(await AvailableChannelReaction.filter(
             channel=channel,
-        ).values_list("reaction__id", "id"))
+        ).values_list("reaction_id", "id"))
 
         to_create_reactions = []
 
@@ -1043,7 +1043,7 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
         await MessageContent.filter(id__in=Subquery(
             MessageRef.filter(
                 peer__channel=peer.channel, peer__owner=user, content__type=MessageType.SCHEDULED,
-            ).values_list("content__id", flat=True)
+            ).values_list("content_id", flat=True)
         )).delete()
         await AdminLogEntry.create(
             channel=peer.channel,
@@ -1220,7 +1220,7 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
         if not admin_ids:
             return AdminLogResults(events=[], users=[], chats=[])
 
-        events_q &= Q(user__id__in=admin_ids)
+        events_q &= Q(user_id__in=admin_ids)
 
     # TODO: or __le/__ge?
     if request.max_id:
@@ -1583,7 +1583,7 @@ async def delete_participant_history(request: DeleteParticipantHistory, user: Us
     )
 
     messages_to_delete = await MessageRef.filter(
-        peer__owner=None, peer__channel=channel, content__author__id=target_peer.user_id,
+        peer__owner=None, peer__channel=channel, content__author_id=target_peer.user_id,
     ).order_by("-id").limit(1001).values_list("id", flat=True)
 
     if not messages_to_delete:

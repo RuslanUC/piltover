@@ -119,14 +119,14 @@ class Channel(ChatBase):
             channel_id = channel_ids[0]
             usernames = {
                 channel_id: await models.Username.filter(
-                    channel__id=channel_id,
+                    channel_id=channel_id,
                 ).first().values_list("username", flat=True)
             }
         else:
             usernames = {
                 channel_id: username
                 for channel_id, username in await models.Username.filter(
-                    channel__id__in=channel_ids,
+                    channel_id__in=channel_ids,
                 ).values_list("channel_id", "username")
             }
 

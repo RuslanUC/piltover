@@ -80,7 +80,7 @@ class PrivacyRule(Model):
 
         if all_users:
             await models.PrivacyRuleException.filter(id__in=Subquery(
-                models.PrivacyRuleException.filter(rule=rule, user__id__not_in=all_users).values_list("id", flat=True)
+                models.PrivacyRuleException.filter(rule=rule, user_id__not_in=all_users).values_list("id", flat=True)
             )).delete()
 
             existing = {}
@@ -159,9 +159,9 @@ class PrivacyRule(Model):
         # TODO: check if target_user blocked current_user
 
         rule = await cls.get_or_none(
-            user__id=target_id, key=key,
+            user_id=target_id, key=key,
         ).prefetch_related(Prefetch(
-            "exceptions", queryset=models.PrivacyRuleException.filter(user__id=current_id),
+            "exceptions", queryset=models.PrivacyRuleException.filter(user_id=current_id),
         )).annotate(
             is_contact=Subquery(Contact.filter(
                 owner_id=target_id,
@@ -224,13 +224,13 @@ class PrivacyRule(Model):
         if contacts is None:
             contacts = {
                 contact.owner_id
-                for contact in await models.Contact.filter(owner__id__in=user_ids, target__id=this_user_id)
+                for contact in await models.Contact.filter(owner_id__in=user_ids, target_id=this_user_id)
             }
 
         rules = await cls.filter(
-            key_query, user__id__in=user_ids,
+            key_query, user_id__in=user_ids,
         ).prefetch_related(Prefetch(
-            "exceptions", queryset=models.PrivacyRuleException.filter(user__id=this_user_id),
+            "exceptions", queryset=models.PrivacyRuleException.filter(user_id=this_user_id),
         ))
 
         leftover = {

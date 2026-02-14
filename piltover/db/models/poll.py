@@ -73,8 +73,8 @@ class Poll(Model):
         voter_counts = {
             answer_id: voters
             for answer_id, voters in await models.PollVote.filter(
-                answer__id__in=answer_ids
-            ).group_by("answer__id").annotate(voters=Count("id")).values_list("answer__id", "voters")
+                answer_id__in=answer_ids
+            ).group_by("answer_id").annotate(voters=Count("id")).values_list("answer_id", "voters")
         }
 
         solution_entities = None
@@ -120,9 +120,9 @@ class Poll(Model):
             voter_counts = {
                 (poll_id, answer_id): voters
                 for poll_id, answer_id, voters in await models.PollVote.filter(
-                    answer__id__in=answer_ids
-                ).group_by("answer__id").annotate(voters=Count("id")).values_list(
-                    "answer__poll__id", "answer__id", "voters"
+                    answer_id__in=answer_ids
+                ).group_by("answer_id").annotate(voters=Count("id")).values_list(
+                    "answer__poll_id", "answer_id", "voters"
                 )
             }
         else:
@@ -133,12 +133,12 @@ class Poll(Model):
             total_counts = {
                 poll_id: total_voters
                 for poll_id, total_voters in await models.User.filter(
-                    pollvotes__answer__poll__id__in=poll_ids,
+                    pollvotes__answer__poll_id__in=poll_ids,
                 ).group_by(
-                    "pollvotes__answer__poll__id",
+                    "pollvotes__answer__poll_id",
                 ).annotate(
                     voters=Count("id", distinct=True),
-                ).values_list("pollvotes__answer__poll__id", "total_voters")
+                ).values_list("pollvotes__answer__poll_id", "total_voters")
             }
         else:
             total_counts = {}

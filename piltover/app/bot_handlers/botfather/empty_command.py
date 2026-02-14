@@ -17,7 +17,7 @@ async def botfather_empty_command(peer: Peer, _: MessageRef) -> MessageRef | Non
 
     if state.state is BotFatherState.EDITBOT_WAIT_PRIVACY:
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).select_related("bot")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -27,9 +27,9 @@ async def botfather_empty_command(peer: Peer, _: MessageRef) -> MessageRef | Non
         return await send_bot_message(peer, _bot_privacy_updated, entities=_bot_privacy_updated_entities)
     elif state.state is BotFatherState.EDITBOT_WAIT_COMMANDS:
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        await BotCommand.filter(bot__id=state_data.bot_id).delete()
+        await BotCommand.filter(bot_id=state_data.bot_id).delete()
 
-        bot = await Bot.get_or_none(bot__id=state_data.bot_id, owner=peer.owner).select_related("bot")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).select_related("bot")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 

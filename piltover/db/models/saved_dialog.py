@@ -34,8 +34,8 @@ class SavedDialog(Model):
         return models.MessageRef.filter(
             id__in=Subquery(
                 models.MessageRef.filter(
-                    peer__owner=user, peer__type=PeerType.SELF, content__fwd_header__saved_peer__id__in=peer_ids,
-                ).group_by("content__fwd_header__saved_peer__id").annotate(max_id=Max("id")).values("max_id")
+                    peer__owner=user, peer__type=PeerType.SELF, content__fwd_header__saved_peer_id__in=peer_ids,
+                ).group_by("content__fwd_header__saved_peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
             *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),

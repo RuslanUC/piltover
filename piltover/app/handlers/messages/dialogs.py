@@ -1,7 +1,6 @@
 from datetime import datetime, UTC
 from typing import cast, TypeVar
 
-from loguru import logger
 from tortoise.expressions import Q
 from tortoise.functions import Max
 
@@ -11,7 +10,7 @@ from piltover.context import request_ctx
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Chat, Channel, MessageRef
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc, Unreachable
+from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector, \
     InputPeerChannel
 from piltover.tl.functions.folders import EditPeerFolders
@@ -169,14 +168,14 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
         elif isinstance(peer, InputPeerUser):
             if not User.check_access_hash(user.id, ctx.auth_id, peer.user_id, peer.access_hash):
                 continue
-            add_to_query = Q(peer__type=PeerType.USER, peer__user__id=peer.user_id)
+            add_to_query = Q(peer__type=PeerType.USER, peer__user_id=peer.user_id)
         elif isinstance(peer, InputPeerChat):
-            add_to_query = Q(peer__type=PeerType.CHAT, peer__chat__id=Chat.norm_id(peer.chat_id))
+            add_to_query = Q(peer__type=PeerType.CHAT, peer__chat_id=Chat.norm_id(peer.chat_id))
         elif isinstance(peer, InputPeerChannel):
             channel_id = Channel.norm_id(peer.channel_id)
             if not Channel.check_access_hash(user.id, ctx.auth_id, channel_id, peer.access_hash):
                 continue
-            add_to_query = Q(peer__type=PeerType.CHANNEL, peer__channel__id=channel_id)
+            add_to_query = Q(peer__type=PeerType.CHANNEL, peer__channel_id=channel_id)
         else:
             continue
 
