@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import cast
 
 from tortoise import fields, Model
-from tortoise.expressions import Subquery, Q
+from tortoise.expressions import Subquery
 from tortoise.functions import Count
 from tortoise.queryset import QuerySet
 
@@ -106,11 +106,12 @@ class ChatParticipant(Model):
                 rank=self.admin_rank or None,
             )
         elif self.is_admin:
+            is_self = self.user_id == user.id
             return ChannelParticipantAdmin(
                 user_id=self.user_id,
-                inviter_id=self.inviter_id,
+                inviter_id=(self.inviter_id or 0) if is_self else None,
                 date=int(self.invited_at.timestamp()),
-                is_self=self.user_id == user.id,
+                is_self=is_self,
                 promoted_by=self.promoted_by_id,
                 rank=self.admin_rank or None,
                 admin_rights=self.admin_rights.to_tl(),

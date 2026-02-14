@@ -186,7 +186,7 @@ class Peer(Model):
 
     def target_id_raw(self) -> int:
         if self.type is PeerType.SELF:
-            return self.owner_id
+            return self.user_id
         if self.type is PeerType.USER:
             return self.user_id
         if self.type == PeerType.CHAT:

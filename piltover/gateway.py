@@ -610,8 +610,6 @@ class Client:
     async def _resolve_context_values(values: NeedsContextValues, session: Session) -> ContextValues:
         result = ContextValues()
 
-        # TODO: fetch only those values that are actually needed in *ToFormat
-        #  (e.g. only banned_rights/admin_rights for ChatParticipant, etc.)
         # TODO: cache fetched values
 
         if values.poll_answers:
@@ -631,7 +629,9 @@ class Client:
             if values.channel_participants:
                 peers_q |= Q(channel_id__in=values.channel_participants)
 
-            participants = await ChatParticipant.filter(peers_q, user_id=session.user_id)
+            participants = await ChatParticipant.filter(peers_q, user_id=session.user_id).only(
+                "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at",
+            )
             for participant in participants:
                 if participant.chat_id is not None:
                     result.chat_participants[participant.chat_id] = participant
@@ -662,13 +662,15 @@ class Client:
                 contacts=contact_ids,
             )
 
-            for presence in await Presence.filter(user_id__in=values.users):
+            for presence in await Presence.filter(user_id__in=values.users).only("user_id", "last_seen"):
                 result.presences[presence.user_id] = presence
 
         if peers_q.children:
             result.peers.update({
                 (peer.type, peer.target_id_raw()): peer
-                for peer in await Peer.filter(peers_q, owner_id=session.user_id)
+                for peer in await Peer.filter(
+                    peers_q, owner_id=session.user_id,
+                ).only("type", "user_id", "chat_id", "channel_id")
             })
 
         if values.messages:
