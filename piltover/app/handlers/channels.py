@@ -524,7 +524,7 @@ async def edit_banned(request: EditBanned, user: User):
     if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
         await ChatInviteRequest.filter(id__in=Subquery(
             ChatInviteRequest.filter(user=target_peer.user, invite__channel=channel).values_list("id", flat=True)
-        ))
+        )).delete()
 
     await AdminLogEntry.create(
         channel=channel,
@@ -644,7 +644,7 @@ async def get_participants(request: GetParticipants, user: User):
             query = query.filter(user_id__in=Subquery(
                 MessageRef.filter(
                     peer__owner=None, peer__channel=peer.channel, content__reply_to_id=filt.top_msg_id,
-                ).distinct().values_list("author_id", flat=True)
+                ).distinct().values_list("content__author_id", flat=True)
             ))
     elif isinstance(filt, ChannelParticipantsBanned):
         query = query.annotate(

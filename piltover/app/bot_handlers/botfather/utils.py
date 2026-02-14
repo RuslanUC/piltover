@@ -6,9 +6,7 @@ from piltover.tl import KeyboardButtonRow, KeyboardButtonCallback, ReplyInlineMa
 
 async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[KeyboardButtonRow] | None:
     user_bots = await Username.filter(
-        user__bot=True, user_id__in=Subquery(
-            Bot.filter(owner=user).order_by("-bot_id").values_list("bot_id")
-        ),
+        user__bot=True, user_id__in=Subquery(Bot.filter(owner=user).values_list("bot_id")),
     ).order_by("-user_id").limit(7).offset(page * 6).values_list("username", "user_id")
 
     if not user_bots and not page:
