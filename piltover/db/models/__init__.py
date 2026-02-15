@@ -89,3 +89,4 @@ from .message_content import MessageContent
 from .message_ref import MessageRef
 from .message_media_read import MessageMediaRead
 from .phone_call import PhoneCall
+from .taskiq_scheduled_delete_user import TaskIqScheduledDeleteUser

@@ -18,7 +18,7 @@ class PhoneCodePurpose(IntEnum):
     SIGNIN = 1
     SIGNUP = 2
     CHANGE_NUMBER = 3
-    DELETE_ACCOUNT = 4
+    CANCEL_ACCOUNT_DELETION = 4
 
 
 class SentCode(Model):

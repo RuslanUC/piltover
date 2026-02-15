@@ -1,7 +1,6 @@
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import cast
 
 import pytest
 from pyrogram.errors import PeerIdInvalid, BadRequest
@@ -10,7 +9,6 @@ from pyrogram.raw.functions.contacts import Search, ImportContactToken
 from pyrogram.raw.types import PeerUser
 from pyrogram.utils import get_channel_id
 
-from piltover.tl import UpdateChannel, UpdateNewChannelMessage
 from tests.client import TestClient
 
 

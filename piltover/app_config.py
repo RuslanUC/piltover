@@ -77,6 +77,7 @@ class AppConfig:
 
     SRP_PASSWORD_RESET_WAIT_SECONDS = 86400 * 7
     SCHEDULED_INSTANT_SEND_THRESHOLD = 30
+    ACCOUNT_DELETE_WAIT_SECONDS = 86400 * 7
 
     # TODO: use enum?
     GIFS_PROVIDER = environ.get("GIFS_PROVIDER", "tenor").lower().strip()

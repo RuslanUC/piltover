@@ -1,27 +1,35 @@
+import hashlib
+import hmac
 from base64 import urlsafe_b64encode
 from datetime import date, timedelta, datetime
 from os import urandom
+from time import time
+from typing import cast
+from uuid import UUID
 
 from pytz import UTC
 from tortoise.expressions import Q
-from tortoise.transactions import in_transaction
+from tortoise.transactions import in_transaction, atomic
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.auth import _validate_phone
+from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
+from piltover.app.utils.system_notifications import send_official_notification_message
 from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
-    InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis
+    InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis, \
+    TaskIqScheduledDeleteUser
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, \
     UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
-    EmojiListNotModified, PrivacyValueDisallowAll
+    EmojiListNotModified, PrivacyValueDisallowAll, String
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
@@ -31,7 +39,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
     SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis, \
-    UpdatePersonalChannel, UpdateNotifySettings, SetGlobalPrivacySettings
+    UpdatePersonalChannel, UpdateNotifySettings, SetGlobalPrivacySettings, SendConfirmPhoneCode, ConfirmPhone
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -42,6 +50,15 @@ from piltover.utils.srp import btoi
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("account")
+
+CANCEL_DELETION_FMT = FormatableTextWithEntities((
+    "❗ Your account was **scheduled for deletion** and **will be deleted on {date}**!\n\n"
+    "To cancel account deletion, click this link and confirm your phone number: "
+    "<a>t.me/confirmphone?phone={phone}&hash={hash}</a>."
+))
+DELETION_CANCELLED_FMT, DELETION_CANCELLED_FMT_ENTITIES = FormatableTextWithEntities(
+    "Deletion of your account **was cancelled**!"
+).format()
 
 
 @handler.on_request(CheckUsername, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -492,14 +509,16 @@ async def decline_password_reset(user: User) -> bool:
     return True
 
 
-async def _create_sent_code(user: User, phone_number: str, purpose: PhoneCodePurpose) -> TLSentCode:
+async def _create_sent_code(
+        user: User, phone_number: str, purpose: PhoneCodePurpose, check_user_exists: bool = True,
+) -> TLSentCode:
     try:
         if int(phone_number) < 100000:
             raise ValueError
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
-    if await User.filter(phone_number=phone_number).exists():
+    if check_user_exists and await User.filter(phone_number=phone_number).exists():
         raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")
 
     code = await SentCode.create(
@@ -527,9 +546,7 @@ async def change_phone(request: ChangePhone, user: User) -> TLUser:
     phone_number = _validate_phone(request.phone_number)
     code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.CHANGE_NUMBER)
     await SentCode.check_raise_cls(code, request.phone_code)
-
-    code.used = True
-    await code.save(update_fields=["used"])
+    await SentCode.filter(id=code.id).update(used=True)
 
     if await User.filter(phone_number=request.phone_number).exists():
         raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")
@@ -542,13 +559,41 @@ async def change_phone(request: ChangePhone, user: User) -> TLUser:
     return await user.to_tl()
 
 
-# https://core.telegram.org/api/account-deletion
-#@handler.on_request(SendConfirmPhoneCode)
-#async def send_confirm_phone_code(request: SendConfirmPhoneCode, user: User) -> TLSentCode:
-#    return await _create_sent_code(user, request.phone_number, PhoneCodePurpose.DELETE_ACCOUNT)
-# TODO: ConfirmPhone
+def _make_deletion_cancel_hash(user: User, task_id: bytes) -> str:
+    return hmac.new(
+        AppConfig.HMAC_KEY,
+        Long.write(user.id) + String.write(user.phone_number) + task_id,
+        hashlib.sha1,
+    ).hexdigest()
 
 
+@handler.on_request(SendConfirmPhoneCode, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def send_confirm_phone_code(request: SendConfirmPhoneCode, user: User) -> TLSentCode:
+    task_id = cast(UUID | None, await TaskIqScheduledDeleteUser.filter(user=user).first().values_list("id", flat=True))
+    if task_id is None:
+        raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
+
+    check_hash = _make_deletion_cancel_hash(user, task_id.bytes)
+    if request.hash != check_hash:
+        raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
+
+    return await _create_sent_code(user, user.phone_number, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION, False)
+
+
+@handler.on_request(ConfirmPhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def confirm_phone(request: ConfirmPhone, user: User) -> bool:
+    code = await SentCode.get_(user.phone_number, request.phone_code_hash, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION)
+    await SentCode.check_raise_cls(code, request.phone_code)
+    await SentCode.filter(id=code.id).update(used=True)
+
+    await TaskIqScheduledDeleteUser.filter(user=user).delete()
+
+    await send_official_notification_message(user, DELETION_CANCELLED_FMT, DELETION_CANCELLED_FMT_ENTITIES)
+
+    return True
+
+
+@atomic()
 async def _delete_account(user: User) -> None:
     user.deleted = True
     user.phone_number = None
@@ -558,7 +603,7 @@ async def _delete_account(user: User) -> None:
     user.birthday = None
     user.version += 1
     await user.save(update_fields=[
-        "deleted", "phone_number", "first_name", "last_name", "about", "birthday", "version"
+        "deleted", "phone_number", "first_name", "last_name", "about", "birthday", "version",
     ])
 
     auths = await UserAuthorization.filter(user=user).select_related("key")
@@ -581,7 +626,7 @@ async def delete_account(request: DeleteAccount, user: User) -> bool:
         await _delete_account(user)
         return True
 
-    if (datetime.now(UTC) - timedelta(days=7)) > password.modified_at:
+    if password.modified_at > (datetime.now(UTC) - timedelta(days=7)):
         await _delete_account(user)
         return True
     elif request.password is not None:
@@ -589,9 +634,22 @@ async def delete_account(request: DeleteAccount, user: User) -> bool:
         await _delete_account(user)
         return True
 
-    # TODO: schedule deletion and send service message
-    one_week = 86400 * 7
-    raise ErrorRpc(error_code=420, error_message=f"2FA_CONFIRM_WAIT_{one_week}")
+    task, _ = await TaskIqScheduledDeleteUser.get_or_create(user=user, defaults={
+        "scheduled_time": datetime.now(UTC) + timedelta(seconds=AppConfig.ACCOUNT_DELETE_WAIT_SECONDS),
+        "state_updated_at": int(time()),
+    })
+
+    text, entities = CANCEL_DELETION_FMT.format(
+        date=task.scheduled_time.strftime("%d.%m.%Y at %H:%M:%S"),
+        phone=user.phone_number,
+        hash=_make_deletion_cancel_hash(user, task.id.bytes)
+    )
+    if not await send_official_notification_message(user, text, entities):
+        await task.delete()
+        raise ErrorRpc(error_code=500, error_message="SYSTEM_USER_DOES_NOT_EXIST")
+
+    time_left = max(1, int((task.scheduled_time - datetime.now(UTC)).total_seconds()))
+    raise ErrorRpc(error_code=420, error_message=f"2FA_CONFIRM_WAIT_{time_left}")
 
 
 @handler.on_request(GetChatThemes, ReqHandlerFlags.BOT_NOT_ALLOWED)

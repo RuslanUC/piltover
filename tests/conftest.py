@@ -3,7 +3,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 import logging
-from asyncio import Task, DefaultEventLoopPolicy
+from asyncio import Task, DefaultEventLoopPolicy, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
 from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable
@@ -312,8 +312,11 @@ InterceptHandler.redirect_to_loguru("tg_secret.client", logging.DEBUG)
 
 
 def _async_task_done_callback(task: Task) -> None:
-    if task.exception() is not None:
-        logger.opt(exception=task.exception()).error("Async task raised an exception")
+    try:
+        if task.exception() is not None:
+            logger.opt(exception=task.exception()).error("Async task raised an exception")
+    except CancelledError as e:
+        logger.opt(exception=e).error("Async task was cancelled")
 
 
 class CustomEventLoop(DefaultEventLoopPolicy._loop_factory):

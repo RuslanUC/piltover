@@ -1,10 +1,18 @@
+import re
 from contextlib import AsyncExitStack
+from datetime import timedelta, datetime, UTC
+from typing import cast
 
 import pytest
-from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified, TtlDaysInvalid
-from pyrogram.raw.functions.account import CheckUsername, SetAccountTTL, GetAccountTTL, GetAuthorizations
-from pyrogram.raw.types import UpdateUserName, UpdateUser, AccountDaysTTL
+from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified, TtlDaysInvalid, AuthKeyUnregistered, \
+    TwoFaConfirmWait, PasswordHashInvalid
+from pyrogram.raw.functions.account import CheckUsername, SetAccountTTL, GetAccountTTL, GetAuthorizations, \
+    DeleteAccount, GetPassword, SendConfirmPhoneCode, ConfirmPhone
+from pyrogram.raw.types import UpdateUserName, UpdateUser, AccountDaysTTL, CodeSettings, UpdateNewMessage
+from pyrogram.raw.types.auth import SentCode as TLSentCode
+from pyrogram.utils import compute_password_check
 
+from piltover.db.models import User, UserPassword, SentCode, PhoneCodePurpose, TaskIqScheduledDeleteUser
 from tests.client import TestClient
 
 
@@ -203,3 +211,125 @@ async def test_get_authorizations_multiple(exit_stack: AsyncExitStack) -> None:
 
     not_current = [auth for auth in authorizations.authorizations if not auth.current]
     assert all(auth.hash != 0 for auth in not_current)
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_delete_account_without_password() -> None:
+    client = TestClient(phone_number="123456789")
+    async with client:
+        await client.invoke(DeleteAccount(reason="testing"))
+
+    user = await User.get_or_none(id=client.me.id)
+    assert user is not None
+    assert user.deleted
+
+    with pytest.raises(AuthKeyUnregistered):
+        async with client:
+            await client.get_me()
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_delete_account_password_modified_right_now() -> None:
+    client = TestClient(phone_number="123456789")
+    async with client:
+        await client.enable_cloud_password("test_passw0rd")
+        await client.invoke(DeleteAccount(reason="testing"))
+
+    user = await User.get_or_none(id=client.me.id)
+    assert user is not None
+    assert user.deleted
+
+    with pytest.raises(AuthKeyUnregistered):
+        async with client:
+            await client.get_me()
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_delete_account_password_modified_last_year_nopassword() -> None:
+    client = TestClient(phone_number="123456789")
+    async with client:
+        await client.enable_cloud_password("test_passw0rd")
+        await UserPassword.filter(user_id=client.me.id).update(modified_at=datetime.now(UTC) - timedelta(days=365))
+
+        with pytest.raises(TwoFaConfirmWait):
+            await client.invoke(DeleteAccount(reason="testing"))
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_delete_account_password_modified_last_year_wrong_password() -> None:
+    client = TestClient(phone_number="123456789")
+    async with client:
+        await client.enable_cloud_password("test_passw0rd")
+        await UserPassword.filter(user_id=client.me.id).update(modified_at=datetime.now(UTC) - timedelta(days=365))
+
+        with pytest.raises(PasswordHashInvalid):
+            await client.invoke(DeleteAccount(
+                reason="testing",
+                password=compute_password_check(await client.invoke(GetPassword()), "wrong_password")
+            ))
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_delete_account_password_modified_last_year_correct_password() -> None:
+    password = "test_passw0rd"
+    client = TestClient(phone_number="123456789")
+    async with client:
+        await client.enable_cloud_password(password)
+        await UserPassword.filter(user_id=client.me.id).update(modified_at=datetime.now(UTC) - timedelta(days=365))
+
+        await client.invoke(DeleteAccount(
+            reason="testing",
+            password=compute_password_check(await client.invoke(GetPassword()), password)
+        ))
+
+    user = await User.get_or_none(id=client.me.id)
+    assert user is not None
+    assert user.deleted
+
+    with pytest.raises(AuthKeyUnregistered):
+        async with client:
+            await client.get_me()
+
+
+CONFIRM_PATTERN = re.compile(r't.me/confirmphone\?phone=\d+&hash=([a-f0-9]+)')
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_delete_account_password_scheduled_cancel(exit_stack: AsyncExitStack) -> None:
+    client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+
+    await client.enable_cloud_password("test_passw0rd")
+    await UserPassword.filter(user_id=client.me.id).update(modified_at=datetime.now(UTC) - timedelta(days=365))
+
+    with pytest.raises(TwoFaConfirmWait):
+        await client.invoke(DeleteAccount(reason="testing"))
+
+    await client.expect_update(UpdateNewMessage)
+
+    assert TaskIqScheduledDeleteUser.filter(user_id=client.me.id).exists()
+
+    confirm_message = [m async for m in client.get_chat_history(777000, limit=1)][0]
+    print(repr(confirm_message.text))
+    confirm_hash = CONFIRM_PATTERN.findall(confirm_message.text)[0]
+
+    sent = cast(TLSentCode, await client.invoke(SendConfirmPhoneCode(
+        hash=confirm_hash,
+        settings=CodeSettings(),
+    )))
+
+    await SentCode.filter(
+        user_id=client.me.id, purpose=PhoneCodePurpose.CANCEL_ACCOUNT_DELETION
+    ).update(code=123456)
+
+    await client.invoke(ConfirmPhone(
+        phone_code_hash=sent.phone_code_hash,
+        phone_code="123456",
+    ))
+
+    assert TaskIqScheduledDeleteUser.filter(user_id=client.me.id).exists()

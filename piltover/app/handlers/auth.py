@@ -8,16 +8,17 @@ from loguru import logger
 from mtproto import ConnectionRole
 from mtproto.packets import EncryptedMessagePacket, MessagePacket
 from pytz import UTC
-from tortoise.expressions import Q, Subquery
+from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
+from piltover.app.utils.system_notifications import send_official_notification_message
 from piltover.app.utils.utils import check_password_internal
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, TempAuthKey, SentCode, User, \
-    QrLogin, PhoneCodePurpose, Bot, State, MessageRef
+    QrLogin, PhoneCodePurpose, Bot, State
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session_manager import SessionManager
@@ -83,22 +84,9 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
     if user is None:
         return resp
 
-    system_user = await User.get_or_none(id=777000)
-    if system_user is None:
-        return resp
-
-    peer_system, created = await Peer.get_or_create(owner=user, user=system_user, type=PeerType.USER)
-    if not created:
-        peer_system.owner = user
-        peer_system.user = system_user
-
     text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
-    message = await MessageRef.create_for_peer(
-        peer_system, system_user, opposite=False, unhide_dialog=True,
-        message=text, entities=entities,
-    )
-
-    await upd.send_message(user, message, False)
+    if not await send_official_notification_message(user, text, entities):
+        return resp
 
     resp.type_ = SentCodeTypeApp(length=5)
     return resp
