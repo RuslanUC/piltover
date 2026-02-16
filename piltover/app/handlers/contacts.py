@@ -232,7 +232,8 @@ async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
     if (resolved := await User.get_or_none(phone_number=request.phone)) is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_NOT_OCCUPIED")
 
-    # TODO: dont allow user to resolve phone if target user disallowed this via privacy rules
+    if not await PrivacyRule.has_access_to(user, resolved, PrivacyRuleKeyType.ADDED_BY_PHONE):
+        raise ErrorRpc(error_code=400, error_message="PHONE_NOT_OCCUPIED")
 
     return await _format_resolved_peer_by_phone(user, resolved)
 
