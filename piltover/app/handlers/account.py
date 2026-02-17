@@ -619,7 +619,7 @@ async def _delete_account(user: User) -> None:
     await SessionManager.send(UpdatesTooLong(), key_id=keys, auth_id=auth_ids)
 
 
-@handler.on_request(DeleteAccount, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(DeleteAccount, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.ALLOW_MFA_PENDING)
 async def delete_account(request: DeleteAccount, user: User) -> bool:
     password = await UserPassword.get_or_none(user=user)
     if password is None or password.password is None:
@@ -638,6 +638,10 @@ async def delete_account(request: DeleteAccount, user: User) -> bool:
         "scheduled_time": datetime.now(UTC) + timedelta(seconds=AppConfig.ACCOUNT_DELETE_WAIT_SECONDS),
         "state_updated_at": int(time()),
     })
+
+    if task.scheduled_time < datetime.now(UTC):
+        await _delete_account(user)
+        return True
 
     text, entities = CANCEL_DELETION_FMT.format(
         date=task.scheduled_time.strftime("%d.%m.%Y at %H:%M:%S"),

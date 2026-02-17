@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
 from loguru import logger
-from tortoise.expressions import Q, F, Subquery
+from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
