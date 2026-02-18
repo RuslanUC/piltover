@@ -7,10 +7,11 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
 from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage, Long, \
-    UpdateChannelAvailableMessages
+    UpdateChannelAvailableMessages, UpdatePinnedChannelMessages
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
-UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMessage | UpdateChannelAvailableMessages
+UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMessage | UpdateChannelAvailableMessages \
+              | UpdatePinnedChannelMessages
 
 
 class ChannelUpdate(Model):
@@ -61,6 +62,16 @@ class ChannelUpdate(Model):
                 return UpdateChannelAvailableMessages(
                     channel_id=models.Channel.make_id_from(self.channel_id),
                     available_min_id=Long.read_bytes(self.extra_data),
+                )
+            case ChannelUpdateType.PIN_MESSAGES | ChannelUpdateType.UNPIN_MESSAGES:
+                message_ids = [Long.read_bytes(self.extra_data[i * 8:(i + 1) * 8]) for i in range(self.pts_count)]
+
+                return UpdatePinnedChannelMessages(
+                    pinned=self.type is ChannelUpdateType.PIN_MESSAGES,
+                    channel_id=models.Channel.make_id_from(self.channel_id),
+                    messages=message_ids,
+                    pts=self.pts,
+                    pts_count=self.pts_count,
                 )
 
         return None

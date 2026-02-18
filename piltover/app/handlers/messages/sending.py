@@ -8,7 +8,7 @@ from uuid import UUID
 from fastrand import xorshift128plusrandint
 from loguru import logger
 from taskiq.kicker import AsyncKicker
-from tortoise.expressions import Q, F
+from tortoise.expressions import Q, F, Subquery
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -34,7 +34,7 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
     ForwardMessages_176, SaveDraft_166, ClearAllDrafts, SaveDraft_148, SaveDraft_133, SendInlineBotResult_133, \
     SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
-    SendInlineBotResult, SendMultiMedia_176
+    SendInlineBotResult, SendMultiMedia_176, UnpinAllMessages
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -394,11 +394,13 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     if (message := await MessageRef.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
+    # TODO: update in transaction
     message.pinned = not request.unpin
+    message.version += 1
     messages = {peer: message}
 
     opposite_peers = await peer.get_opposite()
-    if (not request.pm_oneside or peer.type is PeerType.CHANNEL) and opposite_peers:
+    if not (request.pm_oneside or peer.type is PeerType.CHANNEL) and opposite_peers:
         other_messages = await MessageRef.filter(
             peer__in=opposite_peers, content_id=message.content_id,
         ).select_related("peer", "peer__owner")
@@ -406,11 +408,19 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
             other_message.pinned = message.pinned
             messages[other_message.peer] = other_message
 
-    await MessageRef.bulk_update(messages.values(), ["pinned"])
+    await MessageRef.bulk_update(messages.values(), ["pinned", "version"])
 
-    result = await upd.pin_message(user, messages)
+    if peer.type is PeerType.CHANNEL:
+        if len(messages) != 1:
+            raise Unreachable
+        _, _, result = await upd.pin_channel_messages(peer.channel, [next(iter(messages.values()))])
+    else:
+        _, _, result = await upd.pin_messages(user, {
+            peer: [message]
+            for peer, message in messages.items()
+        })
 
-    if not request.silent and not request.pm_oneside:
+    if not request.unpin and not request.silent and not request.pm_oneside:
         updates = await send_message_internal(
             user, peer, None, message.id, False, author=user, type=MessageType.SERVICE_PIN_MESSAGE,
             extra_info=MessageActionPinMessage().write(),
@@ -1258,4 +1268,65 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
         #reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot,
+    )
+
+
+@handler.on_request(UnpinAllMessages)
+async def unpin_all_messages(request: UnpinAllMessages, user: User) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    participant = None
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        chat_or_channel = peer.chat_or_channel
+        participant = await chat_or_channel.get_participant_raise(user)
+        if not chat_or_channel.can_pin_messages(participant):
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+
+    await _check_bot_blocked(user, peer)
+
+    if peer.type is PeerType.SELF:
+        peer_query = Q(peer=peer)
+    elif peer.type is PeerType.USER:
+        peer_query = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id) | Q(peer=peer)
+    elif peer.type is PeerType.CHAT:
+        peer_query = Q(peer__chat_id=peer.chat_id)
+    elif peer.type is PeerType.CHANNEL:
+        peer_query = Q(peer__owner=None, peer__channel_id=peer.channel_id)
+        peer_query = await append_channel_min_message_id_to_query_maybe(peer, peer_query, participant)
+    else:
+        raise Unreachable
+
+    message_ids = await MessageRef.filter(
+        peer_query & Q(pinned=True, content__type=MessageType.REGULAR),
+    ).values_list("id", flat=True)
+
+    if not message_ids:
+        if peer.type is PeerType.CHANNEL:
+            pts = peer.channel.pts
+        else:
+            pts = await State.add_pts(user, 0)
+
+        return AffectedHistory(
+            pts=pts,
+            pts_count=0,
+            offset=0,
+        )
+
+    await MessageRef.filter(id__in=message_ids).update(pinned=False, version=F("version") + 1)
+    messages = await MessageRef.filter(id__in=message_ids).select_related("peer")
+
+    by_peer = defaultdict(list)
+    for message in messages:
+        by_peer[message.peer].append(message)
+
+    if peer.type is PeerType.CHANNEL:
+        if len(by_peer) != 1:
+            raise Unreachable
+        pts, pts_count, _ = await upd.pin_channel_messages(peer.channel, messages)
+    else:
+        pts, pts_count, _ = await upd.pin_messages(user, by_peer)
+
+    return AffectedHistory(
+        pts=pts,
+        pts_count=pts_count,
+        offset=0,
     )

@@ -95,12 +95,12 @@ class UpdateType(IntEnum):
     MESSAGE_DELETE = 0
     # related_id is a message id
     MESSAGE_EDIT = 1
-    # Should (probably) be only one update of this type per chat
-    # related_id is a chat id
+    # Deprecated in favor of READ_INBOX/READ_INBOX_CHANNEL
     READ_HISTORY_INBOX = 2
     DIALOG_PIN = 3
     DRAFT_UPDATE = 4
     DIALOG_PIN_REORDER = 5
+    # Probably deprecated idk (in favor of PIN_MESSAGES/UNPIN_MESSAGES)
     MESSAGE_PIN_UPDATE = 6
     USER_UPDATE = 7
     CHAT_CREATE = 8
@@ -146,6 +146,8 @@ class UpdateType(IntEnum):
     UPDATE_CHANNEL_MIN_AVAILABLE_ID = 48
     READ_INBOX_CHANNEL = 49
     READ_OUTBOX_CHANNEL = 50
+    PIN_MESSAGES = 51
+    UNPIN_MESSAGES = 52
 
 
 class SecretUpdateType(IntEnum):
@@ -225,6 +227,8 @@ class ChannelUpdateType(IntEnum):
     EDIT_MESSAGE = 2
     DELETE_MESSAGES = 3
     UPDATE_MIN_AVAILABLE_ID = 4
+    PIN_MESSAGES = 5
+    UNPIN_MESSAGES = 6
 
 
 class DialogFolderId(IntEnum):

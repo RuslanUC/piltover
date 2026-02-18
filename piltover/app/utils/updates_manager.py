@@ -1,3 +1,4 @@
+from asyncio import sleep
 from time import time
 from typing import overload
 
@@ -25,7 +26,8 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents, \
-    UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData, UpdateReadChannelOutbox
+    UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData, UpdateReadChannelOutbox, \
+    UpdatePinnedChannelMessages
 from piltover.tl.to_format import DumbChannelMessageToFormat
 from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
@@ -542,48 +544,158 @@ async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
     await SessionManager.send(updates, user.id)
 
 
-async def pin_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
+async def pin_messages(
+        user: User, messages_by_peer: dict[Peer, list[MessageRef]],
+) -> tuple[int, int, Updates]:
     updates_to_create = []
+    user_pts = user_pts_count = 0
     result_update = None
 
     ucc = UsersChatsChannels()
-    ucc.add_message(next(iter(messages.values())).content_id)
+    for peer in messages_by_peer.keys():
+        ucc.add_peer(peer)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
-    for peer, message in messages.items():
-        pts = await State.add_pts(peer.owner, 1)
+    for peer, messages in messages_by_peer.items():
+        pts = await State.add_pts(peer.owner, len(messages))
 
-        updates_to_create.append(
-            Update(
-                user=peer.owner,
-                update_type=UpdateType.MESSAGE_PIN_UPDATE,
-                pts=pts,
-                related_id=message.id,
-            )
+        pinned_update = UpdatePinnedMessages(
+            pinned=True,
+            peer=peer.to_tl(),
+            messages=[],
+            pts=pts,
+            pts_count=0,
+        )
+        unpinned_update = UpdatePinnedMessages(
+            pinned=False,
+            peer=peer.to_tl(),
+            messages=[],
+            pts=pts,
+            pts_count=0,
         )
 
-        update = UpdatesWithDefaults(
-            updates=[
-                UpdatePinnedMessages(
-                    pinned=message.pinned,
-                    peer=message.peer.to_tl(),
-                    messages=[message.id],
-                    pts=pts,
-                    pts_count=1,
+        for message in messages:
+            await sleep(0)
+            if message.pinned:
+                pinned_update.pts_count += 1
+                pinned_update.messages.append(message.id)
+            else:
+                unpinned_update.pts_count += 1
+                unpinned_update.messages.append(message.id)
+
+        pinned_update.pts -= unpinned_update.pts_count
+
+        updates = []
+
+        if pinned_update.pts_count:
+            updates.append(pinned_update)
+            updates_to_create.append(
+                Update(
+                    user=peer.owner,
+                    update_type=UpdateType.PIN_MESSAGES,
+                    pts=pinned_update.pts,
+                    pts_count=pinned_update.pts_count,
+                    related_id=peer.id,
+                    related_ids=pinned_update.messages,
                 )
-            ],
+            )
+        if unpinned_update.pts_count:
+            updates.append(unpinned_update)
+            updates_to_create.append(
+                Update(
+                    user=peer.owner,
+                    update_type=UpdateType.UNPIN_MESSAGES,
+                    pts=unpinned_update.pts,
+                    pts_count=unpinned_update.pts_count,
+                    related_id=peer.id,
+                    related_ids=unpinned_update.messages,
+                )
+            )
+
+        update = UpdatesWithDefaults(
+            updates=updates,
             users=users,
             chats=chats_and_channels,
         )
 
         if user.id == peer.owner.id:
             result_update = update
+            user_pts = pts
+            user_pts_count = len(messages)
 
         await SessionManager.send(update, peer.owner.id)
 
     await Update.bulk_create(updates_to_create)
-    return result_update
+    return user_pts, user_pts_count, result_update
+
+
+async def pin_channel_messages(channel: Channel, messages: list[MessageRef]) -> tuple[int, int, Updates]:
+    pts = await channel.add_pts(len(messages))
+    updates_to_create = []
+
+    pinned_update = UpdatePinnedChannelMessages(
+        pinned=True,
+        channel_id=channel.make_id(),
+        messages=[],
+        pts=pts,
+        pts_count=0,
+    )
+    unpinned_update = UpdatePinnedChannelMessages(
+        pinned=False,
+        channel_id=channel.make_id(),
+        messages=[],
+        pts=pts,
+        pts_count=0,
+    )
+
+    for message in messages:
+        await sleep(0)
+        if message.pinned:
+            pinned_update.pts_count += 1
+            pinned_update.messages.append(message.id)
+        else:
+            unpinned_update.pts_count += 1
+            unpinned_update.messages.append(message.id)
+
+    pinned_update.pts -= unpinned_update.pts_count
+
+    updates = []
+
+    if pinned_update.pts_count:
+        updates.append(pinned_update)
+        updates_to_create.append(
+            ChannelUpdate(
+                channel=channel,
+                type=ChannelUpdateType.PIN_MESSAGES,
+                pts=pinned_update.pts,
+                pts_count=pinned_update.pts_count,
+                related_id=None,
+                extra_data=b"".join([Long.write(message_id) for message_id in pinned_update.messages]),
+            )
+        )
+    if unpinned_update.pts_count:
+        updates.append(unpinned_update)
+        updates_to_create.append(
+            ChannelUpdate(
+                channel=channel,
+                type=ChannelUpdateType.UNPIN_MESSAGES,
+                pts=unpinned_update.pts,
+                pts_count=unpinned_update.pts_count,
+                related_id=None,
+                extra_data=b"".join([Long.write(message_id) for message_id in unpinned_update.messages]),
+            )
+        )
+
+    updates_to_send = UpdatesWithDefaults(
+        updates=updates,
+        users=[],
+        chats=[await channel.to_tl()],
+    )
+    await SessionManager.send(updates_to_send, channel_id=channel.id)
+
+    await ChannelUpdate.bulk_create(updates_to_create)
+    return pts, len(messages), updates_to_send
 
 
 async def update_user(user: User) -> None:

@@ -62,6 +62,7 @@ class Update(Model):
                     pts=self.pts,
                     pts_count=len(self.related_ids),
                 )
+
             case UpdateType.MESSAGE_EDIT:
                 message = await models.MessageRef.get_or_none(id=self.related_id).select_related(
                     *models.MessageRef.PREFETCH_FIELDS,
@@ -638,6 +639,20 @@ class Update(Model):
                 return UpdateChannelAvailableMessages(
                     channel_id=models.Channel.make_id_from(self.related_id),
                     available_min_id=self.additional_data[0],
+                )
+
+            case UpdateType.PIN_MESSAGES | UpdateType.UNPIN_MESSAGES:
+                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
+                    return None
+
+                ucc.add_peer(peer)
+
+                return UpdatePinnedMessages(
+                    pinned=self.update_type is UpdateType.PIN_MESSAGES,
+                    peer=peer.to_tl(),
+                    messages=self.related_ids,
+                    pts=self.pts,
+                    pts_count=self.pts_count,
                 )
 
         return None

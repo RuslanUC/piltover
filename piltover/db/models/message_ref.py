@@ -73,7 +73,7 @@ class MessageRef(Model):
         for message_type in types:
             types_query |= Q(content__type=message_type)
 
-        query = peer.q_this_and_channel() & types_query & Q(id=id_)
+        query = peer.q_this_or_channel() & types_query & Q(id=id_)
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.get_or_none(query).select_related(
@@ -82,7 +82,7 @@ class MessageRef(Model):
 
     @classmethod
     async def get_many(cls, ids: list[int], peer: models.Peer, prefetch_all: bool = False) -> list[Self]:
-        query = peer.q_this_and_channel() & Q(id__in=ids, content__type=MessageType.REGULAR)
+        query = peer.q_this_or_channel() & Q(id__in=ids, content__type=MessageType.REGULAR)
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.filter(query).select_related(
