@@ -18,7 +18,8 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
     AdminLogEntryAction
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
-    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent
+    Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent, \
+    ReadHistoryChunk
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -737,14 +738,16 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     if request.max_id <= read_state.last_message_id:
         return True
 
-    unread_max_id = cast(
+    unread_ids = cast(
         int | None,
         await MessageRef.filter(
             id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
-        ).order_by("-id").first().values_list("id", flat=True)
+        ).order_by("-id").first().values_list("id", "content_id")
     )
-    if not unread_max_id:
+    if not unread_ids:
         return True
+
+    unread_max_id, content_id = unread_ids
 
     unread_count = await MessageRef.filter(peer__owner=None, peer__channel=peer.channel, id__gt=unread_max_id).count()
 
@@ -752,7 +755,7 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
     read_state.last_message_id = unread_max_id
     await read_state.save(update_fields=["last_message_id"])
 
-    # TODO: create ReadHistoryChunk?
+    await ReadHistoryChunk.create(peer=peer, read_content_id=content_id)
 
     await upd.update_read_history_inbox_channel(user, peer.channel_id, unread_max_id, unread_count)
 

@@ -975,26 +975,26 @@ async def get_message_read_participants(request: GetMessageReadParticipants, use
     if await ChatParticipant.filter(**peer.query_chat_or_channel()).count() > 100:
         raise ErrorRpc(error_code=400, error_message="CHAT_TOO_BIG")
 
-    message = await MessageRef.get_or_none(peer=peer, id=request.msg_id, content__author=user)
+    message = await MessageRef.get_or_none(peer.q_this_or_channel(), id=request.msg_id, content__author=user)
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
 
     if peer.type is PeerType.CHAT:
-        peer_q = Q(peer__chat=peer.chat, peer__owner__not=peer.owner)
+        peer_q = Q(peer__chat=peer.chat, peer__owner_id__not=peer.owner_id)
     elif peer.type is PeerType.CHANNEL:
-        peer_q = Q(peer__channel=peer.channel, peer__owner__not=peer.owner)
+        peer_q = Q(peer__channel=peer.channel, peer__owner_id__not=peer.owner_id)
     else:
         raise Unreachable
 
     read_dates = await ReadHistoryChunk.filter(
         peer_q, peer__owner__read_dates_private=False, read_content_id__gte=message.content_id,
-    ).group_by("peer__owner_id").annotate(read_at=Min("read_at")).values_list("peer__ownerid", "read_date")
+    ).group_by("peer__owner_id").annotate(read_at=Min("read_at")).limit(50).values_list("peer__owner_id", "read_at")
 
     result = TLObjectVector()
     for user_id, read_at in read_dates:
         result.append(ReadParticipantDate(
             user_id=user_id,
-            date=read_at,
+            date=int(read_at.timestamp()),
         ))
 
     return result
