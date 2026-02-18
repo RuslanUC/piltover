@@ -1,14 +1,20 @@
+from os import urandom
+
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
-    PeerSettings, TLObjectVector
+    PeerSettings, TLObjectVector, SponsoredMessage
+from piltover.tl.base.channels import SponsoredMessageReportResult
+from piltover.tl.functions.channels import GetSponsoredMessages_133
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
     GetEmojiKeywordsLanguages, GetWebPage, GetTopReactions, GetAttachMenuBots, \
     GetStickers, GetSuggestedDialogFilters, GetSavedReactionTags, \
     GetFeaturedStickers, GetFeaturedEmojiStickers, GetEmojiKeywords, GetWebPagePreview, GetDefaultTagReactions, \
-    GetEmojiKeywordsDifference, GetAvailableEffects
+    GetEmojiKeywordsDifference, GetAvailableEffects, GetSponsoredMessages, ReportSponsoredMessage, ViewSponsoredMessage, \
+    ClickSponsoredMessage
+from piltover.tl.types.channels import SponsoredMessageReportResultReported
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
     Stickers, FeaturedStickers, MessageEditData, \
-    QuickReplies, AvailableEffects
+    QuickReplies, AvailableEffects, SponsoredMessages, SponsoredMessagesEmpty
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
@@ -128,3 +134,46 @@ async def get_available_effects() -> AvailableEffects:  # pragma: no cover
         effects=[],
         documents=[],
     )
+
+
+@handler.on_request(GetSponsoredMessages_133, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetSponsoredMessages, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_sponsored_messages() -> SponsoredMessages | SponsoredMessagesEmpty:  # pragma: no cover
+    return SponsoredMessagesEmpty()
+
+    # return SponsoredMessages(
+    #     messages=[
+    #         SponsoredMessage(
+    #             recommended=True,
+    #             can_report=True,
+    #             random_id=urandom(16),
+    #             url="t.me",
+    #             title=f"{i}",
+    #             message=f"{i}",
+    #             entities=None,
+    #             photo=None,
+    #             media=None,
+    #             color=None,
+    #             button_text=f"{i}",
+    #             sponsor_info=None,
+    #             additional_info=None,
+    #         ) for i in range(10000)
+    #     ],
+    #     chats=[],
+    #     users=[],
+    # )
+
+
+@handler.on_request(ReportSponsoredMessage, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def report_sponsored_message() -> SponsoredMessageReportResult:  # pragma: no cover
+    return SponsoredMessageReportResultReported()
+
+
+@handler.on_request(ClickSponsoredMessage, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def click_sponsored_message() -> bool:  # pragma: no cover
+    return True
+
+
+@handler.on_request(ViewSponsoredMessage, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def view_sponsored_message() -> bool:  # pragma: no cover
+    return True

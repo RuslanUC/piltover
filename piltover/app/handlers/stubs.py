@@ -28,12 +28,6 @@ async def get_boosts_status() -> BoostsStatus:  # pragma: no cover
     )
 
 
-@handler.on_request(GetSponsoredMessages_133, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-@handler.on_request(GetSponsoredMessages, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_sponsored_messages() -> SponsoredMessages | SponsoredMessagesEmpty:  # pragma: no cover
-    return SponsoredMessagesEmpty()
-
-
 @handler.on_request(GetMyBoosts, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_my_boosts() -> MyBoosts:  # pragma: no cover
     return MyBoosts(my_boosts=[], chats=[], users=[])
