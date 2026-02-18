@@ -3,6 +3,7 @@ from time import time
 from typing import cast
 
 from tortoise.expressions import Q, Subquery, RawSQL
+from tortoise.functions import Max
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -37,7 +38,7 @@ from piltover.tl.functions.channels import GetChannelRecommendations, GetAdmined
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
     GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden, \
-    ReadMessageContents, DeleteHistory, DeleteParticipantHistory, ReorderUsernames
+    ReadMessageContents, DeleteHistory, DeleteParticipantHistory, ReorderUsernames, DeactivateAllUsernames
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -726,6 +727,8 @@ async def get_participant(request: GetParticipant, user: User):
 
 @handler.on_request(ReadHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_channel_history(request: ReadHistory, user: User) -> bool:
+    # TODO: exclude messages that are not available for the user
+
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
@@ -745,12 +748,26 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
 
     unread_count = await MessageRef.filter(peer__owner=None, peer__channel=peer.channel, id__gt=unread_max_id).count()
 
+    prev_last_id = read_state.last_message_id
     read_state.last_message_id = unread_max_id
     await read_state.save(update_fields=["last_message_id"])
 
-    # TODO: create and send outbox read update if supergroup
+    # TODO: create ReadHistoryChunk?
 
     await upd.update_read_history_inbox_channel(user, peer.channel_id, unread_max_id, unread_count)
+
+    read_messages_by_user_ids = {
+        user_id: max_id
+        for user_id, max_id in await MessageRef.filter(
+            peer__owner=None, peer__channel=peer.channel, id__gt=prev_last_id, id__lte=unread_max_id,
+        ).group_by("content__author_id").annotate(max_id=Max("id")).values_list("content__author_id", "max_id")
+    }
+    if read_messages_by_user_ids:
+        read_messages_by_users = {
+            read_user: read_messages_by_user_ids[read_user.id]
+            for read_user in await User.filter(id__in=list(read_messages_by_user_ids)).only("id")
+        }
+        await upd.update_read_history_outbox_channel(peer.channel, read_messages_by_users)
 
     return True
 
@@ -1605,4 +1622,9 @@ async def delete_participant_history(request: DeleteParticipantHistory, user: Us
 
 @handler.on_request(ReorderUsernames)
 async def reorder_usernames() -> bool:
+    return True
+
+
+@handler.on_request(DeactivateAllUsernames)
+async def deactivate_all_usernames() -> bool:
     return True

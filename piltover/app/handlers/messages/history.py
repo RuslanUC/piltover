@@ -141,7 +141,7 @@ async def get_messages_query_internal(
 
     if after_reaction_id is not None:
         user_id = peer.owner_id if isinstance(peer, Peer) else peer.id
-        query &= Q(content__messagereactions_id__gt=after_reaction_id, content__author_id__not=user_id)
+        query &= Q(content__messagereactions__id__gt=after_reaction_id, content__author_id__not=user_id)
 
     if only_mentions:
         if isinstance(peer, Peer) and peer.type in (PeerType.CHAT, PeerType.CHANNEL):

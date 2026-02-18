@@ -145,6 +145,7 @@ class UpdateType(IntEnum):
     PHONE_CALL = 47
     UPDATE_CHANNEL_MIN_AVAILABLE_ID = 48
     READ_INBOX_CHANNEL = 49
+    READ_OUTBOX_CHANNEL = 50
 
 
 class SecretUpdateType(IntEnum):

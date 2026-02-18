@@ -24,6 +24,8 @@ class State(Model):
             unread_count=0,
         )
 
+    # TODO: add add_pts_bulk
+
     @classmethod
     async def add_pts(cls, user: models.User, pts_count: int) -> int:
         if pts_count <= 0:

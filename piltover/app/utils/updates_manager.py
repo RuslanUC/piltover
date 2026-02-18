@@ -25,7 +25,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, UpdateUserPhone, \
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents, \
-    UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData
+    UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData, UpdateReadChannelOutbox
 from piltover.tl.to_format import DumbChannelMessageToFormat
 from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
@@ -869,6 +869,35 @@ async def update_read_history_inbox_channel(user: User, channel_id: int, max_id:
     await SessionManager.send(updates, user.id)
 
     return updates
+
+
+async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[User, int]) -> None:
+    updates_to_create = []
+
+    channels = [await channel.to_tl()]
+
+    for user, max_id in max_ids.items():
+        pts = await State.add_pts(user, 1)
+        updates_to_create.append(Update(
+            user=user, update_type=UpdateType.READ_OUTBOX_CHANNEL, pts=pts, pts_count=1, related_id=channel.id,
+            additional_data=[max_id],
+        ))
+
+        updates = UpdatesWithDefaults(
+            updates=[
+                UpdateReadChannelOutbox(
+                    channel_id=channel.make_id(),
+                    max_id=max_id,
+                ),
+            ],
+            users=[],
+            chats=channels,
+        )
+
+        await SessionManager.send(updates, user.id)
+
+    if updates_to_create:
+        await Update.bulk_create(updates_to_create)
 
 
 async def update_read_history_outbox(messages: dict[Peer, int]) -> None:

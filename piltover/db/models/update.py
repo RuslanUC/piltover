@@ -17,7 +17,8 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
-    UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID, UpdatePhoneCall, UpdateChannelAvailableMessages
+    UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID, UpdatePhoneCall, UpdateChannelAvailableMessages, \
+    UpdateReadChannelOutbox
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -30,7 +31,7 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
               | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers \
               | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs | UpdatePrivacy \
-              | UpdateMessageID | UpdatePhoneCall | UpdateChannelAvailableMessages
+              | UpdateMessageID | UpdatePhoneCall | UpdateChannelAvailableMessages | UpdateReadChannelOutbox
 
 
 class Update(Model):
@@ -308,6 +309,16 @@ class Update(Model):
                     max_id=self.additional_data[0],
                     pts=self.pts,
                     pts_count=self.pts_count,
+                )
+
+            case UpdateType.READ_OUTBOX_CHANNEL:
+                if not self.additional_data or len(self.additional_data) != 1:
+                    return None
+
+                ucc.add_channel(self.related_id)
+                return UpdateReadChannelOutbox(
+                    channel_id=self.related_id,
+                    max_id=self.additional_data[0],
                 )
 
             case UpdateType.FOLDER_PEERS:
