@@ -1,8 +1,6 @@
-from os import urandom
-
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
-    PeerSettings, TLObjectVector, SponsoredMessage
+    PeerSettings, TLObjectVector
 from piltover.tl.base.channels import SponsoredMessageReportResult
 from piltover.tl.functions.channels import GetSponsoredMessages_133
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \

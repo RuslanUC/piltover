@@ -1,13 +1,10 @@
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption
 from piltover.tl.functions.account import GetCollectibleEmojiStatuses
-from piltover.tl.functions.channels import GetSponsoredMessages_133
-from piltover.tl.functions.messages import GetSponsoredMessages
 from piltover.tl.functions.payments import GetStarsStatus, GetStarsSubscriptions, GetStarsTransactions, \
     GetStarsTopupOptions
 from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts, GetBoostsList
 from piltover.tl.types.account import EmojiStatuses
-from piltover.tl.types.messages import SponsoredMessages, SponsoredMessagesEmpty
 from piltover.tl.types.payments import StarsStatus
 from piltover.tl.types.premium import BoostsStatus, MyBoosts, BoostsList
 from piltover.worker import MessageHandler

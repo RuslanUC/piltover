@@ -15,13 +15,14 @@ from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, READABLE_FILE_TYPES
 from piltover.db.models.utils import Missing, MISSING, NullableFK, NullableFKSetNull
+from piltover.exceptions import Unreachable
 from piltover.tl import MessageReplyHeader, objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase, \
     MessageMedia as MessageMediaBase, MessageEntity as MessageEntityBase
 from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
-    MessageEntityMentionName, MessageReplies
+    MessageEntityMentionName, MessageReplies, ReactionCustomEmoji
 
 MessageIdRef = Annotated[int, "Ref id"]
 MessageIdContent = Annotated[int, "Content id"]
@@ -651,24 +652,40 @@ class MessageContent(Model):
         user_id = user.id if isinstance(user, models.User) else user
 
         # TODO: send min MessageReactions if current user didn't send reaction to message
-        user_reaction = await models.MessageReaction.get_or_none(user_id=user_id, message=self)
+        user_reaction = await models.MessageReaction.get_or_none(
+            user_id=user_id, message=self
+        ).values_list("reaction_id", "custom_emoji_id")
+        if user_reaction:
+            user_reaction_id, user_custom_emoji_id = user_reaction
+        else:
+            user_reaction_id = user_custom_emoji_id = None
+
         reactions = await models.MessageReaction\
             .annotate(msg_count=Count("id"))\
             .filter(message=self)\
-            .group_by("reaction__id")\
+            .group_by("reaction__id", "custom_emoji_id")\
             .select_related("reaction")\
-            .values_list("reaction__id", "reaction__reaction", "msg_count")
+            .values_list("reaction__id", "custom_emoji_id", "reaction__reaction", "msg_count")
 
         # TODO: if `user.id == self.author_id`, always include unread reaction in recent_reactions
 
+        results = []
+
+        for reaction_id, custom_emoji_id, reaction_emoji, msg_count in reactions:
+            if reaction_id is not None:
+                reaction = ReactionEmoji(emoticon=reaction_emoji)
+            elif custom_emoji_id is not None:
+                reaction = ReactionCustomEmoji(document_id=custom_emoji_id)
+            else:
+                raise Unreachable
+
+            results.append(ReactionCount(
+                chosen_order=1 if reaction_id == user_reaction_id and custom_emoji_id == user_custom_emoji_id else None,
+                reaction=reaction,
+                count=msg_count,
+            ))
+
         return MessageReactions(
             can_see_list=False,
-            results=[
-                ReactionCount(
-                    chosen_order=1 if user_reaction is not None and reaction_id == user_reaction.reaction_id else None,
-                    reaction=ReactionEmoji(emoticon=reaction_emoji),
-                    count=msg_count,
-                )
-                for reaction_id, reaction_emoji, msg_count in reactions
-            ],
+            results=results,
         )

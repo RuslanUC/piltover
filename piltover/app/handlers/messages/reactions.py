@@ -6,12 +6,12 @@ from tortoise.expressions import Q, Subquery
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.utils import telegram_hash
-from piltover.db.enums import PeerType, ChatBannedRights
+from piltover.db.enums import PeerType, ChatBannedRights, FileType
 from piltover.db.models import Reaction, User, Peer, MessageReaction, ReadState, State, RecentReaction, \
-    UserReactionsSettings, MessageRef, AvailableChannelReaction
+    UserReactionsSettings, MessageRef, AvailableChannelReaction, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates
+from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates, ReactionEmpty
 from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, \
     GetMessagesReactions, GetUnreadReactions, ReadReactions, GetRecentReactions, ClearRecentReactions
 from piltover.tl.types.messages import AvailableReactions, Messages, AffectedHistory, Reactions, ReactionsNotModified, \
@@ -41,14 +41,23 @@ async def get_available_reactions(request: GetAvailableReactions) -> AvailableRe
     )
 
 
+REACTION_NOT_MODIFIED = ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
+
+
 @handler.on_request(SendReaction)
 async def send_reaction(request: SendReaction, user: User) -> Updates:
     reaction = None
+    custom_reaction = None
     if request.reaction:
         if isinstance(request.reaction[0], ReactionEmoji):
             reaction = await Reaction.get_or_none(Reaction.q_from_reaction(request.reaction[0].emoticon))
         elif isinstance(request.reaction[0], ReactionCustomEmoji):
-            # TODO: allow custom emoji as reactions
+            custom_reaction = await File.get_or_none(id=request.reaction[0].document_id, type=FileType.DOCUMENT_EMOJI)
+            if custom_reaction is None:
+                raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
+        elif isinstance(request.reaction[0], ReactionEmpty):
+            ...
+        else:
             raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
@@ -68,13 +77,24 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if peer.type is PeerType.CHANNEL and not peer.channel.all_reactions:
+        if reaction is None:
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if not await AvailableChannelReaction.filter(channel=peer.channel, reaction=reaction).exists():
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+    elif peer.type is PeerType.CHANNEL \
+            and peer.channel.all_reactions \
+            and not peer.channel.all_reactions_custom \
+            and reaction is not None:
+        raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
     existing_reaction = await MessageReaction.get_or_none(user=user, message_id=message.content_id)
-    if (existing_reaction is None and reaction is None) \
-            or (existing_reaction is not None and reaction is not None and existing_reaction.reaction_id == reaction.id):
-        raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
+    if existing_reaction is None and reaction is None and custom_reaction is None:
+        raise REACTION_NOT_MODIFIED
+    if existing_reaction is not None:
+        if reaction is not None and existing_reaction.reaction_id == reaction.id:
+            raise REACTION_NOT_MODIFIED
+        if custom_reaction is not None and existing_reaction.custom_emoji_id == custom_reaction.id:
+            raise REACTION_NOT_MODIFIED
 
     if existing_reaction is not None:
         if peer.type is PeerType.CHANNEL:
@@ -85,21 +105,26 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             ).values_list("id", flat=True)
             await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
-    if reaction is not None:
-        await MessageReaction.create(user=user, message=message.content, reaction=reaction)
-
-        if peer.type is PeerType.CHANNEL:
-            # TODO: send update to message author
-            return await upd.update_reactions(user, [message], peer)
+    if reaction is not None or custom_reaction is not None:
+        await MessageReaction.create(
+            user=user,
+            message=message.content,
+            reaction=reaction,
+            custom_emoji=custom_reaction,
+        )
 
     result = await upd.update_reactions(user, [message], peer)
 
+    # TODO: if small supergroup - send updates to all participants,
+    #  if big supergroup - send updates only to author (+admins?)
+    #  if channel - dont send updates at all
     if peer.type is not PeerType.CHANNEL:
         for opp_message in await MessageRef.filter(
             content_id=message.content_id,
         ).select_related("peer", "peer__owner", "content"):
             await upd.update_reactions(opp_message.peer.owner, [opp_message], opp_message.peer)
 
+    # TODO: support custom emoji reactions in recent reactions
     if reaction is not None and request.add_to_recent:
         await RecentReaction.update_time_or_create(user, reaction, datetime.now(UTC))
         await upd.update_recent_reactions(user)
@@ -199,6 +224,8 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
 
 @handler.on_request(GetRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_recent_reactions(request: GetRecentReactions, user: User) -> Reactions | ReactionsNotModified:
+    # TODO: support custom emoji reactions
+
     limit = min(50, max(1, request.limit))
     ids = await RecentReaction.filter(user=user).limit(limit).order_by("-used_at").values_list("id", flat=True)
 
