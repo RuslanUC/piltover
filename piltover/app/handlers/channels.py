@@ -1620,11 +1620,11 @@ async def delete_participant_history(request: DeleteParticipantHistory, user: Us
     )
 
 
-@handler.on_request(ReorderUsernames)
+@handler.on_request(ReorderUsernames, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reorder_usernames() -> bool:
-    return True
+    raise ErrorRpc(error_code=400, error_message="ORDER_INVALID")
 
 
-@handler.on_request(DeactivateAllUsernames)
+@handler.on_request(DeactivateAllUsernames, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def deactivate_all_usernames() -> bool:
-    return True
+    return False
