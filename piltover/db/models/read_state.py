@@ -69,16 +69,16 @@ class ReadState(Model):
                     ).order_by("-id").first().values_list("id", flat=True)
                     out_read_max_id = out_read_max_id or 0
             elif peer.type is PeerType.CHANNEL:
-                out_read_max_id = 0
-                # TODO: if supergroup, do same as in case with PeerType.CHAT
-                # out_read_state = await models.ReadState.filter(
-                #     peer__channel_id=self.peer.channel_id, peer_id__not=self.peer.id
-                # ).order_by("-last_message_id").first()
-                # if out_read_state:
-                #     out_read_max_id = await models.Message.filter(
-                #         peer=self.peer, id__lte=out_read_state.last_message_id
-                #     ).order_by("-id").first().values_list("id", flat=True)
-                #     out_read_max_id = out_read_max_id or 0
+                # TODO: probably can be done in one query?
+                out_read_state = await models.ReadState.filter(
+                    peer__owner_id__not_isnull=True, peer__channel_id=peer.channel_id, peer_id__not=peer.id
+                ).order_by("-last_message_id").first()
+                if out_read_state:
+                    out_read_max_id = await models.MessageRef.filter(
+                        peer__owner=None, peer__channel_id=peer.channel_id, content__author_id=peer.owner_id,
+                        id__lte=out_read_state.last_message_id
+                    ).order_by("-id").first().values_list("id", flat=True)
+                    out_read_max_id = out_read_max_id or 0
 
         if no_mentions or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
             unread_mentions = 0
