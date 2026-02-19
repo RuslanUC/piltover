@@ -19,10 +19,13 @@ from piltover.exceptions import Unreachable
 from piltover.tl import MessageReplyHeader, objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase, \
     MessageMedia as MessageMediaBase, MessageEntity as MessageEntityBase
+from piltover.tl.base.internal import MessageToFormatRef
 from piltover.tl.to_format import MessageServiceToFormat
-from piltover.tl.types import Message as TLMessage, PeerUser, MessageActionChatAddUser, \
+from piltover.tl.to_format.message import MessageToFormat
+from piltover.tl.types import PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
     MessageEntityMentionName, MessageReplies, ReactionCustomEmoji
+from piltover.tl.types.internal import MessageToFormatContent
 
 MessageIdRef = Annotated[int, "Ref id"]
 MessageIdContent = Annotated[int, "Content id"]
@@ -131,43 +134,47 @@ class MessageContent(Model):
             self, ref: models.MessageRef, out: bool, media: MessageMediaBase,
             entities: list[MessageEntityBase] | None, reactions: MessageReactions | None, mentioned: bool,
             media_unread: bool, replies: MessageReplies | None, reply_to: MessageReplyHeader | None,
-    ) -> TLMessage:
+    ) -> TLMessageBase:
         ttl_period = None
         if self.ttl_period_days is not None and self.type is not MessageType.SCHEDULED:
             ttl_period = self.ttl_period_days * self.TTL_MULT
 
-        return TLMessage(
-            id=ref.id,
-            message=self.message or "",
-            pinned=ref.pinned,
-            peer_id=ref.peer.to_tl(),
-            date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
-            out=out,
-            media=media,
-            edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
-            reply_to=reply_to,
-            fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
-            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
-            entities=entities,
-            grouped_id=self.media_group_id,
-            post=self.channel_post,
-            views=self.post_info.views if self.post_info_id is not None else None,
-            forwards=self.post_info.forwards if self.post_info_id is not None else None,
-            post_author=self.post_author if self.channel_post else None,
-            reactions=reactions,
-            mentioned=mentioned,
-            media_unread=media_unread,
-            from_scheduled=ref.from_scheduled or self.scheduled_date,
-            ttl_period=ttl_period,
-            reply_markup=self.make_reply_markup(),
-            noforwards=self.no_forwards,
-            via_bot_id=self.via_bot_id,
-            replies=replies,
-            edit_hide=self.edit_hide,
-
-            silent=False,
-            legacy=False,
-            restriction_reason=[],
+        # TODO: saved_peer_id
+        # TODO: invert_media
+        return MessageToFormat(
+            # TODO: create this in MessageRef.to_tl
+            ref=MessageToFormatRef(
+                id=ref.id,
+                pinned=ref.pinned,
+                peer_id=ref.peer.to_tl(),
+                out=out,
+                reply_to=reply_to,
+                fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
+                reactions=reactions if reactions is not None and not reactions.min else None,
+                mentioned=mentioned,
+                media_unread=media_unread,
+                from_scheduled=ref.from_scheduled or self.scheduled_date,
+            ),
+            content=MessageToFormatContent(
+                message=self.message or "",
+                date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
+                media=media,
+                edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
+                from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
+                entities=entities,
+                grouped_id=self.media_group_id,
+                post=self.channel_post,
+                views=self.post_info.views if self.post_info_id is not None else None,
+                forwards=self.post_info.forwards if self.post_info_id is not None else None,
+                post_author=self.post_author if self.channel_post else None,
+                ttl_period=ttl_period,
+                reply_markup=self.make_reply_markup(),
+                noforwards=self.no_forwards,
+                via_bot_id=self.via_bot_id,
+                replies=replies,
+                edit_hide=self.edit_hide,
+                min_reactions=reactions if reactions is not None and reactions.min else None,
+            ),
         )
 
     async def to_tl(

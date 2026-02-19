@@ -1312,6 +1312,7 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
     )
     channel = channel_peer.channel
     if channel.creator_id != user.id:
+        # TODO: apparently, not only creators can set discussion group, but also regular admins?
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     if isinstance(request.group, (InputChannel, InputPeerChannel)):
@@ -1320,6 +1321,7 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
         )
         group = group_peer.channel
         if group.creator_id != user.id:
+            # TODO: apparently, not only creators can set discussion group, but also regular admins?
             raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
         if not group.supergroup or group.is_discussion:

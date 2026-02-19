@@ -9,3 +9,4 @@ from .theme import ThemeToFormat
 from .user import UserToFormat
 from .wallpaper import WallPaperToFormat
 from .phone_call import PhoneCallToFormat
+from .message import MessageToFormat
