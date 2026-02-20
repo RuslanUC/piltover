@@ -190,6 +190,7 @@ def _get_patched_cls_original_method(obj: object, names: Iterable[str], suffix: 
 @pytest_asyncio.fixture(autouse=True)
 async def measure_query_stats(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[None]:
     if not pytestconfig.getoption("--measure-queries"):
+        yield
         return
 
     query_clss = [
@@ -371,7 +372,7 @@ async def exit_stack(request: pytest.FixtureRequest) -> AsyncIterator[AsyncExitS
 
 def pytest_addoption(parser: pytest.Parser):
     parser.addoption(
-        "--dumb-db", action="store_true", default=False, help="dump database at the end of each test to a file",
+        "--dump-db", action="store_true", default=False, help="dump database at the end of each test to a file",
     )
     parser.addoption(
         "--measure-queries", action="store_true", default=False,
