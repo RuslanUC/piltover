@@ -186,7 +186,6 @@ async def send_message_internal(
         ).select_related("content")
         if reply_to is None:
             raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
-        reply_to = reply_to.content
 
     mentioned_user_ids = set()
 
@@ -195,7 +194,7 @@ async def send_message_internal(
             mentioned_user_ids = await _extract_mentions_from_message(entities, message, author)
 
         if reply_to:
-            mentioned_user_ids.add(reply_to.author_id)
+            mentioned_user_ids.add(reply_to.content.author_id)
 
     schedule = False
     real_opposite = opposite
@@ -978,7 +977,9 @@ async def forward_messages(
     src_messages_query = await append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query)
 
     random_ids = dict(zip(request.id[:100], request.random_id[:100]))
-    messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(*MessageRef.PREFETCH_FIELDS)
+    messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
+        *MessageRef.PREFETCH_FIELDS, "reply_to"
+    )
     reply_ids = {}
     media_group_ids: defaultdict[int | None, int | None] = defaultdict(Snowflake.make_id)
     media_group_ids[None] = None
@@ -1006,7 +1007,7 @@ async def forward_messages(
             new_author=user,
             drop_captions=request.drop_media_captions,
             random_id=random_ids[message.id],
-            reply_to_content_id=reply_ids.get(message.content.reply_to_id),
+            reply_to_content_id=reply_ids.get(message.reply_to.content_id),
             media_group_id=media_group_ids[message.content.media_group_id],
             drop_author=request.drop_author,
             no_forwards=_resolve_noforwards(to_peer, user, request.noforwards),

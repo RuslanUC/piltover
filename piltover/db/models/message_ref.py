@@ -5,11 +5,11 @@ from typing import TypeVar, Self, Iterable
 from tortoise import fields, Model
 from tortoise.expressions import Q
 
-from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType
-from piltover.db.models.utils import Missing, MISSING
+from piltover.db.models.utils import Missing, MISSING, NullableFKSetNull
 from piltover.exceptions import ErrorRpc, Unreachable
+from piltover.tl import MessageReplyHeader
 from piltover.tl.base import Message as TLMessageBase
 
 _T = TypeVar("_T")
@@ -35,9 +35,13 @@ class MessageRef(Model):
     pinned: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
     from_scheduled: bool = fields.BooleanField(default=False)
+    reply_to: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="reply")
+    top_message: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="msg_top_message")
 
     content_id: int
     peer_id: int
+    reply_to_id: int | None
+    top_message_id: int | None
 
     taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
@@ -50,7 +54,7 @@ class MessageRef(Model):
         "content__via_bot", "content__comments_info",
     )
     _PREFETCH_ALL_TOP_FIELDS = (
-        "peer", "content__author", "content__media", "content__fwd_header", "content__reply_to",
+        "peer", "content__author", "content__media", "content__fwd_header", "reply_to",
         "content__via_bot",
     )
 
@@ -61,8 +65,7 @@ class MessageRef(Model):
         )
 
     def cache_key(self, user_id: int) -> str:
-        media_version = None if self.content.media_id is None else self.content.media.version
-        return f"message:{user_id}:{self.id}:{self.version}-{media_version}"
+        return f"message-ref:{user_id}:{self.id}:{self.version}"
 
     @classmethod
     async def get_(
@@ -107,6 +110,14 @@ class MessageRef(Model):
         elif opposite and self.peer.type is PeerType.CHANNEL:
             peers = [await models.Peer.get_or_none(owner=None, channel_id=self.peer.channel_id, type=PeerType.CHANNEL)]
 
+        if self.reply_to_id:
+            replies = {
+                ref.peer_id: ref
+                for ref in await MessageRef.filter(content_id=self.reply_to.content_id)
+            }
+        else:
+            replies = {}
+
         messages: dict[models.Peer, MessageRef] = {}
 
         content = await self.content.clone_scheduled()
@@ -117,6 +128,7 @@ class MessageRef(Model):
                 peer=to_peer,
                 content=content,
                 from_scheduled=to_peer == self.peer,
+                reply_to=replies.get(to_peer.id),
             )
 
         await models.Dialog.create_or_unhide_bulk(peers)
@@ -141,7 +153,6 @@ class MessageRef(Model):
             related_peer=to_peer,
             new_author=new_author,
             fwd_header=fwd_header,
-            reply_to_content_id=reply_to_content_id,
             drop_captions=drop_captions,
             media_group_id=media_group_id,
             drop_author=drop_author,
@@ -150,6 +161,16 @@ class MessageRef(Model):
             is_discussion=is_discussion,
         )
 
+        if reply_to_content_id:
+            replies = {
+                ref.peer_id: ref
+                for ref in await MessageRef.filter(
+                    peer_id__in=[peer.id for peer in peers], content_id=reply_to_content_id,
+                )
+            }
+        else:
+            replies = {}
+
         messages = []
         for peer in peers:
             messages.append(await models.MessageRef.create(
@@ -157,6 +178,7 @@ class MessageRef(Model):
                 content=content,
                 pinned=self.pinned if pinned is None else pinned,
                 random_id=random_id if peer == to_peer else None,
+                reply_to=replies.get(peer.id),
             ))
 
         return messages
@@ -167,7 +189,7 @@ class MessageRef(Model):
     @classmethod
     async def create_for_peer(
             cls, peer: models.Peer, author: models.User, random_id: int | None = None,
-            opposite: bool = True, unhide_dialog: bool = True,
+            opposite: bool = True, unhide_dialog: bool = True, reply_to: MessageRef | None = None,
             **message_kwargs,
     ) -> dict[models.Peer, Self]:
         if random_id is not None and await cls.filter(peer=peer, random_id=random_id).exists():
@@ -187,21 +209,29 @@ class MessageRef(Model):
 
         messages: dict[models.Peer, MessageRef] = {}
 
+        if reply_to is not None:
+            replies = {
+                ref.peer_id: ref
+                for ref in await MessageRef.filter(
+                    peer_id__in=[peer.id for peer in peers], content_id=reply_to.content_id,
+                )
+            }
+        else:
+            replies = {}
+
         for to_peer in peers:
             # TODO: probably create in bulk too?
             messages[to_peer] = await cls.create(
                 peer=to_peer,
                 content=content,
                 random_id=random_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
+                reply_to=replies.get(peer.id),
             )
 
         if unhide_dialog:
             await models.Dialog.create_or_unhide_bulk(peers)
 
         return messages
-
-    async def remove_from_cache(self, user: models.User) -> None:
-        await Cache.obj.delete(self.cache_key(user.id))
 
     async def get_for_user(self, for_user: models.User) -> Self | None:
         if self.peer.type is PeerType.CHANNEL:
@@ -235,3 +265,12 @@ class MessageRef(Model):
             raise Unreachable
 
         return self.peer.type, peer_id
+
+    def make_reply_to_header(self) -> MessageReplyHeader | None:
+        if self.reply_to_id is None and self.top_message_id is None:
+            return None
+
+        return MessageReplyHeader(
+            reply_to_msg_id=self.reply_to_id,
+            reply_to_top_id=self.top_message_id,
+        )

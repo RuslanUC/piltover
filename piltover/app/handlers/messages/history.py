@@ -159,11 +159,7 @@ async def get_messages_query_internal(
             query = Q(id=0)
 
     if reply_to_id:
-        query &= Q(content__reply_to_id=Subquery(
-            MessageRef.filter(
-                peer.q_this_or_channel(), id=reply_to_id,
-            ).first().values_list("content_id", flat=True)
-        ))
+        query &= Q(reply_to_id=reply_to_id)
 
     query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
@@ -350,14 +346,21 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
         elif isinstance(message_query, InputMessageReplyTo):
             reply_ids.append(message_query.id)
 
+    if not ids and not reply_ids:
+        return Messages(
+            messages=[],
+            users=[],
+            chats=[],
+        )
+
     query = Q()
     if ids:
         query |= Q(id__in=ids)
     if reply_ids:
-        query |= Q(content_id__in=Subquery(
+        query |= Q(id__in=Subquery(
             MessageRef.filter(
                 peer__owner=user, peer__type__not=PeerType.CHANNEL, id__in=reply_ids,
-            ).values_list("content__reply_to_id", flat=True)
+            ).values_list("reply_to_id", flat=True)
         ))
 
     query &= Q(peer__owner=user, peer__type__not=PeerType.CHANNEL)
@@ -933,7 +936,7 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
     ucc.add_message(discussion_message.content_id)
     users, chats, channels = await ucc.resolve()
 
-    replies_info = await MessageRef.filter(content__reply_to_id=discussion_message.content_id).annotate(
+    replies_info = await MessageRef.filter(reply_to_id=discussion_message.id).annotate(
         total=Count("id"), max_id=Max("id"),
     ).first().values_list("total", "max_id")
     if replies_info is not None:

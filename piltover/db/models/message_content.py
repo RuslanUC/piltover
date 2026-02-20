@@ -16,7 +16,7 @@ from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, READABLE_FILE_TYPES
 from piltover.db.models.utils import Missing, MISSING, NullableFK, NullableFKSetNull
 from piltover.exceptions import Unreachable
-from piltover.tl import MessageReplyHeader, objects, TLObject
+from piltover.tl import objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase, \
     MessageMedia as MessageMediaBase, MessageEntity as MessageEntityBase
 from piltover.tl.base.internal import MessageToFormatRef
@@ -49,24 +49,20 @@ class MessageContent(Model):
     reply_markup: bytes | None = fields.BinaryField(null=True, default=None)
     no_forwards: bool = fields.BooleanField(default=False)
     edit_hide: bool = fields.BooleanField(default=False)
-
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     media: models.MessageMedia | None = NullableFK("models.MessageMedia")
     # TODO: move to MessageRef model because resulting id is peer-dependent?
-    reply_to: models.MessageContent | None = NullableFKSetNull("models.MessageContent", related_name="msg_reply_to")
     fwd_header: models.MessageFwdHeader | None = NullableFK("models.MessageFwdHeader")
     post_info: models.ChannelPostInfo | None = NullableFK("models.ChannelPostInfo")
     via_bot: models.User | None = NullableFKSetNull("models.User", related_name="msg_via_bot")
     discussion: models.MessageContent | None = NullableFKSetNull("models.MessageContent", related_name="msg_discussion_message")
     comments_info: models.MessageComments | None = NullableFK("models.MessageComments")
-    # TODO: move to MessageRef model?
-    top_message: models.MessageContent | None = NullableFKSetNull("models.MessageContent", related_name="msg_top_message")
     is_discussion: bool = fields.BooleanField(default=False)
+    version: int = fields.IntField(default=0)
 
     peer_id: int
     author_id: int | None
     media_id: int | None
-    reply_to_id: int | None
     fwd_header_id: int | None
     post_info_id: int | None
     via_bot_id: int | None
@@ -80,30 +76,10 @@ class MessageContent(Model):
 
     _cached_reply_markup: ReplyMarkup | None | Missing = MISSING
 
-    async def _make_reply_to_header(self, peer: models.Peer) -> MessageReplyHeader | None:
-        if self.reply_to_id is None and self.top_message_id is None:
-            return None
-
-        content_ids: set[int | None] = {self.reply_to_id, self.top_message_id}
-        content_ids.discard(None)
-
-        ids = await models.MessageRef.filter(content_id__in=content_ids, peer=peer).values_list("id", "content_id")
-        if not ids:
-            return None
-
-        header = MessageReplyHeader()
-        for ref_id, content_id in ids:
-            if content_id == self.reply_to_id:
-                header.reply_to_msg_id = ref_id
-            elif content_id == self.top_message_id:
-                header.reply_to_top_id = ref_id
-
-        return header
-
     def is_service(self) -> bool:
         return self.type not in (MessageType.REGULAR, MessageType.SCHEDULED)
 
-    async def to_tl_service(self, ref: models.MessageRef) -> MessageServiceToFormat:
+    def to_tl_service(self, ref: models.MessageRef) -> MessageServiceToFormat:
         action = TLObject.read(BytesIO(self.extra_info))
         if not isinstance(action, MessageActionInst):
             logger.error(
@@ -125,7 +101,7 @@ class MessageContent(Model):
             date=int(self.date.timestamp()),
             action=action,
             author_id=self.author_id,
-            reply_to=await self._make_reply_to_header(ref.peer),
+            reply_to=ref.make_reply_to_header(),
             from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
@@ -133,7 +109,7 @@ class MessageContent(Model):
     def _to_tl(
             self, ref: models.MessageRef, out: bool, media: MessageMediaBase,
             entities: list[MessageEntityBase] | None, reactions: MessageReactions | None, mentioned: bool,
-            media_unread: bool, replies: MessageReplies | None, reply_to: MessageReplyHeader | None,
+            media_unread: bool, replies: MessageReplies | None,
     ) -> TLMessageBase:
         ttl_period = None
         if self.ttl_period_days is not None and self.type is not MessageType.SCHEDULED:
@@ -148,7 +124,7 @@ class MessageContent(Model):
                 pinned=ref.pinned,
                 peer_id=ref.peer.to_tl(),
                 out=out,
-                reply_to=reply_to,
+                reply_to=ref.make_reply_to_header(),
                 fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
                 reactions=reactions if reactions is not None and not reactions.min else None,
                 mentioned=mentioned,
@@ -182,7 +158,7 @@ class MessageContent(Model):
     ) -> TLMessageBase:
         # This function call is probably much cheaper than cache lookup, so doing this before Cache.obj.get(...)
         if self.is_service():
-            return await self.to_tl_service(ref)
+            return self.to_tl_service(ref)
 
         reactions = None
         if with_reactions and self.type is MessageType.REGULAR:
@@ -221,26 +197,14 @@ class MessageContent(Model):
         replies = None
         if self.is_discussion:
             replies = MessageReplies(
-                replies=await models.MessageContent.filter(reply_to=self).count(),
+                replies=await models.MessageRef.filter(reply_to__content=self).count(),
                 # TODO: probably handle pts
                 replies_pts=0,
-                # max_id=cast(
-                #     int | None,
-                #     await models.MessageRef.filter(
-                #         content__reply_to=self,
-                #     ).order_by("-id").first().values_list("id", flat=True),
-                # ),
             )
         elif self.discussion_id is not None and self.comments_info_id is not None:
             replies = MessageReplies(
-                replies=await models.MessageContent.filter(reply_to_id=self.discussion_id).count(),
+                replies=await models.MessageRef.filter(reply_to__content_id=self.discussion_id).count(),
                 replies_pts=self.comments_info.discussion_pts,
-                # max_id=cast(
-                #     int | None,
-                #     await models.MessageRef.filter(
-                #         content__reply_to_id=self.discussion_id,
-                #     ).order_by("-id").first().values_list("id", flat=True),
-                # ),
                 comments=True,
                 channel_id=models.Channel.make_id_from(self.comments_info.discussion_channel_id),
             )
@@ -254,7 +218,6 @@ class MessageContent(Model):
             mentioned=mentioned,
             media_unread=media_unread if media_unread else not mention_read,
             replies=replies,
-            reply_to=await self._make_reply_to_header(ref.peer),
         )
 
         await Cache.obj.set(cache_key, message)
@@ -334,12 +297,12 @@ class MessageContent(Model):
         if replies_count_to_fetch:
             counts = {
                 reply_to_id: count
-                for reply_to_id, count in await cls.filter(
-                    reply_to_id__in=list(replies_count_to_fetch),
-                ).group_by("reply_to_id").annotate(
+                for reply_to_id, count in await models.MessageRef.filter(
+                    reply_to__content_id__in=list(replies_count_to_fetch),
+                ).group_by("reply_to__content_id").annotate(
                     count=Count("id"),
                 ).values_list(
-                    "reply_to_id", "count",
+                    "reply_to__content_id", "count",
                 )
             }
             for reply_to_id, ids in replies_count_to_fetch.items():
@@ -359,7 +322,7 @@ class MessageContent(Model):
         for message, ref in zip(messages, refs):
             if message.is_service():
                 # TODO: probably cache it?
-                result.append(await message.to_tl_service(ref))
+                result.append(message.to_tl_service(ref))
                 continue
 
             msg_media_unread = ref.id not in media_read and not mentioned.get(message.id, True)
@@ -401,8 +364,6 @@ class MessageContent(Model):
                 mentioned=message.id in mentioned,
                 media_unread=msg_media_unread,
                 replies=replies.get(message.id, None),
-                # TODO: move out of the loop
-                reply_to=await message._make_reply_to_header(ref.peer),
             ))
 
             to_cache.append((ref.cache_key(user_id), result[-1]))
@@ -437,7 +398,6 @@ class MessageContent(Model):
             type=MessageType.REGULAR,
             author=self.author,
             media=self.media,
-            reply_to=self.reply_to,
             fwd_header=self.fwd_header,
             entities=self.entities,
             media_group_id=self.media_group_id,
@@ -455,16 +415,11 @@ class MessageContent(Model):
     async def clone_forward(
             self, related_peer: models.Peer, new_author: models.User | None = None,
             fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
-            reply_to_content_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
-            drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
-            is_discussion: bool = False,
+            drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
+            is_forward: bool = False, no_forwards: bool = False, is_discussion: bool = False,
     ) -> Self:
         if new_author is None and self.author is not None:
             new_author = self.author
-
-        reply_to = None
-        if reply_to_content_id:
-            reply_to = await models.MessageContent.get_or_none(id=reply_to_content_id)
 
         if fwd_header is MISSING:
             # TODO: probably should be prefetched
@@ -477,7 +432,6 @@ class MessageContent(Model):
             type=self.type,
             author=new_author,
             media=self.media,
-            reply_to=reply_to,
             fwd_header=fwd_header,
             entities=self.entities,
             media_group_id=media_group_id,
@@ -696,3 +650,6 @@ class MessageContent(Model):
             can_see_list=False,
             results=results,
         )
+
+    def cache_key(self) -> str:
+        return f"message-content:{self.id}:{self.version}"

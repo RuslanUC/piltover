@@ -260,7 +260,7 @@ class Worker(MessageHandler):
                 id=message_id,
             ).select_related(
                 "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",
-                "content__media", "content__reply_to", "content__fwd_header", "content__post_info",
+                "content__media", "reply_to", "content__fwd_header", "content__post_info",
             )
             if scheduled is None:
                 logger.warning(f"Scheduled message {message_id} does not exist?")
