@@ -1,6 +1,6 @@
 # piltover 🐳
 
-An experimental Telegram server written from scratch in Python. Development chat (of original [piltover](https://github.com/DavideGalilei/piltover) project): linked group to [@ChameleonGram](https://t.me/ChameleonGram).
+An experimental Telegram server written from scratch in Python. Fork of a [DavideGalilei/piltover](DavideGalilei/piltover).
 
 ## TODO
 
@@ -51,7 +51,6 @@ sandbox that doesn't ratelimit their bots.
 
 Right now, project **may** (although not recommended) be used for basic features like messages/media sending.
 More complex features such as channels, supergroups, bots, etc. may work with errors.
-**Keep in mind that privacy settings may work incorrectly so any user can be texted by anyone, added to any group by anyone, etc.**
 
 ## Setup
 
@@ -268,3 +267,11 @@ backend):
 - https://potato.im/
 - https://icq.com/ (not sure about this one, but the clients are a copycat of
   Telegram's)
+
+## Licensing
+
+This project is licensed under the GNU Affero General Public License v3.0.
+
+It was originally forked from [DavideGalilei/piltover](DavideGalilei/piltover), which is licensed under
+the MIT License. Portions of the original code remain under MIT;
+see LICENSE.MIT for details.

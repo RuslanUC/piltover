@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "piltover"
 version = "0.0.0"
-description = ""
-authors = []
+description = "An experimental Telegram server written from scratch in Python."
+authors = ["RuslanUC <dev_ruslan_uc@protonmail.com>"]
 package-mode = false
 readme = "README.md"
-license = "MIT"
+license = "AGPL-3.0"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
