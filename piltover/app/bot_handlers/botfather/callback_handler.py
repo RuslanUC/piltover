@@ -78,11 +78,10 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             message.content.message = text_choose_bot
             message.content.reply_markup = ReplyInlineMarkup(rows=rows).write()
         message.content.invalidate_reply_markup_cache()
+        message.content.version += 1
 
         async with in_transaction():
-            await message.content.save(update_fields=["message", "reply_markup"])
-            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
-            await message.refresh_from_db(["version"])
+            await message.content.save(update_fields=["message", "reply_markup", "version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -118,11 +117,10 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
+        message.content.version += 1
 
         async with in_transaction():
-            await message.content.save(update_fields=["message", "entities", "reply_markup"])
-            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
-            await message.refresh_from_db(["version"])
+            await message.content.save(update_fields=["message", "entities", "reply_markup", "version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -135,11 +133,10 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             message.content.message = text_choose_bot
             message.content.reply_markup = ReplyInlineMarkup(rows=rows).write()
         message.content.invalidate_reply_markup_cache()
+        message.content.version += 1
 
         async with in_transaction():
-            await message.content.save(update_fields=["message", "reply_markup"])
-            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
-            await message.refresh_from_db(["version"])
+            await message.content.save(update_fields=["message", "reply_markup", "version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -166,11 +163,10 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
+        message.content.version += 1
 
         async with in_transaction():
-            await message.content.save(update_fields=["message", "entities", "reply_markup"])
-            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
-            await message.refresh_from_db(["version"])
+            await message.content.save(update_fields=["message", "entities", "reply_markup", "version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -197,11 +193,10 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
+        message.content.version += 1
 
         async with in_transaction():
-            await message.content.save(update_fields=["message", "entities", "reply_markup"])
-            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
-            await message.refresh_from_db(["version"])
+            await message.content.save(update_fields=["message", "entities", "reply_markup", "version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)
@@ -253,11 +248,10 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
+        message.content.version += 1
 
         async with in_transaction():
-            await message.content.save(update_fields=["message", "entities", "reply_markup"])
-            await MessageRef.filter(id=message.id).update(version=F("version") + 1)
-            await message.refresh_from_db(["version"])
+            await message.content.save(update_fields=["message", "entities", "reply_markup", "version"])
         await upd.edit_message(peer.owner, {peer: message})
 
         return BotCallbackAnswer(cache_time=0)

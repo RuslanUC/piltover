@@ -13,19 +13,19 @@ from tortoise.functions import Count
 
 from piltover.cache import Cache
 from piltover.db import models
-from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType, READABLE_FILE_TYPES
+from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.db.models.utils import Missing, MISSING, NullableFK, NullableFKSetNull
 from piltover.exceptions import Unreachable
 from piltover.tl import objects, TLObject
-from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Message as TLMessageBase, \
-    MessageMedia as MessageMediaBase, MessageEntity as MessageEntityBase
-from piltover.tl.base.internal import MessageToFormatRef
+from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, MessageMedia as MessageMediaBase, \
+    MessageEntity as MessageEntityBase
+from piltover.tl.base.internal import MessageToFormatContent as MessageToFormatContentBase
 from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.to_format.message import MessageToFormat
 from piltover.tl.types import PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
     MessageEntityMentionName, MessageReplies, ReactionCustomEmoji
-from piltover.tl.types.internal import MessageToFormatContent
+from piltover.tl.types.internal import MessageToFormatContent, MessageToFormatServiceContent
 
 MessageIdRef = Annotated[int, "Ref id"]
 MessageIdContent = Annotated[int, "Content id"]
@@ -106,69 +106,76 @@ class MessageContent(Model):
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
-    def _to_tl(
-            self, ref: models.MessageRef, out: bool, media: MessageMediaBase,
-            entities: list[MessageEntityBase] | None, reactions: MessageReactions | None, mentioned: bool,
-            media_unread: bool, replies: MessageReplies | None,
-    ) -> TLMessageBase:
+    def to_tl_service_content(self) -> MessageToFormatServiceContent:
+        action = TLObject.read(BytesIO(self.extra_info))
+        if not isinstance(action, MessageActionInst):
+            logger.error(
+                f"Expected service message action to "
+                f"be any of this types: {MessageActionInst}, got {action=!r}"
+            )
+            action = MessageActionEmpty()
+
+        # NOTE: this is first step to making messages cachable for not-defined amount of time for all users.
+        #  But we need to keep in mind that:
+        #   1. Messages should be cached based on `internal_id` not actual message `id`
+        #    (or whole id system should be reworked and rewritten).
+        #   2. Fields such as `peer_id` or `reply_to` are NOT cachable based in internal id in private chats:
+        #    `peer_id` can be specified as PeerPrivate(user1_id=..., user2_id=...),
+        #    but `reply_to` is unknown for user users for private chats in this method.
+        return MessageToFormatServiceContent(
+            date=int(self.date.timestamp()),
+            action=action,
+            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
+            ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
+        )
+
+    def _to_tl_content(
+            self, media: MessageMediaBase, entities: list[MessageEntityBase] | None,
+            reactions: MessageReactions | None, replies: MessageReplies | None,
+    ) -> MessageToFormatContent:
         ttl_period = None
         if self.ttl_period_days is not None and self.type is not MessageType.SCHEDULED:
             ttl_period = self.ttl_period_days * self.TTL_MULT
 
         # TODO: saved_peer_id
         # TODO: invert_media
-        return MessageToFormat(
-            # TODO: create this in MessageRef.to_tl
-            ref=MessageToFormatRef(
-                id=ref.id,
-                pinned=ref.pinned,
-                peer_id=ref.peer.to_tl(),
-                out=out,
-                reply_to=ref.make_reply_to_header(),
-                fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
-                reactions=reactions if reactions is not None and not reactions.min else None,
-                mentioned=mentioned,
-                media_unread=media_unread,
-                from_scheduled=ref.from_scheduled or self.scheduled_date,
-            ),
-            content=MessageToFormatContent(
-                message=self.message or "",
-                date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
-                media=media,
-                edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
-                from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
-                entities=entities,
-                grouped_id=self.media_group_id,
-                post=self.channel_post,
-                views=self.post_info.views if self.post_info_id is not None else None,
-                forwards=self.post_info.forwards if self.post_info_id is not None else None,
-                post_author=self.post_author if self.channel_post else None,
-                ttl_period=ttl_period,
-                reply_markup=self.make_reply_markup(),
-                noforwards=self.no_forwards,
-                via_bot_id=self.via_bot_id,
-                replies=replies,
-                edit_hide=self.edit_hide,
-                min_reactions=reactions if reactions is not None and reactions.min else None,
-            ),
+        return MessageToFormatContent(
+            message=self.message or "",
+            date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
+            media=media,
+            edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
+            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
+            entities=entities,
+            grouped_id=self.media_group_id,
+            post=self.channel_post,
+            views=self.post_info.views if self.post_info_id is not None else None,
+            forwards=self.post_info.forwards if self.post_info_id is not None else None,
+            post_author=self.post_author if self.channel_post else None,
+            ttl_period=ttl_period,
+            reply_markup=self.make_reply_markup(),
+            noforwards=self.no_forwards,
+            via_bot_id=self.via_bot_id,
+            replies=replies,
+            edit_hide=self.edit_hide,
+            min_reactions=reactions if reactions is not None and reactions.min else None,
+            fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
         )
 
-    async def to_tl(
-            self, ref: models.MessageRef, current_user: models.User, with_reactions: bool = False,
-    ) -> TLMessageBase:
+    async def to_tl_content(
+            self, to_format: MessageToFormat, with_reactions: bool, reactions: MessageReactions | None,
+    ) -> MessageToFormatContentBase:
         # This function call is probably much cheaper than cache lookup, so doing this before Cache.obj.get(...)
         if self.is_service():
-            return self.to_tl_service(ref)
+            return self.to_tl_service_content()
 
-        reactions = None
-        if with_reactions and self.type is MessageType.REGULAR:
-            reactions = await self.to_tl_reactions(current_user)
-
-        cache_key = ref.cache_key(current_user.id)
+        cache_key = self.cache_key()
         if (cached := await Cache.obj.get(cache_key)) is not None:
+            to_format.content = cached
             if with_reactions and self.type is MessageType.REGULAR:
-                cached.reactions = reactions
-                await Cache.obj.set(cache_key, cached)
+                reactions_before = to_format.content.min_reactions
+                to_format.reactions = reactions
+                if reactions_before != to_format.content.min_reactions:
+                    await Cache.obj.set(cache_key, cached)
             return cached
 
         media = None
@@ -180,19 +187,6 @@ class MessageContent(Model):
             tl_id = entity.pop("_")
             entities.append(objects[tl_id](**entity))
             entity["_"] = tl_id
-
-        mention_read = await models.MessageMention.filter(
-            user=current_user, message=self
-        ).first().values_list("read", flat=True)
-        mentioned = mention_read is not None
-        if not mentioned:
-            mention_read = True
-
-        media_unread = False
-        if self.media \
-                and self.media.file \
-                and self.media.file.type in READABLE_FILE_TYPES:
-            media_unread = not await models.MessageMediaRead.filter(user_id=current_user.id, message=ref).exists()
 
         replies = None
         if self.is_discussion:
@@ -209,14 +203,10 @@ class MessageContent(Model):
                 channel_id=models.Channel.make_id_from(self.comments_info.discussion_channel_id),
             )
 
-        message = self._to_tl(
-            ref=ref,
-            out=current_user.id == self.author_id,
+        message = self._to_tl_content(
             media=media,
             entities=entities,
             reactions=reactions,
-            mentioned=mentioned,
-            media_unread=media_unread if media_unread else not mention_read,
             replies=replies,
         )
 
@@ -224,57 +214,20 @@ class MessageContent(Model):
         return message
 
     @classmethod
-    async def to_tl_bulk(
-            cls, messages: list[models.MessageContent], refs: list[models.MessageRef], user_id: int,
-            with_reactions: bool = False,
-    ) -> list[TLMessageBase]:
-        cached = {}
-        cache_keys = [ref.cache_key(user_id) for message, ref in zip(messages, refs)]
+    async def to_tl_content_bulk(
+            cls, messages: list[models.MessageContent],
+            to_formats: list[MessageToFormat], with_reactions: bool, reactionss: list[MessageReactions | None],
+    ) -> list[MessageToFormatContentBase]:
+        cached = []
+        cache_keys = [message.cache_key() for message in messages]
         if cache_keys:
-            cached = {
-                cached_msg.id: cached_msg
-                for cached_msg in await Cache.obj.multi_get(cache_keys)
-                if cached_msg is not None
-            }
-
-        # TODO: move all mentioned/media_read -related stuff to MessageRef?
-
-        message_content_ids = {
-            message.id
-            for message in messages
-            if message.id not in cached and not message.is_service()
-        }
-
-        mentioned: dict[MessageIdContent, bool] = {}
-
-        if message_content_ids:
-            mentions_info = await models.MessageMention.filter(
-                user_id=user_id, message_id__in=message_content_ids,
-            ).values_list("message_id", "read")
-            for message_id, read in mentions_info:
-                mentioned[message_id] = read
-
-        valid_media_ref_ids = [
-            ref.id
-            for ref in refs
-            if (
-                    ref.content.media is not None
-                    and ref.content.media.file is not None
-                    and ref.content.media.file.type in READABLE_FILE_TYPES
-            )
-        ]
-
-        if valid_media_ref_ids:
-            media_read = set(await models.MessageMediaRead.filter(
-                user_id=user_id, message_id__in=valid_media_ref_ids,
-            ).values_list("message_id", flat=True))
-        else:
-            media_read = set()
+            # Assuming multi_get returns objects in the same order as cache_keys
+            cached = await Cache.obj.multi_get(cache_keys)
 
         replies: dict[MessageIdContent, MessageReplies] = {}
         replies_count_to_fetch: dict[MessageIdContent, list[MessageIdContent]] = defaultdict(list)
-        for message in messages:
-            if (message.id in cached) or message.is_service():
+        for idx, message in enumerate(messages):
+            if cached[idx] is not None or message.is_service():
                 continue
             if message.is_discussion:
                 replies_count_to_fetch[message.id].append(message.id)
@@ -318,35 +271,25 @@ class MessageContent(Model):
 
         to_cache = []
 
-        result = []
-        for message, ref in zip(messages, refs):
+        result: list[MessageToFormatContent | MessageToFormatServiceContent] = []
+        for message, reactions, to_format, cached_message in zip(messages, reactionss, to_formats, cached):
             if message.is_service():
-                # TODO: probably cache it?
-                result.append(message.to_tl_service(ref))
+                result.append(message.to_tl_service_content())
                 continue
 
-            msg_media_unread = ref.id not in media_read and not mentioned.get(message.id, True)
-
-            reactions = None
-            if with_reactions and message.type is MessageType.REGULAR:
-                # TODO: precalculate reactions for all regular messages before loop
-                reactions = await message.to_tl_reactions(user_id)
-            
-            if message.id in cached:
-                result.append(cached[ref.id])
+            if cached_message is not None:
+                to_format.content = cached_message
+                result.append(cached_message)
                 need_recache = False
-                
-                if result[-1].media_unread != msg_media_unread:
-                    result[-1].media_unread = msg_media_unread
-                    need_recache = True
-                
+
                 if with_reactions:
-                    result[-1].reactions = reactions
-                    need_recache = True
-                
+                    reactions_before = to_format.content.min_reactions
+                    to_format.reactions = reactions
+                    need_recache = reactions_before != to_format.content.min_reactions
+
                 if need_recache:
-                    to_cache.append((ref.cache_key(user_id), result[-1]))
-                
+                    to_cache.append((message.cache_key(), result[-1]))
+
                 continue
 
             entities = []
@@ -355,18 +298,14 @@ class MessageContent(Model):
                 entities.append(objects[tl_id](**entity))
                 entity["_"] = tl_id
 
-            result.append(message._to_tl(
-                ref=ref,
-                out=user_id == message.author_id,
+            result.append(message._to_tl_content(
                 media=medias[message.media_id] if message.media_id is not None else None,
                 entities=entities,
                 reactions=reactions,
-                mentioned=message.id in mentioned,
-                media_unread=msg_media_unread,
                 replies=replies.get(message.id, None),
             ))
 
-            to_cache.append((ref.cache_key(user_id), result[-1]))
+            to_cache.append((message.cache_key(), result[-1]))
 
         if to_cache:
             await Cache.obj.multi_set(to_cache)

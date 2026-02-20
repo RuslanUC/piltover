@@ -217,9 +217,8 @@ async def test_internal_message_cache() -> None:
         assert messages[0].id == message.id
         assert messages[0].text == message.text
 
-        await MessageContent.filter(
-            id=Subquery(MessageRef.filter(id=message.id).first().values_list("content_id", flat=True))
-        ).update(message="some another text 123456789")
+        content_id_query = MessageRef.filter(id=message.id).first().values_list("content_id", flat=True)
+        await MessageContent.filter(id=Subquery(content_id_query)).update(message="some another text 123456789")
 
         messages = [msg async for msg in client.get_chat_history("me")]
         assert len(messages) == 1
@@ -228,7 +227,7 @@ async def test_internal_message_cache() -> None:
         # Text should be same because message is already cached and cache is based on "version" field
         assert messages[0].text == message.text
 
-        await MessageRef.filter(id=message.id).update(version=F("version") + 1)
+        await MessageContent.filter(id=Subquery(content_id_query)).update(version=F("version") + 1)
 
         messages = [msg async for msg in client.get_chat_history("me")]
         assert len(messages) == 1

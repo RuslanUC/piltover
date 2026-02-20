@@ -545,6 +545,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     content.edit_date = datetime.now(UTC) if content.scheduled_date is None else None
     content.edit_hide = False
     content.reply_markup = reply_markup
+    content.version += 1
 
     # TODO: process mentioned users
 
@@ -556,12 +557,10 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         content.scheduled_date = datetime.fromtimestamp(request.schedule_date, UTC)
 
     await content.save(update_fields=[
-        "message", "entities", "media_id", "edit_date", "edit_hide", "reply_markup", "scheduled_date",
+        "message", "entities", "media_id", "edit_date", "edit_hide", "reply_markup", "scheduled_date", "version",
     ])
     if editing_schedule_date:
         await TaskIqScheduledMessage.filter(message=message).update(scheduled_time=request.schedule_date)
-
-    await MessageRef.filter(content_id=content.id).update(version=F("version") + 1)
 
     peers_q = None
     if peer.type is PeerType.SELF:
@@ -1007,7 +1006,7 @@ async def forward_messages(
             new_author=user,
             drop_captions=request.drop_media_captions,
             random_id=random_ids[message.id],
-            reply_to_content_id=reply_ids.get(message.reply_to.content_id),
+            reply_to_content_id=reply_ids.get(message.reply_to.content_id) if message.reply_to else None,
             media_group_id=media_group_ids[message.content.media_group_id],
             drop_author=request.drop_author,
             no_forwards=_resolve_noforwards(to_peer, user, request.noforwards),

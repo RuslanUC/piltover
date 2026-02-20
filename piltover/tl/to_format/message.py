@@ -1,4 +1,5 @@
 from piltover.context import serialization_ctx
+from piltover.exceptions import Unreachable
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types, base
 
@@ -33,8 +34,9 @@ class MessageToFormat(types.MessageToFormatInternal):
 
     def _write(self) -> bytes:
         ctx = serialization_ctx.get()
-        return LayerConverter.downgrade(
-            obj=types.Message(
+
+        if isinstance(self.content, types.internal.MessageToFormatContent):
+            message = types.Message(
                 id=self.ref.id,
                 message=self.content.message,
                 pinned=self.ref.pinned,
@@ -44,7 +46,7 @@ class MessageToFormat(types.MessageToFormatInternal):
                 media=self.content.media,
                 edit_date=self.content.edit_date,
                 reply_to=self.ref.reply_to,
-                fwd_from=self.ref.fwd_from,
+                fwd_from=self.content.fwd_from,
                 from_id=self.content.from_id,
                 entities=self.content.entities,
                 grouped_id=self.content.grouped_id,
@@ -63,9 +65,24 @@ class MessageToFormat(types.MessageToFormatInternal):
                 replies=self.content.replies,
                 edit_hide=self.content.edit_hide,
                 restriction_reason=[],
-            ),
-            to_layer=ctx.layer,
-        ).write()
+            )
+        elif isinstance(self.content, types.internal.MessageToFormatServiceContent):
+            message = types.MessageService(
+                id=self.id,
+                peer_id=self.ref.peer_id,
+                date=self.content.date,
+                action=self.content.action,
+                out=self.ref.out,
+                reply_to=self.ref.reply_to,
+                from_id=self.content.from_id,
+                mentioned=False,  # TODO: ?
+                media_unread=False,  # TODO: ?
+                ttl_period=self.content.ttl_period,
+            )
+        else:
+            raise Unreachable
+
+        return LayerConverter.downgrade(obj=message, to_layer=ctx.layer).write()
 
     def write(self) -> bytes:
         ctx = serialization_ctx.get()
