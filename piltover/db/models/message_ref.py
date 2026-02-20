@@ -126,7 +126,7 @@ class MessageRef(Model):
         #     return cached
 
         mention_read = await models.MessageMention.filter(
-            user=user, message=self
+            user=user, message_id=self.content_id
         ).first().values_list("read", flat=True)
         mentioned = mention_read is not None
         if not mentioned:
@@ -182,7 +182,7 @@ class MessageRef(Model):
         message_content_ids = {
             ref.content.id
             for ref, cached_ref in zip(refs, cached)
-            if cached_ref is not None and not ref.content.is_service()
+            if cached_ref is None and not ref.content.is_service()
         }
 
         mentioned: dict[int, bool] = {}
@@ -215,7 +215,7 @@ class MessageRef(Model):
 
         result = []
         for ref, cached_ref, reactions, to_format in zip(refs, cached, reactionss, to_formats):
-            msg_media_unread = ref.id not in media_read and not mentioned.get(ref.content.id, True)
+            msg_media_unread = ref.id not in media_read and not mentioned.get(ref.content_id, True)
 
             if cached_ref is not None:
                 to_format.ref = cached_ref
