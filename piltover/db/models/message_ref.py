@@ -413,7 +413,7 @@ class MessageRef(Model):
                 peer=to_peer,
                 content=content,
                 random_id=random_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
-                reply_to=replies.get(peer.id),
+                reply_to=replies.get(to_peer.id),
             )
 
         if unhide_dialog:

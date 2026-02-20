@@ -434,10 +434,10 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     if ids:
         query |= Q(id__in=ids)
     if reply_ids:
-        query |= Q(content_id__in=Subquery(
+        query |= Q(id__in=Subquery(
             MessageRef.filter(
                 peer__channel=peer.channel, id__in=reply_ids,
-            ).values_list("content__reply_to_id", flat=True)
+            ).values_list("reply_to_id", flat=True)
         ))
 
     query &= Q(peer__channel=peer.channel)

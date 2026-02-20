@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import builtins
 import hashlib
 import logging
+import traceback
 from asyncio import Task, DefaultEventLoopPolicy, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable, Coroutine
 from unittest import mock
 
 import pytest
@@ -15,6 +17,8 @@ from loguru import logger
 from pyrogram.session import Auth
 from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
+from tortoise import connections
+from tortoise.backends.sqlite import SqliteClient
 from tortoise.queryset import AwaitableQuery, BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, \
     ValuesListQuery, CountQuery, DeleteQuery, UpdateQuery, QuerySet, ExistsQuery
 
@@ -64,8 +68,8 @@ async def _empty_async_func(*args, **kwargs) -> None:
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
-    from piltover.app.app import app
+async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[Gateway]:
+    from piltover.app.app import app, args
 
     marks = {mark.name for mark in request.node.own_markers}
     real_key_gen = "real_key_gen" in marks
@@ -102,9 +106,6 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
             create_sys_user=not dont_create_sys_user,
         ))
 
-        # conn: SqliteClient = connections.get("default")
-        # logger.info(f"connection: {conn}, {conn._connection}")
-
         server_reset_token = server_instance.set(test_server)
         skip_auth_reset_token = skipping_auth.set(not real_key_gen and not real_auth)
 
@@ -124,7 +125,14 @@ async def app_server(request: pytest.FixtureRequest) -> AsyncIterator[Gateway]:
             Auth.create = _real_auth_create
             delattr(Auth, "_real_auth")
 
-        # await conn._connection.execute("vacuum main into 'idk.db';")
+        if pytestconfig.getoption("--dump-db"):
+            db_dumps_dir = args.data_dir / "test-database-dumps"
+            db_dumps_dir.mkdir(parents=True, exist_ok=True)
+            db_dump_file = db_dumps_dir / f"{request.node.name}.db"
+            if db_dump_file.exists():
+                db_dump_file.unlink()
+            conn: SqliteClient = connections.get("default")
+            await conn._connection.execute(f"vacuum main into '{db_dump_file}';")
 
     AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = sched_insta_send_thresh
 
@@ -180,7 +188,10 @@ def _get_patched_cls_original_method(obj: object, names: Iterable[str], suffix: 
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def measure_query_stats(request: pytest.FixtureRequest) -> AsyncIterator[None]:
+async def measure_query_stats(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[None]:
+    if not pytestconfig.getoption("--measure-queries"):
+        return
+
     query_clss = [
         BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, CountQuery, ExistsQuery,
         DeleteQuery, UpdateQuery, QuerySet
@@ -319,7 +330,24 @@ def _async_task_done_callback(task: Task) -> None:
         logger.opt(exception=e).error("Async task was cancelled")
 
 
+class _DebugTask(asyncio.Task):
+    def cancel(self, *args, **kwargs) -> bool:
+        stack = self.get_stack()
+        if stack:
+            formatted = "".join(traceback.format_stack())
+            logger.error(f"Async task is being cancelled from:\n{formatted}")
+        return super().cancel(*args, **kwargs)
+
+    @classmethod
+    def factory(cls, loop: asyncio.BaseEventLoop, coro: Coroutine, **kwargs) -> asyncio.Task:
+        return cls(coro, loop=loop, **kwargs)
+
+
 class CustomEventLoop(DefaultEventLoopPolicy._loop_factory):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.set_task_factory(_DebugTask.factory)
+
     def create_task(self, *args, **kwargs) -> Task:
         task: Task = super().create_task(*args, **kwargs)
         task.add_done_callback(_async_task_done_callback)
@@ -341,15 +369,11 @@ async def exit_stack(request: pytest.FixtureRequest) -> AsyncIterator[AsyncExitS
         yield stack
 
 
-#@pytest_asyncio.fixture(scope="session", autouse=True)
-#async def profile_tests() -> ...:
-#    import yappi
-#
-#    yappi.set_clock_type("wall")
-#    yappi.start()
-#
-#    yield
-#
-#    yappi.stop()
-#    stats = yappi.get_func_stats()
-#    stats.print_all()
+def pytest_addoption(parser: pytest.Parser):
+    parser.addoption(
+        "--dumb-db", action="store_true", default=False, help="dump database at the end of each test to a file",
+    )
+    parser.addoption(
+        "--measure-queries", action="store_true", default=False,
+        help="measure db queries counts and timings per request handler and per test"
+    )
