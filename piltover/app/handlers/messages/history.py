@@ -1,5 +1,6 @@
 from datetime import datetime, UTC
 from time import time
+from typing import cast
 
 from loguru import logger
 from tortoise import connections
@@ -13,7 +14,7 @@ from piltover.cache import Cache
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction, \
     READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
-    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant
+    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -31,7 +32,7 @@ from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCou
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
     ReadMessageContents, SetHistoryTTL, GetSearchResultsPositions, GetSearchResultsPositions_134, GetDiscussionMessage, \
-    GetReplies, GetMessageReadParticipants
+    GetReplies, GetMessageReadParticipants, ReadDiscussion
 from piltover.tl.types.messages import Messages, AffectedMessages, SearchCounter, MessagesSlice, \
     MessageViews as MessagesMessageViews, SearchResultsCalendar, AffectedHistory, SearchResultsPositions, \
     DiscussionMessage
@@ -950,12 +951,20 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
     else:
         total, max_id = 0, None
 
+    read_state = await DiscussionReadState.get_or_none(user=user, discussion_message_id=discussion_message.id)
+    if read_state is None:
+        unread_count = total
+    else:
+        unread_count = await MessageRef.filter(
+            reply_to_id=discussion_message.id, id__gt=read_state.last_message_id
+        ).count()
+
     return DiscussionMessage(
         messages=[await discussion_message.to_tl(user)],
         max_id=max_id,
-        read_inbox_max_id=None,
+        read_inbox_max_id=read_state.last_message_id if read_state is not None else None,
         read_outbox_max_id=None,
-        unread_count=total,
+        unread_count=unread_count,
         chats=[*chats, *channels],
         users=users,
     )
@@ -1009,4 +1018,32 @@ async def get_message_read_participants(request: GetMessageReadParticipants, use
     return result
 
 
-# TODO: ReadDiscussion
+@handler.on_request(ReadDiscussion, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def read_discussion(request: ReadDiscussion, user: User) -> bool:
+    peer = await Peer.from_input_peer_raise(user, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
+    # TODO: check if user has access to messages
+
+    discussion_query = peer.q_this_or_channel() & Q(
+        id=request.msg_id, content__type=MessageType.REGULAR, content__is_discussion=True,
+    )
+    discussion_query = await append_channel_min_message_id_to_query_maybe(peer, discussion_query)
+    message = await MessageRef.get_or_none(discussion_query)
+    if message is None:
+        raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
+
+    last_message_query = MessageRef.filter(reply_to_id=message.id).order_by("-id")
+    if request.read_max_id:
+        last_message_query = last_message_query.filter(id__lte=request.read_max_id)
+
+    last_message_id = cast(int | None, await last_message_query.first().values_list("id", flat=True))
+
+    state, created = await DiscussionReadState.get_or_create(user=user, discussion_message_id=message.id, defaults={
+        "last_message_id": last_message_id or 0,
+    })
+    if not created and last_message_id is not None and last_message_id > state.last_message_id:
+        state.last_message_id = last_message_id
+        await state.save(update_fields=["last_message_id"])
+
+    # TODO: updates
+
+    return True

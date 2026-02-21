@@ -51,7 +51,6 @@ class MessageContent(Model):
     edit_hide: bool = fields.BooleanField(default=False)
     author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
     media: models.MessageMedia | None = NullableFK("models.MessageMedia")
-    # TODO: move to MessageRef model because resulting id is peer-dependent?
     fwd_header: models.MessageFwdHeader | None = NullableFK("models.MessageFwdHeader")
     post_info: models.ChannelPostInfo | None = NullableFK("models.ChannelPostInfo")
     via_bot: models.User | None = NullableFKSetNull("models.User", related_name="msg_via_bot")
@@ -360,10 +359,6 @@ class MessageContent(Model):
     ) -> Self:
         if new_author is None and self.author is not None:
             new_author = self.author
-
-        if fwd_header is MISSING:
-            # TODO: probably should be prefetched
-            fwd_header = await self.fwd_header
 
         content = await models.MessageContent.create(
             message=self.message if self.media is None or not drop_captions else None,
