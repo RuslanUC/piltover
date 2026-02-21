@@ -116,14 +116,14 @@ class MessageRef(Model):
             reactions: MessageReactions | None,
     ) -> MessageToFormatRef:
         # TODO: cache it and just delete from cache when user reads mention?
-        # cache_key = ref.cache_key(current_user.id)
-        # if (cached := await Cache.obj.get(cache_key)) is not None:
-        #     if with_reactions:
-        #         reactions_before = to_format.ref.reactions
-        #         to_format.reactions = reactions
-        #         if reactions_before != to_format.ref.reactions:
-        #             await Cache.obj.set(cache_key, cached)
-        #     return cached
+        cache_key = self.cache_key(user.id)
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            if with_reactions:
+                reactions_before = to_format.ref.reactions
+                to_format.reactions = reactions
+                if reactions_before != to_format.ref.reactions:
+                    await Cache.obj.set(cache_key, cached)
+            return cached
 
         mention_read = await models.MessageMention.filter(
             user=user, message_id=self.content_id
@@ -145,7 +145,7 @@ class MessageRef(Model):
             media_unread=media_unread if media_unread else not mention_read,
         )
 
-        # await Cache.obj.set(cache_key, message)
+        await Cache.obj.set(cache_key, message)
         return message
 
     async def to_tl(self, user: models.User, with_reactions: bool = False) -> TLMessageBase:
@@ -272,7 +272,7 @@ class MessageRef(Model):
 
         raw_contents = [ref.content for ref in messages]
 
-        reactions = [None for _ in messages]
+        reactions: list[MessageReactions | None] = [None for _ in messages]
         if with_reactions:
             for idx, content in enumerate(raw_contents):
                 reactions[idx] = await content.to_tl_reactions(user_id)

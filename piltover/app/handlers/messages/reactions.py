@@ -1,14 +1,14 @@
 from datetime import datetime
 
 from pytz import UTC
-from tortoise.expressions import Q, Subquery
+from tortoise.expressions import Q, Subquery, F
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import PeerType, ChatBannedRights, FileType
 from piltover.db.models import Reaction, User, Peer, MessageReaction, ReadState, State, RecentReaction, \
-    UserReactionsSettings, MessageRef, AvailableChannelReaction, File
+    UserReactionsSettings, MessageRef, AvailableChannelReaction, File, MessageContent
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates, ReactionEmpty
@@ -112,6 +112,9 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             reaction=reaction,
             custom_emoji=custom_reaction,
         )
+
+    await MessageContent.filter(id=message.content_id).update(reactions_version=F("reactions_version") + 1)
+    await message.content.refresh_from_db(["reactions_version"])
 
     result = await upd.update_reactions(user, [message], peer)
 

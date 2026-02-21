@@ -59,6 +59,7 @@ class MessageContent(Model):
     comments_info: models.MessageComments | None = NullableFK("models.MessageComments")
     is_discussion: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
+    reactions_version: int = fields.IntField(default=0)
 
     peer_id: int
     author_id: int | None
@@ -551,14 +552,18 @@ class MessageContent(Model):
     async def to_tl_reactions(self, user: models.User | int) -> MessageReactions:
         user_id = user.id if isinstance(user, models.User) else user
 
-        # TODO: send min MessageReactions if current user didn't send reaction to message
         user_reaction = await models.MessageReaction.get_or_none(
             user_id=user_id, message=self
         ).values_list("reaction_id", "custom_emoji_id")
         if user_reaction:
             user_reaction_id, user_custom_emoji_id = user_reaction
+            cache_user_id = user_id
         else:
             user_reaction_id = user_custom_emoji_id = None
+            cache_user_id = None
+
+        if (cached := await Cache.obj.get(self.cache_key_reactions(cache_user_id))) is not None:
+            return cached
 
         reactions = await models.MessageReaction\
             .annotate(msg_count=Count("id"))\
@@ -585,10 +590,18 @@ class MessageContent(Model):
                 count=msg_count,
             ))
 
-        return MessageReactions(
+        result = MessageReactions(
+            min=cache_user_id is None,
             can_see_list=False,
             results=results,
         )
 
+        await Cache.obj.set(self.cache_key_reactions(cache_user_id), result)
+
+        return result
+
     def cache_key(self) -> str:
         return f"message-content:{self.id}:{self.version}"
+
+    def cache_key_reactions(self, user_id: int | None) -> str:
+        return f"message-reactions:{self.id}:{user_id or 0}:{self.reactions_version}"

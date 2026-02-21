@@ -9,6 +9,7 @@ from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
+from piltover.cache import Cache
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction, \
     READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
@@ -755,6 +756,11 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
 
     if media_read_to_create:
         await MessageMediaRead.bulk_create(media_read_to_create)
+
+    for ref in valid_refs:
+        if ref.id not in read_ids:
+            continue
+        await Cache.obj.delete(ref.cache_key(user.id))
 
     return list(read_ids)
 
