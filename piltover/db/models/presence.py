@@ -30,7 +30,7 @@ _MISSING = _PresenceMissing.MISSING
 class Presence(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.OneToOneField("models.User")
-    status: UserStatus = fields.IntEnumField(UserStatus, default=UserStatus.OFFLINE)
+    status: UserStatus = fields.IntEnumField(UserStatus, default=UserStatus.OFFLINE, description="")
     last_seen: datetime = fields.DatetimeField(default_add=True)
 
     user_id: int

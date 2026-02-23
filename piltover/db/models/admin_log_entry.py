@@ -77,7 +77,7 @@ class AdminLogEntry(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.ForeignKeyField("models.User")
     channel: models.Channel = fields.ForeignKeyField("models.Channel")
-    action: AdminLogEntryAction = fields.IntEnumField(AdminLogEntryAction)
+    action: AdminLogEntryAction = fields.IntEnumField(AdminLogEntryAction, description="")
     date: datetime = fields.DatetimeField(auto_now_add=True)
 
     prev: bytes = fields.BinaryField(null=True, default=None)

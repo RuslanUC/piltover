@@ -10,18 +10,18 @@ from piltover.utils import gen_safe_prime
 from piltover.utils.srp import SRP_K, btoi, itob
 
 
-def gen_b() -> bytes:
+def srp_gen_b() -> bytes:
     return urandom(256)
 
 
-def gen_created_at() -> int:
+def srp_gen_created_at() -> int:
     return int(time())
 
 
 class SrpSession(Model):
     id: int = fields.BigIntField(pk=True)
-    priv_b: bytes = fields.BinaryField(default=gen_b)
-    created_at: int = fields.BigIntField(default=gen_created_at)
+    priv_b: bytes = fields.BinaryField(default=srp_gen_b)
+    created_at: int = fields.BigIntField(default=srp_gen_created_at)
     password: models.UserPassword = fields.ForeignKeyField("models.UserPassword")
 
     def pub_B(self) -> bytes:

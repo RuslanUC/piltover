@@ -33,7 +33,7 @@ class ChatBase(Model):
     creator: models.User = fields.ForeignKeyField("models.User")
     photo: models.File | None = fields.ForeignKeyField("models.File", on_delete=fields.SET_NULL, null=True, default=None)
     no_forwards: bool = fields.BooleanField(default=False)
-    banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights(0))
+    banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights.NONE)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     ttl_period_days: int = fields.SmallIntField(default=0)
 

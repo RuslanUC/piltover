@@ -12,7 +12,7 @@ from piltover.tl import DraftMessage, InputReplyToMessage, objects
 class MessageDraft(Model):
     id: int = fields.BigIntField(pk=True)
     message: str = fields.TextField()
-    date: datetime = fields.DatetimeField(default=datetime.now)
+    date: datetime = fields.DatetimeField(auto_now_add=True)
     peer: models.Peer = fields.OneToOneField("models.Peer")
     reply_to: models.MessageRef | None = NullableFKSetNull("models.MessageRef")
     no_webpage: bool = fields.BooleanField(default=False)

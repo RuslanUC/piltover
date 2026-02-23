@@ -12,8 +12,8 @@ from piltover.tl import EmojiGroupPremium, EmojiGroup as TLEmojiGroup, EmojiGrou
 
 class EmojiGroup(Model):
     id: int = fields.BigIntField(pk=True)
-    category: EmojiGroupCategory = fields.IntEnumField(EmojiGroupCategory, index=True)
-    type: EmojiGroupType = fields.IntEnumField(EmojiGroupType)
+    category: EmojiGroupCategory = fields.IntEnumField(EmojiGroupCategory, index=True, description="")
+    type: EmojiGroupType = fields.IntEnumField(EmojiGroupType, description="")
     position: int = fields.SmallIntField()
     name: str = fields.CharField(max_length=64)
     icon_emoji: models.File = fields.ForeignKeyField("models.File")

@@ -16,7 +16,7 @@ UpdateTypes = UpdateNewEncryptedMessage | UpdateEncryptedMessagesRead
 class SecretUpdate(Model):
     id: int = fields.BigIntField(pk=True)
     qts: int = fields.BigIntField()
-    type: SecretUpdateType = fields.IntEnumField(SecretUpdateType)
+    type: SecretUpdateType = fields.IntEnumField(SecretUpdateType, description="")
     date: datetime = fields.DatetimeField(auto_now_add=True)
     authorization: models.UserAuthorization = fields.ForeignKeyField("models.UserAuthorization")
     chat: models.EncryptedChat = fields.ForeignKeyField("models.EncryptedChat")

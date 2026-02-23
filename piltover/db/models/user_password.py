@@ -14,18 +14,18 @@ from piltover.utils import gen_safe_prime
 from piltover.utils.srp import itob
 
 
-def gen_salt1() -> bytes:
+def password_gen_salt1() -> bytes:
     return urandom(8)
 
 
-def gen_salt2() -> bytes:
+def password_gen_salt2() -> bytes:
     return urandom(16)
 
 
 class UserPassword(Model):
     id: int = fields.BigIntField(pk=True)
-    salt1: bytes = fields.BinaryField(default=gen_salt1)  # 8 - 40 bytes
-    salt2: bytes = fields.BinaryField(default=gen_salt2)  # 16 bytes
+    salt1: bytes = fields.BinaryField(default=password_gen_salt1)  # 8 - 40 bytes
+    salt2: bytes = fields.BinaryField(default=password_gen_salt2)  # 16 bytes
     password: bytes | None = fields.BinaryField(null=True, default=None)  # 256 bytes
     hint: str | None = fields.CharField(max_length=120, null=True, default=None)
     user: models.User = fields.OneToOneField("models.User")

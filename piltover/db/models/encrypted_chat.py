@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from os import urandom
 
+from fastrand import xorshift128plus_bytes
 from tortoise import fields, Model
 
 from piltover.db import models
@@ -11,9 +11,13 @@ from piltover.tl.base import EncryptedChat as EncryptedChatBase
 from piltover.tl.to_format import EncryptedChatToFormat
 
 
+def gen_access_hash() -> int:
+    return Long.read_bytes(xorshift128plus_bytes(8), signed=True)
+
+
 class EncryptedChat(Model):
     id: int = fields.BigIntField(pk=True)
-    access_hash: int = fields.BigIntField(default=lambda: Long.read_bytes(urandom(8), signed=True))
+    access_hash: int = fields.BigIntField(default=gen_access_hash())
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     from_user: models.User = fields.ForeignKeyField("models.User", related_name="enc_from_user")
     from_sess: models.UserAuthorization = fields.ForeignKeyField("models.UserAuthorization", related_name="enc_from_sess")

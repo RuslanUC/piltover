@@ -2,23 +2,26 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
-from os import urandom
 
+from fastrand import xorshift128plus_bytes
 from loguru import logger
 from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import CallDiscardReason, CALL_DISCARD_REASON_TO_TL
 from piltover.exceptions import InvalidConstructorException
-from piltover.tl import Long, PhoneCallDiscarded, PhoneCallProtocol, PhoneCallDiscardReasonDisconnect, PhoneConnection, \
-    PhoneConnectionWebrtc
+from piltover.tl import Long, PhoneCallDiscarded, PhoneCallProtocol, PhoneCallDiscardReasonDisconnect, PhoneConnection
 from piltover.tl.base import EncryptedChat as EncryptedChatBase
 from piltover.tl.to_format import PhoneCallToFormat
 
 
+def call_gen_access_hash() -> int:
+    return Long.read_bytes(xorshift128plus_bytes(8), signed=True)
+
+
 class PhoneCall(Model):
     id: int = fields.BigIntField(pk=True)
-    access_hash: int = fields.BigIntField(default=lambda: Long.read_bytes(urandom(8), signed=True))
+    access_hash: int = fields.BigIntField(default=call_gen_access_hash)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     started_at: datetime | None = fields.DatetimeField(null=True, default=None)
     from_user: models.User = fields.ForeignKeyField("models.User", related_name="call_from_user")
@@ -29,7 +32,7 @@ class PhoneCall(Model):
     g_a: bytes | None = fields.BinaryField(null=True, default=None)
     g_b: bytes | None = fields.BinaryField(null=True, default=None)
     key_fp: int | None = fields.BigIntField(null=True, default=None)
-    discard_reason: CallDiscardReason | None = fields.IntEnumField(CallDiscardReason, null=True, default=None)
+    discard_reason: CallDiscardReason | None = fields.IntEnumField(CallDiscardReason, null=True, default=None, description="")
     duration: int | None = fields.IntField(null=True, default=None)
     protocol: bytes = fields.BinaryField()
 

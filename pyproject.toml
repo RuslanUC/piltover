@@ -33,8 +33,7 @@ dependencies = [
     "uvloop (>=0.22.1,<1.0.0); sys_platform != 'win32'",
     "loguru (>=0.7.3,<1.0.0)",
     # branch "allow-joining-same-table-twice"
-    "tortoise-orm[asyncmy,accel] @ git+https://github.com/RuslanUC/tortoise-orm.git@allow-joining-same-table-twice",
-    "aerich (>=0.9.2,<1.0.0)",
+    "tortoise-orm[accel,asyncmy] (>=1.1.5,<2.0.0)",
     "pillow (>=12.1.0,<13.0.0)",
     # TODO: upgrade to 0.2.x and use Session from mtproto in Gateway from piltover
     "mtproto (==0.1.4)",
@@ -91,3 +90,6 @@ omit = [
     "*piltover/tl/functions/*",
     "*piltover/tl/all.py",
 ]
+
+[tool.tortoise]
+tortoise_orm = "piltover.app_config.TORTOISE_ORM"

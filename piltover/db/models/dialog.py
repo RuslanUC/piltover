@@ -20,7 +20,7 @@ class Dialog(Model):
     id: int = fields.BigIntField(pk=True)
     pinned_index: int | None = fields.SmallIntField(null=True, default=None)
     unread_mark: bool = fields.BooleanField(default=False)
-    folder_id: DialogFolderId = fields.IntEnumField(DialogFolderId, default=DialogFolderId.ALL)
+    folder_id: DialogFolderId = fields.IntEnumField(DialogFolderId, default=DialogFolderId.ALL, description="")
     visible: bool = fields.BooleanField(default=True)
 
     peer: models.Peer = fields.OneToOneField("models.Peer")

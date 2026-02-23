@@ -188,6 +188,7 @@ class UserStatus(IntEnum):
 
 
 class ChatBannedRights(IntFlag):
+    NONE = 0
     VIEW_MESSAGES = 1 << 0
     SEND_MESSAGES = 1 << 1
     SEND_MEDIA = 1 << 2
@@ -237,6 +238,7 @@ class DialogFolderId(IntEnum):
 
 
 class ChatAdminRights(IntFlag):
+    NONE = 0
     CHANGE_INFO = 1 << 0
     POST_MESSAGES = 1 << 1
     EDIT_MESSAGES = 1 << 2

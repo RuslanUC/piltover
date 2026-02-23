@@ -9,13 +9,17 @@ from piltover.db import models
 from piltover.tl import Long
 
 
+def qr_gen_nonce() -> int:
+    return Long.read_bytes(xorshift128plus_bytes(8), signed=True)
+
+
 class QrLogin(Model):
     EXPIRE_TIME = 30
 
     id: int = fields.BigIntField(pk=True)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     key: models.AuthKey = fields.ForeignKeyField("models.AuthKey")
-    nonce: int = fields.BigIntField(default=lambda: Long.read_bytes(xorshift128plus_bytes(8)))
+    nonce: int = fields.BigIntField(default=qr_gen_nonce)
     auth: models.UserAuthorization | None = fields.ForeignKeyField("models.UserAuthorization", null=True, default=None)
 
     auth_id: int | None

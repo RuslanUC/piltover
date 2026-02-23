@@ -34,9 +34,9 @@ MessageIdContent = Annotated[int, "Content id"]
 class MessageContent(Model):
     id: int = fields.BigIntField(pk=True)
     message: str | None = fields.TextField(null=True, default=None)
-    date: datetime = fields.DatetimeField(default=lambda: datetime.now(UTC))
+    date: datetime = fields.DatetimeField(auto_now_add=True)
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
-    type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR)
+    type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR, description="")
     # TODO: use tl for entities
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
     extra_info: bytes | None = fields.BinaryField(null=True, default=None)

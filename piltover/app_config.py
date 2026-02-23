@@ -105,3 +105,18 @@ if AppConfig.GIFS_PROVIDER and AppConfig.GIFS_PROVIDER not in ("tenor", "klipy")
         f"Gifs search is disabled. "
         f"Currently supported providers: \"tenor\", \"klipy\"."
     )
+
+
+TORTOISE_ORM = {
+    "connections": {
+        "default": environ.get("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db"),
+    },
+    "apps": {
+        # TODO: rename app to "piltover"
+        "models": {
+            "models": ["piltover.db.models"],
+            "default_connection": "default",
+            "migrations": "piltover.db.migrations",
+        },
+    },
+}

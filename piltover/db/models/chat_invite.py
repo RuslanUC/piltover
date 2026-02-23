@@ -11,12 +11,16 @@ from piltover.db import models
 from piltover.tl import ChatInviteExported, Long
 
 
+def invite_gen_nonce() -> str:
+    return urandom(8).hex()
+
+
 class ChatInvite(Model):
     id: int = fields.BigIntField(pk=True)
     revoked: bool = fields.BooleanField(default=False)
     expires_at: datetime | None = fields.DatetimeField(null=True, default=None)
     request_needed: bool = fields.BooleanField(default=False)
-    nonce: str = fields.CharField(max_length=16, default=lambda: urandom(8).hex())
+    nonce: str = fields.CharField(max_length=16, default=invite_gen_nonce)
     user: models.User | None = fields.ForeignKeyField("models.User", null=True)
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True)
     channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True)

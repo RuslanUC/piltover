@@ -40,7 +40,7 @@ class BaseTheme(IntEnum):
 class ThemeSettings(Model):
     id: int = fields.BigIntField(pk=True)
     theme: models.Theme = fields.ForeignKeyField("models.Theme")
-    base_theme: BaseTheme = fields.IntEnumField(BaseTheme)
+    base_theme: BaseTheme = fields.IntEnumField(BaseTheme, description="")
     accent_color: int = fields.IntField()
     outbox_accent_color: int | None = fields.IntField(null=True)
     message_colors_animated: bool = fields.BooleanField()

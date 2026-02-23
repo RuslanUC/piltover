@@ -17,7 +17,7 @@ class PeerNotifySettings(Model):
     id: int = fields.BigIntField(pk=True)
     user: models.User = fields.ForeignKeyField("models.User")
     peer: models.Peer = fields.ForeignKeyField("models.Peer", null=True, default=None)
-    not_peer: NotifySettingsNotPeerType = fields.IntEnumField(NotifySettingsNotPeerType, null=True, default=None)
+    not_peer: NotifySettingsNotPeerType = fields.IntEnumField(NotifySettingsNotPeerType, null=True, default=None, description="")
     show_previews: bool = fields.BooleanField(default=True)
     muted: bool = fields.BooleanField(default=False)
     muted_until: datetime = fields.DatetimeField(null=True, default=None)

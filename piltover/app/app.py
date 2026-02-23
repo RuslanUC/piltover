@@ -11,13 +11,12 @@ from types import SimpleNamespace
 from typing import Literal, AsyncIterator
 
 import uvloop
-from aerich import Command
-from aerich.migrate import Migrate
 from loguru import logger
 from tortoise import Tortoise, connections
 
 from piltover.app.handlers import register_handlers
 from piltover.app.utils.app_create_system_data import create_system_data
+from piltover.app_config import TORTOISE_ORM
 from piltover.cache import Cache
 from piltover.gateway import Gateway
 from piltover.session_manager import SessionManager
@@ -70,37 +69,6 @@ class ArgsNamespace(SimpleNamespace):
             self.system_stickersets_dir = self.data_dir / "stickersets"
         if self.emoji_groups_dir is None:
             self.emoji_groups_dir = self.data_dir / "emoji_groups"
-
-
-class MigrateNoDowngrade(Migrate):
-    @classmethod
-    def diff_models(cls, old_models: dict[str, dict], new_models: dict[str, dict], upgrade=True, no_input=True) -> None:
-        if not upgrade:
-            return
-
-        return super(MigrateNoDowngrade, cls).diff_models(old_models, new_models, True, no_input)
-
-
-async def migrate():
-    from os import environ
-    migrations_dir = (args.data_dir / "migrations").absolute()
-
-    command = Command({
-        "connections": {"default": DB_CONNECTION_STRING},
-        "apps": {"models": {"models": ["piltover.db.models", "aerich.models"], "default_connection": "default"}},
-    }, location=str(migrations_dir))
-
-    if environ.get("AERICH_RUN_FIX_MIGRATIONS", "").lower() in ("1", "true"):
-        await command.fix_migrations()
-    await command.init()
-
-    if Path(migrations_dir).exists():
-        await MigrateNoDowngrade.migrate("update", False)
-        await command.upgrade(True)
-    else:
-        await command.init_db(True)
-
-    await Tortoise.close_connections()
 
 
 class PiltoverApp:
@@ -162,12 +130,7 @@ class PiltoverApp:
             no_sign=fp.to_bytes(8, "big", signed=True).hex(),
         )
 
-        await migrate()
-
-        await Tortoise.init(
-            db_url=DB_CONNECTION_STRING,
-            modules={"models": ["piltover.db.models"]},
-        )
+        await Tortoise.init(config=TORTOISE_ORM)
 
         await create_system_data(
             args, args.create_system_user, args.create_auth_countries, args.create_reactions, args.create_chat_themes,

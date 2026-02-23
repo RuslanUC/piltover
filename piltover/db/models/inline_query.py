@@ -17,14 +17,14 @@ class InlineQuery(Model):
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     query: str = fields.CharField(max_length=128)
     offset: str | None = fields.CharField(max_length=64, null=True, default=None)
-    inline_peer: InlineQueryPeer | None = fields.IntEnumField(InlineQueryPeer, null=True, default=None)
+    inline_peer: InlineQueryPeer | None = fields.IntEnumField(InlineQueryPeer, null=True, default=None, description="")
 
     user_id: int
     bot_id: int
 
     class Meta:
         indexes = (
-            ("bot", "query", "offset"),
+            ("bot_id", "query", "offset"),
         )
 
     INLINE_PEER_TO_TL = {

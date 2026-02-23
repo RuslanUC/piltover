@@ -3,6 +3,7 @@ from __future__ import annotations
 from os import urandom
 from typing import Generator
 
+from fastrand import xorshift128plus_bytes
 from loguru import logger
 from tortoise import Model, fields
 from tortoise.expressions import Q
@@ -34,16 +35,20 @@ OFFICIAL_TL_SET_TO_ENUM = {
 }
 
 
+def stickerset_gen_access_hash() -> int:
+    return Long.read_bytes(xorshift128plus_bytes(8), signed=True)
+
+
 class Stickerset(Model):
     id: int = fields.BigIntField(pk=True)
     title: str = fields.CharField(max_length=64)
     short_name: str | None = fields.CharField(max_length=64, unique=True, null=True)
-    access_hash: int = fields.BigIntField(default=lambda: Long.read_bytes(urandom(8)))
+    access_hash: int = fields.BigIntField(default=stickerset_gen_access_hash)
     owner: models.User | None = fields.ForeignKeyField("models.User", null=True)
     official: bool = fields.BooleanField(default=False)
     hash: int = fields.IntField(default=0)
-    type: StickerSetType = fields.IntEnumField(StickerSetType)
-    official_type: StickerSetOfficialType | None = fields.IntEnumField(StickerSetOfficialType, null=True, default=None)
+    type: StickerSetType = fields.IntEnumField(StickerSetType, description="")
+    official_type: StickerSetOfficialType | None = fields.IntEnumField(StickerSetOfficialType, null=True, default=None, description="")
     deleted: bool = fields.BooleanField(default=False)
     emoji: bool = fields.BooleanField(default=False)
     masks: bool = fields.BooleanField(default=False)

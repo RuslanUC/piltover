@@ -8,7 +8,7 @@ from piltover.app.bot_handlers.botfather.utils import get_bot_selection_inline_k
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import BotFatherState
 from piltover.db.models import Peer, Bot, BotInfo, BotFatherUserState, UserPhoto, BotCommand, MessageRef
-from piltover.db.models.bot import gen_bot_token
+from piltover.db.models.bot import bot_gen_token
 from piltover.tl import ReplyInlineMarkup, KeyboardButtonRow, KeyboardButtonCallback
 from piltover.tl.types.internal_botfather import BotfatherStateEditbot
 from piltover.tl.types.messages import BotCallbackAnswer
@@ -181,7 +181,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         if bot is None:
             return None
 
-        bot.token_nonce = gen_bot_token()
+        bot.token_nonce = bot_gen_token()
         await bot.save(update_fields=["token_nonce"])
 
         message.content.message, message.content.entities = __text_bot_token_revoked.format(

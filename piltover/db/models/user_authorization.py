@@ -9,16 +9,16 @@ from piltover.db import models
 from piltover.tl import Authorization, Long
 
 
-def gen_hash():
+def auth_gen_hash():
     return urandom(16).hex()
 
 
 class UserAuthorization(Model):
     id: int = fields.BigIntField(pk=True)
-    hash: str = fields.CharField(max_length=32, index=True, default=gen_hash)
+    hash: str = fields.CharField(max_length=32, index=True, default=auth_gen_hash)
     ip: str = fields.CharField(max_length=64)
-    created_at: datetime = fields.DatetimeField(default=datetime.now)
-    active_at: datetime = fields.DatetimeField(default=datetime.now)
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
+    active_at: datetime = fields.DatetimeField(auto_now_add=True)
     mfa_pending: bool = fields.BooleanField(default=False)
     allow_encrypted_requests: bool = fields.BooleanField(default=True)
     allow_call_requests: bool = fields.BooleanField(default=True)

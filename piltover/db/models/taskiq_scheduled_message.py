@@ -12,7 +12,7 @@ from piltover.tl import primitives, LongVector, Int
 
 class TaskIqScheduledMessage(Model):
     id: UUID = fields.UUIDField(pk=True, default=uuid4)
-    state: TaskIqScheduledState = fields.IntEnumField(TaskIqScheduledState, default=TaskIqScheduledState.SCHEDULED)
+    state: TaskIqScheduledState = fields.IntEnumField(TaskIqScheduledState, default=TaskIqScheduledState.SCHEDULED, description="")
     scheduled_time: int = fields.BigIntField(index=True)
     state_updated_at: int = fields.BigIntField(index=True)
     message: models.MessageRef = fields.OneToOneField("models.MessageRef")

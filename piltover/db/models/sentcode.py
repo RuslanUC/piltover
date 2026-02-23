@@ -38,7 +38,7 @@ class SentCode(Model):
     hash: UUID = fields.UUIDField(default=uuid4)
     expires_at: int = fields.BigIntField(default=gen_expires_at)
     used: bool = fields.BooleanField(default=False)
-    purpose: PhoneCodePurpose = fields.IntEnumField(PhoneCodePurpose)
+    purpose: PhoneCodePurpose = fields.IntEnumField(PhoneCodePurpose, description="")
     user: models.User | None = fields.ForeignKeyField("models.User", null=True, default=None)
 
     def phone_code_hash(self) -> str:

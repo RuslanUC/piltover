@@ -17,7 +17,7 @@ class UploadingFile(Model):
     file_id: str = fields.CharField(index=True, max_length=64)
     physical_id: UUID = fields.UUIDField(default=uuid4)
     total_parts: int = fields.IntField(default=0)
-    created_at: datetime = fields.DatetimeField(default=datetime.now)
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
     mime: str | None = fields.CharField(max_length=64, null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 

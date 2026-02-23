@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from base64 import b85encode, b85decode
+from base64 import b85decode
 from datetime import datetime
 from io import BytesIO
 from time import time
@@ -36,10 +36,10 @@ VIDEO_ATTRIBUTES = (
 class File(Model):
     id: int = fields.BigIntField(pk=True)
     physical_id: UUID = fields.UUIDField(default=uuid4)
-    created_at: datetime = fields.DatetimeField(default=datetime.now)
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
     mime_type: str = fields.CharField(max_length=200)
     size: int = fields.BigIntField()
-    type: FileType = fields.IntEnumField(FileType)
+    type: FileType = fields.IntEnumField(FileType, description="")
 
     constant_access_hash: int | None = fields.BigIntField(null=True, default=None)
     constant_file_ref: UUID | None = fields.UUIDField(null=True, default=None)
