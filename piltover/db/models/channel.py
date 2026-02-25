@@ -5,11 +5,13 @@ import hmac
 from enum import auto, Enum
 from typing import cast
 
+from loguru import logger
 from tortoise import fields
 from tortoise.models import MODEL
 from tortoise.transactions import in_transaction
 
 from piltover.app_config import AppConfig
+from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.models import ChatBase
 from piltover.db.models.utils import NullableFKSetNull
@@ -97,12 +99,25 @@ class Channel(ChatBase):
     async def to_tl(self) -> TLChatBase:
         return (await self.to_tl_bulk([self]))[0]
 
+    def cache_key(self) -> str:
+        return f"channel:{self.id}:{self.version}"
+
     @classmethod
     async def to_tl_bulk(cls, channels: list[models.Channel]) -> list[TLChatBase]:
         if not channels:
             return []
 
-        channel_ids = [channel.id for channel in channels]
+        cached_channels = await Cache.obj.multi_get([
+            channel.cache_key()
+            for channel in channels
+        ])
+
+        processing_channels = [
+            channel
+            for channel, cached in zip(channels, cached_channels)
+            if cached is None
+        ]
+        channel_ids = [channel.id for channel in processing_channels]
 
         if len(channel_ids) == 1:
             channel_id = channel_ids[0]
@@ -120,7 +135,7 @@ class Channel(ChatBase):
             }
 
         if len(channel_ids) == 1:
-            channel = channels[0]
+            channel = processing_channels[0]
             if channel.photo_id is not None:
                 photos = {channel.id: await channel.photo}
             else:
@@ -128,25 +143,31 @@ class Channel(ChatBase):
         else:
             channel_by_photo_id = {
                 channel.photo_id: channel.id
-                for channel in channels
+                for channel in processing_channels
                 if channel.photo_id is not None and not isinstance(channel.photo, models.File)
             }
             photos = {
                 channel_by_photo_id[photo.id]: photo
                 for photo in await models.File.filter(id__in=list(channel_by_photo_id))
             }
-            for channel in channels:
+            for channel in processing_channels:
                 if channel.photo_id is not None and isinstance(channel.photo, models.File):
                     photos[channel.id] = channel.photo
 
         tl = []
-        for channel in channels:
+        to_cache = []
+        for channel, cached in zip(channels, cached_channels):
+            if cached is not None:
+                tl.append(cached)
+                continue
+
             if channel.deleted:
                 tl.append(ChannelForbidden(
                     id=channel.make_id(),
                     access_hash=-1,
                     title=channel.name,
                 ))
+                to_cache.append((channel.cache_key(), tl[-1]))
                 continue
 
             accent_color = None
@@ -177,6 +198,10 @@ class Channel(ChatBase):
                 nojoin_allow_view=channel.nojoin_allow_view,
                 # NOTE: participants_count is not included here since it is present in ChannelFull
             ))
+            to_cache.append((channel.cache_key(), tl[-1]))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
 
         return tl
 

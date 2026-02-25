@@ -292,7 +292,11 @@ async def add_chat_user(request: AddChatUser, user: User):
             await ChatInviteRequest.filter(id__in=Subquery(
                 ChatInviteRequest.filter(user=invited_user, invite__chat=chat_peer.chat).values_list("id", flat=True)
             )).delete()
-            await Chat.filter(id=chat_peer.chat_id).update(participants_count=F("participants_count") + 1)
+            await Chat.filter(id=chat_peer.chat_id).update(
+                participants_count=F("participants_count") + 1,
+                version=F("version") + 1.
+            )
+            await chat_peer.chat.refresh_from_db(["participants_count", "version"])
 
     updates = await upd.create_chat(user, chat_peer.chat, list(chat_peers.values()))
 
@@ -342,7 +346,11 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
         extra_info=MessageActionChatDeleteUser(user_id=user_peer.peer_user(user).id).write(),
     )
     await ChatParticipant.filter(chat=chat_peer.chat, user=user_peer.user).delete()
-    await Chat.filter(id=chat_peer.chat_id).update(participants_count=F("participants_count") - 1)
+    await Chat.filter(id=chat_peer.chat_id).update(
+        participants_count=F("participants_count") - 1,
+        version=F("version") + 1.
+    )
+    await chat_peer.chat.refresh_from_db(["participants_count", "version"])
 
     # TODO: remove scheduled messages?
 

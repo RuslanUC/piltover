@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
-
 from tortoise import fields
 
+from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.models.chat_base import ChatBase
 from piltover.tl import ChatForbidden
@@ -57,8 +56,12 @@ class Chat(ChatBase):
             default_banned_rights=self.banned_rights.to_tl(),
         )
 
+    def cache_key(self) -> str:
+        return f"chat:{self.id}:{self.version}"
+
     async def to_tl(self) -> TLChatBase:
-        # TODO: cache result
+        if (cached := await Cache.obj.get(self.cache_key())) is not None:
+            return cached
 
         migrated_to_id = None
         if self.migrated:
@@ -67,16 +70,29 @@ class Chat(ChatBase):
         if self.photo is not None:
             self.photo = await self.photo
 
-        return self._to_tl(self.photo, migrated_to_id)
+        result = self._to_tl(self.photo, migrated_to_id)
+        await Cache.obj.set(self.cache_key(), result)
+
+        return result
 
     @classmethod
     async def to_tl_bulk(cls, chats: list[models.Chat]) -> list[TLChat | ChatForbidden]:
         if not chats:
             return []
 
-        chat_ids = [chat.id for chat in chats]
+        cached_chats = await Cache.obj.multi_get([
+            chat.cache_key()
+            for chat in chats
+        ])
 
-        migrated_ids = [chat.id for chat in chats if chat.migrated]
+        processing_chats = [
+            chat
+            for chat, cached in zip(chats, cached_chats)
+            if cached is None
+        ]
+        chat_ids = [chat.id for chat in processing_chats]
+
+        migrated_ids = [chat.id for chat in processing_chats if chat.migrated]
         if migrated_ids:
             migrated_tos = {
                 migrated_from: migrated_to
@@ -89,22 +105,34 @@ class Chat(ChatBase):
 
         chat_by_photo = {
             chat.photo_id: chat.id
-            for chat in chats
+            for chat in processing_chats
             if chat.photo_id is not None and not isinstance(chat.photo, models.File)
         }
-        photos = {
-            chat_by_photo[photo.id]: photo
-            for photo in await models.File.filter(id__in=list(chat_by_photo))
-        }
-        for chat in chats:
+        if chat_by_photo:
+            photos = {
+                chat_by_photo[photo.id]: photo
+                for photo in await models.File.filter(id__in=list(chat_by_photo))
+            }
+        else:
+            photos = {}
+        for chat in processing_chats:
             if chat.photo_id is not None and isinstance(chat.photo, models.File):
                 photos[chat.id] = chat.photo
 
-        # TODO: cache chats
-        return [
-            chat._to_tl(photos.get(chat.id), migrated_tos.get(chat.id, None))
-            for chat in chats
-        ]
+        tl = []
+        to_cache = []
+        for chat, cached in zip(chats, cached_chats):
+            if cached is not None:
+                tl.append(cached)
+                continue
+
+            tl.append(chat._to_tl(photos.get(chat.id), migrated_tos.get(chat.id, None)))
+            to_cache.append((chat.cache_key(), tl[-1]))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
+
+        return tl
 
     def to_tl_peer(self) -> PeerChat:
         return PeerChat(chat_id=self.make_id())

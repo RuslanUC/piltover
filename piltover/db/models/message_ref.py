@@ -403,11 +403,14 @@ class MessageRef(Model):
             reply_to_top_id=self.top_message_id,
         )
 
-    async def to_tl_reactions(self, user: models.User | int) -> MessageReactions:
+    async def to_tl_reactions(self, user: models.User | int) -> MessageReactions | None:
+        if self.content.type is not MessageType.REGULAR:
+            return None
+
         user_id = user.id if isinstance(user, models.User) else user
 
         user_reaction = await models.MessageReaction.get_or_none(
-            user_id=user_id, message_id=self.content_id
+            user_id=user_id, message_id=self.content_id,
         ).values_list("reaction_id", "custom_emoji_id")
         if user_reaction:
             user_reaction_id, user_custom_emoji_id = user_reaction
@@ -486,7 +489,7 @@ class MessageRef(Model):
 
     @classmethod
     async def to_tl_reactions_bulk(cls, messages: list[MessageRef], user_id: int) -> list[MessageReactions]:
-        content_ids = [ref.content.id for ref in messages]
+        content_ids = [ref.content.id for ref in messages if ref.content.type is MessageType.REGULAR]
 
         user_reactions = {}
         for message_id, reaction_id, custom_emoji_id in await models.MessageReaction.filter(
@@ -502,7 +505,11 @@ class MessageRef(Model):
         ]
         cached_reactions = await Cache.obj.multi_get(cache_keys)
 
-        not_cached_ids = [ref.content_id for ref, cached in zip(messages, cached_reactions) if cached is None]
+        not_cached_ids = [
+            ref.content_id
+            for ref, cached in zip(messages, cached_reactions)
+            if cached is None and ref.content.type is MessageType.REGULAR
+        ]
         if not_cached_ids:
             reactions_raw = await models.MessageReaction \
                 .annotate(msg_count=Count("id")) \
@@ -521,8 +528,12 @@ class MessageRef(Model):
         to_cache = []
 
         for ref, cached, cache_key in zip(messages, cached_reactions, cache_keys):
+            if ref.content.type is not MessageType.REGULAR:
+                results.append(None)
+                continue
             if cached is not None:
                 results.append(cached)
+                continue
 
             reaction_results = []
             for reaction_id, custom_emoji_id, reaction_emoji, msg_count in reactions[ref.content_id]:

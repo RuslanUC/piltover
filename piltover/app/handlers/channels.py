@@ -2,7 +2,7 @@ from datetime import datetime, UTC
 from time import time
 from typing import cast
 
-from tortoise.expressions import Q, Subquery, RawSQL
+from tortoise.expressions import Q, Subquery, RawSQL, F
 from tortoise.functions import Max
 from tortoise.transactions import in_transaction
 
@@ -122,6 +122,9 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
             channel.min_available_id += 1
         channel.hidden_prehistory = False
         await channel.save(update_fields=["min_available_id", "hidden_prehistory"])
+
+    await Channel.filter(id=peer.channel.id).update(version=F("version") + 1)
+    await peer.channel.refresh_from_db(["version"])
 
     await upd.update_channel(peer.channel)
     return True
@@ -1012,7 +1015,8 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
 
     async with in_transaction():
         channel.creator = target_peer.user
-        await channel.save(update_fields=["creator_id"])
+        channel.version += 1
+        await channel.save(update_fields=["creator_id", "version"])
 
         participant.admin_rights = ChatAdminRights(0)
         target_participant.admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)

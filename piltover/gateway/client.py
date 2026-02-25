@@ -21,7 +21,7 @@ from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import SerializationContext, ContextValues
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import ChatParticipant, Peer, Contact, PrivacyRule, Presence, PollVote, MessageRef
-from piltover.exceptions import Disconnection, InvalidConstructorException
+from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable
 from piltover.layer_converter.manager import LayerConverter
 from piltover.session import Session
 from piltover.session import SessionManager
@@ -181,9 +181,7 @@ class Client:
             self, message: Message, session: Session, context_values: ContextValues | None = None,
     ) -> None:
         if not session.auth_data or session.auth_data.auth_key is None:
-            # TODO: this is probably unreachable?
-            logger.error("Trying to send encrypted response, but auth_key is empty")
-            raise Disconnection(404)
+            raise Unreachable("Trying to send encrypted response, but auth_key is empty")
 
         logger.debug(f"Sending to {session.session_id}: {message!r}")
 

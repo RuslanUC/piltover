@@ -84,7 +84,7 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
         updates = UpdatesWithDefaults(
             updates=[
                 UpdateNewMessage(
-                    message=await message.to_tl(peer.owner),
+                    message=await message.to_tl(peer.owner, False),
                     pts=new_message_pts,
                     pts_count=1,
                 ),
@@ -141,7 +141,7 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
 
     updates = [
         UpdateNewChannelMessage(
-            message=await message.to_tl(user),
+            message=await message.to_tl(user, False),
             pts=new_pts,
             pts_count=1,
         ),
@@ -197,7 +197,7 @@ async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | Non
                 updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
 
             updates.append(UpdateNewMessage(
-                message=await message.to_tl(peer.owner),
+                message=await message.to_tl(peer.owner, False),
                 pts=new_message_pts,
                 pts_count=1,
             ))
@@ -270,7 +270,7 @@ async def send_messages_channel(
     return UpdatesWithDefaults(
         updates=[
             UpdateNewChannelMessage(
-                message=await message.to_tl(user),
+                message=await message.to_tl(user, False),
                 pts=pts,
                 pts_count=1,
             )
