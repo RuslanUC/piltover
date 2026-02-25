@@ -21,7 +21,6 @@ from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, Me
     MessageEntity as MessageEntityBase
 from piltover.tl.base.internal import MessageToFormatContent as MessageToFormatContentBase
 from piltover.tl.to_format import MessageServiceToFormat
-from piltover.tl.to_format.message import MessageToFormat
 from piltover.tl.types import PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
     MessageEntityMentionName, MessageReplies, ReactionCustomEmoji
@@ -130,8 +129,7 @@ class MessageContent(Model):
         )
 
     def _to_tl_content(
-            self, media: MessageMediaBase, entities: list[MessageEntityBase] | None,
-            reactions: MessageReactions | None, replies: MessageReplies | None,
+            self, media: MessageMediaBase, entities: list[MessageEntityBase] | None, replies: MessageReplies | None,
     ) -> MessageToFormatContent:
         ttl_period = None
         if self.ttl_period_days is not None and self.type is not MessageType.SCHEDULED:
@@ -157,25 +155,16 @@ class MessageContent(Model):
             via_bot_id=self.via_bot_id,
             replies=replies,
             edit_hide=self.edit_hide,
-            min_reactions=reactions if reactions is not None and reactions.min else None,
             fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
         )
 
-    async def to_tl_content(
-            self, to_format: MessageToFormat, with_reactions: bool, reactions: MessageReactions | None,
-    ) -> MessageToFormatContentBase:
+    async def to_tl_content(self) -> MessageToFormatContentBase:
         # This function call is probably much cheaper than cache lookup, so doing this before Cache.obj.get(...)
         if self.is_service():
             return self.to_tl_service_content()
 
         cache_key = self.cache_key()
         if (cached := await Cache.obj.get(cache_key)) is not None:
-            to_format.content = cached
-            if with_reactions and self.type is MessageType.REGULAR:
-                reactions_before = to_format.content.min_reactions
-                to_format.reactions = reactions
-                if reactions_before != to_format.content.min_reactions:
-                    await Cache.obj.set(cache_key, cached)
             return cached
 
         media = None
@@ -206,7 +195,6 @@ class MessageContent(Model):
         message = self._to_tl_content(
             media=media,
             entities=entities,
-            reactions=reactions,
             replies=replies,
         )
 
@@ -214,10 +202,7 @@ class MessageContent(Model):
         return message
 
     @classmethod
-    async def to_tl_content_bulk(
-            cls, messages: list[models.MessageContent],
-            to_formats: list[MessageToFormat], with_reactions: bool, reactionss: list[MessageReactions | None],
-    ) -> list[MessageToFormatContentBase]:
+    async def to_tl_content_bulk(cls, messages: list[models.MessageContent]) -> list[MessageToFormatContentBase]:
         cached = []
         cache_keys = [message.cache_key() for message in messages]
         if cache_keys:
@@ -272,24 +257,13 @@ class MessageContent(Model):
         to_cache = []
 
         result: list[MessageToFormatContent | MessageToFormatServiceContent] = []
-        for message, reactions, to_format, cached_message in zip(messages, reactionss, to_formats, cached):
+        for message, cached_message in zip(messages, cached):
             if message.is_service():
                 result.append(message.to_tl_service_content())
                 continue
 
             if cached_message is not None:
-                to_format.content = cached_message
                 result.append(cached_message)
-                need_recache = False
-
-                if with_reactions:
-                    reactions_before = to_format.content.min_reactions
-                    to_format.reactions = reactions
-                    need_recache = reactions_before != to_format.content.min_reactions
-
-                if need_recache:
-                    to_cache.append((message.cache_key(), result[-1]))
-
                 continue
 
             entities = []
@@ -301,7 +275,6 @@ class MessageContent(Model):
             result.append(message._to_tl_content(
                 media=medias[message.media_id] if message.media_id is not None else None,
                 entities=entities,
-                reactions=reactions,
                 replies=replies.get(message.id, None),
             ))
 
@@ -544,6 +517,7 @@ class MessageContent(Model):
         if related_to_create:
             await models.MessageRelated.bulk_create(related_to_create)
 
+    # TODO: move to MessageRef?
     async def to_tl_reactions(self, user: models.User | int) -> MessageReactions:
         user_id = user.id if isinstance(user, models.User) else user
 

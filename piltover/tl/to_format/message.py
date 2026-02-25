@@ -1,7 +1,7 @@
 from piltover.context import serialization_ctx
 from piltover.exceptions import Unreachable
 from piltover.layer_converter.manager import LayerConverter
-from piltover.tl import types, base
+from piltover.tl import types
 
 
 class MessageToFormat(types.MessageToFormatInternal):
@@ -16,21 +16,6 @@ class MessageToFormat(types.MessageToFormatInternal):
     @media_unread.setter
     def media_unread(self, value: bool) -> None:
         self.ref.media_unread = value
-
-    @property
-    def reactions(self) -> base.MessageReactions | None:
-        return self.content.min_reactions if self.ref.reactions is None else self.ref.reactions
-
-    @reactions.setter
-    def reactions(self, value: base.MessageReactions | None) -> None:
-        if value is None:
-            self.ref.reactions = self.content.min_reactions = None
-        elif value.min:
-            self.ref.reactions = None
-            self.content.min_reactions = value
-        else:
-            self.ref.reactions = value
-            self.content.min_reactions = None
 
     def _write(self) -> bytes:
         ctx = serialization_ctx.get()
@@ -54,7 +39,7 @@ class MessageToFormat(types.MessageToFormatInternal):
                 views=self.content.views,
                 forwards=self.content.forwards,
                 post_author=self.content.post_author,
-                reactions=self.content.min_reactions if self.ref.reactions is None else self.ref.reactions,
+                reactions=self.reactions,
                 mentioned=self.ref.mentioned,
                 media_unread=self.ref.media_unread,
                 from_scheduled=self.ref.from_scheduled,

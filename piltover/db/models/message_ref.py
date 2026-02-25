@@ -10,11 +10,10 @@ from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
 from piltover.db.models.utils import Missing, MISSING, NullableFKSetNull
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.tl import MessageReplyHeader, MessageReactions, PeerUser
+from piltover.tl import MessageReplyHeader, MessageReactions
 from piltover.tl.base import Message as TLMessageBase
 from piltover.tl.base.internal import MessageToFormatRef
 from piltover.tl.to_format import MessageToFormat
-from piltover.tl.types.internal import MessageToFormatContent
 
 _T = TypeVar("_T")
 BackwardO2OOrT = fields.BackwardOneToOneRelation[_T] | _T
@@ -97,7 +96,7 @@ class MessageRef(Model):
         )
 
     def _to_tl_ref(
-            self, out: bool, reactions: MessageReactions | None, mentioned: bool, media_unread: bool,
+            self, out: bool, mentioned: bool, media_unread: bool,
     ) -> MessageToFormatRef:
         return MessageToFormatRef(
             id=self.id,
@@ -105,24 +104,15 @@ class MessageRef(Model):
             peer_id=self.peer.to_tl(),
             out=out,
             reply_to=self.make_reply_to_header(),
-            reactions=reactions if reactions is not None and not reactions.min else None,
             mentioned=mentioned,
             media_unread=media_unread,
             from_scheduled=self.from_scheduled or self.content.scheduled_date,
         )
 
-    async def to_tl_ref(
-            self, user: models.User, to_format: MessageToFormat, with_reactions: bool,
-            reactions: MessageReactions | None,
-    ) -> MessageToFormatRef:
+    async def to_tl_ref(self, user: models.User) -> MessageToFormatRef:
         # TODO: cache it and just delete from cache when user reads mention?
         cache_key = self.cache_key(user.id)
         if (cached := await Cache.obj.get(cache_key)) is not None:
-            if with_reactions:
-                reactions_before = to_format.ref.reactions
-                to_format.reactions = reactions
-                if reactions_before != to_format.ref.reactions:
-                    await Cache.obj.set(cache_key, cached)
             return cached
 
         mention_read = await models.MessageMention.filter(
@@ -140,7 +130,6 @@ class MessageRef(Model):
 
         message = self._to_tl_ref(
             out=user.id == self.content.author_id,
-            reactions=reactions,
             mentioned=mentioned,
             media_unread=media_unread if media_unread else not mention_read,
         )
@@ -149,31 +138,18 @@ class MessageRef(Model):
         return message
 
     async def to_tl(self, user: models.User, with_reactions: bool = False) -> TLMessageBase:
-        result = MessageToFormat(
-            ref=MessageToFormatRef(
-                id=0,
-                peer_id=PeerUser(user_id=0),
-            ),
-            content=MessageToFormatContent(
-                date=0,
-                message="",
-            ),
-        )
-
         reactions = None
         if with_reactions and self.content.type is MessageType.REGULAR:
             reactions = await self.content.to_tl_reactions(user)
 
-        result.ref = await self.to_tl_ref(user, result, with_reactions, reactions)
-        result.content = await self.content.to_tl_content(result, with_reactions, reactions)
-
-        return result
+        return MessageToFormat(
+            ref=await self.to_tl_ref(user),
+            content=await self.content.to_tl_content(),
+            reactions=reactions,
+        )
 
     @classmethod
-    async def to_tl_ref_bulk(
-            cls, refs: list[models.MessageRef], user_id: int, to_formats: list[MessageToFormat],
-            with_reactions: bool, reactionss: list[MessageReactions | None],
-    ) -> list[TLMessageBase]:
+    async def to_tl_ref_bulk(cls, refs: list[models.MessageRef], user_id: int) -> list[TLMessageBase]:
         cached = []
         cache_keys = [ref.cache_key(user_id) for ref in refs]
         if cache_keys:
@@ -214,22 +190,16 @@ class MessageRef(Model):
         to_cache = []
 
         result = []
-        for ref, cached_ref, reactions, to_format in zip(refs, cached, reactionss, to_formats):
+        for ref, cached_ref in zip(refs, cached):
             msg_media_unread = ref.id not in media_read and not mentioned.get(ref.content_id, True)
 
             if cached_ref is not None:
-                to_format.ref = cached_ref
                 result.append(cached_ref)
                 need_recache = False
 
                 if result[-1].media_unread != msg_media_unread:
                     result[-1].media_unread = msg_media_unread
                     need_recache = True
-
-                if with_reactions:
-                    reactions_before = to_format.ref.reactions
-                    to_format.reactions = reactions
-                    need_recache = need_recache or reactions_before != to_format.ref.reactions
 
                 if need_recache:
                     to_cache.append((ref.cache_key(user_id), result[-1]))
@@ -238,7 +208,6 @@ class MessageRef(Model):
 
             result.append(ref._to_tl_ref(
                 out=user_id == ref.content.author_id,
-                reactions=reactions,
                 mentioned=ref.content_id in mentioned,
                 media_unread=msg_media_unread,
             ))
@@ -255,41 +224,23 @@ class MessageRef(Model):
             cls, messages: list[MessageRef], user: models.User | int, with_reactions: bool = False,
     ) -> list[TLMessageBase]:
         user_id = user.id if isinstance(user, models.User) else user
-
-        result = [
-            MessageToFormat(
-                ref=MessageToFormatRef(
-                    id=0,
-                    peer_id=PeerUser(user_id=0),
-                ),
-                content=MessageToFormatContent(
-                    date=0,
-                    message="",
-                ),
-            )
-            for _ in messages
-        ]
-
         raw_contents = [ref.content for ref in messages]
 
-        reactions: list[MessageReactions | None] = [None for _ in messages]
+        reactionss: list[MessageReactions | None] = [None for _ in messages]
         if with_reactions:
             for idx, content in enumerate(raw_contents):
-                reactions[idx] = await content.to_tl_reactions(user_id)
+                reactionss[idx] = await content.to_tl_reactions(user_id)
 
-        refs = await MessageRef.to_tl_ref_bulk(messages, user_id, result, with_reactions, reactions)
-        contents = await models.MessageContent.to_tl_content_bulk(raw_contents, result, with_reactions, reactions)
+        refs = await MessageRef.to_tl_ref_bulk(messages, user_id)
+        contents = await models.MessageContent.to_tl_content_bulk(raw_contents)
 
-        if len(refs) != len(result):
-            raise Unreachable(f"len(refs) != len(result), {len(refs)} != {len(result)}")
-        if len(contents) != len(result):
-            raise Unreachable(f"len(contents) != len(result), {len(contents)} != {len(result)}")
+        if len(contents) != len(refs):
+            raise Unreachable(f"len(contents) != len(refs), {len(contents)} != {len(refs)}")
 
-        for to_format, ref, content in zip(result, refs, contents):
-            to_format.ref = ref
-            to_format.content = content
-
-        return result
+        return [
+            MessageToFormat(ref=ref, content=content, reactions=reactions)
+            for ref, content, reactions in zip(refs, contents, reactionss)
+        ]
 
     async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, Self]:
         peers = [self.peer]
