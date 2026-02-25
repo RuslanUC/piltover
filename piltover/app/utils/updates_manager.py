@@ -1250,14 +1250,15 @@ async def update_reactions(user: User, messages: list[MessageRef], peer: Peer, s
         ucc.add_message(message.content_id)
 
     users, chats, channels = await ucc.resolve()
+    reactions = await MessageRef.to_tl_reactions_bulk(messages, user.id)
 
     updates = UpdatesWithDefaults(
         updates=[
             UpdateMessageReactions(
                 peer=peer.to_tl(),
                 msg_id=message.id,
-                reactions=await message.to_tl_reactions(user),
-            ) for message in messages
+                reactions=reactions_,
+            ) for message, reactions_ in zip(messages, reactions)
         ],
         users=users,
         chats=[*chats, *channels],

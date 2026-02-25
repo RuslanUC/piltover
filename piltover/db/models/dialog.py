@@ -50,7 +50,7 @@ class Dialog(Model):
                 ).group_by("peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
-            *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
+            *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()), "peer__channel"
         )
 
     def peer_key(self) -> tuple[PeerType, int]:

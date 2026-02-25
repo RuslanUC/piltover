@@ -248,7 +248,7 @@ async def get_messages_internal(
 async def format_messages_internal(
         user: User, messages: list[MessageRef], allow_slicing: bool = False,
         peer: Peer | None = None, saved_peer: Peer | None = None, offset_id: int | None = None,
-        query: QuerySet[MessageRef] | None = None, with_reactions: bool = False,
+        query: QuerySet[MessageRef] | None = None, with_reactions: bool = True,
 ) -> Messages | MessagesSlice:
     ucc = UsersChatsChannels()
 
