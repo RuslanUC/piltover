@@ -315,7 +315,6 @@ async def test_delete_account_password_scheduled_cancel(exit_stack: AsyncExitSta
     assert TaskIqScheduledDeleteUser.filter(user_id=client.me.id).exists()
 
     confirm_message = [m async for m in client.get_chat_history(777000, limit=1)][0]
-    print(repr(confirm_message.text))
     confirm_hash = CONFIRM_PATTERN.findall(confirm_message.text)[0]
 
     sent = cast(TLSentCode, await client.invoke(SendConfirmPhoneCode(

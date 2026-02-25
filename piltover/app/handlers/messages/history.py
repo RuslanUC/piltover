@@ -176,7 +176,7 @@ async def get_messages_query_internal(
         )
 
     """
-    (based in https://core.telegram.org/api/offsets)
+    (based on https://core.telegram.org/api/offsets)
     Some things like negative offsets, etc. confusing me a little bit, so here's how i understood them: 
     
     Messages with following ids are in database:
@@ -544,7 +544,7 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
     }
 
     views = []
-    incremented = []
+    ids_to_increment = []
 
     for message_id in request.id:
         if message_id not in messages or not messages[message_id].content.post_info:
@@ -554,14 +554,12 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
         message = messages[message_id]
         # TODO: count unique views
         if request.increment:
-            # TODO: increment atomically
-            message.content.post_info.views += 1
-            incremented.append(message.content.post_info)
+            ids_to_increment.append(message.content.post_info_id)
 
-        views.append(MessageViews(views=message.content.post_info.views))
+        views.append(MessageViews(views=message.content.post_info.views + request.increment))
 
-    if incremented:
-        await ChannelPostInfo.bulk_update(incremented, fields=["views"])
+    if ids_to_increment:
+        await ChannelPostInfo.filter(id__in=ids_to_increment).update(views=F("views") + 1)
 
     return MessagesMessageViews(
         views=views,

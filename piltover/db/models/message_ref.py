@@ -56,7 +56,7 @@ class MessageRef(Model):
     PREFETCH_FIELDS = (
         *PREFETCH_FIELDS_MIN, "peer__owner", "content__media__file", "content__media__file__stickerset",
         "content__media__poll", "content__fwd_header", "content__fwd_header__saved_peer", "content__post_info",
-        "content__via_bot", "content__comments_info",
+        "content__via_bot", "content__comments_info", "peer__channel",
     )
     _PREFETCH_ALL_TOP_FIELDS = (
         "peer", "content__author", "content__media", "content__fwd_header", "reply_to",
