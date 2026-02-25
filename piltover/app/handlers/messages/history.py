@@ -4,7 +4,7 @@ from typing import cast
 
 from loguru import logger
 from tortoise import connections
-from tortoise.expressions import Q, Subquery, CombinedExpression, Connector
+from tortoise.expressions import Q, Subquery, CombinedExpression, Connector, F
 from tortoise.functions import Min, Max, Count
 from tortoise.queryset import QuerySet
 
@@ -689,6 +689,16 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
         )
 
     await MessageMention.filter(user_id=user.id, message_id__in=mentioned_ids).update(read=True)
+
+    inval_cache_query = MessageRef.filter(content_id__in=mentioned_ids)
+    if peer.type is PeerType.CHANNEL:
+        inval_cache_refs = await inval_cache_query.filter(
+            peer__owner=None, peer__channel_id=peer.channel_id,
+        ).only("id", "version")
+        for ref in inval_cache_refs:
+            await Cache.obj.delete(ref.cache_key(user.id))
+    else:
+        await inval_cache_query.update(version=F("version") + 1)
 
     if peer.type is PeerType.CHAT:
         ref_ids_query = MessageRef.filter(peer=peer, content_id__in=mentioned_ids)

@@ -4,13 +4,14 @@ from typing import TypeVar, Self, Iterable
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
+from tortoise.functions import Count
 
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
 from piltover.db.models.utils import Missing, MISSING, NullableFKSetNull
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.tl import MessageReplyHeader, MessageReactions
+from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount
 from piltover.tl.base import Message as TLMessageBase
 from piltover.tl.base.internal import MessageToFormatRef
 from piltover.tl.to_format import MessageToFormat
@@ -110,7 +111,6 @@ class MessageRef(Model):
         )
 
     async def to_tl_ref(self, user: models.User) -> MessageToFormatRef:
-        # TODO: cache it and just delete from cache when user reads mention?
         cache_key = self.cache_key(user.id)
         if (cached := await Cache.obj.get(cache_key)) is not None:
             return cached
@@ -140,7 +140,7 @@ class MessageRef(Model):
     async def to_tl(self, user: models.User, with_reactions: bool = False) -> TLMessageBase:
         reactions = None
         if with_reactions and self.content.type is MessageType.REGULAR:
-            reactions = await self.content.to_tl_reactions(user)
+            reactions = await self.to_tl_reactions(user)
 
         return MessageToFormat(
             ref=await self.to_tl_ref(user),
@@ -191,25 +191,14 @@ class MessageRef(Model):
 
         result = []
         for ref, cached_ref in zip(refs, cached):
-            msg_media_unread = ref.id not in media_read and not mentioned.get(ref.content_id, True)
-
             if cached_ref is not None:
                 result.append(cached_ref)
-                need_recache = False
-
-                if result[-1].media_unread != msg_media_unread:
-                    result[-1].media_unread = msg_media_unread
-                    need_recache = True
-
-                if need_recache:
-                    to_cache.append((ref.cache_key(user_id), result[-1]))
-
                 continue
 
             result.append(ref._to_tl_ref(
                 out=user_id == ref.content.author_id,
                 mentioned=ref.content_id in mentioned,
-                media_unread=msg_media_unread,
+                media_unread=ref.id not in media_read and not mentioned.get(ref.content_id, True),
             ))
 
             to_cache.append((ref.cache_key(user_id), result[-1]))
@@ -228,8 +217,8 @@ class MessageRef(Model):
 
         reactionss: list[MessageReactions | None] = [None for _ in messages]
         if with_reactions:
-            for idx, content in enumerate(raw_contents):
-                reactionss[idx] = await content.to_tl_reactions(user_id)
+            for idx, ref in enumerate(messages):
+                reactionss[idx] = await ref.to_tl_reactions(user_id)
 
         refs = await MessageRef.to_tl_ref_bulk(messages, user_id)
         contents = await models.MessageContent.to_tl_content_bulk(raw_contents)
@@ -413,3 +402,84 @@ class MessageRef(Model):
             reply_to_msg_id=self.reply_to_id,
             reply_to_top_id=self.top_message_id,
         )
+
+    async def to_tl_reactions(self, user: models.User | int) -> MessageReactions:
+        user_id = user.id if isinstance(user, models.User) else user
+
+        user_reaction = await models.MessageReaction.get_or_none(
+            user_id=user_id, message_id=self.content_id
+        ).values_list("reaction_id", "custom_emoji_id")
+        if user_reaction:
+            user_reaction_id, user_custom_emoji_id = user_reaction
+            cache_user_id = user_id
+        else:
+            user_reaction_id = user_custom_emoji_id = None
+            cache_user_id = None
+
+        if (cached := await Cache.obj.get(self.cache_key_reactions(cache_user_id))) is not None:
+            return cached
+
+        reactions = await models.MessageReaction \
+            .annotate(msg_count=Count("id")) \
+            .filter(message_id=self.content_id) \
+            .group_by("reaction__id", "custom_emoji_id") \
+            .select_related("reaction") \
+            .values_list("reaction__id", "custom_emoji_id", "reaction__reaction", "msg_count")
+
+        results = []
+
+        for reaction_id, custom_emoji_id, reaction_emoji, msg_count in reactions:
+            if reaction_id is not None:
+                reaction = ReactionEmoji(emoticon=reaction_emoji)
+            elif custom_emoji_id is not None:
+                reaction = ReactionCustomEmoji(document_id=custom_emoji_id)
+            else:
+                raise Unreachable
+
+            results.append(ReactionCount(
+                chosen_order=1 if reaction_id == user_reaction_id and custom_emoji_id == user_custom_emoji_id else None,
+                reaction=reaction,
+                count=msg_count,
+            ))
+
+        can_see_list = (
+                self.peer.type in (PeerType.SELF, PeerType.USER, PeerType.CHAT)
+                or self.peer.type is PeerType.CHANNEL and self.peer.channel.supergroup
+        )
+
+        recent_reactions = None
+        if can_see_list:
+            if self.content.author_id == user_id:
+                if self.peer.type is PeerType.CHANNEL:
+                    read_state = await models.ReadState.get_or_none(
+                        peer__owner_id=user_id, peer__channel_id=self.peer.channel_id,
+                    )
+                else:
+                    read_state = await models.ReadState.get_or_none(peer_id=self.peer_id)
+                if read_state is not None:
+                    last_read_id = read_state.last_reaction_id
+                else:
+                    last_read_id = 0
+            else:
+                last_read_id = 2 ** 63 - 1
+
+            recent_reactions = []
+
+            for recent in await models.MessageReaction.filter(
+                    message_id=self.content_id,
+            ).order_by("-date").limit(5).select_related("reaction"):
+                recent_reactions.append(recent.to_tl_peer_reaction(user_id, last_read_id))
+
+        result = MessageReactions(
+            min=cache_user_id is None,
+            can_see_list=can_see_list,
+            results=results,
+            recent_reactions=recent_reactions,
+        )
+
+        await Cache.obj.set(self.cache_key_reactions(cache_user_id), result)
+
+        return result
+
+    def cache_key_reactions(self, user_id: int | None) -> str:
+        return f"message-reactions:{self.content_id}:{user_id or 0}:{self.content.reactions_version}"

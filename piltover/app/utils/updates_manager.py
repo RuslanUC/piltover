@@ -1256,7 +1256,7 @@ async def update_reactions(user: User, messages: list[MessageRef], peer: Peer, s
             UpdateMessageReactions(
                 peer=peer.to_tl(),
                 msg_id=message.id,
-                reactions=await message.content.to_tl_reactions(user),
+                reactions=await message.to_tl_reactions(user),
             ) for message in messages
         ],
         users=users,

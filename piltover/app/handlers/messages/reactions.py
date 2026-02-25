@@ -270,10 +270,16 @@ REACTIONS_LIST_EMPTY = MessageReactionsList(
 @handler.on_request(GetMessageReactionsList, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_message_reactions_list(request: GetMessageReactionsList, user: User) -> MessageReactionsList:
     peer = await Peer.from_input_peer_raise(user, request.peer)
+
+    can_see_list = (
+            peer.type in (PeerType.SELF, PeerType.USER, PeerType.CHAT)
+            or peer.type is PeerType.CHANNEL and peer.channel.supergroup
+    )
+    if not can_see_list:
+        raise ErrorRpc(error_code=400, error_message="BROADCAST_FORBIDDEN")
+
     if (message := await MessageRef.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
-
-    # TODO: check if user can see reactions list
 
     if message.content.author_id == user.id:
         read_state, _ = await ReadState.get_or_create(peer=peer)

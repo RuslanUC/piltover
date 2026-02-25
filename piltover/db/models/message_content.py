@@ -15,15 +15,14 @@ from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, PrivacyRuleKeyType
 from piltover.db.models.utils import Missing, MISSING, NullableFK, NullableFKSetNull
-from piltover.exceptions import Unreachable
 from piltover.tl import objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, MessageMedia as MessageMediaBase, \
     MessageEntity as MessageEntityBase
 from piltover.tl.base.internal import MessageToFormatContent as MessageToFormatContentBase
 from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.types import PeerUser, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser, MessageReactions, ReactionCount, ReactionEmoji, MessageActionEmpty, \
-    MessageEntityMentionName, MessageReplies, ReactionCustomEmoji
+    MessageActionChatDeleteUser, MessageActionEmpty, \
+    MessageEntityMentionName, MessageReplies
 from piltover.tl.types.internal import MessageToFormatContent, MessageToFormatServiceContent
 
 MessageIdRef = Annotated[int, "Ref id"]
@@ -517,79 +516,5 @@ class MessageContent(Model):
         if related_to_create:
             await models.MessageRelated.bulk_create(related_to_create)
 
-    # TODO: move to MessageRef?
-    async def to_tl_reactions(self, user: models.User | int) -> MessageReactions:
-        user_id = user.id if isinstance(user, models.User) else user
-
-        user_reaction = await models.MessageReaction.get_or_none(
-            user_id=user_id, message=self
-        ).values_list("reaction_id", "custom_emoji_id")
-        if user_reaction:
-            user_reaction_id, user_custom_emoji_id = user_reaction
-            cache_user_id = user_id
-        elif self.author_id == user_id:
-            user_reaction_id = user_custom_emoji_id = None
-            cache_user_id = user_id
-        else:
-            user_reaction_id = user_custom_emoji_id = None
-            cache_user_id = None
-
-        if (cached := await Cache.obj.get(self.cache_key_reactions(cache_user_id))) is not None:
-            return cached
-
-        reactions = await models.MessageReaction\
-            .annotate(msg_count=Count("id"))\
-            .filter(message=self)\
-            .group_by("reaction__id", "custom_emoji_id")\
-            .select_related("reaction")\
-            .values_list("reaction__id", "custom_emoji_id", "reaction__reaction", "msg_count")
-
-        # TODO: if `user.id == self.author_id`, always include unread reaction in recent_reactions
-
-        results = []
-
-        for reaction_id, custom_emoji_id, reaction_emoji, msg_count in reactions:
-            if reaction_id is not None:
-                reaction = ReactionEmoji(emoticon=reaction_emoji)
-            elif custom_emoji_id is not None:
-                reaction = ReactionCustomEmoji(document_id=custom_emoji_id)
-            else:
-                raise Unreachable
-
-            results.append(ReactionCount(
-                chosen_order=1 if reaction_id == user_reaction_id and custom_emoji_id == user_custom_emoji_id else None,
-                reaction=reaction,
-                count=msg_count,
-            ))
-
-        recent_reactions = None
-        # TODO: also fetch it if can_see_list is True
-        if self.author_id == user_id:
-            # TODO: fetch last_reaction_id
-
-            recent_reactions = []
-
-            for recent in await models.MessageReaction.filter(
-                message=self,
-            ).order_by("-date").limit(5).select_related("reaction"):
-                recent_reactions.append(recent.to_tl_peer_reaction(user_id, 0))
-
-        result = MessageReactions(
-            min=cache_user_id is None,
-            # TODO: set to True if:
-            #  peer is self/user/chat,
-            #  or peer is channel and channel is a supergroup and message author is current `user`
-            can_see_list=False,
-            results=results,
-            recent_reactions=recent_reactions,
-        )
-
-        await Cache.obj.set(self.cache_key_reactions(cache_user_id), result)
-
-        return result
-
     def cache_key(self) -> str:
         return f"message-content:{self.id}:{self.version}"
-
-    def cache_key_reactions(self, user_id: int | None) -> str:
-        return f"message-reactions:{self.id}:{user_id or 0}:{self.reactions_version}"
