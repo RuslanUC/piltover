@@ -972,7 +972,7 @@ async def forward_messages(
     if await MessageRef.filter(peer=to_peer, id__in=request.random_id[:100]).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
-    src_messages_query = Q(peer=from_peer, id__in=request.id[:100], content__type=MessageType.REGULAR)
+    src_messages_query = Q(from_peer.q_this_or_channel(), id__in=request.id[:100], content__type=MessageType.REGULAR)
     src_messages_query = await append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query)
 
     random_ids = dict(zip(request.id[:100], request.random_id[:100]))
@@ -989,7 +989,7 @@ async def forward_messages(
         raise ErrorRpc(error_code=406, error_message="CHAT_FORWARDS_RESTRICTED")
 
     if to_peer.type is PeerType.CHANNEL:
-        peers = [await Peer.get_or_none(owner=None, channel=to_peer.channel)]
+        peers = [await Peer.get_or_none(owner=None, channel=to_peer.channel).select_related("channel")]
         to_peer = peers[0]
     else:
         peers = [to_peer, *(await to_peer.get_opposite())]

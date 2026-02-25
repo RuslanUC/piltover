@@ -248,16 +248,19 @@ async def send_messages_channel(
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
+    updates = []
+    for message, pts in update_messages:
+        if message.random_id:
+            updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
+        updates.append(UpdateNewChannelMessage(
+            message=DumbChannelMessageToFormat(id=message.id),
+            pts=pts,
+            pts_count=1,
+        ))
+
     await SessionManager.send(
         UpdatesWithDefaults(
-            updates=[
-                UpdateNewChannelMessage(
-                    message=DumbChannelMessageToFormat(id=message.id),
-                    pts=pts,
-                    pts_count=1,
-                )
-                for message, pts in update_messages
-            ],
+            updates=updates,
             users=users,
             chats=chats_and_channels,
         ),
@@ -267,15 +270,18 @@ async def send_messages_channel(
     if user is None:
         return None
 
+    updates = []
+    for message, pts in update_messages:
+        if message.random_id:
+            updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
+        updates.append(UpdateNewChannelMessage(
+            message=await message.to_tl(user, False),
+            pts=pts,
+            pts_count=1,
+        ))
+
     return UpdatesWithDefaults(
-        updates=[
-            UpdateNewChannelMessage(
-                message=await message.to_tl(user, False),
-                pts=pts,
-                pts_count=1,
-            )
-            for message, pts in update_messages
-        ],
+        updates=updates,
         users=users,
         chats=chats_and_channels,
     )

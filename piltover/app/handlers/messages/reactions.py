@@ -167,7 +167,7 @@ async def get_messages_reactions(request: GetMessagesReactions, user: User) -> U
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
-    if (messages := await MessageRef.get_many(request.id, peer)) is None:
+    if (messages := await MessageRef.get_many(request.id, peer, prefetch_fields=("peer__channel",))) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     return await upd.update_reactions(user, messages, peer, False)

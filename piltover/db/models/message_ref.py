@@ -89,12 +89,15 @@ class MessageRef(Model):
         )
 
     @classmethod
-    async def get_many(cls, ids: list[int], peer: models.Peer, prefetch_all: bool = False) -> list[Self]:
+    async def get_many(
+            cls, ids: list[int], peer: models.Peer, prefetch_all: bool = False, prefetch_fields: tuple[str, ...] = ()
+                       ) -> list[Self]:
         query = peer.q_this_or_channel() & Q(id__in=ids, content__type=MessageType.REGULAR)
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.filter(query).select_related(
-            *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN)
+            *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN),
+            *prefetch_fields,
         )
 
     def _to_tl_ref(
