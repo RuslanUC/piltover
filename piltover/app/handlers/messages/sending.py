@@ -8,7 +8,7 @@ from uuid import UUID
 from fastrand import xorshift128plusrandint
 from loguru import logger
 from taskiq.kicker import AsyncKicker
-from tortoise.expressions import Q, F, Subquery
+from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
