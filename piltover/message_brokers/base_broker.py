@@ -223,14 +223,13 @@ class BaseMessageBroker(ABC):
         if isinstance(message, (MessageToUsers, MessageToUsersShort)):
             return await self._process_message_to_users(message)
         if isinstance(message, SetSessionInternalPush):
-            from piltover.session_manager import SessionManager
-            if message.session_id not in SessionManager.sessions:
-                return
-            if message.key_id not in SessionManager.sessions[message.session_id]:
+            from piltover.session import SessionManager
+            uniq_id = message.key_id, message.session_id
+            if uniq_id not in SessionManager.sessions[uniq_id]:
                 return
             # TODO: refresh auth
-            session = SessionManager.sessions[message.session_id][message.key_id]
-            session.set_user_id(message.user_id)
+            session = SessionManager.sessions[uniq_id]
+            # session.set_user_id(message.user_id)
             return
         if isinstance(message, ChannelSubscribe):
             return await self._process_channels_subscribe(message)

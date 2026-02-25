@@ -24,7 +24,7 @@ from piltover.db.models import ChatParticipant, Peer, Contact, PrivacyRule, Pres
 from piltover.exceptions import Disconnection, InvalidConstructorException
 from piltover.layer_converter.manager import LayerConverter
 from piltover.session import Session
-from piltover.session_manager import SessionManager
+from piltover.session import SessionManager
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
     ReqPqMulti
 from piltover.tl.core_types import MsgContainer, Message, RpcResult

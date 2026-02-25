@@ -15,7 +15,7 @@ from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInvi
     Dialog, AdminLogEntry, MessageRef
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.session_manager import SessionManager
+from piltover.session import SessionManager
 from piltover.tl import InputUser, InputUserSelf, Updates, ChatInviteAlready, ChatInvite as TLChatInvite, \
     ChatInviteExported, ChatInviteImporter, InputPeerUser, InputPeerUserFromMessage, MessageActionChatJoinedByLink, \
     MessageActionChatJoinedByRequest, MessageActionChatAddUser, ChatAdminWithInvites, UpdatePendingJoinRequests

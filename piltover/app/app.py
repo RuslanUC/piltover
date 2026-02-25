@@ -19,7 +19,7 @@ from piltover.app.utils.app_create_system_data import create_system_data
 from piltover.app_config import TORTOISE_ORM
 from piltover.cache import Cache
 from piltover.gateway import Gateway
-from piltover.session_manager import SessionManager
+from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")

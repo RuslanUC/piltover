@@ -15,7 +15,7 @@ from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatPartic
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.session_manager import SessionManager
+from piltover.session import SessionManager
 from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
     MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \

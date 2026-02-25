@@ -26,7 +26,7 @@ from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 
 from piltover.auth_data import AuthData
 from piltover.db.models import AuthKey
-from piltover.session_manager import SessionManager
+from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
 
 if TYPE_CHECKING:

@@ -7,6 +7,7 @@ from typing import cast, TYPE_CHECKING
 
 from loguru import logger
 
+import piltover
 from piltover.auth_data import AuthData
 from piltover.cache import Cache
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant
@@ -55,6 +56,8 @@ class Session:
         self.no_updates = False
         self.layer = 133
 
+        # TODO: add request queue and message queue
+
     def uniq_id(self) -> tuple[int, int]:
         key_id = 0 if self.auth_data is None else self.auth_data.auth_key_id
         return key_id, self.session_id
@@ -64,19 +67,15 @@ class Session:
 
     # TODO: rewrite
     def set_client(self, client: Client) -> None:
-        from piltover.session_manager import SessionManager
-
         # TODO: raise AuthKeyDuplicated if self.client is not None
         self.client = client
-        SessionManager.broker.subscribe(self)
+        piltover.session.SessionManager.broker.subscribe(self)
 
     # TODO: rewrite
     def destroy(self) -> None:
-        from piltover.session_manager import SessionManager
-
         self.client = None
-        SessionManager.broker.unsubscribe(self)
-        SessionManager.cleanup(self)
+        piltover.session.SessionManager.broker.unsubscribe(self)
+        piltover.session.SessionManager.cleanup(self)
 
     @staticmethod
     def _get_attr_or_element(obj: TLObject | list, field_name: str) -> TLObject | list:
@@ -107,6 +106,7 @@ class Session:
 
                 del parent[int(field_path[-1])]
 
+        # TODO: use *ToFormat
         if isinstance(obj, Updates) and self.auth_id is not None:
             if (auth := await UserAuthorization.get_or_none(id=self.auth_id)) is not None:
                 auth.upd_seq += 1
@@ -157,11 +157,9 @@ class Session:
             self.layer = perm_key_layer
 
     def _reset_auth(self) -> None:
-        from piltover.session_manager import SessionManager
-
-        SessionManager.broker.unsubscribe_auth(self.auth_id, self)
-        SessionManager.broker.unsubscribe_user(self.user_id, self)
-        SessionManager.broker.channels_diff_update(self, self.channel_ids, [])
+        piltover.session.SessionManager.broker.unsubscribe_auth(self.auth_id, self)
+        piltover.session.SessionManager.broker.unsubscribe_user(self.user_id, self)
+        piltover.session.SessionManager.broker.channels_diff_update(self, self.channel_ids, [])
 
         self.user_id = None
         self.auth_id = None
@@ -170,8 +168,6 @@ class Session:
         self.channel_ids.clear()
 
     async def refresh_auth_maybe(self, force_refresh_auth: bool = False) -> None:
-        from piltover.session_manager import SessionManager
-
         if force_refresh_auth:
             self.auth_data = await AuthKey.get_auth_data(self.auth_data.auth_key_id)
 
@@ -221,13 +217,13 @@ class Session:
             channels_to_add = new_channels - old_channels
 
             self.channel_ids = new_channels
-            SessionManager.broker.channels_diff_update(self, channels_to_delete, channels_to_add)
+            piltover.session.SessionManager.broker.channels_diff_update(self, channels_to_delete, channels_to_add)
 
         if old_user_id != self.user_id:
             if old_user_id:
-                SessionManager.broker.unsubscribe_user(old_user_id, self)
-            SessionManager.broker.subscribe_user(self.user_id, self)
+                piltover.session.SessionManager.broker.unsubscribe_user(old_user_id, self)
+            piltover.session.SessionManager.broker.subscribe_user(self.user_id, self)
         if old_auth_id != self.auth_id:
             if old_auth_id:
-                SessionManager.broker.unsubscribe_auth(old_auth_id, self)
-            SessionManager.broker.subscribe_auth(self.auth_id, self)
+                piltover.session.SessionManager.broker.unsubscribe_auth(old_auth_id, self)
+            piltover.session.SessionManager.broker.subscribe_auth(self.auth_id, self)

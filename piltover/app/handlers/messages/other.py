@@ -5,7 +5,7 @@ from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence, ChatParticipant
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.session_manager import SessionManager
+from piltover.session import SessionManager
 from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping
 from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified

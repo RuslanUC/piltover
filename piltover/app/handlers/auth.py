@@ -21,7 +21,7 @@ from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, T
     QrLogin, PhoneCodePurpose, Bot, State
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.session_manager import SessionManager
+from piltover.session import SessionManager
 from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken, UpdateShort
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode, ImportBotAuthorization

@@ -17,7 +17,7 @@ from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.in_memory_broker import InMemoryMessageBroker
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
-from piltover.session_manager import SessionManager
+from piltover.session import SessionManager
 from piltover.storage import LocalFileStorage
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
