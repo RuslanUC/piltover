@@ -13,9 +13,10 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates, ReactionEmpty
 from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, \
-    GetMessagesReactions, GetUnreadReactions, ReadReactions, GetRecentReactions, ClearRecentReactions
+    GetMessagesReactions, GetUnreadReactions, ReadReactions, GetRecentReactions, ClearRecentReactions, \
+    GetMessageReactionsList
 from piltover.tl.types.messages import AvailableReactions, Messages, AffectedHistory, Reactions, ReactionsNotModified, \
-    AvailableReactionsNotModified
+    AvailableReactionsNotModified, MessageReactionsList
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.reactions")
@@ -257,4 +258,73 @@ async def clear_recent_reactions(user: User) -> bool:
     return True
 
 
-# TODO: GetMessageReactionsList
+REACTIONS_LIST_EMPTY = MessageReactionsList(
+    count=0,
+    reactions=[],
+    chats=[],
+    users=[],
+    next_offset=None,
+)
+
+
+@handler.on_request(GetMessageReactionsList, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def get_message_reactions_list(request: GetMessageReactionsList, user: User) -> MessageReactionsList:
+    peer = await Peer.from_input_peer_raise(user, request.peer)
+    if (message := await MessageRef.get_(request.id, peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
+
+    # TODO: check if user can see reactions list
+
+    if message.content.author_id == user.id:
+        read_state, _ = await ReadState.get_or_create(peer=peer)
+        last_read_id = read_state.last_reaction_id
+    else:
+        last_read_id = 2 ** 63 - 1
+
+    limit = max(1, min(100, request.limit))
+
+    query_simple = MessageReaction.filter(message_id=message.content_id)
+
+    if request.reaction is not None:
+        if isinstance(request.reaction, ReactionEmoji):
+            query_simple = query_simple.filter(
+                reaction__reaction_id=Reaction.reaction_to_uuid(request.reaction.emoticon),
+            )
+        elif isinstance(request.reaction, ReactionCustomEmoji):
+            query_simple = query_simple.filter(custom_emoji_id=request.reaction.document_id)
+        elif isinstance(request.reaction, ReactionEmpty):
+            ...
+        else:
+            return REACTIONS_LIST_EMPTY
+
+    query = query_simple.order_by("-date").limit(limit + 1).select_related("reaction", "user")
+
+    if request.offset is not None:
+        try:
+            offset_id = int(request.offset)
+            if offset_id.bit_length() > 63:
+                raise ValueError
+        except ValueError:
+            ...
+        else:
+            query = query.filter(id__lte=offset_id)
+
+    reactions = await query
+    next_offset = None
+
+    if len(reactions) > limit:
+        next_offset = str(reactions.pop().id)
+
+    users = {}
+    peer_reactions = []
+    for reaction in reactions:
+        users[reaction.user_id] = reaction.user
+        peer_reactions.append(reaction.to_tl_peer_reaction(user.id, last_read_id))
+
+    return MessageReactionsList(
+        count=await query_simple.count(),
+        reactions=peer_reactions,
+        chats=[],
+        users=await User.to_tl_bulk(users.values()),
+        next_offset=next_offset,
+    )

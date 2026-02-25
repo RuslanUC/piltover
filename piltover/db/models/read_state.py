@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from tortoise import fields, Model
-from tortoise.expressions import Q, Subquery
-from tortoise.functions import Coalesce
+from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import PeerType

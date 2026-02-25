@@ -553,6 +553,9 @@ class MessageContent(Model):
         if user_reaction:
             user_reaction_id, user_custom_emoji_id = user_reaction
             cache_user_id = user_id
+        elif self.author_id == user_id:
+            user_reaction_id = user_custom_emoji_id = None
+            cache_user_id = user_id
         else:
             user_reaction_id = user_custom_emoji_id = None
             cache_user_id = None
@@ -585,10 +588,26 @@ class MessageContent(Model):
                 count=msg_count,
             ))
 
+        recent_reactions = None
+        # TODO: also fetch it if can_see_list is True
+        if self.author_id == user_id:
+            # TODO: fetch last_reaction_id
+
+            recent_reactions = []
+
+            for recent in await models.MessageReaction.filter(
+                message=self,
+            ).order_by("-date").limit(5).select_related("reaction"):
+                recent_reactions.append(recent.to_tl_peer_reaction(user_id, 0))
+
         result = MessageReactions(
             min=cache_user_id is None,
+            # TODO: set to True if:
+            #  peer is self/user/chat,
+            #  or peer is channel and channel is a supergroup and message author is current `user`
             can_see_list=False,
             results=results,
+            recent_reactions=recent_reactions,
         )
 
         await Cache.obj.set(self.cache_key_reactions(cache_user_id), result)
