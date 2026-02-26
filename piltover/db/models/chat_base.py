@@ -159,6 +159,7 @@ class ChatBase(Model):
             return participant
         raise ErrorRpc(error_code=400, error_message=message)
 
+    # TODO: remove
     def user_has_permission(self, participant: models.ChatParticipant, permission: ChatBannedRights) -> bool:
         if isinstance(self, models.Channel) \
                 and self.channel \
@@ -174,6 +175,7 @@ class ChatBase(Model):
 
         return not (participant.banned_rights & permission)
 
+    # TODO: remove
     def admin_has_permission(self, participant: models.ChatParticipant, permission: ChatAdminRights) -> bool:
         return self.creator_id == participant.user_id \
             or ((participant.admin_rights & permission) == permission)
@@ -207,54 +209,68 @@ class ChatBase(Model):
         raise NotImplementedError
 
     def check_rights(
-            self, participant: models.ChatParticipant, admin: ChatAdminRights, regular: ChatBannedRights,
+            self, participant: models.ChatParticipant | None, admin: ChatAdminRights, regular: ChatBannedRights,
     ) -> bool:
-        if self.creator_id == participant.user_id:
-            return True
+        if participant is not None:
+            if self.creator_id == participant.user_id:
+                return True
 
-        admin_has_permission = (participant.admin_rights & admin) == admin
+            admin_has_permission = (participant.admin_rights & admin) == admin
 
-        if isinstance(self, models.Channel) and self.channel:
-            if not participant.is_admin:
+            if isinstance(self, models.Channel) and self.channel:
+                if not participant.is_admin:
+                    return False
+                return admin_has_permission
+
+            # Idk in which order we should check next two conditions
+
+            if (participant.banned_rights & regular) > 0:
                 return False
-            return admin_has_permission
 
-        # Idk in which order we should check next two conditions
-
-        if (participant.banned_rights & regular) > 0:
-            return False
-
-        if admin_has_permission:
-            return True
+            if admin_has_permission:
+                return True
 
         return (self.banned_rights & regular) == 0
 
     def can_pin_messages(self, participant: models.ChatParticipant) -> bool:
         return self.check_rights(participant, ChatAdminRights.PIN_MESSAGES, ChatBannedRights.PIN_MESSAGES)
 
-    def _check_can_send(self, participant: models.ChatParticipant) -> bool:
+    def _check_can_send(self, participant: models.ChatParticipant | None) -> bool:
+        if not self.can_view_messages(participant):
+            return False
         if isinstance(self, models.Chat) and participant is None:
             return False
         if isinstance(self, models.Channel) and participant is None and not self.join_to_send:
             return False
         return True
 
-    def can_send_messages(self, participant: models.ChatParticipant) -> bool:
+    def can_send_messages(self, participant: models.ChatParticipant | None) -> bool:
         if not self._check_can_send(participant):
             return False
         return self.check_rights(participant, ChatAdminRights.POST_MESSAGES, ChatBannedRights.SEND_MESSAGES)
 
-    def can_send_plain(self, participant: models.ChatParticipant) -> bool:
+    def can_send_plain(self, participant: models.ChatParticipant | None) -> bool:
         if not self.can_send_messages(participant):
             return False
         return self.check_rights(participant, ChatAdminRights.POST_MESSAGES, ChatBannedRights.SEND_PLAIN)
 
-    def can_edit_messages(self, participant: models.ChatParticipant) -> bool:
+    def can_edit_messages(self, participant: models.ChatParticipant | None) -> bool:
         if not self._check_can_send(participant):
             return False
         return self.check_rights(participant, ChatAdminRights.EDIT_MESSAGES, ChatBannedRights.SEND_MESSAGES)
 
-    def can_send_media(self, participant: models.ChatParticipant) -> bool:
+    def can_send_media(
+            self, participant: models.ChatParticipant | None, media_type: ChatBannedRights = ChatBannedRights.NONE,
+    ) -> bool:
         if not self.can_send_messages(participant):
             return False
-        return self.check_rights(participant, ChatAdminRights.POST_MESSAGES, ChatBannedRights.SEND_MEDIA)
+        return self.check_rights(participant, ChatAdminRights.POST_MESSAGES, ChatBannedRights.SEND_MEDIA | media_type)
+
+    def can_view_messages(self, participant: models.ChatParticipant | None) -> bool:
+        if isinstance(self, models.Chat) and (participant is None or participant.left):
+            return False
+        elif isinstance(self, models.Channel) and (participant is None or participant.left):
+            # TODO: check if channel is public - then allow
+            return self.nojoin_allow_view
+
+        return self.check_rights(participant, ChatAdminRights.NONE, ChatBannedRights.VIEW_MESSAGES)

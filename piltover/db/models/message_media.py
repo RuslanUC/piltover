@@ -6,7 +6,7 @@ from loguru import logger
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import MediaType
+from piltover.db.enums import MediaType, ChatBannedRights, FileType
 from piltover.exceptions import InvalidConstructorException
 from piltover.tl import MessageMediaUnsupported, MessageMediaPhoto, MessageMediaDocument, MessageMediaPoll, \
     MessageMediaContact, MessageMediaGeo, MessageMediaDice
@@ -118,3 +118,32 @@ class MessageMedia(Model):
                 tl.append(media._to_tl_sync())
 
         return tl
+
+    def to_chat_banned_right(self) -> ChatBannedRights | None:
+        media_type = self.type
+        if media_type is MediaType.PHOTO:
+            return ChatBannedRights.SEND_PHOTOS
+        elif media_type is MediaType.POLL:
+            return ChatBannedRights.SEND_POLLS
+        elif media_type in (MediaType.DICE, MediaType.GEOPOINT, MediaType.CONTACT):
+            return None
+        elif media_type is MediaType.DOCUMENT and self.file is not None:
+            file_type = self.file.type
+            if file_type is FileType.DOCUMENT_GIF:
+                return ChatBannedRights.SEND_GIFS
+            elif file_type is FileType.DOCUMENT_VIDEO:
+                return ChatBannedRights.SEND_VIDEOS
+            elif file_type is FileType.DOCUMENT_AUDIO:
+                return ChatBannedRights.SEND_AUDIOS
+            elif file_type is FileType.DOCUMENT_VOICE:
+                return ChatBannedRights.SEND_VOICES
+            elif file_type is FileType.DOCUMENT_VIDEO_NOTE:
+                return ChatBannedRights.SEND_ROUNDVIDEOS
+            elif file_type is FileType.DOCUMENT_STICKER:
+                return ChatBannedRights.SEND_STICKERS
+            elif file_type is FileType.DOCUMENT_EMOJI:
+                return None
+            else:
+                return ChatBannedRights.SEND_DOCS
+
+        return ChatBannedRights.NONE
