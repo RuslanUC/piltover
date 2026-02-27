@@ -62,6 +62,13 @@ class MessageRef(Model):
         "peer", "content__author", "content__media", "content__fwd_header", "reply_to",
         "content__via_bot",
     )
+    PREFETCH_MAYBECACHED = ("peer", "content")
+    _FETCH_CACHED_REFS = ("content__media", "content__media__file")
+    _FETCH_CACHED_CONTENTS = (
+        "content__media", "content__media__file", "content__media__poll",
+        "content__media__poll__pollanswers", "content__comments_info", "content__post_info",
+        "content__fwd_header", "content__fwd_header__saved_peer",
+    )
 
     class Meta:
         unique_together = (
@@ -114,13 +121,13 @@ class MessageRef(Model):
             from_scheduled=self.from_scheduled or self.content.scheduled_date,
         )
 
-    async def to_tl_ref(self, user: models.User) -> MessageToFormatRef:
-        cache_key = self.cache_key(user.id)
+    async def to_tl_ref(self, user_id: int) -> MessageToFormatRef:
+        cache_key = self.cache_key(user_id)
         if (cached := await Cache.obj.get(cache_key)) is not None:
             return cached
 
         mention_read = await models.MessageMention.filter(
-            user=user, message_id=self.content_id
+            user_id=user_id, message_id=self.content_id
         ).first().values_list("read", flat=True)
         mentioned = mention_read is not None
         if not mentioned:
@@ -130,10 +137,10 @@ class MessageRef(Model):
         if self.content.media \
                 and self.content.media.file \
                 and self.content.media.file.type in READABLE_FILE_TYPES:
-            media_unread = not await models.MessageMediaRead.filter(user_id=user.id, message=self).exists()
+            media_unread = not await models.MessageMediaRead.filter(user_id=user_id, message=self).exists()
 
         message = self._to_tl_ref(
-            out=user.id == self.content.author_id,
+            out=user_id == self.content.author_id,
             mentioned=mentioned,
             media_unread=media_unread if media_unread else not mention_read,
         )
@@ -144,10 +151,10 @@ class MessageRef(Model):
     async def to_tl(self, user: models.User, with_reactions: bool = True) -> TLMessageBase:
         reactions = None
         if with_reactions and self.content.type is MessageType.REGULAR:
-            reactions = await self.to_tl_reactions(user)
+            reactions = await self.to_tl_reactions(user.id)
 
         return MessageToFormat(
-            ref=await self.to_tl_ref(user),
+            ref=await self.to_tl_ref(user.id),
             content=await self.content.to_tl_content(),
             reactions=reactions,
         )
@@ -233,6 +240,99 @@ class MessageRef(Model):
             MessageToFormat(ref=ref, content=content, reactions=reactions)
             for ref, content, reactions in zip(refs, contents, reactionss)
         ]
+
+    async def to_tl_maybecached(self, user_id: int, with_reactions: bool = True) -> TLMessageBase:
+        if with_reactions:
+            ref, content, reactions = await Cache.obj.multi_get([
+                self.cache_key(user_id),
+                self.content.cache_key(),
+                self.cache_key_reactions(user_id),
+            ])
+        else:
+            ref, content = await Cache.obj.multi_get([self.cache_key(user_id), self.content.cache_key()])
+            reactions = None
+
+        need_fetch = set()
+        if ref is None:
+            need_fetch.update(self._FETCH_CACHED_REFS)
+        if content is None:
+            need_fetch.update(self._FETCH_CACHED_CONTENTS)
+
+        if need_fetch:
+            await self.fetch_related(*need_fetch)
+
+        if ref is None:
+            ref = await self.to_tl_ref(user_id)
+        if content is None:
+            content = await self.content.to_tl_content()
+        if with_reactions and reactions is None:
+            reactions = await self.to_tl_reactions(user_id)
+
+        return MessageToFormat(ref=ref, content=content, reactions=reactions)
+
+    @classmethod
+    async def to_tl_bulk_maybecached(
+            cls, refs: list[MessageRef], user_id: int, with_reactions: bool = True,
+    ) -> list[TLMessageBase]:
+        cache_keys = [ref.cache_key(user_id) for ref in refs] + [ref.content.cache_key() for ref in refs]
+        if with_reactions:
+            cache_keys += [ref.cache_key_reactions(user_id) for ref in refs]
+
+        all_cached = await Cache.obj.multi_get(cache_keys)
+        refs_cached = all_cached[:len(refs)]
+        contents_cached = all_cached[len(refs):len(refs)*2]
+        if with_reactions:
+            reactionss_cached = all_cached[len(refs)*2:]
+        else:
+            reactionss_cached = [None] * len(refs)
+
+        need_fetch_refs = []
+        need_fetch_contents = []
+
+        for ref, ref_cached, content_cached in zip(refs, refs_cached, contents_cached):
+            if contents_cached is None:
+                need_fetch_contents.append(ref)
+            elif ref_cached is None:
+                need_fetch_refs.append(ref)
+
+        if need_fetch_refs:
+            await MessageRef.fetch_for_list(need_fetch_refs, *cls._FETCH_CACHED_REFS)
+        if need_fetch_contents:
+            await MessageRef.fetch_for_list(need_fetch_contents, *cls._FETCH_CACHED_CONTENTS)
+
+        refs_tl = await cls.to_tl_ref_bulk([
+            ref for ref, cached in zip(refs, refs_cached) if cached is None
+        ], user_id)
+        refs_tl.reverse()
+        contents_tl = await models.MessageContent.to_tl_content_bulk([
+            ref.content for ref, cached in zip(refs, contents_cached) if cached is None
+        ])
+        contents_tl.reverse()
+        if with_reactions:
+            reactionss_tl = await cls.to_tl_reactions_bulk([
+                ref for ref, cached in zip(refs, reactionss_cached) if cached is None
+            ], user_id)
+            reactionss_tl.reverse()
+        else:
+            reactionss_tl = [None] * (len(refs) - len(reactionss_cached))
+
+        results = []
+        zipped = zip(refs, refs_cached, contents_cached, reactionss_cached)
+        for ref, result_ref, result_content, result_reactions in zipped:
+            if result_ref is None:
+                result_ref = refs_tl.pop()
+            if result_content is None:
+                result_content = contents_tl.pop()
+            if with_reactions and result_reactions is None:
+                result_reactions = reactionss_tl.pop()
+
+            results.append(MessageToFormat(
+                ref=result_ref,
+                content=result_content,
+                reactions=result_reactions,
+            ))
+
+        return results
 
     async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, Self]:
         peers = [self.peer]
@@ -406,11 +506,9 @@ class MessageRef(Model):
             reply_to_top_id=self.top_message_id,
         )
 
-    async def to_tl_reactions(self, user: models.User | int) -> MessageReactions | None:
+    async def to_tl_reactions(self, user_id: int) -> MessageReactions | None:
         if self.content.type is not MessageType.REGULAR:
             return None
-
-        user_id = user.id if isinstance(user, models.User) else user
 
         user_reaction = await models.MessageReaction.get_or_none(
             user_id=user_id, message_id=self.content_id,

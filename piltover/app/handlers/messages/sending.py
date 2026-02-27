@@ -16,7 +16,7 @@ from piltover.app.bot_handlers import bots
 from piltover.app.utils.utils import process_message_entities, process_reply_markup
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, ChatAdminRights, FileType
+from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \

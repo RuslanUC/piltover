@@ -77,6 +77,7 @@ class MessageMedia(Model):
 
     async def to_tl(self) -> MessageMediaTypes:
         if self.type is MediaType.POLL:
+            # TODO: dont fetch if already fetched
             await self.fetch_related("poll", "poll__pollanswers")
             return MessageMediaPoll(
                 poll=self.poll.to_tl(),

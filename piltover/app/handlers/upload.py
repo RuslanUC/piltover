@@ -36,12 +36,14 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
         defaults["mime"] = mime
         logger.trace(f"Resolved file mime type from first part: {mime!r}")
 
-    file, created = await UploadingFile.get_or_create(user=user, file_id=request.file_id, defaults=defaults)
-    if not created and request.file_part == 0 and file.mime is None and mime is not None:
-        file.mime = mime
-        await file.save(update_fields=["mime"])
+    with measure_time("UploadingFile.get_or_create(...)"):
+        file, created = await UploadingFile.get_or_create(user=user, file_id=request.file_id, defaults=defaults)
+        if not created and request.file_part == 0 and file.mime is None and mime is not None:
+            file.mime = mime
+            await file.save(update_fields=["mime"])
 
-    last_part = await UploadingFilePart.filter(file=file).order_by("-part_id").first()
+    with measure_time("<get last part>"):
+        last_part = await UploadingFilePart.filter(file=file).order_by("-part_id").first()
 
     if file.total_parts > 0 and isinstance(request, SaveFilePart):
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
@@ -49,10 +51,11 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
 
     size = len(request.bytes_)
-    if (ex_part := await UploadingFilePart.get_or_none(file=file, part_id=request.file_part)) is not None:
-        if size == ex_part.size:
-            return True
-        raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
+    with measure_time("<check existing part>"):
+        if (ex_part := await UploadingFilePart.get_or_none(file=file, part_id=request.file_part)) is not None:
+            if size == ex_part.size:
+                return True
+            raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
     maybe_last = size % 1024 != 0 or 524288 % size != 0
     if maybe_last and last_part is not None and last_part.part_id >= request.file_part:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_INVALID")
@@ -61,7 +64,8 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
     if size == 0:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
 
-    part, created = await UploadingFilePart.get_or_create(file=file, part_id=request.file_part, defaults={"size": size})
+    with measure_time("UploadingFilePart.get_or_create"):
+        part, created = await UploadingFilePart.get_or_create(file=file, part_id=request.file_part, defaults={"size": size})
     if not created:
         if part.size == size:
             return True

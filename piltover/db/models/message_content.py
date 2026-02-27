@@ -284,6 +284,16 @@ class MessageContent(Model):
 
         return result
 
+    async def to_tl_content_cached(self) -> MessageToFormatContent | None:
+        return await Cache.obj.get(self.cache_key())
+
+    @classmethod
+    async def to_tl_ref_bulk_cached(cls, refs: list[models.MessageContent]) -> list[MessageToFormatContent | None]:
+        cache_keys = [ref.cache_key() for ref in refs]
+        if not cache_keys:
+            return []
+        return await Cache.obj.multi_get(cache_keys)
+
     def make_reply_markup(self) -> ReplyMarkup | None:
         if self._cached_reply_markup is MISSING:
             if self.reply_markup is None:
