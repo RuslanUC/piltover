@@ -8,7 +8,8 @@ import traceback
 from asyncio import Task, DefaultEventLoopPolicy, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable, Coroutine, Protocol
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable, Coroutine, Protocol, overload, \
+    Literal, NoReturn
 from unittest import mock
 
 import pytest
@@ -16,6 +17,8 @@ import pytest_asyncio
 from faker import Faker
 from loguru import logger
 from pyrogram.session import Auth
+from pyrogram.types import Chat
+from pyrogram.utils import get_channel_id
 from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
 from tortoise import connections
@@ -415,7 +418,7 @@ def faker(pytestconfig: pytest.Config) -> Faker:
 
 
 class ClientFactory(Protocol):
-    async def __call__(self, phone_number: str | None = None) -> TestClient:
+    async def __call__(self, phone_number: str | None = None, run: bool = False) -> TestClient:
         ...
 
 
@@ -433,10 +436,35 @@ class ChannelFactory(Protocol):
 
 
 class ChannelWithClientsFactory(Protocol):
+    @overload
     async def __call__(
             self, num_clients: int = 1, owner_phone: str | None = None, supergroup: bool = False,
-            name: str | None = None, create_service_message: bool = False,
+            name: str | None = None, create_service_message: bool = False, clients_run: bool = False,
+            resolve_channel: Literal[False] = False,
     ) -> tuple[int, tuple[TestClient, ...]]:
+        ...
+
+    @overload
+    async def __call__(
+            self, num_clients: int = 1, owner_phone: str | None = None, supergroup: bool = False,
+            name: str | None = None, create_service_message: bool = False, clients_run: Literal[False] = False,
+            resolve_channel: Literal[True] = False,
+    ) -> NoReturn:
+        ...
+
+    @overload
+    async def __call__(
+            self, num_clients: int = 1, owner_phone: str | None = None, supergroup: bool = False,
+            name: str | None = None, create_service_message: bool = False, clients_run: Literal[True] = False,
+            resolve_channel: Literal[True] = False,
+    ) -> tuple[Chat, tuple[TestClient, ...]]:
+        ...
+
+    async def __call__(
+            self, num_clients: int = 1, owner_phone: str | None = None, supergroup: bool = False,
+            name: str | None = None, create_service_message: bool = False, clients_run: bool = False,
+            resolve_channel: bool = False,
+    ) -> tuple[int, tuple[TestClient, ...]] | tuple[Chat, tuple[TestClient, ...]]:
         ...
 
 
@@ -483,16 +511,20 @@ async def client_with_key(client_fake: ClientFactorySync) -> ClientFactory:
 
 
 @pytest_asyncio.fixture()
-async def client_with_auth(client_with_key: ClientFactory) -> ClientFactory:
+async def client_with_auth(client_with_key: ClientFactory, exit_stack: AsyncExitStack) -> ClientFactory:
     from piltover.db.models import AuthKey, User, UserAuthorization
     from piltover.tl import Long
 
-    async def _create_client_with_auth(phone_number: str | None = None) -> TestClient:
+    async def _create_client_with_auth(phone_number: str | None = None, run: bool = False) -> TestClient:
         client = await client_with_key(phone_number)
         user = await User.get(phone_number=client.phone_number)
         key_id = Long.read_bytes(hashlib.sha1(getattr(client, "_generated_key")).digest()[-8:])
         auth_key = await AuthKey.get(id=key_id)
         await UserAuthorization.create(user=user, key=auth_key, ip="0.0.0.0")
+
+        if run and not client.is_initialized:
+            await exit_stack.enter_async_context(client)
+
         return client
 
     return _create_client_with_auth
@@ -530,26 +562,31 @@ async def test_channel(faker: Faker) -> ChannelFactory:
 
 @pytest_asyncio.fixture()
 async def channel_with_clients(
-        client_with_auth: ClientFactory, test_channel: ChannelFactory
+        client_with_auth: ClientFactory, test_channel: ChannelFactory,
 ) -> ChannelWithClientsFactory:
     from piltover.db.models import User, Channel
     from piltover.app.handlers.channels import _add_user_to_channel
 
     async def _create_clients_and_channel(
             num_clients: int = 1, owner_phone: str | None = None, supergroup: bool = False, name: str | None = None,
-            create_service_message: bool = False,
-    ) -> tuple[int, tuple[TestClient, ...]]:
-        owner = await client_with_auth(owner_phone)
+            create_service_message: bool = False, clients_run: bool = False, resolve_channel: bool = False,
+    ) -> tuple[int, tuple[TestClient, ...]] | tuple[Chat, tuple[TestClient, ...]]:
+        owner = await client_with_auth(owner_phone, run=clients_run)
         channel_id = await test_channel(owner, supergroup, name, create_service_message)
         channel = await Channel.get(id=Channel.norm_id(channel_id))
 
         clients = [owner]
 
         for _ in range(num_clients - 1):
-            client = await client_with_auth()
+            client = await client_with_auth(run=clients_run)
             user = await User.get(phone_number=client.phone_number)
             await _add_user_to_channel(channel, user)
             clients.append(client)
+
+        if resolve_channel:
+            assert clients_run
+            channel = await owner.get_chat(get_channel_id(channel_id))
+            return channel, tuple(clients)
 
         return channel_id, tuple(clients)
 

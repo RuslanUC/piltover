@@ -11,9 +11,9 @@ from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInval
 from pyrogram.raw.functions.account import GetPassword
 from pyrogram.raw.functions.channels import EditCreator, DeleteHistory
 from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser, \
-    InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputChannel, InputPeerChannel
+    InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputPeerChannel
 from pyrogram.types import ChatMember, ChatPrivileges
-from pyrogram.utils import compute_password_check, get_channel_id
+from pyrogram.utils import compute_password_check
 
 from piltover.tl import InputCheckPasswordEmpty
 from tests.client import TestClient
@@ -25,7 +25,7 @@ PHOTO_COLOR = (0x00, 0xff, 0x80)
 
 @pytest.mark.asyncio
 async def test_create_channel(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
-    client: TestClient = await exit_stack.enter_async_context(await client_with_auth())
+    client = await client_with_auth(run=True)
 
     async with client.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
         channel = await client.create_channel("idk")
@@ -35,30 +35,28 @@ async def test_create_channel(client_with_auth: ClientFactory, exit_stack: Async
 
 @pytest.mark.asyncio
 async def test_create_channel_empty_name(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
-    client: TestClient = await exit_stack.enter_async_context(await client_with_auth())
+    client = await client_with_auth(run=True)
     with pytest.raises(ChatTitleEmpty):
         await client.create_channel("")
 
 
 @pytest.mark.asyncio
 async def test_create_channel_name_too_long(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
-    client: TestClient = await exit_stack.enter_async_context(await client_with_auth())
+    client = await client_with_auth(run=True)
     with pytest.raises(ChatTitleEmpty):
         await client.create_channel("1234" * 16 + "1")
 
 
 @pytest.mark.asyncio
 async def test_create_channel_description_too_long(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
-    client: TestClient = await exit_stack.enter_async_context(await client_with_auth())
+    client = await client_with_auth(run=True)
     with pytest.raises(ChatAboutTooLong):
         await client.create_channel("test name", description="1234" * 64)
 
 
 @pytest.mark.asyncio
 async def test_edit_channel_title(channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack) -> None:
-    channel_id, (client,) = await channel_with_clients(name="idk")
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(name="idk", clients_run=True, resolve_channel=True)
 
     assert channel.title == "idk"
 
@@ -72,9 +70,7 @@ async def test_edit_channel_title(channel_with_clients: ChannelWithClientsFactor
 async def test_change_channel_photo(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.photo is None
 
@@ -98,9 +94,7 @@ async def test_change_channel_photo(
 async def test_get_channel_participants_only_owner(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     participants: list[ChatMember] = [participant async for participant in client.get_chat_members(channel.id)]
     assert len(participants) == 1
@@ -111,10 +105,7 @@ async def test_get_channel_participants_only_owner(
 async def test_channel_and_promote_user(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1, client2,) = await channel_with_clients(2)
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
 
     user2 = await client1.resolve_user(client2)
 
@@ -136,11 +127,8 @@ async def test_channel_and_promote_user(
 async def test_channel_add_user(
         channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1,) = await channel_with_clients(1)
-    client2 = await client_with_auth()
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1,) = await channel_with_clients(clients_run=True, resolve_channel=True)
+    client2 = await client_with_auth(run=True)
 
     user2 = await client1.resolve_user(client2)
     user1 = await client2.resolve_user(client1)
@@ -164,9 +152,7 @@ async def test_channel_add_user(
 async def test_change_channel_username(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
 
@@ -180,9 +166,7 @@ async def test_change_channel_username(
 async def test_change_channel_username_to_occupied_by_user(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
 
@@ -207,16 +191,11 @@ async def test_edit_channel_owner(
         password_check: str, before: tuple[bool, bool], after: tuple[bool, bool], expect_updates_after: bool,
         expected_exception: type[Exception] | None,
 ) -> None:
-    channel_id, (client1, client2,) = await channel_with_clients(2)
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
+    channel1, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
 
     user2 = await client1.resolve_user(client2)
 
-    channel1 = await client1.get_chat(get_channel_id(channel_id))
-    assert channel1.is_creator is before[0]
-
-    channel2 = await client2.get_chat(get_channel_id(channel_id))
+    channel2 = await client2.get_chat(channel1.id)
     assert channel2.is_creator is before[1]
 
     input_password = InputCheckPasswordEmpty()
@@ -225,7 +204,7 @@ async def test_edit_channel_owner(
         input_password = compute_password_check(await client1.invoke(GetPassword()), password_check)
 
     request = EditCreator(
-        channel=await client1.resolve_peer(get_channel_id(channel_id)),
+        channel=await client1.resolve_peer(channel1.id),
         user_id=await client1.resolve_peer(user2.id),
         password=input_password,
     )
@@ -240,10 +219,10 @@ async def test_edit_channel_owner(
         await client1.expect_update(UpdateChannel)
         await client2.expect_update(UpdateChannel)
 
-    channel1 = await client1.get_chat(get_channel_id(channel_id))
+    channel1 = await client1.get_chat(channel1.id)
     assert channel1.is_creator is after[0]
 
-    channel2 = await client2.get_chat(get_channel_id(channel_id))
+    channel2 = await client2.get_chat(channel1.id)
     assert channel2.is_creator is after[1]
 
 
@@ -251,16 +230,13 @@ async def test_edit_channel_owner(
 async def test_edit_channel_owner_fail_not_owner(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1, client2, client3,) = await channel_with_clients(3)
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    await exit_stack.enter_async_context(client3)
+    channel, (client1, client2, client3,) = await channel_with_clients(3, clients_run=True, resolve_channel=True)
 
-    channel1 = await client1.get_chat(get_channel_id(channel_id))
+    channel1 = await client1.get_chat(channel.id)
     assert channel1.is_creator
-    channel2 = await client2.get_chat(get_channel_id(channel_id))
+    channel2 = await client2.get_chat(channel.id)
     assert not channel2.is_creator
-    channel3 = await client3.get_chat(get_channel_id(channel_id))
+    channel3 = await client3.get_chat(channel.id)
     assert not channel3.is_creator
 
     await client2.enable_cloud_password(password="test_passw0rd")
@@ -269,16 +245,16 @@ async def test_edit_channel_owner_fail_not_owner(
 
     with pytest.raises(ChatAdminRequired):
         await client2.invoke(EditCreator(
-            channel=await client2.resolve_peer(get_channel_id(channel_id)),
+            channel=await client2.resolve_peer(channel.id),
             user_id=await client2.resolve_peer(user23.id),
             password=compute_password_check(await client2.invoke(GetPassword()), "test_passw0rd"),
         ))
 
-    channel1 = await client1.get_chat(get_channel_id(channel_id))
+    channel1 = await client1.get_chat(channel.id)
     assert channel1.is_creator
-    channel2 = await client2.get_chat(get_channel_id(channel_id))
+    channel2 = await client2.get_chat(channel.id)
     assert not channel2.is_creator
-    channel3 = await client3.get_chat(get_channel_id(channel_id))
+    channel3 = await client3.get_chat(channel.id)
     assert not channel3.is_creator
 
 
@@ -286,9 +262,7 @@ async def test_edit_channel_owner_fail_not_owner(
 async def test_edit_channel_owner_fail_invalid_user(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients(1)
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.is_creator
 
@@ -309,26 +283,23 @@ async def test_edit_channel_owner_fail_invalid_user(
 async def test_edit_channel_owner_fail_user_not_participant(
         channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1,) = await channel_with_clients(1)
-    client2 = await client_with_auth()
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
+    channel1, (client1,) = await channel_with_clients(clients_run=True, resolve_channel=True)
+    client2 = await client_with_auth(run=True)
 
     user2 = await client1.resolve_user(client2)
 
-    channel1 = await client1.get_chat(get_channel_id(channel_id))
     assert channel1.is_creator
 
     await client1.enable_cloud_password(password="test_passw0rd")
 
     with pytest.raises(UserIdInvalid):
         await client1.invoke(EditCreator(
-            channel=await client1.resolve_peer(get_channel_id(channel_id)),
+            channel=await client1.resolve_peer(channel1.id),
             user_id=await client1.resolve_peer(user2.id),
             password=compute_password_check(await client1.invoke(GetPassword()), "test_passw0rd"),
         ))
 
-    channel1 = await client1.get_chat(get_channel_id(channel_id))
+    channel1 = await client1.get_chat(channel1.id)
     assert channel1.is_creator
 
 
@@ -336,9 +307,7 @@ async def test_edit_channel_owner_fail_user_not_participant(
 async def test_edit_channel_owner_fail_not_user(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients(1)
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.is_creator
 
@@ -359,10 +328,7 @@ async def test_edit_channel_owner_fail_not_user(
 async def test_delete_channel_success(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1, client2,) = await channel_with_clients(2)
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
 
     assert await client1.delete_channel(channel.id)
     await client1.expect_update(UpdateChannel)
@@ -379,10 +345,7 @@ async def test_delete_channel_success(
 async def test_delete_channel_fail_not_owner(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1, client2,) = await channel_with_clients(2)
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
 
     assert await client1.get_chat(channel.id)
     assert await client2.get_chat(channel.id)
@@ -399,12 +362,9 @@ async def test_channel_join(
         channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
         faker: Faker,
 ) -> None:
-    channel_id, (client1,) = await channel_with_clients(1)
-    client2 = await client_with_auth()
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
+    channel, (client1,) = await channel_with_clients(clients_run=True, resolve_channel=True)
+    client2 = await client_with_auth(run=True)
 
-    channel = await client1.get_chat(get_channel_id(channel_id))
     await client1.send_message(channel.id, "test")
 
     channel_username = faker.user_name()
@@ -430,11 +390,10 @@ async def test_get_public_channel_messages_without_join(
         channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
         faker: Faker,
 ) -> None:
-    channel_id, (client1,) = await channel_with_clients(1, create_service_message=True)
-    client2 = await client_with_auth()
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1,) = await channel_with_clients(
+        create_service_message=True, clients_run=True, resolve_channel=True,
+    )
+    client2 = await client_with_auth(run=True)
 
     channel_username = faker.user_name()
 
@@ -461,11 +420,10 @@ async def test_channel_join_leave(
         channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
         faker: Faker,
 ) -> None:
-    channel_id, (client1,) = await channel_with_clients(1, create_service_message=True)
-    client2 = await client_with_auth()
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1,) = await channel_with_clients(
+        create_service_message=True, clients_run=True, resolve_channel=True,
+    )
+    client2 = await client_with_auth(run=True)
     channel_username = faker.user_name()
 
     async with client1.expect_updates_m(UpdateChannel):
@@ -491,11 +449,10 @@ async def test_channel_join_leave(
 async def test_channel_supergroup_ban_user(
         channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1,) = await channel_with_clients(1, supergroup=True, create_service_message=True)
-    client2 = await client_with_auth()
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1,) = await channel_with_clients(
+        supergroup=True, create_service_message=True, clients_run=True, resolve_channel=True,
+    )
+    client2 = await client_with_auth(run=True)
 
     user2 = await client1.resolve_user(client2)
 
@@ -517,11 +474,10 @@ async def test_channel_supergroup_ban_user(
 async def test_channel_supergroup_ban_user_before_join(
         channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1,) = await channel_with_clients(1, supergroup=True, create_service_message=True)
-    client2 = await client_with_auth()
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1,) = await channel_with_clients(
+        supergroup=True, create_service_message=True, clients_run=True, resolve_channel=True,
+    )
+    client2 = await client_with_auth(run=True)
 
     user2 = await client1.resolve_user(client2)
 
@@ -537,11 +493,10 @@ async def test_channel_supergroup_ban_user_before_join(
 async def test_channel_supergroup_unban_user(
         channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1,) = await channel_with_clients(1, supergroup=True, create_service_message=True)
-    client2 = await client_with_auth()
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    channel = await client1.get_chat(get_channel_id(channel_id))
+    channel, (client1,) = await channel_with_clients(
+        supergroup=True, create_service_message=True, clients_run=True, resolve_channel=True,
+    )
+    client2 = await client_with_auth(run=True)
 
     user2 = await client1.resolve_user(client2)
 
@@ -564,9 +519,7 @@ async def test_channel_supergroup_unban_user(
 async def test_change_channel_username_to_same(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
 
@@ -583,9 +536,7 @@ async def test_change_channel_username_to_same(
 async def test_change_channel_username_to_empty(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
 
@@ -604,9 +555,7 @@ async def test_change_channel_username_to_empty(
 async def test_change_channel_username_to_empty_from_empty(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
 
@@ -618,9 +567,7 @@ async def test_change_channel_username_to_empty_from_empty(
 async def test_change_channel_username_to_different_one(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
 
@@ -635,11 +582,9 @@ async def test_change_channel_username_to_different_one(
 async def test_channel_trigger_pyrogram_getchannels(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client,) = await channel_with_clients()
-    await exit_stack.enter_async_context(client)
-    channel = await client.get_chat(get_channel_id(channel_id))
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
-    another_client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
+    another_client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number=client.phone_number))
     peer = await another_client.resolve_peer(channel.id)
     assert isinstance(peer, InputPeerChannel)
 
@@ -657,10 +602,9 @@ async def test_supergroup_delete_history(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
         for_me: bool, after_start_idx_me: int, after_start_idx_other: int,
 ) -> None:
-    channel_id, (client1, client2,) = await channel_with_clients(2, supergroup=True)
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    group = await client1.get_chat(get_channel_id(channel_id))
+    group, (client1, client2,) = await channel_with_clients(
+        2, supergroup=True, clients_run=True, resolve_channel=True
+    )
 
     messages = [
         await client1.send_message(group.id, f"test {num}")
@@ -685,10 +629,9 @@ async def test_supergroup_delete_history(
 async def test_supergroup_delete_participant_history(
         channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
 ) -> None:
-    channel_id, (client1, client2,) = await channel_with_clients(2, supergroup=True)
-    await exit_stack.enter_async_context(client1)
-    await exit_stack.enter_async_context(client2)
-    group = await client1.get_chat(get_channel_id(channel_id))
+    group, (client1, client2,) = await channel_with_clients(
+        2, supergroup=True, clients_run=True, resolve_channel=True
+    )
 
     user2 = await client1.resolve_user(client2)
 
