@@ -129,22 +129,6 @@ class MessageMedia(Model):
         elif media_type in (MediaType.DICE, MediaType.GEOPOINT, MediaType.CONTACT):
             return None
         elif media_type is MediaType.DOCUMENT and self.file is not None:
-            file_type = self.file.type
-            if file_type is FileType.DOCUMENT_GIF:
-                return ChatBannedRights.SEND_GIFS
-            elif file_type is FileType.DOCUMENT_VIDEO:
-                return ChatBannedRights.SEND_VIDEOS
-            elif file_type is FileType.DOCUMENT_AUDIO:
-                return ChatBannedRights.SEND_AUDIOS
-            elif file_type is FileType.DOCUMENT_VOICE:
-                return ChatBannedRights.SEND_VOICES
-            elif file_type is FileType.DOCUMENT_VIDEO_NOTE:
-                return ChatBannedRights.SEND_ROUNDVIDEOS
-            elif file_type is FileType.DOCUMENT_STICKER:
-                return ChatBannedRights.SEND_STICKERS
-            elif file_type is FileType.DOCUMENT_EMOJI:
-                return None
-            else:
-                return ChatBannedRights.SEND_DOCS
+            return self.file.to_chat_banned_right()
 
         return ChatBannedRights.NONE

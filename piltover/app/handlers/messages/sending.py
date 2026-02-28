@@ -28,7 +28,8 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     InputMediaDocument, InputPeerEmpty, MessageActionPinMessage, InputMediaPoll, InputMediaUploadedDocument_133, \
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
     LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
-    GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice
+    GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
+    DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -639,6 +640,19 @@ async def _get_media_thumb(
     return await storage.documents.get_part(thumb_file.physical_id, 0, 1024 * 1024 * 2)
 
 
+async def _get_input_media_file(
+        user: User, media: InputMediaPhoto | InputMediaDocument | InputMediaDocument_133,
+) -> File | None:
+    file_type = FileType.PHOTO if isinstance(media, InputMediaPhoto) else None
+    if isinstance(media, InputMediaPhoto):
+        add_query = Q(mime_type__startswith="image/")
+    else:
+        add_query = Q(type__not=FileType.PHOTO)
+    return await File.from_input(
+        user.id, media.id.id, media.id.access_hash, media.id.file_reference, file_type, add_query=add_query,
+    )
+
+
 async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll, InputMediaContact, InputMediaGeoPoint, InputMediaDice)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
@@ -684,14 +698,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             attributes.insert(0, DocumentAttributeFilename(file_name=media.file.name))
         file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
-        file_type = FileType.PHOTO if isinstance(media, InputMediaPhoto) else None
-        if isinstance(media, InputMediaPhoto):
-            add_query = Q(mime_type__startswith="image/")
-        else:
-            add_query = Q(type__not=FileType.PHOTO)
-        file = await File.from_input(
-            user.id, media.id.id, media.id.access_hash, media.id.file_reference, file_type, add_query=add_query,
-        )
+        file = await _get_input_media_file(user, media)
         if file is None:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
         if file is None or (file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
@@ -827,6 +834,50 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     )
 
 
+async def _get_input_media_banned_rights(user: User, media: InputMedia) -> ChatBannedRights:
+    if isinstance(media, (InputMediaPhoto, InputMediaUploadedPhoto)):
+        return ChatBannedRights.SEND_PHOTOS
+    if isinstance(media, InputMediaPoll):
+        return ChatBannedRights.SEND_POLLS
+    if isinstance(media, InputMediaDice):
+        return ChatBannedRights.SEND_PLAIN
+    if isinstance(media, (InputMediaUploadedDocument, InputMediaDocument_133)):
+        for attr in media.attributes:
+            if isinstance(attr, DocumentAttributeAnimated):
+                return ChatBannedRights.SEND_GIFS
+            if isinstance(attr, DocumentAttributeVideo):
+                if attr.round_message:
+                    return ChatBannedRights.SEND_ROUNDVIDEOS
+                return ChatBannedRights.SEND_VIDEOS
+            if isinstance(attr, DocumentAttributeAudio):
+                if attr.voice:
+                    return ChatBannedRights.SEND_VOICES
+                return ChatBannedRights.SEND_AUDIOS
+            if isinstance(attr, DocumentAttributeSticker):
+                return ChatBannedRights.SEND_STICKERS
+            if isinstance(attr, DocumentAttributeImageSize):
+                return ChatBannedRights.SEND_PHOTOS
+
+        if media.mime_type.startswith("video/"):
+            return ChatBannedRights.SEND_VIDEOS
+        if media.mime_type.startswith("audio/"):
+            return ChatBannedRights.SEND_AUDIOS
+        if media.mime_type == "image/gif":
+            return ChatBannedRights.SEND_GIFS
+        if media.mime_type.startswith("image/"):
+            return ChatBannedRights.SEND_PHOTOS
+
+        return ChatBannedRights.SEND_DOCS
+    if isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
+        file = await _get_input_media_file(user, media)
+        if file is None:
+            return ChatBannedRights.SEND_DOCS
+        if (rights := file.to_chat_banned_right()) is not None:
+            return rights
+
+    return ChatBannedRights.NONE
+
+
 @handler.on_request(SendMedia_148)
 @handler.on_request(SendMedia_176)
 @handler.on_request(SendMedia)
@@ -837,10 +888,10 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant_raise(user)
-        if not chat_or_channel.can_send_media(participant):
+        participant = await chat_or_channel.get_participant(user)
+        if not chat_or_channel.can_send_media(participant, await _get_input_media_banned_rights(user, request.media)):
+            # TODO: send correct error
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        # TODO: check specific media type
         if peer.type is PeerType.CHANNEL:
             await _check_channel_slowmode(peer.channel, participant, user)
 

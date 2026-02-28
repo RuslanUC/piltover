@@ -16,7 +16,7 @@ from tortoise.expressions import Q
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db import models
-from piltover.db.enums import FileType
+from piltover.db.enums import FileType, ChatBannedRights
 from piltover.exceptions import Unreachable
 from piltover.storage import BaseStorage
 from piltover.storage.base import StorageBuffer, StorageType
@@ -320,3 +320,21 @@ class File(Model):
                 return None
 
         return await File.get_or_none(file_q)
+
+    def to_chat_banned_right(self) -> ChatBannedRights | None:
+        if self.type is FileType.DOCUMENT_GIF:
+            return ChatBannedRights.SEND_GIFS
+        elif self.type is FileType.DOCUMENT_VIDEO:
+            return ChatBannedRights.SEND_VIDEOS
+        elif self.type is FileType.DOCUMENT_AUDIO:
+            return ChatBannedRights.SEND_AUDIOS
+        elif self.type is FileType.DOCUMENT_VOICE:
+            return ChatBannedRights.SEND_VOICES
+        elif self.type is FileType.DOCUMENT_VIDEO_NOTE:
+            return ChatBannedRights.SEND_ROUNDVIDEOS
+        elif self.type is FileType.DOCUMENT_STICKER:
+            return ChatBannedRights.SEND_STICKERS
+        elif self.type is FileType.DOCUMENT_EMOJI:
+            return None
+        else:
+            return ChatBannedRights.SEND_DOCS
