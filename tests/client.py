@@ -32,7 +32,6 @@ from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
 from pyrogram.types import User
 
-from piltover.utils.debug import measure_time
 from tests import USE_REAL_TCP_FOR_TESTING, server_instance, test_phone_number, skipping_auth
 
 if TYPE_CHECKING:
@@ -392,6 +391,8 @@ class TestClient(Client):
             self, query: PyroTLObject, retries: int = PyroSession.MAX_RETRIES,
             timeout: float = PyroSession.WAIT_TIMEOUT, sleep_threshold: float = None,
     ) -> PyroTLObject:
+        from piltover.utils.debug import measure_time
+
         with measure_time("<pyrogram>.invoke(...)"):
             res = await super().invoke(query, retries, timeout, sleep_threshold)
         if isinstance(res, Updates):
@@ -433,14 +434,20 @@ class TestClient(Client):
         self._got_updates[update_cls].clear()
 
     async def authorize(self) -> User:
+        from piltover.utils.debug import measure_time
+
         with measure_time("authorize()"):
             return await super().authorize()
 
     async def connect(self) -> bool:
+        from piltover.utils.debug import measure_time
+
         with measure_time("connect()"):
             return await super().connect()
 
     async def start(self) -> bool:
+        from piltover.utils.debug import measure_time
+
         if skipping_auth.get():
             reset_token = test_phone_number.set(self.phone_number)
 

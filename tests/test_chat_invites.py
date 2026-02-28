@@ -1,10 +1,15 @@
+from contextlib import AsyncExitStack
+
 import pytest
 from pyrogram.errors import InviteHashInvalid, UserAlreadyParticipant, PeerIdInvalid, InviteHashExpired, \
     InviteRequestSent
 from pyrogram.raw.functions.messages import ExportChatInvite
+from pyrogram.raw.types import UpdateChannel, UpdateNewChannelMessage
 from pyrogram.types import Chat, ChatPreview
+from pyrogram.utils import get_channel_id
 
 from tests.client import TestClient
+from tests.conftest import ChannelWithClientsFactory, ClientFactory
 
 PHOTO_COLOR = (0x00, 0xff, 0x00)
 
@@ -244,3 +249,22 @@ async def test_request_dismiss_invite() -> None:
         assert [req async for req in client1.get_chat_join_requests(group.id)] == []
         with pytest.raises(PeerIdInvalid):
             assert await client2.send_message(group.id, "test message")
+
+
+@pytest.mark.asyncio
+async def test_channel_invite_user(
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
+) -> None:
+    channel_id, (client1,) = await channel_with_clients(1, name="idk")
+    client2 = await client_with_auth()
+    await exit_stack.enter_async_context(client1)
+    await exit_stack.enter_async_context(client2)
+    channel = await client1.get_chat(get_channel_id(channel_id))
+
+    invite_link = await channel.export_invite_link()
+    await client2.join_chat(invite_link)
+    await client2.expect_update(UpdateChannel)
+
+    assert await client1.send_message(channel.id, "test message")
+    await client1.expect_update(UpdateNewChannelMessage)
+    await client2.expect_update(UpdateNewChannelMessage)

@@ -8,7 +8,7 @@ import traceback
 from asyncio import Task, DefaultEventLoopPolicy, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable, Coroutine, Awaitable
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable, Coroutine, Protocol
 from unittest import mock
 
 import pytest
@@ -23,12 +23,6 @@ from tortoise.backends.sqlite import SqliteClient
 from tortoise.queryset import AwaitableQuery, BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, \
     ValuesListQuery, CountQuery, DeleteQuery, UpdateQuery, QuerySet, ExistsQuery
 
-from piltover.app_config import AppConfig
-from piltover.db.enums import PeerType
-from piltover.db.models import User, UserAuthorization, State, Peer
-from piltover.exceptions import Unreachable
-from piltover.utils.debug import measure_time_with_result
-from piltover.worker import RequestHandler
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
 from tests.client import setup_test_dc, TestClient
 from tests.scheduled_loop import run_scheduler_loop_every_100ms
@@ -64,7 +58,8 @@ Auth.create = _real_auth_create
 
 
 async def _custom_auth_create(self: Auth) -> bytes:
-    from piltover.db.models import AuthKey
+    from piltover.db.models import AuthKey, User, State, Peer, UserAuthorization
+    from piltover.db.enums import PeerType
     from piltover.tl import Long
 
     key = urandom(256)
@@ -92,6 +87,7 @@ async def _empty_async_func(*args, **kwargs) -> None:
 @pytest_asyncio.fixture(autouse=True)
 async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[Gateway]:
     from piltover.app.app import app, args
+    from piltover.app_config import AppConfig
 
     marks = {mark.name for mark in request.node.own_markers}
     real_key_gen = "real_key_gen" in marks
@@ -201,6 +197,8 @@ def _unpatch_cls_replaced_method(cls: type, names: Iterable[str], suffix: str) -
 
 
 def _get_patched_cls_original_method(obj: object, names: Iterable[str], suffix: str) -> tuple[str, Callable]:
+    from piltover.exceptions import Unreachable
+
     for name in names:
         real_method = getattr(obj, f"{name}{suffix}", None)
         if real_method is not None:
@@ -211,6 +209,9 @@ def _get_patched_cls_original_method(obj: object, names: Iterable[str], suffix: 
 
 @pytest_asyncio.fixture(autouse=True)
 async def measure_query_stats(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[None]:
+    from piltover.worker import RequestHandler
+    from piltover.utils.debug import measure_time_with_result
+
     if not pytestconfig.getoption("--measure-queries"):
         yield
         return
@@ -413,8 +414,30 @@ def faker(pytestconfig: pytest.Config) -> Faker:
     return faker_inst
 
 
-ClientFactory = Callable[[str], Awaitable[TestClient]] | Callable[[], Awaitable[TestClient]]
-ClientFactorySync = Callable[[str], TestClient] | Callable[[], TestClient]
+class ClientFactory(Protocol):
+    async def __call__(self, phone_number: str | None = None) -> TestClient:
+        ...
+
+
+class ClientFactorySync(Protocol):
+    def __call__(self, phone_number: str | None = None) -> TestClient:
+        ...
+
+
+class ChannelFactory(Protocol):
+    async def __call__(
+            self, client: TestClient, supergroup: bool = False, name: str | None = None,
+            create_service_message: bool = False,
+    ) -> int:
+        ...
+
+
+class ChannelWithClientsFactory(Protocol):
+    async def __call__(
+            self, num_clients: int = 1, owner_phone: str | None = None, supergroup: bool = False,
+            name: str | None = None, create_service_message: bool = False,
+    ) -> tuple[int, tuple[TestClient, ...]]:
+        ...
 
 
 @pytest_asyncio.fixture()
@@ -435,6 +458,7 @@ async def client_fake(faker: Faker) -> ClientFactorySync:
 @pytest_asyncio.fixture()
 async def client_with_key(client_fake: ClientFactorySync) -> ClientFactory:
     from piltover.db.models import AuthKey, User, State, Peer
+    from piltover.db.enums import PeerType
     from piltover.tl import Long
 
     async def _create_client_with_key(phone_number: str | None = None) -> TestClient:
@@ -460,7 +484,7 @@ async def client_with_key(client_fake: ClientFactorySync) -> ClientFactory:
 
 @pytest_asyncio.fixture()
 async def client_with_auth(client_with_key: ClientFactory) -> ClientFactory:
-    from piltover.db.models import AuthKey
+    from piltover.db.models import AuthKey, User, UserAuthorization
     from piltover.tl import Long
 
     async def _create_client_with_auth(phone_number: str | None = None) -> TestClient:
@@ -472,3 +496,61 @@ async def client_with_auth(client_with_key: ClientFactory) -> ClientFactory:
         return client
 
     return _create_client_with_auth
+
+
+@pytest_asyncio.fixture()
+async def test_channel(faker: Faker) -> ChannelFactory:
+    from piltover.db.models import User
+    from piltover.db.enums import MessageType
+    from piltover.app.handlers.channels import _create_channel, _add_user_to_channel
+    from piltover.app.handlers.messages.sending import send_message_internal
+    from piltover.tl.types import MessageActionChannelCreate
+
+    async def _create_channel_or_group(
+            client: TestClient, supergroup: bool = False, name: str | None = None, create_service_message: bool = False,
+    ) -> int:
+        if name is None:
+            name = faker.slug()
+
+        owner = await User.get(phone_number=client.phone_number)
+        channel, peer_channel = await _create_channel(owner, name, "", not supergroup, supergroup)
+        await _add_user_to_channel(channel, owner)
+
+        if create_service_message:
+            await send_message_internal(
+                owner, peer_channel, None, None, False,
+                author=owner, type=MessageType.SERVICE_CHANNEL_CREATE,
+                extra_info=MessageActionChannelCreate(title=name).write(),
+            )
+
+        return channel.make_id()
+
+    return _create_channel_or_group
+
+
+@pytest_asyncio.fixture()
+async def channel_with_clients(
+        client_with_auth: ClientFactory, test_channel: ChannelFactory
+) -> ChannelWithClientsFactory:
+    from piltover.db.models import User, Channel
+    from piltover.app.handlers.channels import _add_user_to_channel
+
+    async def _create_clients_and_channel(
+            num_clients: int = 1, owner_phone: str | None = None, supergroup: bool = False, name: str | None = None,
+            create_service_message: bool = False,
+    ) -> tuple[int, tuple[TestClient, ...]]:
+        owner = await client_with_auth(owner_phone)
+        channel_id = await test_channel(owner, supergroup, name, create_service_message)
+        channel = await Channel.get(id=Channel.norm_id(channel_id))
+
+        clients = [owner]
+
+        for _ in range(num_clients - 1):
+            client = await client_with_auth()
+            user = await User.get(phone_number=client.phone_number)
+            await _add_user_to_channel(channel, user)
+            clients.append(client)
+
+        return channel_id, tuple(clients)
+
+    return _create_clients_and_channel

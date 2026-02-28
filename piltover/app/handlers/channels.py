@@ -130,6 +130,34 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
     return True
 
 
+async def _create_channel(creator: User, title: str, description: str | None, is_channel: bool, is_supergroup: bool) -> [Channel, Peer]:
+    channel = await Channel.create(
+        creator=creator, name=title, description=description, channel=is_channel, supergroup=is_supergroup,
+    )
+    peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL)
+
+    return channel, peer_channel
+
+
+async def _add_user_to_channel(channel: Channel, user: User) -> ChatParticipant:
+    user_is_creator = channel.creator_id == user.id
+
+    peer_for_user, _ = await Peer.get_or_create(owner=user, channel=channel, type=PeerType.CHANNEL)
+    participant, _ = await ChatParticipant.update_or_create(
+        channel=channel,
+        user=user,
+        defaults={
+            "chat_channel_id": channel.make_id(),
+            "left": False,
+            "admin_rights": ChatAdminRights.from_tl(CREATOR_RIGHTS) if user_is_creator else ChatAdminRights.NONE,
+        },
+    )
+    await Dialog.create_or_unhide(peer_for_user)
+    await SessionManager.subscribe_to_channel(channel.id, [user.id])
+
+    return participant
+
+
 @handler.on_request(CreateChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def create_channel(request: CreateChannel, user: User) -> Updates:
     if not request.broadcast and not request.megagroup:
@@ -144,17 +172,9 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
     if len(description) > 255:
         raise ErrorRpc(error_code=400, error_message="CHAT_ABOUT_TOO_LONG")
 
-    channel = await Channel.create(
-        creator=user, name=title, description=description, channel=request.broadcast, supergroup=request.megagroup,
-    )
-    peer_for_user = await Peer.create(owner=user, channel=channel, type=PeerType.CHANNEL)
-    await ChatParticipant.create(
-        channel=channel, chat_channel_id=channel.make_id(), user=user,
-        admin_rights=ChatAdminRights.from_tl(CREATOR_RIGHTS),
-    )
-    await Dialog.create_or_unhide(peer_for_user)
-    peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL)
-    await SessionManager.subscribe_to_channel(channel.id, [user.id])
+    async with in_transaction():
+        channel, peer_channel = await _create_channel(user, title, description, request.broadcast, request.megagroup)
+        await _add_user_to_channel(channel, user)
 
     updates = await send_message_internal(
         user, peer_channel, None, None, False,
