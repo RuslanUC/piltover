@@ -8,11 +8,12 @@ import traceback
 from asyncio import Task, DefaultEventLoopPolicy, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable, Coroutine
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Iterable, Callable, Coroutine, Awaitable
 from unittest import mock
 
 import pytest
 import pytest_asyncio
+from faker import Faker
 from loguru import logger
 from pyrogram.session import Auth
 from taskiq import TaskiqScheduler
@@ -29,13 +30,37 @@ from piltover.exceptions import Unreachable
 from piltover.utils.debug import measure_time_with_result
 from piltover.worker import RequestHandler
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
-from tests.client import setup_test_dc
+from tests.client import setup_test_dc, TestClient
 from tests.scheduled_loop import run_scheduler_loop_every_100ms
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
 
 T = TypeVar("T")
+
+
+_real_real_auth_create = Auth.create
+
+
+async def _Auth_init(self: Auth, client: TestClient, dc_id: int, test_mode: bool) -> None:
+    self.dc_id = dc_id
+    self.test_mode = test_mode
+    self.ipv6 = client.ipv6
+    self.proxy = client.proxy
+    self.connection = None
+    self.client = client
+
+
+async def _real_auth_create(self: Auth) -> bytes:
+    if not hasattr(self, "client"):
+        return await _real_real_auth_create(self)
+    if (key := getattr(self.client, "_generated_key", None)) is not None:
+        return key
+
+    return await _real_real_auth_create(self)
+
+
+Auth.create = _real_auth_create
 
 
 async def _custom_auth_create(self: Auth) -> bytes:
@@ -58,9 +83,6 @@ async def _custom_auth_create(self: Auth) -> bytes:
         await UserAuthorization.create(user=user, key=auth_key, ip="0.0.0.0")
 
     return key
-
-
-_real_auth_create = Auth.create
 
 
 async def _empty_async_func(*args, **kwargs) -> None:
@@ -378,3 +400,75 @@ def pytest_addoption(parser: pytest.Parser):
         "--measure-queries", action="store_true", default=False,
         help="measure db queries counts and timings per request handler and per test"
     )
+    parser.addoption(
+        "--faker-seed", default=42,
+        help="random seed for generating fake test data"
+    )
+
+
+@pytest.fixture()
+def faker(pytestconfig: pytest.Config) -> Faker:
+    faker_inst = Faker()
+    faker_inst.seed_instance(pytestconfig.getoption("--dump-db"))
+    return faker_inst
+
+
+ClientFactory = Callable[[str], Awaitable[TestClient]] | Callable[[], Awaitable[TestClient]]
+ClientFactorySync = Callable[[str], TestClient] | Callable[[], TestClient]
+
+
+@pytest_asyncio.fixture()
+async def client_fake(faker: Faker) -> ClientFactorySync:
+    def _create_client(phone_number: str | None = None) -> TestClient:
+        if phone_number is None:
+            phone_number = faker.msisdn()
+
+        return TestClient(
+            phone_number=phone_number,
+            first_name=faker.first_name(),
+            last_name=faker.last_name(),
+        )
+
+    return _create_client
+
+
+@pytest_asyncio.fixture()
+async def client_with_key(client_fake: ClientFactorySync) -> ClientFactory:
+    from piltover.db.models import AuthKey, User, State, Peer
+    from piltover.tl import Long
+
+    async def _create_client_with_key(phone_number: str | None = None) -> TestClient:
+        key = urandom(256)
+        key_id = Long.read_bytes(hashlib.sha1(key).digest()[-8:])
+        await AuthKey.create(id=key_id, auth_key=key)
+
+        client = client_fake(phone_number)
+
+        user, created = await User.get_or_create(phone_number=client.phone_number, defaults={
+            "first_name": client.first_name,
+            "last_name": client.last_name,
+        })
+        if created:
+            await State.create(user=user)
+            await Peer.create(owner=user, type=PeerType.SELF, user=user)
+
+        setattr(client, "_generated_key", key)
+        return client
+
+    return _create_client_with_key
+
+
+@pytest_asyncio.fixture()
+async def client_with_auth(client_with_key: ClientFactory) -> ClientFactory:
+    from piltover.db.models import AuthKey
+    from piltover.tl import Long
+
+    async def _create_client_with_auth(phone_number: str | None = None) -> TestClient:
+        client = await client_with_key(phone_number)
+        user = await User.get(phone_number=client.phone_number)
+        key_id = Long.read_bytes(hashlib.sha1(getattr(client, "_generated_key")).digest()[-8:])
+        auth_key = await AuthKey.get(id=key_id)
+        await UserAuthorization.create(user=user, key=auth_key, ip="0.0.0.0")
+        return client
+
+    return _create_client_with_auth

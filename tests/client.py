@@ -320,6 +320,8 @@ class TestClient(Client):
             password: str = None,
             workers: int = 2,
             no_updates: bool = None,
+            first_name: str | None = None,
+            last_name: str | None = None,
     ):
         super().__init__(
             name=":memory:",
@@ -349,6 +351,8 @@ class TestClient(Client):
         self.storage = SimpleStorage(self.name)
         self._got_updates: dict[type[T], list[T]] = defaultdict(list)
         self._updates_event = Event()
+        self.first_name = first_name
+        self.last_name = last_name
 
     async def __aenter__(self) -> Self:
         self._got_updates = defaultdict(list)
@@ -484,3 +488,10 @@ class TestClient(Client):
         await self.fetch_peers([user])
         if get:
             return await self.get_users(user.id)
+
+    async def sign_up(self, phone_number: str, phone_code_hash: str, first_name: str, last_name: str = "") -> User:
+        if self.first_name is not None:
+            first_name = self.first_name
+            last_name = self.last_name or ""
+
+        return await super().sign_up(phone_number, phone_code_hash, first_name, last_name)
