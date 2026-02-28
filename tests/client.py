@@ -5,6 +5,7 @@ import socket
 from asyncio import Event, timeout
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from enum import Enum, auto
 from io import BytesIO
 from time import time
 from typing import TypeVar, Self, TYPE_CHECKING, Any, cast, overload, Literal
@@ -174,6 +175,13 @@ PyroSession.recv_worker = _session_recv_worker
 PyroSession.MAX_RETRIES = 2
 
 
+class _Missing(Enum):
+    MISSING = auto()
+
+
+_MISSING = _Missing.MISSING
+
+
 class SimpleStorage(Storage):
     VERSION = 3
     USERNAME_TTL = 8 * 60 * 60
@@ -255,50 +263,50 @@ class SimpleStorage(Storage):
         peer_id, access_hash, peer_type, _, _, _ = self._peers_by_phone[phone_number]
         return get_input_peer(peer_id, access_hash, peer_type)
 
-    async def dc_id(self, value: int = object):
-        if value == object:
+    async def dc_id(self, value: int | _Missing = _MISSING) -> int | None:
+        if value is _MISSING:
             return self._dc_id
         else:
             self._dc_id = value
 
-    async def api_id(self, value: int = object):
-        if value == object:
+    async def api_id(self, value: int | _Missing = _MISSING) -> int | None:
+        if value is _MISSING:
             return self._api_id
         else:
             self._api_id = value
 
-    async def test_mode(self, value: bool = object):
-        if value == object:
+    async def test_mode(self, value: bool | _Missing = _MISSING) -> bool | None:
+        if value is _MISSING:
             return self._test_mode
         else:
             self._test_mode = value
 
-    async def auth_key(self, value: bytes = object):
-        if value == object:
+    async def auth_key(self, value: bytes | _Missing = _MISSING) -> bytes | None:
+        if value is _MISSING:
             return self._auth_key
         else:
             self._auth_key = value
 
-    async def date(self, value: int = object):
-        if value == object:
+    async def date(self, value: int | _Missing = _MISSING) -> int | None:
+        if value is _MISSING:
             return self._date
         else:
             self._date = value
 
-    async def user_id(self, value: int = object):
-        if value == object:
+    async def user_id(self, value: int | _Missing = _MISSING) -> int | None:
+        if value is _MISSING:
             return self._user_id
         else:
             self._user_id = value
 
-    async def is_bot(self, value: bool = object):
-        if value == object:
+    async def is_bot(self, value: bool | _Missing = _MISSING) -> bool | None:
+        if value is _MISSING:
             return self._is_bot
         else:
             self._is_bot = value
 
-    def version(self, value: int = object):
-        if value == object:
+    def version(self, value: int | _Missing = _MISSING) -> int | None:
+        if value is _MISSING:
             return self._version
         else:
             self._version = value
@@ -312,7 +320,6 @@ class TestClient(Client):
             app_version: str = "0.0.0",
             device_model: str = "test_device",
             system_version: str = "1.0",
-            lang_code: str = "en",
             bot_token: str = None,
             phone_number: str = None,
             phone_code: str = "2" * 5,
@@ -338,7 +345,6 @@ class TestClient(Client):
             app_version=app_version,
             device_model=device_model,
             system_version=system_version,
-            lang_code=lang_code,
             bot_token=bot_token,
             phone_number=phone_number,
             phone_code=phone_code,

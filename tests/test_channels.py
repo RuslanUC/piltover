@@ -24,7 +24,7 @@ PHOTO_COLOR = (0x00, 0xff, 0x80)
 
 
 @pytest.mark.asyncio
-async def test_create_channel(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
+async def test_create_channel(client_with_auth: ClientFactory) -> None:
     client = await client_with_auth(run=True)
 
     async with client.expect_updates_m(UpdateChannel, UpdateNewChannelMessage):
@@ -34,28 +34,28 @@ async def test_create_channel(client_with_auth: ClientFactory, exit_stack: Async
 
 
 @pytest.mark.asyncio
-async def test_create_channel_empty_name(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
+async def test_create_channel_empty_name(client_with_auth: ClientFactory) -> None:
     client = await client_with_auth(run=True)
     with pytest.raises(ChatTitleEmpty):
         await client.create_channel("")
 
 
 @pytest.mark.asyncio
-async def test_create_channel_name_too_long(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
+async def test_create_channel_name_too_long(client_with_auth: ClientFactory) -> None:
     client = await client_with_auth(run=True)
     with pytest.raises(ChatTitleEmpty):
         await client.create_channel("1234" * 16 + "1")
 
 
 @pytest.mark.asyncio
-async def test_create_channel_description_too_long(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
+async def test_create_channel_description_too_long(client_with_auth: ClientFactory) -> None:
     client = await client_with_auth(run=True)
     with pytest.raises(ChatAboutTooLong):
         await client.create_channel("test name", description="1234" * 64)
 
 
 @pytest.mark.asyncio
-async def test_edit_channel_title(channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack) -> None:
+async def test_edit_channel_title(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(name="idk", clients_run=True, resolve_channel=True)
 
     assert channel.title == "idk"
@@ -67,9 +67,7 @@ async def test_edit_channel_title(channel_with_clients: ChannelWithClientsFactor
 
 
 @pytest.mark.asyncio
-async def test_change_channel_photo(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_change_channel_photo(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.photo is None
@@ -91,9 +89,7 @@ async def test_change_channel_photo(
 
 
 @pytest.mark.asyncio
-async def test_get_channel_participants_only_owner(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_get_channel_participants_only_owner(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     participants: list[ChatMember] = [participant async for participant in client.get_chat_members(channel.id)]
@@ -102,9 +98,7 @@ async def test_get_channel_participants_only_owner(
 
 
 @pytest.mark.asyncio
-async def test_channel_and_promote_user(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_channel_and_promote_user(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
 
     user2 = await client1.resolve_user(client2)
@@ -125,7 +119,7 @@ async def test_channel_and_promote_user(
 
 @pytest.mark.asyncio
 async def test_channel_add_user(
-        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory,
 ) -> None:
     channel, (client1,) = await channel_with_clients(clients_run=True, resolve_channel=True)
     client2 = await client_with_auth(run=True)
@@ -149,9 +143,7 @@ async def test_channel_add_user(
 
 
 @pytest.mark.asyncio
-async def test_change_channel_username(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_change_channel_username(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
@@ -163,9 +155,7 @@ async def test_change_channel_username(
 
 
 @pytest.mark.asyncio
-async def test_change_channel_username_to_occupied_by_user(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_change_channel_username_to_occupied_by_user(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
@@ -187,8 +177,8 @@ async def test_change_channel_username_to_occupied_by_user(
 )
 @pytest.mark.asyncio
 async def test_edit_channel_owner(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack, password_set: str | None,
-        password_check: str, before: tuple[bool, bool], after: tuple[bool, bool], expect_updates_after: bool,
+        channel_with_clients: ChannelWithClientsFactory, password_set: str | None, password_check: str,
+        before: tuple[bool, bool], after: tuple[bool, bool], expect_updates_after: bool,
         expected_exception: type[Exception] | None,
 ) -> None:
     channel1, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
@@ -227,9 +217,7 @@ async def test_edit_channel_owner(
 
 
 @pytest.mark.asyncio
-async def test_edit_channel_owner_fail_not_owner(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_edit_channel_owner_fail_not_owner(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client1, client2, client3,) = await channel_with_clients(3, clients_run=True, resolve_channel=True)
 
     channel1 = await client1.get_chat(channel.id)
@@ -259,9 +247,7 @@ async def test_edit_channel_owner_fail_not_owner(
 
 
 @pytest.mark.asyncio
-async def test_edit_channel_owner_fail_invalid_user(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_edit_channel_owner_fail_invalid_user(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.is_creator
@@ -281,7 +267,7 @@ async def test_edit_channel_owner_fail_invalid_user(
 
 @pytest.mark.asyncio
 async def test_edit_channel_owner_fail_user_not_participant(
-        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory,
 ) -> None:
     channel1, (client1,) = await channel_with_clients(clients_run=True, resolve_channel=True)
     client2 = await client_with_auth(run=True)
@@ -304,9 +290,7 @@ async def test_edit_channel_owner_fail_user_not_participant(
 
 
 @pytest.mark.asyncio
-async def test_edit_channel_owner_fail_not_user(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_edit_channel_owner_fail_not_user(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.is_creator
@@ -325,9 +309,7 @@ async def test_edit_channel_owner_fail_not_user(
 
 
 @pytest.mark.asyncio
-async def test_delete_channel_success(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_delete_channel_success(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
 
     assert await client1.delete_channel(channel.id)
@@ -342,9 +324,7 @@ async def test_delete_channel_success(
 
 
 @pytest.mark.asyncio
-async def test_delete_channel_fail_not_owner(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_delete_channel_fail_not_owner(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
 
     assert await client1.get_chat(channel.id)
@@ -359,8 +339,7 @@ async def test_delete_channel_fail_not_owner(
 
 @pytest.mark.asyncio
 async def test_channel_join(
-        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
-        faker: Faker,
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, faker: Faker,
 ) -> None:
     channel, (client1,) = await channel_with_clients(clients_run=True, resolve_channel=True)
     client2 = await client_with_auth(run=True)
@@ -387,8 +366,7 @@ async def test_channel_join(
 
 @pytest.mark.asyncio
 async def test_get_public_channel_messages_without_join(
-        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
-        faker: Faker,
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, faker: Faker,
 ) -> None:
     channel, (client1,) = await channel_with_clients(
         create_service_message=True, clients_run=True, resolve_channel=True,
@@ -417,8 +395,7 @@ async def test_get_public_channel_messages_without_join(
 
 @pytest.mark.asyncio
 async def test_channel_join_leave(
-        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
-        faker: Faker,
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, faker: Faker,
 ) -> None:
     channel, (client1,) = await channel_with_clients(
         create_service_message=True, clients_run=True, resolve_channel=True,
@@ -447,7 +424,7 @@ async def test_channel_join_leave(
 
 @pytest.mark.asyncio
 async def test_channel_supergroup_ban_user(
-        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory,
 ) -> None:
     channel, (client1,) = await channel_with_clients(
         supergroup=True, create_service_message=True, clients_run=True, resolve_channel=True,
@@ -472,7 +449,7 @@ async def test_channel_supergroup_ban_user(
 
 @pytest.mark.asyncio
 async def test_channel_supergroup_ban_user_before_join(
-        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory,
 ) -> None:
     channel, (client1,) = await channel_with_clients(
         supergroup=True, create_service_message=True, clients_run=True, resolve_channel=True,
@@ -491,7 +468,7 @@ async def test_channel_supergroup_ban_user_before_join(
 
 @pytest.mark.asyncio
 async def test_channel_supergroup_unban_user(
-        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory, exit_stack: AsyncExitStack,
+        channel_with_clients: ChannelWithClientsFactory, client_with_auth: ClientFactory,
 ) -> None:
     channel, (client1,) = await channel_with_clients(
         supergroup=True, create_service_message=True, clients_run=True, resolve_channel=True,
@@ -516,9 +493,7 @@ async def test_channel_supergroup_unban_user(
 
 
 @pytest.mark.asyncio
-async def test_change_channel_username_to_same(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack
-) -> None:
+async def test_change_channel_username_to_same(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
@@ -533,9 +508,7 @@ async def test_change_channel_username_to_same(
 
 
 @pytest.mark.asyncio
-async def test_change_channel_username_to_empty(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_change_channel_username_to_empty(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
@@ -552,9 +525,7 @@ async def test_change_channel_username_to_empty(
 
 
 @pytest.mark.asyncio
-async def test_change_channel_username_to_empty_from_empty(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_change_channel_username_to_empty_from_empty(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
@@ -564,9 +535,7 @@ async def test_change_channel_username_to_empty_from_empty(
 
 
 @pytest.mark.asyncio
-async def test_change_channel_username_to_different_one(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_change_channel_username_to_different_one(channel_with_clients: ChannelWithClientsFactory) -> None:
     channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
 
     assert channel.username is None
@@ -599,8 +568,8 @@ async def test_channel_trigger_pyrogram_getchannels(
 )
 @pytest.mark.asyncio
 async def test_supergroup_delete_history(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-        for_me: bool, after_start_idx_me: int, after_start_idx_other: int,
+        channel_with_clients: ChannelWithClientsFactory, for_me: bool, after_start_idx_me: int,
+        after_start_idx_other: int,
 ) -> None:
     group, (client1, client2,) = await channel_with_clients(
         2, supergroup=True, clients_run=True, resolve_channel=True
@@ -626,9 +595,7 @@ async def test_supergroup_delete_history(
 
 
 @pytest.mark.asyncio
-async def test_supergroup_delete_participant_history(
-        channel_with_clients: ChannelWithClientsFactory, exit_stack: AsyncExitStack,
-) -> None:
+async def test_supergroup_delete_participant_history(channel_with_clients: ChannelWithClientsFactory) -> None:
     group, (client1, client2,) = await channel_with_clients(
         2, supergroup=True, clients_run=True, resolve_channel=True
     )

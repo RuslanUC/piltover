@@ -192,6 +192,8 @@ class PiltoverApp:
         SessionManager.sessions.clear()
 
 
+args: ArgsNamespace
+
 # TODO: add host and port to arguments
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

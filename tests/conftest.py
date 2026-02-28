@@ -489,7 +489,9 @@ async def client_with_key(client_fake: ClientFactorySync) -> ClientFactory:
     from piltover.db.enums import PeerType
     from piltover.tl import Long
 
-    async def _create_client_with_key(phone_number: str | None = None) -> TestClient:
+    async def _create_client_with_key(phone_number: str | None = None, run: bool = False) -> TestClient:
+        assert not run, "running clients without auth is not supported"
+
         key = urandom(256)
         key_id = Long.read_bytes(hashlib.sha1(key).digest()[-8:])
         await AuthKey.create(id=key_id, auth_key=key)
