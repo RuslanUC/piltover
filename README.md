@@ -6,7 +6,10 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
-- [ ] Improve the README.
+- [ ] Improve the README:
+  - [ ] move client setup instructions to a separate files?
+  - [ ] describe process of downloading official Telegram reactions/languages/etc. into Piltover instance
+  - [ ] make a list of working/broken/wip/etc. features/methods
 - [ ] Proper read states updates (updateReadHistoryInbox, updateReadHistoryOutbox)
 - [x] Reactions
 - [x] Stickers
@@ -32,6 +35,12 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [ ] [WebK](https://github.com/morethanwords/tweb) hangs on some requests, logs errors about wrong auth key id and/or session id???
 - [x] Refactor channels permission system and probably rewrite according to [channels-access.md](notes/channels-access.md) 
 - [x] Create "SELF" Peer when user is created
+- [ ] Proper sessions handling:
+  - [ ] msg_id and seq_no generation **MUST** be in the session, **NOT** in the connection
+  - [ ] when client is disconnected, session should be stored (and receive messages) for up to 10 minutes
+  - [ ] when client is disconnected and then reconnected, all missed (not-acked) messages should be sent
+  - [ ] client .send method should enqueue message for sending, not send it right away
+  - [ ] maybe poll for new client messages? session stores id of the last polled message, when client calls session.poll_messages, it gets all messages with id greater than one that is stored, saves new last id, and returns message list to the client? 
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
