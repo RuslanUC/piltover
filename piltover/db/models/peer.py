@@ -155,6 +155,27 @@ class Peer(Model):
 
         return []
 
+    def get_opposite_query(self, allow_blocked: bool = False, with_this: bool = True) -> Q:
+        # TODO: support different prefixes, not only peer__
+        if self.type is PeerType.SELF:
+            if with_this:
+                return Q(peer=self)
+            return Q(peer_id=0)
+        elif self.type is PeerType.USER:
+            query = Q(peer__owner_id=self.user_id, peer__user_id=self.owner_id)
+            if not allow_blocked:
+                query &= Q(peer__blocked_at__isnull=True)
+            if with_this:
+                return query | Q(peer=self)
+            return query
+        elif self.type is PeerType.CHAT:
+            query = Q(peer__chat_id=self.chat_id)
+            if not with_this:
+                query &= Q(peer__not=self)
+            return query
+        else:
+            raise Unreachable
+
     async def get_for_user(self, for_user: models.User) -> Peer | None:
         if for_user.id == self.owner_id:
             return self
