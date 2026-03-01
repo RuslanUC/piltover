@@ -389,40 +389,38 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant_raise(user)
+        participant = await chat_or_channel.get_participant_raise(user, message="PIN_RESTRICTED")
         if not chat_or_channel.can_pin_messages(participant):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+            raise ErrorRpc(error_code=403, error_message="PIN_RESTRICTED")
 
     await _check_bot_blocked(user, peer)
 
     if (message := await MessageRef.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    # TODO: update in transaction
-    message.pinned = not request.unpin
-    message.version += 1
-    messages = {peer: message}
-
-    opposite_peers = await peer.get_opposite()
-    if not (request.pm_oneside or peer.type is PeerType.CHANNEL) and opposite_peers:
-        other_messages = await MessageRef.filter(
-            peer__in=opposite_peers, content_id=message.content_id,
-        ).select_related("peer", "peer__owner")
-        for other_message in other_messages:
-            other_message.pinned = message.pinned
-            messages[other_message.peer] = other_message
-
-    await MessageRef.bulk_update(messages.values(), ["pinned", "version"])
-
     if peer.type is PeerType.CHANNEL:
-        if len(messages) != 1:
-            raise Unreachable
-        _, _, result = await upd.pin_channel_messages(peer.channel, [next(iter(messages.values()))])
+        await MessageRef.filter(id=message.id).update(pinned=not request.unpin, version=F("version") + 1)
+        await message.refresh_from_db(["pinned", "version"])
+        _, _, result = await upd.pin_channel_messages(peer.channel, [message])
     else:
-        _, _, result = await upd.pin_messages(user, {
-            peer: [message]
-            for peer, message in messages.items()
-        })
+        if peer.type is PeerType.SELF:
+            peer_query = Q(peer=peer)
+        elif peer.type is PeerType.USER:
+            peer_query = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id) | Q(peer=peer)
+        elif peer.type is PeerType.CHAT:
+            peer_query = Q(peer__chat_id=peer.chat_id)
+        else:
+            raise Unreachable
+
+        ids = await MessageRef.filter(peer_query, content_id=message.content_id).values_list("id", flat=True)
+        await MessageRef.filter(id__in=ids).update(pinned=not request.unpin, version=F("version") + 1)
+
+        messages = {
+            message.peer: [message]
+            for message in await MessageRef.filter(id__in=ids).select_related("peer", "peer__owner")
+        }
+
+        _, _, result = await upd.pin_messages(user, messages)
 
     if not request.unpin and not request.silent and not request.pm_oneside:
         updates = await send_message_internal(
