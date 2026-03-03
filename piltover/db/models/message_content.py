@@ -22,7 +22,7 @@ from piltover.tl.base.internal import MessageToFormatContent as MessageToFormatC
 from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.types import PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionEmpty, \
-    MessageEntityMentionName, MessageReplies
+    MessageEntityMentionName, MessageReplies, PeerChannel
 from piltover.tl.types.internal import MessageToFormatContent, MessageToFormatServiceContent
 
 MessageIdRef = Annotated[int, "Ref id"]
@@ -58,6 +58,7 @@ class MessageContent(Model):
     is_discussion: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
     reactions_version: int = fields.IntField(default=0)
+    send_as_channel: models.Channel | None = NullableFK("models.Channel")
 
     peer_id: int
     author_id: int | None
@@ -68,6 +69,7 @@ class MessageContent(Model):
     discussion_id: int | None
     top_message_id: int | None
     comments_info_id: int | None
+    send_as_channel_id: int | None
 
     TTL_MULT = 86400
     if (_ttl_mult := environ.get("DEBUG_MESSAGE_TTL_MULTIPLIER", "")).isdigit():
@@ -105,6 +107,13 @@ class MessageContent(Model):
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
+    def _make_from_id(self) -> PeerUser | PeerChannel | None:
+        if self.send_as_channel_id is not None:
+            return PeerChannel(channel_id=models.Channel.make_id_from(self.send_as_channel_id))
+        if not (self.channel_post or self.anonymous):
+            return PeerUser(user_id=self.author_id)
+        return None
+
     def to_tl_service_content(self) -> MessageToFormatServiceContent:
         action = TLObject.read(BytesIO(self.extra_info))
         if not isinstance(action, MessageActionInst):
@@ -124,7 +133,7 @@ class MessageContent(Model):
         return MessageToFormatServiceContent(
             date=int(self.date.timestamp()),
             action=action,
-            from_id=PeerUser(user_id=self.author_id) if not (self.channel_post or self.anonymous) else None,
+            from_id=self._make_from_id(),
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
@@ -142,7 +151,7 @@ class MessageContent(Model):
             date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
             media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
-            from_id=PeerUser(user_id=self.author_id) if not (self.channel_post or self.anonymous) else None,
+            from_id=self._make_from_id(),
             entities=entities,
             grouped_id=self.media_group_id,
             post=self.channel_post,
@@ -328,6 +337,7 @@ class MessageContent(Model):
             post_author=self.post_author,
             post_info=self.post_info,
             ttl_period_days=self.ttl_period_days,
+            send_as_channel=self.send_as_channel,
         )
 
         related_users, related_chats, related_channels = await models.MessageRelated.get_for_message(self)
@@ -340,9 +350,12 @@ class MessageContent(Model):
             fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
             drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
             is_forward: bool = False, no_forwards: bool = False, is_discussion: bool = False,
+            new_channel_author: models.Channel | None = None,
     ) -> Self:
         if new_author is None and self.author is not None:
             new_author = self.author
+        if new_channel_author is None and self.send_as_channel is not None:
+            new_channel_author = self.send_as_channel
 
         content = await models.MessageContent.create(
             message=self.message if self.media is None or not drop_captions else None,
@@ -361,6 +374,7 @@ class MessageContent(Model):
             no_forwards=no_forwards,
             via_bot=self.via_bot,
             is_discussion=is_discussion,
+            send_as_channel=new_channel_author,
         )
 
         related_user_ids = set()
@@ -375,6 +389,7 @@ class MessageContent(Model):
             self, ref: models.MessageRef, to_self: bool, discussion: bool = False,
     ) -> models.MessageFwdHeader:
         # TODO: pass prefetched privacy rules as an argument
+        # TODO: handle send_as_channel authors
 
         if self.fwd_header is not None and not discussion:
             from_user = self.fwd_header.from_user
@@ -457,6 +472,8 @@ class MessageContent(Model):
 
         if not self.channel_post and not self.anonymous and self.author_id is not None:
             user_ids.add(self.author_id)
+        if self.send_as_channel_id is not None:
+            channel_ids.add(self.send_as_channel_id)
 
         if self.type is MessageType.SERVICE_CHAT_USER_ADD:
             data = MessageActionChatAddUser.read(BytesIO(self.extra_info))

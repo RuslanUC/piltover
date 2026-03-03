@@ -7,7 +7,8 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import UpdateUserTyping, DefaultHistoryTTL, UpdateChatUserTyping, UpdateChannelUserTyping
-from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL
+from piltover.tl.functions.messages import SetTyping, GetDhConfig, GetDefaultHistoryTTL, SetDefaultHistoryTTL, \
+    SaveDefaultSendAs
 from piltover.tl.types.messages import DhConfig, DhConfigNotModified
 from piltover.utils import gen_safe_prime
 from piltover.utils.gen_primes import CURRENT_DH_VERSION
@@ -113,4 +114,10 @@ async def set_default_history_ttl(request: SetDefaultHistoryTTL, user: User) -> 
     user.history_ttl_days = request.period // 86400
     await user.save(update_fields=["history_ttl_days"])
 
+    return True
+
+
+@handler.on_request(SaveDefaultSendAs, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def save_default_send_as(request: SaveDefaultSendAs, user: User) -> bool:
+    # TODO: implement SaveDefaultSendAs
     return True

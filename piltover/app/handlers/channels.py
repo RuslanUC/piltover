@@ -261,7 +261,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     can_change_info = participant is not None and channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)
 
     min_message_id: int | None = None
-    if channel.hidden_prehistory and participant is not None and participant.min_message_id:
+    if channel.hidden_prehistory and participant is not None and cast(ChatParticipant, participant).min_message_id:
         min_message_id = cast(
             int | None,
             await MessageRef.filter(
@@ -1190,19 +1190,17 @@ async def get_send_as(request: GetSendAs | GetSendAs_135, user: User) -> SendAsP
     if not channel.supergroup:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    if channel.creator_id != user.id:
-        return SendAsPeers(
-            peers=[SendAsPeer(peer=user.to_tl_peer())],
-            chats=[],
-            users=[await user.to_tl()],
-        )
+    # TODO: figure out how telegram selects channels for SendAs
+    send_as = await Channel.filter(
+        channel=True, deleted=False, creator=user, chatparticipants__user=user, usernames__isnull=False,
+    )
+    send_as_peers = [SendAsPeer(peer=user.to_tl_peer())]
+    for channel in send_as:
+        send_as_peers.append(SendAsPeer(peer=channel.to_tl_peer()))
 
     return SendAsPeers(
-        peers=[
-            SendAsPeer(peer=user.to_tl_peer()),
-            SendAsPeer(peer=channel.to_tl_peer()),
-        ],
-        chats=[await channel.to_tl()],
+        peers=send_as_peers,
+        chats=await Channel.to_tl_bulk(send_as),
         users=[await user.to_tl()],
     )
 

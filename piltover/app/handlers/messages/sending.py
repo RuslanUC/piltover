@@ -29,7 +29,8 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     InputMediaDocument_133, TextWithEntities, InputMediaEmpty, MessageEntityMention, MessageEntityMentionName, \
     LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
     GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
-    DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize
+    DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
+    InputChannelEmpty, InputPeerSelf
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -353,6 +354,24 @@ async def _update_channel_slowmode_maybe(channel: Channel, user: User) -> None:
     })
 
 
+async def _process_send_as(send_as: InputPeerChannel | InputChannel, user: User) -> Channel | None:
+    if send_as is None or isinstance(send_as, (InputPeerEmpty, InputChannelEmpty, InputPeerSelf)):
+        return None
+
+    ctx = request_ctx.get()
+    channel_id = Channel.norm_id(send_as.channel_id)
+    if not Channel.check_access_hash(user.id, ctx.auth_id, channel_id, send_as.access_hash):
+        raise ErrorRpc(error_code=400, error_message="SEND_AS_PEER_INVALID", reason="invalid access hash")
+
+    send_as_channel = await Channel.get_or_none(
+        creator=user, channel=True, deleted=False, id=channel_id, usernames__isnull=False
+    )
+    if send_as_channel is None:
+        raise ErrorRpc(error_code=400, error_message="SEND_AS_PEER_INVALID", reason="invalid channel")
+
+    return send_as_channel
+
+
 @handler.on_request(SendMessage_148)
 @handler.on_request(SendMessage_176)
 @handler.on_request(SendMessage)
@@ -386,8 +405,7 @@ async def send_message(request: SendMessage, user: User):
     else:
         is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
-
-    logger.info(f"erm: {is_channel_post, post_info, post_signature}")
+    send_as_channel = await _process_send_as(request.send_as, user)
 
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user)
@@ -398,7 +416,7 @@ async def send_message(request: SendMessage, user: User):
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user, request.noforwards),
+        no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
     )
 
 
@@ -944,6 +962,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     else:
         is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
+    send_as_channel = await _process_send_as(request.send_as, user)
 
     if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
         await RecentSticker.update_time_or_create(user, media.file)
@@ -958,7 +977,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
         entities=await process_message_entities(request.message, request.entities, user),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user, request.noforwards),
+        no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
     )
 
 
@@ -1098,6 +1117,8 @@ async def forward_messages(
 
     # TODO: schedule_date
     # TODO: channel post info
+    # TODO: handle sending as an anonymous admin
+    # TODO: handle send_as
 
     for message in messages:
         # TODO: forward in bulk?
@@ -1235,6 +1256,8 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
 
     group_id = Snowflake.make_id()
 
+    send_as_channel = await _process_send_as(request.send_as, user)
+
     updates = None
     for idx, (message, random_id, media, entities) in enumerate(messages):
         is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user, participant)
@@ -1246,7 +1269,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
             user, peer, random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
             author=user, message=message, media=media, entities=entities, media_group_id=group_id,
             channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
-            no_forwards=_resolve_noforwards(peer, user, request.noforwards),
+            no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
         )
         if updates is None:
             updates = new_updates
@@ -1361,6 +1384,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
         is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
     else:
         is_anonymous = False
+    send_as_channel = await _process_send_as(request.send_as, user)
 
     media = None
     if item.photo_id or item.document_id:
@@ -1388,7 +1412,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
         author=user, message=item.send_message_text or "", media=media, entities=item.send_message_entities,
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         #reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot,
+        no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot, send_as_channel=send_as_channel,
     )
 
 
