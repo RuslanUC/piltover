@@ -40,6 +40,7 @@ class MessageContent(Model):
     extra_info: bytes | None = fields.BinaryField(null=True, default=None)
     media_group_id: int = fields.BigIntField(null=True, default=None)
     channel_post: bool = fields.BooleanField(default=False)
+    anonymous: bool = fields.BooleanField(default=False)
     post_author: str | None = fields.CharField(max_length=128, null=True, default=None)
     scheduled_date: datetime | None = fields.DatetimeField(null=True, default=None)
     ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
@@ -100,7 +101,7 @@ class MessageContent(Model):
             action=action,
             author_id=self.author_id,
             reply_to=ref.make_reply_to_header(),
-            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
+            from_id=PeerUser(user_id=self.author_id) if not (self.channel_post or self.anonymous) else None,
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
@@ -123,7 +124,7 @@ class MessageContent(Model):
         return MessageToFormatServiceContent(
             date=int(self.date.timestamp()),
             action=action,
-            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
+            from_id=PeerUser(user_id=self.author_id) if not (self.channel_post or self.anonymous) else None,
             ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
         )
 
@@ -141,13 +142,13 @@ class MessageContent(Model):
             date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
             media=media,
             edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
-            from_id=PeerUser(user_id=self.author_id) if not self.channel_post else None,
+            from_id=PeerUser(user_id=self.author_id) if not (self.channel_post or self.anonymous) else None,
             entities=entities,
             grouped_id=self.media_group_id,
             post=self.channel_post,
             views=self.post_info.views if self.post_info_id is not None else None,
             forwards=self.post_info.forwards if self.post_info_id is not None else None,
-            post_author=self.post_author if self.channel_post else None,
+            post_author=self.post_author if self.channel_post or self.anonymous else None,
             ttl_period=ttl_period,
             reply_markup=self.make_reply_markup(),
             noforwards=self.no_forwards,
@@ -323,6 +324,7 @@ class MessageContent(Model):
             entities=self.entities,
             media_group_id=self.media_group_id,
             channel_post=self.channel_post,
+            anonymous=self.anonymous,
             post_author=self.post_author,
             post_info=self.post_info,
             ttl_period_days=self.ttl_period_days,
@@ -355,6 +357,7 @@ class MessageContent(Model):
             channel_post=self.channel_post if not drop_author else None,
             post_author=self.post_author if not drop_author else None,
             post_info=self.post_info if not drop_author else None,
+            anonymous=self.anonymous if not drop_author else None,
             no_forwards=no_forwards,
             via_bot=self.via_bot,
             is_discussion=is_discussion,
@@ -452,7 +455,7 @@ class MessageContent(Model):
         if related_peer is not None:
             self._fill_related_peer(related_peer, user_ids, chat_ids, channel_ids)
 
-        if not self.channel_post and self.author_id is not None:
+        if not self.channel_post and not self.anonymous and self.author_id is not None:
             user_ids.add(self.author_id)
 
         if self.type is MessageType.SERVICE_CHAT_USER_ADD:

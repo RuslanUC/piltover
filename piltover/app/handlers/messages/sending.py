@@ -16,7 +16,7 @@ from piltover.app.bot_handlers import bots
 from piltover.app.utils.utils import process_message_entities, process_reply_markup
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType
+from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
@@ -277,17 +277,31 @@ def _resolve_reply_id(
         return request.reply_to_msg_id
 
 
-async def _make_channel_post_info_maybe(peer: Peer, user: User) -> tuple[bool, ChannelPostInfo | None, str | None]:
+async def _make_channel_post_info_maybe(
+        peer: Peer, user: User, participant: ChatParticipant | None,
+) -> tuple[bool, ChannelPostInfo | None, str | None]:
     if peer.type is not PeerType.CHANNEL or not peer.channel.channel:
         return False, None, None
 
     post_signature = None
     is_channel_post = True
     post_info = await ChannelPostInfo.create()
-    if peer.channel.signatures:
+    if participant is not None and participant.admin_rank:
+        post_signature = participant.admin_rank
+    elif peer.channel.signatures:
         post_signature = user.first_name
 
     return is_channel_post, post_info, post_signature
+
+
+def _make_supergroup_anonymous_maybe(peer: Peer, participant: ChatParticipant | None) -> tuple[bool, str | None]:
+    if peer.type is not PeerType.CHANNEL \
+            or not peer.channel.supergroup \
+            or participant is None \
+            or not (participant.admin_rights & ChatAdminRights.ANONYMOUS):
+        return False, None
+
+    return True, participant.admin_rank or None
 
 
 def _resolve_noforwards(peer: Peer, user: User | None, request_noforwards: bool = False) -> bool:
@@ -347,6 +361,7 @@ async def send_message(request: SendMessage, user: User):
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant(user)
@@ -365,8 +380,14 @@ async def send_message(request: SendMessage, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
     reply_to_message_id = _resolve_reply_id(request)
-    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
+    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user, participant)
+    if not is_channel_post:
+        is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
+    else:
+        is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
+
+    logger.info(f"erm: {is_channel_post, post_info, post_signature}")
 
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user)
@@ -375,7 +396,7 @@ async def send_message(request: SendMessage, user: User):
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, scheduled_date=request.schedule_date,
         entities=await process_message_entities(request.message, request.entities, user),
-        channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
+        channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user, request.noforwards),
     )
@@ -898,6 +919,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant(user)
@@ -916,7 +938,11 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
 
     media = await _process_media(user, request.media)
     reply_to_message_id = _resolve_reply_id(request)
-    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
+    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user, participant)
+    if not is_channel_post:
+        is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
+    else:
+        is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
 
     if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
@@ -930,7 +956,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, message=request.message, media=media,
         entities=await process_message_entities(request.message, request.entities, user),
-        channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
+        channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user, request.noforwards),
     )
@@ -1148,9 +1174,10 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant_raise(user)
+        participant = await chat_or_channel.get_participant(user)
         # TODO: check specific media type
         if not chat_or_channel.can_send_media(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
@@ -1210,11 +1237,15 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
 
     updates = None
     for idx, (message, random_id, media, entities) in enumerate(messages):
-        is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
+        is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user, participant)
+        if not is_channel_post:
+            is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
+        else:
+            is_anonymous = False
         new_updates = await send_message_internal(
             user, peer, random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
             author=user, message=message, media=media, entities=entities, media_group_id=group_id,
-            channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
+            channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
             no_forwards=_resolve_noforwards(peer, user, request.noforwards),
         )
         if updates is None:
@@ -1301,7 +1332,19 @@ async def clear_all_drafts(user: User) -> bool:
 @handler.on_request(SendInlineBotResult, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(user, request.peer)
-    # TODO: validate chat/channel permissions
+    participant = None
+    if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        chat_or_channel = peer.chat_or_channel
+        participant = await chat_or_channel.get_participant(user)
+        # TODO: check specific message and/or media type
+        if not chat_or_channel.can_send_messages(participant):
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+        if peer.type is PeerType.CHANNEL:
+            await _check_channel_slowmode(peer.channel, participant, user)
+
+    _check_disallow_send_to_bot(user, peer)
+    _check_we_blocked_user(peer)
+    await _check_bot_blocked(user, peer)
 
     item = await InlineQueryResultItem.get_or_none(
         Q(result__private=True, result__query__user=user) | Q(result__private=False),
@@ -1313,7 +1356,11 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
         raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")
 
     reply_to_message_id = _resolve_reply_id(request)
-    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user)
+    is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user, participant)
+    if not is_channel_post:
+        is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
+    else:
+        is_anonymous = False
 
     media = None
     if item.photo_id or item.document_id:
@@ -1339,7 +1386,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, message=item.send_message_text or "", media=media, entities=item.send_message_entities,
-        channel_post=is_channel_post, post_info=post_info, post_author=post_signature,
+        channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         #reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot,
     )
