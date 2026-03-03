@@ -1,3 +1,5 @@
+from io import BytesIO
+
 from piltover.context import serialization_ctx, NeedContextValuesContext
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
@@ -43,8 +45,8 @@ class ChannelToFormat(types.ChannelToFormatInternal):
         admin_rights = None
         if self.creator_id == ctx.user_id:
             admin_rights = CREATOR_RIGHTS
-            if participant is not None \
-                    and participant.admin_rights & ChatAdminRights.ANONYMOUS == ChatAdminRights.ANONYMOUS:
+            if participant is not None and bool(participant.admin_rights & ChatAdminRights.ANONYMOUS):
+                admin_rights = types.ChatAdminRights.read(BytesIO(admin_rights.write()))
                 admin_rights.anonymous = True
         elif participant is not None and participant.is_admin:
             admin_rights = participant.admin_rights.to_tl()
