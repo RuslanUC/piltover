@@ -19,7 +19,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
     Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent, \
-    ReadHistoryChunk
+    ReadHistoryChunk, DefaultSendAs
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -32,7 +32,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
     ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked, \
-    ChannelParticipantLeft
+    ChannelParticipantLeft, PeerChannel
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
@@ -304,6 +304,15 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
     if participant is not None and participant.is_admin:
         can_view_participants = True
 
+    default_send_as = None
+    if channel.supergroup:
+        default_send_as_channel = await DefaultSendAs.get_or_none(
+            user_id=user.id, group_id=channel.id,
+        ).select_related("channel")
+        if default_send_as_channel is not None:
+            default_send_as = PeerChannel(channel_id=default_send_as_channel.channel.make_id())
+            channels_to_tl.append(default_send_as_channel.channel)
+
     return MessagesChatFull(
         full_chat=ChannelFull(
             can_view_participants=can_view_participants,
@@ -346,6 +355,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             linked_chat_id=linked_chat.make_id() if linked_chat else None,
             slowmode_seconds=channel.slowmode_seconds,
             slowmode_next_send_date=slowmode_next_date,
+            default_send_as=default_send_as,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl),
         users=[await user.to_tl()],

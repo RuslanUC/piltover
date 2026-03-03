@@ -1,8 +1,9 @@
 from fastrand import xorshift128plus_bytes
 
 import piltover.app.utils.updates_manager as upd
+from piltover.app.handlers.messages.sending import process_send_as
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Presence, ChatParticipant
+from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
@@ -119,5 +120,21 @@ async def set_default_history_ttl(request: SetDefaultHistoryTTL, user: User) -> 
 
 @handler.on_request(SaveDefaultSendAs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_default_send_as(request: SaveDefaultSendAs, user: User) -> bool:
-    # TODO: implement SaveDefaultSendAs
+    peer = await Peer.from_input_peer_raise(
+        user, request.peer, message="PEER_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
+    )
+
+    group = peer.channel
+    if not group.supergroup:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    send_as_channel = await process_send_as(request.send_as, user)
+    if send_as_channel is None:
+        await DefaultSendAs.filter(user_id=user.id, group_id=group.id).delete()
+    else:
+        await DefaultSendAs.update_or_create(user=user, group=group, defaults={
+            "channel": send_as_channel,
+        })
+
+    await upd.update_channel_for_user(group, user)
     return True

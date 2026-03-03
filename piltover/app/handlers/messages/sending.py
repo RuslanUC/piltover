@@ -354,7 +354,7 @@ async def _update_channel_slowmode_maybe(channel: Channel, user: User) -> None:
     })
 
 
-async def _process_send_as(send_as: InputPeerChannel | InputChannel, user: User) -> Channel | None:
+async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User) -> Channel | None:
     if send_as is None or isinstance(send_as, (InputPeerEmpty, InputChannelEmpty, InputPeerSelf)):
         return None
 
@@ -405,7 +405,7 @@ async def send_message(request: SendMessage, user: User):
     else:
         is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
-    send_as_channel = await _process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user)
 
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user)
@@ -962,7 +962,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     else:
         is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
-    send_as_channel = await _process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user)
 
     if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
         await RecentSticker.update_time_or_create(user, media.file)
@@ -1256,7 +1256,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
 
     group_id = Snowflake.make_id()
 
-    send_as_channel = await _process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user)
 
     updates = None
     for idx, (message, random_id, media, entities) in enumerate(messages):
@@ -1384,7 +1384,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
         is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
     else:
         is_anonymous = False
-    send_as_channel = await _process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user)
 
     media = None
     if item.photo_id or item.document_id:

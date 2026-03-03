@@ -91,3 +91,4 @@ from .message_media_read import MessageMediaRead
 from .phone_call import PhoneCall
 from .taskiq_scheduled_delete_user import TaskIqScheduledDeleteUser
 from .discussion_read_state import DiscussionReadState
+from .default_send_as import DefaultSendAs
