@@ -7,7 +7,7 @@ from PIL import Image
 from faker import Faker
 from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInvalid, \
     ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden, InviteHashExpired, UsernameNotModified, \
-    ChatTitleEmpty, ChatAboutTooLong
+    ChatTitleEmpty, ChatAboutTooLong, RightForbidden
 from pyrogram.raw.functions.account import GetPassword
 from pyrogram.raw.functions.channels import EditCreator, DeleteHistory
 from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser, \
@@ -617,6 +617,107 @@ async def test_supergroup_delete_participant_history(channel_with_clients: Chann
 
     assert all(author_id == client1.me.id for author_id, _ in after_messages)
     assert len(after_messages) == 10
+
+
+@pytest.mark.asyncio
+async def test_channel_change_owner_rights(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
+
+    for privileges in (ChatPrivileges(), ChatPrivileges(can_manage_chat=False)):
+        assert await client.promote_chat_member(channel.id, "self", privileges)
+        member = await client.get_chat_member(channel.id, "self")
+        assert member.privileges.can_manage_chat
+        assert member.privileges.can_delete_messages
+        assert member.privileges.can_manage_video_chats
+        assert member.privileges.can_restrict_members
+        assert member.privileges.can_promote_members
+        assert member.privileges.can_change_info
+        assert member.privileges.can_post_messages
+        assert member.privileges.can_edit_messages
+        assert member.privileges.can_invite_users
+        assert member.privileges.can_pin_messages
+        assert not member.privileges.is_anonymous
+
+
+@pytest.mark.asyncio
+async def test_channel_change_owner_rights_anon(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client,) = await channel_with_clients(clients_run=True, resolve_channel=True)
+
+    privileges = ChatPrivileges(
+        can_manage_chat=True,
+        can_delete_messages=True,
+        can_manage_video_chats=True,
+        can_restrict_members=True,
+        can_promote_members=True,
+        can_change_info=True,
+        can_post_messages=True,
+        can_edit_messages=True,
+        can_invite_users=True,
+        can_pin_messages=True,
+    )
+
+    for anon in (False, True, False):
+        privileges.is_anonymous = anon
+        assert await client.promote_chat_member(channel.id, "self", privileges)
+        member = await client.get_chat_member(channel.id, "self")
+        assert member.privileges.can_manage_chat
+        assert member.privileges.can_delete_messages
+        assert member.privileges.can_manage_video_chats
+        assert member.privileges.can_restrict_members
+        assert member.privileges.can_promote_members
+        assert member.privileges.can_change_info
+        assert member.privileges.can_post_messages
+        assert member.privileges.can_edit_messages
+        assert member.privileges.can_invite_users
+        assert member.privileges.can_pin_messages
+        assert member.privileges.is_anonymous is anon
+
+
+@pytest.mark.asyncio
+async def test_channel_non_admin_promote_user(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client1, client2, client3,) = await channel_with_clients(3, clients_run=True, resolve_channel=True)
+
+    user3 = await client2.resolve_user(client3)
+
+    with pytest.raises(RightForbidden):
+        await client2.promote_chat_member(channel.id, user3.id, ChatPrivileges())
+
+
+@pytest.mark.asyncio
+async def test_channel_non_creator_promote_user_no_right(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client1, client2, client3,) = await channel_with_clients(3, clients_run=True, resolve_channel=True)
+
+    user2 = await client1.resolve_user(client2)
+    user3 = await client2.resolve_user(client3)
+
+    await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges())
+
+    with pytest.raises(RightForbidden):
+        await client2.promote_chat_member(channel.id, user3.id, ChatPrivileges())
+
+
+@pytest.mark.asyncio
+async def test_channel_non_creator_promote_user(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client1, client2, client3,) = await channel_with_clients(3, clients_run=True, resolve_channel=True)
+
+    user2 = await client1.resolve_user(client2)
+    user3 = await client2.resolve_user(client3)
+
+    await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges(can_promote_members=True))
+    await client2.promote_chat_member(channel.id, user3.id, ChatPrivileges())
+
+
+@pytest.mark.asyncio
+async def test_channel_non_creator_promote_user_more_rights(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client1, client2, client3,) = await channel_with_clients(3, clients_run=True, resolve_channel=True)
+
+    user2 = await client1.resolve_user(client2)
+    user3 = await client2.resolve_user(client3)
+
+    await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges(can_promote_members=True))
+
+    with pytest.raises(RightForbidden):
+        await client2.promote_chat_member(channel.id, user3.id, ChatPrivileges(can_post_messages=True))
 
 
 # TODO: add tests for restricting chat members (including restricting before join)

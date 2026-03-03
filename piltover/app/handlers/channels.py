@@ -597,7 +597,7 @@ async def edit_admin(request: EditAdmin, user: User):
         new_admin_rights |= ChatAdminRights.from_tl(CREATOR_RIGHTS)
 
     if user.id != creator_id:
-        if participant.admin_rights ^ new_admin_rights:
+        if new_admin_rights & ~participant.admin_rights:
             raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
 
     if target_participant.admin_rights == new_admin_rights and target_participant.admin_rank == request.rank:
@@ -729,7 +729,7 @@ async def get_participant(request: GetParticipant, user: User):
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     target_peer = await Peer.from_input_peer_raise(user, request.participant)
-    if target_peer.type is not PeerType.USER:
+    if target_peer.type not in (PeerType.USER, PeerType.SELF):
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
     if not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS) \
