@@ -260,7 +260,7 @@ class Worker(MessageHandler):
                 id=message_id,
             ).select_related(
                 "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",
-                "content__media", "reply_to", "content__fwd_header", "content__post_info",
+                "content__media", "reply_to", "content__fwd_header", "content__post_info", "content__send_as_channel",
             )
             if scheduled is None:
                 logger.warning(f"Scheduled message {message_id} does not exist?")
@@ -325,7 +325,7 @@ class Worker(MessageHandler):
         async with in_transaction():
             logger.info(f"Creating discussion thread for message {message_id}")
             message = await MessageRef.select_for_update().get_or_none(id=message_id).select_related(
-                *MessageRef.PREFETCH_FIELDS, "peer__channel",
+                *MessageRef.PREFETCH_FIELDS, "peer__channel", "content__send_as_channel",
             )
             if message is None or not message.peer.channel.discussion_id:
                 return

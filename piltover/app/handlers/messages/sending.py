@@ -1079,7 +1079,7 @@ async def forward_messages(
 
     random_ids = dict(zip(request.id[:100], request.random_id[:100]))
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
-        *MessageRef.PREFETCH_FIELDS, "reply_to"
+        *MessageRef.PREFETCH_FIELDS, "reply_to", "content__send_as_channel"
     )
     reply_ids = {}
     media_group_ids: defaultdict[int | None, int | None] = defaultdict(Snowflake.make_id)
