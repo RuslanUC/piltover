@@ -41,6 +41,8 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
   - [ ] when client is disconnected and then reconnected, all missed (not-acked) messages should be sent
   - [ ] client .send method should enqueue message for sending, not send it right away
   - [ ] maybe poll for new client messages? session stores id of the last polled message, when client calls session.poll_messages, it gets all messages with id greater than one that is stored, saves new last id, and returns message list to the client? 
+- [ ] Top peers
+- [ ] Proper contacts implementation (right now user is able to add/remove/import contact, but only contacts for existing users are created).
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 

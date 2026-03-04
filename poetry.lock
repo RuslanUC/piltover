@@ -3131,10 +3131,8 @@ description = "Easy async ORM for python, built with relations in mind"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
-files = [
-    {file = "tortoise_orm-1.1.5-py3-none-any.whl", hash = "sha256:aae3c6871e24791f08d16e5b6a207ef62e2fcbfb74720b5870b06bdb52b5a849"},
-    {file = "tortoise_orm-1.1.5.tar.gz", hash = "sha256:d4074a7c34a8445fcca19ec865189d80ea7a00b29e4b12778460fcab67a5ce74"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 aiosqlite = ">=0.16.0,<1.0.0"
@@ -3155,6 +3153,12 @@ asyncpg = ["asyncpg"]
 ipython = ["ipython", "nest-asyncio (>=1.6.0)"]
 psycopg = ["psycopg[binary,pool] (>=3.0.12,<4.0.0)"]
 ptpython = ["ptpython (>=3.0.0)"]
+
+[package.source]
+type = "git"
+url = "https://github.com/tortoise/tortoise-orm.git"
+reference = "develop"
+resolved_reference = "3eafeb57958c249b5959c4aec8ef879e0e07090c"
 
 [[package]]
 name = "tqdm"
