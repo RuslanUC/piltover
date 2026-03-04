@@ -21,6 +21,7 @@ from piltover.cache import Cache
 from piltover.gateway import Gateway
 from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
+from piltover.utils.debug.measure_queryset_times import patch_queryset_for_measurement
 from piltover.utils.debug.tracing import Tracing
 
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
@@ -320,8 +321,12 @@ app = PiltoverApp(
 
 
 if __name__ == "__main__":
+    if os.environ.get("DEBUG_MEASURE_TORTOISE_QUERYSET_TIMES", "").lower() in ("true", "1"):
+        patch_queryset_for_measurement()
+
     try:
         uvloop.install()
+
         asyncio.run(app.run())
     except KeyboardInterrupt:
         pass
