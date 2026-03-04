@@ -21,6 +21,7 @@ from piltover.cache import Cache
 from piltover.gateway import Gateway
 from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
+from piltover.utils.debug.tracing import Tracing
 
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
 
@@ -49,6 +50,8 @@ class ArgsNamespace(SimpleNamespace):
     cache_backend: Literal["memory", "redis", "memcached"]
     cache_endpoint: str | None
     cache_port: int | None
+    debug_tracing_backend: Literal["console", "zipkin", "noop"] | None
+    debug_tracing_zipkin_address: str | None
 
     def fill_defaults(self) -> None:
         if self.privkey_file is None:
@@ -120,6 +123,8 @@ class PiltoverApp:
         ))
 
     async def run(self, host: str | None = None, port: int | None = None):
+        Tracing.init(args.debug_tracing_backend, zipkin_address=args.debug_tracing_zipkin_address)
+
         self._host = host or self._host
         self._port = port or self._port
 
@@ -150,6 +155,8 @@ class PiltoverApp:
             create_system_stickersets: bool = False, create_emoji_groups: bool = False, run_scheduler: bool = False,
             run_actual_server: bool = False,
     ) -> AsyncIterator[Gateway]:
+        Tracing.init(args.debug_tracing_backend, zipkin_address=args.debug_tracing_zipkin_address)
+
         await Tortoise.init(
             db_url="sqlite://:memory:",
             modules={"models": ["piltover.db.models"]},
@@ -261,6 +268,12 @@ if __name__ == "__main__":
     parser.add_argument("--cache-port", type=int, required=False,
                         help="Port of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
                         default=None)
+    parser.add_argument("--debug-tracing-backend", type=str, required=False,
+                        help="Tracing backend", choices=["console", "zipkin", "noop", None],
+                        default=None)
+    parser.add_argument("--debug-tracing-zipkin-address", type=str, required=False,
+                        help="Address for zipkin tracing backend",
+                        default=None)
     args = parser.parse_args(namespace=ArgsNamespace())
 else:
     args = ArgsNamespace(
@@ -287,6 +300,8 @@ else:
         cache_backend="memory",
         cache_endpoint=None,
         cache_port=None,
+        debug_tracing_backend="console",
+        debug_tracing_zipkin_address=None,
     )
 
 args.fill_defaults()

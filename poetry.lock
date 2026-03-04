@@ -288,6 +288,21 @@ dev = ["attribution (==1.8.0)", "black (==25.11.0)", "build (>=1.2)", "coverage[
 docs = ["sphinx (==8.1.3)", "sphinx-mdinclude (==0.6.2)"]
 
 [[package]]
+name = "aiozipkin"
+version = "1.1.1"
+description = "Distributed tracing instrumentation for asyncio application with zipkin"
+optional = false
+python-versions = ">=3.6"
+groups = ["dev"]
+files = [
+    {file = "aiozipkin-1.1.1-py3-none-any.whl", hash = "sha256:6f891d35dfe2e517d4ca7155701a38766c56cdb19459e6c637b78ba2efb7fbc7"},
+    {file = "aiozipkin-1.1.1.tar.gz", hash = "sha256:9b82619d9ef309e72627a81ab3fda0c9b83e530844cf59f2e9a011e9a2a1293f"},
+]
+
+[package.dependencies]
+aiohttp = ">=3.7.2"
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 description = "Reusable constraint types to use with typing.Annotated"
@@ -3678,4 +3693,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11.1,<4.0"
-content-hash = "698829810eadf090f9e6472644156cdb40c0a8fd881d9af0cff4449be34ef700"
+content-hash = "8d9b5b33d51314f15e995b24551affef458de3cbe304a4a7c8a9dab15885c0f0"

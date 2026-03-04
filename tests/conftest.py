@@ -213,7 +213,7 @@ def _get_patched_cls_original_method(obj: object, names: Iterable[str], suffix: 
 @pytest_asyncio.fixture(autouse=True)
 async def measure_query_stats(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[None]:
     from piltover.worker import RequestHandler
-    from piltover.utils.debug import measure_time_with_result
+    from piltover.utils.debug import measure_time
 
     if not pytestconfig.getoption("--measure-queries"):
         yield
@@ -248,21 +248,21 @@ async def measure_query_stats(request: pytest.FixtureRequest, pytestconfig: pyte
     for cls in query_clss:
         async def _execute(self: AwaitableQuery, *args, **kwargs) -> ...:
             name, execute_real = _get_patched_cls_original_method(self, execute_methods, real_suffix)
-            with measure_time_with_result(f"{self.__class__.__name__}.{name}()") as _time_spent:
+            with measure_time(f"{self.__class__.__name__}.{name}()") as _time_spent:
                 result = await execute_real(*args, **kwargs)
 
             query_stats.execute_count += 1
-            query_stats.execute_time += await _time_spent
+            query_stats.execute_time += _time_spent.ms
 
             return result
 
         def _make_query(self: AwaitableQuery, *args, **kwargs) -> ...:
             name, make_query_real = _get_patched_cls_original_method(self, make_query_methods, real_suffix)
-            with measure_time_with_result(f"{self.__class__.__name__}.{name}()") as _time_spent:
+            with measure_time(f"{self.__class__.__name__}.{name}()") as _time_spent:
                 result = make_query_real(*args, **kwargs)
 
             query_stats.make_query_count += 1
-            query_stats.make_query_time += _time_spent.result()
+            query_stats.make_query_time += _time_spent.ms
 
             return result
 

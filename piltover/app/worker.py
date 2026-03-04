@@ -10,6 +10,7 @@ from tortoise import Tortoise
 from piltover.app.handlers import register_handlers
 from piltover.cache import Cache
 from piltover.utils import gen_keys, Keys
+from piltover.utils.debug.tracing import Tracing
 from piltover.worker import Worker
 
 DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
@@ -24,6 +25,8 @@ class ArgsNamespace(SimpleNamespace):
     cache_backend: Literal["memory", "redis", "memcached"]
     cache_endpoint: str | None
     cache_port: int | None
+    debug_tracing_backend: Literal["console", "zipkin", "noop"] | None
+    debug_tracing_zipkin_address: str | None
 
     def fill_defaults(self) -> None:
         if self.privkey_file is None:
@@ -98,6 +101,12 @@ if __name__ == "__main__":
     parser.add_argument("--redis-address", type=str, required=False,
                         help="Address of redis server in \"redis://host:port\" format",
                         default=None)
+    parser.add_argument("--debug-tracing-backend", type=str, required=False,
+                        help="Tracing backend", choices=["console", "zipkin", "noop", None],
+                        default=None)
+    parser.add_argument("--debug-tracing-zipkin-address", type=str, required=False,
+                        help="Address for zipkin tracing backend",
+                        default=None)
     args = parser.parse_args(namespace=ArgsNamespace())
 else:
     args = ArgsNamespace(
@@ -109,10 +118,13 @@ else:
         cache_backend="memory",
         cache_endpoint=None,
         cache_port=None,
+        debug_tracing_backend="console",
+        debug_tracing_zipkin_address=None,
     )
 
 args.fill_defaults()
 
 Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)
+Tracing.init(args.debug_tracing_backend, zipkin_address=args.debug_tracing_zipkin_address)
 worker = PiltoverWorker(args.data_dir, args.privkey_file, args.pubkey_file, args.rabbitmq_address, args.redis_address)
 broker = worker.get_broker()

@@ -92,6 +92,7 @@ mypy = "^1.17.1"
 ty = "^0.0.1a20"
 pyinstrument = "^5.1.1"
 scalene = "^1.5.55"
+aiozipkin = "^1.1.1"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.4"
