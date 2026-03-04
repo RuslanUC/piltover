@@ -10,6 +10,7 @@ from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.exceptions import ErrorRpc
 from piltover.storage.base import BaseStorage, StorageType
+from piltover.utils.debug import measure_time
 
 
 class UploadingFile(Model):
@@ -69,7 +70,8 @@ class UploadingFile(Model):
             finalize_as = StorageType.DOCUMENT
             component = storage.documents
 
-        await storage.finalize_upload_as(self.physical_id, finalize_as, len(parts))
+        with measure_time("storage.finalize_upload_as"):
+            await storage.finalize_upload_as(self.physical_id, finalize_as, len(parts))
 
         if not force_fallback_mime and self.mime is not None and self.mime.startswith("video/"):
             from piltover.app.utils.utils import extract_video_metadata

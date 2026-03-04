@@ -38,6 +38,7 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
     SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
     SendInlineBotResult, SendMultiMedia_176, UnpinAllMessages
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
+from piltover.utils.debug import measure_time
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
 
@@ -766,7 +767,8 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 
         if media.file.name:
             attributes.insert(0, DocumentAttributeFilename(file_name=media.file.name))
-        file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
+        with measure_time("finalize_upload"):
+            file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
         file = await _get_input_media_file(user, media)
         if file is None:
