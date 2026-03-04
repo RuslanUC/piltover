@@ -350,12 +350,23 @@ class MessageContent(Model):
             fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
             drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
             is_forward: bool = False, no_forwards: bool = False, is_discussion: bool = False,
-            new_channel_author: models.Channel | None = None,
+            new_channel_author: models.Channel | None = None, channel_post: bool | None = None,
+            post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
+            anonymous: bool | None = None,
     ) -> Self:
         if new_author is None and self.author is not None:
             new_author = self.author
         if new_channel_author is None and self.send_as_channel is not None:
             new_channel_author = self.send_as_channel
+
+        if anonymous is None:
+            anonymous = self.anonymous if not drop_author else None
+        if channel_post is None:
+            channel_post = self.channel_post if not drop_author else None
+        if post_info is None:
+            post_info = self.post_info if not drop_author else None
+        if post_author is None:
+            post_author = self.post_author if not drop_author else None
 
         content = await models.MessageContent.create(
             message=self.message if self.media is None or not drop_captions else None,
@@ -367,10 +378,10 @@ class MessageContent(Model):
             fwd_header=fwd_header,
             entities=self.entities,
             media_group_id=media_group_id,
-            channel_post=self.channel_post if not drop_author else None,
-            post_author=self.post_author if not drop_author else None,
-            post_info=self.post_info if not drop_author else None,
-            anonymous=self.anonymous if not drop_author else None,
+            channel_post=channel_post,
+            post_author=post_author,
+            post_info=post_info,
+            anonymous=anonymous,
             no_forwards=no_forwards,
             via_bot=self.via_bot,
             is_discussion=is_discussion,

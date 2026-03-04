@@ -378,7 +378,9 @@ class MessageRef(Model):
             fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
             reply_to_content_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
-            is_discussion: bool = False,
+            is_discussion: bool = False, channel_post: bool | None = None,
+            post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
+            anonymous: bool | None = None, new_channel_author: models.Channel | None = None,
     ) -> list[Self]:
         content = await self.content.clone_forward(
             related_peer=to_peer,
@@ -390,6 +392,11 @@ class MessageRef(Model):
             is_forward=is_forward,
             no_forwards=no_forwards,
             is_discussion=is_discussion,
+            channel_post=channel_post,
+            post_info=post_info,
+            post_author=post_author,
+            anonymous=anonymous,
+            new_channel_author=new_channel_author,
         )
 
         if reply_to_content_id:

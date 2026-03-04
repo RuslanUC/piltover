@@ -5,3 +5,4 @@ class ChannelPostInfo(Model):
     id: int = fields.BigIntField(pk=True)
     views: int = fields.BigIntField(default=0)
     forwards: int = fields.BigIntField(default=0)
+    bulk_id: int | None = fields.BigIntField(null=True, default=None, index=True)

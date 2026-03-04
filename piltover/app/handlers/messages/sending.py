@@ -278,21 +278,40 @@ def _resolve_reply_id(
         return request.reply_to_msg_id
 
 
-async def _make_channel_post_info_maybe(
-        peer: Peer, user: User, participant: ChatParticipant | None,
-) -> tuple[bool, ChannelPostInfo | None, str | None]:
+async def _make_channel_post_info_many(
+        peer: Peer, user: User, participant: ChatParticipant | None, count: int,
+) -> tuple[bool, list[ChannelPostInfo | None], str | None]:
     if peer.type is not PeerType.CHANNEL or not peer.channel.channel:
-        return False, None, None
+        return False, [None] * count, None
 
     post_signature = None
     is_channel_post = True
-    post_info = await ChannelPostInfo.create()
+
+    if count <= 3:
+        post_infos = [await ChannelPostInfo.create() for _ in range(count)]
+    else:
+        async with in_transaction():
+            bulk_id = Snowflake.make_id()
+            await ChannelPostInfo.bulk_create([
+                ChannelPostInfo(bulk_id=bulk_id)
+                for _ in range(count)
+            ])
+            post_infos = await ChannelPostInfo.filter(bulk_id=bulk_id)
+            await ChannelPostInfo.filter(id__in=[post_info.id for post_info in post_infos]).update(bulk_id=None)
+
     if participant is not None and participant.admin_rank:
         post_signature = participant.admin_rank
     elif peer.channel.signatures:
         post_signature = user.first_name
 
-    return is_channel_post, post_info, post_signature
+    return is_channel_post, post_infos, post_signature
+
+
+async def _make_channel_post_info_maybe(
+        peer: Peer, user: User, participant: ChatParticipant | None,
+) -> tuple[bool, ChannelPostInfo | None, str | None]:
+    is_channel_post, post_infos, post_signature = await _make_channel_post_info_many(peer, user, participant, 1)
+    return is_channel_post, post_infos[0], post_signature
 
 
 def _make_supergroup_anonymous_maybe(peer: Peer, participant: ChatParticipant | None) -> tuple[bool, str | None]:
@@ -1115,12 +1134,18 @@ async def forward_messages(
         peers = [to_peer, *(await to_peer.get_opposite())]
     result: defaultdict[Peer, list[MessageRef]] = defaultdict(list)
 
-    # TODO: schedule_date
-    # TODO: channel post info
-    # TODO: handle sending as an anonymous admin
-    # TODO: handle send_as
+    is_channel_post, post_infos, post_signature = await _make_channel_post_info_many(
+        to_peer, user, to_participant, len(messages)
+    )
+    if not is_channel_post:
+        is_anonymous, post_signature = _make_supergroup_anonymous_maybe(to_peer, to_participant)
+    else:
+        is_anonymous = False
+    send_as_channel = await process_send_as(request.send_as, user)
 
-    for message in messages:
+    # TODO: schedule_date
+
+    for message, post_info in zip(messages, post_infos):
         # TODO: forward in bulk?
         forwarded = await message.forward_for_peers(
             to_peer=to_peer,
@@ -1132,6 +1157,11 @@ async def forward_messages(
             media_group_id=media_group_ids[message.content.media_group_id],
             drop_author=request.drop_author,
             no_forwards=_resolve_noforwards(to_peer, user, request.noforwards),
+            channel_post=is_channel_post,
+            post_info=post_info,
+            post_author=post_signature,
+            anonymous=is_anonymous,
+            new_channel_author=send_as_channel,
 
             fwd_header=await message.create_fwd_header(to_peer.type is PeerType.SELF) if not request.drop_author else None,
             is_forward=True,
