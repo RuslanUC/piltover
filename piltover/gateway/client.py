@@ -11,7 +11,7 @@ from lru import LRU
 from mtproto import Connection, ConnectionRole
 from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
     ErrorPacket, QuickAckPacket, BasePacket
-from taskiq import AsyncTaskiqTask, TaskiqResult
+from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
 from taskiq.kicker import AsyncKicker
 from tortoise.expressions import Q
 
@@ -476,7 +476,11 @@ class Client:
             with measure_time("_kiq()"):
                 task = await self._kiq(request.obj, session, request.message_id)
             with measure_time(".wait_result()"):
-                task_result: TaskiqResult[str] = await task.wait_result(timeout=5)
+                try:
+                    task_result: TaskiqResult[str] = await task.wait_result(timeout=5)
+                except TaskiqResultTimeoutError as e:
+                    logger.opt(exception=e).error(f"Task timeout exceeded for request {request!r}")
+                    raise
 
         if task_result.is_err:
             logger.opt(exception=task_result.error).error("An error occurred in worker while processing request.")

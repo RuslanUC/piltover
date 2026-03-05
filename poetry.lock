@@ -3156,9 +3156,9 @@ ptpython = ["ptpython (>=3.0.0)"]
 
 [package.source]
 type = "git"
-url = "https://github.com/tortoise/tortoise-orm.git"
-reference = "develop"
-resolved_reference = "3eafeb57958c249b5959c4aec8ef879e0e07090c"
+url = "https://github.com/RuslanUC/tortoise-orm.git"
+reference = "feat/add-prepared-parametrized-queries"
+resolved_reference = "ebd33cbe56335afd6e42cb9cd80f89076afba558"
 
 [[package]]
 name = "tqdm"

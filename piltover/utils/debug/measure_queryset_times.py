@@ -1,22 +1,25 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Iterable, Callable
 
 from loguru import logger
 from tortoise.queryset import BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, \
     CountQuery, ExistsQuery, DeleteQuery, UpdateQuery, QuerySet, AwaitableQuery
+from tortoise.queryset_compiled import CompiledQuerySet
 
 from piltover.utils.debug import measure_time
 from piltover.worker import RequestHandler
 
 query_clss = [
     BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, CountQuery, ExistsQuery,
-    DeleteQuery, UpdateQuery, QuerySet
+    DeleteQuery, UpdateQuery, QuerySet, CompiledQuerySet
 ]
-execute_methods = ("_execute", "_execute_many",)
-make_query_methods = ("_make_query", "_make_queries",)
+execute_methods = ("execute", "_execute_many", "_execute",)
+make_query_methods = ("_get_or_create_cached_sql", "_make_queries", "_make_query",)
 call_methods = ("__call__",)
 real_suffix = "_real"
+handler_stats_ctx: ContextVar[QueryStats] = ContextVar("handler_stats_ctx")
 
 
 class QueryStats:
@@ -71,16 +74,17 @@ def _unpatch_cls_replaced_method(cls: type, names: Iterable[str], suffix: str) -
         return
 
 
-def patch_queryset_for_measurement() -> tuple[QueryStats, QueryStats]:
+def patch_queryset_for_measurement() -> QueryStats:
     query_stats_all = QueryStats()
-    query_stats = QueryStats()
 
     async def _RequestHandler___call__(self: RequestHandler, *args, **kwargs):
         _, _call_real = _get_patched_cls_original_method(self, call_methods, real_suffix)
-        query_stats.reset()
+        query_stats = QueryStats()
+        token = handler_stats_ctx.set(query_stats)
         try:
             return await _call_real(*args, **kwargs)
         finally:
+            handler_stats_ctx.reset(token)
             query_stats_all.add(query_stats)
             logger.info(
                 f"{self.func.__name__} made {query_stats.execute_count} ({query_stats.make_query_count}) queries "
@@ -95,8 +99,10 @@ def patch_queryset_for_measurement() -> tuple[QueryStats, QueryStats]:
             with measure_time(f"{self.__class__.__name__}.{name}()") as _time_spent:
                 result = await execute_real(*args, **kwargs)
 
-            query_stats.execute_count += 1
-            query_stats.execute_time += _time_spent.ms
+            query_stats = handler_stats_ctx.get(None)
+            if query_stats is not None:
+                query_stats.execute_count += 1
+                query_stats.execute_time += _time_spent.ms
 
             return result
 
@@ -105,15 +111,17 @@ def patch_queryset_for_measurement() -> tuple[QueryStats, QueryStats]:
             with measure_time(f"{self.__class__.__name__}.{name}()") as _time_spent:
                 result = make_query_real(*args, **kwargs)
 
-            query_stats.make_query_count += 1
-            query_stats.make_query_time += _time_spent.ms
+            query_stats = handler_stats_ctx.get(None)
+            if query_stats is not None:
+                query_stats.make_query_count += 1
+                query_stats.make_query_time += _time_spent.ms
 
             return result
 
         _patch_cls_replace_method(cls, execute_methods, real_suffix, _execute)
         _patch_cls_replace_method(cls, make_query_methods, real_suffix, _make_query)
 
-    return query_stats_all, query_stats
+    return query_stats_all
 
 
 def unpatch_queryset_for_measurement() -> None:

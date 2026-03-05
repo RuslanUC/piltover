@@ -166,7 +166,7 @@ async def measure_query_stats(request: pytest.FixtureRequest, pytestconfig: pyte
         yield
         return
 
-    query_stats_all, query_stats = patch_queryset_for_measurement()
+    query_stats_all = patch_queryset_for_measurement()
 
     yield
 

@@ -1,11 +1,13 @@
 # piltover 🐳
 
-An experimental Telegram server written from scratch in Python. Fork of a [DavideGalilei/piltover](DavideGalilei/piltover).
+An experimental Telegram server written from scratch in Python. Fork of a [DavideGalilei/piltover](https://github.com/DavideGalilei/piltover).
 
 ## TODO
 
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
 - [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
+  - [ ] HTTP support
+  - [ ] UDP support
 - [ ] Improve the README:
   - [ ] move client setup instructions to a separate files?
   - [ ] describe process of downloading official Telegram reactions/languages/etc. into Piltover instance
