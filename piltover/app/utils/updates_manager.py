@@ -130,7 +130,7 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
             updates=[
                 UpdateMessageIDToFormat(
                     id=message.id,
-                    random_id=message.random_id,
+                    random_id=message.random_id or 0,
                     target_user=user.id,
                 ),
                 UpdateNewChannelMessage(
