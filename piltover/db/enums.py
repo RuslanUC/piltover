@@ -9,7 +9,7 @@ from piltover.tl import ChatBannedRights as TLChatBannedRights, Int, ChatAdminRi
     PrivacyKeyChatInvite, PrivacyKeyPhoneCall, PrivacyKeyPhoneP2P, PrivacyKeyForwards, PrivacyKeyProfilePhoto, \
     PrivacyKeyPhoneNumber, PrivacyKeyAddedByPhone, PrivacyKeyVoiceMessages, PrivacyKeyAbout, PrivacyKeyBirthday, \
     PhoneCallDiscardReasonMissed, PhoneCallDiscardReasonDisconnect, PhoneCallDiscardReasonHangup, \
-    PhoneCallDiscardReasonBusy
+    PhoneCallDiscardReasonBusy, InputPrivacyKeyNoPaidMessages, InputPrivacyKeyStarGiftsAutoSave
 from piltover.tl.base import InputPrivacyKey, PrivacyKey
 
 
@@ -25,6 +25,8 @@ class PrivacyRuleKeyType(IntEnum):
     VOICE_MESSAGE = 8
     ABOUT = 9
     BIRTHDAY = 10
+    NO_PAID_MESSAGES = 11
+    GIFTS_AUTOSAVE = 12
 
     @classmethod
     def from_tl(cls, constructor: InputPrivacyKey) -> PrivacyRuleKeyType:
@@ -46,6 +48,8 @@ _TL_KEY_TO_PRIVACY_ENUM = {
     InputPrivacyKeyVoiceMessages: PrivacyRuleKeyType.VOICE_MESSAGE,
     InputPrivacyKeyAbout: PrivacyRuleKeyType.ABOUT,
     InputPrivacyKeyBirthday: PrivacyRuleKeyType.BIRTHDAY,
+    InputPrivacyKeyNoPaidMessages: PrivacyRuleKeyType.NO_PAID_MESSAGES,
+    InputPrivacyKeyStarGiftsAutoSave: PrivacyRuleKeyType.GIFTS_AUTOSAVE,
 }
 
 _PRIVACY_ENUM_KEY_TO_TL = {

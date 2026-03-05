@@ -137,7 +137,7 @@ async def get_dialogs_internal(
     peer_with_dialog: PeerWithDialogs
     dialogs: list[Dialog | SavedDialog] = []
 
-    async for peer_with_dialog in peers_with_dialogs:
+    for peer_with_dialog in await peers_with_dialogs:
         dialog = getattr(peer_with_dialog, prefix)
         dialog.peer = peer_with_dialog
         dialogs.append(dialog)

@@ -1,6 +1,7 @@
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption
-from piltover.tl.functions.account import GetCollectibleEmojiStatuses
+from piltover.tl.functions.account import GetCollectibleEmojiStatuses, GetContactSignUpNotification, \
+    SetContactSignUpNotification
 from piltover.tl.functions.payments import GetStarsStatus, GetStarsSubscriptions, GetStarsTransactions, \
     GetStarsTopupOptions
 from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts, GetBoostsList
@@ -88,3 +89,13 @@ async def get_stars_topup_options() -> list[StarsTopupOption]:  # pragma: no cov
             amount=-1,
         )
     ])
+
+
+@handler.on_request(GetContactSignUpNotification, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_contact_sign_up_notification() -> bool:
+    return False
+
+
+@handler.on_request(SetContactSignUpNotification, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def set_contact_sign_up_notification() -> bool:
+    return False
