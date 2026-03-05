@@ -29,6 +29,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData, UpdateReadChannelOutbox, \
     UpdatePinnedChannelMessages
 from piltover.tl.to_format import DumbChannelMessageToFormat
+from piltover.tl.to_format.update_message_id import UpdateMessageIDToFormat
 from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
 from piltover.utils.users_chats_channels import UsersChatsChannels
@@ -127,7 +128,13 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
     await SessionManager.send(
         UpdatesWithDefaults(
             updates=[
+                UpdateMessageIDToFormat(
+                    id=message.id,
+                    random_id=message.random_id,
+                    target_user=user.id,
+                ),
                 UpdateNewChannelMessage(
+                    # TODO: replace with something like "GenericChannelMessageToFormat" that contains only content?
                     message=DumbChannelMessageToFormat(id=message.id),
                     pts=new_pts,
                     pts_count=1,

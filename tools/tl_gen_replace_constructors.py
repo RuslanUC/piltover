@@ -11,6 +11,7 @@ REPLACE_CONSTRUCTORS = {
     0xa6ad847b: "to_format.PollAnswerVotersToFormat",
     0x94e4f3ed: "to_format.PhoneCallToFormat",
     0xe0a8fd99: "to_format.MessageToFormat",
+    0x5157a73d: "to_format.UpdateMessageIDToFormat",
 }
 
 BASE_CLASSES_NEED_CONTEXT = {"Chat", "User", "Message", "PollResults"}

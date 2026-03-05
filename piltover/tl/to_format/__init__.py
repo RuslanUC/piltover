@@ -10,3 +10,4 @@ from .user import UserToFormat
 from .wallpaper import WallPaperToFormat
 from .phone_call import PhoneCallToFormat
 from .message import MessageToFormat
+from .update_message_id import UpdateMessageIDToFormat

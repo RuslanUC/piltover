@@ -398,6 +398,8 @@ async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User) 
 async def send_message(request: SendMessage, user: User):
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
+    if not request.random_id:
+        raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
     participant = None
@@ -956,6 +958,8 @@ async def _get_input_media_banned_rights(user: User, media: InputMedia) -> ChatB
 async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: User):
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
+    if not request.random_id:
+        raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
     participant = None
@@ -1090,7 +1094,10 @@ async def forward_messages(
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
     if len(request.id) != len(request.random_id):
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_INVALID")
-    if await MessageRef.filter(peer=to_peer, id__in=request.random_id[:100]).exists():
+    random_id = request.random_id[:100]
+    if 0 in random_id:
+        raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
+    if await MessageRef.filter(peer=to_peer, id__in=random_id).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
     src_messages_query = Q(from_peer.q_this_or_channel(), id__in=request.id[:100], content__type=MessageType.REGULAR)
@@ -1098,7 +1105,7 @@ async def forward_messages(
         from_peer, src_messages_query, from_participant
     )
 
-    random_ids = dict(zip(request.id[:100], request.random_id[:100]))
+    random_ids = dict(zip(request.id[:100], random_id))
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
         *MessageRef.PREFETCH_FIELDS, "reply_to", "content__send_as_channel"
     )
@@ -1386,6 +1393,9 @@ async def clear_all_drafts(user: User) -> bool:
 @handler.on_request(SendInlineBotResult_176, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SendInlineBotResult, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Updates:
+    if not request.random_id:
+        raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
+
     peer = await Peer.from_input_peer_raise(user, request.peer)
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
