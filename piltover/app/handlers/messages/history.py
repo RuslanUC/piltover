@@ -722,6 +722,7 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     )
 
 
+# TODO: read_message_contents should also read reactions
 async def read_message_contents_internal(user: User, valid_refs: list[MessageRef]) -> list[int] | None:
     if not valid_refs:
         return None

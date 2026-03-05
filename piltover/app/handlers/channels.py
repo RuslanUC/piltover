@@ -2,6 +2,7 @@ from datetime import datetime, UTC
 from time import time
 from typing import cast
 
+from loguru import logger
 from tortoise.expressions import Q, Subquery, RawSQL, F
 from tortoise.functions import Max
 from tortoise.transactions import in_transaction
@@ -1057,6 +1058,9 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
     return await upd.update_channel(channel, user, send_to_users=[user.id, target_peer.user.id])
 
 
+CHANNEL_PRIVATE_ERR = ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+
+
 @handler.on_request(JoinChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def join_channel(request: JoinChannel, user: User) -> Updates:
     peer = await Peer.from_input_peer_raise(
@@ -1068,10 +1072,20 @@ async def join_channel(request: JoinChannel, user: User) -> Updates:
         if not participant.left:
             raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
         if participant.banned_rights & ChatBannedRights.VIEW_MESSAGES:
-            raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+            raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="banned")
 
     if not await Username.filter(channel=peer.channel).exists():
-        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+        if not peer.channel.is_discussion:
+            raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="not a discussion")
+        linked_channel = await Channel.get_or_none(
+            deleted=False, discussion_id=peer.channel_id,
+        ).select_related("usernames")
+        if linked_channel is None:
+            raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="no linked channel")
+        linked_participant = await linked_channel.get_participant(user, True)
+        if not linked_channel.can_view_messages(linked_participant):
+            logger.warning(f"{linked_participant}, {linked_participant.left}")
+            raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="cant access linked channel")
 
     return await user_join_chat_or_channel(peer.channel, user, None)
 

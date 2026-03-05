@@ -217,7 +217,7 @@ class ChatBase(Model):
 
             admin_has_permission = (participant.admin_rights & admin) == admin
 
-            if isinstance(self, models.Channel) and self.channel:
+            if isinstance(self, models.Channel) and self.channel and admin > 0:
                 if not participant.is_admin:
                     return False
                 return admin_has_permission

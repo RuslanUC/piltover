@@ -92,10 +92,10 @@ async def get_stars_topup_options() -> list[StarsTopupOption]:  # pragma: no cov
 
 
 @handler.on_request(GetContactSignUpNotification, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_contact_sign_up_notification() -> bool:
+async def get_contact_sign_up_notification() -> bool:  # pragma: no cover
     return False
 
 
 @handler.on_request(SetContactSignUpNotification, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def set_contact_sign_up_notification() -> bool:
+async def set_contact_sign_up_notification() -> bool:  # pragma: no cover
     return False

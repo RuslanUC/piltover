@@ -147,11 +147,6 @@ async def register_device(request: RegisterDevice, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetContactSignUpNotification, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_contact_sign_up_notification() -> bool:  # pragma: no cover
-    return True
-
-
 @handler.on_request(GetPassword, ReqHandlerFlags.ALLOW_MFA_PENDING | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_password(user: User) -> Password:
     password, _ = await UserPassword.get_or_create(user=user)
