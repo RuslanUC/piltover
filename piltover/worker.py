@@ -352,9 +352,10 @@ class Worker(MessageHandler):
             message.content.comments_info = await MessageComments.create(
                 discussion_channel=discussion_peer.channel, discussion_pts=discussion_peer.channel.pts,
             )
-            message.version += 1
-            await message.content.save(update_fields=["discussion_id", "comments_info_id", "edit_date", "edit_hide"])
-            await message.save(update_fields=["version"])
+            message.content.version += 1
+            await message.content.save(update_fields=[
+                "discussion_id", "comments_info_id", "edit_date", "edit_hide", "version",
+            ])
 
         await upd.send_messages_channel([discussion_message], discussion_peer.channel, None)
         await upd.edit_message_channel(None, message.peer.channel, message)

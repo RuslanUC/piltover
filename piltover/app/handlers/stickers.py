@@ -384,11 +384,12 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     files_to_create = []
     for idx, input_sticker in enumerate(request.stickers):
         file = files[input_sticker.document.id]
-        files_to_create.append(
-            await make_sticker_from_file(
-                file, stickerset, idx, input_sticker.emoji, request.masks, input_sticker.mask_coords, False,
-            )
-        )
+        is_static = file.mime_type.startswith("image/")
+        is_webm = file.mime_type == "video/webm"
+        files_to_create.append(await make_sticker_from_file(
+            file, stickerset, idx, input_sticker.emoji, request.masks, input_sticker.mask_coords, is_static, is_webm,
+            False,
+        ))
 
     try:
         await File.bulk_create(files_to_create)
@@ -589,8 +590,11 @@ async def add_sticker_to_set(request: AddStickerToSet, user: User) -> MessagesSt
     if count >= 120:
         raise ErrorRpc(error_code=400, error_message="STICKERS_TOO_MUCH")
 
+    is_static = file.mime_type.startswith("image/")
+    is_webm = file.mime_type == "video/webm"
     await make_sticker_from_file(
-        file, stickerset, count, request.sticker.emoji, stickerset.masks, request.sticker.mask_coords,
+        file, stickerset, count, request.sticker.emoji, stickerset.masks, request.sticker.mask_coords, is_static,
+        is_webm,
     )
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
@@ -610,9 +614,11 @@ async def replace_sticker(request: ReplaceSticker, user: User) -> MessagesSticke
     old_file.sticker_pos = None
     await old_file.save(update_fields=["stickerset_id", "sticker_pos"])
 
+    is_static = file.mime_type.startswith("image/")
+    is_webm = file.mime_type == "video/webm"
     await make_sticker_from_file(
         file, stickerset, old_file.sticker_pos, request.new_sticker.emoji, stickerset.masks,
-        request.new_sticker.mask_coords,
+        request.new_sticker.mask_coords, is_static, is_webm,
     )
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
