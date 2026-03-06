@@ -535,7 +535,7 @@ class Client:
                 peers_q |= Q(channel_id__in=values.channel_participants)
 
             participants = await ChatParticipant.filter(peers_q, user_id=session.user_id).only(
-                "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at",
+                "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at", "left",
             )
             for participant in participants:
                 if participant.chat_id is not None:

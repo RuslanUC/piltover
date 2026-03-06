@@ -51,14 +51,18 @@ class ChannelToFormat(types.ChannelToFormatInternal):
         elif participant is not None and participant.is_admin:
             admin_rights = participant.admin_rights.to_tl()
 
+        date = self.created_at
+        if participant is not None and not participant.left:
+            date = int(participant.invited_at.timestamp())
+
         return LayerConverter.downgrade(
             obj=types.Channel(
                 id=Channel.make_id_from(self.id),
                 title=self.title,
                 photo=self.photo,
-                date=int(participant.invited_at.timestamp()) if participant else self.created_at,
+                date=date,
                 creator=self.creator_id == ctx.user_id,
-                left=participant is None,
+                left=participant is None or participant.left,
                 broadcast=self.broadcast,
                 megagroup=self.megagroup,
                 signatures=self.signatures,
