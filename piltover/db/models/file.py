@@ -296,6 +296,7 @@ class File(Model):
     async def from_input(
             cls, user_id: int, file_id: int, access_hash: int, file_reference: bytes,
             type_: FileType | None = None, mimes: list[str] | None = None, add_query: Q | None = None,
+            select_related: tuple[str] = (),
     ) -> Self | None:
         valid, const = File.is_file_ref_valid(file_reference, user_id, file_id)
         if not valid:
@@ -319,7 +320,7 @@ class File(Model):
             if not File.check_access_hash(user_id, ctx.auth_id, file_id, access_hash):
                 return None
 
-        return await File.get_or_none(file_q)
+        return await File.get_or_none(file_q).select_related(*select_related)
 
     def to_chat_banned_right(self) -> ChatBannedRights | None:
         if self.type is FileType.DOCUMENT_GIF:

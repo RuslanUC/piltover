@@ -349,6 +349,11 @@ class StickersBotState(IntEnum):
     ADDEMOJI_WAIT_PACK = 25
     ADDEMOJI_WAIT_IMAGE = 26
     ADDEMOJI_WAIT_EMOJI = 27
+    NEWVIDEO_WAIT_NAME = 28
+    NEWVIDEO_WAIT_VIDEO = 29
+    NEWVIDEO_WAIT_EMOJI = 30
+    NEWVIDEO_WAIT_ICON = 31
+    NEWVIDEO_WAIT_SHORT_NAME = 32
 
 
 STICKERS_STATE_TO_COMMAND_NAME = {
@@ -379,6 +384,11 @@ STICKERS_STATE_TO_COMMAND_NAME = {
     StickersBotState.ADDEMOJI_WAIT_PACK: "addemoji",
     StickersBotState.ADDEMOJI_WAIT_IMAGE: "addemoji",
     StickersBotState.ADDEMOJI_WAIT_EMOJI: "addemoji",
+    StickersBotState.NEWVIDEO_WAIT_NAME: "newvideo",
+    StickersBotState.NEWVIDEO_WAIT_VIDEO: "newvideo",
+    StickersBotState.NEWVIDEO_WAIT_EMOJI: "newvideo",
+    StickersBotState.NEWVIDEO_WAIT_ICON: "newvideo",
+    StickersBotState.NEWVIDEO_WAIT_SHORT_NAME: "newvideo",
     None: None,
 }
 

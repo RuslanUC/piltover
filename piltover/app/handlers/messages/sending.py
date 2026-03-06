@@ -723,6 +723,7 @@ async def _get_input_media_file(
         add_query = Q(type__not=FileType.PHOTO)
     return await File.from_input(
         user.id, media.id.id, media.id.access_hash, media.id.file_reference, file_type, add_query=add_query,
+        select_related=("stickerset",),
     )
 
 

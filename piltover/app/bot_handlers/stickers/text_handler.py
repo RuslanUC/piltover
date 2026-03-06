@@ -5,7 +5,8 @@ from tortoise.transactions import in_transaction
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.stickers.utils import send_bot_message, get_stickerset_selection_keyboard, \
     EMOJI_PACK_TYPES_KEYBOARD
-from piltover.app.handlers.stickers import validate_png_webp, check_stickerset_short_name, make_sticker_from_file
+from piltover.app.handlers.stickers import validate_png_webp, check_stickerset_short_name, make_sticker_from_file, \
+    validate_webm
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import StickersBotState, MediaType, StickerSetType, FileType
@@ -127,6 +128,27 @@ Kaboom! I've just published your emoji set. Here's your link: <a>https://t.me/ad
 You can share it with other Telegram users — they'll be able to add your emoji to their emoji panel by following the link. 
 Just make sure they're using an up to date version of the app. At the moment, only Telegram Premium subscribers can send custom emoji.
 """.strip())
+__newvideo_send_sticker, __newvideo_send_sticker_entities = FormatableTextWithEntities("""
+Alright! Now send me the video sticker. The video file should be in .WEBM format, encoded with the VP9 codec (<a>https://core.telegram.org/stickers/webm-vp9-encoding</a>). See this guide (<a>https://core.telegram.org/stickers/webm-vp9-encoding</a>) for details.
+
+I recommend using Telegram Desktop when uploading stickers.
+
+Also this ffmpeg command can be used:
+`ffmpeg -i pats-4x.webm -vf scale=512x512 -b:v 400k -r 30 -an -c:v libvpx-vp9 -pix_fmt yuva420p pats-sticker.webm -y`
+""".strip()).format()
+__newvideo_file_invalid, __newvideo_file_invalid_entities = FormatableTextWithEntities("""
+File type is invalid. Please convert your video to the .WEBM format. See this guide (<a>https://core.telegram.org/stickers#video-sticker-requirements</a>) for details.
+""".strip()).format()
+__newvideo_send_emoji = """
+Thanks! Now send me an emoji that corresponds to your video sticker.
+
+You can list several emoji in one message, but I recommend using no more than two per sticker.
+""".strip()
+__newvideo_sticker_added = FormatableTextWithEntities("""
+Congratulations. Stickers in the set: {num}. To add another video sticker, send me the next sticker as a .WEBM file.
+
+When you're done, simply send the <c>/publish</c> command.
+""".strip())
 
 
 async def _invalid_set_selected(peer: Peer, emoji: bool | None) -> MessageRef:
@@ -142,17 +164,23 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
     if state is None:
         return None
 
-    if state.state is StickersBotState.NEWPACK_WAIT_NAME:
+    if state.state in (StickersBotState.NEWPACK_WAIT_NAME, StickersBotState.NEWVIDEO_WAIT_NAME):
         pack_name = content.message
         if not pack_name or len(pack_name) > 64:
             return await send_bot_message(peer, __newpack_invalid_name)
 
-        await state.update_state(
-            StickersBotState.NEWPACK_WAIT_IMAGE,
-            StickersStateNewpack(name=pack_name, stickers=[]).serialize(),
-        )
-
-        return await send_bot_message(peer, __newpack_send_sticker)
+        if state.state is StickersBotState.NEWPACK_WAIT_NAME:
+            await state.update_state(
+                StickersBotState.NEWPACK_WAIT_IMAGE,
+                StickersStateNewpack(name=pack_name, stickers=[]).serialize(),
+            )
+            return await send_bot_message(peer, __newpack_send_sticker)
+        elif state.state is StickersBotState.NEWVIDEO_WAIT_NAME:
+            await state.update_state(
+                StickersBotState.NEWVIDEO_WAIT_VIDEO,
+                StickersStateNewpack(name=pack_name, stickers=[]).serialize(),
+            )
+            return await send_bot_message(peer, __newvideo_send_sticker, entities=__newvideo_send_sticker_entities)
 
     if state.state in (
             StickersBotState.NEWPACK_WAIT_IMAGE, StickersBotState.ADDSTICKER_WAIT_IMAGE,
@@ -228,10 +256,35 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
 
         return await send_bot_message(peer, __newpack_send_emoji)
 
+    if state.state is StickersBotState.NEWVIDEO_WAIT_VIDEO:
+        if content.media is None:
+            return await send_bot_message(peer, __newvideo_file_invalid, entities=__newvideo_file_invalid_entities)
+        if content.media.type is not MediaType.DOCUMENT:
+            return await send_bot_message(peer, __newvideo_file_invalid, entities=__newvideo_file_invalid_entities)
+        if content.media.file.mime_type != "video/webm":
+            return await send_bot_message(peer, __newvideo_file_invalid, entities=__newvideo_file_invalid_entities)
+
+        try:
+            await validate_webm(content.media.file, False)
+        except ErrorRpc:
+            return await send_bot_message(peer, __newvideo_file_invalid, entities=__newvideo_file_invalid_entities)
+
+        if content.media.file.needs_save:
+            await content.media.file.save(update_fields=["width", "height", "duration"])
+
+        if state.state is StickersBotState.NEWVIDEO_WAIT_VIDEO:
+            state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
+            state_data.stickers.append(NewpackInputSticker(file_id=content.media.file.id, emoji=""))
+            await state.update_state(StickersBotState.NEWVIDEO_WAIT_EMOJI, state_data.serialize())
+        else:
+            raise Unreachable
+
+        return await send_bot_message(peer, __newvideo_send_emoji)
+
     if state.state in (
             StickersBotState.NEWPACK_WAIT_EMOJI, StickersBotState.ADDSTICKER_WAIT_EMOJI,
             StickersBotState.EDITSTICKER_WAIT_EMOJI, StickersBotState.NEWEMOJIPACK_WAIT_EMOJI,
-            StickersBotState.ADDEMOJI_WAIT_EMOJI,
+            StickersBotState.ADDEMOJI_WAIT_EMOJI, StickersBotState.NEWVIDEO_WAIT_EMOJI,
     ):
         emoji = content.message.strip()
         if not emoji or not purely_emoji(emoji) or len(emoji) > 4:
@@ -298,6 +351,12 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
             await state.update_state(StickersBotState.NEWEMOJIPACK_WAIT_IMAGE, state_data.serialize())
             text, entities = __newemojipack_sticker_added.format(num=len(state_data.stickers))
             return await send_bot_message(peer, text, entities=entities)
+        elif state.state is StickersBotState.NEWVIDEO_WAIT_EMOJI:
+            state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
+            state_data.stickers[-1].emoji = emoji
+            await state.update_state(StickersBotState.NEWVIDEO_WAIT_VIDEO, state_data.serialize())
+            text, entities = __newvideo_sticker_added.format(num=len(state_data.stickers))
+            return await send_bot_message(peer, text, entities=entities)
         else:
             raise Unreachable
 
@@ -309,7 +368,14 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
         await state.update_state(StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME, None)
         return await send_bot_message(peer, __text_send_shortname_emoji, entities=__text_send_shortname_emoji_entities)
 
-    if state.state in (StickersBotState.NEWPACK_WAIT_SHORT_NAME, StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME):
+    if state.state is StickersBotState.NEWVIDEO_WAIT_ICON:
+        await state.update_state(StickersBotState.NEWVIDEO_WAIT_SHORT_NAME, None)
+        return await send_bot_message(peer, __text_send_shortname, entities=__text_send_shortname_entities)
+
+    if state.state in (
+            StickersBotState.NEWPACK_WAIT_SHORT_NAME, StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME,
+            StickersBotState.NEWVIDEO_WAIT_SHORT_NAME,
+    ):
         short_name = content.message.strip()
 
         try:
@@ -320,11 +386,18 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
             return await send_bot_message(peer, __text_shortname_invalid)
 
         is_emoji = False
+        is_static = False
+        is_webm = False
         if state.state is StickersBotState.NEWPACK_WAIT_SHORT_NAME:
             state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
+            is_static = True
         elif state.state is StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME:
             state_data = StickersStateNewemojipack.deserialize(BytesIO(state.data))
+            is_static = True
             is_emoji = True
+        elif state.state is StickersBotState.NEWVIDEO_WAIT_SHORT_NAME:
+            state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
+            is_webm = True
         else:
             raise Unreachable
 
@@ -347,9 +420,9 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
                 if not input_sticker.emoji:
                     continue
                 file = files[input_sticker.file_id]
-                files_to_create.append(
-                    await make_sticker_from_file(file, stickerset, idx, input_sticker.emoji, False, None, False)
-                )
+                files_to_create.append(await make_sticker_from_file(
+                    file, stickerset, idx, input_sticker.emoji, False, None, is_static, is_webm, False,
+                ))
 
             await File.bulk_create(files_to_create)
 
@@ -361,7 +434,7 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
             await state.delete()
 
         await upd.new_stickerset(peer.owner, stickerset)
-        if state.state is StickersBotState.NEWPACK_WAIT_SHORT_NAME:
+        if state.state in (StickersBotState.NEWPACK_WAIT_SHORT_NAME, StickersBotState.NEWVIDEO_WAIT_SHORT_NAME):
             text, entities = __text_published.format(short_name=short_name)
             return await send_bot_message(peer, text, entities=entities)
         elif state.state is StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME:

@@ -29,4 +29,8 @@ async def stickers_skip_command(peer: Peer, _: MessageRef) -> MessageRef | None:
         await state.update_state(StickersBotState.NEWEMOJIPACK_WAIT_SHORT_NAME, None)
         return await send_bot_message(peer, __text_icon_skipped_emoji, entities=__text_icon_skipped_emoji_entities)
 
+    if state.state is StickersBotState.NEWVIDEO_WAIT_ICON:
+        await state.update_state(StickersBotState.NEWVIDEO_WAIT_SHORT_NAME, None)
+        return await send_bot_message(peer, __text_icon_skipped, entities=__text_icon_skipped_entities)
+
     return await send_bot_message(peer, __text_no_skip)

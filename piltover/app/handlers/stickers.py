@@ -11,7 +11,7 @@ from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app.utils.utils import telegram_hash, get_image_dims, resize_photo
+from piltover.app.utils.utils import telegram_hash, get_image_dims, resize_photo, extract_video_metadata_for_sticker
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import FileType, StickerSetType
@@ -157,6 +157,27 @@ async def _validate_tgs(file: File) -> None:
     # TODO: validate "All animations must be looped."
 
 
+async def validate_webm(file: File, is_emoji: bool) -> None:
+    if file.size > 256 * 1024:
+        raise ErrorRpc(error_code=400, error_message="STICKER_VIDEO_BIG")
+
+    storage = request_ctx.get().storage
+    info = await extract_video_metadata_for_sticker(storage, file.physical_id)
+    duration, has_video, has_audio, is_vp9, width, height, framerate = info
+    if duration > 3 or has_audio or not has_video or not is_vp9 or framerate > 30:
+        raise ErrorRpc(error_code=400, error_message="STICKER_VIDEO_BIG")
+
+    dims = (file.width, file.height)
+
+    if is_emoji:
+        if dims != (100, 100):
+            raise ErrorRpc(error_code=400, error_message="STICKER_GIF_DIMENSIONS")
+        return
+
+    if 512 not in dims or any(dim > 512 for dim in dims):
+        raise ErrorRpc(error_code=400, error_message="STICKER_GIF_DIMENSIONS")
+
+
 async def _get_sticker_files(
         stickers: list[InputStickerSetItem], user: User, set_type: StickerSetType | None, is_emoji: bool,
 ) -> tuple[dict[int, File], StickerSetType]:
@@ -212,8 +233,7 @@ async def _get_sticker_files(
         if file.mime_type in ("image/png", "image/webp"):
             await validate_png_webp(file, is_emoji)
         elif file.mime_type == "video/webm":
-            # TODO: support video stickers
-            raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
+            await validate_webm(file, is_emoji)
         elif file.mime_type == "application/x-tgsticker":
             await _validate_tgs(file)
         else:
@@ -237,8 +257,7 @@ async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: Sti
     if file.mime_type in ("image/png", "image/webp"):
         await validate_png_webp(file, is_emoji)
     elif file.mime_type == "video/webm":
-        # TODO: support video stickers
-        raise ErrorRpc(error_code=400, error_message="STICKER_THUMB_PNG_NOPNG")
+        await validate_webm(file, True)
     elif file.mime_type == "application/x-tgsticker":
         await _validate_tgs(file)
     else:
@@ -249,14 +268,14 @@ async def _get_sticker_thumb(input_doc: InputDocument, user: User, set_type: Sti
 
 async def make_sticker_from_file(
         file: File, stickerset: Stickerset, pos: int, alt: str, mask: bool, mask_coords: MaskCoords | None,
-        create: bool = True,
+        is_static: bool, is_webm: bool, create: bool = True,
 ) -> File:
     photo_sizes = file.photo_sizes
     mime_type = file.mime_type
     filename = file.filename
     file_id = file.physical_id
     file_size = file.size
-    if stickerset.type is StickerSetType.STATIC:
+    if is_static:
         mime_type = "image/webp"
         storage = request_ctx.get().storage
         file_id = UUID(bytes=xorshift128plus_bytes(16))
@@ -269,6 +288,11 @@ async def make_sticker_from_file(
             filename += ".webp"
         else:
             filename = "sticker.webp"
+    if is_webm:
+        if filename is not None:
+            filename += ".webm"
+        else:
+            filename = "sticker.webm"
 
     # TODO: generate photo_path
 

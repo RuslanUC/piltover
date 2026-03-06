@@ -16,6 +16,7 @@ from piltover.app.bot_handlers.stickers.done_command import stickers_done_comman
 from piltover.app.bot_handlers.stickers.editsticker_command import stickers_editsticker_command
 from piltover.app.bot_handlers.stickers.newemojipack_command import stickers_newemojipack_command
 from piltover.app.bot_handlers.stickers.newpack_command import stickers_newpack_command
+from piltover.app.bot_handlers.stickers.newvideo_command import stickers_newvideo_command
 from piltover.app.bot_handlers.stickers.publish_command import stickers_publish_command
 from piltover.app.bot_handlers.stickers.renamepack_command import stickers_renamepack_command
 from piltover.app.bot_handlers.stickers.replacesticker_command import stickers_replacesticker_command
@@ -61,6 +62,7 @@ HANDLERS: dict[str, dict[str, Callable[[Peer, MessageRef], Awaitable[MessageRef 
         "replacesticker": stickers_replacesticker_command,
         "newemojipack": stickers_newemojipack_command,
         "addemoji": stickers_addemoji_command,
+        "newvideo": stickers_newvideo_command,
     }
 }
 CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, MessageRef, bytes], Awaitable[BotCallbackAnswer | None]]] = {

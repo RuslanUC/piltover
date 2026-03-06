@@ -228,6 +228,30 @@ async def extract_video_metadata(location: str) -> tuple[int, bool, bool, Image 
     return await get_event_loop().run_in_executor(video_executor, _extract_video_metadata, location)
 
 
+def _extract_video_metadata_for_sticker(location: str) -> tuple[int, bool, bool, bool, int, int, int]:
+    exit_stack = ExitStack()
+    # TODO: might be url (e.g. s3) in the future
+    file = exit_stack.enter_context(open(location, "rb"))
+    container = exit_stack.enter_context(av.open(file, options={"probesize": "16k", "analyzeduration": "200000"}))
+
+    has_audio = any(s.type == "audio" for s in container.streams)
+    has_video = any(s.type == "video" for s in container.streams)
+    duration = container.duration // av.time_base if container.duration else None
+    for stream in container.streams.video:
+        is_vp9 = stream.codec.name == "vp9"
+        return duration, has_video, has_audio, is_vp9, stream.width, stream.height, stream.average_rate
+
+    return duration, has_video, has_audio, False, -1, -1, -1
+
+
+async def extract_video_metadata_for_sticker(
+        storage: BaseStorage, file_id: UUID
+) -> tuple[int, bool, bool, bool, int, int, int]:
+    return await get_event_loop().run_in_executor(
+        video_executor, _extract_video_metadata_for_sticker, await storage.documents.get_location(file_id)
+    )
+
+
 async def check_password_internal(password: UserPassword, check: InputCheckPasswordSRPBase) -> None:
     if password.password is not None and isinstance(check, InputCheckPasswordEmpty):
         raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
