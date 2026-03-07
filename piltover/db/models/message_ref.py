@@ -520,6 +520,9 @@ class MessageRef(Model):
         user_reaction = await models.MessageReaction.get_or_none(
             user_id=user_id, message_id=self.content_id,
         ).values_list("reaction_id", "custom_emoji_id")
+        # TODO:
+        #  if user is author, cache separately
+        #  otherwise - cache by `user_reaction`
         if user_reaction:
             user_reaction_id, user_custom_emoji_id = user_reaction
             cache_user_id = user_id

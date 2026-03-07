@@ -6,6 +6,7 @@ from tortoise.expressions import Q, Subquery, F
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.utils import telegram_hash
+from piltover.app_config import AppConfig
 from piltover.db.enums import PeerType, ChatBannedRights, FileType
 from piltover.db.models import Reaction, User, Peer, MessageReaction, ReadState, State, RecentReaction, \
     UserReactionsSettings, MessageRef, AvailableChannelReaction, File, MessageContent
@@ -87,6 +88,12 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             and not peer.channel.all_reactions_custom \
             and reaction is not None:
         raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+
+    uniq_reactions = len(await MessageReaction.filter(
+        message_id=message.content_id,
+    ).distinct().values_list("reaction_id", "custom_emoji_id"))
+    if uniq_reactions > AppConfig.REACTIONS_UNIQ_MAX:
+        raise ErrorRpc(error_code=400, error_message="REACTIONS_TOO_MANY")
 
     existing_reaction = await MessageReaction.get_or_none(user=user, message_id=message.content_id)
     if existing_reaction is None and reaction is None and custom_reaction is None:

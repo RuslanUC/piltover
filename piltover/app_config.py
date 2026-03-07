@@ -66,6 +66,7 @@ class AppConfig:
     FAVED_STICKERS_LIMIT = int(environ.get("FAVED_STICKERS_LIMIT", 15))
     SAVED_GIFS_LIMIT = int(environ.get("SAVED_GIFS_LIMIT", 100))
     RECENT_STICKERS_LIMIT = int(environ.get("RECENT_STICKERS_LIMIT", 25))
+    REACTIONS_UNIQ_MAX = int(environ.get("REACTIONS_UNIQ_MAX", 11))
 
     MAX_USER_ABOUT_LENGTH = 100  # Telegram uses 70 for regular users and 140 for premium
 
