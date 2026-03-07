@@ -128,9 +128,8 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         ).select_related("peer", "peer__owner", "content"):
             await upd.update_reactions(opp_message.peer.owner, [opp_message], opp_message.peer)
 
-    # TODO: support custom emoji reactions in recent reactions
-    if reaction is not None and request.add_to_recent:
-        await RecentReaction.update_time_or_create(user, reaction, datetime.now(UTC))
+    if (reaction is not None or custom_reaction is not None) and request.add_to_recent:
+        await RecentReaction.update_time_or_create(user, reaction, custom_reaction, datetime.now(UTC))
         await upd.update_recent_reactions(user)
 
     return result
@@ -228,8 +227,6 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
 
 @handler.on_request(GetRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_recent_reactions(request: GetRecentReactions, user: User) -> Reactions | ReactionsNotModified:
-    # TODO: support custom emoji reactions
-
     limit = min(50, max(1, request.limit))
     ids = await RecentReaction.filter(user=user).limit(limit).order_by("-used_at").values_list("id", flat=True)
 
@@ -243,7 +240,7 @@ async def get_recent_reactions(request: GetRecentReactions, user: User) -> React
     return Reactions(
         hash=reactions_hash,
         reactions=[
-            ReactionEmoji(emoticon=reaction.reaction.reaction)
+            reaction.to_tl()
             for reaction in reactions
         ]
     )
