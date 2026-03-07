@@ -172,7 +172,7 @@ async def get_messages_query_internal(
             query &= Q(id__lt=offset_id)
 
         return MessageRef.filter(query).limit(limit).offset(add_offset).order_by("-content__date").select_related(
-            *MessageRef.PREFETCH_FIELDS,
+            *MessageRef.PREFETCH_MAYBECACHED,
         )
 
     """
@@ -219,7 +219,7 @@ async def get_messages_query_internal(
     if len(message_ids_after_offset) >= limit:
         return MessageRef.filter(
             id__in=message_ids_after_offset,
-        ).order_by("-content__date").select_related(*MessageRef.PREFETCH_FIELDS)
+        ).order_by("-content__date").select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
     limit -= len(message_ids_after_offset)
 
@@ -229,7 +229,7 @@ async def get_messages_query_internal(
     ).limit(limit).order_by("-content__date").values_list("id", flat=True)
 
     final_query = Q(id__in=message_ids_before_offset) | Q(id__in=message_ids_after_offset)
-    return MessageRef.filter(final_query).order_by("-content__date").select_related(*MessageRef.PREFETCH_FIELDS)
+    return MessageRef.filter(final_query).order_by("-content__date").select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
 
 async def get_messages_internal(
@@ -255,7 +255,7 @@ async def format_messages_internal(
     for message in messages:
         ucc.add_message(message.content_id)
 
-    messages_tl = await MessageRef.to_tl_bulk(messages, user, with_reactions)
+    messages_tl = await MessageRef.to_tl_bulk_maybecached(messages, user.id, with_reactions)
     users, chats, channels = await ucc.resolve()
 
     """
@@ -480,18 +480,24 @@ async def messages_search(request: Search, user: User) -> Messages:
 @handler.on_request(GetSearchCounters, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_search_counters(request: GetSearchCounters, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
-    saved_peer = None
+
+    base_query = peer.q_this_or_channel()
     if peer.type is PeerType.SELF and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
+        base_query &= Q(content__fwd_header__saved_peer=saved_peer)
 
-    return TLObjectVector([
-        SearchCounter(
-            filter=filt,
-            count=await (await get_messages_query_internal(
-                peer, 0, 0, 0, 0, 0, 0, 0, 0, None, filt, saved_peer,
-            )).count(),
-        ) for filt in request.filters
-    ])
+    base_query = await append_channel_min_message_id_to_query_maybe(peer, base_query)
+
+    counters = TLObjectVector()
+
+    for filt in request.filters:
+        if (filter_query := message_filter_to_query(filt, peer)) is not None:
+            count = await MessageRef.filter(base_query & filter_query).count()
+        else:
+            count = 0
+        counters.append(SearchCounter(filter=filt, count=count))
+
+    return counters
 
 
 @handler.on_request(GetAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)

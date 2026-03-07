@@ -62,10 +62,10 @@ class MessageRef(Model):
         "peer", "content__author", "content__media", "content__fwd_header", "reply_to",
         "content__via_bot",
     )
-    PREFETCH_MAYBECACHED = ("peer", "content")
+    PREFETCH_MAYBECACHED = ("peer", "content", "peer__channel")
     _FETCH_CACHED_REFS = ("content__media", "content__media__file")
     _FETCH_CACHED_CONTENTS = (
-        "content__media", "content__media__file", "content__media__poll",
+        "content__media", "content__media__file", "content__media__file__stickerset", "content__media__poll",
         "content__media__poll__pollanswers", "content__comments_info", "content__post_info",
         "content__fwd_header", "content__fwd_header__saved_peer",
     )
@@ -290,7 +290,7 @@ class MessageRef(Model):
         need_fetch_contents = []
 
         for ref, ref_cached, content_cached in zip(refs, refs_cached, contents_cached):
-            if contents_cached is None:
+            if content_cached is None:
                 need_fetch_contents.append(ref)
             elif ref_cached is None:
                 need_fetch_refs.append(ref)
