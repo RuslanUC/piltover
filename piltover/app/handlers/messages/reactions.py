@@ -130,7 +130,8 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
 
     if (reaction is not None or custom_reaction is not None) and request.add_to_recent:
         await RecentReaction.update_time_or_create(user, reaction, custom_reaction, datetime.now(UTC))
-        await upd.update_recent_reactions(user)
+        recent_updates = await upd.update_recent_reactions(user)
+        result.updates.extend(recent_updates.updates)
 
     return result
 
