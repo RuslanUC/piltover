@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TypeVar, Self, Iterable
+from typing import TypeVar, Self, Iterable, cast
 
+from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.functions import Count
@@ -82,7 +83,7 @@ class MessageRef(Model):
     @classmethod
     async def get_(
             cls, id_: int, peer: models.Peer, types: tuple[MessageType, ...] = (MessageType.REGULAR,),
-            prefetch_all: bool = False,
+            prefetch_all: bool = False, prefetch: tuple[str, ...] = (),
     ) -> Self | None:
         types_query = Q()
         for message_type in types:
@@ -92,7 +93,8 @@ class MessageRef(Model):
         query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.get_or_none(query).select_related(
-            *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN)
+            *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN),
+            *prefetch,
         )
 
     @classmethod
@@ -242,15 +244,8 @@ class MessageRef(Model):
         ]
 
     async def to_tl_maybecached(self, user_id: int, with_reactions: bool = True) -> TLMessageBase:
-        if with_reactions:
-            ref, content, reactions = await Cache.obj.multi_get([
-                self.cache_key(user_id),
-                self.content.cache_key(),
-                self.cache_key_reactions(user_id),
-            ])
-        else:
-            ref, content = await Cache.obj.multi_get([self.cache_key(user_id), self.content.cache_key()])
-            reactions = None
+        ref, content = await Cache.obj.multi_get([self.cache_key(user_id), self.content.cache_key()])
+        reactions = None
 
         need_fetch = set()
         if ref is None:
@@ -265,7 +260,7 @@ class MessageRef(Model):
             ref = await self.to_tl_ref(user_id)
         if content is None:
             content = await self.content.to_tl_content()
-        if with_reactions and reactions is None:
+        if with_reactions:
             reactions = await self.to_tl_reactions(user_id)
 
         return MessageToFormat(ref=ref, content=content, reactions=reactions)
@@ -275,16 +270,10 @@ class MessageRef(Model):
             cls, refs: list[MessageRef], user_id: int, with_reactions: bool = True,
     ) -> list[TLMessageBase]:
         cache_keys = [ref.cache_key(user_id) for ref in refs] + [ref.content.cache_key() for ref in refs]
-        if with_reactions:
-            cache_keys += [ref.cache_key_reactions(user_id) for ref in refs]
 
         all_cached = await Cache.obj.multi_get(cache_keys)
         refs_cached = all_cached[:len(refs)]
         contents_cached = all_cached[len(refs):len(refs)*2]
-        if with_reactions:
-            reactionss_cached = all_cached[len(refs)*2:]
-        else:
-            reactionss_cached = [None] * len(refs)
 
         need_fetch_refs = []
         need_fetch_contents = []
@@ -309,22 +298,17 @@ class MessageRef(Model):
         ])
         contents_tl.reverse()
         if with_reactions:
-            reactionss_tl = await cls.to_tl_reactions_bulk([
-                ref for ref, cached in zip(refs, reactionss_cached) if cached is None
-            ], user_id)
-            reactionss_tl.reverse()
+            reactionss_tl = await cls.to_tl_reactions_bulk(refs, user_id)
         else:
-            reactionss_tl = [None] * (len(refs) - len(reactionss_cached))
+            reactionss_tl = [None] * len(refs)
 
         results = []
-        zipped = zip(refs, refs_cached, contents_cached, reactionss_cached)
+        zipped = zip(refs, refs_cached, contents_cached, reactionss_tl)
         for ref, result_ref, result_content, result_reactions in zipped:
             if result_ref is None:
                 result_ref = refs_tl.pop()
             if result_content is None:
                 result_content = contents_tl.pop()
-            if with_reactions and result_reactions is None:
-                result_reactions = reactionss_tl.pop()
 
             results.append(MessageToFormat(
                 ref=result_ref,
@@ -513,27 +497,43 @@ class MessageRef(Model):
             reply_to_top_id=self.top_message_id,
         )
 
+    async def _get_user_reaction(self, user_id: int) -> tuple[int, None] | tuple[None, int] | None:
+        return cast(
+            tuple[int, None] | tuple[None, int] | None,
+            await models.MessageReaction.get_or_none(
+                user_id=user_id, message_id=self.content_id,
+            ).values_list("reaction_id", "custom_emoji_id")
+        )
+
+    @staticmethod
+    async def _get_user_reaction_bulk(
+            content_ids: list[int], user_id: int,
+    ) -> dict[int, tuple[int, None] | tuple[None, int]]:
+        user_reactions = {}
+        for message_id, reaction_id, custom_emoji_id in await models.MessageReaction.filter(
+                user_id=user_id, message_id__in=content_ids,
+        ).values_list("message_id", "reaction_id", "custom_emoji_id"):
+            user_reactions[message_id] = reaction_id, custom_emoji_id
+        return user_reactions
+
     async def to_tl_reactions(self, user_id: int) -> MessageReactions | None:
         if self.content.type is not MessageType.REGULAR:
             return None
 
-        user_reaction = await models.MessageReaction.get_or_none(
-            user_id=user_id, message_id=self.content_id,
-        ).values_list("reaction_id", "custom_emoji_id")
-        # TODO:
-        #  if user is author, cache separately
-        #  otherwise - cache by `user_reaction`
+        user_reaction = await self._get_user_reaction(user_id)
         if user_reaction:
             user_reaction_id, user_custom_emoji_id = user_reaction
-            cache_user_id = user_id
-        elif self.content.author_id == user_id:
-            user_reaction_id = user_custom_emoji_id = None
-            cache_user_id = user_id
+            min_ = False
         else:
             user_reaction_id = user_custom_emoji_id = None
-            cache_user_id = None
+            min_ = True
 
-        if (cached := await Cache.obj.get(self.cache_key_reactions(cache_user_id))) is not None:
+        if self.content.author_id == user_id:
+            cache_key = self.cache_key_reactions_author(user_id)
+        else:
+            cache_key = self.cache_key_reactions(user_reaction_id, user_custom_emoji_id)
+
+        if (cached := await Cache.obj.get(cache_key)) is not None:
             return cached
 
         reactions = await models.MessageReaction \
@@ -588,13 +588,13 @@ class MessageRef(Model):
                 recent_reactions.append(recent.to_tl_peer_reaction(user_id, last_read_id))
 
         result = MessageReactions(
-            min=cache_user_id is None,
+            min=min_,
             can_see_list=can_see_list,
             results=results,
             recent_reactions=recent_reactions,
         )
 
-        await Cache.obj.set(self.cache_key_reactions(cache_user_id), result)
+        await Cache.obj.set(cache_key, result)
 
         return result
 
@@ -602,18 +602,18 @@ class MessageRef(Model):
     async def to_tl_reactions_bulk(cls, messages: list[MessageRef], user_id: int) -> list[MessageReactions]:
         content_ids = [ref.content.id for ref in messages if ref.content.type is MessageType.REGULAR]
 
-        user_reactions = {}
-        for message_id, reaction_id, custom_emoji_id in await models.MessageReaction.filter(
-            user_id=user_id, message_id__in=content_ids,
-        ).values_list("message_id", "reaction_id", "custom_emoji_id"):
-            user_reactions[message_id] = reaction_id, custom_emoji_id
+        user_reactions = await cls._get_user_reaction_bulk(content_ids, user_id)
 
-        cache_keys = [
-            ref.cache_key_reactions(
-                user_id if ref.content_id in user_reactions or ref.content.author_id == user_id else None
-            )
-            for ref in messages
-        ]
+        cache_keys = []
+        for ref in messages:
+            if ref.content.author_id == user_id:
+                cache_keys.append(ref.cache_key_reactions_author(user_id))
+            else:
+                if ref.content_id in user_reactions:
+                    cache_keys.append(ref.cache_key_reactions(*user_reactions[ref.content_id]))
+                else:
+                    cache_keys.append(ref.cache_key_reactions(None, None))
+
         cached_reactions = await Cache.obj.multi_get(cache_keys)
 
         not_cached_ids = [
@@ -702,5 +702,13 @@ class MessageRef(Model):
 
         return results
 
-    def cache_key_reactions(self, user_id: int | None) -> str:
-        return f"message-reactions:{self.content_id}:{user_id or 0}:{self.content.reactions_version}"
+    def cache_key_reactions_author(self, user_id: int) -> str:
+        return f"message-reactions:{self.content_id}:a{user_id}:{self.content.reactions_version}"
+
+    def cache_key_reactions(self, reaction: int | None, custom_emoji: int | None) -> str:
+        return (
+            f"message-reactions:"
+            f"{self.content_id}:"
+            f"r{reaction or 0}-{custom_emoji or 0}:"
+            f"{self.content.reactions_version}"
+        )

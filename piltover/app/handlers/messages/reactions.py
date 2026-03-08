@@ -68,26 +68,26 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         participant = await chat_or_channel.get_participant_raise(user)
         # TODO: check if this is correct permission
         if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN", reason="can't view messages")
         channel_min_id = 0
         if peer.type is PeerType.CHANNEL \
                 and (channel_min_id := peer.channel.min_id(participant)) is not None \
                 and request.msg_id < channel_min_id:
             raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    if (message := await MessageRef.get_(request.msg_id, peer)) is None:
+    if (message := await MessageRef.get_(request.msg_id, peer, prefetch=("peer__channel",))) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if peer.type is PeerType.CHANNEL and not peer.channel.all_reactions:
         if reaction is None:
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN", reason="custom are disabled")
         if not await AvailableChannelReaction.filter(channel=peer.channel, reaction=reaction).exists():
-            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+            raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN", reason="reaction is disabled 1")
     elif peer.type is PeerType.CHANNEL \
             and peer.channel.all_reactions \
             and not peer.channel.all_reactions_custom \
             and reaction is not None:
-        raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
+        raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN", reason="reaction is disabled 2")
 
     uniq_reactions = len(await MessageReaction.filter(
         message_id=message.content_id,
