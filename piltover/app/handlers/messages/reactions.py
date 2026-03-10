@@ -9,8 +9,8 @@ from piltover.app.utils.utils import telegram_hash
 from piltover.app_config import AppConfig
 from piltover.cache import Cache
 from piltover.db.enums import PeerType, ChatBannedRights, FileType
-from piltover.db.models import Reaction, User, Peer, MessageReaction, ReadState, State, RecentReaction, \
-    UserReactionsSettings, MessageRef, AvailableChannelReaction, File, MessageContent
+from piltover.db.models import Reaction, User, Peer, MessageReaction, State, RecentReaction, UserReactionsSettings, \
+    MessageRef, AvailableChannelReaction, File, MessageContent
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates, ReactionEmpty
@@ -75,7 +75,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
         # TODO: check if this is correct permission
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
+        if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN", reason="can't view messages")
         channel_min_id = 0
         if peer.type is PeerType.CHANNEL \
@@ -94,7 +94,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
     elif peer.type is PeerType.CHANNEL \
             and peer.channel.all_reactions \
             and not peer.channel.all_reactions_custom \
-            and reaction is not None:
+            and custom_reaction is not None:
         raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN", reason="reaction is disabled 2")
 
     uniq_reactions = len(await MessageReaction.filter(
