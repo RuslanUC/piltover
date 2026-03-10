@@ -24,6 +24,7 @@ from piltover.db.enums import PeerType
 from piltover.db.models import MessageRef, Peer, User, MessageContent
 from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
 from tests.client import TestClient
+from tests.conftest import ClientFactory
 
 
 @pytest.mark.asyncio
@@ -1245,4 +1246,26 @@ async def test_save_clear_draft(exit_stack: AsyncExitStack) -> None:
     update = await client.expect_update(UpdateDraftMessage)
     assert update.peer.user_id == client.me.id
     assert isinstance(update.draft, DraftMessageEmpty)
+
+
+@pytest.mark.asyncio
+async def test_delete_text_message_in_private_chat(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    user2 = await client1.resolve_user(client2)
+
+    message1 = await client1.send_message(user2.id, text="test 123")
+    message2 = await client1.send_message(user2.id, text="test 456")
+    message3 = await client1.send_message(user2.id, text="test 789")
+
+    messages = [msg async for msg in client1.get_chat_history(user2.id)]
+    assert len(messages) == 3
+    assert {m.id for m in messages} == {message1.id, message2.id, message3.id}
+
+    await message2.delete()
+
+    messages = [msg async for msg in client1.get_chat_history(user2.id)]
+    assert len(messages) == 2
+    assert {m.id for m in messages} == {message1.id, message3.id}
 

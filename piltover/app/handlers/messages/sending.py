@@ -498,9 +498,9 @@ async def delete_messages(request: DeleteMessages, user: User):
     else:
         # TODO: maybe just fetch all messages for all peers where content id matches?
         #  i.e. do something like
-        #  await MessageRef.filter(content_id__in=Subquery(
+        #  all_messages = await MessageRef.filter(content_id__in=Subquery(
         #      MessageRef.filter(id__in=ids, peer__owner=user).values("content_id"),
-        #  ))
+        #  )).select_related("peer", "peer__owner")
 
         our_messages = await MessageRef.filter(id__in=ids, peer__owner=user).select_related("peer")
         if not our_messages:
@@ -515,7 +515,7 @@ async def delete_messages(request: DeleteMessages, user: User):
 
         queries = []
         for peer, content_ids in content_ids_by_peers.items():
-            queries.append(peer.get_opposite_query(True) | Q(content_id__in=content_ids))
+            queries.append(peer.get_opposite_query(True) & Q(content_id__in=content_ids))
 
         if not queries:
             return AffectedMessages(
