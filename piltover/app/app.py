@@ -269,6 +269,9 @@ if __name__ == "__main__":
     parser.add_argument("--cache-port", type=int, required=False,
                         help="Port of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
                         default=None)
+    parser.add_argument("--cache-db", type=int, required=False,
+                        help="Redis db of cache server (if \"cache-backend\" is \"redis\")",
+                        default=None)
     parser.add_argument("--debug-tracing-backend", type=str, required=False,
                         help="Tracing backend", choices=["console", "zipkin", "noop", None],
                         default=None)
@@ -301,6 +304,7 @@ else:
         cache_backend="memory",
         cache_endpoint=None,
         cache_port=None,
+        cache_db=None,
         debug_tracing_backend="console",
         debug_tracing_zipkin_address=None,
     )
@@ -308,7 +312,7 @@ else:
 args.fill_defaults()
 
 
-Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)
+Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port, db=args.cache_db)
 app = PiltoverApp(
     data_dir=args.data_dir,
     privkey=args.privkey_file,

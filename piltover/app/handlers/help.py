@@ -441,7 +441,7 @@ async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> Peer
         if color_id not in ids_set:
             ids.append(color_id)
 
-    colors_hash = telegram_hash(ids, 32)
+    colors_hash = telegram_hash(sorted(ids), 32)
     if colors_hash == request.hash:
         return PeerColorsNotModified()
 

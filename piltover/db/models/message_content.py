@@ -212,11 +212,11 @@ class MessageContent(Model):
 
     @classmethod
     async def to_tl_content_bulk(cls, messages: list[models.MessageContent]) -> list[MessageToFormatContentBase]:
-        cached = []
+        if not messages:
+            return []
+
         cache_keys = [message.cache_key() for message in messages]
-        if cache_keys:
-            # Assuming multi_get returns objects in the same order as cache_keys
-            cached = await Cache.obj.multi_get(cache_keys)
+        cached = await Cache.obj.multi_get(cache_keys)
 
         replies: dict[MessageIdContent, MessageReplies] = {}
         replies_count_to_fetch: dict[MessageIdContent, list[MessageIdContent]] = defaultdict(list)

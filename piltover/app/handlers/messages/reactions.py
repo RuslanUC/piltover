@@ -7,6 +7,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.utils import telegram_hash
 from piltover.app_config import AppConfig
+from piltover.cache import Cache
 from piltover.db.enums import PeerType, ChatBannedRights, FileType
 from piltover.db.models import Reaction, User, Peer, MessageReaction, ReadState, State, RecentReaction, \
     UserReactionsSettings, MessageRef, AvailableChannelReaction, File, MessageContent
@@ -31,7 +32,11 @@ async def get_available_reactions(request: GetAvailableReactions) -> AvailableRe
     if reactions_hash == request.hash:
         return AvailableReactionsNotModified()
 
-    return AvailableReactions(
+    cached = await Cache.obj.get(f"reactions-{reactions_hash}")
+    if cached is not None:
+        return cached
+
+    result = AvailableReactions(
         hash=reactions_hash,
         reactions=[
             reaction.to_tl_available_reaction()
@@ -41,6 +46,9 @@ async def get_available_reactions(request: GetAvailableReactions) -> AvailableRe
             )
         ]
     )
+
+    await Cache.obj.set(f"reactions-{reactions_hash}", result)
+    return result
 
 
 REACTION_NOT_MODIFIED = ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")

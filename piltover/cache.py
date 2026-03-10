@@ -17,6 +17,10 @@ class TLSerializer(BaseSerializer):
     ]
     _TYPES_TO_INT = {typ: idx for idx, typ in enumerate(_TYPES)}
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.encoding = None
+
     def dumps(self, value: TLObject | int | str | bytes | bool | float | None) -> bytes:
         ser_type = bytes([0 if isinstance(value, TLObject) else self._TYPES_TO_INT[type(value)]])
         return ser_type + SerializationUtils.write(value)
@@ -48,6 +52,7 @@ class Cache:
             from aiocache import RedisCache
             cls.obj = RedisCache(serializer=serializer, **backend_kwargs)
         elif backend == "memcached":
+            backend_kwargs.pop("db", None)
             from aiocache import MemcachedCache
             cls.obj = MemcachedCache(serializer=serializer, **backend_kwargs)
         else:

@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TypeVar, Self, Iterable, cast
 
-from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.functions import Count
@@ -163,10 +162,11 @@ class MessageRef(Model):
 
     @classmethod
     async def to_tl_ref_bulk(cls, refs: list[models.MessageRef], user_id: int) -> list[TLMessageBase]:
-        cached = []
+        if not refs:
+            return []
+
         cache_keys = [ref.cache_key(user_id) for ref in refs]
-        if cache_keys:
-            cached = await Cache.obj.multi_get(cache_keys)
+        cached = await Cache.obj.multi_get(cache_keys)
 
         message_content_ids = {
             ref.content.id
@@ -269,6 +269,9 @@ class MessageRef(Model):
     async def to_tl_bulk_maybecached(
             cls, refs: list[MessageRef], user_id: int, with_reactions: bool = True,
     ) -> list[TLMessageBase]:
+        if not refs:
+            return []
+
         cache_keys = [ref.cache_key(user_id) for ref in refs] + [ref.content.cache_key() for ref in refs]
 
         all_cached = await Cache.obj.multi_get(cache_keys)
@@ -600,6 +603,9 @@ class MessageRef(Model):
 
     @classmethod
     async def to_tl_reactions_bulk(cls, messages: list[MessageRef], user_id: int) -> list[MessageReactions]:
+        if not messages:
+            return []
+
         content_ids = [ref.content.id for ref in messages if ref.content.type is MessageType.REGULAR]
 
         user_reactions = await cls._get_user_reaction_bulk(content_ids, user_id)
@@ -698,7 +704,8 @@ class MessageRef(Model):
             ))
             to_cache.append((cache_key, results[-1]))
 
-        await Cache.obj.multi_set(to_cache)
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
 
         return results
 

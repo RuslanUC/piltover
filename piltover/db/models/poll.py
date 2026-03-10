@@ -177,5 +177,6 @@ class Poll(Model):
             ))
             to_cache.append((poll._cache_key(), tl[-1]))
 
-        await Cache.obj.multi_set(to_cache)
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
         return tl
