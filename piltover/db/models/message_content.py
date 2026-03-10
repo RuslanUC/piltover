@@ -59,6 +59,7 @@ class MessageContent(Model):
     version: int = fields.IntField(default=0)
     reactions_version: int = fields.IntField(default=0)
     send_as_channel: models.Channel | None = NullableFK("models.Channel")
+    author_reactions_unread: bool = fields.BooleanField(default=False)
 
     peer_id: int
     author_id: int | None

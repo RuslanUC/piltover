@@ -570,25 +570,16 @@ class MessageRef(Model):
         recent_reactions = None
         if can_see_list:
             if self.content.author_id == user_id:
-                if self.peer.type is PeerType.CHANNEL:
-                    read_state = await models.ReadState.get_or_none(
-                        peer__owner_id=user_id, peer__channel_id=self.peer.channel_id,
-                    )
-                else:
-                    read_state = await models.ReadState.get_or_none(peer_id=self.peer_id)
-                if read_state is not None:
-                    last_read_id = read_state.last_reaction_id
-                else:
-                    last_read_id = 0
+                is_unread = self.content.author_reactions_unread
             else:
-                last_read_id = 2 ** 63 - 1
+                is_unread = False
 
             recent_reactions = []
 
             for recent in await models.MessageReaction.filter(
                     message_id=self.content_id,
             ).order_by("-date").limit(5).select_related("reaction"):
-                recent_reactions.append(recent.to_tl_peer_reaction(user_id, last_read_id))
+                recent_reactions.append(recent.to_tl_peer_reaction(user_id, is_unread))
 
         result = MessageReactions(
             min=min_,
@@ -676,25 +667,15 @@ class MessageRef(Model):
             if can_see_list:
                 # TODO: do this outside the loop
                 if ref.content.author_id == user_id:
-                    if ref.peer.type is PeerType.CHANNEL:
-                        read_state = await models.ReadState.get_or_none(
-                            peer__owner_id=user_id, peer__channel_id=ref.peer.channel_id,
-                        )
-                    else:
-                        read_state = await models.ReadState.get_or_none(peer_id=ref.peer_id)
-                    if read_state is not None:
-                        last_read_id = read_state.last_reaction_id
-                    else:
-                        last_read_id = 0
+                    is_unread = ref.content.author_reactions_unread
                 else:
-                    last_read_id = 2 ** 63 - 1
+                    is_unread = False
 
                 recent_reactions = []
-
                 for recent in await models.MessageReaction.filter(
                         message_id=ref.content_id,
                 ).order_by("-date").limit(5).select_related("reaction"):
-                    recent_reactions.append(recent.to_tl_peer_reaction(user_id, last_read_id))
+                    recent_reactions.append(recent.to_tl_peer_reaction(user_id, is_unread))
 
             results.append(MessageReactions(
                 min=ref.content_id not in user_reactions and ref.content.author_id != user_id,

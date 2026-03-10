@@ -27,7 +27,7 @@ class MessageReaction(Model):
             ("user", "message",),
         )
 
-    def to_tl_peer_reaction(self, user_id: int, last_read_id: int) -> MessagePeerReaction:
+    def to_tl_peer_reaction(self, user_id: int, is_unread: bool) -> MessagePeerReaction:
         if self.reaction_id is not None:
             reaction = ReactionEmoji(emoticon=self.reaction.reaction)
         elif self.custom_emoji_id is not None:
@@ -37,7 +37,7 @@ class MessageReaction(Model):
 
         return MessagePeerReaction(
             big=False,
-            unread=self.id > last_read_id,
+            unread=is_unread,
             my=self.user_id == user_id,
             peer_id=PeerUser(user_id=self.user_id),
             date=int(self.date.timestamp()),

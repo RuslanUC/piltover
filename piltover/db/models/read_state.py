@@ -11,7 +11,6 @@ from piltover.exceptions import Unreachable
 class ReadState(Model):
     id: int = fields.BigIntField(pk=True)
     last_message_id: int = fields.BigIntField(default=0)
-    last_reaction_id: int = fields.BigIntField(default=0)
     peer: models.Peer = fields.OneToOneField("models.Peer")
 
     peer_id: int
@@ -37,17 +36,17 @@ class ReadState(Model):
         if no_reactions:
             unread_reactions_count = 0
         else:
-            unread_reactions_count = await models.MessageReaction.filter(
-                Q(message__author_id=peer.owner_id, id__gt=in_read_state.last_reaction_id)
-                & (
-                    Q(
-                        message__messagerefs__peer__owner_id=peer.owner_id,
-                        message__messagerefs__peer__channel_id=peer.channel_id
-                    )
-                    if peer.type is PeerType.CHANNEL
-                    else Q(message__messagerefs__peer=peer)
+            unread_reactions_count = await models.MessageContent.filter(
+                Q(
+                    messagerefs__peer__owner_id=peer.owner_id,
+                    messagerefs__peer__channel_id=peer.channel_id,
                 )
-                & Q(user_id__not=peer.owner_id),
+                if peer.type is PeerType.CHANNEL
+                else Q(messagerefs__peer=peer),
+
+                messagereactions__user_id__not=peer.owner_id,
+                author_id=peer.owner_id,
+                author_reactions_unread=True,
             ).count()
 
         out_read_max_id = 0

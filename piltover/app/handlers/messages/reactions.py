@@ -121,6 +121,8 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             ).values_list("id", flat=True)
             await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
+    author_reactions_unread = F("author_reactions_unread")
+
     if reaction is not None or custom_reaction is not None:
         await MessageReaction.create(
             user=user,
@@ -128,9 +130,14 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             reaction=reaction,
             custom_emoji=custom_reaction,
         )
+        if message.content.author_id != user.id:
+            author_reactions_unread = True
 
-    await MessageContent.filter(id=message.content_id).update(reactions_version=F("reactions_version") + 1)
-    await message.content.refresh_from_db(["reactions_version"])
+    await MessageContent.filter(id=message.content_id).update(
+        reactions_version=F("reactions_version") + 1,
+        author_reactions_unread=author_reactions_unread,
+    )
+    await message.content.refresh_from_db(["reactions_version", "author_reactions_unread"])
 
     result = await upd.update_reactions(user, [message], peer)
 
@@ -191,11 +198,10 @@ async def get_messages_reactions(request: GetMessagesReactions, user: User) -> U
 @handler.on_request(GetUnreadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_unread_reactions(request: GetUnreadReactions, user: User) -> Messages:
     peer = await Peer.from_input_peer_raise(user, request.peer)
-    read_state, _ = await ReadState.get_or_create(peer=peer)
 
     query = await get_messages_query_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, user.id,
-        after_reaction_id=read_state.last_reaction_id,
+        unread_reactions=True,
     )
 
     messages = await query
@@ -211,26 +217,20 @@ async def get_unread_reactions(request: GetUnreadReactions, user: User) -> Messa
 @handler.on_request(ReadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user, request.peer)
-    read_state, _ = await ReadState.get_or_create(peer=peer)
 
-    reaction_query = Q(message__author=user) & (
-        Q(message__messagerefs__peer__owner=user, message__messagerefs__peer__channel_id=peer.channel_id)
-        if peer.type is PeerType.CHANNEL
-        else Q(message__messagerefs__peer=peer)
+    if peer.type is PeerType.CHANNEL:
+        peer_query = Q(messagerefs__peer__owner=user, messagerefs__peer__channel_id=peer.channel_id)
+    else:
+        peer_query = Q(messagerefs__peer=peer)
+
+    await MessageContent.filter(
+        id__in=Subquery(MessageContent.filter(peer_query, author_reactions_unread=True, author=user))
+    ).update(
+        reactions_version=F("reactions_version") + 1,
+        author_reactions_unread=False,
     )
-    new_last_reaction_id = await MessageReaction.filter(reaction_query).order_by("-id").first().values_list("id", flat=True)
-    new_last_reaction_id = new_last_reaction_id or read_state.last_reaction_id
 
     pts = await State.add_pts(user, 0)
-
-    if new_last_reaction_id == read_state.last_reaction_id:
-        return AffectedHistory(
-            pts=pts,
-            pts_count=0,
-            offset=0,
-        )
-
-    await ReadState.filter(id=read_state.id).update(last_reaction_id=new_last_reaction_id)
 
     # TODO: UpdateMessageReactions with unread=False
 
@@ -295,10 +295,9 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user: Use
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if message.content.author_id == user.id:
-        read_state, _ = await ReadState.get_or_create(peer=peer)
-        last_read_id = read_state.last_reaction_id
+        is_unread = message.content.author_reactions_unread
     else:
-        last_read_id = 2 ** 63 - 1
+        is_unread = False
 
     limit = max(1, min(100, request.limit))
 
@@ -338,7 +337,7 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user: Use
     peer_reactions = []
     for reaction in reactions:
         users[reaction.user_id] = reaction.user
-        peer_reactions.append(reaction.to_tl_peer_reaction(user.id, last_read_id))
+        peer_reactions.append(reaction.to_tl_peer_reaction(user.id, is_unread))
 
     return MessageReactionsList(
         count=await query_simple.count(),

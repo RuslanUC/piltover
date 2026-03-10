@@ -14,7 +14,7 @@ from piltover.cache import Cache
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction, \
     READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
-    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState
+    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -105,7 +105,7 @@ def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | Non
 async def get_messages_query_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
-        filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
+        filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, unread_reactions: bool = False,
         only_mentions: bool = False, reply_to_id: int | None = None,
 ) -> QuerySet[MessageRef]:
     query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
@@ -117,7 +117,7 @@ async def get_messages_query_internal(
         query &= filter_query
         has_filter = True
 
-    if not only_mentions and filter_ is None and saved_peer is None and q is None and after_reaction_id is None:
+    if not only_mentions and filter_ is None and saved_peer is None and q is None and not unread_reactions:
         query &= Q(content__type__not=MessageType.SCHEDULED)
     elif not has_filter:
         query &= Q(content__type=MessageType.REGULAR)
@@ -141,9 +141,9 @@ async def get_messages_query_internal(
     if isinstance(peer, Peer) and peer.type is PeerType.SELF and saved_peer is not None:
         query &= Q(content__fwd_header__saved_peer=saved_peer)
 
-    if after_reaction_id is not None:
+    if unread_reactions:
         user_id = peer.owner_id if isinstance(peer, Peer) else peer.id
-        query &= Q(content__messagereactions__id__gt=after_reaction_id, content__author_id__not=user_id)
+        query &= Q(content__author_reactions_unread=True, content__author_id__not=user_id)
 
     if only_mentions:
         if isinstance(peer, Peer) and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
@@ -235,12 +235,12 @@ async def get_messages_query_internal(
 async def get_messages_internal(
         peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
-        filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, after_reaction_id: int | None = None,
+        filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, unread_reactions: bool = False,
         reply_to_id: int | None = None,
 ) -> list[MessageRef]:
     query = await get_messages_query_internal(
         peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_, saved_peer,
-        after_reaction_id, reply_to_id=reply_to_id,
+        unread_reactions, reply_to_id=reply_to_id,
     )
     return await query
 
@@ -746,11 +746,14 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
                 and ref.content.media.file.type in READABLE_FILE_TYPES
         )
     }
+    unread_reaction_ids = await MessageContent.filter(
+        id__in=content_ids, author=user, author_reactions_unread=True,
+    ).values_list("id", flat=True)
 
     for read_media in await MessageMediaRead.filter(user=user, message_id__in=list(refs_with_media)):
         del refs_with_media[read_media.message_id]
 
-    if not mentions and not refs_with_media:
+    if not mentions and not refs_with_media and not unread_reaction_ids:
         return None
 
     read_ids = set()
@@ -764,7 +767,7 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
         read_ids.add(ref.id)
         media_read_to_create.append(MessageMediaRead(user=user, message=ref))
 
-    if not read_ids:
+    if not read_ids and not unread_reaction_ids:
         return None
 
     if mentions:
@@ -773,12 +776,18 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
     if media_read_to_create:
         await MessageMediaRead.bulk_create(media_read_to_create)
 
+    if unread_reaction_ids:
+        await MessageContent.filter(id__in=unread_reaction_ids).update(
+            reactions_version=F("reactions_version") + 1,
+            author_reactions_unread=False,
+        )
+
     for ref in valid_refs:
         if ref.id not in read_ids:
             continue
         await Cache.obj.delete(ref.cache_key(user.id))
 
-    return list(read_ids)
+    return list(read_ids) + unread_reaction_ids
 
 
 @handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
