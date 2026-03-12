@@ -229,7 +229,7 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
 
                 await make_sticker_from_file(
                     content.media.file, stickerset, old_sticker.sticker_pos, old_sticker.sticker_alt,
-                    old_sticker.sticker_is_mask, old_sticker.sticker_mask_coords,
+                    old_sticker.sticker_is_mask, old_sticker.sticker_mask_coords, True, False,
                 )
                 stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
                 await stickerset.save(update_fields=["hash"])
@@ -318,7 +318,16 @@ async def stickers_text_message_handler(peer: Peer, message: MessageRef) -> Mess
 
             count = await File.filter(stickerset=stickerset).count()
 
-            await make_sticker_from_file(file, stickerset, count, emoji, False, None)
+            if file.mime_type.startswith("image/"):
+                is_static = True
+                is_webm = False
+            elif file.mime_type == "video/webm":
+                is_static = False
+                is_webm = True
+            else:
+                return await send_bot_message(peer, "File is invalid. Somehow validation failed earlier.")
+
+            await make_sticker_from_file(file, stickerset, count, emoji, False, None, is_static, is_webm)
             stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
             await stickerset.save(update_fields=["hash"])
 

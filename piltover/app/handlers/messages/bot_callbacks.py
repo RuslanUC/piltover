@@ -38,7 +38,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
         # TODO: allow no participant in public channels
         participant = await chat_or_channel.get_participant_raise(user)
         # TODO: check if this is correct permission
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
+        if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         channel_min_id = 0
         if peer.type is PeerType.CHANNEL \

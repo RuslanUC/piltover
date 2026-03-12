@@ -8,7 +8,7 @@ from piltover.app.handlers.messages.history import format_messages_internal, get
 from piltover.app.utils.utils import telegram_hash
 from piltover.app_config import AppConfig
 from piltover.cache import Cache
-from piltover.db.enums import PeerType, ChatBannedRights, FileType
+from piltover.db.enums import PeerType, FileType
 from piltover.db.models import Reaction, User, Peer, MessageReaction, State, RecentReaction, UserReactionsSettings, \
     MessageRef, AvailableChannelReaction, File, MessageContent
 from piltover.enums import ReqHandlerFlags
@@ -186,7 +186,7 @@ async def get_messages_reactions(request: GetMessagesReactions, user: User) -> U
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user)
         # TODO: check if this is correct permission
-        if not chat_or_channel.user_has_permission(participant, ChatBannedRights.VIEW_MESSAGES):
+        if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
     if (messages := await MessageRef.get_many(request.id, peer, prefetch_fields=("peer__channel",))) is None:
