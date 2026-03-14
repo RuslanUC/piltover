@@ -1,8 +1,10 @@
+from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
 from piltover.app.bot_handlers.stickers.utils import send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
-from piltover.db.models import Peer, MessageRef
+from piltover.db.enums import StickersBotState
+from piltover.db.models import StickersBotUserState
 
-__text = FormatableTextWithEntities("""
+_text, _entities = FormatableTextWithEntities("""
 Hello, I'm the Sticker Bot! I can create sticker sets and emoji packs from pictures and give you usage stats for your stickers. See this manual for details on creating stickers and emoji:
 <a>https://core.telegram.org/stickers</a>
 
@@ -35,9 +37,10 @@ Stats
 <c>/packusagetop</c> – get usage stats for your set - TODO
 
 <c>/cancel</c> – cancel the current operation
-""".strip())
-__text, __entities = __text.format()
+""".strip()).format()
 
 
-async def stickers_start_command(peer: Peer, _: MessageRef) -> MessageRef | None:
-    return await send_bot_message(peer, __text, entities=__entities)
+class Start(BotInteractionHandler[StickersBotState, StickersBotUserState]):
+    def __init__(self) -> None:
+        super().__init__(StickersBotUserState)
+        self.command("start").set_send_message_func(send_bot_message).do().respond(_text, _entities).ok().register()

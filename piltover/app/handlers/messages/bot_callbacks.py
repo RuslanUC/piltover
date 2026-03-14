@@ -10,7 +10,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.bots import process_callback_query, process_inline_query
 from piltover.app.utils.utils import check_password_internal, process_message_entities
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType, ChatBannedRights, InlineQueryPeer, FileType, InlineQueryResultType
+from piltover.db.enums import PeerType, InlineQueryPeer, FileType, InlineQueryResultType
 from piltover.db.models import User, Peer, UserPassword, CallbackQuery, InlineQuery, File, InlineQueryResultItem, \
     MessageRef
 from piltover.db.models.inline_query_result import InlineQueryResult
@@ -35,8 +35,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
     peer = await Peer.from_input_peer_raise(user, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        # TODO: allow no participant in public channels
-        participant = await chat_or_channel.get_participant_raise(user)
+        participant = await chat_or_channel.get_participant(user)
         # TODO: check if this is correct permission
         if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")

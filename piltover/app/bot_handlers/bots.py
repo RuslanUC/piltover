@@ -1,29 +1,13 @@
 from typing import cast, Callable, Awaitable
 
+from piltover.app.bot_handlers.botfather import BotfatherBotInteractionHandler
 from piltover.app.bot_handlers.botfather.callback_handler import botfather_callback_query_handler
-from piltover.app.bot_handlers.botfather.cancel_command import botfather_cancel_command
-from piltover.app.bot_handlers.botfather.empty_command import botfather_empty_command
-from piltover.app.bot_handlers.botfather.mybots_command import botfather_mybots_command
-from piltover.app.bot_handlers.botfather.newbot_command import botfather_newbot_command
-from piltover.app.bot_handlers.botfather.start_command import botfather_start_command
 from piltover.app.bot_handlers.botfather.text_handler import botfather_text_message_handler
 from piltover.app.bot_handlers.gif.inline_handler import gif_inline_query_handler
-from piltover.app.bot_handlers.stickers.addemoji_command import stickers_addemoji_command
-from piltover.app.bot_handlers.stickers.addsticker_command import stickers_addsticker_command
-from piltover.app.bot_handlers.stickers.cancel_command import stickers_cancel_command
-from piltover.app.bot_handlers.stickers.delpack_command import stickers_delpack_command
-from piltover.app.bot_handlers.stickers.done_command import stickers_done_command
-from piltover.app.bot_handlers.stickers.editsticker_command import stickers_editsticker_command
-from piltover.app.bot_handlers.stickers.newemojipack_command import stickers_newemojipack_command
-from piltover.app.bot_handlers.stickers.newpack_command import stickers_newpack_command
-from piltover.app.bot_handlers.stickers.newvideo_command import stickers_newvideo_command
-from piltover.app.bot_handlers.stickers.publish_command import stickers_publish_command
-from piltover.app.bot_handlers.stickers.renamepack_command import stickers_renamepack_command
-from piltover.app.bot_handlers.stickers.replacesticker_command import stickers_replacesticker_command
-from piltover.app.bot_handlers.stickers.skip_command import stickers_skip_command
-from piltover.app.bot_handlers.stickers.start_command import stickers_start_command
+from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
+from piltover.app.bot_handlers.stickers import StickersBotInteractionHandler
 from piltover.app.bot_handlers.stickers.text_handler import stickers_text_message_handler
-from piltover.app.bot_handlers.test_bot.ping_command import test_bot_ping_command
+from piltover.app.bot_handlers.test_bot import PingTestBotBotInteractionHandler
 from piltover.db.models import Peer, InlineQuery, InlineQueryResult, InlineQueryResultItem, MessageRef
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
 
@@ -32,37 +16,18 @@ async def _awaitable_none(_p: Peer, _m: MessageRef) -> None:
     return None
 
 
-HANDLERS: dict[str, dict[str, Callable[[Peer, MessageRef], Awaitable[MessageRef | None]]]] = {
+HANDLERS: dict[str, dict[str, Callable[[Peer, MessageRef], Awaitable[MessageRef | None]] | BotInteractionHandler]] = {
     "test_bot": {
         "__text": _awaitable_none,
-        "ping": test_bot_ping_command,
+        "__command": PingTestBotBotInteractionHandler(),
     },
     "botfather": {
         "__text": botfather_text_message_handler,
-        "start": botfather_start_command,
-        "help": botfather_start_command,
-        "newbot": botfather_newbot_command,
-        "cancel": botfather_cancel_command,
-        "mybots": botfather_mybots_command,
-        "empty": botfather_empty_command,
+        "__command": BotfatherBotInteractionHandler(),
     },
     "stickers": {
         "__text": stickers_text_message_handler,
-        "start": stickers_start_command,
-        "help": stickers_start_command,
-        "newpack": stickers_newpack_command,
-        "cancel": stickers_cancel_command,
-        "publish": stickers_publish_command,
-        "skip": stickers_skip_command,
-        "addsticker": stickers_addsticker_command,
-        "done": stickers_done_command,
-        "editsticker": stickers_editsticker_command,
-        "delpack": stickers_delpack_command,
-        "renamepack": stickers_renamepack_command,
-        "replacesticker": stickers_replacesticker_command,
-        "newemojipack": stickers_newemojipack_command,
-        "addemoji": stickers_addemoji_command,
-        "newvideo": stickers_newvideo_command,
+        "__command": StickersBotInteractionHandler(),
     }
 }
 CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, MessageRef, bytes], Awaitable[BotCallbackAnswer | None]]] = {
@@ -86,10 +51,7 @@ async def process_message_to_bot(peer: Peer, message: MessageRef) -> MessageRef 
         return await HANDLERS[bot_username]["__text"](peer, message)
 
     command_name = text.split(" ", 1)[0][1:]
-    if command_name not in HANDLERS[bot_username]:
-        return await HANDLERS[bot_username]["__text"](peer, message)
-
-    return await HANDLERS[bot_username][command_name](peer, message)
+    return await HANDLERS[bot_username]["__command"].handle_command(command_name, peer, message)
 
 
 async def process_callback_query(peer: Peer, message: MessageRef, data: bytes) -> BotCallbackAnswer | None:

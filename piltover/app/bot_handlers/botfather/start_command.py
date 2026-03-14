@@ -1,7 +1,10 @@
+from piltover.app.bot_handlers.botfather.utils import send_bot_message
+from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
-from piltover.db.models import Peer, MessageRef
+from piltover.db.enums import BotFatherState
+from piltover.db.models import BotFatherUserState
 
-__text, __entities = FormatableTextWithEntities("""
+_text, _entities = FormatableTextWithEntities("""
 I can help you create and manage Telegram bots. If you're new to the Bot API, please see the manual (<a>https://core.telegram.org/bots</a>).
 
 You can control me by sending these commands:
@@ -42,6 +45,10 @@ Games
 """.strip()).format()
 
 
-async def botfather_start_command(peer: Peer, _: MessageRef) -> MessageRef | None:
-    messages = await MessageRef.create_for_peer(peer, peer.user, opposite=False, message=__text, entities=__entities)
-    return messages[peer]
+class Start(BotInteractionHandler[BotFatherState, BotFatherUserState]):
+    def __init__(self) -> None:
+        super().__init__(BotFatherUserState)
+        (
+            self.command("start").set_send_message_func(send_bot_message)
+            .do().respond(_text, _entities).ok().register()
+        )
