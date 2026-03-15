@@ -12,6 +12,7 @@ from piltover.app.bot_handlers.stickers.renamepack_command import RenamePack
 from piltover.app.bot_handlers.stickers.replacesticker_command import ReplaceSticker
 from piltover.app.bot_handlers.stickers.skip_command import Skip
 from piltover.app.bot_handlers.stickers.start_command import Start
+from piltover.app.bot_handlers.stickers.text_handler import Text
 from piltover.db.enums import StickersBotState
 from piltover.db.models import StickersBotUserState
 
@@ -33,3 +34,4 @@ class StickersBotInteractionHandler(BotInteractionHandler[StickersBotState, Stic
         self.include(RenamePack())
         self.include(ReplaceSticker())
         self.include(Start())
+        self.include(Text())
