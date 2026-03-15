@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TypeVar, Self, Iterable, cast
 
-from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.functions import Count, Max
@@ -722,12 +721,10 @@ class MessageRef(Model):
 
     async def to_tl_replies(self) -> TLMessageReplies | None:
         if not self.is_discussion and self.discussion_id is None:
-            logger.info(f"skipping ref {self.id}")
             return None
 
         cache_key = self.cache_key_replies()
         if (cached := await Cache.obj.get(cache_key)) is not None:
-            logger.info(f"cached ref {self.id}")
             return cached
 
         replies = None
@@ -771,7 +768,6 @@ class MessageRef(Model):
                 max_id=max_id,
             )
 
-        logger.info(f"replies is {replies}")
         await Cache.obj.set(cache_key, replies)
 
         return replies
@@ -785,7 +781,6 @@ class MessageRef(Model):
         ]
 
         if not cache_keys:
-            logger.info(f"skipping refs {[ref.id for ref in refs]}")
             return [None] * len(refs)
 
         cached_replies = await Cache.obj.multi_get(cache_keys)
@@ -795,18 +790,14 @@ class MessageRef(Model):
         cache_idx = 0
         for ref in refs:
             if not ref.is_discussion and ref.discussion_id is None:
-                logger.info(f"skipping ref {ref.id}")
                 continue
             cached = cached_replies[cache_idx]
             cache_idx += 1
             if cached is not None:
-                logger.info(f"cached ref {ref.id}")
                 continue
             if ref.is_discussion:
-                logger.info(f"discussion? {ref.id}")
                 ids_to_get.add(ref.id)
             elif ref.discussion_id is not None:
-                logger.info(f"comments? {ref.id}")
                 ids_to_get.add(ref.discussion_id)
                 channel_ids_to_get.add(ref.discussion_id)
             else:
@@ -837,20 +828,17 @@ class MessageRef(Model):
         cache_idx = 0
         for ref in refs:
             if not ref.is_discussion and ref.discussion_id is None:
-                logger.info(f"skipping ref {ref.id}")
                 replies.append(None)
                 continue
             cache_key = cache_keys[cache_idx]
             cached = cached_replies[cache_idx]
             cache_idx += 1
             if cached is not None:
-                logger.info(f"cached ref {ref.id}")
                 replies.append(cached)
                 continue
 
             if ref.is_discussion:
                 replies_count, max_id = replies_stats.get(ref.id, (0, None))
-                logger.info(f"ref {ref.id}: {replies_count}, {max_id}")
                 replies_info = TLMessageReplies(
                     replies=replies_count,
                     replies_pts=0,
@@ -858,7 +846,6 @@ class MessageRef(Model):
                 )
             elif ref.discussion_id is not None:
                 replies_count, max_id = replies_stats.get(ref.discussion_id, (0, None))
-                logger.info(f"ref {ref.id}: {replies_count}, {max_id}")
                 discussion_channel_id = discussion_channel_ids.get(ref.discussion_id)
                 replies_info = TLMessageReplies(
                     replies=replies_count,
