@@ -16,6 +16,7 @@ import av
 from PIL.Image import Image, open as img_open
 from av import VideoFrame
 from loguru import logger
+from urlextract import URLExtract
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType, FileType
@@ -409,6 +410,24 @@ def _check_entity_inside_entity(entities: list[dict], u16start: int, u16end: int
     return False
 
 
+_URL_EXTRACTOR = URLExtract(limit=100)
+
+
+def _insert_entity_maybe(
+        tlid: int, entities: list[MessageEntityBase], span: tuple[int, int], u8_to_u16: dict[int, int],
+) -> None:
+    u16start, u16end, length = _span_to_offset_length(span, u8_to_u16)
+    if _check_entity_inside_entity(entities, u16start, u16end):
+        return
+
+    entity = {
+        "_": tlid,
+        "offset": u16start,
+        "length": length,
+    }
+    bisect.insort(entities, entity, key=lambda e: e["offset"])
+
+
 async def process_message_entities(
         text: str | None, entities: list[MessageEntityBase], user: User,
 ) -> list[dict] | None:
@@ -435,33 +454,17 @@ async def process_message_entities(
 
     for mention in USERNAME_MENTION_REGEX.finditer(text):
         await sleep(0)
+        _insert_entity_maybe(MessageEntityMention.tlid(), entities, mention.span(), u8_to_u16)
 
-        u16start, u16end, length = _span_to_offset_length(mention.span(), u8_to_u16)
-
-        if _check_entity_inside_entity(entities, u16start, u16end):
+    for url, span in _URL_EXTRACTOR.gen_urls(text, get_indices=True):
+        await sleep(0)
+        if span[0] < 0 or span[1] < 0:
             continue
-
-        entity = {
-            "_": MessageEntityMention.tlid(),
-            "offset": u16start,
-            "length": length,
-        }
-        bisect.insort(entities, entity, key=lambda e: e["offset"])
+        _insert_entity_maybe(MessageEntityUrl.tlid(), entities, span, u8_to_u16)
 
     for command in BOT_COMMAND_REGEX.finditer(text):
         await sleep(0)
-
-        u16start, u16end, length = _span_to_offset_length(command.span(), u8_to_u16)
-
-        if _check_entity_inside_entity(entities, u16start, u16end):
-            continue
-
-        entity = {
-            "_": MessageEntityBotCommand.tlid(),
-            "offset": u16start,
-            "length": length,
-        }
-        bisect.insort(entities, entity, key=lambda e: e["offset"])
+        _insert_entity_maybe(MessageEntityBotCommand.tlid(), entities, command.span(), u8_to_u16)
 
     return entities
 

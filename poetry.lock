@@ -926,6 +926,18 @@ reference = "feat/add-functions-to-generate-random-bytes"
 resolved_reference = "04a2e8ca53f319a7c3a09c51734c21ab7880e9ed"
 
 [[package]]
+name = "filelock"
+version = "3.25.2"
+description = "A platform independent file lock."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "filelock-3.25.2-py3-none-any.whl", hash = "sha256:ca8afb0da15f229774c9ad1b455ed96e85a81373065fb10446672f64444ddf70"},
+    {file = "filelock-3.25.2.tar.gz", hash = "sha256:b64ece2b38f4ca29dd3e810287aa8c48182bbecd1ae6e9ae126c9b35f1382694"},
+]
+
+[[package]]
 name = "frozenlist"
 version = "1.8.0"
 description = "A list-like structure which implements collections.abc.MutableSequence"
@@ -2174,6 +2186,18 @@ tests = ["check-manifest", "coverage (>=7.4.2)", "defusedxml", "markdown2", "ole
 xmp = ["defusedxml"]
 
 [[package]]
+name = "platformdirs"
+version = "4.9.4"
+description = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "platformdirs-4.9.4-py3-none-any.whl", hash = "sha256:68a9a4619a666ea6439f2ff250c12a853cd1cbd5158d258bd824a7df6be2f868"},
+    {file = "platformdirs-4.9.4.tar.gz", hash = "sha256:1ec356301b7dc906d83f371c8f487070e99d3ccf9e501686456394622a01a934"},
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 description = "plugin and hook calling mechanisms for python"
@@ -3279,6 +3303,36 @@ files = [
 ]
 
 [[package]]
+name = "uritools"
+version = "6.0.1"
+description = "URI parsing, classification and composition"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "uritools-6.0.1-py3-none-any.whl", hash = "sha256:d9507b82206c857d2f93d8fcc84f3b05ae4174096761102be690aa76a360cc1b"},
+    {file = "uritools-6.0.1.tar.gz", hash = "sha256:2f9e9cb954e7877232b2c863f724a44a06eb98d9c7ebdd69914876e9487b94f8"},
+]
+
+[[package]]
+name = "urlextract"
+version = "1.9.0"
+description = "Collects and extracts URLs from given text."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "urlextract-1.9.0-py3-none-any.whl", hash = "sha256:f88963532488b1c7c405e21bd162ae97871754ea04b60e18d33ee075b19b82fd"},
+    {file = "urlextract-1.9.0.tar.gz", hash = "sha256:70508e02ba9df372e25cf0642db367cece273e8712cd0ce78178fc5dd7ea00db"},
+]
+
+[package.dependencies]
+filelock = "*"
+idna = "*"
+platformdirs = "*"
+uritools = "*"
+
+[[package]]
 name = "uvloop"
 version = "0.22.1"
 description = "Fast implementation of asyncio event loop on top of libuv"
@@ -3697,4 +3751,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11.1,<4.0"
-content-hash = "8d9b5b33d51314f15e995b24551affef458de3cbe304a4a7c8a9dab15885c0f0"
+content-hash = "88a1f0d619fb4113d4f946704df7fb77126bc9665ae37f4099b196c0f1d60133"
