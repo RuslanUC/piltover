@@ -47,7 +47,7 @@ class MessageToFormat(types.MessageToFormatInternal):
                 reply_markup=self.content.reply_markup,
                 noforwards=self.content.noforwards,
                 via_bot_id=self.content.via_bot_id,
-                replies=self.content.replies,
+                replies=self.replies,
                 edit_hide=self.content.edit_hide,
                 restriction_reason=[],
             )

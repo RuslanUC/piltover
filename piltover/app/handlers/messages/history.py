@@ -161,7 +161,7 @@ async def get_messages_query_internal(
             query = Q(id=0)
 
     if reply_to_id:
-        query &= Q(reply_to_id=reply_to_id)
+        query &= Q(reply_to_id=reply_to_id, top_message_id=reply_to_id, join_type=Q.OR)
 
     query = await append_channel_min_message_id_to_query_maybe(peer, query)
 
@@ -956,18 +956,17 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
 
-    if message.content.discussion_id is None or message.content.comments_info_id is None:
+    if message.discussion_id is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
 
-    discussion_message = await MessageRef.get(
-        content_id=message.content.discussion_id,
-    ).select_related(*MessageRef.PREFETCH_FIELDS)
+    discussion_message = await MessageRef.get(id=message.discussion_id).select_related(*MessageRef.PREFETCH_FIELDS)
 
     ucc = UsersChatsChannels()
     ucc.add_message(discussion_message.content_id)
     users, chats, channels = await ucc.resolve()
 
-    replies_info = await MessageRef.filter(reply_to_id=discussion_message.id).annotate(
+    replies_query = Q(reply_to_id=discussion_message.id, top_message_id=discussion_message.id, join_type=Q.OR)
+    replies_info = await MessageRef.filter(replies_query).annotate(
         total=Count("id"), max_id=Max("id"),
     ).first().values_list("total", "max_id")
     if replies_info is not None:
@@ -979,9 +978,7 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
     if read_state is None:
         unread_count = total
     else:
-        unread_count = await MessageRef.filter(
-            reply_to_id=discussion_message.id, id__gt=read_state.last_message_id
-        ).count()
+        unread_count = await MessageRef.filter(replies_query, id__gt=read_state.last_message_id).count()
 
     return DiscussionMessage(
         messages=[await discussion_message.to_tl(user)],
@@ -1048,7 +1045,7 @@ async def read_discussion(request: ReadDiscussion, user: User) -> bool:
     # TODO: check if user has access to messages
 
     discussion_query = peer.q_this_or_channel() & Q(
-        id=request.msg_id, content__type=MessageType.REGULAR, content__is_discussion=True,
+        id=request.msg_id, content__type=MessageType.REGULAR, is_discussion=True,
     )
     discussion_query = await append_channel_min_message_id_to_query_maybe(peer, discussion_query)
     message = await MessageRef.get_or_none(discussion_query)

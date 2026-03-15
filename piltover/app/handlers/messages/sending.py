@@ -8,7 +8,7 @@ from uuid import UUID
 from fastrand import xorshift128plusrandint
 from loguru import logger
 from taskiq.kicker import AsyncKicker
-from tortoise.expressions import Q, F
+from tortoise.expressions import Q, F, Subquery
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -179,16 +179,25 @@ async def send_message_internal(
                 reply_to_message_id = None
 
     reply_to = None
+    reply_to_top = None
     if reply_to_message_id:
         reply_to = await MessageRef.get_or_none(
             peer.q_this_or_channel(), id=reply_to_message_id,
-        ).select_related("content")
+        ).select_related("content", "reply_to", "top_message")
         if reply_to is None:
             raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
+        if opposite and peer.type is PeerType.CHANNEL and peer.channel.supergroup:
+            logger.info(f"erm {reply_to.top_message}, {reply_to.reply_to}")
+            if reply_to.is_discussion:
+                reply_to_top = reply_to
+            elif reply_to.top_message is not None:
+                reply_to_top = reply_to.top_message
+            elif reply_to.reply_to is not None:
+                reply_to_top = reply_to.reply_to
 
     mentioned_user_ids = set()
 
-    if opposite and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+    if opposite and (peer.type is PeerType.CHAT or (peer.type is PeerType.CHANNEL and peer.channel.supergroup)):
         if entities and message:
             mentioned_user_ids = await _extract_mentions_from_message(entities, message, author)
 
@@ -211,8 +220,16 @@ async def send_message_internal(
 
     messages = await MessageRef.create_for_peer(
         peer, author, random_id, opposite, unhide_dialog,
-        message=message, entities=entities, reply_to=reply_to, **message_kwargs,
+        message=message, entities=entities, reply_to=reply_to, top_message=reply_to_top,
+        **message_kwargs,
     )
+
+    if reply_to_top is not None and reply_to_top.is_discussion:
+        await MessageContent.filter(
+            id__in=Subquery(MessageContent.filter(
+                messagerefs__discussion_id=reply_to_top.id,
+            ).values("id"))
+        ).update(replies_version=F("replies_version") + 1)
 
     if schedule:
         message = messages[peer]

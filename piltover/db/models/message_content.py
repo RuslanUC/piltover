@@ -53,11 +53,9 @@ class MessageContent(Model):
     fwd_header: models.MessageFwdHeader | None = NullableFK("models.MessageFwdHeader")
     post_info: models.ChannelPostInfo | None = NullableFK("models.ChannelPostInfo")
     via_bot: models.User | None = NullableFKSetNull("models.User", related_name="msg_via_bot")
-    discussion: models.MessageContent | None = NullableFKSetNull("models.MessageContent", related_name="msg_discussion_message")
-    comments_info: models.MessageComments | None = NullableFK("models.MessageComments")
-    is_discussion: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
     reactions_version: int = fields.IntField(default=0)
+    replies_version: int = fields.IntField(default=0)
     send_as_channel: models.Channel | None = NullableFK("models.Channel")
     author_reactions_unread: bool = fields.BooleanField(default=False)
 
@@ -68,7 +66,6 @@ class MessageContent(Model):
     post_info_id: int | None
     via_bot_id: int | None
     discussion_id: int | None
-    top_message_id: int | None
     comments_info_id: int | None
     send_as_channel_id: int | None
 
@@ -139,7 +136,7 @@ class MessageContent(Model):
         )
 
     def _to_tl_content(
-            self, media: MessageMediaBase, entities: list[MessageEntityBase] | None, replies: MessageReplies | None,
+            self, media: MessageMediaBase, entities: list[MessageEntityBase] | None,
     ) -> MessageToFormatContent:
         ttl_period = None
         if self.ttl_period_days is not None and self.type is not MessageType.SCHEDULED:
@@ -163,7 +160,6 @@ class MessageContent(Model):
             reply_markup=self.make_reply_markup(),
             noforwards=self.no_forwards,
             via_bot_id=self.via_bot_id,
-            replies=replies,
             edit_hide=self.edit_hide,
             fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
         )
@@ -187,26 +183,7 @@ class MessageContent(Model):
             entities.append(objects[tl_id](**entity))
             entity["_"] = tl_id
 
-        replies = None
-        if self.is_discussion:
-            replies = MessageReplies(
-                replies=await models.MessageRef.filter(reply_to__content=self).count(),
-                # TODO: probably handle pts
-                replies_pts=0,
-            )
-        elif self.discussion_id is not None and self.comments_info_id is not None:
-            replies = MessageReplies(
-                replies=await models.MessageRef.filter(reply_to__content_id=self.discussion_id).count(),
-                replies_pts=self.comments_info.discussion_pts,
-                comments=True,
-                channel_id=models.Channel.make_id_from(self.comments_info.discussion_channel_id),
-            )
-
-        message = self._to_tl_content(
-            media=media,
-            entities=entities,
-            replies=replies,
-        )
+        message = self._to_tl_content(media=media, entities=entities)
 
         await Cache.obj.set(cache_key, message)
         return message
@@ -218,45 +195,6 @@ class MessageContent(Model):
 
         cache_keys = [message.cache_key() for message in messages]
         cached = await Cache.obj.multi_get(cache_keys)
-
-        replies: dict[MessageIdContent, MessageReplies] = {}
-        replies_count_to_fetch: dict[MessageIdContent, list[MessageIdContent]] = defaultdict(list)
-        for idx, message in enumerate(messages):
-            if cached[idx] is not None or message.is_service():
-                continue
-            if message.is_discussion:
-                replies_count_to_fetch[message.id].append(message.id)
-                replies[message.id] = MessageReplies(
-                    replies=0,
-                    # max_id=0,
-                    # TODO: probably handle pts
-                    replies_pts=0,
-                )
-            elif message.discussion_id is not None and message.comments_info_id is not None:
-                replies_count_to_fetch[message.discussion_id].append(message.id)
-                replies[message.id] = MessageReplies(
-                    replies=0,
-                    # max_id=0,
-                    replies_pts=message.comments_info.discussion_pts,
-                    comments=True,
-                    channel_id=models.Channel.make_id_from(message.comments_info.discussion_channel_id),
-                )
-
-        if replies_count_to_fetch:
-            counts = {
-                reply_to_id: count
-                for reply_to_id, count in await models.MessageRef.filter(
-                    reply_to__content_id__in=list(replies_count_to_fetch),
-                ).group_by("reply_to__content_id").annotate(
-                    count=Count("id"),
-                ).values_list(
-                    "reply_to__content_id", "count",
-                )
-            }
-            for reply_to_id, ids in replies_count_to_fetch.items():
-                count = counts.get(reply_to_id, 0)
-                for message_id in ids:
-                    replies[message_id].replies = count
 
         medias_ = [message.media for message in messages if message.media is not None]
         medias = {
@@ -285,7 +223,6 @@ class MessageContent(Model):
             result.append(message._to_tl_content(
                 media=medias[message.media_id] if message.media_id is not None else None,
                 entities=entities,
-                replies=replies.get(message.id, None),
             ))
 
             to_cache.append((message.cache_key(), result[-1]))
@@ -350,7 +287,7 @@ class MessageContent(Model):
             self, related_peer: models.Peer, new_author: models.User | None = None,
             fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
             drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
-            is_forward: bool = False, no_forwards: bool = False, is_discussion: bool = False,
+            is_forward: bool = False, no_forwards: bool = False,
             new_channel_author: models.Channel | None = None, channel_post: bool | None = None,
             post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
             anonymous: bool | None = None,
@@ -385,7 +322,6 @@ class MessageContent(Model):
             anonymous=anonymous,
             no_forwards=no_forwards,
             via_bot=self.via_bot,
-            is_discussion=is_discussion,
             send_as_channel=new_channel_author,
         )
 

@@ -34,7 +34,7 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
-from piltover.db.models import User, Peer, MessageComments, MessageRef, MessageContent
+from piltover.db.models import User, Peer, MessageRef, MessageContent
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import TLObject, RpcError, TLRequest, layer
@@ -347,16 +347,13 @@ class Worker(MessageHandler):
 
             logger.debug(f"Created discussion message {discussion_message.id} for message {message.id}")
 
+            message.discussion = discussion_message
             message.content.edit_date = datetime.now(UTC)
             message.content.edit_hide = True
-            message.content.discussion = discussion_message.content
-            message.content.comments_info = await MessageComments.create(
-                discussion_channel=discussion_peer.channel, discussion_pts=discussion_peer.channel.pts,
-            )
             message.content.version += 1
-            await message.content.save(update_fields=[
-                "discussion_id", "comments_info_id", "edit_date", "edit_hide", "version",
-            ])
+            message.content.replies_version += 1
+            await message.save(update_fields=["discussion_id"])
+            await message.content.save(update_fields=["edit_date", "edit_hide", "version", "replies_version"])
 
         await upd.send_messages_channel([discussion_message], discussion_peer.channel, None)
         await upd.edit_message_channel(None, message.peer.channel, message)

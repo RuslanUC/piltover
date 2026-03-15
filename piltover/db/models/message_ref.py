@@ -3,16 +3,18 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TypeVar, Self, Iterable, cast
 
+from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
-from tortoise.functions import Count
+from tortoise.functions import Count, Max
 
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
 from piltover.db.models.utils import Missing, MISSING, NullableFKSetNull
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount
+from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount, \
+    MessageReplies as TLMessageReplies
 from piltover.tl.base import Message as TLMessageBase
 from piltover.tl.base.internal import MessageToFormatRef
 from piltover.tl.to_format import MessageToFormat
@@ -42,11 +44,14 @@ class MessageRef(Model):
     from_scheduled: bool = fields.BooleanField(default=False)
     reply_to: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="reply")
     top_message: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="msg_top_message")
+    discussion: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="msg_discussion_message")
+    is_discussion: bool = fields.BooleanField(default=False)
 
     content_id: int
     peer_id: int
     reply_to_id: int | None
     top_message_id: int | None
+    discussion_id: int | None
 
     taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
@@ -56,7 +61,7 @@ class MessageRef(Model):
     PREFETCH_FIELDS = (
         *PREFETCH_FIELDS_MIN, "peer__owner", "content__media__file", "content__media__file__stickerset",
         "content__media__poll", "content__fwd_header", "content__fwd_header__saved_peer", "content__post_info",
-        "content__via_bot", "content__comments_info", "peer__channel",
+        "content__via_bot", "peer__channel",
     )
     _PREFETCH_ALL_TOP_FIELDS = (
         "peer", "content__author", "content__media", "content__fwd_header", "reply_to",
@@ -66,7 +71,7 @@ class MessageRef(Model):
     _FETCH_CACHED_REFS = ("content__media", "content__media__file")
     _FETCH_CACHED_CONTENTS = (
         "content__media", "content__media__file", "content__media__file__stickerset", "content__media__poll",
-        "content__media__poll__pollanswers", "content__comments_info", "content__post_info",
+        "content__media__poll__pollanswers", "content__post_info",
         "content__fwd_header", "content__fwd_header__saved_peer",
     )
 
@@ -158,6 +163,7 @@ class MessageRef(Model):
             ref=await self.to_tl_ref(user.id),
             content=await self.content.to_tl_content(),
             reactions=reactions,
+            replies=await self.to_tl_replies(),
         )
 
     @classmethod
@@ -234,17 +240,24 @@ class MessageRef(Model):
 
         refs = await MessageRef.to_tl_ref_bulk(messages, user_id)
         contents = await models.MessageContent.to_tl_content_bulk(raw_contents)
+        repliess = await MessageRef.to_tl_replies_bulk(messages)
 
         if len(contents) != len(refs):
             raise Unreachable(f"len(contents) != len(refs), {len(contents)} != {len(refs)}")
 
         return [
-            MessageToFormat(ref=ref, content=content, reactions=reactions)
-            for ref, content, reactions in zip(refs, contents, reactionss)
+            MessageToFormat(ref=ref, content=content, reactions=reactions, replies=replies)
+            for ref, content, reactions, replies in zip(refs, contents, reactionss, repliess)
         ]
 
     async def to_tl_maybecached(self, user_id: int, with_reactions: bool = True) -> TLMessageBase:
-        ref, content = await Cache.obj.multi_get([self.cache_key(user_id), self.content.cache_key()])
+        if self.discussion_id is not None or self.is_discussion:
+            ref, content, replies = await Cache.obj.multi_get([
+                self.cache_key(user_id), self.content.cache_key(), self.cache_key_replies(),
+            ])
+        else:
+            ref, content = await Cache.obj.multi_get([self.cache_key(user_id), self.content.cache_key()])
+            replies = None
         reactions = None
 
         need_fetch = set()
@@ -262,8 +275,10 @@ class MessageRef(Model):
             content = await self.content.to_tl_content()
         if with_reactions:
             reactions = await self.to_tl_reactions(user_id)
+        if replies is None:
+            replies = await self.to_tl_replies()
 
-        return MessageToFormat(ref=ref, content=content, reactions=reactions)
+        return MessageToFormat(ref=ref, content=content, reactions=reactions, replies=replies)
 
     @classmethod
     async def to_tl_bulk_maybecached(
@@ -304,10 +319,11 @@ class MessageRef(Model):
             reactionss_tl = await cls.to_tl_reactions_bulk(refs, user_id)
         else:
             reactionss_tl = [None] * len(refs)
+        replies_tl = await cls.to_tl_replies_bulk(refs)
 
         results = []
-        zipped = zip(refs, refs_cached, contents_cached, reactionss_tl)
-        for ref, result_ref, result_content, result_reactions in zipped:
+        zipped = zip(refs, refs_cached, contents_cached, reactionss_tl, replies_tl)
+        for ref, result_ref, result_content, result_reactions, result_replies in zipped:
             if result_ref is None:
                 result_ref = refs_tl.pop()
             if result_content is None:
@@ -317,6 +333,7 @@ class MessageRef(Model):
                 ref=result_ref,
                 content=result_content,
                 reactions=result_reactions,
+                replies=result_replies,
             ))
 
         return results
@@ -378,7 +395,6 @@ class MessageRef(Model):
             drop_author=drop_author,
             is_forward=is_forward,
             no_forwards=no_forwards,
-            is_discussion=is_discussion,
             channel_post=channel_post,
             post_info=post_info,
             post_author=post_author,
@@ -404,6 +420,7 @@ class MessageRef(Model):
                 pinned=self.pinned if pinned is None else pinned,
                 random_id=random_id if peer == to_peer else None,
                 reply_to=replies.get(peer.id),
+                is_discussion=is_discussion,
             ))
 
         return messages
@@ -415,6 +432,7 @@ class MessageRef(Model):
     async def create_for_peer(
             cls, peer: models.Peer, author: models.User, random_id: int | None = None,
             opposite: bool = True, unhide_dialog: bool = True, reply_to: MessageRef | None = None,
+            top_message: MessageRef | None = None,
             **message_kwargs,
     ) -> dict[models.Peer, Self]:
         if random_id is not None and await cls.filter(peer=peer, random_id=random_id).exists():
@@ -451,6 +469,7 @@ class MessageRef(Model):
                 content=content,
                 random_id=random_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
                 reply_to=replies.get(to_peer.id),
+                top_message=top_message,
             )
 
         if unhide_dialog:
@@ -700,3 +719,164 @@ class MessageRef(Model):
             f"r{reaction or 0}-{custom_emoji or 0}:"
             f"{self.content.reactions_version}"
         )
+
+    async def to_tl_replies(self) -> TLMessageReplies | None:
+        if not self.is_discussion and self.discussion_id is None:
+            logger.info(f"skipping ref {self.id}")
+            return None
+
+        cache_key = self.cache_key_replies()
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            logger.info(f"cached ref {self.id}")
+            return cached
+
+        replies = None
+        if self.is_discussion:
+            query = Q(reply_to_id=self.id, top_message_id=self.id, join_type=Q.OR)
+            replies_info = await models.MessageRef.filter(query).annotate(
+                count=Count("id"), max_id=Max("id")
+            ).first().values_list("count", "max_id")
+            if replies_info:
+                replies_count, max_id = replies_info
+            else:
+                replies_count = 0
+                max_id = None
+
+            replies = TLMessageReplies(
+                replies=replies_count,
+                replies_pts=0,
+                max_id=max_id,
+            )
+        elif self.discussion_id is not None:
+            query = Q(reply_to_id=self.discussion_id, top_message_id=self.discussion_id, join_type=Q.OR)
+            replies_info = await models.MessageRef.filter(query).annotate(
+                count=Count("id"), max_id=Max("id"),
+            ).first().values_list("count", "max_id")
+            if replies_info:
+                replies_count, max_id = replies_info
+            else:
+                replies_count = 0
+                max_id = None
+
+            discussion_channel_id = cast(
+                int | None,
+                await models.MessageRef.get(id=self.discussion_id).values_list("peer__channel_id")
+            )
+
+            replies = TLMessageReplies(
+                replies=replies_count,
+                replies_pts=0,
+                comments=True,
+                channel_id=models.Channel.make_id_from(discussion_channel_id) if discussion_channel_id else None,
+                max_id=max_id,
+            )
+
+        logger.info(f"replies is {replies}")
+        await Cache.obj.set(cache_key, replies)
+
+        return replies
+
+    @classmethod
+    async def to_tl_replies_bulk(cls, refs: list[MessageRef]) -> list[TLMessageReplies | None]:
+        cache_keys = [
+            ref.cache_key_replies()
+            for ref in refs
+            if ref.is_discussion or ref.discussion_id is not None
+        ]
+
+        if not cache_keys:
+            logger.info(f"skipping refs {[ref.id for ref in refs]}")
+            return [None] * len(refs)
+
+        cached_replies = await Cache.obj.multi_get(cache_keys)
+
+        ids_to_get = set()
+        channel_ids_to_get = set()
+        cache_idx = 0
+        for ref in refs:
+            if not ref.is_discussion and ref.discussion_id is None:
+                logger.info(f"skipping ref {ref.id}")
+                continue
+            cached = cached_replies[cache_idx]
+            cache_idx += 1
+            if cached is not None:
+                logger.info(f"cached ref {ref.id}")
+                continue
+            if ref.is_discussion:
+                logger.info(f"discussion? {ref.id}")
+                ids_to_get.add(ref.id)
+            elif ref.discussion_id is not None:
+                logger.info(f"comments? {ref.id}")
+                ids_to_get.add(ref.discussion_id)
+                channel_ids_to_get.add(ref.discussion_id)
+            else:
+                raise Unreachable
+
+        replies_stats = {
+            top_msg_id: (count, max_id)
+            for top_msg_id, count, max_id in await models.MessageRef.filter(
+                top_message_id__in=ids_to_get,
+            ).annotate(
+                count=Count("id"), max_id=Max("id"),
+            ).group_by(
+                "top_message_id"
+            ).values_list(
+                "top_message_id", "count", "max_id",
+            )
+        }
+
+        discussion_channel_ids = {
+            msg_id: channel_id
+            for msg_id, channel_id in await models.MessageRef.filter(
+                id__in=channel_ids_to_get,
+            ).values_list("id", "peer__channel_id")
+        }
+
+        to_cache = []
+        replies = []
+        cache_idx = 0
+        for ref in refs:
+            if not ref.is_discussion and ref.discussion_id is None:
+                logger.info(f"skipping ref {ref.id}")
+                replies.append(None)
+                continue
+            cache_key = cache_keys[cache_idx]
+            cached = cached_replies[cache_idx]
+            cache_idx += 1
+            if cached is not None:
+                logger.info(f"cached ref {ref.id}")
+                replies.append(cached)
+                continue
+
+            if ref.is_discussion:
+                replies_count, max_id = replies_stats.get(ref.id, (0, None))
+                logger.info(f"ref {ref.id}: {replies_count}, {max_id}")
+                replies_info = TLMessageReplies(
+                    replies=replies_count,
+                    replies_pts=0,
+                    max_id=max_id,
+                )
+            elif ref.discussion_id is not None:
+                replies_count, max_id = replies_stats.get(ref.discussion_id, (0, None))
+                logger.info(f"ref {ref.id}: {replies_count}, {max_id}")
+                discussion_channel_id = discussion_channel_ids.get(ref.discussion_id)
+                replies_info = TLMessageReplies(
+                    replies=replies_count,
+                    replies_pts=0,
+                    comments=True,
+                    channel_id=models.Channel.make_id_from(discussion_channel_id) if discussion_channel_id else None,
+                    max_id=max_id,
+                )
+            else:
+                raise Unreachable
+
+            replies.append(replies_info)
+            to_cache.append((cache_key, replies_info))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
+
+        return replies
+
+    def cache_key_replies(self) -> str:
+        return f"message-replies:{self.content_id}:{self.content.replies_version}"
