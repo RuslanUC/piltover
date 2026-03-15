@@ -144,7 +144,7 @@ async def send_created_messages_internal(
         if message.content.type is MessageType.REGULAR and message.peer.owner_id is None and peer.channel.discussion_id:
             logger.debug(f"Creating task create_discussion({message.id})...")
             ctx = request_ctx.get()
-            await AsyncKicker(task_name=f"create_discussion", broker=ctx.worker.broker, labels={}).kiq(message.id)
+            await AsyncKicker(task_name="create_discussion", broker=ctx.worker.broker, labels={}).kiq(message.id)
 
         return await upd.send_message_channel(user, peer.channel, message)
 
@@ -152,13 +152,9 @@ async def send_created_messages_internal(
         raise Unreachable
 
     if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
-        bot_message = await bots.process_message_to_bot(peer, messages[peer])
-        if bot_message is not None:
-            if (bot_upd := await upd.send_message(user, {peer: bot_message})) is None:
-                raise Unreachable
-            update.users.extend(bot_upd.users)
-            update.chats.extend(bot_upd.chats)
-            update.updates.extend(bot_upd.updates)
+        message = messages[peer]
+        ctx = request_ctx.get()
+        await AsyncKicker(task_name="process_message_to_bot", broker=ctx.worker.broker, labels={}).kiq(message.id)
 
     return update
 

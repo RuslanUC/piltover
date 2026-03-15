@@ -147,6 +147,7 @@ class Worker(MessageHandler):
         self.broker.register_task(self._handle_scheduled_message, "send_scheduled")
         self.broker.register_task(self._handle_scheduled_delete_message, "delete_scheduled")
         self.broker.register_task(self._handle_create_discussion, "create_discussion")
+        self.broker.register_task(self._handle_process_message_to_bot, "process_message_to_bot")
         self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
         self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
 
@@ -360,3 +361,19 @@ class Worker(MessageHandler):
         await upd.send_messages_channel([discussion_message], discussion_peer.channel, None)
         await upd.edit_message_channel(None, message.peer.channel, message)
 
+    async def _handle_process_message_to_bot(self, message_id: int) -> None:
+        import piltover.app.utils.updates_manager as upd
+        from piltover.app.bot_handlers import bots
+
+        logger.info(f"Processing message to bot {message_id}")
+        message = await MessageRef.select_for_update().get_or_none(id=message_id).select_related(
+            "peer", "peer__owner", "peer__user", "content", "content__media", "content__media__file",
+        )
+        if message is None:
+            return
+
+        peer = message.peer
+        bot_message = await bots.process_message_to_bot(peer, message)
+
+        if bot_message is not None:
+            await upd.send_message(None, {peer: bot_message})

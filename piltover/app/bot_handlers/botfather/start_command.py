@@ -48,7 +48,5 @@ Games
 class Start(BotInteractionHandler[BotFatherState, BotFatherUserState]):
     def __init__(self) -> None:
         super().__init__(BotFatherUserState)
-        (
-            self.command("start").set_send_message_func(send_bot_message)
-            .do().respond(_text, _entities).ok().register()
-        )
+        self.command("help").set_send_message_func(send_bot_message).do().respond(_text, _entities).ok().register()
+        self.command("start").set_send_message_func(send_bot_message).do().respond(_text, _entities).ok().register()

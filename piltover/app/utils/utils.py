@@ -458,6 +458,7 @@ async def process_message_entities(
 
     for url, span in _URL_EXTRACTOR.gen_urls(text, get_indices=True):
         await sleep(0)
+        # urlextract returns (-2, 7) for "127.0.0.1" for some reason
         if span[0] < 0 or span[1] < 0:
             continue
         _insert_entity_maybe(MessageEntityUrl.tlid(), entities, span, u8_to_u16)
