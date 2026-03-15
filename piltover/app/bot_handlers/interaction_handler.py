@@ -75,19 +75,14 @@ class PendingHandler:
         return pending
 
 
-class RegisterCommand(Generic[StateEnumT, StateT]):
-    def __init__(self, name: str, int_handler: BotInteractionHandler) -> None:
-        self._name = name
+class RegisterInteraction(Generic[StateEnumT, StateT]):
+    def __init__(self, int_handler: BotInteractionHandler) -> None:
         self._int_handler = int_handler
         self._handlers: dict[StateEnumT, HandlerBase[StateEnumT, StateT]] = {}
         self._need_fetch_state: bool = False
         self._otherwise: HandlerBase[StateEnumT, StateT] | None = None
         self._pending: PendingHandler = PendingHandler()
         self._send_message_func: SendMessageFunc | None = None
-
-    @property
-    def name(self) -> str:
-        return self._name
 
     @property
     def handlers(self) -> dict[StateEnumT, HandlerBase[StateEnumT, StateT]]:
@@ -103,7 +98,6 @@ class RegisterCommand(Generic[StateEnumT, StateT]):
 
     def _clone(self) -> Self:
         reg = self.__class__.__new__(self.__class__)
-        reg._name = self._name
         reg._int_handler = self._int_handler
         reg._handlers = self._handlers.copy()
         reg._need_fetch_state = self._need_fetch_state
@@ -190,26 +184,50 @@ class RegisterCommand(Generic[StateEnumT, StateT]):
         return reg
 
 
+class RegisterCommand(RegisterInteraction[StateEnumT, StateT]):
+    def __init__(self, name: str, int_handler: BotInteractionHandler) -> None:
+        super().__init__(int_handler)
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def _clone(self) -> Self:
+        reg = super()._clone()
+        reg._name = self._name
+        return reg
+
+
 class BotInteractionHandler(Generic[StateEnumT, StateT]):
     def __init__(self, state_cls: type[StateT] | None) -> None:
         self.state_cls = state_cls
         self._commands_registry: dict[tuple[str, Optional[StateEnumT]], HandlerBase[StateEnumT, StateT]] = {}
         self._command_fetch_state: dict[str, bool] = {}
+        self._text_registry: dict[Optional[StateEnumT], HandlerBase[StateEnumT, StateT]] = {}
 
-    def register(self, reg: RegisterCommand[StateEnumT, StateT]) -> None:
-        for state, handler in reg.handlers.items():
-            self._commands_registry[(reg.name, state)] = handler
-
-        if reg.otherwise_handler is not None:
-            self._commands_registry[reg.name, None] = reg.otherwise_handler
-
-        self._command_fetch_state[reg.name] = reg.need_fetch_state or bool(reg.handlers)
+    def register(self, reg: RegisterInteraction[StateEnumT, StateT]) -> None:
+        if isinstance(reg, RegisterCommand):
+            for state, handler in reg.handlers.items():
+                self._commands_registry[(reg.name, state)] = handler
+            if reg.otherwise_handler is not None:
+                self._commands_registry[reg.name, None] = reg.otherwise_handler
+            self._command_fetch_state[reg.name] = reg.need_fetch_state or bool(reg.handlers)
+        else:
+            for state, handler in reg.handlers.items():
+                self._text_registry[state] = handler
+            if reg.otherwise_handler is not None:
+                self._text_registry[None] = reg.otherwise_handler
 
     def include(self, other: BotInteractionHandler[StateEnumT, StateT]) -> None:
         if self.state_cls != other.state_cls:
             raise ValueError("Can't include interaction handler with different state class")
         self._commands_registry.update(other._commands_registry)
         self._command_fetch_state.update(other._command_fetch_state)
+        self._text_registry.update(other._text_registry)
+
+    def text(self) -> RegisterInteraction[StateEnumT, StateT]:
+        return RegisterInteraction(self)
 
     def command(self, name: str) -> RegisterCommand[StateEnumT, StateT]:
         return RegisterCommand(name, self)
@@ -227,4 +245,12 @@ class BotInteractionHandler(Generic[StateEnumT, StateT]):
         key = command, None
         if key in self._commands_registry:
             return await self._commands_registry[key](peer, message, None)
-        return None
+
+    async def handle_text(self, peer: Peer, message: MessageRef) -> MessageRef | None:
+        state = None
+        if self.state_cls is not None:
+            state = await self.state_cls.get_or_none(user=peer.owner)
+
+        state_step = state.state if state is not None else None
+        if state_step in self._text_registry:
+            return await self._text_registry[state_step](peer, message, state)

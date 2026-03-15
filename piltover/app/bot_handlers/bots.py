@@ -2,7 +2,6 @@ from typing import cast, Callable, Awaitable
 
 from piltover.app.bot_handlers.botfather import BotfatherBotInteractionHandler
 from piltover.app.bot_handlers.botfather.callback_handler import botfather_callback_query_handler
-from piltover.app.bot_handlers.botfather.text_handler import botfather_text_message_handler
 from piltover.app.bot_handlers.gif.inline_handler import gif_inline_query_handler
 from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
 from piltover.app.bot_handlers.stickers import StickersBotInteractionHandler
@@ -16,19 +15,10 @@ async def _awaitable_none(_p: Peer, _m: MessageRef) -> None:
     return None
 
 
-HANDLERS: dict[str, dict[str, Callable[[Peer, MessageRef], Awaitable[MessageRef | None]] | BotInteractionHandler]] = {
-    "test_bot": {
-        "__text": _awaitable_none,
-        "__command": PingTestBotBotInteractionHandler(),
-    },
-    "botfather": {
-        "__text": botfather_text_message_handler,
-        "__command": BotfatherBotInteractionHandler(),
-    },
-    "stickers": {
-        "__text": stickers_text_message_handler,
-        "__command": StickersBotInteractionHandler(),
-    }
+HANDLERS: dict[str, BotInteractionHandler] = {
+    "test_bot": PingTestBotBotInteractionHandler(),
+    "botfather": BotfatherBotInteractionHandler(),
+    "stickers": StickersBotInteractionHandler(),
 }
 CALLBACK_QUERY_HANDLERS: dict[str, Callable[[Peer, MessageRef, bytes], Awaitable[BotCallbackAnswer | None]]] = {
     "botfather": botfather_callback_query_handler,
@@ -45,13 +35,14 @@ async def process_message_to_bot(peer: Peer, message: MessageRef) -> MessageRef 
         return None
 
     bot_username = await peer.user.get_raw_username()
+    handler = HANDLERS[bot_username]
 
     text = cast(str, message.content.message)
     if not text.startswith("/"):
-        return await HANDLERS[bot_username]["__text"](peer, message)
+        return await handler.handle_text(peer, message)
 
     command_name = text.split(" ", 1)[0][1:]
-    return await HANDLERS[bot_username]["__command"].handle_command(command_name, peer, message)
+    return await handler.handle_command(command_name, peer, message)
 
 
 async def process_callback_query(peer: Peer, message: MessageRef, data: bytes) -> BotCallbackAnswer | None:
