@@ -5,7 +5,6 @@ from piltover.app.bot_handlers.botfather.callback_handler import botfather_callb
 from piltover.app.bot_handlers.gif.inline_handler import gif_inline_query_handler
 from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
 from piltover.app.bot_handlers.stickers import StickersBotInteractionHandler
-from piltover.app.bot_handlers.stickers.text_handler import stickers_text_message_handler
 from piltover.app.bot_handlers.test_bot import PingTestBotBotInteractionHandler
 from piltover.db.models import Peer, InlineQuery, InlineQueryResult, InlineQueryResultItem, MessageRef
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
