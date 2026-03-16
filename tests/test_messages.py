@@ -1276,6 +1276,7 @@ async def test_delete_text_message_in_private_chat(client_with_auth: ClientFacto
         ("test 123", []),
         ("test 123", []),
         ("test 123.com", ["123.com"]),
+        ("test 123.com /test", ["123.com", None]),
         ("test 123.com http://127.0.0.1:9999/idk+test.com", ["123.com", "http://127.0.0.1:9999/idk+test.com"]),
     ]
 )
@@ -1289,5 +1290,9 @@ async def test_send_message_with_urls(client_with_auth: ClientFactory, text: str
     else:
         assert len(message.entities) == len(expected_entities)
         for entity, expected in zip(message.entities, expected_entities):
+            if expected is None:
+                assert entity.type != MessageEntityType.URL
+                continue
+
             assert entity.type == MessageEntityType.URL
             assert message.text[entity.offset:entity.offset+entity.length] == expected
