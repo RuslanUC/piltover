@@ -543,11 +543,14 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
     query = Q(id__in=request.id)
     query &= peer.q_this_or_channel()
 
-    # TODO: fetch only `post_info`
+    refs = await MessageRef.filter(query).select_related("content", "content__post_info")
     messages = {
         message.id: message
-        for message in await MessageRef.filter(query).select_related("content", "content__post_info")
+        for message in refs
     }
+
+    replies = await MessageRef.to_tl_replies_bulk(refs)
+    replies_by_id = {ref.id: reply for ref, reply in zip(refs, replies)}
 
     views = []
     ids_to_increment = []
@@ -562,7 +565,10 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
         if request.increment:
             ids_to_increment.append(message.content.post_info_id)
 
-        views.append(MessageViews(views=message.content.post_info.views + request.increment))
+        views.append(MessageViews(
+            views=message.content.post_info.views + request.increment,
+            replies=replies_by_id.get(message_id, None),
+        ))
 
     if ids_to_increment:
         await ChannelPostInfo.filter(id__in=ids_to_increment).update(views=F("views") + 1)
