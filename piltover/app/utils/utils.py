@@ -16,7 +16,7 @@ import av
 from PIL.Image import Image, open as img_open
 from av import VideoFrame
 from loguru import logger
-from urlextract import URLExtract
+from pylinkify import find_urls
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType, FileType
@@ -410,9 +410,6 @@ def _check_entity_inside_entity(entities: list[dict], u16start: int, u16end: int
     return False
 
 
-_URL_EXTRACTOR = URLExtract(limit=100)
-
-
 def _insert_entity_maybe(
         tlid: int, entities: list[MessageEntityBase], span: tuple[int, int], u8_to_u16: dict[int, int],
 ) -> None:
@@ -456,11 +453,8 @@ async def process_message_entities(
         await sleep(0)
         _insert_entity_maybe(MessageEntityMention.tlid(), entities, mention.span(), u8_to_u16)
 
-    for url, span in _URL_EXTRACTOR.gen_urls(text, get_indices=True):
+    for span in find_urls(text, require_scheme=False):
         await sleep(0)
-        # urlextract returns (-2, 7) for "127.0.0.1" for some reason
-        if span[0] < 0 or span[1] < 0:
-            continue
         _insert_entity_maybe(MessageEntityUrl.tlid(), entities, span, u8_to_u16)
 
     for command in BOT_COMMAND_REGEX.finditer(text):

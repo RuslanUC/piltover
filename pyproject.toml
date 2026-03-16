@@ -49,7 +49,7 @@ dependencies = [
     "av (>=16.1.0,<17.0.0)",
     "httpx (>=0.28.1,<1.0.0)",
     "lru-dict (>=1.4.1,<2.0.0)",
-    "urlextract (>=1.9.0,<2.0.0)",
+    "pylinkify @ git+https://github.com/RuslanUC/pylinkify.git",
 ]
 
 [project.urls]

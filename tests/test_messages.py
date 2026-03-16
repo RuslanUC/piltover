@@ -17,7 +17,7 @@ from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyT
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
-from pyrogram.types import InputMediaDocument, ChatPermissions
+from pyrogram.types import InputMediaDocument, ChatPermissions, MessageEntity
 from tortoise.expressions import F, Subquery
 
 from piltover.db.enums import PeerType
@@ -1269,3 +1269,25 @@ async def test_delete_text_message_in_private_chat(client_with_auth: ClientFacto
     assert len(messages) == 2
     assert {m.id for m in messages} == {message1.id, message3.id}
 
+
+@pytest.mark.parametrize(
+    ("text", "expected_entities",),
+    [
+        ("test 123", []),
+        ("test 123", []),
+        ("test 123.com", ["123.com"]),
+        ("test 123.com http://127.0.0.1:9999/idk+test.com", ["123.com", "http://127.0.0.1:9999/idk+test.com"]),
+    ]
+)
+@pytest.mark.asyncio
+async def test_send_message_with_urls(client_with_auth: ClientFactory, text: str, expected_entities: list[str]) -> None:
+    client = await client_with_auth(run=True)
+
+    message = await client.send_message("self", text=text)
+    if not expected_entities:
+        assert not message.entities
+    else:
+        assert len(message.entities) == len(expected_entities)
+        for entity, expected in zip(message.entities, expected_entities):
+            assert entity.type == MessageEntityType.URL
+            assert message.text[entity.offset:entity.offset+entity.length] == expected
