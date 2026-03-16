@@ -7,6 +7,7 @@ from tortoise import connections
 from tortoise.expressions import Q, Subquery, CombinedExpression, Connector, F
 from tortoise.functions import Min, Max, Count
 from tortoise.queryset import QuerySet
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
@@ -14,7 +15,8 @@ from piltover.cache import Cache
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction, \
     READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
-    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent
+    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent, \
+    MessageUniqueView
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -540,38 +542,49 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
 
     request.id = request.id[:100]
 
-    query = Q(id__in=request.id)
+    query = Q(id__in=request.id, content__post_info_id__not_isnull=True)
     query &= peer.q_this_or_channel()
 
     refs = await MessageRef.filter(query).select_related("content", "content__post_info")
-    messages = {
-        message.id: message
-        for message in refs
-    }
+    content_ids = [ref.content_id for ref in refs]
+    messages = {message.id: message for message in refs}
+
+    if request.increment:
+        ids_to_increment = []
+        contents_to_refresh = []
+        views_to_create = []
+        async with in_transaction():
+            existing_views = set(await MessageUniqueView.filter(
+                message_id__in=content_ids, user_id=user.id,
+            ).values_list("message_id", flat=True))
+            for ref in refs:
+                if ref.content_id in existing_views:
+                    continue
+                ids_to_increment.append(ref.content.post_info_id)
+                contents_to_refresh.append(ref.content)
+                views_to_create.append(MessageUniqueView(message=ref.content, user=user))
+
+            if views_to_create:
+                await MessageUniqueView.bulk_create(views_to_create, ignore_conflicts=True)
+            if ids_to_increment:
+                await ChannelPostInfo.filter(id__in=ids_to_increment).update(views=F("views") + 1)
+            if contents_to_refresh:
+                await MessageContent.fetch_for_list(contents_to_refresh, "post_info")
 
     replies = await MessageRef.to_tl_replies_bulk(refs)
     replies_by_id = {ref.id: reply for ref, reply in zip(refs, replies)}
 
     views = []
-    ids_to_increment = []
 
     for message_id in request.id:
         if message_id not in messages or not messages[message_id].content.post_info:
             views.append(MessageViews())
             continue
 
-        message = messages[message_id]
-        # TODO: count unique views
-        if request.increment:
-            ids_to_increment.append(message.content.post_info_id)
-
         views.append(MessageViews(
-            views=message.content.post_info.views + request.increment,
+            views=messages[message_id].content.post_info.views + request.increment,
             replies=replies_by_id.get(message_id, None),
         ))
-
-    if ids_to_increment:
-        await ChannelPostInfo.filter(id__in=ids_to_increment).update(views=F("views") + 1)
 
     return MessagesMessageViews(
         views=views,
