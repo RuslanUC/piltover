@@ -7,7 +7,7 @@ from enum import auto, Enum
 from typing import Iterable, Self
 
 from tortoise import fields, Model
-from tortoise.expressions import Q
+from tortoise.expressions import Q, F
 
 from piltover.app_config import AppConfig
 from piltover.cache import Cache
@@ -140,6 +140,10 @@ class User(Model):
             # TODO: use fallback photo is userphoto is None?
             photo = userphoto.to_tl_profile()
 
+        emoji_status = None
+        if not self.bot:
+            emoji_status = await models.UserEmojiStatus.get_or_none(user_id=self.id)
+
         result = UserToFormat(
             id=self.id,
             first_name=self.first_name,
@@ -152,6 +156,7 @@ class User(Model):
             bot_info_version=bot_info_version,
             color=color,
             profile_color=profile_color,
+            emoji_status=emoji_status.to_tl() if emoji_status is not None else None,
         )
 
         await Cache.obj.set(self._cache_key(), result)
@@ -210,6 +215,14 @@ class User(Model):
         else:
             photos = {}
 
+        if user_ids:
+            emoji_statuses = {
+                status.user_id: status
+                for status in await models.UserEmojiStatus.filter(user_id__in=user_ids)
+            }
+        else:
+            emoji_statuses = {}
+
         tl = []
         to_cache = []
 
@@ -233,6 +246,8 @@ class User(Model):
                     background_emoji_id=emojis.profile_emoji_id if emojis is not None else None,
                 )
 
+            emoji_status = emoji_statuses.get(user.id)
+
             tl.append(UserToFormat(
                 id=user.id,
                 first_name=user.first_name,
@@ -245,6 +260,7 @@ class User(Model):
                 bot_info_version=bot_versions.get(user.id, 1) if user.bot else None,
                 color=color,
                 profile_color=profile_color,
+                emoji_status=emoji_status.to_tl() if emoji_status is not None else None,
             ))
 
             to_cache.append((user.id, tl[-1]))
@@ -306,3 +322,7 @@ class User(Model):
         if user is not None:
             return user
         raise ErrorRpc(error_code=code, error_message=message)
+
+    async def inc_version(self) -> None:
+        await User.filter(id=self.id).update(version=F("version") + 1)
+        await self.refresh_from_db(["version"])

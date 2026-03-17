@@ -18,7 +18,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
     UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID, UpdatePhoneCall, UpdateChannelAvailableMessages, \
-    UpdateReadChannelOutbox
+    UpdateReadChannelOutbox, EmojiStatus, EmojiStatusEmpty, UpdateUserEmojiStatus
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -31,7 +31,8 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
               | UpdateDeleteScheduledMessages | UpdatePeerHistoryTTL | UpdateBotCallbackQuery | UpdateUserPhone \
               | UpdateNotifySettings | UpdateSavedGifs | UpdateBotInlineQuery | UpdateRecentStickers \
               | UpdateFavedStickers | UpdateSavedDialogPinned | UpdatePinnedSavedDialogs | UpdatePrivacy \
-              | UpdateMessageID | UpdatePhoneCall | UpdateChannelAvailableMessages | UpdateReadChannelOutbox
+              | UpdateMessageID | UpdatePhoneCall | UpdateChannelAvailableMessages | UpdateReadChannelOutbox \
+              | UpdateUserEmojiStatus
 
 
 class Update(Model):
@@ -653,6 +654,20 @@ class Update(Model):
                     messages=self.related_ids,
                     pts=self.pts,
                     pts_count=self.pts_count,
+                )
+
+            case UpdateType.EMOJI_STATUS:
+                if self.related_id:
+                    until = self.additional_data[0] if self.additional_data else None
+                    status = EmojiStatus(document_id=self.related_id, until=until)
+                else:
+                    status = EmojiStatusEmpty()
+
+                ucc.add_user(user.id)
+
+                return UpdateUserEmojiStatus(
+                    user_id=user.id,
+                    emoji_status=status,
                 )
 
         return None

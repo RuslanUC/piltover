@@ -152,6 +152,7 @@ class UpdateType(IntEnum):
     READ_OUTBOX_CHANNEL = 50
     PIN_MESSAGES = 51
     UNPIN_MESSAGES = 52
+    EMOJI_STATUS = 53
 
 
 class SecretUpdateType(IntEnum):

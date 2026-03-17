@@ -1,3 +1,5 @@
+from time import time
+
 from piltover.context import serialization_ctx, NeedContextValuesContext
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
@@ -45,6 +47,12 @@ class UserToFormat(types.UserToFormatInternal):
         if has_access_to_photo and self.photo is not None:
             photo = self.photo
 
+        emoji_status = self.emoji_status
+        if isinstance(emoji_status, types.EmojiStatus) \
+                and emoji_status.until is not None \
+                and emoji_status.until < time():
+            emoji_status = None
+
         return LayerConverter.downgrade(
             obj=types.User(
                 id=self.id,
@@ -63,6 +71,7 @@ class UserToFormat(types.UserToFormatInternal):
                 color=self.color,
                 profile_color=self.profile_color,
                 mutual_contact=is_contact and current_is_contact,
+                emoji_status=emoji_status,
 
                 # TODO: this is True only because custom emojis are not available (like at all, missing in emoji list)
                 #  for non-premium users.

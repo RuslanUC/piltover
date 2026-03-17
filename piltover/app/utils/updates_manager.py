@@ -11,7 +11,7 @@ from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySet
 from piltover.db.models import User, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
     Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef, \
-    PhoneCall
+    PhoneCall, UserEmojiStatus
 from piltover.session import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
@@ -27,7 +27,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, \
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents, \
     UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData, UpdateReadChannelOutbox, \
-    UpdatePinnedChannelMessages
+    UpdatePinnedChannelMessages, UpdateUserEmojiStatus, EmojiStatusEmpty
 from piltover.tl.to_format import DumbChannelMessageToFormat
 from piltover.tl.to_format.update_message_id import UpdateMessageIDToFormat
 from piltover.tl.types.account import PrivacyRules
@@ -2021,3 +2021,26 @@ async def phone_signaling_update(session_id: int, call_id: int, data: bytes) -> 
         ),
         auth_id=[session_id],
     )
+
+
+async def update_user_emoji_status(user: User, status: UserEmojiStatus | None) -> Updates:
+    await Update.create(
+        user=user,
+        update_type=UpdateType.EMOJI_STATUS,
+        pts=await State.add_pts(user, 1),
+        pts_count=1,
+        related_id=status.emoji_id if status is not None else None,
+        additional_data=[int(status.until.timestamp()) if status is not None and status.until is not None else None],
+    )
+
+    updates = UpdatesWithDefaults(
+        updates=[UpdateUserEmojiStatus(
+            user_id=user.id,
+            emoji_status=status.to_tl() if status is not None else EmojiStatusEmpty(),
+        )],
+        users=[await user.to_tl()],
+    )
+
+    await SessionManager.send(updates, user.id)
+
+    return updates

@@ -8,7 +8,7 @@ from typing import cast
 from uuid import UUID
 
 from pytz import UTC
-from tortoise.expressions import Q
+from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction, atomic
 
 import piltover.app.utils.updates_manager as upd
@@ -18,28 +18,29 @@ from piltover.app.utils.system_notifications import send_official_notification_m
 from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType
+from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType, FileType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis, \
-    TaskIqScheduledDeleteUser
+    TaskIqScheduledDeleteUser, UserEmojiStatus
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, \
     UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
-    EmojiListNotModified, PrivacyValueDisallowAll, String
+    EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
-    GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, GetContactSignUpNotification, \
+    GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
     GetSavedRingtones, GetAutoDownloadSettings, GetDefaultProfilePhotoEmojis, GetWebAuthorizations, SetAccountTTL, \
     SaveAutoDownloadSettings, UpdatePasswordSettings, GetPasswordSettings, SetPrivacy, UpdateBirthday, \
     ChangeAuthorizationSettings, ResetAuthorization, ResetPassword, DeclinePasswordReset, SendChangePhoneCode, \
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
     SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis, \
-    UpdatePersonalChannel, UpdateNotifySettings, SetGlobalPrivacySettings, SendConfirmPhoneCode, ConfirmPhone
+    UpdatePersonalChannel, UpdateNotifySettings, SetGlobalPrivacySettings, SendConfirmPhoneCode, ConfirmPhone, \
+    UpdateEmojiStatus
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -920,6 +921,38 @@ async def update_notify_settings(request: UpdateNotifySettings, user: User) -> b
 
     await upd.update_peer_notify_settings(user, peer, not_peer, settings)
     return True
+
+
+@handler.on_request(UpdateEmojiStatus, ReqHandlerFlags.BOT_NOT_ALLOWED)
+async def update_emoji_status(request: UpdateEmojiStatus, user: User) -> bool:
+    status_expired = (
+            isinstance(request.emoji_status, EmojiStatus)
+            and request.emoji_status.until is not None
+            and request.emoji_status.until < time()
+    )
+    if isinstance(request.emoji_status, EmojiStatusEmpty) or status_expired:
+        affected = await UserEmojiStatus.filter(user_id=user.id).delete()
+        if affected > 0:
+            await user.inc_version()
+            await upd.update_user_emoji_status(user, None)
+        return True
+
+    if isinstance(request.emoji_status, EmojiStatus):
+        if (emoji := await File.get_or_none(id=request.emoji_status.document_id, type=FileType.DOCUMENT_EMOJI)) is None:
+            raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
+
+        until = request.emoji_status.until
+        status, _ = await UserEmojiStatus.update_or_create(user=user, defaults={
+            "emoji": emoji,
+            "until": datetime.fromtimestamp(until, UTC) if until else None,
+        })
+
+        await user.inc_version()
+        await upd.update_user_emoji_status(user, status)
+
+        return True
+
+    raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
 
 
 # TODO: GetNotifyExceptions
