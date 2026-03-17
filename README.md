@@ -24,6 +24,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [x] Bots
 - [x] Dialog filters (folders)
 - [x] Secret chats (https://core.telegram.org/api/end-to-end)
+  - Secret chats work **kind of**. Sometimes messages are just not arriving at either both ends or participant (who accepted chat) end.
 - [ ] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
 - [x] Mentions read state
 - [x] Outbox read date (messages.getOutboxReadDate) (note to self: maybe save read state as "read chunks" like ReadHistoryChunk(peer, read_msg_id)? this would make getting outbox read dates much easier: just request chunk with read_msg_id__gte=request.id, if it exists - get date from it, if not - message is not read yet)
