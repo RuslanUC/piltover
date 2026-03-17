@@ -582,7 +582,7 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
             continue
 
         views.append(MessageViews(
-            views=messages[message_id].content.post_info.views + request.increment,
+            views=messages[message_id].content.post_info.views,
             replies=replies_by_id.get(message_id, None),
         ))
 

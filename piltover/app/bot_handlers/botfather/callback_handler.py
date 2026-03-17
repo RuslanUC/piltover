@@ -1,5 +1,4 @@
 from loguru import logger
-from tortoise.expressions import F
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd

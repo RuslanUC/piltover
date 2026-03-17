@@ -12,19 +12,20 @@ from pyrogram.enums import MessageEntityType
 from pyrogram.errors import NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
-    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft
+    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft, GetMessagesViews
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
 from pyrogram.types import InputMediaDocument, ChatPermissions, MessageEntity
+from pyrogram.utils import get_channel_id
 from tortoise.expressions import F, Subquery
 
 from piltover.db.enums import PeerType
 from piltover.db.models import MessageRef, Peer, User, MessageContent
 from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
 from tests.client import TestClient
-from tests.conftest import ClientFactory
+from tests.conftest import ClientFactory, ChannelWithClientsFactory
 
 
 @pytest.mark.asyncio
@@ -1296,3 +1297,45 @@ async def test_send_message_with_urls(client_with_auth: ClientFactory, text: str
 
             assert entity.type == MessageEntityType.URL
             assert message.text[entity.offset:entity.offset+entity.length] == expected
+
+
+@pytest.mark.asyncio
+async def test_channels_post_get_views(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+    await client2.get_chat(channel.id)
+
+    message1 = await client1.send_message(channel.id, "test 1")
+    message2 = await client1.send_message(channel.id, "test 2")
+    message3 = await client1.send_message(channel.id, "test 3")
+
+    for cl in (client1, client2):
+        views = await cl.invoke(GetMessagesViews(
+            peer=await cl.resolve_peer(channel.id),
+            id=[message1.id, message2.id, message3.id],
+            increment=False,
+        ))
+
+        for message_views in views.views:
+            assert message_views.views == 0
+
+
+@pytest.mark.asyncio
+async def test_channels_post_get_views_increment(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+    await client2.get_chat(channel.id)
+
+    message1 = await client1.send_message(channel.id, "test 1")
+    message2 = await client1.send_message(channel.id, "test 2")
+    message3 = await client1.send_message(channel.id, "test 3")
+
+    for num, cl in enumerate((client1, client2), start=1):
+        for _ in range(3):
+            views = await cl.invoke(GetMessagesViews(
+                peer=await cl.resolve_peer(channel.id),
+                id=[message1.id, message2.id, message3.id],
+                increment=True,
+            ))
+
+        for message_views in views.views:
+            assert message_views.views == num
+

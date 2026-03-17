@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TypeVar, Self, Iterable, cast
 
+from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.functions import Count, Max
@@ -13,7 +14,7 @@ from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
 from piltover.db.models.utils import Missing, MISSING, NullableFKSetNull
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount, \
-    MessageReplies as TLMessageReplies
+    MessageReplies as TLMessageReplies, PeerChannel, PeerUser
 from piltover.tl.base import Message as TLMessageBase
 from piltover.tl.base.internal import MessageToFormatRef
 from piltover.tl.to_format import MessageToFormat
@@ -719,7 +720,27 @@ class MessageRef(Model):
             f"{self.content.reactions_version}"
         )
 
-    async def to_tl_replies(self) -> TLMessageReplies | None:
+    async def _get_recent_repliers(self) -> list[...] | None:
+        query = Q(reply_to_id=self.discussion_id, top_message_id=self.discussion_id, join_type=Q.OR)
+        recent_replies = await MessageRef.filter(query).order_by("-id").limit(5).distinct().values_list(
+            "content__author_id", "content__anonymous", "content__send_as_channel_id",
+        )
+
+        recent_repliers = []
+        for user_id, anon, as_channel_id in recent_replies:
+            if as_channel_id:
+                recent_repliers.append(PeerChannel(channel_id=models.Channel.make_id_from(as_channel_id)))
+            elif anon and self.peer.type is PeerType.CHANNEL:
+                channel_id = self.peer.channel_id
+                recent_repliers.append(PeerChannel(channel_id=models.Channel.make_id_from(channel_id)))
+            elif not anon:
+                recent_repliers.append(PeerUser(user_id=user_id))
+            else:
+                logger.warning(f"What: ref {self.id}; {user_id=}, {anon=}, {as_channel_id=}")
+
+        return recent_repliers or None
+
+    async def to_tl_replies(self, with_recent: bool = False) -> TLMessageReplies | None:
         if not self.is_discussion and self.discussion_id is None:
             return None
 
@@ -760,12 +781,17 @@ class MessageRef(Model):
                 await models.MessageRef.get(id=self.discussion_id).values_list("peer__channel_id")
             )
 
+            recent_repliers = None
+            if with_recent:
+                recent_repliers = await self._get_recent_repliers()
+
             replies = TLMessageReplies(
                 replies=replies_count,
                 replies_pts=0,
                 comments=True,
                 channel_id=models.Channel.make_id_from(discussion_channel_id) if discussion_channel_id else None,
                 max_id=max_id,
+                recent_repliers=recent_repliers or None,
             )
 
         await Cache.obj.set(cache_key, replies)
@@ -773,7 +799,9 @@ class MessageRef(Model):
         return replies
 
     @classmethod
-    async def to_tl_replies_bulk(cls, refs: list[MessageRef]) -> list[TLMessageReplies | None]:
+    async def to_tl_replies_bulk(
+            cls, refs: list[MessageRef], with_recent: bool = False,
+    ) -> list[TLMessageReplies | None]:
         cache_keys = [
             ref.cache_key_replies()
             for ref in refs
@@ -847,12 +875,18 @@ class MessageRef(Model):
             elif ref.discussion_id is not None:
                 replies_count, max_id = replies_stats.get(ref.discussion_id, (0, None))
                 discussion_channel_id = discussion_channel_ids.get(ref.discussion_id)
+
+                recent_repliers = None
+                if with_recent:
+                    recent_repliers = await ref._get_recent_repliers()
+
                 replies_info = TLMessageReplies(
                     replies=replies_count,
                     replies_pts=0,
                     comments=True,
                     channel_id=models.Channel.make_id_from(discussion_channel_id) if discussion_channel_id else None,
                     max_id=max_id,
+                    recent_repliers=recent_repliers,
                 )
             else:
                 raise Unreachable
