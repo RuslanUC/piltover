@@ -93,6 +93,7 @@ async def get_full_user(request: GetFullUser, user: User):
             phone_calls_available=True,
             phone_calls_private=False,
             fallback_photo=photo_fallback_db.to_tl() if photo_fallback_db is not None else None,
+            translations_disabled=True,
             # video_calls_available=True,
         ),
         chats=[await personal_channel.to_tl()] if personal_channel is not None else [],
