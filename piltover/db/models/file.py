@@ -188,7 +188,7 @@ class File(Model):
         try:
             self.photo_sizes = await resize_photo(
                 storage, self.physical_id, suffix=thumb_suffix, is_document=is_document,
-                sizes="abc" if profile_photo else "m",
+                sizes="abc" if profile_photo else "smxy", force_resize_all=profile_photo,
             )
             self.photo_stripped = await generate_stripped(
                 storage, self.physical_id, suffix=thumb_suffix, is_document=is_document,

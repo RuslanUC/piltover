@@ -95,12 +95,17 @@ image_executor = ThreadPoolExecutor(thread_name_prefix="ImageResizeWorker")
 video_executor = ThreadPoolExecutor(thread_name_prefix="VideoMetadataWorker")
 
 
-def _resize_image_internal(location: str, to_size: int, out_format: str | None) -> tuple[BytesIO, int, int]:
+def _resize_image_internal(
+        location: str, to_size: int, out_format: str | None, force_resize: bool,
+) -> tuple[BytesIO | None, int, int]:
     img = img_open(location)
     img.load()
 
     width, height = img.size
     factor = to_size / max(width, height)
+    if factor > 1 and not force_resize:
+        return None, 0, 0
+
     if width >= height:
         height = int(height * factor)
         width = to_size
@@ -119,7 +124,7 @@ def _resize_image_internal(location: str, to_size: int, out_format: str | None) 
 async def resize_photo(
         storage: BaseStorage, file_id: UUID, sizes: str = "abc", suffix: str | None = None, is_document: bool = False,
         out_format: str | None = None, force_sizes: tuple[int] | None = None, new_file_id: UUID | None = None,
-        new_as_document: bool = False,
+        new_as_document: bool = False, force_resize_all: bool = False,
 ) -> list[dict[str, int | str]]:
     if is_document:
         location = await storage.documents.get_location(file_id, suffix)
@@ -130,6 +135,7 @@ async def resize_photo(
         get_event_loop().run_in_executor(
             image_executor, _resize_image_internal,
             location, PHOTOSIZE_TO_INT[size] if force_sizes is None else force_sizes[idx], out_format,
+            (force_resize_all or (idx == 0)),
         )
         for idx, size in enumerate(sizes)
     ]
@@ -138,6 +144,9 @@ async def resize_photo(
     result = []
 
     for idx, (resized, width, height) in enumerate(res):
+        if resized is None:
+            continue
+
         await sleep(0)
 
         resized.seek(0, os.SEEK_END)
