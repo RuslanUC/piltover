@@ -28,7 +28,7 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateChannelReadMessagesContents, \
     UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData, UpdateReadChannelOutbox, \
     UpdatePinnedChannelMessages, UpdateUserEmojiStatus, EmojiStatusEmpty
-from piltover.tl.to_format import DumbChannelMessageToFormat
+from piltover.tl.to_format import ChannelMessageToFormat
 from piltover.tl.to_format.update_message_id import UpdateMessageIDToFormat
 from piltover.tl.types.account import PrivacyRules
 from piltover.tl.types.internal import ObjectWithLayerRequirement, FieldWithLayerRequirement
@@ -125,6 +125,13 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
 
     chats_and_channels = [*chats, *channels]
 
+    message_for_user = await message.to_tl(user, False)
+    generic_message = ChannelMessageToFormat(
+        content=message_for_user.content,
+        common=message.to_tl_common_channel(),
+        replies=message_for_user.replies,
+    )
+
     await SessionManager.send(
         UpdatesWithDefaults(
             updates=[
@@ -134,8 +141,7 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
                     target_user=user.id,
                 ),
                 UpdateNewChannelMessage(
-                    # TODO: replace with something like "GenericChannelMessageToFormat" that contains only content?
-                    message=DumbChannelMessageToFormat(id=message.id),
+                    message=generic_message,
                     pts=new_pts,
                     pts_count=1,
                 )
@@ -148,7 +154,7 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
 
     updates = [
         UpdateNewChannelMessage(
-            message=await message.to_tl(user, False),
+            message=message_for_user,
             pts=new_pts,
             pts_count=1,
         ),
@@ -228,7 +234,7 @@ async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | Non
 async def send_messages_channel(
         messages: list[MessageRef], channel: Channel, user: User | None,
 ) -> Updates | None:
-    update_messages = []
+    update_pts = []
     updates_to_create = []
 
     ucc = UsersChatsChannels()
@@ -239,7 +245,7 @@ async def send_messages_channel(
 
         for num, message in enumerate(messages, start=1):
             this_pts = start_pts + num
-            update_messages.append((message, this_pts))
+            update_pts.append(this_pts)
             ucc.add_message(message.content_id)
 
             updates_to_create.append(ChannelUpdate(
@@ -255,12 +261,14 @@ async def send_messages_channel(
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
+    generic_messages = await MessageRef.to_tl_channel_bulk(messages)
+
     updates = []
-    for message, pts in update_messages:
+    for generic_message, message, pts in zip(generic_messages, messages, update_pts):
         if message.random_id:
             updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
         updates.append(UpdateNewChannelMessage(
-            message=DumbChannelMessageToFormat(id=message.id),
+            message=generic_message,
             pts=pts,
             pts_count=1,
         ))
@@ -273,19 +281,6 @@ async def send_messages_channel(
         ),
         channel_id=channel.id,
     )
-
-    if user is None:
-        return None
-
-    updates = []
-    for message, pts in update_messages:
-        if message.random_id:
-            updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
-        updates.append(UpdateNewChannelMessage(
-            message=await message.to_tl(user, False),
-            pts=pts,
-            pts_count=1,
-        ))
 
     return UpdatesWithDefaults(
         updates=updates,
@@ -437,11 +432,17 @@ async def edit_message_channel(user: User | None, channel: Channel, message: Mes
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
+    generic_message = ChannelMessageToFormat(
+        content=await message.content.to_tl_content(),
+        common=message.to_tl_common_channel(),
+        replies=await message.to_tl_replies(),
+    )
+
     await SessionManager.send(
         UpdatesWithDefaults(
             updates=[
                 UpdateEditChannelMessage(
-                    message=DumbChannelMessageToFormat(id=message.id),
+                    message=generic_message,
                     pts=new_pts,
                     pts_count=1,
                 ),
@@ -458,7 +459,7 @@ async def edit_message_channel(user: User | None, channel: Channel, message: Mes
     return UpdatesWithDefaults(
         updates=[
             UpdateEditChannelMessage(
-                message=await message.to_tl(user),
+                message=generic_message,
                 pts=new_pts,
                 pts_count=1,
             ),

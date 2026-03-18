@@ -578,10 +578,13 @@ class Client:
                 ).only("type", "user_id", "chat_id", "channel_id")
             })
 
-        if values.messages:
-            # TODO: rewrite fetching user-specific fields
-            messages = await MessageRef.filter(id__in=values.messages).select_related(*MessageRef.PREFETCH_FIELDS)
-            for message in await MessageRef.to_tl_bulk(messages, session.user_id):
-                result.dumb_messages[message.id] = message
+        if values.channel_messages:
+            messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
+                "peer", "peer__channel", "content", "content__media", "content__media__file",
+            )
+            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, session.user_id)
+            reactionss = await MessageRef.to_tl_reactions_bulk(messages, session.user_id)
+            for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
+                result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
 
         return result

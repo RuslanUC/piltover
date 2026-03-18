@@ -1,6 +1,5 @@
 from .channel import ChannelToFormat
 from .chat import ChatToFormat
-from .dumb_message import DumbChannelMessageToFormat
 from .encrypted_chat import EncryptedChatToFormat
 from .message_service import MessageServiceToFormat
 from .poll_answers import PollAnswerVotersToFormat
@@ -11,3 +10,4 @@ from .wallpaper import WallPaperToFormat
 from .phone_call import PhoneCallToFormat
 from .message import MessageToFormat
 from .update_message_id import UpdateMessageIDToFormat
+from .channel_message import ChannelMessageToFormat

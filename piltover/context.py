@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from piltover.storage import BaseStorage
     from piltover.db.enums import PeerType, PrivacyRuleKeyType
     from piltover.db.models import ChatParticipant, Contact, Presence, Peer
-    from piltover.tl.types import Message as TLMessage
+    from piltover.tl.base import MessageReactions
 
 T = TypeVar("T")
 
@@ -49,7 +49,7 @@ request_ctx: ContextVar[RequestContext] = ContextVar("request_ctx")
 class ContextValues:
     __slots__ = (
         "poll_answers", "chat_participants", "channel_participants", "peers", "contacts", "privacyrules", "presences",
-        "dumb_messages",
+        "channel_messages",
     )
 
     def __init__(self) -> None:
@@ -60,7 +60,7 @@ class ContextValues:
         self.contacts: dict[tuple[int, int], Contact] = {}
         self.privacyrules: dict[int, dict[PrivacyRuleKeyType, bool]] = {}
         self.presences: dict[int, Presence] = {}
-        self.dumb_messages: dict[int, TLMessage] = {}
+        self.channel_messages: dict[int, tuple[MessageReactions, bool, bool]] = {}
 
 
 class SerializationContext:
@@ -89,14 +89,14 @@ serialization_ctx: ContextVar[SerializationContext | None] = ContextVar("seriali
 
 
 class NeedContextValuesContext:
-    __slots__ = ("poll_answers", "chat_participants", "channel_participants", "users", "messages",)
+    __slots__ = ("poll_answers", "chat_participants", "channel_participants", "users", "channel_messages",)
 
     def __init__(self) -> None:
         self.poll_answers: set[int] = set()
         self.chat_participants: set[int] = set()
         self.channel_participants: set[int] = set()
         self.users: set[int] = set()
-        self.messages: set[int] = set()
+        self.channel_messages: set[int] = set()
 
     @contextmanager
     def use(self) -> Generator[Self, None, None]:
@@ -112,7 +112,7 @@ class NeedContextValuesContext:
                 or bool(self.chat_participants)
                 or bool(self.channel_participants)
                 or bool(self.users)
-                or bool(self.messages)
+                or bool(self.channel_messages)
         )
 
     def to_tl(self, obj: TLObject) -> NeedsContextValues:
@@ -122,7 +122,7 @@ class NeedContextValuesContext:
             chat_participants=list(self.chat_participants) if self.chat_participants else None,
             channel_participants=list(self.channel_participants) if self.channel_participants else None,
             users=list(self.users) if self.users else None,
-            messages=list(self.messages) if self.messages else None,
+            channel_messages=list(self.channel_messages) if self.channel_messages else None,
         )
 
 

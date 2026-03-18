@@ -17,7 +17,8 @@ from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, Rea
     MessageReplies as TLMessageReplies, PeerChannel, PeerUser
 from piltover.tl.base import Message as TLMessageBase
 from piltover.tl.base.internal import MessageToFormatRef
-from piltover.tl.to_format import MessageToFormat
+from piltover.tl.to_format import MessageToFormat, ChannelMessageToFormat
+from piltover.tl.types.internal import ChannelMessageToFormatCommon
 
 _T = TypeVar("_T")
 BackwardO2OOrT = fields.BackwardOneToOneRelation[_T] | _T
@@ -154,7 +155,21 @@ class MessageRef(Model):
         await Cache.obj.set(cache_key, message)
         return message
 
-    async def to_tl(self, user: models.User, with_reactions: bool = True) -> TLMessageBase:
+    async def get_mentioned_media_unread(self, user_id: int) -> tuple[bool, bool]:
+        ref = await self.to_tl_ref(user_id)
+        return ref.mentioned, ref.media_unread
+
+    def to_tl_common_channel(self) -> ChannelMessageToFormatCommon:
+        return ChannelMessageToFormatCommon(
+            author_id=self.content.author_id,
+            id=self.id,
+            channel_id=self.peer.channel_id,
+            from_scheduled=self.from_scheduled or self.content.scheduled_date,
+            pinned=self.pinned,
+            reply_to=self.make_reply_to_header(),
+        )
+
+    async def to_tl(self, user: models.User, with_reactions: bool = True) -> MessageToFormat:
         reactions = None
         if with_reactions and self.content.type is MessageType.REGULAR:
             reactions = await self.to_tl_reactions(user.id)
@@ -228,6 +243,11 @@ class MessageRef(Model):
         return result
 
     @classmethod
+    async def get_mentioned_media_unread_bulk(cls, messages: list[MessageRef], user_id: int) -> list[tuple[bool, bool]]:
+        refs = await cls.to_tl_ref_bulk(messages, user_id)
+        return [(ref.mentioned, ref.media_unread) for ref in refs]
+
+    @classmethod
     async def to_tl_bulk(
             cls, messages: list[MessageRef], user: models.User | int, with_reactions: bool = True,
     ) -> list[TLMessageBase]:
@@ -248,6 +268,22 @@ class MessageRef(Model):
         return [
             MessageToFormat(ref=ref, content=content, reactions=reactions, replies=replies)
             for ref, content, reactions, replies in zip(refs, contents, reactionss, repliess)
+        ]
+
+    @classmethod
+    async def to_tl_channel_bulk(cls, messages: list[MessageRef]) -> list[ChannelMessageToFormat]:
+        raw_contents = [ref.content for ref in messages]
+
+        commons = [ref.to_tl_common_channel() for ref in messages]
+        contents = await models.MessageContent.to_tl_content_bulk(raw_contents)
+        repliess = await MessageRef.to_tl_replies_bulk(messages)
+
+        if len(contents) != len(commons):
+            raise Unreachable(f"len(contents) != len(commons), {len(contents)} != {len(commons)}")
+
+        return [
+            ChannelMessageToFormat(common=common, content=content, replies=replies)
+            for common, content, replies in zip(commons, contents, repliess)
         ]
 
     async def to_tl_maybecached(self, user_id: int, with_reactions: bool = True) -> TLMessageBase:
@@ -616,7 +652,7 @@ class MessageRef(Model):
         if not messages:
             return []
 
-        content_ids = [ref.content.id for ref in messages if ref.content.type is MessageType.REGULAR]
+        content_ids = [ref.content_id for ref in messages if ref.content.type is MessageType.REGULAR]
 
         user_reactions = await cls._get_user_reaction_bulk(content_ids, user_id)
 
@@ -778,7 +814,7 @@ class MessageRef(Model):
 
             discussion_channel_id = cast(
                 int | None,
-                await models.MessageRef.get(id=self.discussion_id).values_list("peer__channel_id")
+                await models.MessageRef.get(id=self.discussion_id).values_list("peer__channel_id", flat=True)
             )
 
             recent_repliers = None

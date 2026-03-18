@@ -32,7 +32,7 @@ internal.channel_subscribe#ae808cf6 flags:# subscribe:flags.0?true user_ids:Vect
 internal.field_with_layer_requirement#d9594f1f field:string min_layer:int max_layer:int = internal.FieldWithLayerRequirement;
 internal.object_with_layer_requirement#7678a3 object:Object fields:Vector<internal.FieldWithLayerRequirement> = internal.ObjectWithLayerRequirement;
 
-internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> users:flags.3?Vector<long> messages:flags.4?Vector<long> = internal.NeedsContextValues;
+internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> users:flags.3?Vector<long> channel_messages:flags.4?Vector<long> = internal.NeedsContextValues;
 
 // Vectors with concrete types
 
@@ -188,9 +188,10 @@ internal_access.file_reference_payload#af4f0049 file_id:long created_at:int = in
 
 // Generated "*ToFormat" constructors
 
-internal.messageToFormatContent#4e487850 flags:# silent:flags.0?true post:flags.1?true edit_hide:flags.2?true noforwards:flags.3?true invert_media:flags.4?true from_id:flags.5?Peer via_bot_id:flags.6?long date:int message:string media:flags.7?MessageMedia reply_markup:flags.8?ReplyMarkup entities:flags.9?Vector<MessageEntity> views:flags.10?int forwards:flags.10?int replies:flags.11?MessageReplies edit_date:flags.12?int post_author:flags.13?string grouped_id:flags.14?long ttl_period:flags.16?int fwd_from:flags.17?MessageFwdHeader = internal.MessageToFormatContent;
+internal.messageToFormatContent#4e487850 flags:# silent:flags.0?true post:flags.1?true edit_hide:flags.2?true noforwards:flags.3?true invert_media:flags.4?true from_id:flags.5?Peer via_bot_id:flags.6?long date:int message:string media:flags.7?MessageMedia reply_markup:flags.8?ReplyMarkup entities:flags.9?Vector<MessageEntity> views:flags.10?int forwards:flags.10?int edit_date:flags.12?int post_author:flags.13?string grouped_id:flags.14?long ttl_period:flags.16?int fwd_from:flags.17?MessageFwdHeader = internal.MessageToFormatContent;
 internal.messageToFormatServiceContent#76fbc4e5 flags:# from_id:flags.0?Peer date:int action:MessageAction ttl_period:flags.1?int = internal.MessageToFormatContent;
 internal.messageToFormatRef#66b94b3 flags:# out:flags.0?true mentioned:flags.1?true media_unread:flags.2?true from_scheduled:flags.3?true pinned:flags.4?true id:int peer_id:Peer saved_peer_id:flags.5?Peer reply_to:flags.7?MessageReplyHeader = internal.MessageToFormatRef;
+internal.channelMessageToFormatCommon#b2d2c02 flags:# author_id:long id:int channel_id:long from_scheduled:flags.0?true pinned:flags.1?true reply_to:flags.2?MessageReplyHeader = internal.ChannelMessageToFormatCommon;
 
 wallPaperToFormatInternal#68dda86b flags:# id:long creator_id:long pattern:flags.0?true dark:flags.1?true slug:string document:Document settings:flags.2?WallPaperSettings = WallPaper;
 messageServiceToFormatInternal#efce62cb flags:# author_id:long id:int from_id:flags.0?Peer peer_id:Peer reply_to:flags.1?MessageReplyHeader date:int action:MessageAction ttl_period:flags.2?int = Message;
@@ -204,6 +205,7 @@ pollResultsToFormatInternal#fb007fa4 flags:# id:long results:Vector<PollAnswerVo
 pollAnswerVotersToFormatInternal#a6ad847b flags:# id:long poll_id:long correct:flags.0?true option:bytes voters:int = PollAnswerVoters;
 phoneCallToFormatInternal#94e4f3ed flags:# id:long access_hash:long date:long admin_id:long participant_id:long admin_sess_id:long participant_sess_id:flags.0?long g_a:flags.1?bytes g_a_hash:flags.2?bytes g_b:flags.3?bytes key_fingerprint:flags.4?long protocol:PhoneCallProtocol connections:flags.5?Vector<PhoneConnection> start_date:flags.6?int = PhoneCall;
 messageToFormatInternal#e0a8fd99 flags:# content:internal.MessageToFormatContent ref:internal.MessageToFormatRef reactions:flags.0?MessageReactions replies:flags.1?MessageReplies = Message;
+channelMessageToFormatInternal#237ed5c2 flags:# content:internal.MessageToFormatContent common:internal.ChannelMessageToFormatCommon replies:flags.1?MessageReplies = Message;
 updateMessageIDToFormatInternal#5157a73d id:int random_id:long target_user:long = Update;
 
 // Uploaded files metadata
