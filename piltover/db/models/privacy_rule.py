@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Iterable
 
 from tortoise import fields, Model
-from tortoise.expressions import Subquery, Q
+from tortoise.expressions import Subquery, Q, F
 from tortoise.query_utils import Prefetch
+from tortoise.transactions import in_transaction
 
+from piltover.cache import Cache
 from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
@@ -39,6 +41,7 @@ class PrivacyRule(Model):
     key: PrivacyRuleKeyType = fields.IntEnumField(PrivacyRuleKeyType, description="")
     allow_all: bool = fields.BooleanField()
     allow_contacts: bool = fields.BooleanField()
+    version: int = fields.BigIntField(default=0)
 
     exceptions: fields.ReverseRelation[models.PrivacyRuleException]
 
@@ -73,45 +76,51 @@ class PrivacyRule(Model):
 
         all_users = {*allow_users, *disallow_users}
 
-        rule, created = await cls.update_or_create(user=user, key=rule_key, defaults={
-            "allow_all": allow_all,
-            "allow_contacts": allow_contacts,
-        })
+        async with in_transaction():
+            rule, created = await cls.update_or_create(user=user, key=rule_key, defaults={
+                "allow_all": allow_all,
+                "allow_contacts": allow_contacts,
+            })
 
-        if all_users:
-            await models.PrivacyRuleException.filter(id__in=Subquery(
-                models.PrivacyRuleException.filter(rule=rule, user_id__not_in=all_users).values_list("id", flat=True)
-            )).delete()
+            if all_users:
+                await models.PrivacyRuleException.filter(id__in=Subquery(
+                    models.PrivacyRuleException.filter(
+                        rule=rule, user_id__not_in=all_users,
+                    ).values_list("id", flat=True)
+                )).delete()
 
-            existing = {}
-            if not created:
-                existing = {
-                    exc.user_id: exc
-                    for exc in await models.PrivacyRuleException.filter(rule=rule)
-                }
+                existing = {}
+                if not created:
+                    existing = {
+                        exc.user_id: exc
+                        for exc in await models.PrivacyRuleException.filter(rule=rule)
+                    }
 
-            to_update = []
-            to_create = []
-            for user in await models.User.filter(id__in=all_users):
-                allow = user.id in allow_users
-                if user.id in existing:
-                    exc = existing[user.id]
-                    if exc.allow != allow:
-                        exc.allow = allow
-                        to_update.append(exc)
-                else:
-                    to_create.append(models.PrivacyRuleException(
-                        rule=rule,
-                        user=user,
-                        allow=user.id in allow_users,
-                    ))
+                to_update = []
+                to_create = []
+                for user in await models.User.filter(id__in=all_users):
+                    allow = user.id in allow_users
+                    if user.id in existing:
+                        exc = existing[user.id]
+                        if exc.allow != allow:
+                            exc.allow = allow
+                            to_update.append(exc)
+                    else:
+                        to_create.append(models.PrivacyRuleException(
+                            rule=rule,
+                            user=user,
+                            allow=user.id in allow_users,
+                        ))
 
-            if to_create:
-                await models.PrivacyRuleException.bulk_create(to_create)
-            if to_update:
-                await models.PrivacyRuleException.bulk_update(to_update, fields=["allow"])
-        else:
-            await models.PrivacyRuleException.filter(rule=rule).delete()
+                if to_create:
+                    await models.PrivacyRuleException.bulk_create(to_create)
+                if to_update:
+                    await models.PrivacyRuleException.bulk_update(to_update, fields=["allow"])
+            else:
+                await models.PrivacyRuleException.filter(rule=rule).delete()
+
+            await cls.filter(id=rule.id).update(version=F("version") + 1)
+            await rule.refresh_from_db(["version"])
 
         return rule
 
@@ -147,6 +156,10 @@ class PrivacyRule(Model):
         return rules
 
     @classmethod
+    def cache_key(cls, this_user: int, rule_user: int, key: PrivacyRuleKeyType, version: int) -> str:
+        return f"privacy-rule:{rule_user}:{key.value}:{version}:{this_user}"
+
+    @classmethod
     async def has_access_to(
             cls, current_user: models.User | int, target_user: models.User | int, key: PrivacyRuleKeyType,
     ) -> bool:
@@ -156,10 +169,19 @@ class PrivacyRule(Model):
         if current_id == target_id:
             return True
 
+        rule_simple = await cls.get_or_none(user_id=target_id, key=key).only("id", "version")
+        if rule_simple is None:
+            return False
+
+        cache_key = cls.cache_key(current_id, target_id, key, rule_simple.version)
+        cached = await Cache.obj.get(cache_key)
+        if cached is not None:
+            return cached
+
         # TODO: check if target_user blocked current_user
 
         rule = await cls.get_or_none(
-            user_id=target_id, key=key,
+            id=rule_simple.id,
         ).prefetch_related(Prefetch(
             "exceptions", queryset=models.PrivacyRuleException.filter(user_id=current_id),
         )).annotate(
@@ -169,18 +191,18 @@ class PrivacyRule(Model):
             ).exists()),
         )
 
+        result = False
+
         if rule is None:
-            return False
+            ...
+        elif rule.exceptions.related_objects:
+            result = rule.exceptions.related_objects[0].allow
+        elif rule.allow_all or (rule.allow_contacts and rule.is_contact):
+            result = True
 
-        if rule.exceptions.related_objects:
-            return rule.exceptions.related_objects[0].allow
+        await Cache.obj.set(cache_key, result)
 
-        if rule.allow_all:
-            return True
-        elif rule.allow_contacts and rule.is_contact:
-            return True
-
-        return False
+        return result
 
     @classmethod
     async def has_access_to_bulk(
@@ -221,17 +243,14 @@ class PrivacyRule(Model):
         for key in keys:
             key_query |= Q(key=key)
 
-        if contacts is None:
-            contacts = {
-                contact.owner_id
-                for contact in await models.Contact.filter(owner_id__in=user_ids, target_id=this_user_id)
-            }
+        rules_simple = await cls.filter(key_query, user_id__in=user_ids).only("id", "version", "user_id", "key")
+        cache_keys = [cls.cache_key(this_user_id, rule.user_id, rule.key, rule.version) for rule in rules_simple]
+        if cache_keys:
+            cached_all = await Cache.obj.multi_get(cache_keys)
+        else:
+            cached_all = []
 
-        rules = await cls.filter(
-            key_query, user_id__in=user_ids,
-        ).prefetch_related(Prefetch(
-            "exceptions", queryset=models.PrivacyRuleException.filter(user_id=this_user_id),
-        ))
+        not_cached_ids = []
 
         leftover = {
             (user_id, key)
@@ -239,20 +258,53 @@ class PrivacyRule(Model):
             for key in keys
         }
 
+        for rule, allowed in zip(rules_simple, cached_all):
+            if allowed is None:
+                not_cached_ids.append(rule.id)
+            else:
+                results[rule.user_id][rule.key] = allowed
+                leftover.discard((rule.user_id, rule.key))
+
+        if not_cached_ids and contacts is None:
+            contacts = {
+                contact.owner_id
+                for contact in await models.Contact.filter(owner_id__in=user_ids, target_id=this_user_id)
+            }
+
+        if not_cached_ids:
+            rules = await cls.filter(
+                id__in=not_cached_ids,
+            ).prefetch_related(Prefetch(
+                "exceptions", queryset=models.PrivacyRuleException.filter(user_id=this_user_id),
+            ))
+        else:
+            rules = []
+
+        to_cache = []
+
         for rule in rules:
             leftover.discard((rule.user_id, rule.key))
 
+            cache_key = cls.cache_key(this_user_id, rule.user_id, rule.key, rule.version)
+
             if rule.exceptions.related_objects:
-                results[rule.user_id][rule.key] = rule.exceptions.related_objects[0].allow
+                allow = rule.exceptions.related_objects[0].allow
+                results[rule.user_id][rule.key] = allow
+                to_cache.append((cache_key, allow))
                 continue
 
             if rule.allow_all or rule.allow_contacts and rule.user_id in contacts:
                 results[rule.user_id][rule.key] = True
+                to_cache.append((cache_key, True))
                 continue
 
             results[rule.user_id][rule.key] = False
+            to_cache.append((cache_key, False))
 
         for user_id, key in leftover:
             results[user_id][key] = False
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
 
         return results
