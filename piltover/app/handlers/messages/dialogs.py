@@ -51,7 +51,7 @@ async def format_dialogs(
 
         result = {
             "dialogs": await model.to_tl_bulk(dialogs, dialog_by_peer),
-            "messages": await MessageRef.to_tl_bulk(messages, user),
+            "messages": await MessageRef.to_tl_bulk_maybecached(messages, user.id),
             "chats": [*chats, *channels],
             "users": users,
         }

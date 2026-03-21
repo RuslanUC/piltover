@@ -25,7 +25,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [x] Dialog filters (folders)
 - [x] Secret chats (https://core.telegram.org/api/end-to-end)
   - Secret chats work **kind of**. Sometimes messages are just not arriving at either both ends or participant (who accepted chat) end.
-- [ ] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
+- [x] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
 - [x] Mentions read state
 - [x] Outbox read date (messages.getOutboxReadDate) (note to self: maybe save read state as "read chunks" like ReadHistoryChunk(peer, read_msg_id)? this would make getting outbox read dates much easier: just request chunk with read_msg_id__gte=request.id, if it exists - get date from it, if not - message is not read yet)
 - [x] Make `access_hash`es completely offline (e.g. `hmac(current_user_id + current_session_id + target_user_id)`)
@@ -46,6 +46,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
   - [ ] maybe poll for new client messages? session stores id of the last polled message, when client calls session.poll_messages, it gets all messages with id greater than one that is stored, saves new last id, and returns message list to the client? 
 - [ ] Top peers
 - [ ] Proper contacts implementation (right now user is able to add/remove/import contact, but only contacts for existing users are created).
+- [ ] Mentions, reactions read states are still sometimes wrong. Why?
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
