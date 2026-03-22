@@ -104,7 +104,7 @@ async def gif_inline_query_handler(
 
     endpoint, api_key = _get_api_endpoint_and_token(AppConfig.GIFS_PROVIDER, bool(inline_query.query.strip()))
     if endpoint is None or api_key is None:
-        logger.warning("Uknown gif provider or provider api key is not set!")
+        logger.warning("Unknown gif provider or provider api key is not set!")
         return _empty(inline_query)
 
     params = {

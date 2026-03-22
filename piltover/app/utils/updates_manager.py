@@ -1082,20 +1082,19 @@ async def update_channel(
         pts_count=1,
     )
 
+    update = UpdatesWithDefaults(
+        updates=[UpdateChannel(channel_id=channel.make_id())],
+        chats=[await channel.to_tl()],
+    )
+
     await SessionManager.send(
-        UpdatesWithDefaults(
-            updates=[UpdateChannel(channel_id=channel.make_id())],
-            chats=[await channel.to_tl()],
-        ),
+        update,
         channel_id=channel.id if send_to_users is None else None,
         user_id=send_to_users,
     )
 
     if user is not None:
-        return UpdatesWithDefaults(
-            updates=[UpdateChannel(channel_id=channel.make_id())],
-            chats=[await channel.to_tl()],
-        )
+        return update
 
 
 async def update_folder_peers(user: User, dialogs: list[Dialog]) -> Updates:

@@ -73,6 +73,7 @@ class Channel(ChatBase):
     profile_emoji: models.File | None = NullableFKSetNullR("models.File", "channel_profile_emoji")
     slowmode_seconds: int | None = fields.IntField(null=True, default=None)
     participants_hidden: bool = fields.BooleanField(default=False)
+    stickerset: models.Stickerset | None = NullableFKSetNull("models.Stickerset")
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -80,6 +81,7 @@ class Channel(ChatBase):
     discussion_id: int | None
     accent_emoji_id: int | None
     profile_emoji_id: int | None
+    stickerset_id: int | None
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
 

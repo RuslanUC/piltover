@@ -20,7 +20,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
     Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent, \
-    ReadHistoryChunk, DefaultSendAs
+    ReadHistoryChunk, DefaultSendAs, Stickerset
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -33,14 +33,14 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
     ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked, \
-    ChannelParticipantLeft, PeerChannel
+    ChannelParticipantLeft, PeerChannel, InputStickerSetEmpty
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
     GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden, \
-    ReadMessageContents, DeleteHistory, DeleteParticipantHistory, ReorderUsernames, DeactivateAllUsernames
+    ReadMessageContents, DeleteHistory, DeleteParticipantHistory, ReorderUsernames, DeactivateAllUsernames, SetStickers
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -221,7 +221,7 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
 async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatFull:
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
-        select_related=("channel__discussion", "channel__photo",),
+        select_related=("channel__discussion", "channel__photo", "channel__stickerset",),
     )
 
     channel = peer.channel
@@ -318,7 +318,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         full_chat=ChannelFull(
             can_view_participants=can_view_participants,
             can_set_username=can_change_info,
-            can_set_stickers=False,
+            can_set_stickers=channel.supergroup,
             hidden_prehistory=channel.hidden_prehistory,
             can_set_location=False,
             has_scheduled=has_scheduled,
@@ -329,6 +329,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             translations_disabled=True,
             restricted_sponsored=True,
             can_view_revenue=False,
+            paid_reactions_available=False,
 
             id=channel.make_id(),
             about=channel.description,
@@ -357,6 +358,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             slowmode_seconds=channel.slowmode_seconds,
             slowmode_next_send_date=slowmode_next_date,
             default_send_as=default_send_as,
+            stickerset=await channel.stickerset.to_tl(user) if channel.stickerset is not None else None,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl),
         users=[await user.to_tl()],
@@ -1679,3 +1681,40 @@ async def reorder_usernames() -> bool:
 @handler.on_request(DeactivateAllUsernames, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def deactivate_all_usernames() -> bool:
     return False
+
+
+@handler.on_request(SetStickers)
+async def set_stickers(request: SetStickers, user: User) -> bool:
+    peer = await Peer.from_input_peer_raise(
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+    )
+    channel = peer.channel
+    if not channel.supergroup:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+
+    if isinstance(request.stickerset, InputStickerSetEmpty):
+        if channel.stickerset_id is None:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+        channel.stickerset = None
+        channel.version += 1
+        await channel.save(update_fields=["stickerset_id", "version"])
+        await upd.update_channel(channel, user)
+        return True
+
+    stickerset = await Stickerset.from_input(request.stickerset)
+    if stickerset is None or stickerset.official:
+        raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
+
+    if channel.stickerset_id == stickerset.id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+
+    channel.stickerset = stickerset
+    channel.version += 1
+    await channel.save(update_fields=["stickerset_id", "version"])
+
+    await upd.update_channel(channel, user)
+    return True

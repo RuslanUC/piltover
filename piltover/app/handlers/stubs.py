@@ -1,15 +1,17 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption
+from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption, StatsGraph
 from piltover.tl.functions.account import GetCollectibleEmojiStatuses, GetContactSignUpNotification, \
     SetContactSignUpNotification
 from piltover.tl.functions.bots import GetPopularAppBots
 from piltover.tl.functions.payments import GetStarsStatus, GetStarsSubscriptions, GetStarsTransactions, \
     GetStarsTopupOptions
 from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts, GetBoostsList
+from piltover.tl.functions.stats import GetBroadcastRevenueStats
 from piltover.tl.types.account import EmojiStatuses
 from piltover.tl.types.bots import PopularAppBots
 from piltover.tl.types.payments import StarsStatus
 from piltover.tl.types.premium import BoostsStatus, MyBoosts, BoostsList
+from piltover.tl.types.stats import BroadcastRevenueStats
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("stubs")
@@ -106,4 +108,3 @@ async def set_contact_sign_up_notification() -> bool:  # pragma: no cover
 @handler.on_request(GetPopularAppBots, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_popular_app_bots() -> PopularAppBots:
     return PopularAppBots(users=[])
-
