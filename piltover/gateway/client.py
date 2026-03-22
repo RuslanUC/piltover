@@ -22,7 +22,6 @@ from piltover.context import SerializationContext, ContextValues
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import ChatParticipant, Peer, Contact, PrivacyRule, Presence, PollVote, MessageRef
 from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable
-from piltover.layer_converter.manager import LayerConverter
 from piltover.session import Session
 from piltover.session import SessionManager
 from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
@@ -31,19 +30,11 @@ from piltover.tl.core_types import MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse, NeedsContextValues
-from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related, is_content_related
+from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
 
 if TYPE_CHECKING:
     from .server import Gateway
-
-
-class MsgIdValues:
-    __slots__ = ("last_time", "offset",)
-
-    def __init__(self, last_time: int = 0, offset: int = 0) -> None:
-        self.last_time = last_time
-        self.offset = offset
 
 
 _check_req_pq_tlid = (Int.write(ReqPq.tlid(), False), Int.write(ReqPqMulti.tlid(), False))
@@ -65,8 +56,6 @@ class Client:
 
         self.gen_auth_data: GenAuthData | None = None
         self.empty_session = Session(0)
-        self.msg_id_values = MsgIdValues()
-        self.out_seq_no = 0
 
         self.disconnect_timeout: asyncio.Timeout | None = None
         self.write_lock = asyncio.Lock()
@@ -77,53 +66,6 @@ class Client:
     @staticmethod
     def _session_evicted(_: ..., session: Session) -> None:
         session.destroy()
-
-    def msg_id(self, in_reply: bool) -> int:
-        # Client message identifiers are divisible by 4, server message
-        # identifiers modulo 4 yield 1 if the message is a response to
-        # a client message, and 3 otherwise.
-
-        now = int(time())
-        self.msg_id_values.offset = (self.msg_id_values.offset + 4) if now == self.msg_id_values.last_time else 0
-        self.msg_id_values.last_time = now
-        msg_id = (now * 2 ** 32) + self.msg_id_values.offset + (1 if in_reply else 3)
-
-        assert msg_id % 4 in [1, 3], f"Invalid server msg_id: {msg_id}"
-        return msg_id
-
-    def get_outgoing_seq_no(self, obj: TLObject) -> int:
-        ret = self.out_seq_no * 2
-        if is_content_related(obj):
-            self.out_seq_no += 1
-            ret += 1
-        return ret
-
-    # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    def pack_message(self, obj: TLObject, session: Session, in_reply: bool) -> Message:
-        try:
-            downgraded_maybe = LayerConverter.downgrade(obj, session.layer)
-        except Exception as e:
-            logger.opt(exception=e).error("Failed to downgrade object")
-            raise
-
-        return Message(
-            message_id=self.msg_id(in_reply=in_reply),
-            seq_no=self.get_outgoing_seq_no(obj),
-            obj=downgraded_maybe,
-        )
-
-    # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    def pack_container(self, objects: list[tuple[TLObject, bool]], session: Session) -> Message:
-        container = MsgContainer(messages=[
-            Message(
-                message_id=self.msg_id(in_reply=in_reply),
-                seq_no=self.get_outgoing_seq_no(obj),
-                obj=obj,
-            )
-            for obj, in_reply in objects
-        ])
-
-        return self.pack_message(container, session, False)
 
     def _get_cached_session(self, auth_key_id: int, session_id: int) -> Session | None:
         uniq_id = (auth_key_id, session_id)
@@ -213,19 +155,19 @@ class Client:
                 obj = obj.obj
 
             with measure_time("session.pack_message(...)"):
-                message = self.pack_message(obj, session, in_reply)
+                message = session.pack_message(obj, in_reply)
             with measure_time("._send_message()"):
                 await self._send_message(message, session, context_values)
 
     async def send_container(self, objects: list[tuple[TLObject, bool]], session: Session):
         logger.debug(f"Sending: {objects}")
-        message = self.pack_container(objects, session)
+        message = session.pack_container(objects)
         await self._send_message(message, session)
 
     async def send_unencrypted(self, obj: TLObject) -> None:
         logger.debug(obj)
         await self._write_packet(UnencryptedMessagePacket(
-            self.msg_id(in_reply=True),
+            self.empty_session.msg_id(in_reply=True),
             obj.write(),
         ))
 
