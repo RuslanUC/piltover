@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from os import urandom
 from typing import Generator
 
 from fastrand import xorshift128plus_bytes
@@ -9,6 +8,7 @@ from tortoise import Model, fields
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
+from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import StickerSetType, StickerSetOfficialType
 from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize, \
@@ -91,10 +91,15 @@ class Stickerset(Model):
 
     # TODO: use StickerSetToFormat
     async def to_tl(self, user: models.User) -> StickerSet:
+        cache_key = self.cache_key(user.id)
+        cached = await Cache.obj.get(cache_key)
+        if cached is not None:
+            return cached
+
         installed = await models.InstalledStickerset.get_or_none(set=self, user=user)
         thumb = await models.StickersetThumb.filter(set=self).select_related("file").order_by("-id").first()
 
-        return StickerSet(
+        result = StickerSet(
             id=self.id,
             access_hash=self.access_hash,
             title=self.title,
@@ -118,6 +123,9 @@ class Stickerset(Model):
             channel_emoji_status=False,
         )
 
+        await Cache.obj.set(cache_key, result)
+        return result
+
     def documents_query(self) -> QuerySet[models.File]:
         return models.File.filter(stickerset=self).order_by("sticker_pos").select_related("stickerset")
 
@@ -131,6 +139,11 @@ class Stickerset(Model):
             yield sticker.sticker_alt
 
     async def to_tl_messages(self, user: models.User) -> MessagesStickerSet:
+        cache_key = self.cache_key_messages(user.id)
+        cached = await Cache.obj.get(cache_key)
+        if cached is not None:
+            return cached
+
         files = await self.documents_query()
 
         documents = []
@@ -144,9 +157,18 @@ class Stickerset(Model):
                 packs[file.sticker_alt] = StickerPack(emoticon=file.sticker_alt, documents=[])
             packs[file.sticker_alt].documents.append(file.id)
 
-        return MessagesStickerSet(
+        result = MessagesStickerSet(
             set=await self.to_tl(user),
             packs=list(packs.values()),
             keywords=[],  # TODO: add support for keywords
             documents=documents,
         )
+
+        await Cache.obj.set(cache_key, result)
+        return result
+
+    def cache_key(self, user_id: int) -> str:
+        return f"stickerset:{self.id}:{self.hash}:{user_id}"
+
+    def cache_key_messages(self, user_id: int) -> str:
+        return f"stickerset-messages:{self.id}:{self.hash}:{user_id}"
