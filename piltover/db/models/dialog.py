@@ -99,13 +99,22 @@ class Dialog(Model):
     async def to_tl_bulk(
             cls, dialogs: list[Dialog], messages: dict[tuple[PeerType, int], tuple[Dialog, models.MessageRef | None]],
     ) -> list[TLDialog]:
+        if not dialogs:
+            return []
+
+        user_id = next(iter(dialogs)).peer.owner_id
+
         drafts = {
             draft.peer_id: draft
             for draft in await models.MessageDraft.filter(peer_id__in=[dialog.peer_id for dialog in dialogs])
         }
 
+        read_states = await models.ReadState.get_in_out_ids_and_unread_bulk(
+            user_id, [dialog.peer for dialog in dialogs],
+        )
+
         tl = []
-        for dialog in dialogs:
+        for dialog, read_state in zip(dialogs, read_states):
             top_message = 0
             peer_key = dialog.peer_key()
             if peer_key in messages and messages[peer_key][1] is not None:
@@ -115,9 +124,7 @@ class Dialog(Model):
             if dialog.peer_id in drafts:
                 draft = drafts[dialog.peer_id].to_tl()
 
-            # TODO: add get_in_out_ids_and_unread_bulk
-            in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = \
-                await models.ReadState.get_in_out_ids_and_unread(dialog.peer)
+            in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = read_state
 
             tl.append(TLDialog(
                 pinned=dialog.pinned_index is not None,
