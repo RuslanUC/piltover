@@ -8,14 +8,14 @@ from typing import cast
 from uuid import UUID
 
 from pytz import UTC
-from tortoise.expressions import Q, F
+from tortoise.expressions import Q
 from tortoise.transactions import in_transaction, atomic
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.auth import _validate_phone
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.system_notifications import send_official_notification_message
-from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash
+from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash, get_image_dims
 from piltover.app_config import AppConfig
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType, FileType
@@ -688,7 +688,13 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
     if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_MIME_INVALID")
     storage = request_ctx.get().storage
-    file = await uploaded_file.finalize_upload(storage, request.mime_type, attributes, request.file.parts)
+    file = await uploaded_file.finalize_upload(storage, request.mime_type, attributes, parts_num=request.file.parts)
+
+    image_dims = await get_image_dims(storage, file.physical_id)
+    if image_dims is None:
+        raise ErrorRpc(error_code=400, error_message="WALLPAPER_FILE_INVALID")
+    file.width, file.height = image_dims
+    await file.save(update_fields=["width", "height"])
 
     settings = await WallpaperSettings.create(
         blur=request.settings.blur,

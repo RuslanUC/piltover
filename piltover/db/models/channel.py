@@ -75,6 +75,7 @@ class Channel(ChatBase):
     participants_hidden: bool = fields.BooleanField(default=False)
     stickerset: models.Stickerset | None = NullableFKSetNullR("models.Stickerset", "channel_stickers")
     emojiset: models.Stickerset | None = NullableFKSetNullR("models.Stickerset", "channel_emojis")
+    wallpaper: models.Wallpaper | None = NullableFKSetNull("models.Wallpaper")
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -84,6 +85,7 @@ class Channel(ChatBase):
     profile_emoji_id: int | None
     stickerset_id: int | None
     emojiset_id: int | None
+    wallpaper_id: int | None
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
 

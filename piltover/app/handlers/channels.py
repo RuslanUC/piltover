@@ -222,7 +222,10 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
 async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatFull:
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
-        select_related=("channel__discussion", "channel__photo", "channel__stickerset", "channel__emojiset",),
+        select_related=(
+            "channel__discussion", "channel__photo", "channel__stickerset", "channel__emojiset",
+            "channel__wallpaper", "channel__wallpaper__settings", "channel__wallpaper__document",
+        ),
     )
 
     channel = peer.channel
@@ -366,6 +369,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             default_send_as=default_send_as,
             stickerset=await channel.stickerset.to_tl(user) if channel.stickerset is not None else None,
             emojiset=await channel.emojiset.to_tl(user) if channel.emojiset is not None else None,
+            wallpaper=channel.wallpaper.to_tl() if channel.wallpaper is not None else None,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl),
         users=[await user.to_tl()],

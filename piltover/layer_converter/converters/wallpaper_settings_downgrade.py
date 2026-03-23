@@ -9,6 +9,13 @@ class WallPaperSettingsDowngradeTo133(AutoDowngrader):
     REMOVE_FIELDS = {"emoticon"}
 
 
+class WallPaperSettingsDontDowngrade168(AutoDowngrader):
+    BASE_TYPE = WallPaperSettings
+    TARGET_TYPE = WallPaperSettings
+    TARGET_LAYER = 168
+    REMOVE_FIELDS = set()
+
+
 class WallPaperSettingsDontDowngrade(AutoDowngrader):
     BASE_TYPE = WallPaperSettings
     TARGET_TYPE = WallPaperSettings
