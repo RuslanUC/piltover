@@ -1422,7 +1422,7 @@ async def new_stickerset(user: User, stickerset: Stickerset) -> Updates:
     updates = UpdatesWithDefaults(
         updates=[
             UpdateNewStickerSet(
-                stickerset=await stickerset.to_tl_messages(user),
+                stickerset=await stickerset.to_tl_messages(),
             ),
         ],
     )

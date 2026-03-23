@@ -8,6 +8,7 @@ from tortoise.queryset import BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, Val
     CountQuery, ExistsQuery, DeleteQuery, UpdateQuery, QuerySet, AwaitableQuery
 from tortoise.queryset_compiled import CompiledQuerySet
 
+from piltover.gateway import Client
 from piltover.utils.debug import measure_time
 from piltover.worker import RequestHandler
 
@@ -18,6 +19,7 @@ query_clss = [
 execute_methods = ("execute", "_execute_many", "_execute",)
 make_query_methods = ("_get_or_create_cached_sql", "_make_queries", "_make_query",)
 call_methods = ("__call__",)
+resolve_ctx_methods = ("_resolve_context_values",)
 real_suffix = "_real"
 handler_stats_ctx: ContextVar[QueryStats] = ContextVar("handler_stats_ctx")
 
@@ -92,6 +94,22 @@ def patch_queryset_for_measurement() -> QueryStats:
             )
 
     _patch_cls_replace_method(RequestHandler, call_methods, real_suffix, _RequestHandler___call__)
+
+    async def _Client__resolve_context_values(*args, **kwargs):
+        _, _resolve_real = _get_patched_cls_original_method(Client, resolve_ctx_methods, real_suffix)
+        query_stats = QueryStats()
+        token = handler_stats_ctx.set(query_stats)
+        try:
+            return await _resolve_real(*args, **kwargs)
+        finally:
+            handler_stats_ctx.reset(token)
+            query_stats_all.add(query_stats)
+            logger.info(
+                f"_resolve_context_values made {query_stats.execute_count} ({query_stats.make_query_count}) queries "
+                f"that took {query_stats.execute_count:.2f}ms ({query_stats.make_query_time:.2f}ms)"
+            )
+
+    _patch_cls_replace_method(Client, resolve_ctx_methods, real_suffix, staticmethod(_Client__resolve_context_values))
 
     for cls in query_clss:
         async def _execute(self: AwaitableQuery, *args, **kwargs) -> ...:

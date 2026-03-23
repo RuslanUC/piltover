@@ -410,7 +410,7 @@ class Update(Model):
                     return None
 
                 return UpdateNewStickerSet(
-                    stickerset=await stickerset.to_tl_messages(user),
+                    stickerset=await stickerset.to_tl_messages(),
                 )
 
             case UpdateType.UPDATE_STICKERSETS:

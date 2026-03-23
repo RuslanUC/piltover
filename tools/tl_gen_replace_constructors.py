@@ -12,6 +12,7 @@ REPLACE_CONSTRUCTORS = {
     0xe0a8fd99: "to_format.MessageToFormat",
     0x5157a73d: "to_format.UpdateMessageIDToFormat",
     0x237ed5c2: "to_format.ChannelMessageToFormat",
+    0x1445ac69: "to_format.StickerSetToFormat",
 }
 
 BASE_CLASSES_NEED_CONTEXT = {"Chat", "User", "Message", "PollResults"}

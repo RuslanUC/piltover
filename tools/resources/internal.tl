@@ -32,7 +32,7 @@ internal.channel_subscribe#ae808cf6 flags:# subscribe:flags.0?true user_ids:Vect
 internal.field_with_layer_requirement#d9594f1f field:string min_layer:int max_layer:int = internal.FieldWithLayerRequirement;
 internal.object_with_layer_requirement#7678a3 object:Object fields:Vector<internal.FieldWithLayerRequirement> = internal.ObjectWithLayerRequirement;
 
-internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> users:flags.3?Vector<long> channel_messages:flags.4?Vector<long> = internal.NeedsContextValues;
+internal.needs_context_values#b3e50ad9 flags:# obj:Object poll_answers:flags.0?Vector<long> chat_participants:flags.1?Vector<long> channel_participants:flags.2?Vector<long> users:flags.3?Vector<long> channel_messages:flags.4?Vector<long> stickersets:flags.5?Vector<long> = internal.NeedsContextValues;
 
 // Vectors with concrete types
 
@@ -207,6 +207,7 @@ phoneCallToFormatInternal#94e4f3ed flags:# id:long access_hash:long date:long ad
 messageToFormatInternal#e0a8fd99 flags:# content:internal.MessageToFormatContent ref:internal.MessageToFormatRef reactions:flags.0?MessageReactions replies:flags.1?MessageReplies = Message;
 channelMessageToFormatInternal#237ed5c2 flags:# content:internal.MessageToFormatContent common:internal.ChannelMessageToFormatCommon replies:flags.1?MessageReplies = Message;
 updateMessageIDToFormatInternal#5157a73d id:int random_id:long target_user:long = Update;
+stickerSetToFormatInternal#1445ac69 flags:# id:int access_hash:long title:string short_name:flags.0?string official:flags.1?true creator_id:long count:int hash:int masks:flags.2?true emoji:flags.3?true thumbs:flags.4?Vector<PhotoSize> thumb_version:flags.4?int = StickerSet;
 
 // Uploaded files metadata
 

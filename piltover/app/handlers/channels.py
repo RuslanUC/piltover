@@ -367,8 +367,8 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             slowmode_seconds=channel.slowmode_seconds,
             slowmode_next_send_date=slowmode_next_date,
             default_send_as=default_send_as,
-            stickerset=await channel.stickerset.to_tl(user) if channel.stickerset is not None else None,
-            emojiset=await channel.emojiset.to_tl(user) if channel.emojiset is not None else None,
+            stickerset=await channel.stickerset.to_tl() if channel.stickerset is not None else None,
+            emojiset=await channel.emojiset.to_tl() if channel.emojiset is not None else None,
             wallpaper=channel.wallpaper.to_tl() if channel.wallpaper is not None else None,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl),
@@ -1744,3 +1744,25 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user: User) -> b
 
     await upd.update_channel(channel, user)
     return True
+
+
+# @handler.on_request(UpdateEmojiStatus, ReqHandlerFlags.BOT_NOT_ALLOWED)
+# async def update_emoji_status(request: UpdateEmojiStatus, user: User) -> Updates:
+#     peer = await Peer.from_input_peer_raise(
+#         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+#     )
+#
+#     channel = peer.channel
+#
+#     if channel.participants_hidden == request.enabled:
+#         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+#
+#     participant = await channel.get_participant_raise(user)
+#     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+#         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
+#
+#     channel.participants_hidden = request.enabled
+#     channel.version += 1
+#     await channel.save(update_fields=["participants_hidden", "version"])
+#
+#     return await upd.update_channel(channel, user)

@@ -1,17 +1,15 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption, StatsGraph
+from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption, EmojiList
 from piltover.tl.functions.account import GetCollectibleEmojiStatuses, GetContactSignUpNotification, \
-    SetContactSignUpNotification
+    SetContactSignUpNotification, GetChannelRestrictedStatusEmojis
 from piltover.tl.functions.bots import GetPopularAppBots
 from piltover.tl.functions.payments import GetStarsStatus, GetStarsSubscriptions, GetStarsTransactions, \
     GetStarsTopupOptions
 from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts, GetBoostsList
-from piltover.tl.functions.stats import GetBroadcastRevenueStats
 from piltover.tl.types.account import EmojiStatuses
 from piltover.tl.types.bots import PopularAppBots
 from piltover.tl.types.payments import StarsStatus
 from piltover.tl.types.premium import BoostsStatus, MyBoosts, BoostsList
-from piltover.tl.types.stats import BroadcastRevenueStats
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("stubs")
@@ -20,13 +18,16 @@ MAX_I32 = 2 ** 31 - 1
 MAX_I64 = 2 ** 63 - 1
 
 
+NOBOT_NOAUTH = ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED
+
+
 @handler.on_request(GetBoostsStatus, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_boosts_status() -> BoostsStatus:  # pragma: no cover
     return BoostsStatus(
         level=MAX_I32,
         current_level_boosts=MAX_I32,
         boosts=MAX_I32,
-        boost_url="http://127.0.0.1"
+        boost_url="http://unreachable.local/"
     )
 
 
@@ -95,16 +96,21 @@ async def get_stars_topup_options() -> list[StarsTopupOption]:  # pragma: no cov
     ])
 
 
-@handler.on_request(GetContactSignUpNotification, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetContactSignUpNotification, NOBOT_NOAUTH)
 async def get_contact_sign_up_notification() -> bool:  # pragma: no cover
     return False
 
 
-@handler.on_request(SetContactSignUpNotification, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(SetContactSignUpNotification, NOBOT_NOAUTH)
 async def set_contact_sign_up_notification() -> bool:  # pragma: no cover
     return False
 
 
-@handler.on_request(GetPopularAppBots, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetPopularAppBots, NOBOT_NOAUTH)
 async def get_popular_app_bots() -> PopularAppBots:
     return PopularAppBots(users=[])
+
+
+@handler.on_request(GetChannelRestrictedStatusEmojis, NOBOT_NOAUTH)
+async def get_channel_restricted_status_emojis() -> EmojiList:
+    return EmojiList(hash=0, document_id=[])

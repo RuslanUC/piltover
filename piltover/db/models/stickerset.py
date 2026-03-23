@@ -11,11 +11,12 @@ from tortoise.queryset import QuerySet
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import StickerSetType, StickerSetOfficialType
-from piltover.tl import StickerSet, InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize, \
+from piltover.tl import InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize, \
     StickerPack, InputStickerSetAnimatedEmoji, InputStickerSetDice, InputStickerSetAnimatedEmojiAnimations, \
     InputStickerSetEmojiGenericAnimations, InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons
+from piltover.tl.to_format import StickerSetToFormat
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
-from piltover.tl.base import InputStickerSet as InputStickerSetBase
+from piltover.tl.base import InputStickerSet as InputStickerSetBase, StickerSet as TLStickerSetBase
 
 EMOTICON_TO_DICE_ENUM = {
     "\U0001F3C0": StickerSetOfficialType.DICE_BASKETBALL,
@@ -89,38 +90,27 @@ class Stickerset(Model):
             return None
         return await cls.get_or_none(q)
 
-    # TODO: use StickerSetToFormat
-    async def to_tl(self, user: models.User) -> StickerSet:
-        cache_key = self.cache_key(user.id)
+    async def to_tl(self) -> TLStickerSetBase:
+        cache_key = self.cache_key()
         cached = await Cache.obj.get(cache_key)
         if cached is not None:
             return cached
 
-        installed = await models.InstalledStickerset.get_or_none(set=self, user=user)
         thumb = await models.StickersetThumb.filter(set=self).select_related("file").order_by("-id").first()
 
-        result = StickerSet(
+        result = StickerSetToFormat(
             id=self.id,
             access_hash=self.access_hash,
             title=self.title,
             short_name=self.short_name,
             official=self.official,
-            creator=user.id == self.owner_id,
-            installed_date=int(installed.installed_at.timestamp()) if installed is not None else None,
-            archived=installed is not None and installed.archived,
-            # TODO: cache stickers count?
+            creator_id=self.owner_id or 0,
             count=await self.documents_query().count(),
             hash=self.hash,
             masks=self.masks,
-            emojis=self.emoji,
-
+            emoji=self.emoji,
             thumbs=[PhotoSize(type_="s", w=100, h=100, size=thumb.file.size)] if thumb is not None else None,
-            thumb_dc_id=2 if thumb is not None else None,
             thumb_version=thumb.id if thumb is not None else None,
-            thumb_document_id=None,
-
-            text_color=False,
-            channel_emoji_status=False,
         )
 
         await Cache.obj.set(cache_key, result)
@@ -138,8 +128,8 @@ class Stickerset(Model):
             yield sticker.sticker_pos
             yield sticker.sticker_alt
 
-    async def to_tl_messages(self, user: models.User) -> MessagesStickerSet:
-        cache_key = self.cache_key_messages(user.id)
+    async def to_tl_messages(self) -> MessagesStickerSet:
+        cache_key = self.cache_key_messages()
         cached = await Cache.obj.get(cache_key)
         if cached is not None:
             return cached
@@ -158,7 +148,7 @@ class Stickerset(Model):
             packs[file.sticker_alt].documents.append(file.id)
 
         result = MessagesStickerSet(
-            set=await self.to_tl(user),
+            set=await self.to_tl(),
             packs=list(packs.values()),
             keywords=[],  # TODO: add support for keywords
             documents=documents,
@@ -167,8 +157,8 @@ class Stickerset(Model):
         await Cache.obj.set(cache_key, result)
         return result
 
-    def cache_key(self, user_id: int) -> str:
-        return f"stickerset:{self.id}:{self.hash}:{user_id}"
+    def cache_key(self) -> str:
+        return f"stickerset:{self.id}:{self.hash}"
 
-    def cache_key_messages(self, user_id: int) -> str:
-        return f"stickerset-messages:{self.id}:{self.hash}:{user_id}"
+    def cache_key_messages(self) -> str:
+        return f"stickerset-messages:{self.id}:{self.hash}"

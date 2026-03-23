@@ -20,7 +20,8 @@ from piltover._system_handlers import SYSTEM_HANDLERS
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import SerializationContext, ContextValues
 from piltover.db.enums import PrivacyRuleKeyType
-from piltover.db.models import ChatParticipant, Peer, Contact, PrivacyRule, Presence, PollVote, MessageRef
+from piltover.db.models import ChatParticipant, Peer, Contact, PrivacyRule, Presence, PollVote, MessageRef, \
+    InstalledStickerset
 from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable
 from piltover.session import Session
 from piltover.session import SessionManager
@@ -528,5 +529,9 @@ class Client:
             reactionss = await MessageRef.to_tl_reactions_bulk(messages, session.user_id)
             for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
                 result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
+
+        if values.stickersets:
+            for installed in await InstalledStickerset.filter(set_id__in=values.stickersets, user_id=session.user_id):
+                result.stickersets[installed.set_id] = installed
 
         return result

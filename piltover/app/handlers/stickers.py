@@ -405,13 +405,13 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     await InstalledStickerset.create(set=stickerset, user=user)
     await upd.new_stickerset(user, stickerset)
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 async def _get_sticker_with_set(sticker: InputDocument, user: User) -> tuple[File, Stickerset]:
     file = await File.from_input(
         user.id, sticker.id, sticker.access_hash, sticker.file_reference, FileType.DOCUMENT_STICKER,
-        add_query=Q(stickerset__owner=user),
+        add_query=Q(stickerset__owner=user), select_related=("stickerset",),
     )
 
     if file is None:
@@ -430,7 +430,7 @@ async def change_sticker_position(request: ChangeStickerPosition, user: User) ->
     old_pos = request.position
 
     if old_pos == new_pos:
-        return await stickerset.to_tl_messages(user)
+        return await stickerset.to_tl_messages()
 
     # if sticker position is, for example, 5, new position is 10 and there is 15 stickers, then we need to:
     #  1) subtract 1 from stickers with positions 6-10 (current_pos + 1, new_pos)
@@ -456,7 +456,7 @@ async def change_sticker_position(request: ChangeStickerPosition, user: User) ->
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 @handler.on_request(RenameStickerSet)
@@ -472,7 +472,7 @@ async def rename_stickerset(request: RenameStickerSet, user: User) -> MessagesSt
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["title", "hash"])
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 @handler.on_request(DeleteStickerSet)
@@ -498,12 +498,12 @@ async def _make_covered_list(sets: list[Stickerset], user: User) -> list[Sticker
         if stickerset.id in covers:
             covers[stickerset.id].stickerset = stickerset
             result.append(StickerSetCovered(
-                set=await stickerset.to_tl(user),
+                set=await stickerset.to_tl(),
                 cover=covers[stickerset.id].to_tl_document(),
             ))
         else:
             result.append(StickerSetNoCovered(
-                set=await stickerset.to_tl(user),
+                set=await stickerset.to_tl(),
             ))
 
     return result
@@ -539,14 +539,14 @@ async def change_sticker(request: ChangeSticker, user: User) -> MessagesStickerS
     # TODO: keywords
 
     if not update_fields:
-        return await stickerset.to_tl_messages(user)
+        return await stickerset.to_tl_messages()
 
     await file.save(update_fields=update_fields)
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 @handler.on_request(GetStickerSet)
@@ -574,7 +574,7 @@ async def get_stickerset(request: GetStickerSet, user: User) -> MessagesStickerS
     if request.hash == stickerset.hash:
         return StickerSetNotModified()
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 @handler.on_request(AddStickerToSet)
@@ -600,7 +600,7 @@ async def add_sticker_to_set(request: AddStickerToSet, user: User) -> MessagesSt
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 @handler.on_request(ReplaceSticker)
@@ -624,7 +624,7 @@ async def replace_sticker(request: ReplaceSticker, user: User) -> MessagesSticke
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 @handler.on_request(RemoveStickerFromSet)
@@ -640,7 +640,7 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user: User) -> 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 @handler.on_request(GetAllStickers, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -656,7 +656,7 @@ async def get_all_stickers(request: GetAllStickers, user: User) -> AllStickers |
     return AllStickers(
         hash=sets_hash,
         sets=[
-            await stickerset.set.to_tl(user)
+            await stickerset.set.to_tl()
             for stickerset in sets
         ]
     )
@@ -820,7 +820,7 @@ async def set_stickerset_thumb(request: SetStickerSetThumb, user: User) -> Messa
     else:
         raise RuntimeError("Unreachable")
 
-    return await stickerset.to_tl_messages(user)
+    return await stickerset.to_tl_messages()
 
 
 @handler.on_request(GetRecentStickers)
@@ -954,7 +954,7 @@ async def get_emoji_stickers(request: GetEmojiStickers, user: User) -> AllSticke
     return AllStickers(
         hash=sets_hash,
         sets=[
-            await stickerset.set.to_tl(user)
+            await stickerset.set.to_tl()
             for stickerset in sets
         ]
     )
