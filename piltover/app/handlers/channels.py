@@ -40,7 +40,8 @@ from piltover.tl.functions.channels import GetChannelRecommendations, GetAdmined
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
     GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden, \
-    ReadMessageContents, DeleteHistory, DeleteParticipantHistory, ReorderUsernames, DeactivateAllUsernames, SetStickers
+    ReadMessageContents, DeleteHistory, DeleteParticipantHistory, ReorderUsernames, DeactivateAllUsernames, SetStickers, \
+    SetEmojiStickers
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -221,7 +222,7 @@ async def get_channels(request: GetChannels, user: User) -> Chats:
 async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatFull:
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
-        select_related=("channel__discussion", "channel__photo", "channel__stickerset",),
+        select_related=("channel__discussion", "channel__photo", "channel__stickerset", "channel__emojiset",),
     )
 
     channel = peer.channel
@@ -318,7 +319,12 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
         full_chat=ChannelFull(
             can_view_participants=can_view_participants,
             can_set_username=can_change_info,
-            can_set_stickers=channel.supergroup,
+            can_set_stickers=(
+                    channel.supergroup
+                    # and participant is not None
+                    # and not participant.left
+                    # and channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS)
+            ),
             hidden_prehistory=channel.hidden_prehistory,
             can_set_location=False,
             has_scheduled=has_scheduled,
@@ -359,6 +365,7 @@ async def get_full_channel(request: GetFullChannel, user: User) -> MessagesChatF
             slowmode_next_send_date=slowmode_next_date,
             default_send_as=default_send_as,
             stickerset=await channel.stickerset.to_tl(user) if channel.stickerset is not None else None,
+            emojiset=await channel.emojiset.to_tl(user) if channel.emojiset is not None else None,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl),
         users=[await user.to_tl()],
@@ -1683,8 +1690,9 @@ async def deactivate_all_usernames() -> bool:
     return False
 
 
+@handler.on_request(SetEmojiStickers)
 @handler.on_request(SetStickers)
-async def set_stickers(request: SetStickers, user: User) -> bool:
+async def set_stickers(request: SetStickers | SetEmojiStickers, user: User) -> bool:
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
@@ -1692,29 +1700,43 @@ async def set_stickers(request: SetStickers, user: User) -> bool:
     if not channel.supergroup:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
+    is_emoji = isinstance(request, SetEmojiStickers)
+    field_name = "emojiset_id" if is_emoji else "stickerset_id"
+
     if isinstance(request.stickerset, InputStickerSetEmpty):
-        if channel.stickerset_id is None:
+        if is_emoji and channel.emojiset_id is None:
             raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-        channel.stickerset = None
+        if not is_emoji and channel.stickerset_id is None:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+        if is_emoji:
+            channel.emojiset = None
+        else:
+            channel.stickerset = None
         channel.version += 1
-        await channel.save(update_fields=["stickerset_id", "version"])
+        await channel.save(update_fields=[field_name, "version"])
         await upd.update_channel(channel, user)
         return True
 
     stickerset = await Stickerset.from_input(request.stickerset)
-    if stickerset is None or stickerset.official:
+    if stickerset is None or stickerset.official or stickerset.emoji != is_emoji:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
-    if channel.stickerset_id == stickerset.id:
+    if not is_emoji and channel.stickerset_id == stickerset.id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+    if is_emoji and channel.emojiset_id == stickerset.id:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
     participant = await channel.get_participant_raise(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
-    channel.stickerset = stickerset
+    if is_emoji:
+        channel.emojiset = stickerset
+    else:
+        channel.stickerset = stickerset
+
     channel.version += 1
-    await channel.save(update_fields=["stickerset_id", "version"])
+    await channel.save(update_fields=[field_name, "version"])
 
     await upd.update_channel(channel, user)
     return True

@@ -23,7 +23,7 @@ MAX_I64 = 2 ** 63 - 1
 @handler.on_request(GetBoostsStatus, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_boosts_status() -> BoostsStatus:  # pragma: no cover
     return BoostsStatus(
-        level=3,
+        level=MAX_I32,
         current_level_boosts=MAX_I32,
         boosts=MAX_I32,
         boost_url="http://127.0.0.1"
