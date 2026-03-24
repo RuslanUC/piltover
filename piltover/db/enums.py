@@ -441,7 +441,6 @@ class AdminLogEntryAction(IntEnum):
     # NOTE: following actions are ignored and probably wont be implemented for now:
     #  ...ToggleInvites#1b7907ae
     #  ...ParticipantInvite#e31c34d8
-    #  ...ChangeStickerSet#b1c3caa7
     #  ...ChangeLocation#e6b76ae
     #  ...StartGroupCall#23209745
     #  ...DiscardGroupCall#db9f9140
@@ -456,7 +455,6 @@ class AdminLogEntryAction(IntEnum):
     #  ...PinTopic#5d8d353b
     #  ...ToggleAntiSpam#64f36dfc
     #  ...ChangeEmojiStatus#3ea9feb1
-    #  ...ChangeEmojiStickerSet#46d840ab
     #  ...ToggleSignatureProfiles#60a79c79
 
     CHANGE_TITLE = 0
@@ -476,6 +474,8 @@ class AdminLogEntryAction(IntEnum):
     TOGGLE_SLOWMODE = 14
     PARTICIPANT_ADMIN = 15
     PARTICIPANT_BAN = 16
+    EDIT_STICKERSET = 17
+    EDIT_EMOJISET = 18
 
 
 class TaskIqScheduledState(IntEnum):

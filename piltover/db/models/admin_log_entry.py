@@ -19,7 +19,8 @@ from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEv
     ChannelAdminLogEventActionToggleSlowMode, TLObject, ChannelAdminLogEventActionParticipantToggleAdmin, \
     ChannelParticipantBanned, ChannelParticipantAdmin, ChannelParticipantCreator, ChannelParticipant, \
     ChannelParticipantLeft, ChannelParticipantSelf, ChannelParticipantSelf_133, ChannelParticipantSelf_134, \
-    ChannelParticipant_133, ChannelAdminLogEventActionParticipantToggleBan
+    ChannelParticipant_133, ChannelAdminLogEventActionParticipantToggleBan, ChannelAdminLogEventActionChangeStickerSet, \
+    ChannelAdminLogEventActionChangeEmojiStickerSet
 from piltover.tl.base import ChannelAdminLogEvent, ChannelParticipantInst, ChannelParticipant as ChannelParticipantBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
@@ -189,6 +190,16 @@ class AdminLogEntry(Model):
             action = ChannelAdminLogEventActionChangeLinkedChat(
                 prev_value=models.Channel.make_id_from(self.old_channel_id) if self.old_channel_id else 0,
                 new_value=models.Channel.make_id_from(self.new_channel_id) if self.new_channel_id else 0,
+            )
+        elif self.action is AdminLogEntryAction.EDIT_STICKERSET:
+            action = ChannelAdminLogEventActionChangeStickerSet(
+                prev_stickerset=TLObject.read(BytesIO(self.prev)),
+                new_stickerset=TLObject.read(BytesIO(self.new)),
+            )
+        elif self.action is AdminLogEntryAction.EDIT_EMOJISET:
+            action = ChannelAdminLogEventActionChangeEmojiStickerSet(
+                prev_stickerset=TLObject.read(BytesIO(self.prev)),
+                new_stickerset=TLObject.read(BytesIO(self.new)),
             )
 
         if action is None:

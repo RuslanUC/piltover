@@ -1,6 +1,5 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
-from pytz import UTC
 from tortoise.expressions import Q, Subquery, F
 
 import piltover.app.utils.updates_manager as upd

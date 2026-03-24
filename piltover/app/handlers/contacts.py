@@ -1,10 +1,9 @@
 import hmac
 from base64 import urlsafe_b64encode, urlsafe_b64decode
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, UTC
 from hashlib import sha256
 from time import time
 
-from pytz import UTC
 from tortoise.expressions import Q, Subquery
 
 import piltover.app.utils.updates_manager as upd

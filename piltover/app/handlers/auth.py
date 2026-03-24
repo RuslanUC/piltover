@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, UTC
 from io import BytesIO
 from time import time
 from typing import cast
@@ -7,7 +7,6 @@ from uuid import uuid4
 from loguru import logger
 from mtproto import ConnectionRole
 from mtproto.packets import EncryptedMessagePacket, MessagePacket
-from pytz import UTC
 from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd

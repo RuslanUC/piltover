@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, UTC
 from io import BytesIO
 from os import environ
 from typing import Iterable, Self, Annotated
 
 from loguru import logger
-from pytz import UTC
 from tortoise import fields, Model
-from tortoise.functions import Count
 
 from piltover.cache import Cache
 from piltover.db import models

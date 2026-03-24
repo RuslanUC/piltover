@@ -1,13 +1,12 @@
 import hashlib
 import hmac
 from base64 import urlsafe_b64encode
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, UTC
 from os import urandom
 from time import time
 from typing import cast
 from uuid import UUID
 
-from pytz import UTC
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction, atomic
 

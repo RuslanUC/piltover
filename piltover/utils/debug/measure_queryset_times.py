@@ -6,7 +6,10 @@ from typing import Iterable, Callable
 from loguru import logger
 from tortoise.queryset import BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, \
     CountQuery, ExistsQuery, DeleteQuery, UpdateQuery, QuerySet, AwaitableQuery
-from tortoise.queryset_compiled import CompiledQuerySet
+try:
+    from tortoise.queryset_compiled import CompiledQuerySet
+except ImportError:
+    CompiledQuerySet = None
 
 from piltover.gateway import Client
 from piltover.utils.debug import measure_time
@@ -14,8 +17,10 @@ from piltover.worker import RequestHandler
 
 query_clss = [
     BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, CountQuery, ExistsQuery,
-    DeleteQuery, UpdateQuery, QuerySet, CompiledQuerySet
+    DeleteQuery, UpdateQuery, QuerySet,
 ]
+if CompiledQuerySet is not None:
+    query_clss.append(CompiledQuerySet)
 execute_methods = ("execute", "_execute_many", "_execute",)
 make_query_methods = ("_get_or_create_cached_sql", "_make_queries", "_make_query",)
 call_methods = ("__call__",)

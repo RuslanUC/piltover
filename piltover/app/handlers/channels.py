@@ -33,7 +33,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     ReactionCustomEmoji, SendAsPeer, PeerUser, MessageActionChatEditPhoto, InputUserSelf, InputUser, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
     ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked, \
-    ChannelParticipantLeft, PeerChannel, InputStickerSetEmpty
+    ChannelParticipantLeft, PeerChannel, InputStickerSetEmpty, InputStickerSetID
 from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
@@ -1257,7 +1257,8 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
 
     events_q = Q(channel=channel)
 
-    if request.events_filter is not None:
+    event_filter_flags = Int.read_bytes(request.events_filter.serialize()) if request.events_filter is not None else 0
+    if request.events_filter is not None and event_filter_flags != 0:
         actions_q = Q()
         if request.events_filter.info:
             actions_q |= Q(action=AdminLogEntryAction.CHANGE_TITLE) \
@@ -1268,7 +1269,9 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
                          | Q(action=AdminLogEntryAction.EDIT_PEER_COLOR_PROFILE) \
                          | Q(action=AdminLogEntryAction.LINKED_CHAT) \
                          | Q(action=AdminLogEntryAction.EDIT_HISTORY_TTL) \
-                         | Q(action=AdminLogEntryAction.TOGGLE_SLOWMODE)
+                         | Q(action=AdminLogEntryAction.TOGGLE_SLOWMODE) \
+                         | Q(action=AdminLogEntryAction.EDIT_STICKERSET) \
+                         | Q(action=AdminLogEntryAction.EDIT_EMOJISET)
         if request.events_filter.join:
             actions_q |= Q(action=AdminLogEntryAction.PARTICIPANT_JOIN)
         if request.events_filter.leave:
@@ -1697,50 +1700,68 @@ async def deactivate_all_usernames() -> bool:
 @handler.on_request(SetEmojiStickers)
 @handler.on_request(SetStickers)
 async def set_stickers(request: SetStickers | SetEmojiStickers, user: User) -> bool:
+    is_emoji = isinstance(request, SetEmojiStickers)
+
     peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
+        select_related=("channel__emojiset" if is_emoji else "channel__stickerset",),
     )
     channel = peer.channel
     if not channel.supergroup:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
-    is_emoji = isinstance(request, SetEmojiStickers)
-    field_name = "emojiset_id" if is_emoji else "stickerset_id"
-
-    if isinstance(request.stickerset, InputStickerSetEmpty):
-        if is_emoji and channel.emojiset_id is None:
-            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-        if not is_emoji and channel.stickerset_id is None:
-            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-        if is_emoji:
-            channel.emojiset = None
-        else:
-            channel.stickerset = None
-        channel.version += 1
-        await channel.save(update_fields=[field_name, "version"])
-        await upd.update_channel(channel, user)
-        return True
-
-    stickerset = await Stickerset.from_input(request.stickerset)
-    if stickerset is None or stickerset.official or stickerset.emoji != is_emoji:
-        raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
-
-    if not is_emoji and channel.stickerset_id == stickerset.id:
-        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-    if is_emoji and channel.emojiset_id == stickerset.id:
-        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-
     participant = await channel.get_participant_raise(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
+    field_name = "emojiset_id" if is_emoji else "stickerset_id"
+
     if is_emoji:
-        channel.emojiset = stickerset
+        if channel.emojiset_id is None:
+            old_stickerset = InputStickerSetEmpty()
+        else:
+            old_stickerset = InputStickerSetID(id=channel.emojiset_id, access_hash=channel.emojiset.access_hash)
     else:
-        channel.stickerset = stickerset
+        if channel.stickerset_id is None:
+            old_stickerset = InputStickerSetEmpty()
+        else:
+            old_stickerset = InputStickerSetID(id=channel.stickerset_id, access_hash=channel.stickerset.access_hash)
+
+    if isinstance(request.stickerset, InputStickerSetEmpty):
+        new_stickerset_tl = InputStickerSetEmpty()
+        new_stickerset = None
+
+        if is_emoji and channel.emojiset_id is None:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+        if not is_emoji and channel.stickerset_id is None:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+    else:
+        new_stickerset = await Stickerset.from_input(request.stickerset)
+        if new_stickerset is None or new_stickerset.official or new_stickerset.emoji != is_emoji:
+            raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
+
+        new_stickerset_tl = InputStickerSetID(id=new_stickerset.id, access_hash=new_stickerset.access_hash)
+
+        if not is_emoji and channel.stickerset_id == new_stickerset.id:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+        if is_emoji and channel.emojiset_id == new_stickerset.id:
+            raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+    if is_emoji:
+        channel.emojiset = new_stickerset
+    else:
+        channel.stickerset = new_stickerset
 
     channel.version += 1
     await channel.save(update_fields=[field_name, "version"])
+
+    await AdminLogEntry.create(
+        channel=peer.channel,
+        user=user,
+        action=AdminLogEntryAction.EDIT_EMOJISET if is_emoji else AdminLogEntryAction.EDIT_STICKERSET,
+        prev=old_stickerset.write(),
+        new=new_stickerset_tl.write(),
+    )
 
     await upd.update_channel(channel, user)
     return True

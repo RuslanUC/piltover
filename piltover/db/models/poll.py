@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, UTC
 from time import time
 
-from pytz import UTC
 from tortoise import Model, fields
 from tortoise.functions import Count
 

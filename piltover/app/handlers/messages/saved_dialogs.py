@@ -1,6 +1,5 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
-from pytz import UTC
 from tortoise.expressions import Q
 
 from piltover.app.handlers.messages.dialogs import get_dialogs_internal, format_dialogs

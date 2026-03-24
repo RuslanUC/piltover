@@ -1,10 +1,9 @@
 from asyncio import sleep
-from datetime import datetime
+from datetime import datetime, UTC
 from time import time
 from typing import cast
 
 from loguru import logger
-from pytz import UTC
 from tortoise.expressions import Q
 from tortoise.functions import Min, Max
 

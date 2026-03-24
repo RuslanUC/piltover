@@ -22,8 +22,7 @@ if TYPE_CHECKING:
 
 
 async def _upload_doc(data_dir: Path, base_dir: Path, idx: int, doc: dict, file_type: FileType) -> File:
-    from datetime import datetime
-    from pytz import UTC
+    from datetime import datetime, UTC
 
     from piltover.tl.types import DocumentAttributeImageSize, DocumentAttributeSticker, DocumentAttributeFilename, \
         DocumentAttributeCustomEmoji
