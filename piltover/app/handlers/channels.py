@@ -451,13 +451,13 @@ async def edit_channel_photo(request: EditPhoto, user: User):
 @handler.on_request(GetMessages_40)
 @handler.on_request(GetMessages)
 async def get_messages(request: GetMessages, user: User) -> Messages:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    participant = await peer.channel.get_participant(user, True)
+    participant = await channel.get_participant(user, True)
     participant_is_banned = participant is not None and bool(participant.banned_rights & ChatBannedRights.VIEW_MESSAGES)
-    channel_is_public = peer.channel.nojoin_allow_view or await Username.filter(channel=peer.channel).exists()
+    channel_is_public = channel.nojoin_allow_view or await Username.filter(channel=channel).exists()
     if (not channel_is_public and participant is None) or participant_is_banned:
         raise ErrorRpc(error_code=400, error_message="CHAT_RESTRICTED")
 
@@ -483,12 +483,12 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     if reply_ids:
         query |= Q(id__in=Subquery(
             MessageRef.filter(
-                peer__channel=peer.channel, id__in=reply_ids,
+                peer__channel=channel, id__in=reply_ids,
             ).values_list("reply_to_id", flat=True)
         ))
 
-    query &= Q(peer__channel=peer.channel)
-    query = await append_channel_min_message_id_to_query_maybe(peer, query, participant)
+    query &= Q(peer__channel=channel)
+    query = await append_channel_min_message_id_to_query_maybe(channel, query, participant, user)
 
     return await format_messages_internal(
         user,
@@ -498,33 +498,34 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
 @handler.on_request(DeleteMessages)
 async def delete_messages(request: DeleteMessages, user: User) -> AffectedMessages:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-    participant = await peer.channel.get_participant_raise(user)
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+
+    participant = await channel.get_participant_raise(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
         raise ErrorRpc(error_code=403, error_message="MESSAGE_DELETE_FORBIDDEN")
 
     ids = request.id[:100]
-    ids_query = Q(id__in=ids, peer__channel=peer.channel) & (Q(peer__owner=user) | Q(peer__owner=None))
-    ids_query = await append_channel_min_message_id_to_query_maybe(peer, ids_query, participant)
+    ids_query = Q(id__in=ids, peer__channel=channel) & (Q(peer__owner=user) | Q(peer__owner=None))
+    ids_query = await append_channel_min_message_id_to_query_maybe(channel, ids_query, participant, user)
     message_ids: list[int] = await MessageRef.filter(ids_query).values_list("id", flat=True)
 
     if not message_ids:
-        return AffectedMessages(pts=peer.channel.pts, pts_count=0)
+        return AffectedMessages(pts=channel.pts, pts_count=0)
 
     await MessageRef.filter(id__in=message_ids).delete()
-    _, pts = await upd.delete_messages_channel(peer.channel, message_ids)
+    _, pts = await upd.delete_messages_channel(channel, message_ids)
 
     return AffectedMessages(pts=pts, pts_count=len(message_ids))
 
 
 @handler.on_request(EditBanned)
 async def edit_banned(request: EditBanned, user: User):
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+
     participant = await channel.get_participant_raise(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.BAN_USERS):
         raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
@@ -584,12 +585,12 @@ async def edit_banned(request: EditBanned, user: User):
     )
 
     if was_participant:
-        await upd.update_channel_for_user(peer.channel, target_peer.user)
+        await upd.update_channel_for_user(channel, target_peer.user)
 
     return Updates(
-        updates=[UpdateChannel(channel_id=peer.channel.make_id())],
+        updates=[UpdateChannel(channel_id=channel.make_id())],
         users=[],
-        chats=[await peer.channel.to_tl()],
+        chats=[await channel.to_tl()],
         date=int(time()),
         seq=0,
     )
@@ -597,10 +598,10 @@ async def edit_banned(request: EditBanned, user: User):
 
 @handler.on_request(EditAdmin)
 async def edit_admin(request: EditAdmin, user: User):
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+
     creator_id = channel.creator_id
 
     participant = await channel.get_participant_raise(user)
@@ -662,18 +663,18 @@ async def edit_admin(request: EditAdmin, user: User):
 
 @handler.on_request(GetParticipants)
 async def get_participants(request: GetParticipants, user: User):
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    this_participant = await peer.channel.get_participant(user)
-    if peer.channel.participants_hidden and (this_participant is None or not this_participant.is_admin):
+    this_participant = await channel.get_participant(user)
+    if channel.participants_hidden and (this_participant is None or not this_participant.is_admin):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     filt = request.filter
 
     view_value = ChatBannedRights.VIEW_MESSAGES.value
-    query = ChatParticipant.filter(channel=peer.channel)
+    query = ChatParticipant.filter(channel=channel)
     if this_participant is None or not this_participant.is_admin or isinstance(filt, ChannelParticipantsMentions):
         anon_value = ChatAdminRights.ANONYMOUS.value
         query = query.annotate(check_anon=RawSQL(f"admin_rights & {anon_value}")).filter(check_anon=0)
@@ -692,7 +693,7 @@ async def get_participants(request: GetParticipants, user: User):
         if filt.top_msg_id:
             query = query.filter(user_id__in=Subquery(
                 MessageRef.filter(
-                    peer__owner=None, peer__channel=peer.channel, content__reply_to_id=filt.top_msg_id,
+                    peer__owner=None, peer__channel=channel, content__reply_to_id=filt.top_msg_id,
                 ).distinct().values_list("content__author_id", flat=True)
             ))
     elif isinstance(filt, ChannelParticipantsBanned):
@@ -732,23 +733,24 @@ async def get_participants(request: GetParticipants, user: User):
     await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
 
     for participant in participants:
-        participants_tl.append(participant.to_tl_channel_with_creator(user, creator_id=peer.channel.creator_id))
+        participants_tl.append(participant.to_tl_channel_with_creator(user, creator_id=channel.creator_id))
         users_to_tl.append(participant.user)
 
     return ChannelParticipants(
         count=await query.count(),
         participants=participants_tl,
-        chats=[await peer.channel.to_tl()],
+        chats=[await channel.to_tl()],
         users=await User.to_tl_bulk(users_to_tl),
     )
 
 
 @handler.on_request(GetParticipant)
 async def get_participant(request: GetParticipant, user: User):
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-    participant = await peer.channel.get_participant(user)
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+
+    participant = await channel.get_participant(user)
     if participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
@@ -756,19 +758,19 @@ async def get_participant(request: GetParticipant, user: User):
     if target_peer.type not in (PeerType.USER, PeerType.SELF):
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS) \
+    if not channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS) \
             and target_peer.type is not PeerType.SELF:
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     target_participant = await ChatParticipant.get_or_none(
-        user=target_peer.user, channel=peer.channel,
+        user=target_peer.user, channel=channel,
     ).select_related("user")
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     return ChannelParticipant(
         participant=await target_participant.to_tl_channel(user),
-        chats=[await peer.channel.to_tl()],
+        chats=[await channel.to_tl()],
         users=[await target_participant.user.to_tl()],
     )
 
@@ -825,11 +827,10 @@ async def read_channel_history(request: ReadHistory, user: User) -> bool:
 @handler.on_request(InviteToChannel_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(InviteToChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def invite_to_channel(request: InviteToChannel, user: User):
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    channel = peer.channel
     participant = await channel.get_participant_raise(user)
     if not channel.user_has_permission(participant, ChatBannedRights.INVITE_USERS) and \
             not channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
@@ -892,15 +893,15 @@ async def invite_to_channel(request: InviteToChannel, user: User):
 
 @handler.on_request(ToggleSignatures, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_signatures(request: ToggleSignatures, user: User):
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    participant = await peer.channel.get_participant(user)
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+    participant = await channel.get_participant(user)
+    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
-    channel = peer.channel
+    channel = channel
     if channel.signatures == request.signatures_enabled:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
@@ -909,7 +910,7 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
     await channel.save(update_fields=["signatures", "version"])
 
     await AdminLogEntry.create(
-        channel=peer.channel,
+        channel=channel,
         user=user,
         action=AdminLogEntryAction.TOGGLE_SIGNATURES,
         new=b"\x01" if request.signatures_enabled else b"\x00",
@@ -932,11 +933,9 @@ async def toggle_signatures_136(request: ToggleSignatures_133, user: User):
 @handler.on_request(SetChatAvailableReactions_136, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(SetChatAvailableReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_chat_available_reactions(request: SetChatAvailableReactions, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.peer, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.peer)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     participant = await channel.get_participant(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
@@ -1009,11 +1008,9 @@ async def _unlink_channel_maybe(channel: Channel) -> None:
 
 @handler.on_request(DeleteChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_channel(request: DeleteChannel, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     if channel.creator_id != user.id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
@@ -1031,11 +1028,10 @@ async def delete_channel(request: DeleteChannel, user: User) -> Updates:
 
 @handler.on_request(EditCreator, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def edit_creator(request: EditCreator, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    channel = peer.channel
     if channel.creator_id != user.id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -1076,22 +1072,22 @@ CHANNEL_PRIVATE_ERR = ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
 @handler.on_request(JoinChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def join_channel(request: JoinChannel, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    participant = await ChatParticipant.get_or_none(channel=peer.channel, user=user)
+    participant = await ChatParticipant.get_or_none(channel=channel, user=user)
     if participant is not None:
         if not participant.left:
             raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
         if participant.banned_rights & ChatBannedRights.VIEW_MESSAGES:
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="banned")
 
-    if not await Username.filter(channel=peer.channel).exists():
-        if not peer.channel.is_discussion:
+    if not await Username.filter(channel=channel).exists():
+        if not channel.is_discussion:
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="not a discussion")
         linked_channel = await Channel.get_or_none(
-            deleted=False, discussion_id=peer.channel_id,
+            deleted=False, discussion_id=channel.id,
         ).select_related("usernames")
         if linked_channel is None:
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="no linked channel")
@@ -1100,7 +1096,7 @@ async def join_channel(request: JoinChannel, user: User) -> Updates:
             logger.warning(f"{linked_participant}, {linked_participant.left}")
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="cant access linked channel")
 
-    return await user_join_chat_or_channel(peer.channel, user, None)
+    return await user_join_chat_or_channel(channel, user, None)
 
 
 @handler.on_request(LeaveChannel)
@@ -1149,11 +1145,9 @@ async def get_admined_public_channels(request: GetAdminedPublicChannels, user: U
 
 @handler.on_request(TogglePreHistoryHidden, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     if channel.is_discussion:
         raise ErrorRpc(error_code=400, error_message="CHAT_LINK_EXISTS")
@@ -1191,11 +1185,10 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user: User)
 
 @handler.on_request(ToggleJoinToSend, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_join_to_send(request: ToggleJoinToSend, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    channel = peer.channel
     if not request.enabled and not channel.is_discussion:
         # As per https://core.telegram.org/constructor/channel,
         # "Whether a user needs to join the supergroup before they can send messages:
@@ -1219,11 +1212,10 @@ async def toggle_join_to_send(request: ToggleJoinToSend, user: User) -> Updates:
 @handler.on_request(GetSendAs_135, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(GetSendAs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_send_as(request: GetSendAs | GetSendAs_135, user: User) -> SendAsPeers:
-    peer = await Peer.from_input_peer_raise(
-        user, request.peer, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
+    channel = await Channel.get_from_input(user, request.peer)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    channel = peer.channel
     if not channel.supergroup:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -1244,11 +1236,9 @@ async def get_send_as(request: GetSendAs | GetSendAs_135, user: User) -> SendAsP
 
 @handler.on_request(GetAdminLog, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     participant = await channel.get_participant_raise(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO) \
@@ -1333,11 +1323,9 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
 
 @handler.on_request(ToggleJoinRequest, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_join_request(request: ToggleJoinRequest, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     if channel.join_request == request.enabled:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
@@ -1368,20 +1356,18 @@ async def get_groups_for_discussion(user: User) -> Chats:
 
 @handler.on_request(SetDiscussionGroup)
 async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
-    channel_peer = await Peer.from_input_peer_raise(
-        user, request.broadcast, message="BROADCAST_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,),
-        select_related=("channel__discussion",),
-    )
-    channel = channel_peer.channel
+    channel = await Channel.get_from_input(user, request.broadcast).select_related("discussion")
+    if channel is None:
+        raise ErrorRpc(error_code=400, error_message="BROADCAST_ID_INVALID")
+
     if channel.creator_id != user.id:
         # TODO: apparently, not only creators can set discussion group, but also regular admins?
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     if isinstance(request.group, (InputChannel, InputPeerChannel)):
-        group_peer = await Peer.from_input_peer_raise(
-            user, request.group, message="MEGAGROUP_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
-        )
-        group = group_peer.channel
+        group = await Channel.get_from_input(user, request.group)
+        if group is None:
+            raise ErrorRpc(error_code=406, error_message="MEGAGROUP_ID_INVALID")
         if group.creator_id != user.id:
             # TODO: apparently, not only creators can set discussion group, but also regular admins?
             raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
@@ -1460,11 +1446,10 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
 
 @handler.on_request(UpdateColor, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_color(request: UpdateColor, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
-    )
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    channel = peer.channel
     participant = await channel.get_participant_raise(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
@@ -1523,7 +1508,7 @@ async def update_color(request: UpdateColor, user: User) -> Updates:
     else:
         action = AdminLogEntryAction.EDIT_PEER_COLOR
     await AdminLogEntry.create(
-        channel=peer.channel,
+        channel=channel,
         user=user,
         action=action,
         prev=PeerColor(color=old_color, background_emoji_id=old_emoji).serialize(),
@@ -1535,11 +1520,9 @@ async def update_color(request: UpdateColor, user: User) -> Updates:
 
 @handler.on_request(ToggleSlowMode, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_slowmode(request: ToggleSlowMode, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     new_seconds = request.seconds or None
     if channel.slowmode_seconds == request.seconds:
@@ -1557,7 +1540,7 @@ async def toggle_slowmode(request: ToggleSlowMode, user: User) -> Updates:
     await channel.save(update_fields=["slowmode_seconds", "version"])
 
     await AdminLogEntry.create(
-        channel=peer.channel,
+        channel=channel,
         user=user,
         action=AdminLogEntryAction.TOGGLE_SLOWMODE,
         prev=Int.write(old_seconds or 0),
@@ -1569,11 +1552,9 @@ async def toggle_slowmode(request: ToggleSlowMode, user: User) -> Updates:
 
 @handler.on_request(ToggleParticipantsHidden, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def toggle_participants_hidden(request: ToggleParticipantsHidden, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     if channel.participants_hidden == request.enabled:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
@@ -1591,10 +1572,9 @@ async def toggle_participants_hidden(request: ToggleParticipantsHidden, user: Us
 
 @handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def read_message_contents(request: ReadMessageContents, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     if not request.id:
         return True
@@ -1614,10 +1594,10 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> boo
 
 @handler.on_request(DeleteHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_history(request: DeleteHistory, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+
     participant = await channel.get_participant_raise(user)
 
     new_min_available_id = cast(
@@ -1653,10 +1633,10 @@ async def delete_history(request: DeleteHistory, user: User) -> Updates:
 
 @handler.on_request(DeleteParticipantHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def delete_participant_history(request: DeleteParticipantHistory, user: User) -> AffectedHistory:
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
-    )
-    channel = peer.channel
+    channel = await Channel.get_from_input(user, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+
     participant = await channel.get_participant_raise(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
@@ -1702,19 +1682,18 @@ async def deactivate_all_usernames() -> bool:
 async def set_stickers(request: SetStickers | SetEmojiStickers, user: User) -> bool:
     is_emoji = isinstance(request, SetEmojiStickers)
 
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
-        select_related=("channel__emojiset" if is_emoji else "channel__stickerset",),
-    )
-    channel = peer.channel
+    field_name = "emojiset_id" if is_emoji else "stickerset_id"
+    select_related_name = "channel__emojiset" if is_emoji else "channel__stickerset"
+
+    channel = await Channel.get_from_input(user, request.channel).select_related(select_related_name)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
     if not channel.supergroup:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
     participant = await channel.get_participant_raise(user)
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
-
-    field_name = "emojiset_id" if is_emoji else "stickerset_id"
 
     if is_emoji:
         if channel.emojiset_id is None:
@@ -1756,7 +1735,7 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user: User) -> b
     await channel.save(update_fields=[field_name, "version"])
 
     await AdminLogEntry.create(
-        channel=peer.channel,
+        channel=channel,
         user=user,
         action=AdminLogEntryAction.EDIT_EMOJISET if is_emoji else AdminLogEntryAction.EDIT_STICKERSET,
         prev=old_stickerset.write(),

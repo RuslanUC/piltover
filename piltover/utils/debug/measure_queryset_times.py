@@ -153,3 +153,4 @@ def unpatch_queryset_for_measurement() -> None:
         _unpatch_cls_replaced_method(cls, make_query_methods, real_suffix)
 
     _unpatch_cls_replaced_method(RequestHandler, call_methods, real_suffix)
+    _unpatch_cls_replaced_method(Client, resolve_ctx_methods, real_suffix)

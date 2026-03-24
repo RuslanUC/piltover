@@ -3,22 +3,25 @@ from __future__ import annotations
 import hashlib
 import hmac
 from enum import auto, Enum
-from typing import cast
+from typing import cast, Self
 
-from loguru import logger
 from tortoise import fields
 from tortoise.models import MODEL
+from tortoise.queryset import QuerySet, QuerySetSingle
 from tortoise.transactions import in_transaction
 
 from piltover.app_config import AppConfig
 from piltover.cache import Cache
+from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.models import ChatBase
 from piltover.db.models.utils import NullableFKSetNull
+from piltover.db.utils.awaitable_none_queryset import EmptyQuerySet
 from piltover.tl import ChannelForbidden, Long
 from piltover.tl.base import Chat as TLChatBase
 from piltover.tl.to_format import ChannelToFormat
-from piltover.tl.types import ChatAdminRights as TLChatAdminRights, PeerColor, PeerChannel
+from piltover.tl.types import ChatAdminRights as TLChatAdminRights, PeerColor, PeerChannel, InputChannel, \
+    InputPeerChannel
 from piltover.tl.types.internal_access import AccessHashPayloadChannel
 
 CREATOR_RIGHTS = TLChatAdminRights(
@@ -243,3 +246,21 @@ class Channel(ChatBase):
 
         self.pts = new_pts
         return new_pts
+
+    @classmethod
+    def from_input(cls, user: models.User, input_channel: InputChannel | InputPeerChannel) -> QuerySet[Self]:
+        if not isinstance(input_channel, (InputChannel, InputPeerChannel)):
+            return EmptyQuerySet(cls)
+
+        ctx = request_ctx.get()
+
+        channel_id = models.Channel.norm_id(input_channel.channel_id)
+        if not models.Channel.check_access_hash(user.id, ctx.auth_id, channel_id, input_channel.access_hash):
+            return EmptyQuerySet(cls)
+        return cls.filter(id=channel_id, deleted=False)
+
+    @classmethod
+    def get_from_input(
+            cls, user: models.User, input_channel: InputChannel | InputPeerChannel
+    ) -> QuerySetSingle[Self | None]:
+        return cls.from_input(user, input_channel).get_or_none()

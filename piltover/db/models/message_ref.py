@@ -25,13 +25,24 @@ BackwardO2OOrT = fields.BackwardOneToOneRelation[_T] | _T
 
 
 async def append_channel_min_message_id_to_query_maybe(
-        peer: models.Peer, query: Q, participant: models.ChatParticipant | None = None,
+        peer: models.Peer | models.Channel, query: Q, participant: models.ChatParticipant | None = None,
+        user: models.User | None = None,
 ) -> Q:
+    channel = None
+    participant_user = None
     if isinstance(peer, models.Peer) and peer.type is PeerType.CHANNEL:
+        channel = peer.channel
+        participant_user = peer.owner
+    elif isinstance(peer, models.Channel):
+        channel = peer
+        participant_user = user
+
+    if channel is not None:
         if participant is None:
-            participant = await peer.channel.get_participant(peer.owner)
-        if (channel_min_id := peer.channel.min_id(participant)) is not None:
+            participant = await channel.get_participant(participant_user)
+        if (channel_min_id := channel.min_id(participant)) is not None:
             query &= Q(id__gte=channel_min_id)
+
     return query
 
 
