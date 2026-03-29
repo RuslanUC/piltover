@@ -2776,7 +2776,7 @@ pysocks = "1.7.1"
 type = "git"
 url = "https://github.com/RuslanUC/pyrogram-exp.git"
 reference = "piltover"
-resolved_reference = "f4ad45da5d334eb5e67145c3b5ac9006bb7f6d80"
+resolved_reference = "bc460e93bf011143d7db62709eeb791d6e76a611"
 
 [[package]]
 name = "pysocks"

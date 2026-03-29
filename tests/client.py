@@ -18,6 +18,7 @@ from pyrogram.crypto import rsa
 from pyrogram.crypto.rsa import PublicKey
 from pyrogram.raw.base import InputPrivacyKey
 from pyrogram.raw.core import TLObject as PyroTLObject
+from pyrogram.raw.core.tl_object import TLObjectT, TLRequest as PyroTLRequest
 from pyrogram.raw.functions import InvokeWithLayer
 from pyrogram.raw.functions.account import SetPrivacy
 from pyrogram.raw.functions.channels import GetAdminLog
@@ -396,9 +397,9 @@ class TestClient(Client):
             return await super().handle_updates(updates)
 
     async def invoke(
-            self, query: PyroTLObject, retries: int = PyroSession.MAX_RETRIES,
+            self, query: PyroTLRequest[TLObjectT], retries: int = PyroSession.MAX_RETRIES,
             timeout: float = PyroSession.WAIT_TIMEOUT, sleep_threshold: float = None,
-    ) -> PyroTLObject:
+    ) -> TLObjectT:
         from piltover.utils.debug import measure_time
 
         with measure_time("<pyrogram>.invoke(...)"):
