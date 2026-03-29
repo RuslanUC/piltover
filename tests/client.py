@@ -425,8 +425,8 @@ class TestClient(Client):
                 self._updates_event.clear()
 
     async def expect_updates(
-            self, *update_clss: type[PyroTLObject], timeout_per_update: float = 0.5,
-    ) -> list[PyroTLObject]:
+            self, *update_clss: type[TLObjectT], timeout_per_update: float = 0.5,
+    ) -> list[TLObjectT]:
         result = []
         for update_cls in update_clss:
             result.append(await self.expect_update(update_cls, timeout_per_update))

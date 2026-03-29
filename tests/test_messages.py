@@ -1,4 +1,3 @@
-from asyncio import get_running_loop
 from contextlib import AsyncExitStack
 from datetime import timedelta, datetime, UTC
 from io import BytesIO
@@ -7,7 +6,6 @@ from time import time
 import pytest
 from PIL import Image
 from fastrand import xorshift128plus_bytes
-from loguru import logger
 from pyrogram.enums import MessageEntityType
 from pyrogram.errors import NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
@@ -17,8 +15,7 @@ from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyT
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
-from pyrogram.types import InputMediaDocument, ChatPermissions, MessageEntity
-from pyrogram.utils import get_channel_id
+from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F, Subquery
 
 from piltover.db.enums import PeerType

@@ -2,7 +2,7 @@ from contextlib import AsyncExitStack
 from typing import cast
 
 import pytest
-from pyrogram.raw.functions.langpack import GetLanguages, GetLanguage, GetDifference, GetStrings, GetLangPack
+from pyrogram.raw.functions.langpack import GetLanguages, GetLanguage, GetStrings, GetLangPack
 from pyrogram.raw.types import LangPackLanguage, LangPackDifference, LangPackString, LangPackStringPluralized
 
 from tests.client import TestClient

@@ -18,6 +18,7 @@ async def test_create_botfather_bot(exit_stack: AsyncExitStack) -> None:
 
     await client.send_message("botfather", "/start")
 
+    bot_response: UpdateNewMessage
     _, bot_response = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
     assert "/newbot - create a new bot" in bot_response.message.message
 
