@@ -15,7 +15,7 @@ from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMe
 from pyrogram.types import ChatMember, ChatPrivileges
 from pyrogram.utils import compute_password_check
 
-from piltover.tl import InputCheckPasswordEmpty
+from piltover.tl import InputCheckPasswordEmpty, ChannelAdminLogEventActionChangeTitle
 from tests.client import TestClient
 from tests.conftest import ClientFactory, ChannelWithClientsFactory
 from tests.utils import color_is_near
@@ -64,6 +64,14 @@ async def test_edit_channel_title(channel_with_clients: ChannelWithClientsFactor
         assert await channel.set_title("new title")
     channel2 = await client.get_chat(channel.id)
     assert channel2.title == "new title"
+
+    admin_log = await client.get_admin_log(channel.id)
+    assert len(admin_log.events) == 1
+    assert isinstance(admin_log.events[0].action, ChannelAdminLogEventActionChangeTitle)
+    assert admin_log.events[0].user_id == client.me.id
+    event = cast(ChannelAdminLogEventActionChangeTitle, admin_log.events[0].action)
+    assert event.prev_value == "idk"
+    assert event.new_value == "new title"
 
 
 @pytest.mark.asyncio

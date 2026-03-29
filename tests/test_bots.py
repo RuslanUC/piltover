@@ -101,7 +101,9 @@ async def test_botfather_mybots(
 
     await client.send_message("botfather", "/mybots")
 
-    _, bot_response = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    updates: list[UpdateNewMessage] = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    updates.sort(key=lambda u: u.message.id)
+    _, bot_response = updates
     bot_message = await PyroMessage._parse(
         client,
         bot_response.message,
@@ -129,7 +131,9 @@ async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
 
     await client.send_message("botfather", "/mybots")
 
-    _, bot_response = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    updates: list[UpdateNewMessage] = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    updates.sort(key=lambda u: u.message.id)
+    _, bot_response = updates
     bot_message = await PyroMessage._parse(
         client,
         bot_response.message,

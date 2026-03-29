@@ -20,19 +20,21 @@ from pyrogram.raw.base import InputPrivacyKey
 from pyrogram.raw.core import TLObject as PyroTLObject
 from pyrogram.raw.functions import InvokeWithLayer
 from pyrogram.raw.functions.account import SetPrivacy
+from pyrogram.raw.functions.channels import GetAdminLog
 from pyrogram.raw.functions.contacts import ExportContactToken, ImportContactToken
 from pyrogram.raw.types import Updates, InputPrivacyKeyAddedByPhone, InputPrivacyKeyChatInvite, InputPrivacyKeyForwards, \
     InputPrivacyKeyPhoneNumber, InputPrivacyKeyPhoneCall, InputPrivacyKeyProfilePhoto, InputPrivacyKeyStatusTimestamp, \
     InputPrivacyKeyVoiceMessages, InputPrivacyKeyPhoneP2P, InputPrivacyValueAllowAll, InputPrivacyValueAllowUsers, \
     InputPrivacyValueDisallowChatParticipants, InputPrivacyValueDisallowUsers, InputPrivacyValueDisallowContacts, \
     InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts, UpdateShort, \
-    UpdatesCombined, ExportedContactToken, UpdatesTooLong
+    UpdatesCombined, ExportedContactToken, UpdatesTooLong, ChannelAdminLogEventsFilter
 from pyrogram.session import Session as PyroSession, Auth
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
 from pyrogram.types import User
 
+from piltover.tl.types.channels import AdminLogResults
 from tests import USE_REAL_TCP_FOR_TESTING, server_instance, test_phone_number, skipping_auth
 
 if TYPE_CHECKING:
@@ -508,3 +510,17 @@ class TestClient(Client):
             last_name = self.last_name or ""
 
         return await super().sign_up(phone_number, phone_code_hash, first_name, last_name)
+
+    async def get_admin_log(
+            self, channel_id: int, limit: int = 100, event_filter: ChannelAdminLogEventsFilter | None = None
+    ) -> AdminLogResults:
+        result = await self.invoke(GetAdminLog(
+            channel=await self.resolve_peer(channel_id),
+            q="",
+            max_id=0,
+            min_id=0,
+            limit=limit,
+            events_filter=event_filter,
+        ))
+
+        return AdminLogResults.read(BytesIO(result.write()))

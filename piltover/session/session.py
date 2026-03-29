@@ -80,13 +80,13 @@ class Session:
         return hash(self.uniq_id)
 
     # TODO: rewrite
-    def set_client(self, client: Client) -> None:
+    def connect(self, client: Client) -> None:
         # TODO: raise AuthKeyDuplicated if self.client is not None
         self.client = client
         piltover.session.SessionManager.broker.subscribe(self)
 
     # TODO: rewrite
-    def destroy(self) -> None:
+    def disconnect(self) -> None:
         self.client = None
         piltover.session.SessionManager.broker.unsubscribe(self)
         piltover.session.SessionManager.cleanup(self)

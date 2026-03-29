@@ -201,6 +201,7 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
             action=AdminLogEntryAction.CHANGE_ABOUT,
             prev=old_about.encode("utf8"),
             new=chat_or_channel.description.encode("utf8"),
+            searchable=f"{old_about}\n{chat_or_channel.description}",
         )
         await upd.update_channel(chat_or_channel, user)
     else:

@@ -23,11 +23,9 @@ from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import ChatParticipant, Peer, Contact, PrivacyRule, Presence, PollVote, MessageRef, \
     InstalledStickerset
 from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable
-from piltover.session import Session
-from piltover.session import SessionManager
-from piltover.tl import TLObject, NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, \
-    ReqPqMulti
-from piltover.tl.core_types import MsgContainer, Message, RpcResult
+from piltover.session import Session, SessionManager
+from piltover.tl import NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, ReqPqMulti
+from piltover.tl.core_types import TLObject, MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse, NeedsContextValues
@@ -66,7 +64,7 @@ class Client:
 
     @staticmethod
     def _session_evicted(_: ..., session: Session) -> None:
-        session.destroy()
+        session.disconnect()
 
     def _get_cached_session(self, auth_key_id: int, session_id: int) -> Session | None:
         uniq_id = (auth_key_id, session_id)
@@ -78,7 +76,7 @@ class Client:
             return cached, False
 
         session, created = SessionManager.get_or_create(session_id, self, auth_data)
-        session.set_client(self)
+        session.connect(self)
 
         self.active_sessions[session.uniq_id()] = session
         return session, created
@@ -407,7 +405,7 @@ class Client:
 
             for session in self.active_sessions.values():
                 logger.info(f"Session {session.session_id} removed")
-                session.destroy()
+                session.disconnect()
 
             self.active_sessions.clear()
 

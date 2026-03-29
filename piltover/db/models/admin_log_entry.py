@@ -91,6 +91,8 @@ class AdminLogEntry(Model):
     new_banned_rights: ChatBannedRights | None = IntFlagField(ChatBannedRights, null=True, default=None)
     new_channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None, related_name="new_channel")
 
+    searchable: str | None = fields.CharField(max_length=8192, null=True, db_index=True, default=None)
+
     user_id: int
     channel_id: int
     old_photo_id: int | None
@@ -217,5 +219,3 @@ class AdminLogEntry(Model):
             user_id=self.user_id,
             action=action,
         )
-
-    # TODO: add ability to search

@@ -111,6 +111,7 @@ async def update_username(request: UpdateUsername, user: User) -> bool:
         action=AdminLogEntryAction.CHANGE_USERNAME,
         prev=old_username.encode("utf8"),
         new=new_username.encode("utf8"),
+        searchable=f"{old_username}\n{new_username}",
     )
 
     if channel.cached_username is not None and channel.hidden_prehistory:
@@ -395,6 +396,7 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
         action=AdminLogEntryAction.CHANGE_TITLE,
         prev=old_title.encode("utf8"),
         new=peer.channel.name.encode("utf8"),
+        searchable=f"{old_title}\n{peer.channel.name}",
     )
 
     updates = await upd.update_channel(peer.channel, user)
@@ -1300,6 +1302,10 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
     if request.min_id:
         events_q &= Q(id__gte=request.min_id)
 
+    search_query = request.q.strip()
+    if search_query:
+        events_q &= Q(searchable__icontains=search_query)
+
     limit = max(1, min(100, request.limit))
 
     events = []
@@ -1412,6 +1418,7 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
             action=AdminLogEntryAction.LINKED_CHAT,
             old_channel=old_group,
             new_channel=group,
+            searchable=f"{old_group.name if old_group is not None else ''}\n{group.name if group is not None else ''}",
         )
     ]
     if old_group is not None:
@@ -1421,6 +1428,7 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
             action=AdminLogEntryAction.LINKED_CHAT,
             old_channel=channel,
             new_channel=None,
+            searchable=f"{channel.name}",
         ))
     if group is not None:
         admin_log_to_create.append(AdminLogEntry(
@@ -1429,6 +1437,7 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
             action=AdminLogEntryAction.LINKED_CHAT,
             old_channel=None,
             new_channel=channel,
+            searchable=f"{channel.name}",
         ))
 
     async with in_transaction():
