@@ -10,7 +10,7 @@ from piltover.exceptions import Unreachable
 
 
 class DiscussionReadState(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     # TODO: use fk field with OnDelete.NO_ACTION
     discussion_message_id: int = fields.BigIntField()

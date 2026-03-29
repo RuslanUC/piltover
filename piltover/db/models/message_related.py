@@ -8,7 +8,7 @@ from piltover.db import models
 
 
 class MessageRelated(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     message: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     user: models.User | None = fields.ForeignKeyField("models.User", null=True, default=None)
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)

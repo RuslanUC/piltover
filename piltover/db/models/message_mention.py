@@ -7,7 +7,7 @@ from piltover.db.models.utils import NullableFK
 
 
 class MessageMention(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     # TODO: replace with peer?
     user: models.User = fields.ForeignKeyField("models.User")
     chat: models.Chat | None = NullableFK("models.Chat")

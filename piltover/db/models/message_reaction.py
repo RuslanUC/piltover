@@ -10,7 +10,7 @@ from piltover.tl import PeerUser, MessagePeerReaction, ReactionEmoji, ReactionCu
 
 
 class MessageReaction(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     message: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     reaction: models.Reaction | None = fields.ForeignKeyField("models.Reaction", null=True, default=None)

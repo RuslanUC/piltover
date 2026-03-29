@@ -47,7 +47,7 @@ async def append_channel_min_message_id_to_query_maybe(
 
 
 class MessageRef(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     content: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     random_id: int | None = fields.BigIntField(null=True, default=None)

@@ -75,7 +75,7 @@ def _process_channel_participant(
 
 
 class AdminLogEntry(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     channel: models.Channel = fields.ForeignKeyField("models.Channel")
     action: AdminLogEntryAction = fields.IntEnumField(AdminLogEntryAction, description="")

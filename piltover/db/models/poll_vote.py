@@ -8,7 +8,7 @@ from piltover.db import models
 
 
 class PollVote(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     answer: models.PollAnswer = fields.ForeignKeyField("models.PollAnswer")
     hidden: bool = fields.BooleanField(default=False)

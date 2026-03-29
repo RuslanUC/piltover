@@ -41,7 +41,7 @@ def stickerset_gen_access_hash() -> int:
 
 
 class Stickerset(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     title: str = fields.CharField(max_length=64)
     short_name: str | None = fields.CharField(max_length=64, unique=True, null=True)
     access_hash: int = fields.BigIntField(default=stickerset_gen_access_hash)

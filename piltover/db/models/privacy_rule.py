@@ -36,7 +36,7 @@ def _inputusers_to_uids(
 
 
 class PrivacyRule(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
     key: PrivacyRuleKeyType = fields.IntEnumField(PrivacyRuleKeyType, description="")
     allow_all: bool = fields.BooleanField()

@@ -6,6 +6,6 @@ from piltover.db import models
 
 
 class UserPersonalChannel(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.OneToOneField("models.User")
     channel: models.Channel = fields.OneToOneField("models.Channel")

@@ -16,7 +16,7 @@ def gen_access_hash() -> int:
 
 
 class EncryptedChat(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     access_hash: int = fields.BigIntField(default=gen_access_hash())
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     from_user: models.User = fields.ForeignKeyField("models.User", related_name="enc_from_user")

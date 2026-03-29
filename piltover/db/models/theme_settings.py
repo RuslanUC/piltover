@@ -38,7 +38,7 @@ class BaseTheme(IntEnum):
 
 
 class ThemeSettings(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     theme: models.Theme = fields.ForeignKeyField("models.Theme")
     base_theme: BaseTheme = fields.IntEnumField(BaseTheme, description="")
     accent_color: int = fields.IntField()

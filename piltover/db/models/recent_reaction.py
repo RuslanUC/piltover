@@ -12,7 +12,7 @@ from piltover.tl.base import Reaction as TLReactionBase
 
 
 class RecentReaction(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     reaction: models.Reaction | None = fields.ForeignKeyField("models.Reaction", null=True, default=None)
     custom_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None)

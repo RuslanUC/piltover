@@ -7,7 +7,7 @@ from piltover.tl import Photo as TLPhoto, UserProfilePhoto
 
 
 class UserPhoto(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     current: bool = fields.BooleanField(default=False)
     fallback: bool = fields.BooleanField(default=False)
     file: models.File = fields.ForeignKeyField("models.File")

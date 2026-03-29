@@ -13,7 +13,7 @@ from piltover.tl.types.internal_access import AccessHashPayloadTheme
 
 
 class Theme(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     creator: models.User | None = fields.ForeignKeyField("models.User", null=True)
     title: str = fields.CharField(max_length=128)
     slug: str = fields.CharField(max_length=64, unique=True)

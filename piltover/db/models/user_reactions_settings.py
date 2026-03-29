@@ -6,7 +6,7 @@ from piltover.db import models
 
 
 class UserReactionsSettings(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.OneToOneField("models.User")
     default_reaction: models.Reaction | None = fields.ForeignKeyField("models.Reaction", null=True, default=None)
 

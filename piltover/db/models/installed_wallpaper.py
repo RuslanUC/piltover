@@ -6,7 +6,7 @@ from piltover.db import models
 
 
 class InstalledWallpaper(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     wallpaper: models.Wallpaper = fields.ForeignKeyField("models.Wallpaper")
     settings: models.WallpaperSettings = fields.ForeignKeyField("models.WallpaperSettings")

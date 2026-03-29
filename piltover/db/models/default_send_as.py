@@ -4,7 +4,7 @@ from piltover.db import models
 
 
 class DefaultSendAs(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     group: models.Channel = fields.ForeignKeyField("models.Channel", related_name="default_send_as_group")
     channel: models.Channel = fields.ForeignKeyField("models.Channel", related_name="default_send_as_channel")

@@ -27,7 +27,7 @@ MessageIdContent = Annotated[int, "Content id"]
 
 
 class MessageContent(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     message: str | None = fields.TextField(null=True, default=None)
     date: datetime = fields.DatetimeField(auto_now_add=True)
     edit_date: datetime = fields.DatetimeField(null=True, default=None)

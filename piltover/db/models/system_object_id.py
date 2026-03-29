@@ -7,7 +7,7 @@ from piltover.db.enums import SystemObjectType
 
 
 class SystemObjectId(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     type: SystemObjectType = fields.IntEnumField(SystemObjectType, description="")
     original_id: int = fields.BigIntField()
     checksum: int = fields.BigIntField()

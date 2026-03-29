@@ -6,6 +6,6 @@ from piltover.db import models
 
 
 class StickersetThumb(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     set: models.Stickerset = fields.ForeignKeyField("models.Stickerset")
     file: models.File = fields.ForeignKeyField("models.File")

@@ -8,7 +8,7 @@ from piltover.auth_data import AuthData
 
 
 class AuthKey(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     auth_key: bytes = fields.BinaryField()
     layer: int = fields.SmallIntField(default=133)
 
@@ -38,7 +38,7 @@ class AuthKey(Model):
 
 
 class TempAuthKey(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     auth_key: bytes = fields.BinaryField()
     expires_at: int = fields.BigIntField()
     perm_key: AuthKey | None = fields.OneToOneField("models.AuthKey", null=True)

@@ -8,6 +8,6 @@ from piltover.db import models
 
 
 class UserPasswordReset(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.OneToOneField("models.User")
     date: datetime = fields.DatetimeField(auto_now_add=True)

@@ -17,7 +17,7 @@ from piltover.tl.types import Dialog as TLDialog
 
 
 class Dialog(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     pinned_index: int | None = fields.SmallIntField(null=True, default=None)
     unread_mark: bool = fields.BooleanField(default=False)
     folder_id: DialogFolderId = fields.IntEnumField(DialogFolderId, default=DialogFolderId.ALL, description="")

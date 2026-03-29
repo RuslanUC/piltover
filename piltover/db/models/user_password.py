@@ -23,7 +23,7 @@ def password_gen_salt2() -> bytes:
 
 
 class UserPassword(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     salt1: bytes = fields.BinaryField(default=password_gen_salt1)  # 8 - 40 bytes
     salt2: bytes = fields.BinaryField(default=password_gen_salt2)  # 16 bytes
     password: bytes | None = fields.BinaryField(null=True, default=None)  # 256 bytes

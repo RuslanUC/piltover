@@ -9,7 +9,7 @@ from piltover.tl.types.messages import BotResults
 
 
 class InlineQueryResult(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     query: models.InlineQuery = fields.OneToOneField("models.InlineQuery")
     next_offset: str | None = fields.CharField(max_length=96, null=True, default=None)
     cache_time: int = fields.IntField(default=60)

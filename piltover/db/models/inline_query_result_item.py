@@ -9,7 +9,7 @@ from piltover.tl import BotInlineMessageText, BotInlineMessageMediaAuto, BotInli
 
 # TODO: support reply markup in inline results
 class InlineQueryResultItem(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     result: models.InlineQueryResult = fields.ForeignKeyField("models.InlineQueryResult")
     item_id: str = fields.CharField(max_length=64)
     position: int = fields.SmallIntField()

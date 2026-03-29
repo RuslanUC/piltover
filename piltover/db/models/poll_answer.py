@@ -7,7 +7,7 @@ from piltover.tl import PollAnswer as TLPollAnswer, TextWithEntities, objects
 
 
 class PollAnswer(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     correct: bool = fields.BooleanField(default=False)
     text: str = fields.CharField(max_length=100)
     entities: list | None = fields.JSONField()

@@ -11,7 +11,7 @@ from piltover.tl import InlineQueryPeerTypePM, InlineQueryPeerTypeBotPM, InlineQ
 
 
 class InlineQuery(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User", related_name="inline_user")
     bot: models.User = fields.ForeignKeyField("models.User", related_name="inline_bot")
     created_at: datetime = fields.DatetimeField(auto_now_add=True)

@@ -18,7 +18,7 @@ InputOnlyPeers = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChanne
 
 
 class Peer(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     owner: models.User = fields.ForeignKeyField("models.User", related_name="owner", null=True)
     type: PeerType = fields.IntEnumField(PeerType, description="")
     blocked_at: datetime = fields.DatetimeField(null=True, default=None)

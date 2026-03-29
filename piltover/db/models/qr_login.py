@@ -16,7 +16,7 @@ def qr_gen_nonce() -> int:
 class QrLogin(Model):
     EXPIRE_TIME = 30
 
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     key: models.AuthKey = fields.ForeignKeyField("models.AuthKey")
     nonce: int = fields.BigIntField(default=qr_gen_nonce)

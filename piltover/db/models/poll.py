@@ -14,7 +14,7 @@ from piltover.tl.to_format import PollResultsToFormat, PollAnswerVotersToFormat
 
 
 class Poll(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     closed: bool = fields.BooleanField(default=False)
     quiz: bool = fields.BooleanField(default=False)
     public_voters: bool = fields.BooleanField(default=False)

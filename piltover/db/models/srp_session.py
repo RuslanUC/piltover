@@ -19,7 +19,7 @@ def srp_gen_created_at() -> int:
 
 
 class SrpSession(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     priv_b: bytes = fields.BinaryField(default=srp_gen_b)
     created_at: int = fields.BigIntField(default=srp_gen_created_at)
     password: models.UserPassword = fields.ForeignKeyField("models.UserPassword")

@@ -20,7 +20,7 @@ def call_gen_access_hash() -> int:
 
 
 class PhoneCall(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     access_hash: int = fields.BigIntField(default=call_gen_access_hash)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     started_at: datetime | None = fields.DatetimeField(null=True, default=None)

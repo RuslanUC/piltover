@@ -20,8 +20,8 @@ def auth_gen_expires_at():
 
 
 class WebAuthorization(Model):
-    id: int = fields.BigIntField(pk=True)
-    phone_number: str = fields.CharField(index=True, max_length=20)
+    id: int = fields.BigIntField(primary_key=True)
+    phone_number: str = fields.CharField(db_index=True, max_length=20)
     password: str = fields.CharField(max_length=16, default=auth_gen_password)
     random_hash: str = fields.CharField(max_length=32, default=auth_gen_hash)
     expires_at: int = fields.BigIntField(default=auth_gen_expires_at)

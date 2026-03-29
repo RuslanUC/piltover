@@ -16,7 +16,7 @@ MessageMediaTypes = MessageMediaUnsupported | MessageMediaPhoto | MessageMediaDo
 
 
 class MessageMedia(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     spoiler: bool = fields.BooleanField(default=False)
     type: MediaType = fields.IntEnumField(MediaType, default=MediaType.DOCUMENT, description="")
     file: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None)

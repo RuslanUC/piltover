@@ -19,7 +19,7 @@ STATE_MISSING = StateMissing.STATE_MISSING
 
 
 class BotUserStateBase(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.OneToOneField("models.User")
     state: StateEnumT
     data: bytes | None = fields.BinaryField(null=True, default=None)

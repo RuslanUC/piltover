@@ -9,7 +9,7 @@ from piltover.tl import MessageFwdHeader as TLMessageFwdHeader, PeerUser, PeerCh
 
 
 class MessageFwdHeader(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     from_user: models.User = fields.ForeignKeyField("models.User", null=True, default=None, related_name="from_user")
     from_chat: models.Chat = fields.ForeignKeyField("models.Chat", null=True, default=None, related_name="from_chat")
     from_channel: models.Channel = fields.ForeignKeyField("models.Channel", null=True, default=None, related_name="from_channel")

@@ -14,7 +14,7 @@ def bot_gen_token() -> str:
 
 
 class Bot(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     owner: models.User = fields.ForeignKeyField("models.User", related_name="bot_owner")
     bot: models.User = fields.OneToOneField("models.User", related_name="bot_bot")
     token_nonce: str = fields.CharField(max_length=36, default=bot_gen_token)

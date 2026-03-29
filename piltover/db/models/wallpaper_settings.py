@@ -27,7 +27,7 @@ class BaseTheme(IntEnum):
 
 
 class WallpaperSettings(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     blur: bool = fields.BooleanField(default=False)
     motion: bool = fields.BooleanField(default=False)
     background_color: int | None = fields.IntField(null=True, default=None)

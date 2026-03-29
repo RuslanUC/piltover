@@ -34,7 +34,7 @@ VIDEO_ATTRIBUTES = (
 
 
 class File(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     physical_id: UUID = fields.UUIDField(default=uuid4)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     mime_type: str = fields.CharField(max_length=200)

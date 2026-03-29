@@ -36,12 +36,12 @@ UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox 
 
 
 class Update(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     update_type: UpdateType = fields.IntEnumField(UpdateType, description="")
     pts: int = fields.BigIntField()
     pts_count: int = fields.IntField(default=0)
     date: datetime = fields.DatetimeField(auto_now_add=True)
-    related_id: int = fields.BigIntField(index=True, null=True)
+    related_id: int = fields.BigIntField(db_index=True, null=True)
     # TODO: probably there is a better way to store multiple updates (right now it is only used for deleted messages,
     #  so maybe create two tables: something like UpdateDeletedMessage and UpdateDeletedMessageId,
     #  related_id will point to UpdateDeletedMessage.id

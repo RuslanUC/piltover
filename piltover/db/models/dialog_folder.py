@@ -18,7 +18,7 @@ _values_to_select = ("type", "user_id", "chat_id", "channel_id")
 
 
 class DialogFolder(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     id_for_user: int = fields.SmallIntField()
     name: str = fields.CharField(max_length=16)
     owner: models.User = fields.ForeignKeyField("models.User")

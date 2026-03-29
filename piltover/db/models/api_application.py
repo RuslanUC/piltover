@@ -12,7 +12,7 @@ def application_gen_hash():
 
 
 class ApiApplication(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     hash: str = fields.CharField(max_length=32, default=application_gen_hash)
     name: str = fields.CharField(max_length=64)
     short_name: str = fields.CharField(max_length=32)

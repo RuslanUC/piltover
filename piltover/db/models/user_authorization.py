@@ -14,8 +14,8 @@ def auth_gen_hash():
 
 
 class UserAuthorization(Model):
-    id: int = fields.BigIntField(pk=True)
-    hash: str = fields.CharField(max_length=32, index=True, default=auth_gen_hash)
+    id: int = fields.BigIntField(primary_key=True)
+    hash: str = fields.CharField(max_length=32, db_index=True, default=auth_gen_hash)
     ip: str = fields.CharField(max_length=64)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     active_at: datetime = fields.DatetimeField(auto_now_add=True)

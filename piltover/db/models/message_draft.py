@@ -10,7 +10,7 @@ from piltover.tl import DraftMessage, InputReplyToMessage, objects
 
 
 class MessageDraft(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     message: str = fields.TextField()
     date: datetime = fields.DatetimeField(auto_now_add=True)
     peer: models.Peer = fields.OneToOneField("models.Peer")

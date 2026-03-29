@@ -8,7 +8,7 @@ from piltover.db import models
 
 
 class InstalledStickerset(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     set: models.Stickerset = fields.ForeignKeyField("models.Stickerset")
     user: models.User = fields.ForeignKeyField("models.User")
     installed_at: datetime = fields.DatetimeField(auto_now_add=True)

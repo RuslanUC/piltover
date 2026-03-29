@@ -7,7 +7,7 @@ from piltover.tl import EncryptedFile as TLEncryptedFile
 
 
 class EncryptedFile(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     file: models.File = fields.ForeignKeyField("models.File")
     key_fingerprint: int = fields.BigIntField()
 

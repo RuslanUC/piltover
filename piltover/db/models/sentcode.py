@@ -32,7 +32,7 @@ class SentCode(Model):
     def gen_expires_at():
         return int(time()) + 5 * 60
 
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     phone_number: str = fields.CharField(max_length=20)
     code: int = fields.IntField(default=gen_phone_code)
     hash: UUID = fields.UUIDField(default=uuid4)

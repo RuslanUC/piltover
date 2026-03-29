@@ -32,7 +32,7 @@ _PHOTO_EMPTY = PhotoEmpty(id=0)
 
 
 class User(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     phone_number: str | None = fields.CharField(unique=True, max_length=20, null=True)
     first_name: str = fields.CharField(max_length=128)
     last_name: str | None = fields.CharField(max_length=128, null=True, default=None)

@@ -12,7 +12,7 @@ from piltover.tl.types import SavedDialog as TLSavedDialog
 
 
 class SavedDialog(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     pinned_index: int | None = fields.SmallIntField(null=True, default=None)
     peer: models.Peer = fields.OneToOneField("models.Peer")
 

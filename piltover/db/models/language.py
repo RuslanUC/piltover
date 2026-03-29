@@ -4,7 +4,7 @@ from piltover.tl import LangPackLanguage
 
 
 class Language(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     name: str = fields.CharField(max_length=64)
     native_name: str = fields.CharField(max_length=64)
     platform: str = fields.CharField(max_length=16)

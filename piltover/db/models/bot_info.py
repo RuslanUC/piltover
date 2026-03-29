@@ -7,7 +7,7 @@ from piltover.tl.types import BotInfo as TLBotInfo
 
 
 class BotInfo(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.OneToOneField("models.User")
     description: str | None = fields.CharField(max_length=128, null=True, default=None)
     description_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None)

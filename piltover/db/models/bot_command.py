@@ -7,7 +7,7 @@ from piltover.tl.types import BotCommand as TLBotCommand
 
 
 class BotCommand(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     bot: models.User = fields.ForeignKeyField("models.User")
     name: str = fields.CharField(max_length=32)
     description: str = fields.CharField(max_length=240)

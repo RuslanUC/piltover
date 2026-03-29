@@ -14,7 +14,7 @@ UpdateTypes = UpdateNewEncryptedMessage | UpdateEncryptedMessagesRead
 
 
 class SecretUpdate(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     qts: int = fields.BigIntField()
     type: SecretUpdateType = fields.IntEnumField(SecretUpdateType, description="")
     date: datetime = fields.DatetimeField(auto_now_add=True)

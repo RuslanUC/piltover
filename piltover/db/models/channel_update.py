@@ -15,12 +15,12 @@ UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMes
 
 
 class ChannelUpdate(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     type: ChannelUpdateType = fields.IntEnumField(ChannelUpdateType, description="")
     pts: int = fields.BigIntField()
     pts_count: int = fields.IntField(default=0)
     date: datetime = fields.DatetimeField(auto_now_add=True)
-    related_id: int = fields.BigIntField(index=True, null=True)
+    related_id: int = fields.BigIntField(db_index=True, null=True)
     extra_data: bytes = fields.BinaryField(null=True, default=None)
     channel: models.Channel = fields.ForeignKeyField("models.Channel")
 

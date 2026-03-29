@@ -6,7 +6,7 @@ from piltover.tl.types.help import PeerColorProfileSet, PeerColorSet, PeerColorO
 
 
 class PeerColorOption(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     hidden: bool = fields.BooleanField(default=False)
     is_profile: bool = fields.BooleanField()
 

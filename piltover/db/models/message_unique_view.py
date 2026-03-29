@@ -6,7 +6,7 @@ from piltover.db import models
 
 
 class MessageUniqueView(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     message: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     user: models.User = fields.ForeignKeyField("models.User")
 

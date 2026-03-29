@@ -14,7 +14,7 @@ from piltover.tl.types import PeerNotifySettings as TLPeerNotifySettings, Notify
 
 
 class PeerNotifySettings(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     peer: models.Peer = fields.ForeignKeyField("models.Peer", null=True, default=None)
     not_peer: NotifySettingsNotPeerType = fields.IntEnumField(NotifySettingsNotPeerType, null=True, default=None, description="")

@@ -6,7 +6,7 @@ from piltover.db import models
 
 
 class AvailableChannelReaction(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     channel: models.Channel = fields.ForeignKeyField("models.Channel")
     reaction: models.Reaction = fields.ForeignKeyField("models.Reaction")
 

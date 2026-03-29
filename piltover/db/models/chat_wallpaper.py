@@ -6,7 +6,7 @@ from piltover.db import models
 
 
 class ChatWallpaper(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User", related_name="wallpaper_user")
     target: models.User = fields.ForeignKeyField("models.User", related_name="wallpaper_target")
     wallpaper: models.Wallpaper = fields.ForeignKeyField("models.Wallpaper")

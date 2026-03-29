@@ -6,7 +6,7 @@ from piltover.db import models
 
 
 class PrivacyRuleException(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     rule: models.PrivacyRule = fields.ForeignKeyField("models.PrivacyRule", related_name="exceptions")
     # TODO: make nullable when chat/channel exceptions will be added
     user: models.User = fields.ForeignKeyField("models.User")

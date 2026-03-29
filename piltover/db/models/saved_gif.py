@@ -6,7 +6,7 @@ from piltover.db import models
 
 
 class SavedGif(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     gif: models.File = fields.ForeignKeyField("models.File")
     last_access: datetime = fields.DatetimeField(auto_now_add=True)

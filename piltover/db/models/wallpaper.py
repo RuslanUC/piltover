@@ -17,7 +17,7 @@ from piltover.tl.types.internal_access import AccessHashPayloadWallpaper
 
 
 class Wallpaper(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     creator: models.User | None = fields.ForeignKeyField("models.User", null=True)
     slug: str = fields.CharField(max_length=64, unique=True)
     pattern: bool = fields.BooleanField()

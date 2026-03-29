@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class ChatBase(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     name: str = fields.CharField(max_length=64)
     description: str = fields.CharField(max_length=255, default="")
     version: int = fields.BigIntField(default=1)

@@ -14,8 +14,8 @@ from piltover.utils.debug import measure_time
 
 
 class UploadingFile(Model):
-    id: int = fields.BigIntField(pk=True)
-    file_id: str = fields.CharField(index=True, max_length=64)
+    id: int = fields.BigIntField(primary_key=True)
+    file_id: str = fields.CharField(db_index=True, max_length=64)
     physical_id: UUID = fields.UUIDField(default=uuid4)
     total_parts: int = fields.IntField(default=0)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
@@ -92,7 +92,7 @@ class UploadingFile(Model):
 
 
 class UploadingFilePart(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     part_id: int = fields.IntField()
     physical_id: UUID = fields.UUIDField(default=uuid4)
     size: int = fields.IntField()

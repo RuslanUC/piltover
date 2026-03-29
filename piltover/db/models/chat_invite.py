@@ -16,7 +16,7 @@ def invite_gen_nonce() -> str:
 
 
 class ChatInvite(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     revoked: bool = fields.BooleanField(default=False)
     expires_at: datetime | None = fields.DatetimeField(null=True, default=None)
     request_needed: bool = fields.BooleanField(default=False)

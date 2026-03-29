@@ -11,7 +11,7 @@ from piltover.exceptions import Unreachable
 
 
 class ReadState(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     last_message_id: int = fields.BigIntField(default=0)
     peer: models.Peer = fields.OneToOneField("models.Peer")
 

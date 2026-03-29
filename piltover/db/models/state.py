@@ -11,7 +11,7 @@ from piltover.tl.types.updates import State as TLState
 
 
 class State(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     pts: int = fields.BigIntField(default=0)
     user: models.User = fields.OneToOneField("models.User")
 

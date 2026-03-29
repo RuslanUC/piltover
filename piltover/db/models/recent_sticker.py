@@ -9,7 +9,7 @@ from piltover.db import models
 
 
 class RecentSticker(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
     sticker: models.File = fields.ForeignKeyField("models.File")
     used_at: datetime = fields.DatetimeField(auto_now_add=True)

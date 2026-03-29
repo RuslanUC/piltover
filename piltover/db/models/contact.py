@@ -6,7 +6,7 @@ from piltover.db import models
 
 
 class Contact(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     owner: models.User = fields.ForeignKeyField("models.User", related_name="contact_owner")
     target: models.User | None = fields.ForeignKeyField("models.User", related_name="target", null=True, default=None)
     known_phone_number: str | None = fields.CharField(max_length=20, null=True, default=None)

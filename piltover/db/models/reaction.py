@@ -10,9 +10,9 @@ from piltover.tl import AvailableReaction
 
 
 class Reaction(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     # TortoiseORM does not allow setting collate, so searching by `reaction` works incorrectly
-    reaction_id: UUID = fields.UUIDField(index=True)
+    reaction_id: UUID = fields.UUIDField(db_index=True)
     reaction: str = fields.CharField(max_length=8)
     title: str = fields.CharField(max_length=64)
     static_icon: models.File = fields.ForeignKeyField("models.File", related_name="static_icon")

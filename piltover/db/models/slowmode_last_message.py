@@ -8,7 +8,7 @@ from piltover.db import models
 
 
 class SlowmodeLastMessage(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     channel: models.Channel = fields.ForeignKeyField("models.Channel")
     user: models.User = fields.ForeignKeyField("models.User")
     last_message: datetime = fields.DatetimeField()

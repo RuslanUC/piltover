@@ -7,7 +7,7 @@ from piltover.tl.types.help import Country
 
 
 class AuthCountry(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     iso2: str = fields.CharField(max_length=8, unique=True)
     name: str = fields.CharField(max_length=128)
     hidden: bool = fields.BooleanField(default=False)

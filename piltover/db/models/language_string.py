@@ -8,7 +8,7 @@ from piltover.tl.base import LangPackString as LangPackStringBase
 
 
 class LanguageString(Model):
-    id: int = fields.BigIntField(pk=True)
+    id: int = fields.BigIntField(primary_key=True)
     language: models.Language = fields.ForeignKeyField("models.Language")
     key: str = fields.CharField(max_length=128)
     deleted: bool = fields.BooleanField(default=False)
