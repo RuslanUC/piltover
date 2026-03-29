@@ -1296,7 +1296,7 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
 
         events_q &= Q(user_id__in=admin_ids)
 
-    # TODO: or __le/__ge?
+    # TODO: or __lt/__gt?
     if request.max_id:
         events_q &= Q(id__lte=request.max_id)
     if request.min_id:
@@ -1366,16 +1366,17 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
     if channel is None:
         raise ErrorRpc(error_code=400, error_message="BROADCAST_ID_INVALID")
 
-    if channel.creator_id != user.id:
-        # TODO: apparently, not only creators can set discussion group, but also regular admins?
+    channel_participant = await channel.get_participant_raise(user, "CHAT_ADMIN_REQUIRED")
+    if not channel.check_rights(channel_participant, ChatAdminRights.CHANGE_INFO, ChatBannedRights.VIEW_MESSAGES):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     if isinstance(request.group, (InputChannel, InputPeerChannel)):
         group = await Channel.get_from_input(user, request.group)
         if group is None:
             raise ErrorRpc(error_code=406, error_message="MEGAGROUP_ID_INVALID")
-        if group.creator_id != user.id:
-            # TODO: apparently, not only creators can set discussion group, but also regular admins?
+
+        group_participant = await group.get_participant_raise(user, "CHAT_ADMIN_REQUIRED")
+        if not group.check_rights(group_participant, ChatAdminRights.CHANGE_INFO, ChatBannedRights.VIEW_MESSAGES):
             raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
         if not group.supergroup or group.is_discussion:
