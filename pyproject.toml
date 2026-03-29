@@ -97,10 +97,10 @@ scalene = "^1.5.55"
 aiozipkin = "^1.1.1"
 
 [tool.poetry.group.test.dependencies]
-pytest = "^8.3.4"
-pytest-cov = "^6.0.0"
+pytest = "^9.0.2"
+pytest-cov = "^7.1.0"
 pyrogram = "^2.0.106"
-pytest-asyncio = "^0.25.0"
+pytest-asyncio = "^1.3.0"
 tg-secret = "^0.1.3"
 faker = "^40.5.1"
 pytest-repeat = "^0.9.4"
@@ -120,3 +120,31 @@ omit = [
 
 [tool.tortoise]
 tortoise_orm = "piltover.app_config.TORTOISE_ORM"
+
+[tool.pytest]
+python_classes = []
+filterwarnings = ["error", "ignore::ResourceWarning"]
+markers = [
+    "real_auth: use SignIn/SignUp for auth instead of automatically-created session",
+    "real_key_gen: use real auth key generation process",
+    "create_countries: insert test countries to the database",
+    "create_reactions: insert test reactions to the database",
+    "create_chat_themes: insert test chat themes to the database",
+    "create_peer_colors: insert test peer colors to the database",
+    "create_languages: insert test languages to the database",
+    "create_system_stickersets: insert built-in stickersets to the database",
+    "create_emoji_groups: insert test emoji groups to the database",
+    "run_scheduler: run taskiq scheduler",
+    "dont_create_sys_user: dont create system user",
+
+    "search_results_calendar",
+]
+strict_config = true
+strict_markers = true
+strict_parametrization_ids = true
+strict_xfail = false
+testpaths = ["tests"]
+
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+#asyncio_debug = true
