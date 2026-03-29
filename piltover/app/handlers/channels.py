@@ -1296,11 +1296,10 @@ async def get_admin_log(request: GetAdminLog, user: User) -> AdminLogResults:
 
         events_q &= Q(user_id__in=admin_ids)
 
-    # TODO: or __lt/__gt?
     if request.max_id:
-        events_q &= Q(id__lte=request.max_id)
+        events_q &= Q(id__lt=request.max_id)
     if request.min_id:
-        events_q &= Q(id__gte=request.min_id)
+        events_q &= Q(id__gt=request.min_id)
 
     search_query = request.q.strip()
     if search_query:
