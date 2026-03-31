@@ -4,7 +4,6 @@ from time import time
 from typing import cast
 
 from loguru import logger
-from tortoise.expressions import Q
 from tortoise.functions import Min, Max
 
 from piltover.context import request_ctx
@@ -177,7 +176,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
 
     new_updates = await ChannelUpdate.filter(
         channel=peer.channel, pts__gt=request.pts
-    ).order_by("pts").limit(request.limit)
+    ).order_by("pts").limit(request.limit).select_related(*ChannelUpdate.MESSAGE_PREFETCH_MAYBECACHED)
 
     if not new_updates:
         return ChannelDifferenceEmpty(
@@ -191,25 +190,33 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
 
     has_more = await ChannelUpdate.filter(channel=peer.channel, pts__gt=new_updates[-1].pts).exists()
 
-    messages_from_channel_query = Q(peer__channel=peer.channel) & (Q(peer__owner=user) | Q(peer__owner=None))
-    new_message_ids = {update.related_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE}
-    new = await MessageRef.filter(
-        messages_from_channel_query & Q(id__in=new_message_ids)
-    ).select_related(*MessageRef.PREFETCH_FIELDS).order_by("id")
+    new_message_ids = {update.message_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE}
+    update_by_message_id = {update.message_id: update for update in new_updates if update.message_id is not None}
+    all_messages = [update.message for update in new_updates if update.message_id is not None]
 
     other_updates = []
     ucc = UsersChatsChannels()
 
-    for message in new:
+    for message in all_messages:
         ucc.add_message(message.content_id)
 
-    new_messages = await MessageRef.to_tl_bulk(new, user)
+    all_messages_tl = await MessageRef.to_tl_bulk_maybecached(all_messages, user.id)
+    new_messages = [
+        message
+        for message in all_messages_tl
+        if update_by_message_id[message.id].type is ChannelUpdateType.NEW_MESSAGE
+    ]
+    edited_messages = {
+        message.id: message
+        for message in all_messages_tl
+        if update_by_message_id[message.id].type is ChannelUpdateType.EDIT_MESSAGE
+    }
 
     for update in new_updates:
-        if update.type is ChannelUpdateType.EDIT_MESSAGE and update.related_id in new_message_ids:
+        if update.type is ChannelUpdateType.EDIT_MESSAGE and update.message_id in new_message_ids:
             continue
 
-        update_tl = await update.to_tl(user, ucc)
+        update_tl = await update.to_tl(ucc, edited_messages)
         if update_tl is not None:
             other_updates.append(update_tl)
 

@@ -10,8 +10,10 @@ from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInval
     ChatTitleEmpty, ChatAboutTooLong, RightForbidden
 from pyrogram.raw.functions.account import GetPassword
 from pyrogram.raw.functions.channels import EditCreator, DeleteHistory
+from pyrogram.raw.functions.updates import GetChannelDifference
 from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser, \
-    InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputPeerChannel
+    InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputPeerChannel, ChannelMessagesFilterEmpty, MessageService
+from pyrogram.raw.types.updates import ChannelDifference, ChannelDifferenceEmpty
 from pyrogram.types import ChatMember, ChatPrivileges
 from pyrogram.utils import compute_password_check
 
@@ -726,6 +728,41 @@ async def test_channel_non_creator_promote_user_more_rights(channel_with_clients
 
     with pytest.raises(RightForbidden):
         await client2.promote_chat_member(channel.id, user3.id, ChatPrivileges(can_post_messages=True))
+
+
+@pytest.mark.asyncio
+async def test_channel_get_difference(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True, name="test")
+
+    message1 = await client1.send_message(channel.id, "test message 1")
+    message2 = await client1.send_message(channel.id, "test message 2")
+    await channel.set_title("idk test")
+
+    difference = await client2.invoke(GetChannelDifference(
+        channel=await client2.resolve_peer(channel.id),
+        filter=ChannelMessagesFilterEmpty(),
+        pts=0,
+        limit=10,
+        force=True,
+    ))
+    assert isinstance(difference, ChannelDifference)
+    assert len(difference.new_messages) == 3
+    assert difference.new_messages[0].id == message1.id
+    assert difference.new_messages[1].id == message2.id
+    assert isinstance(difference.new_messages[2], MessageService)
+    assert len(difference.other_updates) == 1
+    assert isinstance(difference.other_updates[0], UpdateChannel)
+    assert difference.final
+
+    empty_difference = await client2.invoke(GetChannelDifference(
+        channel=await client2.resolve_peer(channel.id),
+        filter=ChannelMessagesFilterEmpty(),
+        pts=difference.pts,
+        limit=10,
+        force=True,
+    ))
+    assert isinstance(empty_difference, ChannelDifferenceEmpty)
+    assert empty_difference.pts == difference.pts
 
 
 # TODO: add tests for restricting chat members (including restricting before join)

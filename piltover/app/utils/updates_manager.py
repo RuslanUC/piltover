@@ -114,7 +114,7 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.NEW_MESSAGE,
-        related_id=message.id,
+        message=message,
         pts=new_pts,
         pts_count=1,
     )
@@ -251,7 +251,7 @@ async def send_messages_channel(
             updates_to_create.append(ChannelUpdate(
                 channel=channel,
                 type=ChannelUpdateType.NEW_MESSAGE,
-                related_id=message.id,
+                message=message,
                 pts=this_pts,
                 pts_count=1,
             ))
@@ -273,21 +273,15 @@ async def send_messages_channel(
             pts_count=1,
         ))
 
-    await SessionManager.send(
-        UpdatesWithDefaults(
+    result = UpdatesWithDefaults(
             updates=updates,
             users=users,
             chats=chats_and_channels,
-        ),
-        channel_id=channel.id,
-    )
+        )
 
-    return UpdatesWithDefaults(
-        updates=updates,
-        users=users,
-        chats=chats_and_channels,
-    )
+    await SessionManager.send(result, channel_id=channel.id)
 
+    return result
 
 async def delete_messages(user: User | None, messages: dict[User, list[int]]) -> int:
     updates_to_create = []
@@ -337,7 +331,6 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> tupl
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.DELETE_MESSAGES,
-        related_id=None,
         extra_data=b"".join([Long.write(message_id) for message_id in messages]),
         pts=new_pts,
         pts_count=len(messages),
@@ -345,7 +338,7 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> tupl
 
     await ChannelUpdate.filter(
         type__in=(ChannelUpdateType.NEW_MESSAGE, ChannelUpdateType.EDIT_MESSAGE),
-        channel=channel, related_id__in=messages,
+        channel=channel, message_id__in=messages,
     ).delete()
 
     updates = UpdatesWithDefaults(
@@ -422,7 +415,7 @@ async def edit_message_channel(user: User | None, channel: Channel, message: Mes
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.EDIT_MESSAGE,
-        related_id=message.id,
+        message=message,
         pts=new_pts,
         pts_count=1,
     )
@@ -696,7 +689,6 @@ async def pin_channel_messages(channel: Channel, messages: list[MessageRef]) -> 
                 type=ChannelUpdateType.UNPIN_MESSAGES,
                 pts=unpinned_update.pts,
                 pts_count=unpinned_update.pts_count,
-                related_id=None,
                 extra_data=b"".join([Long.write(message_id) for message_id in unpinned_update.messages]),
             )
         )
@@ -1077,7 +1069,6 @@ async def update_channel(
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.UPDATE_CHANNEL,
-        related_id=None,
         pts=new_pts,
         pts_count=1,
     )
@@ -1936,7 +1927,6 @@ async def update_channel_available_messages(channel: Channel, min_id: int) -> Up
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.UPDATE_MIN_AVAILABLE_ID,
-        related_id=None,
         pts=await channel.add_pts(1),
         pts_count=1,
         extra_data=Long.write(min_id),

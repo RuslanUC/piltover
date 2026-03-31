@@ -8,6 +8,7 @@ from piltover.db import models
 from piltover.db.enums import ChannelUpdateType
 from piltover.tl import UpdateChannel, UpdateDeleteChannelMessages, UpdateEditChannelMessage, Long, \
     UpdateChannelAvailableMessages, UpdatePinnedChannelMessages
+from piltover.tl.base import Message as TLMessageBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateChannel | UpdateDeleteChannelMessages | UpdateEditChannelMessage | UpdateChannelAvailableMessages \
@@ -20,14 +21,17 @@ class ChannelUpdate(Model):
     pts: int = fields.BigIntField()
     pts_count: int = fields.IntField(default=0)
     date: datetime = fields.DatetimeField(auto_now_add=True)
-    related_id: int = fields.BigIntField(db_index=True, null=True)
-    extra_data: bytes = fields.BinaryField(null=True, default=None)
+    extra_data: bytes | None = fields.BinaryField(null=True, default=None)
     channel: models.Channel = fields.ForeignKeyField("models.Channel")
+    message: models.MessageRef | None = fields.ForeignKeyField("models.MessageRef", null=True, default=None)
 
     channel_id: int
+    message_id: int | None
+
+    MESSAGE_PREFETCH_MAYBECACHED = ("message__peer", "message__content", "message__peer__channel")
 
     async def to_tl(
-            self, user: models.User, ucc: UsersChatsChannels,
+            self, ucc: UsersChatsChannels, edited_messages: dict[int, TLMessageBase],
     ) -> UpdateTypes | None:
         ucc.add_channel(self.channel_id)
 
@@ -39,13 +43,12 @@ class ChannelUpdate(Model):
             case ChannelUpdateType.NEW_MESSAGE:
                 return None
             case ChannelUpdateType.EDIT_MESSAGE:
-                message = await models.MessageRef.get(
-                    id=self.related_id, peer__channel_id=self.channel_id,
-                ).select_related(*models.MessageRef.PREFETCH_FIELDS)
-                ucc.add_message(message.content_id)
+                if self.message_id not in edited_messages:
+                    return None
 
+                ucc.add_message(self.message.content_id)
                 return UpdateEditChannelMessage(
-                    message=await message.to_tl(user),
+                    message=edited_messages[self.message_id],
                     pts=self.pts,
                     pts_count=1,
                 )
