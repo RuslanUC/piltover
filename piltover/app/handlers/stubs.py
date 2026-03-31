@@ -1,15 +1,20 @@
 from piltover.enums import ReqHandlerFlags
-from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption, EmojiList
+from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption, EmojiList, StatsGraphError
 from piltover.tl.functions.account import GetCollectibleEmojiStatuses, GetContactSignUpNotification, \
     SetContactSignUpNotification, GetChannelRestrictedStatusEmojis
-from piltover.tl.functions.bots import GetPopularAppBots
+from piltover.tl.functions.bots import GetPopularAppBots, GetBotRecommendations
+from piltover.tl.functions.contacts import GetSponsoredPeers
 from piltover.tl.functions.payments import GetStarsStatus, GetStarsSubscriptions, GetStarsTransactions, \
     GetStarsTopupOptions
 from piltover.tl.functions.premium import GetBoostsStatus, GetMyBoosts, GetBoostsList
+from piltover.tl.functions.stats import GetBroadcastRevenueStats
 from piltover.tl.types.account import EmojiStatuses
 from piltover.tl.types.bots import PopularAppBots
+from piltover.tl.types.contacts import SponsoredPeers
 from piltover.tl.types.payments import StarsStatus
 from piltover.tl.types.premium import BoostsStatus, MyBoosts, BoostsList
+from piltover.tl.types.stats import BroadcastRevenueStats
+from piltover.tl.types.users import Users
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("stubs")
@@ -107,10 +112,30 @@ async def set_contact_sign_up_notification() -> bool:  # pragma: no cover
 
 
 @handler.on_request(GetPopularAppBots, NOBOT_NOAUTH)
-async def get_popular_app_bots() -> PopularAppBots:
+async def get_popular_app_bots() -> PopularAppBots:  # pragma: no cover
     return PopularAppBots(users=[])
 
 
 @handler.on_request(GetChannelRestrictedStatusEmojis, NOBOT_NOAUTH)
-async def get_channel_restricted_status_emojis() -> EmojiList:
+async def get_channel_restricted_status_emojis() -> EmojiList:  # pragma: no cover
     return EmojiList(hash=0, document_id=[])
+
+
+@handler.on_request(GetSponsoredPeers, NOBOT_NOAUTH)
+async def get_sponsored_peers() -> SponsoredPeers:  # pragma: no cover
+    return SponsoredPeers(peers=[], users=[], chats=[])
+
+
+@handler.on_request(GetBotRecommendations, NOBOT_NOAUTH)
+async def get_bot_recommendations() -> Users:  # pragma: no cover
+    return Users(users=[])
+
+
+@handler.on_request(GetBroadcastRevenueStats, NOBOT_NOAUTH)
+async def get_broadcast_revenue_stats() -> BroadcastRevenueStats:  # pragma: no cover
+    return BroadcastRevenueStats(
+        top_hours_graph=StatsGraphError(error="no stats"),
+        revenue_graph=StatsGraphError(error="no stats"),
+        balances=StatsGraphError(error="no stats"),
+        usd_rate=1.0,
+    )
