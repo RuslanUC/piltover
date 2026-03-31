@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from loguru import logger
 from mtproto import ConnectionRole
-from mtproto.packets import EncryptedMessagePacket, MessagePacket
+from mtproto.transport.packets import EncryptedMessagePacket, MessagePacket
 from tortoise.expressions import Q
 
 import piltover.app.utils.updates_manager as upd

@@ -1627,19 +1627,25 @@ files = [
 
 [[package]]
 name = "mtproto"
-version = "0.1.4"
+version = "0.3.0b1"
 description = "Telegram MTProto protocol implementation"
 optional = false
-python-versions = "<4.0,>=3.9"
+python-versions = ">=3.11,<4.0"
 groups = ["main"]
-files = [
-    {file = "mtproto-0.1.4-py3-none-any.whl", hash = "sha256:6b025c4fb6b2643b4af0678473e4ba7c0afce12a3f180faac2ca0eabcaefc156"},
-    {file = "mtproto-0.1.4.tar.gz", hash = "sha256:8ef2bd953c306650b117242c5f399ea3d9fb51807cbdd1e4faa9f23ccfb4cb83"},
-]
+files = []
+develop = false
 
 [package.extras]
-pyaes = ["pyaes (>=1.6.1,<2.0.0)"]
-tgcrypto = ["tgcrypto (>=1.2.5,<2.0.0)"]
+http = ["h11 (>=0.16.0,<1.0)"]
+pyaes = ["pyaes (>=1.6.1,<2.0)"]
+tgcrypto = ["tgcrypto (>=1.2.5,<2.0)"]
+ws = ["h11 (>=0.16.0,<1.0)", "wsproto (>=1.3.2,<2.0)"]
+
+[package.source]
+type = "git"
+url = "https://github.com/RuslanUC/mtproto.git"
+reference = "HEAD"
+resolved_reference = "48d9c0933f74f8744fea3ff6a640ab160246936a"
 
 [[package]]
 name = "multidict"
@@ -3758,4 +3764,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11.1,<4.0"
-content-hash = "78fe11350fad311ab1d89128b84cea7f9597e0116c79676bff24c4e50003d730"
+content-hash = "b02f5e206c89ade2a2d01fcd39b17557ed710c0a749951654a3f85aae55507a6"

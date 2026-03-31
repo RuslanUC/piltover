@@ -8,9 +8,11 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 from lru import LRU
-from mtproto import Connection, ConnectionRole
-from mtproto.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, DecryptedMessagePacket, \
-    ErrorPacket, QuickAckPacket, BasePacket
+from mtproto import ConnectionRole
+from mtproto.enums import TransportEvent
+from mtproto.transport import Connection
+from mtproto.transport.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, \
+    DecryptedMessagePacket, ErrorPacket, QuickAckPacket, BasePacket
 from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
 from taskiq.kicker import AsyncKicker
 from tortoise.expressions import Q
@@ -81,14 +83,10 @@ class Client:
         self.active_sessions[session.uniq_id()] = session
         return session, created
 
-    def _disconnect_if_invalid_packet_length(self) -> None:
-        if (packet_len := self.conn.peek_length()) is not None and packet_len >= 1024 * 1024:
-            raise Disconnection
-
     async def read_packet(self) -> MessagePacket | None:
-        self._disconnect_if_invalid_packet_length()
-
-        packet = self.conn.receive()
+        packet = self.conn.next_event()
+        if packet is TransportEvent.DISCONNECT:
+            raise Disconnection
         if isinstance(packet, MessagePacket):
             return packet
 
@@ -96,9 +94,11 @@ class Client:
         if not recv:
             raise Disconnection
 
-        packet = self.conn.receive(recv)
+        self.conn.data_received(recv)
+        packet = self.conn.next_event()
+        if packet is TransportEvent.DISCONNECT:
+            raise Disconnection
         if not isinstance(packet, MessagePacket):
-            self._disconnect_if_invalid_packet_length()
             return None
 
         return packet
@@ -334,11 +334,15 @@ class Client:
             decoded = TLObject.read(BytesIO(packet.message_data))
             if isinstance(decoded, (ReqPq, ReqPqMulti)):
                 peeked = self.conn.peek_packet()
+                if peeked is TransportEvent.DISCONNECT:
+                    raise Disconnection
                 packet: UnencryptedMessagePacket | None = None
                 while isinstance(peeked, UnencryptedMessagePacket) and peeked.message_data[:4] in _check_req_pq_tlid:
                     logger.debug(f"Skipping reqPQ: {decoded}")
-                    packet = self.conn.receive()
+                    packet = self.conn.next_event()
                     peeked = self.conn.peek_packet()
+                    if peeked is TransportEvent.DISCONNECT:
+                        raise Disconnection
                     await asyncio.sleep(0)
 
                 if packet is not None:

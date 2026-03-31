@@ -8,7 +8,7 @@ import pytest
 from fastrand import xorshift128plus_bytes
 from loguru import logger
 from mtproto import ConnectionRole
-from mtproto.packets import DecryptedMessagePacket
+from mtproto.transport.packets import DecryptedMessagePacket
 from pyrogram.errors import SessionPasswordNeeded
 from pyrogram.raw.core import Message, TLObject
 from pyrogram.raw.functions.auth import BindTempAuthKey, ExportLoginToken, AcceptLoginToken
