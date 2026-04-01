@@ -34,7 +34,7 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
     ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked, \
     ChannelParticipantLeft, PeerChannel, InputStickerSetEmpty, InputStickerSetID
-from piltover.tl.functions.channels import GetChannelRecommendations, GetAdminedPublicChannels, CheckUsername, \
+from piltover.tl.functions.channels import GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
     UpdateUsername, ToggleSignatures_133, GetMessages_40, DeleteChannel, EditCreator, JoinChannel, LeaveChannel, \
@@ -51,11 +51,6 @@ from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("channels")
-
-
-@handler.on_request(GetChannelRecommendations, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_channel_recommendations():  # pragma: no cover
-    return Chats(chats=[])
 
 
 @handler.on_request(CheckUsername, ReqHandlerFlags.BOT_NOT_ALLOWED)

@@ -281,18 +281,26 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
 
     @staticmethod
     async def _validate_sticker_image(peer: Peer, content: MessageContent, is_emoji: bool) -> MessageRef | None:
-        if content.media is None:
+        media = content.media
+        if media is None:
             return await send_bot_message(peer, _newpack_invalid_file)
-        if content.media.type is not MediaType.DOCUMENT:
+        if media.type is not MediaType.DOCUMENT:
             return await send_bot_message(peer, _newpack_invalid_file)
 
+        file = media.file
+
         try:
-            await validate_png_webp(content.media.file, is_emoji)
+            if file.mime_type.startswith("video/"):
+                await validate_webm(file, is_emoji)
+            elif file.mime_type.startswith("image/"):
+                await validate_png_webp(file, is_emoji)
+            else:
+                return await send_bot_message(peer, _newpack_invalid_file)
         except ErrorRpc:
             return await send_bot_message(peer, _newpack_invalid_file)
 
-        if content.media.file.needs_save:
-            await content.media.file.save(update_fields=["width", "height"])
+        if file.needs_save:
+            await file.save(update_fields=["width", "height"])
 
     @classmethod
     async def _newpack_image(cls, peer: Peer, message: MessageRef, state: StickersBotUserState) -> MessageRef:

@@ -3,6 +3,7 @@ from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption, EmojiList
 from piltover.tl.functions.account import GetCollectibleEmojiStatuses, GetContactSignUpNotification, \
     SetContactSignUpNotification, GetChannelRestrictedStatusEmojis
 from piltover.tl.functions.bots import GetPopularAppBots, GetBotRecommendations
+from piltover.tl.functions.channels import GetChannelRecommendations
 from piltover.tl.functions.contacts import GetSponsoredPeers
 from piltover.tl.functions.payments import GetStarsStatus, GetStarsSubscriptions, GetStarsTransactions, \
     GetStarsTopupOptions
@@ -11,6 +12,7 @@ from piltover.tl.functions.stats import GetBroadcastRevenueStats
 from piltover.tl.types.account import EmojiStatuses
 from piltover.tl.types.bots import PopularAppBots
 from piltover.tl.types.contacts import SponsoredPeers
+from piltover.tl.types.messages import Chats
 from piltover.tl.types.payments import StarsStatus
 from piltover.tl.types.premium import BoostsStatus, MyBoosts, BoostsList
 from piltover.tl.types.stats import BroadcastRevenueStats
@@ -139,3 +141,8 @@ async def get_broadcast_revenue_stats() -> BroadcastRevenueStats:  # pragma: no 
         balances=StatsGraphError(error="no stats"),
         usd_rate=1.0,
     )
+
+
+@handler.on_request(GetChannelRecommendations, NOBOT_NOAUTH)
+async def get_channel_recommendations():  # pragma: no cover
+    return Chats(chats=[])

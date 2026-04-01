@@ -249,7 +249,7 @@ def _extract_video_metadata_for_sticker(location: str) -> tuple[int, bool, bool,
     duration = container.duration // av.time_base if container.duration else None
     for stream in container.streams.video:
         is_vp9 = stream.codec.name == "vp9"
-        return duration, has_video, has_audio, is_vp9, stream.width, stream.height, stream.average_rate
+        return duration, has_video, has_audio, is_vp9, stream.width, stream.height, int(stream.average_rate)
 
     return duration, has_video, has_audio, False, -1, -1, -1
 
