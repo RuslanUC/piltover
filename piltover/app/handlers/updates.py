@@ -8,17 +8,19 @@ from tortoise.functions import Min, Max
 
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType
-from piltover.db.models import User, UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate, MessageRef
+from piltover.db.models import User, UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate, MessageRef, \
+    Dialog
 from piltover.tl import UpdateChannelTooLong
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_133, GetChannelDifference
 from piltover.tl.types.updates import State as TLState, Difference, ChannelDifferenceEmpty, DifferenceEmpty, \
-    ChannelDifference, DifferenceTooLong, DifferenceSlice
+    ChannelDifference, DifferenceTooLong, DifferenceSlice, ChannelDifferenceTooLong
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("auth")
 
-CHANNEL_UPDATES_TIMEOUT = 300  # it seems like 300 is default Telegram value
+# Default telegram value is 30
+CHANNEL_UPDATES_TIMEOUT = 10
 
 
 async def get_seq_qts() -> tuple[int, int]:
@@ -171,11 +173,37 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
 
 @handler.on_request(GetChannelDifference)
 async def get_channel_difference(request: GetChannelDifference, user: User):
-    # TODO: return ChannelDifferenceTooLong if request.pts + request.limit < server_pts
-
     peer = await Peer.from_input_peer_raise(
         user, request.channel, message="CHANNEL_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
     )
+
+    server_pts = cast(
+        int | None,
+        await ChannelUpdate.filter(
+            channel=peer.channel,
+        ).annotate(max_pts=Max("pts")).first().values_list("max_pts", flat=True)
+    ) or 0
+
+    if server_pts > (request.pts + request.limit):
+        dialog, _ = await Dialog.get_or_create(peer=peer, defaults={"visible": False})
+        last_message = await MessageRef.filter(peer.q_this_or_channel()).select_related(
+            *MessageRef.PREFETCH_MAYBECACHED,
+        ).order_by("-id").first()
+        if last_message:
+            ucc = UsersChatsChannels()
+            ucc.add_message(last_message.content_id)
+            users, chats, channels = await ucc.resolve()
+        else:
+            users = chats = channels = []
+
+        return ChannelDifferenceTooLong(
+            final=True,
+            timeout=CHANNEL_UPDATES_TIMEOUT,
+            dialog=await dialog.to_tl(),
+            messages=[await last_message.to_tl_maybecached(user.id)] if last_message else [],
+            chats=[*chats, *channels],
+            users=users,
+        )
 
     new_updates = await ChannelUpdate.filter(
         channel=peer.channel, pts__gt=request.pts
