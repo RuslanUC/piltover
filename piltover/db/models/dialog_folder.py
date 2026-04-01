@@ -43,11 +43,13 @@ class DialogFolder(Model):
             ("owner", "id_for_user"),
         )
 
-    async def to_tl(self) -> DialogFilter:
-        # TODO: prefetch everything
-        pinned_peers = cast(list[PeerTuple], await self.pinned_peers.all().values_list(*_values_to_select))
-        include_peers = cast(list[PeerTuple], await self.include_peers.all().values_list(*_values_to_select))
-        exclude_peers = cast(list[PeerTuple], await self.exclude_peers.all().values_list(*_values_to_select))
+    def to_tl(self) -> DialogFilter:
+        if not self.pinned_peers._fetched:
+            raise RuntimeError("Dialog folder pinned peers must be prefetched")
+        if not self.include_peers._fetched:
+            raise RuntimeError("Dialog folder pinned peers must be prefetched")
+        if not self.exclude_peers._fetched:
+            raise RuntimeError("Dialog folder pinned peers must be prefetched")
 
         return DialogFilter(
             id=self.id_for_user,
@@ -60,9 +62,9 @@ class DialogFolder(Model):
             exclude_muted=self.exclude_muted,
             exclude_read=self.exclude_read,
             exclude_archived=self.exclude_archived,
-            pinned_peers=[models.Peer.to_input_peer_cls(*peer, self_is_user=True) for peer in pinned_peers],
-            include_peers=[models.Peer.to_input_peer_cls(*peer, self_is_user=True) for peer in include_peers],
-            exclude_peers=[models.Peer.to_input_peer_cls(*peer, self_is_user=True) for peer in exclude_peers],
+            pinned_peers=[peer.to_input_peer(self_is_user=True) for peer in self.pinned_peers],
+            include_peers=[peer.to_input_peer(self_is_user=True) for peer in self.include_peers],
+            exclude_peers=[peer.to_input_peer(self_is_user=True) for peer in self.exclude_peers],
         )
 
     def get_difference(self, tl_filter: DialogFilter) -> list[str]:

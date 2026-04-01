@@ -15,8 +15,11 @@ handler = MessageHandler("messages.folders")
 @handler.on_request(GetDialogFilters, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_dialog_filters(user: User) -> DialogFilters:
     folders = TLObjectVector()
-    for folder in await DialogFolder.filter(owner=user, id_for_user__gt=0).order_by("position", "id"):
-        folders.append(await folder.to_tl())
+    dialog_folders = await DialogFolder.filter(
+        owner=user, id_for_user__gt=0,
+    ).prefetch_related("pinned_peers", "include_peers", "exclude_peers").order_by("position", "id")
+    for folder in dialog_folders:
+        folders.append(folder.to_tl())
 
     if folders:
         folders.insert(0, DialogFilterDefault())
@@ -56,8 +59,9 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
         )
         folder.id_for_user = request.id
         await folder.fill_from_tl(request.filter)
-        await folder.save()
+        await folder.save(update_fields=["id_for_user"])
 
+        folder = await DialogFolder.get(id=folder.id).prefetch_related("pinned_peers", "include_peers", "exclude_peers")
         await upd.update_folder(user, request.id, folder)
         return True
 
@@ -68,6 +72,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
     await folder.fill_from_tl(request.filter)
     await folder.save(update_fields=updated_fields)
 
+    folder = await DialogFolder.get(id=folder.id).prefetch_related("pinned_peers", "include_peers", "exclude_peers")
     await upd.update_folder(user, request.id, folder)
     return True
 

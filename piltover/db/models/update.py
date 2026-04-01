@@ -344,11 +344,11 @@ class Update(Model):
                 if self.related_id is not None:
                     folder = await models.DialogFolder.get_or_none(
                         owner=user, id=self.related_id, id_for_user=folder_id_for_user,
-                    )
+                    ).prefetch_related("pinned_peers", "include_peers", "exclude_peers")
 
                 return UpdateDialogFilter(
                     id=folder_id_for_user,
-                    filter=await folder.to_tl() if folder is not None else None,
+                    filter=folder.to_tl() if folder is not None else None,
                 )
 
             case UpdateType.FOLDERS_ORDER:

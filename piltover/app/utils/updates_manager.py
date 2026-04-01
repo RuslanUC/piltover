@@ -1233,7 +1233,7 @@ async def update_folder(user: User, folder_id: int, folder: DialogFolder | None)
         updates=[
             UpdateDialogFilter(
                 id=folder_id,
-                filter=await folder.to_tl() if folder is not None else None,
+                filter=folder.to_tl() if folder is not None else None,
             ),
         ],
     )
