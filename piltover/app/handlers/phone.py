@@ -24,6 +24,7 @@ SUPPORTED_LIBRARY_VERSIONS = {
     "2.4.4",  # protocol V0?
     "2.7.7",  # protocol V0, signaling V0? (seq + ??? + type? + length + raw sdp parts)
     "5.0.0",  # protocol V1, signaling V0? (seq + ??? + type? + length + raw sdp parts)
+    # "4.0.0",  # apparently there is also 4.0.0 which is supported exclusively by web clients?
     "7.0.0",  # protocol V2, signaling V1 (seq + json)
     "8.0.0",  # protocol V2, signaling V2 (seq(+flags) + type + length + json)
     "9.0.0",  # protocol V2, signaling V2 (seq(+flags) + type + length + json)

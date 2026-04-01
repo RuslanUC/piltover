@@ -28,14 +28,14 @@ classifiers = [
 keywords = ["telegram", "server", "mtproto", "mtproto-server"]
 requires-python = ">=3.11.1,<4.0"
 dependencies = [
-    "cryptography (>=46.0.3,<47.0.0)",
+    "cryptography (>=46.0.6,<47.0.0)",
     "tgcrypto (>=1.2.5,<2.0.0)",
     "uvloop (>=0.22.1,<1.0.0); sys_platform != 'win32'",
     "loguru (>=0.7.3,<1.0.0)",
     "tortoise-orm[accel,asyncmy] (>=1.1.7,<2.0.0)",
     # "tortoise-orm[accel,asyncmy] @ git+https://github.com/RuslanUC/tortoise-orm.git@feat/add-prepared-parametrized-queries",
     "pillow (>=12.1.0,<13.0.0)",
-    "mtproto @ git+https://github.com/RuslanUC/mtproto.git",
+    "mtproto[tgcrypto,http,ws] @ git+https://github.com/RuslanUC/mtproto.git",
     "aiofiles (>=25.1.0,<26.0.0)",
     # Taskiq >= 0.11.16 has some problem with __name__ attribute of class methods
     #  https://github.com/taskiq-python/taskiq/issues/436
@@ -45,7 +45,7 @@ dependencies = [
     "aiocache (>=0.12.3,<1.0.0)",
     "fastrand @ git+https://github.com/RuslanUC/fastrand.git@feat/add-functions-to-generate-random-bytes",
     "python-magic (>=0.4.27,<1.0.0)",
-    "av (>=16.1.0,<17.0.0)",
+    "av (>=17.0.0,<18.0.0)",
     "httpx (>=0.28.1,<1.0.0)",
     "lru-dict (>=1.4.1,<2.0.0)",
     "pylinkify @ git+https://github.com/RuslanUC/pylinkify.git",
