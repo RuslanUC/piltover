@@ -85,7 +85,8 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     else:
         max_pts = server_pts
 
-    new_updates = await Update.filter(user=user, pts__gt=request.pts, pts__lte=max_pts).order_by("pts")
+    # NOTE: telegram forces slicing at 2500 pts
+    new_updates = await Update.filter(user=user, pts__gt=request.pts, pts__lte=max_pts).order_by("pts").limit(500)
     new_secret = await SecretUpdate.filter(
         authorization_id=ctx.auth_id, id__gt=last_local_secret_id
     ).select_related("message_file", "message_file__file")
@@ -146,7 +147,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     ucc.add_user(user.id)
     users, chats, channels = await ucc.resolve()
 
-    if max_pts >= server_pts:
+    if new_updates[-1].pts >= server_pts:
         return Difference(
             new_messages=new_messages,
             new_encrypted_messages=new_secret_messages,
@@ -162,7 +163,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
             other_updates=other_updates,
             chats=[*chats, *channels],
             users=users,
-            intermediate_state=await get_state_internal(user, max_pts),
+            intermediate_state=await get_state_internal(user, new_updates[-1].pts),
         )
 
 
