@@ -44,6 +44,7 @@ class DialogFolder(Model):
         )
 
     async def to_tl(self) -> DialogFilter:
+        # TODO: prefetch everything
         pinned_peers = cast(list[PeerTuple], await self.pinned_peers.all().values_list(*_values_to_select))
         include_peers = cast(list[PeerTuple], await self.include_peers.all().values_list(*_values_to_select))
         exclude_peers = cast(list[PeerTuple], await self.exclude_peers.all().values_list(*_values_to_select))

@@ -50,6 +50,8 @@ class Update(Model):
     additional_data: list | dict = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User")
 
+    peer: models.Peer | None = fields.ForeignKeyField("models.Peer", null=True, default=None)
+
     # TODO: add to_tl_bulk
 
     async def to_tl(
@@ -80,19 +82,14 @@ class Update(Model):
                 )
 
             case UpdateType.READ_HISTORY_INBOX:
-                query = Q(owner=user)
-                if self.related_id:
-                    query &= Q(user_id=self.related_id) | Q(chat_id=self.related_id)
-                else:
-                    query &= Q(type=PeerType.SELF)
-                if (peer := await models.Peer.get_or_none(query)) is None:
+                if self.peer is None:
                     return None
 
-                ucc.add_peer(peer)
+                ucc.add_peer(self.peer)
 
                 # TODO: fetch read state from db instead of related_ids
                 return UpdateReadHistoryInbox(
-                    peer=peer.to_tl(),
+                    peer=self.peer.to_tl(),
                     max_id=self.related_ids[0],
                     still_unread_count=self.related_ids[1],
                     pts=self.pts,
@@ -100,16 +97,16 @@ class Update(Model):
                 )
 
             case UpdateType.DIALOG_PIN:
-                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None \
-                        or (dialog := await models.Dialog.get_or_none(peer=peer, visible=True)) is None:
+                if self.peer is None \
+                        or (dialog := await models.Dialog.get_or_none(peer=self.peer, visible=True)) is None:
                     return None
 
-                ucc.add_peer(peer)
+                ucc.add_peer(self.peer)
 
                 return UpdateDialogPinned(
                     pinned=dialog.pinned_index is not None,
                     peer=DialogPeer(
-                        peer=peer.to_tl(),
+                        peer=self.peer.to_tl(),
                     ),
                 )
 
@@ -129,20 +126,19 @@ class Update(Model):
                 )
 
             case UpdateType.DRAFT_UPDATE:
-                peer = await models.Peer.get_or_none(id=self.related_id, owner=user)
-                if peer is None:
+                if self.peer is None:
                     return None
 
-                ucc.add_peer(peer)
+                ucc.add_peer(self.peer)
 
-                draft = await models.MessageDraft.get_or_none(peer=peer)
+                draft = await models.MessageDraft.get_or_none(peer=self.peer)
                 if isinstance(draft, models.MessageDraft):
                     draft = draft.to_tl()
                 elif draft is None:
                     draft = DraftMessageEmpty()
 
                 return UpdateDraftMessage(
-                    peer=peer.to_tl(),
+                    peer=self.peer.to_tl(),
                     draft=draft,
                 )
 
@@ -153,8 +149,6 @@ class Update(Model):
                 if message is None:
                     return None
 
-                ucc.add_message(message.content_id)
-
                 return UpdatePinnedMessages(
                     pinned=message.pinned,
                     peer=message.peer.to_tl(),
@@ -164,15 +158,8 @@ class Update(Model):
                 )
 
             case UpdateType.USER_UPDATE:
-                if (peer := await models.Peer.from_user_id(user, self.related_id)) is None \
-                        or (peer_user := peer.peer_user(user)) is None:
-                    return None
-
-                ucc.add_peer(peer)
-
-                return UpdateUser(
-                    user_id=peer_user.id,
-                )
+                ucc.add_user(self.related_id)
+                return UpdateUser(user_id=self.related_id)
 
             case UpdateType.CHAT_CREATE:
                 if (peer := await models.Peer.from_chat_id(user, self.related_id)) is None:
@@ -233,23 +220,19 @@ class Update(Model):
                 )
 
             case UpdateType.UPDATE_BLOCK:
-                if (peer := await models.Peer.from_user_id(user, self.related_id)) is None:
+                if self.peer is None:
                     return None
 
-                ucc.add_peer(peer)
+                ucc.add_peer(self.peer)
 
                 return UpdatePeerBlocked(
-                    peer_id=peer.to_tl(),
-                    blocked=peer.blocked_at is not None,
+                    peer_id=self.peer.to_tl(),
+                    blocked=self.peer.blocked_at is not None,
                 )
 
             case UpdateType.UPDATE_CHAT:
-                if (peer := await models.Peer.from_chat_id(user, self.related_id)) is None:
-                    return None
-
-                ucc.add_peer(peer)
-
-                return UpdateChat(chat_id=peer.chat.id)
+                ucc.add_chat(self.related_id)
+                return UpdateChat(chat_id=self.related_id)
 
             case UpdateType.UPDATE_DIALOG_UNREAD_MARK:
                 if (dialog := await models.Dialog.get_or_none(id=self.related_id).select_related("peer")) is None:
@@ -265,21 +248,21 @@ class Update(Model):
             case UpdateType.READ_INBOX:
                 if not self.additional_data or len(self.additional_data) != 2:
                     return None
-                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
+                if self.peer is None:
                     return None
 
-                ucc.add_peer(peer)
+                ucc.add_peer(self.peer)
 
-                if peer.type is PeerType.CHANNEL:
+                if self.peer.type is PeerType.CHANNEL:
                     return UpdateReadChannelInbox(
-                        channel_id=peer.channel_id,
+                        channel_id=self.peer.channel_id,
                         max_id=self.additional_data[0],
                         still_unread_count=self.additional_data[1],
                         pts=self.pts,
                     )
 
                 return UpdateReadHistoryInbox(
-                    peer=peer.to_tl(),
+                    peer=self.peer.to_tl(),
                     max_id=self.additional_data[0],
                     still_unread_count=self.additional_data[1],
                     pts=self.pts,
@@ -301,13 +284,13 @@ class Update(Model):
             case UpdateType.READ_OUTBOX:
                 if not self.additional_data or len(self.additional_data) != 1:
                     return None
-                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
+                if self.peer is None:
                     return None
 
-                ucc.add_peer(peer)
+                ucc.add_peer(self.peer)
 
                 return UpdateReadHistoryOutbox(
-                    peer=peer.to_tl(),
+                    peer=self.peer.to_tl(),
                     max_id=self.additional_data[0],
                     pts=self.pts,
                     pts_count=self.pts_count,
@@ -426,10 +409,10 @@ class Update(Model):
 
             case UpdateType.UPDATE_CHAT_WALLPAPER:
                 if self.related_ids:
-                    wallpaper = await models.Wallpaper.get_or_none(id=self.related_ids[0]).select_related(
-                        "document", "settings",
-                    )
-                    chat_wallpaper = await models.ChatWallpaper.get_or_none(user=user, wallpaper=wallpaper)
+                    chat_wallpaper = await models.ChatWallpaper.get_or_none(
+                        user=user, wallpaper_id=self.related_ids[0],
+                    ).select_related("wallpaper", "wallpaper__document", "wallpaper__settings")
+                    wallpaper = chat_wallpaper.wallpaper
                 else:
                     wallpaper = None
                     chat_wallpaper = None
@@ -465,25 +448,25 @@ class Update(Model):
                 return UpdateNewScheduledMessage(message=await message.to_tl(user))
 
             case UpdateType.DELETE_SCHEDULED_MESSAGE:
-                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
+                if self.peer is None:
                     return None
 
                 deleted_message_ids = self.related_ids[:self.pts_count]
                 sent_message_ids = self.related_ids[self.pts_count:]
 
                 return UpdateDeleteScheduledMessages(
-                    peer=peer.to_tl(),
+                    peer=self.peer.to_tl(),
                     messages=deleted_message_ids,
                     sent_messages=sent_message_ids or None,
                 )
 
             case UpdateType.UPDATE_HISTORY_TTL:
-                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
+                if self.peer is None:
                     return None
 
                 ttl_days = self.additional_data[0]
                 return UpdatePeerHistoryTTL(
-                    peer=peer.to_tl(),
+                    peer=self.peer.to_tl(),
                     ttl_period=ttl_days * 86400 if ttl_days else None,
                 )
 
@@ -643,14 +626,14 @@ class Update(Model):
                 )
 
             case UpdateType.PIN_MESSAGES | UpdateType.UNPIN_MESSAGES:
-                if (peer := await models.Peer.get_or_none(owner=user, id=self.related_id)) is None:
+                if self.peer is None:
                     return None
 
-                ucc.add_peer(peer)
+                ucc.add_peer(self.peer)
 
                 return UpdatePinnedMessages(
                     pinned=self.update_type is UpdateType.PIN_MESSAGES,
-                    peer=peer.to_tl(),
+                    peer=self.peer.to_tl(),
                     messages=self.related_ids,
                     pts=self.pts,
                     pts_count=self.pts_count,

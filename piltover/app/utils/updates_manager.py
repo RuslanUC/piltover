@@ -469,6 +469,7 @@ async def pin_dialog(user: User, peer: Peer, dialog: Dialog) -> None:
         update_type=UpdateType.DIALOG_PIN,
         pts=new_pts,
         related_id=peer.id,
+        peer=peer,
     )
 
     ucc = UsersChatsChannels()
@@ -504,6 +505,7 @@ async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> No
         update_type=UpdateType.DRAFT_UPDATE,
         pts=new_pts,
         related_id=peer.id,
+        peer=peer,
     )
 
     ucc = UsersChatsChannels()
@@ -605,6 +607,7 @@ async def pin_messages(
                     pts_count=pinned_update.pts_count,
                     related_id=peer.id,
                     related_ids=pinned_update.messages,
+                    peer=peer,
                 )
             )
         if unpinned_update.pts_count:
@@ -617,6 +620,7 @@ async def pin_messages(
                     pts_count=unpinned_update.pts_count,
                     related_id=peer.id,
                     related_ids=unpinned_update.messages,
+                    peer=peer,
                 )
             )
 
@@ -865,7 +869,11 @@ async def add_remove_contact(user: User, targets: list[User]) -> Updates:
 async def block_unblock_user(user: User, target: Peer) -> None:
     pts = await State.add_pts(user, 1)
     await Update.create(
-        user=user, update_type=UpdateType.UPDATE_BLOCK, pts=pts, related_id=target.user.id,
+        user=user,
+        update_type=UpdateType.UPDATE_BLOCK,
+        pts=pts,
+        related_id=target.user.id,
+        peer=target,
     )
 
     await SessionManager.send(UpdatesWithDefaults(
@@ -931,8 +939,13 @@ async def update_dialog_unread_mark(user: User, dialog: Dialog) -> None:
 async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) -> tuple[int, Updates]:
     pts = await State.add_pts(peer.owner, 1)
     await Update.create(
-        user=peer.owner, update_type=UpdateType.READ_INBOX, pts=pts, pts_count=1, related_id=peer.id,
+        user=peer.owner,
+        update_type=UpdateType.READ_INBOX,
+        pts=pts,
+        pts_count=1,
+        related_id=peer.id,
         additional_data=[max_id, unread_count],
+        peer=peer,
     )
 
     ucc = UsersChatsChannels()
@@ -1027,8 +1040,13 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
     for peer, max_id in messages.items():
         pts = await State.add_pts(peer.owner, 1)
         updates_to_create.append(Update(
-            user=peer.owner, update_type=UpdateType.READ_OUTBOX, pts=pts, pts_count=1, related_id=peer.id,
+            user=peer.owner,
+            update_type=UpdateType.READ_OUTBOX,
+            pts=pts,
+            pts_count=1,
+            related_id=peer.id,
             additional_data=[max_id],
+            peer=peer,
         ))
 
         ucc = UsersChatsChannels()
@@ -1581,6 +1599,7 @@ async def delete_scheduled_messages(
         pts_count=pts_count,
         related_id=peer.id,
         related_ids=[*deleted_message_ids, *(sent_message_ids if sent_message_ids else ())],
+        peer=peer,
     )
 
     updates = UpdatesWithDefaults(
@@ -1614,8 +1633,9 @@ async def update_history_ttl(peer: Peer, ttl_days: int) -> Updates:
             update_type=UpdateType.UPDATE_HISTORY_TTL,
             pts=new_pts,
             pts_count=1,
-            related_id=peer.id,
+            related_id=update_peer.id,
             additional_data=[ttl_days],
+            peer=update_peer,
         ))
 
         updates = UpdatesWithDefaults(
