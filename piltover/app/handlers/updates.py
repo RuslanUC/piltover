@@ -199,7 +199,7 @@ async def get_channel_difference(request: GetChannelDifference, user: User):
         return ChannelDifferenceTooLong(
             final=True,
             timeout=CHANNEL_UPDATES_TIMEOUT,
-            dialog=await dialog.to_tl(),
+            dialog=await dialog.to_tl(peer.channel.pts),
             messages=[await last_message.to_tl_maybecached(user.id)] if last_message else [],
             chats=[*chats, *channels],
             users=users,

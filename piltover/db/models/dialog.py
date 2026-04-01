@@ -65,7 +65,7 @@ class Dialog(Model):
 
         return self.peer.type, peer_id
 
-    async def to_tl(self) -> TLDialog:
+    async def to_tl(self, pts: int | None = None) -> TLDialog:
         in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = \
             await models.ReadState.get_in_out_ids_and_unread(self.peer)
 
@@ -90,6 +90,7 @@ class Dialog(Model):
             folder_id=self.folder_id.value,
             unread_mentions_count=unread_mentions,
             ttl_period=self.peer.user_ttl_period_days * 86400 if self.peer.user_ttl_period_days else None,
+            pts=pts,
 
             view_forum_as_messages=False,
             notify_settings=PeerNotifySettings(),
