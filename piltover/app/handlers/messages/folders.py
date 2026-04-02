@@ -59,7 +59,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
         )
         folder.id_for_user = request.id
         await folder.fill_from_tl(request.filter)
-        await folder.save(update_fields=["id_for_user"])
+        await folder.save()
 
         folder = await DialogFolder.get(id=folder.id).prefetch_related("pinned_peers", "include_peers", "exclude_peers")
         await upd.update_folder(user, request.id, folder)
