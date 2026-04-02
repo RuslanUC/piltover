@@ -447,7 +447,7 @@ async def _create_builtin_bots(bots: list[tuple[str, str]]) -> None:
     for bot_username, bot_name in bots:
         logger.debug(f"Creating bot \"{bot_name}\" (@{bot_username})...")
 
-        bot = await User.get_or_none(usernames__username=bot_username, system=True)
+        bot = await User.get_or_none(username__username=bot_username, system=True)
         if bot is None:
             bot = await User.create(phone_number=None, first_name=bot_name, bot=True, system=True)
         else:

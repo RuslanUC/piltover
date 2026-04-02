@@ -711,7 +711,7 @@ async def get_participants(request: GetParticipants, user: User):
         if filt.q:
             query = query.filter(Q(
                 user__first_name__icontains=filt.q,
-                user__usernames__username__icontains=filt.q,
+                user__username__username__icontains=filt.q,
             ))
         query = query.order_by("user_id")
 
@@ -1130,7 +1130,7 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
 
 @handler.on_request(GetAdminedPublicChannels, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_admined_public_channels(request: GetAdminedPublicChannels, user: User) -> Chats:
-    query = Channel.filter(deleted=False, creator=user, chatparticipants__user=user, usernames__isnull=False)
+    query = Channel.filter(deleted=False, creator=user, chatparticipants__user=user, username__isnull=False)
 
     if request.check_limit and await query.count() >= AppConfig.PUBLIC_CHANNELS_LIMIT:
         raise ErrorRpc(error_code=400, error_message="CHANNELS_ADMIN_PUBLIC_TOO_MUCH")
@@ -1218,7 +1218,7 @@ async def get_send_as(request: GetSendAs | GetSendAs_135, user: User) -> SendAsP
 
     # TODO: figure out how telegram selects channels for SendAs
     send_as = await Channel.filter(
-        channel=True, deleted=False, creator=user, chatparticipants__user=user, usernames__isnull=False,
+        channel=True, deleted=False, creator=user, chatparticipants__user=user, username__isnull=False,
     )
     send_as_peers = [SendAsPeer(peer=user.to_tl_peer())]
     for channel in send_as:

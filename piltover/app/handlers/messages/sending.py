@@ -70,7 +70,7 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
 
     query = Q()
     if mentioned_usernames:
-        query |= Q(usernames__username__in=list(mentioned_usernames))
+        query |= Q(username__username__in=list(mentioned_usernames))
     if mentioned_user_ids:
         query |= Q(id__in=list(mentioned_user_ids))
 
@@ -397,7 +397,7 @@ async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User) 
         raise ErrorRpc(error_code=400, error_message="SEND_AS_PEER_INVALID", reason="invalid access hash")
 
     send_as_channel = await Channel.get_or_none(
-        creator=user, channel=True, deleted=False, id=channel_id, usernames__isnull=False
+        creator=user, channel=True, deleted=False, id=channel_id, username__isnull=False
     )
     if send_as_channel is None:
         raise ErrorRpc(error_code=400, error_message="SEND_AS_PEER_INVALID", reason="invalid channel")
