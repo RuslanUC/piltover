@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
-
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
@@ -12,9 +10,6 @@ from piltover.db.enums import PeerType
 from piltover.tl import DialogFilter, InputPeerSelf, InputPeerUser, InputPeerChat, InputPeerChannel, TextWithEntities
 
 InputPeer = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel
-PeerTuple = tuple[PeerType, int | None, int | None, int | None]
-
-_values_to_select = ("type", "user_id", "chat_id", "channel_id")
 
 
 class DialogFolder(Model):

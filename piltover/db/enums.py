@@ -95,17 +95,11 @@ class MediaType(IntEnum):
 
 
 class UpdateType(IntEnum):
-    # related_id is a message id
     MESSAGE_DELETE = 0
-    # related_id is a message id
     MESSAGE_EDIT = 1
-    # Deprecated in favor of READ_INBOX/READ_INBOX_CHANNEL
-    READ_HISTORY_INBOX = 2
     DIALOG_PIN = 3
     DRAFT_UPDATE = 4
     DIALOG_PIN_REORDER = 5
-    # Probably deprecated idk (in favor of PIN_MESSAGES/UNPIN_MESSAGES)
-    MESSAGE_PIN_UPDATE = 6
     USER_UPDATE = 7
     CHAT_CREATE = 8
     USER_UPDATE_NAME = 9

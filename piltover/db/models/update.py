@@ -81,21 +81,6 @@ class Update(Model):
                     pts_count=1,
                 )
 
-            case UpdateType.READ_HISTORY_INBOX:
-                if self.peer is None:
-                    return None
-
-                ucc.add_peer(self.peer)
-
-                # TODO: fetch read state from db instead of related_ids
-                return UpdateReadHistoryInbox(
-                    peer=self.peer.to_tl(),
-                    max_id=self.related_ids[0],
-                    still_unread_count=self.related_ids[1],
-                    pts=self.pts,
-                    pts_count=1,
-                )
-
             case UpdateType.DIALOG_PIN:
                 if self.peer is None \
                         or (dialog := await models.Dialog.get_or_none(peer=self.peer, visible=True)) is None:
@@ -142,21 +127,6 @@ class Update(Model):
                     draft=draft,
                 )
 
-            case UpdateType.MESSAGE_PIN_UPDATE:
-                message = await models.MessageRef.get_or_none(
-                    id=self.related_id, peer__owner=user
-                ).select_related("peer")
-                if message is None:
-                    return None
-
-                return UpdatePinnedMessages(
-                    pinned=message.pinned,
-                    peer=message.peer.to_tl(),
-                    messages=[message.id],
-                    pts=self.pts,
-                    pts_count=1,
-                )
-
             case UpdateType.USER_UPDATE:
                 ucc.add_user(self.related_id)
                 return UpdateUser(user_id=self.related_id)
@@ -169,7 +139,6 @@ class Update(Model):
 
                 user_ids = set(self.related_ids)
                 participants = []
-                participant: models.ChatParticipant
 
                 for participant in await models.ChatParticipant.filter(chat=peer.chat, user_id__in=self.related_ids):
                     participants.append(participant.to_tl_chat_with_creator(peer.chat.creator_id))
