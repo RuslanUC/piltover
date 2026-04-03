@@ -48,9 +48,16 @@ class Update(Model):
     #  and UpdateDeletedMessage will have one-to-many relation to UpdateDeletedMessageId)
     related_ids: list[int] = fields.JSONField(null=True, default=None)
     additional_data: list | dict = fields.JSONField(null=True, default=None)
-    user: models.User = fields.ForeignKeyField("models.User")
+    user: models.User = fields.ForeignKeyField("models.User", related_name="updates")
 
     peer: models.Peer | None = fields.ForeignKeyField("models.Peer", null=True, default=None)
+    update_user: models.User | None = fields.ForeignKeyField("models.User", null=True, default=None, related_name="updated")
+    dialog: models.Dialog | None = fields.ForeignKeyField("models.Dialog", null=True, default=None)
+
+    user_id: int
+    peer_id: int | None
+    update_user_id: int | None
+    dialog_id: int | None
 
     # TODO: add to_tl_bulk
 
@@ -82,14 +89,13 @@ class Update(Model):
                 )
 
             case UpdateType.DIALOG_PIN:
-                if self.peer is None \
-                        or (dialog := await models.Dialog.get_or_none(peer=self.peer, visible=True)) is None:
+                if self.peer is None or self.dialog is None or not self.dialog.visible:
                     return None
 
                 ucc.add_peer(self.peer)
 
                 return UpdateDialogPinned(
-                    pinned=dialog.pinned_index is not None,
+                    pinned=self.dialog.pinned_index is not None,
                     peer=DialogPeer(
                         peer=self.peer.to_tl(),
                     ),
@@ -161,6 +167,7 @@ class Update(Model):
                 )
 
             case UpdateType.USER_UPDATE_NAME:
+                # TODO: fetch user with username prefetched
                 if (peer := await models.Peer.from_user_id(user, self.related_id)) is None:
                     return None
 
@@ -178,13 +185,13 @@ class Update(Model):
                 )
 
             case UpdateType.UPDATE_CONTACT:
-                if (contact := await models.Contact.get_or_none(owner=user, target_id=self.related_id)) is None:
+                if self.update_user_id is None:
                     return None
 
-                ucc.add_user(contact.target_id)
+                ucc.add_user(self.update_user_id)
 
                 return UpdatePeerSettings(
-                    peer=PeerUser(user_id=contact.target_id),
+                    peer=PeerUser(user_id=self.update_user_id),
                     settings=PeerSettings(),
                 )
 
@@ -204,14 +211,14 @@ class Update(Model):
                 return UpdateChat(chat_id=self.related_id)
 
             case UpdateType.UPDATE_DIALOG_UNREAD_MARK:
-                if (dialog := await models.Dialog.get_or_none(id=self.related_id).select_related("peer")) is None:
+                if self.peer is None or self.dialog is None or not self.dialog.visible:
                     return None
 
-                ucc.add_peer(dialog.peer)
+                ucc.add_peer(self.peer)
 
                 return UpdateDialogUnreadMark(
-                    peer=DialogPeer(peer=dialog.peer.to_tl()),
-                    unread=dialog.unread_mark,
+                    peer=DialogPeer(peer=self.peer.to_tl()),
+                    unread=self.dialog.unread_mark,
                 )
 
             case UpdateType.READ_INBOX:

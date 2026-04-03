@@ -470,6 +470,7 @@ async def pin_dialog(user: User, peer: Peer, dialog: Dialog) -> None:
         pts=new_pts,
         related_id=peer.id,
         peer=peer,
+        dialog=dialog,
     )
 
     ucc = UsersChatsChannels()
@@ -846,7 +847,11 @@ async def add_remove_contact(user: User, targets: list[User]) -> Updates:
 
         pts = await State.add_pts(user, 1)
         updates_to_create.append(Update(
-            user=user, update_type=UpdateType.UPDATE_CONTACT, pts=pts, related_id=target.id,
+            user=user,
+            update_type=UpdateType.UPDATE_CONTACT,
+            pts=pts,
+            related_id=target.id,
+            update_user=target,
         ))
 
         updates.append(UpdatePeerSettings(
@@ -917,7 +922,12 @@ async def update_chat(chat: Chat, user: User | None = None) -> Updates | None:
 async def update_dialog_unread_mark(user: User, dialog: Dialog) -> None:
     pts = await State.add_pts(user, 1)
     await Update.create(
-        user=user, update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK, pts=pts, related_id=dialog.id,
+        user=user,
+        update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK,
+        pts=pts,
+        related_id=dialog.id,
+        peer=dialog.peer,
+        dialog=dialog,
     )
 
     ucc = UsersChatsChannels()

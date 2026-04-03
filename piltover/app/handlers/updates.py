@@ -90,7 +90,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     # NOTE: telegram forces slicing at 2500 pts
     new_updates = await Update.filter(
         user=user, pts__gt=request.pts, pts__lte=max_pts,
-    ).order_by("pts").limit(500).select_related("peer")
+    ).order_by("pts").limit(500).select_related("peer", "dialog")
     new_secret = await SecretUpdate.filter(
         authorization_id=ctx.auth_id, id__gt=last_local_secret_id
     ).select_related("message_file", "message_file__file")
