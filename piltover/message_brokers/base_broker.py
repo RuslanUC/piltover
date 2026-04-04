@@ -225,7 +225,7 @@ class BaseMessageBroker(ABC):
         if isinstance(message, SetSessionInternalPush):
             from piltover.session import SessionManager
             uniq_id = message.key_id, message.session_id
-            if uniq_id not in SessionManager.sessions[uniq_id]:
+            if uniq_id not in SessionManager.sessions:
                 return
             # TODO: refresh auth
             session = SessionManager.sessions[uniq_id]

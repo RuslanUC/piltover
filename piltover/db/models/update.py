@@ -392,7 +392,7 @@ class Update(Model):
                     chat_wallpaper = await models.ChatWallpaper.get_or_none(
                         user=user, wallpaper_id=self.related_ids[0],
                     ).select_related("wallpaper", "wallpaper__document", "wallpaper__settings")
-                    wallpaper = chat_wallpaper.wallpaper
+                    wallpaper = chat_wallpaper.wallpaper if chat_wallpaper is not None else None
                 else:
                     wallpaper = None
                     chat_wallpaper = None

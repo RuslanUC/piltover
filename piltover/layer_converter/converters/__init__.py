@@ -12,6 +12,7 @@ from .dialog_filter_downgrade import *
 from .dialog_filters_downgrade import *
 from .document_attribute_video_downgrade import *
 from .draft_message_downgrade import *
+from .emoji_status_downgrade import *
 from .global_privacy_settings_downgrade import *
 from .invited_users_downgrade import *
 from .message_downgrade import *
@@ -260,3 +261,7 @@ LayerConverter.register_for_downgrade(StarsStatusDowngradeTo181)
 LayerConverter.register_for_downgrade(StarsStatusDowngradeTo186)
 LayerConverter.register_for_downgrade(StarsStatusDontDowngrade195)
 LayerConverter.register_for_downgrade(StarsStatusDontDowngrade)
+
+LayerConverter.register_for_downgrade(EmojiStatusDowngradeTo145)
+LayerConverter.register_for_downgrade(EmojiStatusDontDowngrade198)
+LayerConverter.register_for_downgrade(EmojiStatusDontDowngrade)
