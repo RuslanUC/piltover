@@ -16,7 +16,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [x] Reactions
 - [x] Stickers
 - [ ] Move UpdatesManager to separate worker
-- [ ] Add caching of some tl objects (e.g. piltover.tl.types.User, piltover.tl.types.Chat, piltover.tl.types.Message, etc.) based on versions (i think maybe add `version` field to db models and cache to_tl method results to key `[current_user_id]:[to_tl_user_id]:[version]` or something like that)
+- [x] Add caching of some tl objects (e.g. piltover.tl.types.User, piltover.tl.types.Chat, piltover.tl.types.Message, etc.) based on versions (i think maybe add `version` field to db models and cache to_tl method results to key `[current_user_id]:[to_tl_user_id]:[version]` or something like that)
 - [x] Add proper privacy rules handling
 - [x] Channels
 - [x] Supergroups

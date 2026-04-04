@@ -144,7 +144,6 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         channel__peers__owner=user, date__gt=date,
     ).group_by("channel_id").values_list("channel_id", "min_pts")
     for channel_id, channel_pts in channel_states:
-        # TODO: replace with UpdateChannel?
         other_updates.append(UpdateChannelTooLong(channel_id=channel_id, pts=channel_pts))
         ucc.add_channel(channel_id)
 

@@ -711,6 +711,9 @@ async def pin_channel_messages(channel: Channel, messages: list[MessageRef]) -> 
 
 
 async def update_user(user: User) -> None:
+    # TODO: create update to SELF here and then send a worker task to create updates for all other users.
+    #  In worker task, dont fetch all peers, but rather latest N `visible` dialogs with user.
+
     updates_to_create = []
 
     user_tl = await user.to_tl()
