@@ -495,11 +495,6 @@ async def pin_dialog(user: User, peer: Peer, dialog: Dialog) -> None:
 
 
 async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> None:
-    if isinstance(draft, MessageDraft):
-        draft = draft.to_tl()
-    elif draft is None:
-        draft = DraftMessageEmpty()
-
     new_pts = await State.add_pts(user, 1)
     await Update.create(
         user=user,
@@ -509,6 +504,11 @@ async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> No
         peer=peer,
         draft=draft,
     )
+
+    if isinstance(draft, MessageDraft):
+        draft = draft.to_tl()
+    elif draft is None:
+        draft = DraftMessageEmpty()
 
     ucc = UsersChatsChannels()
     ucc.add_peer(peer)
