@@ -100,7 +100,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     for peer in chat_peers.values():
         peer.chat = chat
 
-    updates = await upd.create_chat(user, chat, list(chat_peers.values()))
+    updates = await upd.create_chat(chat, list(chat_peers.values()))
     updates_msg = await send_message_internal(
         user, chat_peers[user.id], None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_CREATE,
@@ -203,7 +203,7 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
             new=chat_or_channel.description.encode("utf8"),
             searchable=f"{old_about}\n{chat_or_channel.description}",
         )
-        await upd.update_channel(chat_or_channel, user)
+        await upd.update_channel(chat_or_channel)
     else:
         raise Unreachable
 
@@ -299,7 +299,7 @@ async def add_chat_user(request: AddChatUser, user: User):
             )
             await chat_peer.chat.refresh_from_db(["participants_count", "version"])
 
-    updates = await upd.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+    updates = await upd.create_chat(chat_peer.chat, list(chat_peers.values()))
 
     if request.fwd_limit > 0:
         limit = min(request.fwd_limit, 100)
@@ -358,7 +358,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
 
     updates_msg = await upd.send_message(user, messages)
-    updates = await upd.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+    updates = await upd.create_chat(chat_peer.chat, list(chat_peers.values()))
     if isinstance(updates_msg, Updates):
         updates.updates.extend(updates_msg.updates)
         updates.users.extend(updates_msg.users)
@@ -391,7 +391,7 @@ async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
     await chat_peer.chat.save(update_fields=["version"])
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
-    await upd.create_chat(user, chat_peer.chat, list(chat_peers.values()))
+    await upd.create_chat(chat_peer.chat, list(chat_peers.values()))
 
     return True
 
@@ -424,9 +424,9 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
         )
 
     if peer.type is PeerType.CHAT:
-        return await upd.update_chat(peer.chat, user)
+        return await upd.update_chat(peer.chat)
     else:
-        return await upd.update_channel(peer.channel, user)
+        return await upd.update_channel(peer.channel)
 
 
 @handler.on_request(EditChatDefaultBannedRights)
@@ -461,10 +461,10 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
         )
 
     if isinstance(chat_or_channel, Chat):
-        return await upd.update_chat_default_banned_rights(chat_or_channel, user)
+        return await upd.update_chat_default_banned_rights(chat_or_channel)
     else:
         chat_or_channel = cast(Channel, chat_or_channel)
-        return await upd.update_channel(chat_or_channel, user)
+        return await upd.update_channel(chat_or_channel)
 
 
 @handler.on_request(MigrateChat, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -545,7 +545,7 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
 
     await SessionManager.subscribe_to_channel(channel.id, [new_peer.owner_id for new_peer in new_peers])
 
-    updates = await upd.migrate_chat(chat, channel, user)
+    updates = await upd.migrate_chat(chat, channel)
 
     msg_updates = await send_message_internal(
         user, peer, None, None, False, unhide_dialog=False,

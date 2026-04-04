@@ -355,8 +355,8 @@ class Worker(MessageHandler):
             await message.save(update_fields=["discussion_id"])
             await message.content.save(update_fields=["edit_date", "edit_hide", "version", "replies_version"])
 
-        await upd.send_messages_channel([discussion_message], discussion_peer.channel, None)
-        await upd.edit_message_channel(None, message.peer.channel, message)
+        await upd.send_messages_channel([discussion_message], discussion_peer.channel)
+        await upd.edit_message_channel(message.peer.channel, message)
 
     async def _handle_process_message_to_bot(self, message_id: int) -> None:
         import piltover.app.utils.updates_manager as upd

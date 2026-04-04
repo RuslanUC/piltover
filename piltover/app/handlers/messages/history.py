@@ -874,7 +874,7 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
             prev=Int.write(old_value * 86400),
             new=Int.write(ttl_days * 86400),
         )
-        updates = await upd.update_channel(peer.channel, user)
+        updates = await upd.update_channel(peer.channel)
     else:
         updates = await upd.update_history_ttl(peer, ttl_days)
 

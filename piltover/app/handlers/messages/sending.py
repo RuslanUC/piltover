@@ -689,7 +689,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
                 f"expected ref peer owner to be None, got {peer.owner_id}, "
                 f"ref peer channel to be {peer.channel_id}, got {got_peer.channel_id}"
             )
-        return await upd.edit_message_channel(user, peer.channel, messages[got_peer])
+        return await upd.edit_message_channel(peer.channel, messages[got_peer])
 
     if not user.bot:
         peers = [message_peer for message_peer in messages.keys() if message_peer != peer]
@@ -1203,7 +1203,7 @@ async def forward_messages(
     if to_peer.type is PeerType.CHANNEL:
         if len(result) != 1:
             raise RuntimeError("`result` contains multiple peers, but should contain only one - channel peer")
-        return await upd.send_messages_channel(next(iter(result.values())), to_peer.channel, user)
+        return await upd.send_messages_channel(next(iter(result.values())), to_peer.channel)
 
     if not user.bot:
         presence = await Presence.update_to_now(user)
@@ -1390,7 +1390,7 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
         if peer.type == PeerType.CHAT:
             await ChatParticipant.filter(char=peer.chat, user=user).delete()
             await peer.delete()
-            await upd.update_chat(peer.chat, user)
+            await upd.update_chat(peer.chat)
 
     return AffectedHistory(pts=pts, pts_count=len(messages[user]), offset=offset_id)
 

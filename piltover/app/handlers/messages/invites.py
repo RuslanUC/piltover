@@ -307,7 +307,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         for peer in await Peer.filter(Chat.query(chat_or_channel)).select_related("owner", "chat", "channel")
     }
 
-    updates = await upd.create_chat(user, cast(Chat, chat_or_channel), list(chat_peers.values()))
+    updates = await upd.create_chat(cast(Chat, chat_or_channel), list(chat_peers.values()))
     if from_invite is not None:
         updates_msg = await send_message_internal(
             user, chat_peers[user.id], None, None, False,
@@ -478,7 +478,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
 
     if isinstance(chat, Chat):
         chat_peers = await Peer.filter(Chat.query(chat)).select_related("owner")
-        await upd.create_chat(user, chat, chat_peers)
+        await upd.create_chat(chat, chat_peers)
     else:
         # TODO: send SERVICE_CHAT_USER_INVITE_JOIN and SERVICE_CHAT_USER_REQUEST_JOIN
         await SessionManager.subscribe_to_channel(chat.id, requested_users)

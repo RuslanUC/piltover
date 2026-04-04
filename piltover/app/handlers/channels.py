@@ -394,7 +394,7 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
         searchable=f"{old_title}\n{peer.channel.name}",
     )
 
-    updates = await upd.update_channel(peer.channel, user)
+    updates = await upd.update_channel(peer.channel)
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE,
@@ -430,7 +430,7 @@ async def edit_channel_photo(request: EditPhoto, user: User):
         new_photo=channel.photo,
     )
 
-    updates = await upd.update_channel(peer.channel, user)
+    updates = await upd.update_channel(peer.channel)
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO,
@@ -913,7 +913,7 @@ async def toggle_signatures(request: ToggleSignatures, user: User):
         new=b"\x01" if request.signatures_enabled else b"\x00",
     )
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 @handler.on_request(ToggleSignatures_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -993,7 +993,7 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user:
     channel.version += 1
     await channel.save(update_fields=["all_reactions", "all_reactions_custom", "version"])
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 async def _unlink_channel_maybe(channel: Channel) -> None:
@@ -1020,7 +1020,7 @@ async def delete_channel(request: DeleteChannel, user: User) -> Updates:
     await _unlink_channel_maybe(channel)
     # TODO: delete channel peers, dialogs, participants and messages lazily or in background
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 @handler.on_request(EditCreator, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -1061,7 +1061,7 @@ async def edit_creator(request: EditCreator, user: User) -> Updates:
 
         await _unlink_channel_maybe(channel)
 
-    return await upd.update_channel(channel, user, send_to_users=[user.id, target_peer.user.id])
+    return await upd.update_channel(channel, send_to_users=[user.id, target_peer.user.id])
 
 
 CHANNEL_PRIVATE_ERR = ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
@@ -1177,7 +1177,7 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user: User)
         new=b"\x01" if request.enabled else b"\x00"
     )
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 @handler.on_request(ToggleJoinToSend, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -1203,7 +1203,7 @@ async def toggle_join_to_send(request: ToggleJoinToSend, user: User) -> Updates:
     channel.version += 1
     await channel.save(update_fields=["join_to_send", "version"])
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 @handler.on_request(GetSendAs_135, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -1338,7 +1338,7 @@ async def toggle_join_request(request: ToggleJoinRequest, user: User) -> Updates
     channel.version += 1
     await channel.save(update_fields=["join_to_send", "version"])
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 @handler.on_request(GetGroupsForDiscussion, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -1439,11 +1439,11 @@ async def set_discussion_group(request: SetDiscussionGroup, user: User) -> bool:
         await Channel.bulk_update(channels_to_update, fields=["discussion_id", "is_discussion", "version"])
         await AdminLogEntry.bulk_create(admin_log_to_create)
 
-    await upd.update_channel(channel, user)
+    await upd.update_channel(channel)
     if old_group is not None:
-        await upd.update_channel(old_group, user)
+        await upd.update_channel(old_group)
     if group is not None:
-        await upd.update_channel(group, user)
+        await upd.update_channel(group)
 
     return True
 
@@ -1519,7 +1519,7 @@ async def update_color(request: UpdateColor, user: User) -> Updates:
         new=PeerColor(color=new_color, background_emoji_id=new_emoji).serialize(),
     )
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 @handler.on_request(ToggleSlowMode, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -1551,7 +1551,7 @@ async def toggle_slowmode(request: ToggleSlowMode, user: User) -> Updates:
         new=Int.write(new_seconds or 0),
     )
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 @handler.on_request(ToggleParticipantsHidden, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -1571,7 +1571,7 @@ async def toggle_participants_hidden(request: ToggleParticipantsHidden, user: Us
     channel.version += 1
     await channel.save(update_fields=["participants_hidden", "version"])
 
-    return await upd.update_channel(channel, user)
+    return await upd.update_channel(channel)
 
 
 @handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -1746,7 +1746,7 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user: User) -> b
         new=new_stickerset_tl.write(),
     )
 
-    await upd.update_channel(channel, user)
+    await upd.update_channel(channel)
     return True
 
 

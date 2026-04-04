@@ -67,7 +67,7 @@ async def set_channel_wallpaper(request: SetChatWallPaper, user: User, peer: Pee
             channel.wallpaper = None
             channel.version += 1
             await channel.save(update_fields=["wallpaper_id", "version"])
-            return await upd.update_channel(channel, user)
+            return await upd.update_channel(channel)
 
         return upd.UpdatesWithDefaults(updates=[])
 
@@ -75,7 +75,7 @@ async def set_channel_wallpaper(request: SetChatWallPaper, user: User, peer: Pee
     channel.version += 1
     await channel.save(update_fields=["wallpaper_id", "version"])
 
-    updates = await upd.update_channel(channel, user)
+    updates = await upd.update_channel(channel)
     if create_svc_message:
         # channel_peer = await Peer.get(owner=None, channel_id=peer.channel_id)
         message_updates = await send_message_internal(
