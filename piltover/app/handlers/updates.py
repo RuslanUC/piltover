@@ -150,7 +150,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     ucc.add_user(user.id)
     users, chats, channels = await ucc.resolve()
 
-    if new_updates[-1].pts >= server_pts:
+    if (new_updates and new_updates[-1].pts >= server_pts) or not new_updates:
         return Difference(
             new_messages=new_messages,
             new_encrypted_messages=new_secret_messages,
