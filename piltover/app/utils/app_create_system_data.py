@@ -617,6 +617,7 @@ async def _create_system_stickers(args: ArgsNamespace) -> None:
         "user_statuses": StickerSetOfficialType.USER_STATUSES,
         "topic_icons": StickerSetOfficialType.TOPIC_ICONS,
         "emoji_categories": StickerSetOfficialType.EMOJI_CATEGORIES,
+        "restricted_emoji": StickerSetOfficialType.RESTRICTED_EMOJI,
     }
 
     logger.info("Creating (or updating) system stickersets...")

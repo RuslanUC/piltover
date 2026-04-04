@@ -37,6 +37,7 @@ to_download = [
     ("user_statuses", InputStickerSetEmojiDefaultStatuses()),
     ("topic_icons", InputStickerSetEmojiDefaultTopicIcons()),
     ("emoji_categories", InputStickerSetShortName(short_name="EmojiCategories")),
+    ("restricted_emoji", InputStickerSetShortName(short_name="RestrictedEmoji")),
 ]
 
 

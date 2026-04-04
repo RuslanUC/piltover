@@ -510,6 +510,7 @@ class StickerSetOfficialType(IntEnum):
     DICE_SLOTMACHINE = 10
     DICE_BOWLING = 11
     EMOJI_CATEGORIES = 12
+    RESTRICTED_EMOJI = 13
 
 
 class CallDiscardReason(IntEnum):
