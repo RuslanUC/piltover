@@ -7,6 +7,7 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType, MessageType, NotifySettingsNotPeerType
+from piltover.exceptions import Unreachable
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
     UpdateDialogFilterOrder, UpdateRecentReactions, UpdateNewScheduledMessage
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
@@ -53,11 +54,13 @@ class Update(Model):
     peer: models.Peer | None = fields.ForeignKeyField("models.Peer", null=True, default=None)
     update_user: models.User | None = fields.ForeignKeyField("models.User", null=True, default=None, related_name="updated")
     dialog: models.Dialog | None = fields.ForeignKeyField("models.Dialog", null=True, default=None)
+    draft: models.MessageDraft | None = fields.ForeignKeyField("models.MessageDraft", null=True, default=None, on_delete=fields.OnDelete.SET_NULL)
 
     user_id: int
     peer_id: int | None
     update_user_id: int | None
     dialog_id: int | None
+    draft_id: int | None
 
     # TODO: add to_tl_bulk
 
@@ -122,11 +125,12 @@ class Update(Model):
 
                 ucc.add_peer(self.peer)
 
-                draft = await models.MessageDraft.get_or_none(peer=self.peer)
-                if isinstance(draft, models.MessageDraft):
-                    draft = draft.to_tl()
-                elif draft is None:
+                if isinstance(self.draft, models.MessageDraft):
+                    draft = self.draft.to_tl()
+                elif self.draft_id is None:
                     draft = DraftMessageEmpty()
+                else:
+                    raise Unreachable
 
                 return UpdateDraftMessage(
                     peer=self.peer.to_tl(),
@@ -465,6 +469,7 @@ class Update(Model):
                 )
 
             case UpdateType.UPDATE_PHONE:
+                # TODO: use update_user
                 if (update_user := await models.User.get_or_none(id=self.related_id)) is None:
                     return None
 

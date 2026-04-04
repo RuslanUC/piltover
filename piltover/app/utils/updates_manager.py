@@ -507,6 +507,7 @@ async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> No
         pts=new_pts,
         related_id=peer.id,
         peer=peer,
+        draft=draft,
     )
 
     ucc = UsersChatsChannels()
