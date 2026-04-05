@@ -1,4 +1,7 @@
 import argparse
+import os
+import shlex
+import sys
 from os import getenv
 from pathlib import Path
 from types import SimpleNamespace
@@ -68,7 +71,8 @@ class PiltoverWorker:
         self._worker.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._run)
 
     @staticmethod
-    async def _run():
+    async def _run(_):
+        Tracing.init(args.debug_tracing_backend, zipkin_address=args.debug_tracing_zipkin_address)
         await Tortoise.init(
             db_url=DB_CONNECTION_STRING,
             modules={"models": ["piltover.db.models"]},
@@ -78,53 +82,68 @@ class PiltoverWorker:
         return self._worker.broker
 
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--data-dir", type=Path,
+                    help="Path to data directory, where all files, server keys and other server data are stored.",
+                    default=Path("./data"))
+parser.add_argument("--privkey-file", type=Path, default=None,
+                    help=(
+                        "Path to private key file. "
+                        "By default, <data-dir>/secrets/privkey.asc will be used."
+                        "Will be created if does not exist."
+                    ))
+parser.add_argument("--pubkey-file", type=Path, default=None,
+                    help=(
+                        "Path to public key file. "
+                        "By default, <data-dir>/secrets/pubkey.asc will be used."
+                        "Will be created if does not exist."
+                    ))
+parser.add_argument("--rabbitmq-address", type=str, required=False,
+                    help="Address of rabbitmq server in \"amqp://user:password@host:port\" format",
+                    default=None)
+parser.add_argument("--redis-address", type=str, required=False,
+                    help="Address of redis server in \"redis://host:port\" format",
+                    default=None)
+parser.add_argument("--cache-backend", type=str, required=False,
+                    help="Cache backend", choices=["memory", "redis", "memcached"],
+                    default="memory")
+parser.add_argument("--cache-endpoint", type=str, required=False,
+                    help="Address of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
+                    default=None)
+parser.add_argument("--cache-port", type=int, required=False,
+                    help="Port of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
+                    default=None)
+parser.add_argument("--cache-db", type=int, required=False,
+                    help="Redis db of cache server (if \"cache-backend\" is \"redis\")",
+                    default=None)
+parser.add_argument("--debug-tracing-backend", type=str, required=False,
+                    help="Tracing backend", choices=["console", "zipkin", "noop", None],
+                    default=None)
+parser.add_argument("--debug-tracing-zipkin-address", type=str, required=False,
+                    help="Address for zipkin tracing backend",
+                    default=None)
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", type=Path,
-                        help="Path to data directory, where all files, server keys and other server data are stored.",
-                        default=Path("./data"))
-    parser.add_argument("--privkey-file", type=Path, default=None,
-                        help=(
-                            "Path to private key file. "
-                            "By default, <data-dir>/secrets/privkey.asc will be used."
-                            "Will be created if does not exist."
-                        ))
-    parser.add_argument("--pubkey-file", type=Path, default=None,
-                        help=(
-                            "Path to public key file. "
-                            "By default, <data-dir>/secrets/pubkey.asc will be used."
-                            "Will be created if does not exist."
-                        ))
-    parser.add_argument("--rabbitmq-address", type=str, required=False,
-                        help="Address of rabbitmq server in \"amqp://user:password@host:port\" format",
-                        default=None)
-    parser.add_argument("--redis-address", type=str, required=False,
-                        help="Address of redis server in \"redis://host:port\" format",
-                        default=None)
-    parser.add_argument("--debug-tracing-backend", type=str, required=False,
-                        help="Tracing backend", choices=["console", "zipkin", "noop", None],
-                        default=None)
-    parser.add_argument("--debug-tracing-zipkin-address", type=str, required=False,
-                        help="Address for zipkin tracing backend",
-                        default=None)
     args = parser.parse_args(namespace=ArgsNamespace())
 else:
-    args = ArgsNamespace(
-        data_dir=Path("./data") / "testing",
-        privkey_file=None,
-        pubkey_file=None,
-        rabbitmq_address=None,
-        redis_address=None,
-        cache_backend="memory",
-        cache_endpoint=None,
-        cache_port=None,
-        debug_tracing_backend="console",
-        debug_tracing_zipkin_address=None,
-    )
+    if "ARGS" in os.environ:
+        args = parser.parse_args(args=shlex.split(os.environ["ARGS"]), namespace=ArgsNamespace())
+    else:
+        args = ArgsNamespace(
+            data_dir=Path("./data") / "testing",
+            privkey_file=None,
+            pubkey_file=None,
+            rabbitmq_address=None,
+            redis_address=None,
+            cache_backend="memory",
+            cache_endpoint=None,
+            cache_port=None,
+            debug_tracing_backend="console",
+            debug_tracing_zipkin_address=None,
+        )
 
 args.fill_defaults()
 
 Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port)
-Tracing.init(args.debug_tracing_backend, zipkin_address=args.debug_tracing_zipkin_address)
 worker = PiltoverWorker(args.data_dir, args.privkey_file, args.pubkey_file, args.rabbitmq_address, args.redis_address)
 broker = worker.get_broker()

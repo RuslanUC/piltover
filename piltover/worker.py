@@ -9,6 +9,7 @@ from typing import Awaitable, Callable, Any, TypeVar
 
 from loguru import logger
 from taskiq import InMemoryBroker, TaskiqEvents
+from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from tortoise.transactions import in_transaction
 
 from piltover._faster_taskiq_inmemory_result_backend import FasterInmemoryResultBackend
@@ -136,7 +137,7 @@ class Worker(MessageHandler):
             self.message_broker = InMemoryMessageBroker()
         else:
             logger.info("Worker is initializing with AioPikaBroker + RedisAsyncResultBackend")
-            self.broker = AioPikaBroker(rabbitmq_address, result_backend=RedisAsyncResultBackend(redis_address))
+            self.broker = AioPikaBroker(rabbitmq_address).with_result_backend(RedisAsyncResultBackend(redis_address))
             self.message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
 
         # TODO: add RedisPubSub
@@ -173,14 +174,18 @@ class Worker(MessageHandler):
         with measure_time("_handle_tl_rpc()"):
             return await self._handle_tl_rpc(call_hex)
 
-    @staticmethod
-    def _err_response(req_msg_id: int, code: int, message: str) -> RpcResponse:
-        return RpcResponse(obj=RpcResult(
+    def _err_response(self, req_msg_id: int, code: int, message: str) -> RpcResponse | str:
+        response = RpcResponse(obj=RpcResult(
             req_msg_id=req_msg_id,
             result=RpcError(error_code=code, error_message=message),
         ))
 
-    async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse:
+        if isinstance(self.broker.result_backend, InmemoryResultBackend):
+            return response
+        else:
+            return response.write().hex()
+
+    async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse | str:
         with measure_time("read CallRpc"):
             call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
 
@@ -243,10 +248,15 @@ class Worker(MessageHandler):
 
         logger.trace(f"Returning to gateway: {result_obj!r}")
 
-        return RpcResponse(
+        response = RpcResponse(
             obj=result_obj,
             refresh_auth=handler.refresh_session,
         )
+
+        if isinstance(self.broker.result_backend, InmemoryResultBackend):
+            return response
+        else:
+            return response.write().hex()
 
     async def _handle_scheduled_message(self, message_id: int) -> None:
         from piltover.app.handlers.messages import sending

@@ -80,14 +80,16 @@ class Gateway:
             self.broker = self.worker.broker
             self.scheduler = Scheduler(None, _broker=self.broker)
             self.message_broker = self.worker.message_broker
+            self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
+            self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
         else:
             logger.debug("Using AioPikaBroker + RedisAsyncResultBackend")
             self.worker = None
             self.scheduler = None
             self.broker = AioPikaBroker(rabbitmq_address).with_result_backend(RedisAsyncResultBackend(redis_address))
             self.message_broker = RabbitMqMessageBroker(BrokerType.READ, rabbitmq_address)
-            self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
-            self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_shutdown)
+            self.broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, self._broker_startup)
+            self.broker.add_event_handler(TaskiqEvents.CLIENT_SHUTDOWN, self._broker_shutdown)
 
     async def _broker_startup(self, _) -> None:
         await self.message_broker.startup()

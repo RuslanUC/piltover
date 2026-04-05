@@ -19,3 +19,23 @@ class Bool(ABC):
     @classmethod
     def write(cls, value: bool) -> bytes:
         return primitives.BOOL_TRUE if value else primitives.BOOL_FALSE
+
+
+class BoolTrue(ABC):
+    @classmethod
+    def deserialize(cls, _: BytesIO) -> bool:
+        return True
+
+    @classmethod
+    def write(cls, _: bool) -> bytes:
+        return primitives.BOOL_TRUE
+
+
+class BoolFalse(ABC):
+    @classmethod
+    def deserialize(cls, _: BytesIO) -> bool:
+        return False
+
+    @classmethod
+    def write(cls, _: bool) -> bytes:
+        return primitives.BOOL_FALSE

@@ -745,7 +745,7 @@ def start():
 
     with open(DESTINATION_PATH / "all.py", "w") as f:
         f.write(WARNING + "\n\n")
-        f.write(f"from . import core_types, types, functions, to_format\n\n")
+        f.write(f"from . import core_types, primitives, types, functions, to_format\n\n")
         f.write(f"min_layer = {min(all_layers)}\n")
         f.write(f"layer = {layer}\n\n")
         f.write("objects = {")
@@ -762,6 +762,9 @@ def start():
         f.write(f"\n    0xf35c6d01: core_types.RpcResult,")
         f.write(f"\n    0x3072cfa1: core_types.GzipPacked,")
         f.write(f"\n    0xae500895: core_types.FutureSalts,")
+        f.write(f"\n    0x997275b5: primitives.BoolTrue,")
+        f.write(f"\n    0xbc799737: primitives.BoolFalse,")
+        # TODO: vectors
 
         f.write("\n}\n")
 

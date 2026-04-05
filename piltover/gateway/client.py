@@ -14,6 +14,7 @@ from mtproto.transport import Connection
 from mtproto.transport.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, \
     DecryptedMessagePacket, ErrorPacket, QuickAckPacket, BasePacket
 from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
+from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from taskiq.kicker import AsyncKicker
 from tortoise.expressions import Q
 
@@ -435,6 +436,8 @@ class Client:
             )
 
         result = task_result.return_value
+        if not isinstance(self.server.broker.result_backend, InmemoryResultBackend):
+            result = RpcResponse.read(BytesIO(bytes.fromhex(result)))
         if not isinstance(result, RpcResponse):
             logger.error(f"Got response from worker that is not a RpcResponse object: {result}")
             return RpcResult(

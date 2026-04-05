@@ -1,6 +1,6 @@
 from .int_ import Int, Long, Int128, Int256, BigInt
 from .float_ import Float
-from .bool_ import Bool
+from .bool_ import Bool, BoolTrue, BoolFalse
 from .str_ import Bytes, String
 from .vector import Vector, IntVector, LongVector, Int128Vector, Int256Vector, FloatVector, BoolVector, BytesVector, \
     StringVector, TLObjectVector
