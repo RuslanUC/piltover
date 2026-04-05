@@ -59,25 +59,35 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
     chats_and_channels = [*chats, *channels]
     updates_to_create = []
 
+    pts_users = []
+    pts_counts = []
+    peer_by_user_id = {}
     for peer, message in messages.items():
+        peer_by_user_id[peer.owner_id] = peer
+        pts_users.append(peer.owner)
+        pts_counts.append(2 if message.random_id else 1)
+
+    ptss = await State.add_pts_bulk(pts_users, pts_counts)
+
+    for target_user, new_pts in zip(pts_users, ptss):
         # TODO: also generate UpdateShortMessage / UpdateShortSentMessage ?
+
+        peer = peer_by_user_id[target_user.id]
+        message = messages[peer]
 
         if message.random_id:
             updates_to_create.append(Update(
                 update_type=UpdateType.UPDATE_MESSAGE_ID,
-                # TODO: move out of the loop
-                pts=await State.add_pts(peer.owner, 1),
+                pts=new_pts - 1,
                 pts_count=1,
                 related_id=message.id,
                 related_ids=[message.random_id],
                 user=peer.owner,
             ))
 
-        # TODO: move out of the loop
-        new_message_pts = await State.add_pts(peer.owner, 1)
         updates_to_create.append(Update(
             update_type=UpdateType.NEW_MESSAGE,
-            pts=new_message_pts,
+            pts=new_pts,
             pts_count=1,
             related_id=message.id,
             user=peer.owner,
@@ -88,7 +98,7 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
                 UpdateNewMessage(
                     # TODO: move out of the loop
                     message=await message.to_tl(peer.owner, False),
-                    pts=new_message_pts,
+                    pts=new_pts,
                     pts_count=1,
                 ),
             ],
