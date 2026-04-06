@@ -2,7 +2,7 @@ import ctypes
 from time import time
 
 from piltover.app.utils.utils import telegram_hash
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.db.models import AuthCountry, User, Reaction, UserReactionsSettings, PeerColorOption
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, JsonNumber, \
@@ -40,15 +40,15 @@ async def get_config(user: User | None):
         date=int(time()),
         # This seems to be hardcoded to 1 hour on some clients, and changing it breaks them
         expires=int(time() + 60 * 60),
-        this_dc=AppConfig.THIS_DC_ID,
+        this_dc=APP_CONFIG.this_dc,
         test_mode=False,
         dc_options=[
-            DcOption(this_port_only=True, id=dc["dc_id"], ip_address=address["ip"], port=address["port"])
-            for dc in AppConfig.DCS for address in dc["addresses"]
+            DcOption(this_port_only=True, id=dc.id, ip_address=address.host, port=address.port)
+            for dc in APP_CONFIG.dc_list for address in dc.addresses
         ],
         dc_txt_domain_name="_",
-        chat_size_max=AppConfig.BASIC_GROUP_MEMBER_LIMIT,  # Telegram default is 200
-        megagroup_size_max=AppConfig.SUPER_GROUP_MEMBER_LIMIT,  # Telegram default is 200000
+        chat_size_max=APP_CONFIG.basic_group_member_limit,  # Telegram default is 200
+        megagroup_size_max=APP_CONFIG.super_group_member_limit,  # Telegram default is 200000
         forwarded_count_max=100,  # Telegram default is 100
         online_update_period_ms=60_000,  # Telegram default is 210000
         offline_blur_timeout_ms=60_000,  # Telegram default is 5000
@@ -58,7 +58,7 @@ async def get_config(user: User | None):
         notify_default_delay_ms=10_000,  # Telegram default is 1500
         push_chat_period_ms=1_000,  # Telegram default is 60000
         push_chat_limit=1,
-        edit_time_limit=AppConfig.EDIT_TIME_LIMIT,  # Telegram default is 172800
+        edit_time_limit=APP_CONFIG.edit_time_limit,  # Telegram default is 172800
         revoke_time_limit=int(2 ** 31 - 1),
         revoke_pm_time_limit=int(2 ** 31 - 1),
         rating_e_decay=2,
@@ -69,9 +69,9 @@ async def get_config(user: User | None):
         call_connect_timeout_ms=20_000,
         call_packet_timeout_ms=5_000,
         me_url_prefix="https://127.0.0.1/",
-        caption_length_max=AppConfig.MAX_CAPTION_LENGTH,  # Telegram default is 1024
-        message_length_max=AppConfig.MAX_MESSAGE_LENGTH,
-        webfile_dc_id=AppConfig.THIS_DC_ID,
+        caption_length_max=APP_CONFIG.max_caption_length,  # Telegram default is 1024
+        message_length_max=APP_CONFIG.max_message_length,
+        webfile_dc_id=APP_CONFIG.this_dc,
         preload_featured_stickers=False,
         revoke_pm_inbox=True,
         reactions_default=ReactionEmoji(emoticon=default_reaction.reaction) if default_reaction is not None else None,
@@ -83,15 +83,15 @@ async def get_config(user: User | None):
 async def get_nearest_dc():  # pragma: no cover
     return NearestDc(
         country="US",
-        this_dc=AppConfig.THIS_DC_ID,
-        nearest_dc=AppConfig.THIS_DC_ID,
+        this_dc=APP_CONFIG.this_dc,
+        nearest_dc=APP_CONFIG.this_dc,
     )
 
 
 APP_CONFIG_HASH = int(time())
-APP_CONFIG = JsonObject(value=[
-    JsonObjectValue(key="about_length_limit_default", value=JsonNumber(value=float(AppConfig.MAX_USER_ABOUT_LENGTH))),
-    JsonObjectValue(key="about_length_limit_premium", value=JsonNumber(value=float(AppConfig.MAX_USER_ABOUT_LENGTH))),
+APP_CONFIG_JSON = JsonObject(value=[
+    JsonObjectValue(key="about_length_limit_default", value=JsonNumber(value=float(APP_CONFIG.user_bio_limit))),
+    JsonObjectValue(key="about_length_limit_premium", value=JsonNumber(value=float(APP_CONFIG.user_bio_limit))),
     JsonObjectValue(key="authorization_autoconfirm_period", value=JsonNumber(value=7 * 24 * 60 * 60.0)),
     JsonObjectValue(key="autoarchive_setting_available", value=JsonBool(value=False)),
     JsonObjectValue(key="autologin_domains", value=JsonArray(value=[])),
@@ -102,8 +102,8 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="business_chat_links_limit", value=JsonNumber(value=100.0)),
     JsonObjectValue(key="business_promo_order", value=JsonArray(value=[])),
     JsonObjectValue(key="can_edit_factcheck", value=JsonBool(value=False)),
-    JsonObjectValue(key="caption_length_limit_default", value=JsonNumber(value=float(AppConfig.MAX_CAPTION_LENGTH))),
-    JsonObjectValue(key="caption_length_limit_premium", value=JsonNumber(value=float(AppConfig.MAX_CAPTION_LENGTH))),
+    JsonObjectValue(key="caption_length_limit_default", value=JsonNumber(value=float(APP_CONFIG.max_caption_length))),
+    JsonObjectValue(key="caption_length_limit_premium", value=JsonNumber(value=float(APP_CONFIG.max_caption_length))),
     JsonObjectValue(key="channel_bg_icon_level_min", value=JsonNumber(value=4.0)),
     JsonObjectValue(key="channel_custom_wallpaper_level_min", value=JsonNumber(value=10.0)),
     JsonObjectValue(key="channel_emoji_status_level_min", value=JsonNumber(value=8.0)),
@@ -111,10 +111,10 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="channel_restrict_sponsored_level_min", value=JsonNumber(value=50.0)),
     JsonObjectValue(key="channel_revenue_withdrawal_enabled", value=JsonBool(value=True)),
     JsonObjectValue(key="channel_wallpaper_level_min", value=JsonNumber(value=9.0)),
-    JsonObjectValue(key="channels_limit_default", value=JsonNumber(value=float(AppConfig.CHANNELS_PER_USER_LIMIT))),
-    JsonObjectValue(key="channels_limit_premium", value=JsonNumber(value=float(AppConfig.CHANNELS_PER_USER_LIMIT))),
-    JsonObjectValue(key="channels_public_limit_default", value=JsonNumber(value=float(AppConfig.PUBLIC_CHANNELS_LIMIT))),
-    JsonObjectValue(key="channels_public_limit_premium", value=JsonNumber(value=float(AppConfig.PUBLIC_CHANNELS_LIMIT))),
+    JsonObjectValue(key="channels_limit_default", value=JsonNumber(value=float(APP_CONFIG.channels_per_user_limit))),
+    JsonObjectValue(key="channels_limit_premium", value=JsonNumber(value=float(APP_CONFIG.channels_per_user_limit))),
+    JsonObjectValue(key="channels_public_limit_default", value=JsonNumber(value=float(APP_CONFIG.public_channels_limit))),
+    JsonObjectValue(key="channels_public_limit_premium", value=JsonNumber(value=float(APP_CONFIG.public_channels_limit))),
     JsonObjectValue(key="chat_read_mark_expire_period", value=JsonNumber(value=7 * 24 * 60 * 60.0)),
     JsonObjectValue(key="chat_read_mark_size_threshold", value=JsonNumber(value=100.0)),
     JsonObjectValue(key="chatlist_invites_limit_default", value=JsonNumber(value=3.0)),
@@ -131,8 +131,8 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="dialog_filters_tooltip", value=JsonBool(value=False)),
     JsonObjectValue(key="dialogs_folder_pinned_limit_default", value=JsonNumber(value=100.0)),
     JsonObjectValue(key="dialogs_folder_pinned_limit_premium", value=JsonNumber(value=200.0)),
-    JsonObjectValue(key="dialogs_pinned_limit_default", value=JsonNumber(value=float(AppConfig.PINNED_DIALOGS_LIMIT))),
-    JsonObjectValue(key="dialogs_pinned_limit_premium", value=JsonNumber(value=float(AppConfig.PINNED_DIALOGS_LIMIT))),
+    JsonObjectValue(key="dialogs_pinned_limit_default", value=JsonNumber(value=float(APP_CONFIG.pinned_dialogs_limit))),
+    JsonObjectValue(key="dialogs_pinned_limit_premium", value=JsonNumber(value=float(APP_CONFIG.pinned_dialogs_limit))),
     JsonObjectValue(key="dismissed_suggestions", value=JsonArray(value=[
         JsonString(value="AUTOARCHIVE_POPULAR"),
         JsonString(value="NEWCOMER_TICKS"),
@@ -162,12 +162,12 @@ APP_CONFIG = JsonObject(value=[
             JsonObjectValue(key="value", value=JsonNumber(value=float(value))),
             JsonObjectValue(key="frame_start", value=JsonNumber(value=float(frame_start))),
         ]))
-        for emoticon, (value, frame_start) in AppConfig.DICE.items()
+        for emoticon, (value, frame_start) in DICE_CONFIG.items()
     ])),
     JsonObjectValue(key="emojies_sounds", value=JsonArray(value=[])),
     JsonObjectValue(key="factcheck_length_limit", value=JsonNumber(value=1024.0)),
     JsonObjectValue(key="fragment_prefixes", value=JsonArray(value=[JsonString(value="888")])),
-    JsonObjectValue(key="gif_search_branding", value=JsonString(value=AppConfig.GIFS_PROVIDER)),
+    JsonObjectValue(key="gif_search_branding", value=JsonString(value=APP_CONFIG.gifs.provider if APP_CONFIG.gifs else "none")),
     JsonObjectValue(key="gif_search_emojies", value=JsonArray(value=[
         JsonString(value="\U0001F44D"),
         JsonString(value="\U0001F618"),
@@ -245,7 +245,7 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="quick_reply_messages_limit", value=JsonNumber(value=20.0)),
     JsonObjectValue(key="quote_length_max", value=JsonNumber(value=1024.0)),
     JsonObjectValue(key="reactions_in_chat_max", value=JsonNumber(value=100.0)),
-    JsonObjectValue(key="reactions_uniq_max", value=JsonNumber(value=float(AppConfig.REACTIONS_UNIQ_MAX))),
+    JsonObjectValue(key="reactions_uniq_max", value=JsonNumber(value=float(APP_CONFIG.reactions_unique_max))),
     JsonObjectValue(key="reactions_user_max_default", value=JsonNumber(value=1.0)),
     JsonObjectValue(key="reactions_user_max_premium", value=JsonNumber(value=1.0)),
     JsonObjectValue(key="recommended_channels_limit_default", value=JsonNumber(value=0.0)),
@@ -262,8 +262,8 @@ APP_CONFIG = JsonObject(value=[
     ])),
     JsonObjectValue(key="saved_dialogs_pinned_limit_default", value=JsonNumber(value=5.0)),
     JsonObjectValue(key="saved_dialogs_pinned_limit_premium", value=JsonNumber(value=100.0)),
-    JsonObjectValue(key="saved_gifs_limit_default", value=JsonNumber(value=float(AppConfig.SAVED_GIFS_LIMIT))),
-    JsonObjectValue(key="saved_gifs_limit_premium", value=JsonNumber(value=float(AppConfig.SAVED_GIFS_LIMIT))),
+    JsonObjectValue(key="saved_gifs_limit_default", value=JsonNumber(value=float(APP_CONFIG.saved_gifs_limit))),
+    JsonObjectValue(key="saved_gifs_limit_premium", value=JsonNumber(value=float(APP_CONFIG.saved_gifs_limit))),
     JsonObjectValue(key="small_queue_max_active_operations_count", value=JsonNumber(value=5.0)),
     JsonObjectValue(key="sponsored_links_inapp_allow", value=JsonBool(value=False)),
     JsonObjectValue(key="stargifts_blocked", value=JsonBool(value=True)),
@@ -284,8 +284,8 @@ APP_CONFIG = JsonObject(value=[
     JsonObjectValue(key="stars_usd_withdraw_rate_x1000", value=JsonNumber(value=1300.0)),
     JsonObjectValue(key="stickers_emoji_cache_time", value=JsonNumber(value=86400.0)),
     JsonObjectValue(key="stickers_emoji_suggest_only_api", value=JsonBool(value=False)),
-    JsonObjectValue(key="stickers_faved_limit_default", value=JsonNumber(value=float(AppConfig.FAVED_STICKERS_LIMIT))),
-    JsonObjectValue(key="stickers_faved_limit_premium", value=JsonNumber(value=float(AppConfig.FAVED_STICKERS_LIMIT))),
+    JsonObjectValue(key="stickers_faved_limit_default", value=JsonNumber(value=float(APP_CONFIG.faved_stickers_limit))),
+    JsonObjectValue(key="stickers_faved_limit_premium", value=JsonNumber(value=float(APP_CONFIG.faved_stickers_limit))),
     JsonObjectValue(key="stickers_normal_by_emoji_per_premium_num", value=JsonNumber(value=3.0)),
     JsonObjectValue(key="stickers_premium_by_emoji_num", value=JsonNumber(value=0.0)),
     JsonObjectValue(key="stories_area_url_max", value=JsonNumber(value=3.0)),
@@ -335,7 +335,7 @@ APP_CONFIG = JsonObject(value=[
 async def get_app_config(request: GetAppConfig):
     if request.hash == APP_CONFIG_HASH:
         return AppConfigNotModified()
-    return TLAppConfig(hash=APP_CONFIG_HASH, config=APP_CONFIG)
+    return TLAppConfig(hash=APP_CONFIG_HASH, config=APP_CONFIG_JSON)
 
 
 @handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)

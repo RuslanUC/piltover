@@ -2,7 +2,7 @@ from os import urandom
 from time import time
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, ApiApplication, User, WebAuthorization, MessageRef
@@ -19,8 +19,8 @@ LOGIN_MESSAGE_FMT = (
     "Web login code. Dear {name}, we received a request from your account to log in on my.<todo: domain>. "
     "This is your login code:\n"
     "{code}\n\n"
-    f"Do not give this code to anyone, even if they say they're from {AppConfig.NAME}! "
-    f"This code can be used to delete your {AppConfig.NAME} account. We never ask to send it anywhere.\n"
+    f"Do not give this code to anyone, even if they say they're from {APP_CONFIG.name}! "
+    f"This code can be used to delete your {APP_CONFIG.name} account. We never ask to send it anywhere.\n"
     "If you didn't request this code by trying to log in on my.<todo: domain>, simply ignore this message.\n"
 )
 
@@ -146,17 +146,17 @@ async def get_available_servers(user: User) -> AvailableServers:
     return AvailableServers(
         servers=[
             AvailableServer(
-                address=dc_option["addresses"][0]["ip"],
-                port=dc_option["addresses"][0]["port"],
-                dc_id=dc_option["dc_id"],
-                name="Production" if dc_option["dc_id"] == AppConfig.THIS_DC_ID else "Test",
+                address=dc_option.addresses[0].ip,
+                port=dc_option.addresses[0].port,
+                dc_id=dc_option.id,
+                name="Production" if dc_option.id == APP_CONFIG.this_dc else "Test",
                 public_keys=[
                     PublicKey(
-                        key=worker.server_keys.public_key,
+                        key=worker.public_key,
                         fingerprint=worker.fingerprint,
                     )
                 ],
             )
-            for dc_option in AppConfig.DCS
+            for dc_option in APP_CONFIG.dc_list
         ]
     )

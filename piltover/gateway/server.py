@@ -76,7 +76,7 @@ class Gateway:
             logger.info("rabbitmq_address or redis_address is None, falling back to worker broker")
             from piltover.worker import Worker
             from piltover.scheduler import Scheduler
-            self.worker = Worker(data_dir, self.server_keys, None, None)
+            self.worker = Worker(data_dir, self.server_keys.public_key, None, None)
             self.broker = self.worker.broker
             self.scheduler = Scheduler(None, _broker=self.broker)
             self.message_broker = self.worker.message_broker

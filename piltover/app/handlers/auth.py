@@ -13,7 +13,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.system_notifications import send_official_notification_message
 from piltover.app.utils.utils import check_password_internal
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, TempAuthKey, SentCode, User, \
@@ -33,8 +33,8 @@ handler = MessageHandler("auth")
 
 LOGIN_MESSAGE_FMT = FormatableTextWithEntities((
     f"**Login code**: ||{{code}}||. "
-    f"Do not give this code to anyone, even if they say they are from {AppConfig.NAME}!\n\n"
-    f"❗️This code can be used to log in to your {AppConfig.NAME} account. We never ask it for anything else.\n\n"
+    f"Do not give this code to anyone, even if they say they are from {APP_CONFIG.name}!\n\n"
+    f"❗️This code can be used to log in to your {APP_CONFIG.name} account. We never ask it for anything else.\n\n"
     "If you didn't request this code by trying to log in on another device, simply ignore this message."
 ))
 

@@ -8,7 +8,7 @@ from fastrand import xorshift128plus_bytes
 from httpx import AsyncClient
 from loguru import logger
 
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import FileType, InlineQueryResultType
 from piltover.db.models import InlineQuery, File, GifBotFile, InlineQueryResult, InlineQueryResultItem
@@ -25,16 +25,16 @@ _KLIPY_SEARCH = "https://api.klipy.com/v2/search"
 _KLIPY_FEATURED = "https://api.klipy.com/v2/featured"
 
 
-def _get_api_endpoint_and_token(provider: Literal["tenor", "klipy"], search: bool) -> tuple[str | None, str | None]:
+def _get_api_endpoint(provider: Literal["tenor", "klipy"], search: bool) -> str | None:
     if provider == "tenor":
         if search:
-            return _TENOR_SEARCH, AppConfig.TENOR_KEY
-        return _TENOR_FEATURED, AppConfig.TENOR_KEY
+            return _TENOR_SEARCH
+        return _TENOR_FEATURED
     elif provider == "klipy":
         if search:
-            return _KLIPY_SEARCH, AppConfig.KLIPY_KEY
-        return _KLIPY_FEATURED, AppConfig.KLIPY_KEY
-    return None, None
+            return _KLIPY_SEARCH
+        return _KLIPY_FEATURED
+    return None
 
 
 def _empty(inline_query: InlineQuery) -> tuple[InlineQueryResult, list]:
@@ -100,15 +100,19 @@ async def _get_or_download_gif(
 async def gif_inline_query_handler(
         inline_query: InlineQuery,
 ) -> tuple[InlineQueryResult, list[InlineQueryResultItem]] | None:
+    if APP_CONFIG.gifs is None:
+        logger.warning("Gif provider is not configured!")
+        return _empty(inline_query)
+
     storage = request_ctx.get().storage
 
-    endpoint, api_key = _get_api_endpoint_and_token(AppConfig.GIFS_PROVIDER, bool(inline_query.query.strip()))
-    if endpoint is None or api_key is None:
+    endpoint = _get_api_endpoint(APP_CONFIG.gifs.provider, bool(inline_query.query.strip()))
+    if endpoint is None:
         logger.warning("Unknown gif provider or provider api key is not set!")
         return _empty(inline_query)
 
     params = {
-        "key": api_key,
+        "key": APP_CONFIG.gifs.api_key,
         "limit": "8",
         "media_filter": "mp4",
     }

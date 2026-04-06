@@ -7,7 +7,7 @@ from typing import Self
 from tortoise import Model, fields
 from tortoise.expressions import Q
 
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.db import models
 from piltover.exceptions import Unreachable
 from piltover.tl import Long, base
@@ -82,7 +82,7 @@ class Wallpaper(Model):
     @staticmethod
     def make_access_hash(user: int, auth: int, wallpaper: int) -> int:
         to_sign = AccessHashPayloadWallpaper(this_user_id=user, wallpaper_id=wallpaper, auth_id=auth).write()
-        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        digest = hmac.new(APP_CONFIG.hmac_key, to_sign, hashlib.sha256).digest()
         return Long.read_bytes(digest[-8:])
 
     @staticmethod

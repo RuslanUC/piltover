@@ -9,7 +9,7 @@ from tortoise.transactions import in_transaction
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.updates_manager import UpdatesWithDefaults
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.db.enums import PeerType, MessageType, ChatBannedRights, ChatAdminRights, AdminLogEntryAction
 from piltover.db.models import User, Peer, ChatParticipant, ChatInvite, ChatInviteRequest, Chat, ChatBase, Channel, \
     Dialog, AdminLogEntry, MessageRef
@@ -247,12 +247,12 @@ def _get_invite_hash_from_link(invite_link: str) -> str | None:
 async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_invite: ChatInvite | None) -> Updates:
     if isinstance(chat_or_channel, Channel):
         channels_count = await ChatParticipant.filter(user=user, channel_id__not=None, left=False).count()
-        if channels_count > AppConfig.CHANNELS_PER_USER_LIMIT:
+        if channels_count > APP_CONFIG.channels_per_user_limit:
             raise ErrorRpc(error_code=400, error_message="CHANNELS_TOO_MUCH")
 
-    member_limit = AppConfig.BASIC_GROUP_MEMBER_LIMIT
+    member_limit = APP_CONFIG.basic_group_member_limit
     if isinstance(chat_or_channel, Channel):
-        member_limit = AppConfig.SUPER_GROUP_MEMBER_LIMIT  # TODO: add separate limit for channels
+        member_limit = APP_CONFIG.super_group_member_limit  # TODO: add separate limit for channels
     if await ChatParticipant.filter(**Chat.or_channel(chat_or_channel), left=False).count() > member_limit:
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
@@ -440,9 +440,9 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
     if not requests:
         return await make_chat_join_request_updates(chat)
 
-    member_limit = AppConfig.BASIC_GROUP_MEMBER_LIMIT
+    member_limit = APP_CONFIG.basic_group_member_limit
     if isinstance(chat, Channel):
-        member_limit = AppConfig.SUPER_GROUP_MEMBER_LIMIT  # TODO: add separate limit for channels
+        member_limit = APP_CONFIG.super_group_member_limit  # TODO: add separate limit for channels
     if await ChatParticipant.filter(**Chat.or_channel(chat)).count() + len(requests) > member_limit:
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 

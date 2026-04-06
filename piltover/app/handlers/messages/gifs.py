@@ -2,7 +2,7 @@ from datetime import datetime, UTC
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.db.enums import FileType
 from piltover.db.models import User, SavedGif, File
 from piltover.enums import ReqHandlerFlags
@@ -39,7 +39,7 @@ async def save_gif(request: SaveGif, user: User) -> bool:
 
 @handler.on_request(GetSavedGifs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_saved_gifs(request: GetSavedGifs, user: User) -> SavedGifs | SavedGifsNotModified:
-    query = SavedGif.filter(user=user).order_by("-last_access").limit(AppConfig.SAVED_GIFS_LIMIT).select_related("gif")
+    query = SavedGif.filter(user=user).order_by("-last_access").limit(APP_CONFIG.saved_gifs_limit).select_related("gif")
     ids = await query.values_list("id", flat=True)
 
     gifs_hash = telegram_hash(ids, 64)

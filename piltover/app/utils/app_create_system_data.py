@@ -10,7 +10,7 @@ from loguru import logger
 from tortoise.expressions import Q, Subquery
 
 from piltover.app.utils.utils import telegram_hash
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG, SYSTEM_CONFIG
 from piltover.db.enums import SystemObjectType, FileType, StickerSetOfficialType, StickerSetType, EmojiGroupCategory, \
     EmojiGroupType
 from piltover.exceptions import Unreachable
@@ -168,7 +168,8 @@ async def _create_reactions(args: ArgsNamespace) -> None:
             if doc_name not in reaction_info:
                 continue
             defaults[doc_name] = await _upload_doc(
-                args.data_dir, reactions_dir, reaction_index, reaction_info[doc_name], FileType.DOCUMENT_STICKER,
+                SYSTEM_CONFIG.data_dir, reactions_dir, reaction_index, reaction_info[doc_name],
+                FileType.DOCUMENT_STICKER,
             )
 
         reaction, created = await Reaction.get_or_create(
@@ -176,10 +177,12 @@ async def _create_reactions(args: ArgsNamespace) -> None:
         )
         if created:
             logger.info(
-                f"Created reaction \"{reaction.title}\" (\"{reaction.reaction}\" / \"{reaction_info['reaction']}\")")
+                f"Created reaction \"{reaction.title}\" (\"{reaction.reaction}\" / \"{reaction_info['reaction']}\")"
+            )
         else:
             logger.info(
-                f"Updating reaction \"{reaction.title}\" (\"{reaction.reaction}\" / \"{reaction_info['reaction']}\")")
+                f"Updating reaction \"{reaction.title}\" (\"{reaction.reaction}\" / \"{reaction_info['reaction']}\")"
+            )
             await reaction.update_from_dict(defaults).save()
 
 
@@ -255,7 +258,7 @@ async def _create_chat_themes(args: ArgsNamespace) -> None:
 
                 if wp["document"]:
                     wp_defaults["document"] = await _upload_doc(
-                        args.data_dir, chat_themes_dir, theme_index, wp["document"], FileType.DOCUMENT,
+                        SYSTEM_CONFIG.data_dir, chat_themes_dir, theme_index, wp["document"], FileType.DOCUMENT,
                     )
 
                 wallpaper, wp_created = await Wallpaper.get_or_create(slug=wp["slug"], defaults=wp_defaults)
@@ -431,12 +434,12 @@ async def _create_system_user() -> None:
 
     sys_user, _ = await User.update_or_create(id=777000, defaults={
         "phone_number": "42777",
-        "first_name": AppConfig.NAME,
+        "first_name": APP_CONFIG.name,
         "system": True,
     })
 
-    await Username.filter(Q(user=sys_user) | Q(username=AppConfig.SYS_USER_USERNAME)).delete()
-    await Username.create(user=sys_user, username=AppConfig.SYS_USER_USERNAME)
+    await Username.filter(Q(user=sys_user) | Q(username=APP_CONFIG.system_user_username)).delete()
+    await Username.create(user=sys_user, username=APP_CONFIG.system_user_username)
 
 
 async def _create_builtin_bots(bots: list[tuple[str, str]]) -> None:
@@ -675,7 +678,7 @@ async def _create_system_stickers(args: ArgsNamespace) -> None:
         for idx, doc in enumerate(sticker_set["documents"]):
             logger.info(f"Uploading file {doc['id']}")
             created_files.append(await _upload_doc(
-                args.data_dir, sets_dir / set_dir, idx, doc, FileType.DOCUMENT_STICKER,
+                SYSTEM_CONFIG.data_dir, sets_dir / set_dir, idx, doc, FileType.DOCUMENT_STICKER,
             ))
 
         await File.filter(

@@ -1,0 +1,33 @@
+[system]
+# Path to data directory where systtem data will be stored
+data_dir = "data"
+# Database connection string
+database_connection_string = "sqlite://data/secrets/piltover.db"
+
+# Note that it only makes sense to specify either both "rabbitmq_address" and "redis_address" or neither or them.
+# If only one is specified - single-process gateway/worker setup will be used as a fallback.
+
+# RabbitMQ address to use for sending rpc requests and other system internal messages between gateway and workers.
+#  Should only be specified if running gateway and worker(s) in separate processes.
+#rabbitmq_address = "amqp://guest:guest@localhost:5672"
+# Redis address to use for storing worker results.
+#  Should only be specified if running gateway and worker(s) in separate processes.
+#redis_address = "redis://127.0.0.1:6379"
+
+# Where all cached data (users, chats, messages, etc.) will be stored
+[system.cache]
+# Cache backend. Available backends: memory, redis, memcached.
+backend = "memory"
+# Cache endpoint. Only for "redis" and "memcached" cache types.
+endpoint = "127.0.0.1"
+# Cache port. Only for "redis" and "memcached" cache types.
+port = 6379
+# Cache database number. Only for "redis" cache type.
+db = 0
+
+# Debug tracing.
+[system.debug_tracing]
+# Tracing backend. Available backends: console, zipkin.
+backend = "console"
+# Zipkin address where to send all traces.
+#zipkin_address = "http://127.0.0.1:9411/api/v2/spans"

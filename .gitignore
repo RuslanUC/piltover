@@ -21,3 +21,4 @@ package.json
 /unknown_errors.txt
 .env
 .env.sh
+/config.*

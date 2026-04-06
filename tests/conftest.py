@@ -87,7 +87,7 @@ async def _empty_async_func(*args, **kwargs) -> None:
 @pytest_asyncio.fixture(autouse=True)
 async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[Gateway]:
     from piltover.app.app import app, args
-    from piltover.app_config import AppConfig
+    from piltover.config import APP_CONFIG
 
     marks = {mark.name for mark in request.node.own_markers}
     real_key_gen = "real_key_gen" in marks
@@ -102,8 +102,8 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
     run_scheduler = "run_scheduler" in marks
     dont_create_sys_user = "dont_create_sys_user" in marks
 
-    sched_insta_send_thresh = AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD
-    AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = -30
+    sched_insta_send_thresh = APP_CONFIG.scheduled_instant_send_threshold
+    APP_CONFIG.scheduled_instant_send_threshold = -30
 
     async with AsyncExitStack() as stack:
         if run_scheduler:
@@ -152,7 +152,7 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
             conn: SqliteClient = connections.get("default")
             await conn._connection.execute(f"vacuum main into '{db_dump_file}';")
 
-    AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD = sched_insta_send_thresh
+    APP_CONFIG.scheduled_instant_send_threshold = sched_insta_send_thresh
 
 
 @pytest_asyncio.fixture(autouse=True)

@@ -40,7 +40,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import TLObject, RpcError, TLRequest, layer
 from piltover.tl.core_types import RpcResult
-from piltover.utils import Keys, get_public_key_fingerprint
+from piltover.utils import get_public_key_fingerprint
 
 T = TypeVar("T")
 HandlerResult = Awaitable[T | None]
@@ -119,14 +119,14 @@ class Worker(MessageHandler):
     REDIS_HOST = "redis://127.0.0.1"
 
     def __init__(
-            self, data_dir: Path, server_keys: Keys,
+            self, data_dir: Path, public_key: str,
             rabbitmq_address: str | None = RMQ_HOST, redis_address: str | None = REDIS_HOST,
     ):
         super().__init__()
 
         self._storage = LocalFileStorage(data_dir)
-        self.server_keys = server_keys
-        self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
+        self.public_key = public_key
+        self.fingerprint: int = get_public_key_fingerprint(self.public_key)
 
         if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
             logger.info("Worker is initializing with InMemoryBroker")

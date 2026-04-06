@@ -1,0 +1,11 @@
+[gateway]
+# Host to which bind gateway server
+host = "0.0.0.0"
+# Port to which bind gateway server
+port = 4430
+# Path to private key file. Default is <data_dir>/secrets/privkey.asc
+#privkey_file = "/path/to/private/key.pem"
+# Path to public key file. Default is <data_dir>/secrets/pubkey.asc
+#pubkey_file = "/path/to/public/key.pem"
+# Key used for generating MTProto salts
+salt_key = "V0643QqIQ1HgoIgoK24PJ9iMUoNBniF2Ak3otH0DvMA="

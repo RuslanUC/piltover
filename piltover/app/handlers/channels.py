@@ -13,7 +13,7 @@ from piltover.app.handlers.messages.history import format_messages_internal, rea
 from piltover.app.handlers.messages.invites import user_join_chat_or_channel
 from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.app.utils.utils import validate_username, check_password_internal
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType, \
     AdminLogEntryAction
@@ -1132,7 +1132,7 @@ async def leave_channel(request: LeaveChannel, user: User) -> Updates:
 async def get_admined_public_channels(request: GetAdminedPublicChannels, user: User) -> Chats:
     query = Channel.filter(deleted=False, creator=user, chatparticipants__user=user, username__isnull=False)
 
-    if request.check_limit and await query.count() >= AppConfig.PUBLIC_CHANNELS_LIMIT:
+    if request.check_limit and await query.count() >= APP_CONFIG.public_channels_limit:
         raise ErrorRpc(error_code=400, error_message="CHANNELS_ADMIN_PUBLIC_TOO_MUCH")
 
     return Chats(

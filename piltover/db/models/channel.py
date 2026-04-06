@@ -10,7 +10,7 @@ from tortoise.models import MODEL
 from tortoise.queryset import QuerySet, QuerySetSingle
 from tortoise.transactions import in_transaction
 
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.cache import Cache
 from piltover.context import request_ctx
 from piltover.db import models
@@ -223,7 +223,7 @@ class Channel(ChatBase):
     @staticmethod
     def make_access_hash(user: int, auth: int, channel: int) -> int:
         to_sign = AccessHashPayloadChannel(this_user_id=user, channel_id=channel, auth_id=auth).write()
-        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        digest = hmac.new(APP_CONFIG.hmac_key, to_sign, hashlib.sha256).digest()
         return Long.read_bytes(digest[-8:])
 
     @staticmethod

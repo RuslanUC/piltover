@@ -1,0 +1,9 @@
+[system]
+data_dir = "data/testing"
+database_connection_string = "sqlite://:memory:"
+
+[system.cache]
+backend = "memory"
+
+[system.debug_tracing]
+backend = "console"

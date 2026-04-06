@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import base64
 import os
 from contextlib import asynccontextmanager
-from os import getenv
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal, AsyncIterator
+from typing import AsyncIterator
 
 import uvloop
 from loguru import logger
@@ -16,19 +14,16 @@ from tortoise import Tortoise, connections
 
 from piltover.app.handlers import register_handlers
 from piltover.app.utils.app_create_system_data import create_system_data
-from piltover.app_config import TORTOISE_ORM
 from piltover.cache import Cache
+from piltover.config import TORTOISE_ORM, GATEWAY_CONFIG, SYSTEM_CONFIG
 from piltover.gateway import Gateway
 from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 from piltover.utils.debug.measure_queryset_times import patch_queryset_for_measurement
 from piltover.utils.debug.tracing import Tracing
 
-DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
-
 
 class ArgsNamespace(SimpleNamespace):
-    data_dir: Path
     create_system_user: bool
     create_auth_countries: bool
     auth_countries_file: Path | None
@@ -44,41 +39,28 @@ class ArgsNamespace(SimpleNamespace):
     system_stickersets_dir: Path | None
     create_emoji_groups: bool
     emoji_groups_dir: Path | None
-    privkey_file: Path | None
-    pubkey_file: Path | None
-    rabbitmq_address: str | None
-    redis_address: str | None
-    cache_backend: Literal["memory", "redis", "memcached"]
-    cache_endpoint: str | None
-    cache_port: int | None
-    debug_tracing_backend: Literal["console", "zipkin", "noop"] | None
-    debug_tracing_zipkin_address: str | None
 
     def fill_defaults(self) -> None:
-        if self.privkey_file is None:
-            self.privkey_file = self.data_dir / "secrets" / "privkey.asc"
-        if self.pubkey_file is None:
-            self.pubkey_file = self.data_dir / "secrets" / "pubkey.asc"
         if self.auth_countries_file is None:
-            self.auth_countries_file = self.data_dir / "auth_countries_list.json"
+            self.auth_countries_file = SYSTEM_CONFIG.data_dir / "auth_countries_list.json"
         if self.reactions_dir is None:
-            self.reactions_dir = self.data_dir / "reactions"
+            self.reactions_dir = SYSTEM_CONFIG.data_dir / "reactions"
         if self.chat_themes_dir is None:
-            self.chat_themes_dir = self.data_dir / "chat_themes"
+            self.chat_themes_dir = SYSTEM_CONFIG.data_dir / "chat_themes"
         if self.peer_colors_dir is None:
-            self.peer_colors_dir = self.data_dir / "peer_colors"
+            self.peer_colors_dir = SYSTEM_CONFIG.data_dir / "peer_colors"
         if self.languages_dir is None:
-            self.languages_dir = self.data_dir / "languages"
+            self.languages_dir = SYSTEM_CONFIG.data_dir / "languages"
         if self.system_stickersets_dir is None:
-            self.system_stickersets_dir = self.data_dir / "stickersets"
+            self.system_stickersets_dir = SYSTEM_CONFIG.data_dir / "stickersets"
         if self.emoji_groups_dir is None:
-            self.emoji_groups_dir = self.data_dir / "emoji_groups"
+            self.emoji_groups_dir = SYSTEM_CONFIG.data_dir / "emoji_groups"
 
 
 class PiltoverApp:
     def __init__(
             self, data_dir: Path, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int = 4430,
-            rabbitmq_address: str | None = None, redis_address: str | None = None, salt_key: str | None = None,
+            rabbitmq_address: str | None = None, redis_address: str | None = None, salt_key: bytes | None = None,
     ):
         self._host = host
         self._port = port
@@ -106,7 +88,7 @@ class PiltoverApp:
             ),
             rabbitmq_address=rabbitmq_address,
             redis_address=redis_address,
-            salt_key=base64.b64decode(salt_key) if salt_key is not None else None,
+            salt_key=salt_key,
         )
 
         if self._gateway.worker is not None:
@@ -124,7 +106,8 @@ class PiltoverApp:
         ))
 
     async def run(self, host: str | None = None, port: int | None = None):
-        Tracing.init(args.debug_tracing_backend, zipkin_address=args.debug_tracing_zipkin_address)
+        if SYSTEM_CONFIG.debug_tracing:
+            Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
 
         self._host = host or self._host
         self._port = port or self._port
@@ -156,7 +139,8 @@ class PiltoverApp:
             create_system_stickersets: bool = False, create_emoji_groups: bool = False, run_scheduler: bool = False,
             run_actual_server: bool = False,
     ) -> AsyncIterator[Gateway]:
-        Tracing.init(args.debug_tracing_backend, zipkin_address=args.debug_tracing_zipkin_address)
+        if SYSTEM_CONFIG.debug_tracing:
+            Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
 
         await Tortoise.init(
             db_url="sqlite://:memory:",
@@ -202,12 +186,8 @@ class PiltoverApp:
 
 args: ArgsNamespace
 
-# TODO: add host and port to arguments
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", type=Path,
-                        help="Path to data directory, where all files, server keys and other server data are stored.",
-                        default=Path("./data"))
     parser.add_argument("--create-system-user", action="store_true", help="Create system user with id 777000")
     parser.add_argument("--create-auth-countries", action="store_true", help="Insert auth countries to database")
     parser.add_argument("--auth-countries-file", type=Path, default=None, help=(
@@ -244,40 +224,6 @@ if __name__ == "__main__":
         "Path to directory containing emoji group files (for --create-emoji-groups option). "
         "By default, <data-dir>/emoji_groups will be used."
     ))
-    parser.add_argument("--privkey-file", type=Path, default=None, help=(
-        "Path to private key file. "
-        "By default, <data-dir>/secrets/privkey.asc will be used."
-        "Will be created if does not exist."
-    ))
-    parser.add_argument("--pubkey-file", type=Path, default=None, help=(
-        "Path to public key file. "
-        "By default, <data-dir>/secrets/pubkey.asc will be used."
-        "Will be created if does not exist."
-    ))
-    parser.add_argument("--rabbitmq-address", type=str, required=False,
-                        help="Address of rabbitmq server in \"amqp://user:password@host:port\" format",
-                        default=None)
-    parser.add_argument("--redis-address", type=str, required=False,
-                        help="Address of redis server in \"redis://host:port\" format",
-                        default=None)
-    parser.add_argument("--cache-backend", type=str, required=False,
-                        help="Cache backend", choices=["memory", "redis", "memcached"],
-                        default="memory")
-    parser.add_argument("--cache-endpoint", type=str, required=False,
-                        help="Address of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
-                        default=None)
-    parser.add_argument("--cache-port", type=int, required=False,
-                        help="Port of cache server (if \"cache-backend\" is \"redis\" or \"memcached\")",
-                        default=None)
-    parser.add_argument("--cache-db", type=int, required=False,
-                        help="Redis db of cache server (if \"cache-backend\" is \"redis\")",
-                        default=None)
-    parser.add_argument("--debug-tracing-backend", type=str, required=False,
-                        help="Tracing backend", choices=["console", "zipkin", "noop", None],
-                        default=None)
-    parser.add_argument("--debug-tracing-zipkin-address", type=str, required=False,
-                        help="Address for zipkin tracing backend",
-                        default=None)
     args = parser.parse_args(namespace=ArgsNamespace())
 else:
     args = ArgsNamespace(
@@ -296,31 +242,24 @@ else:
         system_stickersets_dir=Path("./data/stickersets"),
         create_emoji_groups=True,
         emoji_groups_dir=Path("./data/emoji_groups"),
-        data_dir=Path("./data") / "testing",
-        privkey_file=None,
-        pubkey_file=None,
-        rabbitmq_address=None,
-        redis_address=None,
-        cache_backend="memory",
-        cache_endpoint=None,
-        cache_port=None,
-        cache_db=None,
-        debug_tracing_backend="console",
-        debug_tracing_zipkin_address=None,
     )
 
 args.fill_defaults()
 
 
-Cache.init(args.cache_backend, endpoint=args.cache_endpoint, port=args.cache_port, db=args.cache_db)
+Cache.init(
+    SYSTEM_CONFIG.cache.backend,
+    endpoint=SYSTEM_CONFIG.cache.endpoint,
+    port=SYSTEM_CONFIG.cache.port,
+    db=SYSTEM_CONFIG.cache.db,
+)
 app = PiltoverApp(
-    data_dir=args.data_dir,
-    privkey=args.privkey_file,
-    pubkey=args.pubkey_file,
-    rabbitmq_address=args.rabbitmq_address,
-    redis_address=args.redis_address,
-    # TODO: set via arg or store in "secrets" directory
-    salt_key=os.environ.get("SALT_KEY", None),
+    data_dir=SYSTEM_CONFIG.data_dir,
+    privkey=GATEWAY_CONFIG.privkey_file,
+    pubkey=GATEWAY_CONFIG.pubkey_file,
+    rabbitmq_address=SYSTEM_CONFIG.rabbitmq_address,
+    redis_address=SYSTEM_CONFIG.redis_address,
+    salt_key=GATEWAY_CONFIG.salt_key,
 )
 
 
@@ -330,7 +269,6 @@ if __name__ == "__main__":
 
     try:
         uvloop.install()
-
         asyncio.run(app.run())
     except KeyboardInterrupt:
         pass

@@ -15,7 +15,7 @@ from piltover.app.handlers.auth import _validate_phone
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.system_notifications import send_official_notification_message
 from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash, get_image_dims
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType, FileType
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
@@ -289,7 +289,7 @@ async def update_profile(request: UpdateProfile, user: User):
     if request.last_name is not None:
         updates["last_name"] = request.last_name[:128]
     if request.about is not None:
-        if len(request.about) > AppConfig.MAX_USER_ABOUT_LENGTH:
+        if len(request.about) > APP_CONFIG.user_bio_limit:
             raise ErrorRpc(error_code=400, error_message="ABOUT_TOO_LONG")
         updates["about"] = request.about
 
@@ -487,7 +487,7 @@ async def reset_password(user: User) -> ResetPasswordResult:
         raise ErrorRpc(error_code=400, error_message="PASSWORD_EMPTY")
 
     reset_request, created = await UserPasswordReset.get_or_create(user=user)
-    reset_date = reset_request.date + timedelta(seconds=AppConfig.SRP_PASSWORD_RESET_WAIT_SECONDS)
+    reset_date = reset_request.date + timedelta(seconds=APP_CONFIG.srp_password_reset_wait_seconds)
     if datetime.now(UTC) > reset_date:
         await password.delete()
         await reset_request.delete()
@@ -558,7 +558,7 @@ async def change_phone(request: ChangePhone, user: User) -> TLUser:
 
 def _make_deletion_cancel_hash(user: User, task_id: bytes) -> str:
     return hmac.new(
-        AppConfig.HMAC_KEY,
+        APP_CONFIG.hmac_key,
         Long.write(user.id) + String.write(user.phone_number) + task_id,
         hashlib.sha1,
     ).hexdigest()
@@ -632,7 +632,7 @@ async def delete_account(request: DeleteAccount, user: User) -> bool:
         return True
 
     task, _ = await TaskIqScheduledDeleteUser.get_or_create(user=user, defaults={
-        "scheduled_time": datetime.now(UTC) + timedelta(seconds=AppConfig.ACCOUNT_DELETE_WAIT_SECONDS),
+        "scheduled_time": datetime.now(UTC) + timedelta(seconds=APP_CONFIG.account_delete_wait_seconds),
         "state_updated_at": int(time()),
     })
 

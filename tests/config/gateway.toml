@@ -1,0 +1,6 @@
+[gateway]
+host = "0.0.0.0"
+port = 4430
+privkey_file = "data/testing/secrets/privkey.asc"
+pubkey_file = "data/testing/secrets/pubkey.asc"
+salt_key = "V0643QqIQ1HgoIgoK24PJ9iMUoNBniF2Ak3otH0DvMA="

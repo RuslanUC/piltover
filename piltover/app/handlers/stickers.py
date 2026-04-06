@@ -12,7 +12,7 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash, get_image_dims, resize_photo, extract_video_metadata_for_sticker
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import FileType, StickerSetType
 from piltover.db.models import User, Stickerset, File, InstalledStickerset, StickersetThumb, RecentSticker, FavedSticker
@@ -830,7 +830,7 @@ async def get_recent_stickers(request: GetRecentStickers, user: User) -> RecentS
 
     query = RecentSticker.filter(
         user=user,
-    ).order_by("-used_at").limit(AppConfig.RECENT_STICKERS_LIMIT).select_related("sticker", "sticker__stickerset")
+    ).order_by("-used_at").limit(APP_CONFIG.recent_stickers_limit).select_related("sticker", "sticker__stickerset")
     ids = await query.values_list("id", flat=True)
 
     stickers_hash = telegram_hash(ids, 64)
@@ -914,7 +914,7 @@ async def fave_sticker(request: FaveSticker, user: User) -> bool:
 async def get_faved_stickers(request: GetFavedStickers, user: User) -> FavedStickers | FavedStickersNotModified:
     query = FavedSticker.filter(
         user=user,
-    ).order_by("-faved_at").limit(AppConfig.FAVED_STICKERS_LIMIT).select_related("sticker", "sticker__stickerset")
+    ).order_by("-faved_at").limit(APP_CONFIG.faved_stickers_limit).select_related("sticker", "sticker__stickerset")
     ids = await query.values_list("id", flat=True)
 
     stickers_hash = telegram_hash(ids, 64)

@@ -6,7 +6,7 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType, \
     UserStatus, AdminLogEntryAction
@@ -271,7 +271,7 @@ async def add_chat_user(request: AddChatUser, user: User):
     if await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
 
-    if await ChatParticipant.filter(chat=chat_peer.chat).count() > AppConfig.BASIC_GROUP_MEMBER_LIMIT:
+    if await ChatParticipant.filter(chat=chat_peer.chat).count() > APP_CONFIG.basic_group_member_limit:
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
     if not await PrivacyRule.has_access_to(user, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):

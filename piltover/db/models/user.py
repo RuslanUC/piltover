@@ -9,7 +9,7 @@ from typing import Iterable, Self
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
 
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.cache import Cache
 from piltover.context import request_ctx
 from piltover.db import models
@@ -289,7 +289,7 @@ class User(Model):
     @staticmethod
     def make_access_hash(user: int, auth: int, target: int) -> int:
         to_sign = AccessHashPayloadUser(this_user_id=user, user_id=target, auth_id=auth).write()
-        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        digest = hmac.new(APP_CONFIG.hmac_key, to_sign, hashlib.sha256).digest()
         return Long.read_bytes(digest[-8:])
 
     @staticmethod

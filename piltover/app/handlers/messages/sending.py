@@ -14,7 +14,7 @@ from tortoise.transactions import in_transaction
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
 from piltover.app.utils.utils import process_message_entities, process_reply_markup
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
@@ -206,7 +206,7 @@ async def send_message_internal(
 
     schedule = False
     real_opposite = opposite
-    if scheduled_date is not None and (scheduled_date - AppConfig.SCHEDULED_INSTANT_SEND_THRESHOLD) > time():
+    if scheduled_date is not None and (scheduled_date - APP_CONFIG.scheduled_instant_send_threshold) > time():
         schedule = True
         opposite = False
         message_kwargs["scheduled_date"] = datetime.fromtimestamp(scheduled_date, UTC)
@@ -430,7 +430,7 @@ async def send_message(request: SendMessage, user: User):
 
     if not request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_EMPTY")
-    if len(request.message) > AppConfig.MAX_MESSAGE_LENGTH:
+    if len(request.message) > APP_CONFIG.max_message_length:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
     reply_to_message_id = _resolve_reply_id(request)
@@ -607,10 +607,10 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     message_text = cast(str | None, request.message)
 
     if request.message is not None \
-            and len(message_text) > AppConfig.MAX_MESSAGE_LENGTH \
+            and len(message_text) > APP_CONFIG.max_message_length \
             and not content.media_id:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
-    elif request.message is not None and len(message_text) > AppConfig.MAX_CAPTION_LENGTH and content.media_id:
+    elif request.message is not None and len(message_text) > APP_CONFIG.max_caption_length and content.media_id:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
     if content.author != user:
         raise ErrorRpc(error_code=403, error_message="MESSAGE_AUTHOR_REQUIRED")
@@ -906,10 +906,10 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             ),
         ).write()
     elif isinstance(media, InputMediaDice):
-        if media.emoticon not in AppConfig.DICE:
+        if media.emoticon not in DICE_CONFIG:
             raise ErrorRpc(error_code=400, error_message="EMOTICON_INVALID")
         static_data = MessageMediaDice(
-            value=xorshift128plusrandint(1, AppConfig.DICE[media.emoticon][0]),
+            value=xorshift128plusrandint(1, DICE_CONFIG[media.emoticon][0]),
             emoticon=media.emoticon,
         ).write()
 
@@ -990,7 +990,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     _check_we_blocked_user(peer)
     await _check_bot_blocked(user, peer)
 
-    if len(request.message) > AppConfig.MAX_CAPTION_LENGTH:
+    if len(request.message) > APP_CONFIG.max_caption_length:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
 
     media = await _process_media(user, request.media)
@@ -1273,7 +1273,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
 
     messages: list[tuple[str, int, MessageMedia, list[dict] | None]] = []
     for single_media in request.multi_media:
-        if len(single_media.message) > AppConfig.MAX_CAPTION_LENGTH:
+        if len(single_media.message) > APP_CONFIG.max_caption_length:
             raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
         if not single_media.random_id:
             raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")

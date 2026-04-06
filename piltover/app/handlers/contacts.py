@@ -7,7 +7,7 @@ from time import time
 from tortoise.expressions import Q, Subquery
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, Channel, PrivacyRuleException, \
     PrivacyRule
@@ -376,12 +376,12 @@ async def export_contact_token(user: User) -> ExportedContactToken:
     created_at = int(time())
     payload = Long.write(user.id) + Long.write(created_at)
 
-    token_bytes = payload + hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest()
+    token_bytes = payload + hmac.new(APP_CONFIG.hmac_key, payload, sha256).digest()
     token = urlsafe_b64encode(token_bytes).decode("utf8")
 
     return ExportedContactToken(
         url=f"tg://contact?token={token}",
-        expires=created_at + AppConfig.CONTACT_TOKEN_EXPIRE_SECONDS,
+        expires=created_at + APP_CONFIG.contact_token_expire_seconds,
     )
 
 
@@ -400,10 +400,10 @@ async def import_contact_token(request: ImportContactToken, user: User) -> TLUse
     payload = token_bytes[:16]
     signature = token_bytes[16:]
 
-    if (created_at + AppConfig.CONTACT_TOKEN_EXPIRE_SECONDS) < time():
+    if (created_at + APP_CONFIG.contact_token_expire_seconds) < time():
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="expired")
 
-    if signature != hmac.new(AppConfig.HMAC_KEY, payload, sha256).digest():
+    if signature != hmac.new(APP_CONFIG.hmac_key, payload, sha256).digest():
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="invalid signature")
 
     if (target_user := await User.get_or_none(id=target_user_id, deleted=False)) is None:

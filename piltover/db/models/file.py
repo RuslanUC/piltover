@@ -13,7 +13,7 @@ from PIL import UnidentifiedImageError
 from tortoise import fields, Model
 from tortoise.expressions import Q
 
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import FileType, ChatBannedRights
@@ -265,13 +265,13 @@ class File(Model):
 
         now_minutes = time() // 60
         created_at = Int.read_bytes(file_ref[:4])
-        if (created_at + AppConfig.FILE_REF_EXPIRE_MINUTES) < now_minutes:
+        if (created_at + APP_CONFIG.file_ref_expire_minutes) < now_minutes:
             return False, False
 
         if user_id is not None and file_id is not None:
             payload = Long.write(user_id) + Long.write(file_id) + file_ref[:4]
 
-            if hmac.new(AppConfig.HMAC_KEY, payload, hashlib.sha256).digest() != file_ref[4:]:
+            if hmac.new(APP_CONFIG.hmac_key, payload, hashlib.sha256).digest() != file_ref[4:]:
                 return False, False
 
         return True, False
@@ -279,7 +279,7 @@ class File(Model):
     @staticmethod
     def make_access_hash(user: int, auth: int, file: int) -> int:
         to_sign = AccessHashPayloadFile(this_user_id=user, file_id=file, auth_id=auth).write()
-        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        digest = hmac.new(APP_CONFIG.hmac_key, to_sign, hashlib.sha256).digest()
         return Long.read_bytes(digest[-8:])
 
     @staticmethod
@@ -290,7 +290,7 @@ class File(Model):
     def make_file_reference(user: int, file: int, created_at: int) -> bytes:
         created_at = Int.write(created_at)
         payload = Long.write(user) + Long.write(file) + created_at
-        return created_at + hmac.new(AppConfig.HMAC_KEY, payload, hashlib.sha256).digest()
+        return created_at + hmac.new(APP_CONFIG.hmac_key, payload, hashlib.sha256).digest()
 
     @classmethod
     async def from_input(

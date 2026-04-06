@@ -5,7 +5,7 @@ from tortoise.expressions import Q, Subquery, F
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.utils import telegram_hash
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.cache import Cache
 from piltover.db.enums import PeerType, FileType
 from piltover.db.models import Reaction, User, Peer, MessageReaction, State, RecentReaction, UserReactionsSettings, \
@@ -99,7 +99,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
     uniq_reactions = len(await MessageReaction.filter(
         message_id=message.content_id,
     ).distinct().values_list("reaction_id", "custom_emoji_id"))
-    if uniq_reactions > AppConfig.REACTIONS_UNIQ_MAX:
+    if uniq_reactions > APP_CONFIG.reactions_unique_max:
         raise ErrorRpc(error_code=400, error_message="REACTIONS_TOO_MANY")
 
     existing_reaction = await MessageReaction.get_or_none(user=user, message_id=message.content_id)

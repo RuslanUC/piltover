@@ -1,0 +1,2 @@
+[worker]
+pubkey_file = "data/testing/secrets/pubkey.asc"

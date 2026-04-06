@@ -5,7 +5,7 @@ import hmac
 
 from tortoise import Model, fields
 
-from piltover.app_config import AppConfig
+from piltover.config import APP_CONFIG
 from piltover.db import models
 from piltover.tl import Long
 from piltover.tl.to_format import ThemeToFormat
@@ -46,7 +46,7 @@ class Theme(Model):
     @staticmethod
     def make_access_hash(user: int, auth: int, theme: int) -> int:
         to_sign = AccessHashPayloadTheme(this_user_id=user, theme_id=theme, auth_id=auth).write()
-        digest = hmac.new(AppConfig.HMAC_KEY, to_sign, hashlib.sha256).digest()
+        digest = hmac.new(APP_CONFIG.hmac_key, to_sign, hashlib.sha256).digest()
         return Long.read_bytes(digest[-8:])
 
     @staticmethod
