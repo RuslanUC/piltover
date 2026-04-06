@@ -195,7 +195,7 @@ async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | Non
 
     for peer, messages in messages.items():
         # TODO: dont fetch peer.owner? probably should be prefetched outside of the function
-        peer.owner = await peer.owner
+        # peer.owner = await peer.owner
         updates = []
 
         for message in messages:

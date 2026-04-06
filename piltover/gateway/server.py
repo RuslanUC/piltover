@@ -80,8 +80,6 @@ class Gateway:
             self.broker = self.worker.broker
             self.scheduler = Scheduler(None, _broker=self.broker)
             self.message_broker = self.worker.message_broker
-            self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
-            self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
         else:
             logger.debug("Using AioPikaBroker + RedisAsyncResultBackend")
             self.worker = None
