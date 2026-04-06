@@ -64,6 +64,7 @@ class State(Model):
                 state.pts += pts_count
                 to_update.append(state)
 
-            await State.bulk_update(to_update, fields=["pts"])
+            if to_update:
+                await State.bulk_update(to_update, fields=["pts"])
 
         return [state_by_user_id[user_id].pts for user_id in user_ids]
