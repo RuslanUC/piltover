@@ -20,8 +20,8 @@ class MessageFwdHeader(Model):
     channel_post_id: int | None = fields.BigIntField(null=True, default=None)
     channel_post_author: str | None = fields.CharField(max_length=128, null=True, default=None)
 
-    saved_peer: models.Peer = fields.ForeignKeyField("models.Peer", null=True, default=None, related_name="saved_peer")
-    saved_id: int = fields.BigIntField(null=True, default=None)
+    saved_peer: models.Peer | None = fields.ForeignKeyField("models.Peer", null=True, default=None, related_name="saved_peer")
+    saved_id: int | None = fields.BigIntField(null=True, default=None)
     # TODO: saved_from can also be channel or chat
     saved_from: models.User = fields.ForeignKeyField("models.User", null=True, default=None, related_name="saved_user")
     saved_name: str = fields.CharField(max_length=64, null=True, default=None)
@@ -49,8 +49,8 @@ class MessageFwdHeader(Model):
             date=int(self.date.timestamp()),
             channel_post=self.channel_post_id,
             post_author=self.channel_post_author,
-            saved_from_peer=self.saved_peer.to_tl() if self.saved_peer is not None else None,
-            saved_from_msg_id=self.saved_id,
+            saved_from_peer=self.saved_peer.to_tl() if self.saved_peer and self.saved_id else None,
+            saved_from_msg_id=self.saved_id if self.saved_peer and self.saved_id else None,
             saved_from_id=PeerUser(user_id=self.saved_from_id) if self.saved_from_id else None,
             saved_from_name=self.saved_name,
             saved_date=int(self.saved_date.timestamp()) if self.saved_date else None,

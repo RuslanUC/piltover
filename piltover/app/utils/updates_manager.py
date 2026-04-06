@@ -193,28 +193,41 @@ async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | Non
     chats_and_channels = [*chats, *channels]
     updates_to_create = []
 
-    for peer, messages in messages.items():
-        # TODO: dont fetch peer.owner? probably should be prefetched outside of the function
-        # peer.owner = await peer.owner
+    pts_users = []
+    pts_counts = []
+    peer_by_user_id = {}
+    for peer, peer_messages in messages.items():
+        peer_by_user_id[peer.owner_id] = peer
+        pts_users.append(peer.owner)
+        pts_counts.append(0)
+        for message in peer_messages:
+            pts_counts[-1] += 2 if message.random_id else 1
+
+    ptss = await State.add_pts_bulk(pts_users, pts_counts)
+
+    for target_user, pts_count, new_pts in zip(pts_users, pts_counts, ptss):
+        pts = new_pts - pts_count
+        peer = peer_by_user_id[target_user.id]
+        peer_messages = messages[peer]
+
         updates = []
 
-        for message in messages:
+        for message in peer_messages:
             if message.random_id:
+                pts += 1
                 updates_to_create.append(Update(
                     update_type=UpdateType.UPDATE_MESSAGE_ID,
-                    # TODO: move out of the loop
-                    pts=await State.add_pts(peer.owner, 1),
+                    pts=pts,
                     pts_count=1,
                     related_id=message.id,
                     related_ids=[message.random_id],
                     user=peer.owner,
                 ))
 
-            # TODO: move out of the loop
-            new_message_pts = await State.add_pts(peer.owner, 1)
+            pts += 1
             updates_to_create.append(Update(
                 update_type=UpdateType.NEW_MESSAGE,
-                pts=new_message_pts,
+                pts=pts,
                 pts_count=1,
                 related_id=message.id,
                 user=peer.owner,
@@ -226,7 +239,7 @@ async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | Non
             updates.append(UpdateNewMessage(
                 # TODO: move out of the loop?
                 message=await message.to_tl(peer.owner, False),
-                pts=new_message_pts,
+                pts=pts,
                 pts_count=1,
             ))
 

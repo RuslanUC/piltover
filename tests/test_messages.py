@@ -1336,3 +1336,85 @@ async def test_channels_post_get_views_increment(channel_with_clients: ChannelWi
         for message_views in views.views:
             assert message_views.views == num
 
+
+@pytest.mark.parametrize(
+    ("from_id", "to_id",),
+    [
+        ("me", "test_user2"),
+        ("test_user2", "me"),
+    ],
+    ids=(
+        "from self to user",
+        "from user to self",
+    ),
+)
+@pytest.mark.asyncio
+async def test_forward_multiple_messages(client_with_auth: ClientFactory, from_id: str, to_id: str) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+    await client1.resolve_user(client2)
+    await client2.set_username("test_user2")
+
+    message1 = await client1.send_message(from_id, "test 1")
+    message2 = await client1.send_message(from_id, "test 2")
+    message3 = await client1.send_message(from_id, "test 3")
+
+    await client1.forward_messages(to_id, from_id, [message1.id, message2.id, message3.id])
+
+    messages1 = [message async for message in client1.get_chat_history(client2.me.id)]
+    messages2 = [message async for message in client2.get_chat_history(client1.me.id)]
+
+    assert len(messages1) == 3
+    assert len(messages2) == 3
+
+    assert messages1[0].text == "test 3"
+    assert messages2[0].text == "test 3"
+
+    assert messages1[1].text == "test 2"
+    assert messages2[1].text == "test 2"
+
+    assert messages1[2].text == "test 1"
+    assert messages2[2].text == "test 1"
+
+
+@pytest.mark.asyncio
+async def test_forward_multiple_messages_same_peer(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+    await client1.resolve_user(client2)
+
+    message1 = await client1.send_message(client2.me.id, "test 1")
+    message2 = await client1.send_message(client2.me.id, "test 2")
+    message3 = await client1.send_message(client2.me.id, "test 3")
+
+    await client1.forward_messages(client2.me.id, client2.me.id, [message1.id, message2.id, message3.id])
+
+    messages1 = [message async for message in client1.get_chat_history(client2.me.id)]
+    messages2 = [message async for message in client2.get_chat_history(client1.me.id)]
+
+    assert len(messages1) == 6
+    assert len(messages2) == 6
+
+    texts = ["test 3", "test 2", "test 1"]
+    for i in range(len(messages1)):
+        assert messages1[i].text == texts[i % len(texts)]
+        assert messages2[i].text == texts[i % len(texts)]
+
+
+@pytest.mark.asyncio
+async def test_forward_multiple_messages_same_peer_self(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    message1 = await client.send_message("me", "test 1")
+    message2 = await client.send_message("me", "test 2")
+    message3 = await client.send_message("me", "test 3")
+
+    await client.forward_messages("me", "me", [message1.id, message2.id, message3.id])
+
+    messages = [message async for message in client.get_chat_history("me")]
+
+    assert len(messages) == 6
+
+    texts = ["test 3", "test 2", "test 1"]
+    for i in range(len(messages)):
+        assert messages[i].text == texts[i % len(texts)]
