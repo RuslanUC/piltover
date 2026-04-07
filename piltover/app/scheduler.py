@@ -1,17 +1,8 @@
-import argparse
-from os import getenv
-from types import SimpleNamespace
-
 from taskiq import TaskiqEvents, AsyncBroker, TaskiqScheduler
 from tortoise import Tortoise
 
+from piltover.config import TORTOISE_ORM, SYSTEM_CONFIG
 from piltover.scheduler import Scheduler
-
-DB_CONNECTION_STRING = getenv("DB_CONNECTION_STRING", "sqlite://data/secrets/piltover.db")
-
-
-class ArgsNamespace(SimpleNamespace):
-    rabbitmq_address: str | None
 
 
 class PiltoverScheduler:
@@ -21,10 +12,7 @@ class PiltoverScheduler:
 
     @staticmethod
     async def _run():
-        await Tortoise.init(
-            db_url=DB_CONNECTION_STRING,
-            modules={"models": ["piltover.db.models"]},
-        )
+        await Tortoise.init(config=TORTOISE_ORM)
 
     def get_broker(self) -> AsyncBroker:
         return self._scheduler.broker
@@ -33,17 +21,6 @@ class PiltoverScheduler:
         return self._scheduler.scheduler
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--rabbitmq-address", type=str, required=False,
-                        help="Address of rabbitmq server in \"amqp://user:password@host:port\" format",
-                        default=None)
-    args = parser.parse_args(namespace=ArgsNamespace())
-else:
-    args = ArgsNamespace(rabbitmq_address=None)
-
-args.fill_defaults()
-
-_scheduler = PiltoverScheduler(args.rabbitmq_address)
+_scheduler = PiltoverScheduler(SYSTEM_CONFIG.rabbitmq_address)
 broker = _scheduler.get_broker()
 scheduler = _scheduler.get_scheduler()

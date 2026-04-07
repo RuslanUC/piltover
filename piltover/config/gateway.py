@@ -1,9 +1,11 @@
-from os import environ
+import os
 from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, model_validator, Base64Bytes
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource, TomlConfigSettingsSource
+
+_ENV_VAR = "GATEWAY_CONFIG"
 
 
 class _Gateway(BaseModel):
@@ -27,7 +29,7 @@ class _Gateway(BaseModel):
 class GatewayConfig(BaseSettings):
     gateway: _Gateway
 
-    model_config = SettingsConfigDict(toml_file=environ.get("GATEWAY_CONFIG", "config/gateway.toml"))
+    model_config = SettingsConfigDict(toml_file=os.environ.get(_ENV_VAR, "config/gateway.toml"))
 
     @classmethod
     def settings_customise_sources(
@@ -41,4 +43,7 @@ class GatewayConfig(BaseSettings):
         return TomlConfigSettingsSource(settings_cls),
 
 
-GATEWAY_CONFIG = GatewayConfig().gateway
+if _ENV_VAR in os.environ:
+    GATEWAY_CONFIG = GatewayConfig().gateway
+else:
+    GATEWAY_CONFIG = None

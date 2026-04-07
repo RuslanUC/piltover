@@ -12,11 +12,8 @@ from piltover.db.models import TaskIqScheduledMessage, TaskIqScheduledDeleteMess
 
 try:
     from taskiq_aio_pika import AioPikaBroker
-
-    REMOTE_BROKER_SUPPORTED = True
 except ImportError:
     AioPikaBroker = None
-    REMOTE_BROKER_SUPPORTED = False
 
 T = TypeVar("T")
 
@@ -90,12 +87,8 @@ class OrmDatabaseScheduleSource(ScheduleSource):
 
 
 class Scheduler:
-    RMQ_HOST = "amqp://guest:guest@127.0.0.1:5672"
-
-    def __init__(self, rabbitmq_address: str | None = RMQ_HOST, *, _broker: AsyncBroker | None = None):
-        super().__init__()
-
-        if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None:
+    def __init__(self, rabbitmq_address: str | None = None, *, _broker: AsyncBroker | None = None) -> None:
+        if AioPikaBroker is None or rabbitmq_address is None:
             logger.info("Scheduler is initializing with InMemoryBroker")
             self.broker = _broker or InMemoryBroker()
         else:
