@@ -5,7 +5,7 @@ from tortoise import Tortoise
 
 from piltover.app.handlers import register_handlers
 from piltover.cache import Cache
-from piltover.config import SYSTEM_CONFIG, TORTOISE_ORM
+from piltover.config import SYSTEM_CONFIG, TORTOISE_ORM, WORKER_CONFIG
 from piltover.utils.debug.tracing import Tracing
 from piltover.worker import Worker
 

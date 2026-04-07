@@ -5,9 +5,9 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 ## TODO
 
 - [ ] MTProxy support maybe? Obfuscation is already implemented, so why not?
-- [ ] HTTP/UDP support? Probably Telegram itself forgot those also exist.
-  - [ ] HTTP support
-  - [ ] UDP support
+- [ ] HTTP support
+  - [x] HTTP MTProto tranport
+  - [ ] HTTP-specific packets handling (e.g. `http_wait`)
 - [ ] Improve the README:
   - [ ] move client setup instructions to a separate files?
   - [ ] describe process of downloading official Telegram reactions/languages/etc. into Piltover instance
@@ -47,6 +47,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [ ] Top peers
 - [ ] Proper contacts implementation (right now user is able to add/remove/import contact, but only contacts for existing users are created).
 - [ ] Mentions, reactions read states are still sometimes wrong. Why? Caching probably, idk? 
+- [ ] Support S3 as a storage backend
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
@@ -299,6 +300,6 @@ backend):
 
 This project is licensed under the GNU Affero General Public License v3.0.
 
-It was originally forked from [DavideGalilei/piltover](DavideGalilei/piltover), which is licensed under
+It was originally forked from [DavideGalilei/piltover](https://github.com/DavideGalilei/piltover), which is licensed under
 the MIT License. Portions of the original code remain under MIT;
 see LICENSE.MIT for details.
