@@ -86,10 +86,22 @@ Setup:
     ```
 3. Generate tl classes:
     ```shell
-   poetry shell python tools/tl_gen.py
+    poetry shell python tools/tl_gen.py
     ```
-4. (Optional) Install mariadb.
-5. Run:
+4. (Optional) Install MariaDB, Redis and RabbitMQ.
+5. (Optional) Set up your own config:
+    ```shell
+    cp -r config config.custom
+    ```
+    And then edit config values you need
+6. Define paths to config files (if you are on windows - use `set` instead of `export`):
+    ```shell
+    export APP_CONFIG=config.custom/app.toml
+    export SYSTEM_CONFIG=config.custom/system.toml
+    export GATEWAY_CONFIG=config.custom/gateway.toml
+    export WORKER_CONFIG=config.custom/worker.toml
+    ```
+7. Run:
     ```shell
     poetry run python -m piltover.app.app
     ```
