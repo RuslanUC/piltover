@@ -157,7 +157,7 @@ async def get_messages_query_internal(
                 raise Unreachable
 
             query &= Q(content_id__in=Subquery(
-                MessageMention.filter(peer_q, user_id=peer.owner_id, read=False).values_list("message_id", flat=True)
+                MessageMention.filter(peer_q, user_id=peer.owner_id, read=False).values("message_id")
             ))
         else:
             query = Q(id=0)
@@ -173,7 +173,7 @@ async def get_messages_query_internal(
         if offset_id:
             query &= Q(id__lt=offset_id)
 
-        return MessageRef.filter(query).limit(limit).offset(add_offset).order_by("-content__date").select_related(
+        return MessageRef.filter(query).limit(limit).offset(add_offset).order_by("-id").select_related(
             *MessageRef.PREFETCH_MAYBECACHED,
         )
 
@@ -216,22 +216,21 @@ async def get_messages_query_internal(
     after_offset_limit = min(abs(add_offset), limit)
     message_ids_after_offset = await MessageRef.filter(
         query & Q(id__gte=offset_id)
-    ).limit(after_offset_limit).order_by("content__date").values_list("id", flat=True)
+    ).limit(after_offset_limit).order_by("id").values_list("id", flat=True)
 
     if len(message_ids_after_offset) >= limit:
         return MessageRef.filter(
             id__in=message_ids_after_offset,
-        ).order_by("-content__date").select_related(*MessageRef.PREFETCH_MAYBECACHED)
+        ).order_by("-id").select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
     limit -= len(message_ids_after_offset)
 
     query &= Q(id__lt=offset_id)
-    message_ids_before_offset = await MessageRef.filter(
-        query
-    ).limit(limit).order_by("-content__date").values_list("id", flat=True)
 
-    final_query = Q(id__in=message_ids_before_offset) | Q(id__in=message_ids_after_offset)
-    return MessageRef.filter(final_query).order_by("-content__date").select_related(*MessageRef.PREFETCH_MAYBECACHED)
+    final_query = Q(id__in=message_ids_after_offset) | Q(id__in=Subquery(
+        MessageRef.filter(query).limit(limit).order_by("-id").values("id")
+    ))
+    return MessageRef.filter(final_query).order_by("-id").select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
 
 async def get_messages_internal(

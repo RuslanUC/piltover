@@ -87,45 +87,52 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     else:
         max_pts = server_pts
 
-    # NOTE: telegram forces slicing at 2500 pts
+    # NOTE: telegram forces slicing at 2500 pts, we do it at 500 pts just to be safe
     new_updates = await Update.filter(
         user=user, pts__gt=request.pts, pts__lte=max_pts,
-    ).order_by("pts").limit(500).select_related("peer", "dialog", "draft")
+    ).order_by("pts").limit(500).select_related("peer", "dialog", "draft", *Update.MESSAGE_PREFETCH_MAYBECACHED)
     new_secret = await SecretUpdate.filter(
         authorization_id=ctx.auth_id, id__gt=last_local_secret_id
     ).select_related("message_file", "message_file__file")
     logger.trace(f"User {user.id} has {len(new_secret)} secret updates")
 
     new_message_ids = {
-        update.related_id
+        update.message_id
         for update in new_updates
         if update.update_type is UpdateType.NEW_MESSAGE
     }
-    new_messages_db = await MessageRef.filter(
-        peer__owner=user, id__in=new_message_ids,
-    ).select_related(*MessageRef.PREFETCH_FIELDS).order_by("id")
+    all_messages_to_format = [update.message for update in new_updates if update.message_id is not None]
+    all_messages = {
+        message.id: message
+        for message in await MessageRef.to_tl_bulk_maybecached(all_messages_to_format, user.id)
+    }
 
-    if not new_messages_db and not new_updates and not new_secret:
+    if new_updates and not new_secret:
         return DifferenceEmpty(
             date=int(time()),
             seq=(await get_seq_qts())[0],
         )
 
-    new_messages = await MessageRef.to_tl_bulk(new_messages_db, user)
+    new_messages = [
+        all_messages[update.message_id]
+        for update in new_updates
+        if update.update_type is UpdateType.NEW_MESSAGE
+    ]
     new_secret_messages = []
     other_updates = []
     ucc = UsersChatsChannels()
 
-    for message in new_messages_db:
-        ucc.add_message(message.content_id)
+    for update in new_updates:
+        if update.update_type is UpdateType.NEW_MESSAGE:
+            ucc.add_message(update.message.content_id)
 
     for update in new_updates:
-        if update.update_type is UpdateType.MESSAGE_EDIT and update.related_id in new_message_ids:
+        if update.update_type is UpdateType.MESSAGE_EDIT and update.message_id in new_message_ids:
             continue
         if update.update_type is UpdateType.NEW_AUTHORIZATION and (update.related_id == ctx.auth_id or ctx.layer < 163):
             continue
 
-        update_tl = await update.to_tl(user, ctx.auth_id, ucc)
+        update_tl = await update.to_tl(user, all_messages, ctx.auth_id, ucc)
         if update_tl is not None:
             other_updates.append(update_tl)
 
@@ -140,6 +147,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         else:
             other_updates.append(secret_update_tl)
 
+    # TODO: only fetch channels of which current user is participant
     channel_states = await ChannelUpdate.annotate(min_pts=Min("pts")).filter(
         channel__peers__owner=user, date__gt=date,
     ).group_by("channel_id").values_list("channel_id", "min_pts")

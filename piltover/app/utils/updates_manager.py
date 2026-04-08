@@ -91,6 +91,7 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
             pts_count=1,
             related_id=message.id,
             user=peer.owner,
+            message=message,
         ))
 
         updates = UpdatesWithDefaults(
@@ -231,6 +232,7 @@ async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | Non
                 pts_count=1,
                 related_id=message.id,
                 user=peer.owner,
+                message=message,
             ))
 
             if message.random_id:
@@ -344,11 +346,13 @@ async def delete_messages(user: User | None, messages: dict[User, list[int]]) ->
         if user == upd_user:
             user_new_pts = new_pts
 
+    # TODO: remove this? database will cascade-remove all updates of deleted messages, probably?
     all_ids = [i for ids in messages.values() for i in ids]
     await Update.filter(
         Q(update_type=UpdateType.NEW_MESSAGE) | Q(update_type=UpdateType.MESSAGE_EDIT),
         related_id__in=all_ids,
     ).delete()
+
     await Update.bulk_create(updates_to_create)
 
     return user_new_pts
@@ -364,6 +368,7 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> tupl
         pts_count=len(messages),
     )
 
+    # TODO: remove this? database will cascade-remove all updates of deleted messages, probably?
     await ChannelUpdate.filter(
         type__in=(ChannelUpdateType.NEW_MESSAGE, ChannelUpdateType.EDIT_MESSAGE),
         channel=channel, message_id__in=messages,
@@ -405,6 +410,7 @@ async def edit_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
                 update_type=UpdateType.MESSAGE_EDIT,
                 pts=pts,
                 related_id=message.id,
+                message=message,
             )
         )
 
@@ -1580,6 +1586,7 @@ async def new_scheduled_message(user: User, message: MessageRef) -> Updates:
         pts_count=1,
         related_id=message.id,
         related_ids=None,
+        message=message,
     )
 
     updates = UpdatesWithDefaults(updates=[UpdateNewScheduledMessage(message=await message.to_tl(user))])

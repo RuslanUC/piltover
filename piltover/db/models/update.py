@@ -6,7 +6,7 @@ from tortoise import fields, Model
 from tortoise.expressions import Q
 
 from piltover.db import models
-from piltover.db.enums import UpdateType, PeerType, MessageType, NotifySettingsNotPeerType
+from piltover.db.enums import UpdateType, PeerType, NotifySettingsNotPeerType
 from piltover.exceptions import Unreachable
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
     UpdateDialogFilterOrder, UpdateRecentReactions, UpdateNewScheduledMessage
@@ -20,6 +20,7 @@ from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateD
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
     UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID, UpdatePhoneCall, UpdateChannelAvailableMessages, \
     UpdateReadChannelOutbox, EmojiStatus, EmojiStatusEmpty, UpdateUserEmojiStatus
+from piltover.tl.base import Message as TLMessageBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -55,17 +56,22 @@ class Update(Model):
     update_user: models.User | None = fields.ForeignKeyField("models.User", null=True, default=None, related_name="updated")
     dialog: models.Dialog | None = fields.ForeignKeyField("models.Dialog", null=True, default=None)
     draft: models.MessageDraft | None = fields.ForeignKeyField("models.MessageDraft", null=True, default=None, on_delete=fields.OnDelete.SET_NULL)
+    message: models.MessageRef | None = fields.ForeignKeyField("models.MessageRef", null=True, default=None)
 
     user_id: int
     peer_id: int | None
     update_user_id: int | None
     dialog_id: int | None
     draft_id: int | None
+    message_id: int | None
+
+    MESSAGE_PREFETCH_MAYBECACHED = ("message", "message__peer", "message__content", "message__peer__channel")
 
     # TODO: add to_tl_bulk
 
     async def to_tl(
-            self, user: models.User, auth_id: int | None = None, ucc: UsersChatsChannels | None = None,
+            self, user: models.User, formatted_messages: dict[int, TLMessageBase],
+            auth_id: int | None = None, ucc: UsersChatsChannels | None = None,
     ) -> UpdateTypes | None:
 
         match self.update_type:
@@ -77,16 +83,13 @@ class Update(Model):
                 )
 
             case UpdateType.MESSAGE_EDIT:
-                message = await models.MessageRef.get_or_none(id=self.related_id).select_related(
-                    *models.MessageRef.PREFETCH_FIELDS,
-                )
-                if message is None:
+                if self.message is None:
                     return None
 
-                ucc.add_message(message.content_id)
+                ucc.add_message(self.message.content_id)
 
                 return UpdateEditMessage(
-                    message=await message.to_tl(user),
+                    message=formatted_messages[self.message_id],
                     pts=self.pts,
                     pts_count=1,
                 )
@@ -417,15 +420,12 @@ class Update(Model):
                 )
 
             case UpdateType.NEW_SCHEDULED_MESSAGE:
-                message = await models.MessageRef.get_or_none(
-                    id=self.related_id, content__type=MessageType.SCHEDULED, peer__owner=user
-                ).select_related(*models.MessageRef.PREFETCH_FIELDS)
-                if message is None:
+                if self.message is None:
                     return None
 
-                ucc.add_message(message.content_id)
+                ucc.add_message(self.message.content_id)
 
-                return UpdateNewScheduledMessage(message=await message.to_tl(user))
+                return UpdateNewScheduledMessage(message=formatted_messages[self.message_id])
 
             case UpdateType.DELETE_SCHEDULED_MESSAGE:
                 if self.peer is None:
