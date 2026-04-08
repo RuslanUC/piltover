@@ -346,13 +346,6 @@ async def delete_messages(user: User | None, messages: dict[User, list[int]]) ->
         if user == upd_user:
             user_new_pts = new_pts
 
-    # TODO: remove this? database will cascade-remove all updates of deleted messages, probably?
-    all_ids = [i for ids in messages.values() for i in ids]
-    await Update.filter(
-        Q(update_type=UpdateType.NEW_MESSAGE) | Q(update_type=UpdateType.MESSAGE_EDIT),
-        related_id__in=all_ids,
-    ).delete()
-
     await Update.bulk_create(updates_to_create)
 
     return user_new_pts
@@ -368,7 +361,6 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> tupl
         pts_count=len(messages),
     )
 
-    # TODO: remove this? database will cascade-remove all updates of deleted messages, probably?
     await ChannelUpdate.filter(
         type__in=(ChannelUpdateType.NEW_MESSAGE, ChannelUpdateType.EDIT_MESSAGE),
         channel=channel, message_id__in=messages,
