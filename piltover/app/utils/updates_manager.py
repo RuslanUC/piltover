@@ -2,7 +2,6 @@ from asyncio import sleep
 from time import time
 
 from loguru import logger
-from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from piltover.context import request_ctx
@@ -723,9 +722,8 @@ async def update_user(user: User) -> None:
 
     user_tl = await user.to_tl()
 
-    peer: Peer
-    # TODO: probably dont do THIS
-    async for peer in Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
+    # for peer in await Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
+    for peer in await Peer.filter(owner=user, type=PeerType.SELF).select_related("owner"):
         pts = await State.add_pts(peer.owner, 1)
 
         updates_to_create.append(
@@ -745,9 +743,7 @@ async def update_user(user: User) -> None:
     await Update.bulk_create(updates_to_create)
 
 
-# TODO: rename to something like "update_chat_participants"
-
-async def create_chat(chat: Chat, peers: list[Peer]) -> Updates:
+async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
     updates_to_create = []
 
     participants = [
@@ -824,8 +820,8 @@ async def update_user_name(user: User) -> None:
     update = UpdateUserName(
         user_id=user.id, first_name=user.first_name, last_name=user.last_name, usernames=usernames,
     )
-    peer: Peer
-    async for peer in Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
+    # for peer in await Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
+    for peer in await Peer.filter(owner=user, type=PeerType.SELF).select_related("owner"):
         pts = await State.add_pts(peer.owner, 1)
 
         updates_to_create.append(
@@ -847,19 +843,20 @@ async def update_user_name(user: User) -> None:
 
 async def add_remove_contact(user: User, targets: list[User]) -> Updates:
     updates = []
-    users = []
+    users = set()
     updates_to_create = []
 
-    for target in targets:
-        if target.id in users:
+    new_pts = await State.add_pts(user, len(targets))
+    pts_before = new_pts - len(targets)
+
+    for num, target in enumerate(targets, start=1):
+        if target in users:
             continue
 
-        # TODO: move out of the loop?
-        pts = await State.add_pts(user, 1)
         updates_to_create.append(Update(
             user=user,
             update_type=UpdateType.UPDATE_CONTACT,
-            pts=pts,
+            pts=pts_before + num,
             related_id=target.id,
             update_user=target,
         ))
@@ -868,7 +865,7 @@ async def add_remove_contact(user: User, targets: list[User]) -> Updates:
             peer=PeerUser(user_id=target.id),
             settings=PeerSettings(),
         ))
-        users.append(target)
+        users.add(target)
 
     updates = UpdatesWithDefaults(
         updates=updates,
@@ -907,14 +904,16 @@ async def update_chat(chat: Chat) -> Updates | None:
 
     chat_tl = await chat.to_tl()
 
-    user_ids = []
-    for peer in await Peer.filter(chat=chat).select_related("owner"):
-        # TODO: move out of the loop?
-        pts = await State.add_pts(peer.owner, 1)
+    participants = await User.filter(chatparticipants__chat_id=chat.id, chatparticipants__left=False).only("id")
+    ptss = await State.add_pts_bulk(participants, 1)
+
+    for user, pts in zip(participants, ptss):
         updates_to_create.append(Update(
-            user=peer.owner, update_type=UpdateType.UPDATE_CHAT, pts=pts, related_id=chat.id,
+            user=user,
+            update_type=UpdateType.UPDATE_CHAT,
+            pts=pts,
+            related_id=chat.id,
         ))
-        user_ids.append(peer.owner_id)
 
     updates = UpdatesWithDefaults(
         updates=[UpdateChat(chat_id=chat.make_id())],
@@ -922,7 +921,7 @@ async def update_chat(chat: Chat) -> Updates | None:
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user_id=user_ids)
+    await SessionManager.send(updates, user_id=[user.id for user in participants])
 
     return updates
 
@@ -993,7 +992,11 @@ async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) 
 async def update_read_history_inbox_channel(user: User, channel_id: int, max_id: int, unread_count: int) -> Updates:
     pts = await State.add_pts(user, 1)
     await Update.create(
-        user=user, update_type=UpdateType.READ_INBOX_CHANNEL, pts=pts, pts_count=1, related_id=channel_id,
+        user=user,
+        update_type=UpdateType.READ_INBOX_CHANNEL,
+        pts=pts,
+        pts_count=1,
+        related_id=channel_id,
         additional_data=[max_id, unread_count],
     )
 
@@ -1025,11 +1028,17 @@ async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[Use
 
     channels = [await channel.to_tl()]
 
-    for user, max_id in max_ids.items():
-        # TODO: move out of the loop?
-        pts = await State.add_pts(user, 1)
+    users = list(max_ids)
+    ptss = await State.add_pts_bulk(users, 1)
+
+    for user, pts in zip(users, ptss):
+        max_id = max_ids[user]
         updates_to_create.append(Update(
-            user=user, update_type=UpdateType.READ_OUTBOX_CHANNEL, pts=pts, pts_count=1, related_id=channel.id,
+            user=user,
+            update_type=UpdateType.READ_OUTBOX_CHANNEL,
+            pts=pts,
+            pts_count=1,
+            related_id=channel.id,
             additional_data=[max_id],
         ))
 
@@ -1156,13 +1165,18 @@ async def update_chat_default_banned_rights(chat: Chat) -> Updates:
     updates_to_create = []
 
     user_ids = []
-    for peer in await Peer.filter(chat=chat).select_related("owner"):
-        # TODO: move out of the loop?
-        pts = await State.add_pts(peer.owner, 1)
+
+    participants = await User.filter(chatparticipants__chat_id=chat.id, chatparticipants__left=False).only("id")
+    ptss = await State.add_pts_bulk(participants, 1)
+
+    for user, pts in zip(participants, ptss):
         updates_to_create.append(Update(
-            user=peer.owner, update_type=UpdateType.UPDATE_CHAT_BANNED_RIGHTS, pts=pts, related_id=chat.id,
+            user=user,
+            update_type=UpdateType.UPDATE_CHAT_BANNED_RIGHTS,
+            pts=pts,
+            related_id=chat.id,
         ))
-        user_ids.append(peer.owner_id)
+        user_ids.append(user.id)
 
     updates = UpdatesWithDefaults(
         updates=[

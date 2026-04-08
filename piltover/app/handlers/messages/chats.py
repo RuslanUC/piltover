@@ -100,7 +100,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     for peer in chat_peers.values():
         peer.chat = chat
 
-    updates = await upd.create_chat(chat, list(chat_peers.values()))
+    updates = await upd.update_chat_participants(chat, list(chat_peers.values()))
     updates_msg = await send_message_internal(
         user, chat_peers[user.id], None, None, False,
         author=user, type=MessageType.SERVICE_CHAT_CREATE,
@@ -299,7 +299,7 @@ async def add_chat_user(request: AddChatUser, user: User):
             )
             await chat_peer.chat.refresh_from_db(["participants_count", "version"])
 
-    updates = await upd.create_chat(chat_peer.chat, list(chat_peers.values()))
+    updates = await upd.update_chat_participants(chat_peer.chat, list(chat_peers.values()))
 
     if request.fwd_limit > 0:
         limit = min(request.fwd_limit, 100)
@@ -358,7 +358,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
 
     updates_msg = await upd.send_message(user, messages)
-    updates = await upd.create_chat(chat_peer.chat, list(chat_peers.values()))
+    updates = await upd.update_chat_participants(chat_peer.chat, list(chat_peers.values()))
     if isinstance(updates_msg, Updates):
         updates.updates.extend(updates_msg.updates)
         updates.users.extend(updates_msg.users)
@@ -391,7 +391,7 @@ async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
     await chat_peer.chat.save(update_fields=["version"])
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
-    await upd.create_chat(chat_peer.chat, list(chat_peers.values()))
+    await upd.update_chat_participants(chat_peer.chat, list(chat_peers.values()))
 
     return True
 
