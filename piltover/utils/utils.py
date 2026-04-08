@@ -1,5 +1,5 @@
 import asyncio
-from typing import TypeVar, Coroutine, Callable, Awaitable, Protocol
+from typing import TypeVar, Coroutine, Callable, Awaitable
 
 T = TypeVar("T")
 TAdd = TypeVar("TAdd")

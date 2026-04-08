@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from piltover.context import serialization_ctx
 from piltover.exceptions import Unreachable
 from piltover.layer_converter.manager import LayerConverter

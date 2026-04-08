@@ -1085,7 +1085,7 @@ async def join_channel(request: JoinChannel, user: User) -> Updates:
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="not a discussion")
         linked_channel = await Channel.get_or_none(
             deleted=False, discussion_id=channel.id,
-        ).select_related("usernames")
+        ).select_related("username")
         if linked_channel is None:
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="no linked channel")
         linked_participant = await linked_channel.get_participant(user, True)

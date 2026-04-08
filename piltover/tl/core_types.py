@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sized
+from collections.abc import Iterable
 from gzip import decompress
 from io import BytesIO
 from typing import TypeVar, Generic, TYPE_CHECKING

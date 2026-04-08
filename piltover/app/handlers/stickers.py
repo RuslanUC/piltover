@@ -374,7 +374,7 @@ async def create_sticker_set(request: CreateStickerSet, user: User) -> MessagesS
     if isinstance(request.thumb, InputDocument):
         try:
             thumb_file = await _get_sticker_thumb(request.thumb, user, set_type, request.emojis)
-        except:
+        except Exception:
             await stickerset.delete()
             raise
 
@@ -489,7 +489,7 @@ async def delete_stickerset(request: DeleteStickerSet, user: User) -> bool:
     return True
 
 
-async def _make_covered_list(sets: list[Stickerset], user: User) -> list[StickerSetCovered | StickerSetNoCovered]:
+async def _make_covered_list(sets: list[Stickerset]) -> list[StickerSetCovered | StickerSetNoCovered]:
     sets_ids = [sset.id for sset in sets]
     covers = {file.stickerset_id: file for file in await File.filter(stickerset_id__in=sets_ids, sticker_pos=0)}
 
@@ -516,7 +516,7 @@ async def get_my_stickers(request: GetMyStickers, user: User) -> MyStickers:
     stickersets = await Stickerset.filter(id_filter, owner=user).order_by("-id").limit(limit)
 
     return MyStickers(
-        sets=await _make_covered_list(stickersets, user),
+        sets=await _make_covered_list(stickersets),
         count=await Stickerset.filter(owner=user).count(),
     )
 
@@ -550,7 +550,7 @@ async def change_sticker(request: ChangeSticker, user: User) -> MessagesStickerS
 
 
 @handler.on_request(GetStickerSet)
-async def get_stickerset(request: GetStickerSet, user: User) -> MessagesStickerSet | StickerSetNotModified:
+async def get_stickerset(request: GetStickerSet) -> MessagesStickerSet | StickerSetNotModified:
     if isinstance(request.stickerset, InputStickerSetPremiumGifts):
         return MessagesStickerSet(
             set=StickerSet(
@@ -684,7 +684,7 @@ async def install_stickerset(
 
     if installed.archived:
         return StickerSetInstallResultArchive(
-            sets=await _make_covered_list([stickerset], user),
+            sets=await _make_covered_list([stickerset]),
         )
 
     return StickerSetInstallResultSuccess()
@@ -750,7 +750,7 @@ async def get_archived_stickers(request: GetArchivedStickers, user: User) -> Arc
 
     return ArchivedStickers(
         count=await InstalledStickerset.filter(user=user, archived=True, set__deleted=False).count(),
-        sets=await _make_covered_list([installed.set for installed in installed_sets], user)
+        sets=await _make_covered_list([installed.set for installed in installed_sets])
     )
 
 

@@ -1,8 +1,8 @@
 from os import environ
 from pathlib import Path
-from typing import Literal, Self
+from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
 

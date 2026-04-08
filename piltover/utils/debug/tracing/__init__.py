@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Literal, Self, Any
+from typing import Literal
 
 
 class TraceTime:

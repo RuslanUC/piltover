@@ -91,12 +91,12 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__username")
         if bot is None:
             return None
 
         message.content.message, message.content.entities = __text_bot_selected.format(
-            name=bot.bot.first_name, username=bot.bot.usernames.username,
+            name=bot.bot.first_name, username=bot.bot.username.username,
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
@@ -146,12 +146,12 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__username")
         if bot is None:
             return None
 
         message.content.message, message.content.entities = __text_bot_token.format(
-            name=bot.bot.first_name, username=bot.bot.usernames.username, token=f"{bot.bot_id}:{bot.token_nonce}",
+            name=bot.bot.first_name, username=bot.bot.username.username, token=f"{bot.bot_id}:{bot.token_nonce}",
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
@@ -176,7 +176,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__username")
         if bot is None:
             return None
 
@@ -184,7 +184,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         await bot.save(update_fields=["token_nonce"])
 
         message.content.message, message.content.entities = __text_bot_token_revoked.format(
-            name=bot.bot.first_name, username=bot.bot.usernames.username, token=f"{bot.bot_id}:{bot.token_nonce}",
+            name=bot.bot.first_name, username=bot.bot.username.username, token=f"{bot.bot_id}:{bot.token_nonce}",
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
@@ -206,7 +206,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__usernames")
+        bot = await Bot.get_or_none(owner=peer.owner, bot_id=bot_id).select_related("bot", "bot__username")
         if bot is None:
             return None
 
@@ -216,7 +216,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         comm_plural_s = "s" if commands_count > 1 else ""
 
         message.content.message, message.content.entities = __text_bot_edit_info.format(
-            username=bot.bot.usernames.username,
+            username=bot.bot.username.username,
             name=bot.bot.first_name,
             about=bot.bot.about if bot.bot.about else "🚫",
             description=bot_info.description if bot_info.description else "🚫",

@@ -6,7 +6,7 @@ from loguru import logger
 from tortoise import fields, Model
 
 from piltover.db import models
-from piltover.db.enums import MediaType, ChatBannedRights, FileType
+from piltover.db.enums import MediaType, ChatBannedRights
 from piltover.exceptions import InvalidConstructorException
 from piltover.tl import MessageMediaUnsupported, MessageMediaPhoto, MessageMediaDocument, MessageMediaPoll, \
     MessageMediaContact, MessageMediaGeo, MessageMediaDice

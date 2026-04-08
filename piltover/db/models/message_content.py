@@ -19,7 +19,7 @@ from piltover.tl.base.internal import MessageToFormatContent as MessageToFormatC
 from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.types import PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionEmpty, \
-    MessageEntityMentionName, MessageReplies, PeerChannel
+    MessageEntityMentionName, PeerChannel
 from piltover.tl.types.internal import MessageToFormatContent, MessageToFormatServiceContent
 
 MessageIdRef = Annotated[int, "Ref id"]
