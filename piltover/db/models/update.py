@@ -57,6 +57,7 @@ class Update(Model):
     dialog: models.Dialog | None = fields.ForeignKeyField("models.Dialog", null=True, default=None)
     draft: models.MessageDraft | None = fields.ForeignKeyField("models.MessageDraft", null=True, default=None, on_delete=fields.OnDelete.SET_NULL)
     message: models.MessageRef | None = fields.ForeignKeyField("models.MessageRef", null=True, default=None)
+    encrypted_chat: models.EncryptedChat | None = fields.ForeignKeyField("models.EncryptedChat", null=True, default=None)
 
     user_id: int
     peer_id: int | None
@@ -64,6 +65,7 @@ class Update(Model):
     dialog_id: int | None
     draft_id: int | None
     message_id: int | None
+    encrypted_chat_id: int | None
 
     MESSAGE_PREFETCH_MAYBECACHED = ("message", "message__peer", "message__content", "message__peer__channel")
 
@@ -174,21 +176,18 @@ class Update(Model):
                 )
 
             case UpdateType.USER_UPDATE_NAME:
-                # TODO: fetch user with username prefetched
-                if (peer := await models.Peer.from_user_id(user, self.related_id)) is None:
+                if (target := await models.User.get_or_none(id=self.related_id).select_related("username")) is None:
                     return None
 
-                ucc.add_peer(peer)
+                ucc.add_user(target.id)
 
-                peer_user = peer.peer_user(user)
-                user_username = await peer_user.get_username()
                 return UpdateUserName(
-                    user_id=peer_user.id,
-                    first_name=peer_user.first_name,
-                    last_name=peer_user.last_name,
+                    user_id=target.id,
+                    first_name=target.first_name,
+                    last_name=target.last_name,
                     usernames=[
-                        Username(editable=True, active=True, username=user_username.username)
-                    ] if user_username else [],
+                        Username(editable=True, active=True, username=target.username.username)
+                    ] if target.username else [],
                 )
 
             case UpdateType.UPDATE_CONTACT:
@@ -341,14 +340,18 @@ class Update(Model):
                 if auth_id is None:
                     return None
 
-                if (chat := await models.EncryptedChat.get_or_none(id=self.related_id)) is None:
+                if self.encrypted_chat is None:
                     return None
 
-                other_user_id = chat.from_user_id if user.id == chat.to_user_id else chat.to_user_id
+                if user.id == self.encrypted_chat.to_user_id:
+                    other_user_id = self.encrypted_chat.from_user_id
+                else:
+                    other_user_id = self.encrypted_chat.to_user_id
+
                 ucc.add_user(other_user_id)
 
                 return UpdateEncryption(
-                    chat=chat.to_tl(),
+                    chat=self.encrypted_chat.to_tl(),
                     date=int(self.date.timestamp()),
                 )
 

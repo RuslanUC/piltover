@@ -8,6 +8,7 @@ from typing import Iterable, Self
 
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
+from tortoise.queryset import QuerySet
 
 from piltover.config import APP_CONFIG
 from piltover.cache import Cache
@@ -51,6 +52,8 @@ class User(Model):
 
     accent_color_id: int | None
     profile_color_id: int | None
+
+    username: models.Username | QuerySet[models.Username]
 
     cached_username: models.Username | None | _Missing = _MISSING
 

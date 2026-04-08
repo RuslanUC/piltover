@@ -1296,13 +1296,14 @@ async def update_reactions(user: User, messages: list[MessageRef], peer: Peer, s
 async def encryption_update(user: User, chat: EncryptedChat) -> None:
     new_pts = await State.add_pts(user, 1)
 
-    await Update.filter(user=user, update_type=UpdateType.UPDATE_ENCRYPTION, related_id=chat.id).delete()
+    await Update.filter(user=user, update_type=UpdateType.UPDATE_ENCRYPTION, encrypted_chat_id=chat.id).delete()
     update = await Update.create(
         user=user,
         update_type=UpdateType.UPDATE_ENCRYPTION,
         pts=new_pts,
         pts_count=1,
         related_id=chat.id,
+        encrypted_chat=chat,
     )
     logger.trace(f"Sending UPDATE_ENCRYPTION to user {user.id}")
 
