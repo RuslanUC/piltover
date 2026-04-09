@@ -81,7 +81,7 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
                 pts_count=1,
                 related_id=message.id,
                 related_ids=[message.random_id],
-                user=peer.owner,
+                user=target_user,
             ))
 
         updates_to_create.append(Update(
@@ -89,7 +89,7 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
             pts=new_pts,
             pts_count=1,
             related_id=message.id,
-            user=peer.owner,
+            user=target_user,
             message=message,
         ))
 
@@ -97,7 +97,7 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
             updates=[
                 UpdateNewMessage(
                     # TODO: move out of the loop
-                    message=await message.to_tl(peer.owner, False),
+                    message=await message.to_tl(target_user, False),
                     pts=new_pts,
                     pts_count=1,
                 ),
@@ -109,11 +109,11 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
         if message.random_id:
             updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=message.random_id))
 
-        if peer.owner == user:
+        if target_user == user:
             result = updates
 
-        ignore_auth_id = request_ctx.get().auth_id if ignore_current and peer.owner == user else None
-        await SessionManager.send(updates, peer.owner.id, ignore_auth_id=ignore_auth_id)
+        ignore_auth_id = request_ctx.get().auth_id if ignore_current and target_user == user else None
+        await SessionManager.send(updates, target_user.id, ignore_auth_id=ignore_auth_id)
 
     if updates_to_create:
         await Update.bulk_create(updates_to_create)

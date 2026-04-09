@@ -227,10 +227,12 @@ async def get_messages_query_internal(
 
     query &= Q(id__lt=offset_id)
 
-    final_query = Q(id__in=message_ids_after_offset) | Q(id__in=Subquery(
-        MessageRef.filter(query).limit(limit).order_by("-id").values("id")
-    ))
-    return MessageRef.filter(final_query).order_by("-id").select_related(*MessageRef.PREFETCH_MAYBECACHED)
+    message_ids_before_offset = await MessageRef.filter(
+        query
+    ).limit(limit).order_by("-content__date").values_list("id", flat=True)
+
+    final_query = Q(id__in=message_ids_before_offset) | Q(id__in=message_ids_after_offset)
+    return MessageRef.filter(final_query).order_by("-content__date").select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
 
 async def get_messages_internal(

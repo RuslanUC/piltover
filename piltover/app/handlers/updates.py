@@ -87,6 +87,8 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     else:
         max_pts = server_pts
 
+    logger.trace(f"Getting updates for user {user} from pts {request.pts} to pts {max_pts}")
+
     # NOTE: telegram forces slicing at 2500 pts, we do it at 500 pts just to be safe
     new_updates = await Update.filter(
         user=user, pts__gt=request.pts, pts__lte=max_pts,
@@ -103,13 +105,13 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
         for update in new_updates
         if update.update_type is UpdateType.NEW_MESSAGE
     }
-    all_messages_to_format = [update.message for update in new_updates if update.message_id is not None]
+    all_messages_to_format = [update.message for update in new_updates if update.message is not None]
     all_messages = {
         message.id: message
         for message in await MessageRef.to_tl_bulk_maybecached(all_messages_to_format, user.id)
     }
 
-    if new_updates and not new_secret:
+    if not new_updates and not new_secret:
         return DifferenceEmpty(
             date=int(time()),
             seq=(await get_seq_qts())[0],
@@ -118,14 +120,14 @@ async def get_difference(request: GetDifference | GetDifference_133, user: User)
     new_messages = [
         all_messages[update.message_id]
         for update in new_updates
-        if update.update_type is UpdateType.NEW_MESSAGE
+        if update.update_type is UpdateType.NEW_MESSAGE and update.message is not None
     ]
     new_secret_messages = []
     other_updates = []
     ucc = UsersChatsChannels()
 
     for update in new_updates:
-        if update.update_type is UpdateType.NEW_MESSAGE:
+        if update.update_type is UpdateType.NEW_MESSAGE and update.message is not None:
             ucc.add_message(update.message.content_id)
 
     for update in new_updates:
