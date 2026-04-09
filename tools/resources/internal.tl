@@ -211,7 +211,10 @@ stickerSetToFormatInternal#1445ac69 flags:# id:int access_hash:long title:string
 
 // Uploaded files metadata
 
-// internal.uploadedFileMetadata#efa4ccd5 flags:# multipart:flags.0?true = internal.UploadedFileMetadata;
+internal.uploadStateS3#32884494 upload_id:string = internal.UploadState;
+
+internal.uploadPartStateLocal#8ac413e7 part_id:int = internal.UploadPartState;
+internal.uploadPartStateS3#921cc8ea part_id:int etag:string = internal.UploadPartState;
 
 ---functions---
 

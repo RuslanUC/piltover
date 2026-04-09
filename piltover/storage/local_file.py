@@ -8,6 +8,7 @@ import aiofiles.os
 from loguru import logger
 
 from .base import BaseStorage, BaseStorageComponent, StorageType, StorageBuffer
+from ..tl.base.internal import UploadState, UploadPartState
 
 
 class LocalFileStorageComponent(BaseStorageComponent):
@@ -62,9 +63,13 @@ class LocalFileStorage(BaseStorage):
 
         (self._dir / "uploading").mkdir(parents=True, exist_ok=True)
 
+    async def init_upload(self, file_id: UUID, suffix: str | None = None) -> UploadState | None:
+        return None
+
     async def save_part(
-            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, suffix: str | None = None,
-    ) -> None:
+            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, state: UploadState | None,
+            suffix: str | None = None,
+    ) -> UploadPartState:
         file_name = str(file_id)
         if suffix is not None:
             file_name += f"-{suffix}"
@@ -79,7 +84,8 @@ class LocalFileStorage(BaseStorage):
             await f.write(data)
 
     async def finalize_upload_as(
-            self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
+            self, file_id: UUID, as_: StorageType, parts: list[UploadPartState], state: UploadState | None,
+            suffix: str | None = None,
     ) -> None:
         file_name = str(file_id)
         if suffix is not None:
@@ -91,7 +97,7 @@ class LocalFileStorage(BaseStorage):
 
         await aiofiles.os.rename(src_path, dst_path)
 
-        if parts_num <= 1:
+        if len(parts) <= 1:
             return
 
         async with aiofiles.open(dst_path, "r+b") as f_out:

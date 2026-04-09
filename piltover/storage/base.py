@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from uuid import UUID
 
+from piltover.tl.base.internal import UploadState, UploadPartState
+
 
 class StorageType(StrEnum):
     PHOTO = "photos"
@@ -23,14 +25,20 @@ class BaseStorageComponent(ABC):
 
 class BaseStorage(ABC):
     @abstractmethod
+    async def init_upload(self, file_id: UUID, suffix: str | None = None) -> UploadState | None:
+        ...
+
+    @abstractmethod
     async def save_part(
-            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, suffix: str | None = None,
-    ) -> None:
+            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, state: UploadState | None,
+            suffix: str | None = None,
+    ) -> UploadPartState:
         ...
 
     @abstractmethod
     async def finalize_upload_as(
-            self, file_id: UUID, as_: StorageType, parts_num: int, suffix: str | None = None,
+            self, file_id: UUID, as_: StorageType, parts: list[UploadPartState], state: UploadState | None,
+            suffix: str | None = None,
     ) -> None:
         ...
 
