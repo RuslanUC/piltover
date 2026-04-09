@@ -5,5 +5,9 @@ database_connection_string = "sqlite://:memory:"
 [system.cache]
 backend = "memory"
 
+[system.storage]
+backend = "local"
+directory = "data/testing"
+
 [system.debug_tracing]
 backend = "console"

@@ -51,6 +51,7 @@ dependencies = [
     "pylinkify @ git+https://github.com/RuslanUC/pylinkify.git",
     "pydantic-settings (>=2.13.1,<3.0.0)",
     "tortoise-orm-trace-unused-fields (==0.1.0b2)",
+    "s3lite (>=0.1.11,<0.2.0)",
 ]
 
 [project.urls]

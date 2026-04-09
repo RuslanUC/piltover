@@ -2,7 +2,7 @@ from os import environ
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
 
@@ -11,6 +11,18 @@ class _CacheConfig(BaseModel):
     endpoint: str | None = None
     port: int | None = None
     db: str | None = None
+
+
+class _StorageLocalConfig(BaseModel):
+    backend: Literal["local"]
+    directory: Path
+
+
+class _StorageS3Config(BaseModel):
+    backend: Literal["s3"]
+    endpoint: str
+    access_key_id: str
+    access_key_secret: str
 
 
 class _TracingConfig(BaseModel):
@@ -24,6 +36,7 @@ class _System(BaseModel):
     rabbitmq_address: str | None = None
     redis_address: str | None = None
     cache: _CacheConfig
+    storage: _StorageLocalConfig | _StorageS3Config = Field(discriminator="backend")
     debug_tracing: _TracingConfig
 
 

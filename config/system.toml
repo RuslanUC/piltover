@@ -25,6 +25,16 @@ port = 6379
 # Cache database number. Only for "redis" cache type.
 db = 0
 
+[system.storage]
+backend = "local"
+directory = "data"
+
+#[system.storage]
+#backend = "s3"
+#endpoint = "http://127.0.0.1:8081"
+#access_key_id = "..."
+#access_key_secret = "..."
+
 # Debug tracing.
 [system.debug_tracing]
 # Tracing backend. Available backends: console, zipkin.
