@@ -30,7 +30,7 @@ class BaseStorage(ABC):
 
     @abstractmethod
     async def save_part(
-            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, state: UploadState | None,
+            self, file_id: UUID, part_id: int, data: StorageBuffer, state: UploadState | None,
             suffix: str | None = None,
     ) -> UploadPartState:
         ...

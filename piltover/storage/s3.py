@@ -4,7 +4,7 @@ from s3lite import Client
 
 from .base import BaseStorage, BaseStorageComponent, StorageType, StorageBuffer
 from ..tl.base.internal import UploadPartState, UploadState
-from ..tl.types.internal import UploadStateS3
+from ..tl.types.internal import UploadStateS3, UploadPartStateS3
 
 
 class S3FileStorageComponent(BaseStorageComponent):
@@ -51,7 +51,7 @@ class S3FileStorage(BaseStorage):
         self._documents = S3FileStorageDocuments(self._client)
         self._photos = S3FileStoragePhotos(self._client)
 
-    async def init_upload(self, file_id: UUID, suffix: str | None = None) -> UploadState | None:
+    async def init_upload(self, file_id: UUID, suffix: str | None = None) -> UploadState:
         file_name = str(file_id)
         if suffix is not None:
             file_name += f"-{suffix}"
@@ -60,14 +60,15 @@ class S3FileStorage(BaseStorage):
         return UploadStateS3(upload_id=upload_id)
 
     async def save_part(
-            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, state: UploadState | None,
+            self, file_id: UUID, part_id: int, data: StorageBuffer, state: UploadState | None,
             suffix: str | None = None,
     ) -> UploadPartState:
         file_name = str(file_id)
         if suffix is not None:
             file_name += f"-{suffix}"
 
-        ...  # TODO: upload part
+        etag = await self._client.upload_object_part("uploading", file_name, state.upload_id, part_id + 1, data)
+        return UploadPartStateS3(part_id=part_id + 1, etag=etag)
 
     async def finalize_upload_as(
             self, file_id: UUID, as_: StorageType, parts: list[UploadPartState], state: UploadState | None,

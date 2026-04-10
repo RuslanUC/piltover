@@ -155,11 +155,13 @@ async def resize_photo(
 
         save_file_id = file_id if new_file_id is None else new_file_id
         if new_file_id is not None and new_as_document:
-            await storage.save_part(new_file_id, 0, resized.getbuffer(), True)
-            await storage.finalize_upload_as(new_file_id, StorageType.DOCUMENT, 0)
+            upload_state = await storage.init_upload(new_file_id)
+            part_state = await storage.save_part(new_file_id, 0, resized.getbuffer(), upload_state)
+            await storage.finalize_upload_as(new_file_id, StorageType.DOCUMENT, [part_state], upload_state)
 
-        await storage.save_part(save_file_id, 0, resized.getbuffer(), True, str(width))
-        await storage.finalize_upload_as(save_file_id, StorageType.PHOTO, 0, str(width))
+        upload_state = await storage.init_upload(save_file_id, str(width))
+        part_state = await storage.save_part(save_file_id, 0, resized.getbuffer(), upload_state, str(width))
+        await storage.finalize_upload_as(save_file_id, StorageType.PHOTO, [part_state], upload_state, str(width))
 
         result.append({
             "type_": sizes[idx],

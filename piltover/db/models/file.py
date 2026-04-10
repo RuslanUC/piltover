@@ -173,8 +173,9 @@ class File(Model):
         is_document = True
 
         if self.type is not FileType.PHOTO and thumb_bytes is not None:
-            await storage.save_part(self.physical_id, 0, thumb_bytes, True, "thumb")
-            await storage.finalize_upload_as(self.physical_id, StorageType.PHOTO, 0, "thumb")
+            upload_state = await storage.init_upload(self.physical_id, "thumb")
+            part_state = await storage.save_part(self.physical_id, 0, thumb_bytes, upload_state, "thumb")
+            await storage.finalize_upload_as(self.physical_id, StorageType.PHOTO, [part_state], upload_state, "thumb")
             thumb_suffix = "thumb"
             has_thumbnail = True
             is_document = False

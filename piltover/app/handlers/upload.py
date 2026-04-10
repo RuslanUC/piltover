@@ -1,3 +1,4 @@
+from io import BytesIO
 from time import time
 from uuid import UUID
 
@@ -11,7 +12,7 @@ from piltover.db.enums import PeerType, FileType
 from piltover.db.models import User, UploadingFile, UploadingFilePart, File, Peer, Stickerset
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, \
-    InputEncryptedFileLocation, InputStickerSetThumb
+    InputEncryptedFileLocation, InputStickerSetThumb, TLObject
 from piltover.tl.functions.upload import SaveFilePart, SaveBigFilePart, GetFile
 from piltover.tl.types.storage import FileUnknown, FilePartial, FileJpeg
 from piltover.tl.types.upload import File as TLFile
@@ -36,11 +37,24 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
         defaults["mime"] = mime
         logger.trace(f"Resolved file mime type from first part: {mime!r}")
 
+    storage = request_ctx.get().storage
+
     with measure_time("UploadingFile.get_or_create(...)"):
         file, created = await UploadingFile.get_or_create(user=user, file_id=request.file_id, defaults=defaults)
-        if not created and request.file_part == 0 and file.mime is None and mime is not None:
-            file.mime = mime
-            await file.save(update_fields=["mime"])
+        if not created:
+            to_save = []
+
+            upload_state = await storage.init_upload(file.physical_id)
+            serialized_state = upload_state.write() if upload_state else None
+            if serialized_state != file.state:
+                to_save.append("state")
+
+            if request.file_part == 0 and file.mime is None and mime is not None:
+                file.mime = mime
+                to_save.append("mime")
+
+            if to_save:
+                await file.save(update_fields=to_save)
 
     with measure_time("<get last part>"):
         last_part = await UploadingFilePart.filter(file=file).order_by("-part_id").first()
@@ -65,15 +79,21 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
         raise ErrorRpc(error_code=400, error_message="FILE_PART_EMPTY")
 
     with measure_time("UploadingFilePart.get_or_create"):
-        part, created = await UploadingFilePart.get_or_create(file=file, part_id=request.file_part, defaults={"size": size})
+        part, created = await UploadingFilePart.get_or_create(file=file, part_id=request.file_part, defaults={
+            "size": size,
+        })
     if not created:
         if part.size == size:
             return True
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
 
-    storage = request_ctx.get().storage
+    state = TLObject.read(BytesIO(file.state)) if file.state else None
+
     with measure_time("storage.save_part(...)"):
-        await storage.save_part(file.physical_id, request.file_part, request.bytes_, maybe_last)
+        part_state = await storage.save_part(file.physical_id, request.file_part, request.bytes_, state)
+
+    part.state = part_state.write()
+    await part.save(update_fields=["state"])
 
     return True
 

@@ -9,6 +9,7 @@ from loguru import logger
 
 from .base import BaseStorage, BaseStorageComponent, StorageType, StorageBuffer
 from ..tl.base.internal import UploadState, UploadPartState
+from ..tl.types.internal import UploadPartStateEmpty
 
 
 class LocalFileStorageComponent(BaseStorageComponent):
@@ -67,7 +68,7 @@ class LocalFileStorage(BaseStorage):
         return None
 
     async def save_part(
-            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, state: UploadState | None,
+            self, file_id: UUID, part_id: int, data: StorageBuffer, state: UploadState | None,
             suffix: str | None = None,
     ) -> UploadPartState:
         file_name = str(file_id)
@@ -82,6 +83,8 @@ class LocalFileStorage(BaseStorage):
 
         async with aiofiles.open(file_path, "r+b") as f:
             await f.write(data)
+
+        return UploadPartStateEmpty(part_id=part_id)
 
     async def finalize_upload_as(
             self, file_id: UUID, as_: StorageType, parts: list[UploadPartState], state: UploadState | None,
@@ -102,7 +105,7 @@ class LocalFileStorage(BaseStorage):
 
         async with aiofiles.open(dst_path, "r+b") as f_out:
             await f_out.seek(0, os.SEEK_END)
-            for part_id in range(1, parts_num):
+            for part_id in range(1, parts[-1].part_id + 1):
                 append_filename = self._dir / "uploading" / f"{file_name}.part{part_id}"
                 async with aiofiles.open(append_filename, "rb") as f_in:
                     await f_out.write(await f_in.read())

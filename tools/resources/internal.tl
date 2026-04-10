@@ -213,7 +213,7 @@ stickerSetToFormatInternal#1445ac69 flags:# id:int access_hash:long title:string
 
 internal.uploadStateS3#32884494 upload_id:string = internal.UploadState;
 
-internal.uploadPartStateLocal#8ac413e7 part_id:int = internal.UploadPartState;
+internal.uploadPartStateEmpty#8ac413e7 part_id:int = internal.UploadPartState;
 internal.uploadPartStateS3#921cc8ea part_id:int etag:string = internal.UploadPartState;
 
 ---functions---

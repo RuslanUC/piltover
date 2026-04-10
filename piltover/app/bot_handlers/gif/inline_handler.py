@@ -60,9 +60,12 @@ async def _get_or_download_gif(
     part_id = 0
     size = 0
 
+    upload_state = await storage.init_upload(physical_id)
+    parts = []
+
     async with client.stream("GET", url) as resp:
         async for chunk in resp.aiter_bytes(1024 * 1024):
-            await storage.save_part(physical_id, part_id, chunk, False)
+            parts.append(await storage.save_part(physical_id, part_id, chunk, upload_state))
             part_id += 1
             size += len(chunk)
 
@@ -79,7 +82,7 @@ async def _get_or_download_gif(
         duration=duration,
     )
 
-    await storage.finalize_upload_as(physical_id, StorageType.DOCUMENT, part_id)
+    await storage.finalize_upload_as(physical_id, StorageType.DOCUMENT, parts, upload_state)
 
     from piltover.app.utils.utils import extract_video_metadata
 

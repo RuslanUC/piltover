@@ -10,6 +10,7 @@ from piltover.db import models
 from piltover.db.enums import FileType
 from piltover.exceptions import ErrorRpc
 from piltover.storage.base import BaseStorage, StorageType
+from piltover.tl import TLObject
 from piltover.utils.debug import measure_time
 
 
@@ -21,6 +22,7 @@ class UploadingFile(Model):
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     mime: str | None = fields.CharField(max_length=64, null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
+    state: bytes | None = fields.BinaryField(null=True)
 
     class Meta:
         unique_together = (
@@ -70,8 +72,10 @@ class UploadingFile(Model):
             finalize_as = StorageType.DOCUMENT
             component = storage.documents
 
+        part_states = [TLObject.read(BytesIO(part.state)) for part in parts]
+        state = TLObject.read(BytesIO(self.state)) if self.state else None
         with measure_time("storage.finalize_upload_as"):
-            await storage.finalize_upload_as(self.physical_id, finalize_as, len(parts))
+            await storage.finalize_upload_as(self.physical_id, finalize_as, part_states, state)
 
         if not force_fallback_mime and self.mime is not None and self.mime.startswith("video/"):
             from piltover.app.utils.utils import extract_video_metadata
@@ -97,6 +101,7 @@ class UploadingFilePart(Model):
     physical_id: UUID = fields.UUIDField(default=uuid4)
     size: int = fields.IntField()
     file: UploadingFile = fields.ForeignKeyField("models.UploadingFile", on_delete=fields.CASCADE)
+    state: bytes | None = fields.BinaryField(null=True)
 
     class Meta:
         unique_together = (
