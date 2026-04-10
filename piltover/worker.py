@@ -13,13 +13,14 @@ from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from tortoise.transactions import in_transaction
 
 from piltover._faster_taskiq_inmemory_result_backend import FasterInmemoryResultBackend
+from piltover.config import SYSTEM_CONFIG
 from piltover.db.enums import PeerType
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.in_memory_broker import InMemoryMessageBroker
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
 from piltover.session import SessionManager
-from piltover.storage import LocalFileStorage
+from piltover.storage import LocalFileStorage, S3FileStorage
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
 from piltover.utils.debug import measure_time
@@ -37,7 +38,7 @@ except ImportError:
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
 from piltover.db.models import User, Peer, MessageRef, MessageContent
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import TLObject, RpcError, TLRequest, layer
 from piltover.tl.core_types import RpcResult
 from piltover.utils import get_public_key_fingerprint
@@ -124,7 +125,20 @@ class Worker(MessageHandler):
     ):
         super().__init__()
 
-        self._storage = LocalFileStorage(data_dir)
+        if SYSTEM_CONFIG.storage.backend == "local":
+            self._storage = LocalFileStorage(data_dir)
+        elif SYSTEM_CONFIG.storage.backend == "s3":
+            self._storage = S3FileStorage(
+                endpoint=SYSTEM_CONFIG.storage.endpoint,
+                access_key_id=SYSTEM_CONFIG.storage.access_key_id,
+                access_key_secret=SYSTEM_CONFIG.storage.access_key_secret,
+                uploading_bucket=SYSTEM_CONFIG.storage.pending_uploads_bucket,
+                documents_bucket=SYSTEM_CONFIG.storage.documents_bucket,
+                photos_bucket=SYSTEM_CONFIG.storage.photos_bucket,
+            )
+        else:
+            raise Unreachable
+
         self.public_key = public_key
         self.fingerprint: int = get_public_key_fingerprint(self.public_key)
 

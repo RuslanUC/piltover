@@ -1,0 +1,18 @@
+[system]
+data_dir = "data/testing"
+database_connection_string = "sqlite://:memory:"
+
+[system.cache]
+backend = "memory"
+
+[system.storage]
+backend = "s3"
+endpoint = "http://127.0.0.1:9000"
+access_key_id = "minioadmin"
+access_key_secret = "minioadmin"
+pending_uploads_bucket = "piltover-test-uploading"
+documents_bucket = "piltover-test-documents"
+photos_bucket = "piltover-test-photos"
+
+[system.debug_tracing]
+backend = "console"

@@ -155,5 +155,5 @@ asyncio_default_test_loop_scope = "function"
 [tool.pytest_env]
 APP_CONFIG = "tests/config/app.toml"
 GATEWAY_CONFIG = "tests/config/gateway.toml"
-SYSTEM_CONFIG = "tests/config/system.toml"
+SYSTEM_CONFIG = { value = "tests/config/system.local.toml", skip_if_set = true }
 WORKER_CONFIG = "tests/config/worker.toml"

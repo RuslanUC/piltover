@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import av
+import httpx
 from PIL.Image import Image, open as img_open
 from av import VideoFrame
 from loguru import logger
@@ -98,7 +99,13 @@ video_executor = ThreadPoolExecutor(thread_name_prefix="VideoMetadataWorker")
 def _resize_image_internal(
         location: str, to_size: int, out_format: str | None, force_resize: bool,
 ) -> tuple[BytesIO | None, int, int]:
-    img = img_open(location)
+    if location.startswith("http://") or location.startswith("https://"):
+        # TODO: probably A VERY BAD idea
+        file = BytesIO(httpx.get(location).read())
+    else:
+        file = location
+
+    img = img_open(file)
     img.load()
 
     width, height = img.size
@@ -175,7 +182,13 @@ async def resize_photo(
 
 def _get_image_dims(location: str) -> tuple[int, int] | None:
     try:
-        img = img_open(location)
+        if location.startswith("http://") or location.startswith("https://"):
+            # TODO: probably A VERY BAD idea
+            file = BytesIO(httpx.get(location).read())
+        else:
+            file = location
+
+        img = img_open(file)
         img.load()
     except Exception as e:
         logger.opt(exception=e).error("Failed to load image!")
@@ -192,7 +205,13 @@ async def get_image_dims(storage: BaseStorage, file_id: UUID) -> tuple[int, int]
 
 
 def _generate_stripped(location: str, size: int) -> bytes:
-    img = img_open(location)
+    if location.startswith("http://") or location.startswith("https://"):
+        # TODO: probably A VERY BAD idea
+        file = BytesIO(httpx.get(location).read())
+    else:
+        file = location
+
+    img = img_open(file)
     img_file = BytesIO()
 
     img = img.convert("RGB").resize((size, size))

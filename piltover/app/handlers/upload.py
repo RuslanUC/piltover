@@ -41,20 +41,21 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
 
     with measure_time("UploadingFile.get_or_create(...)"):
         file, created = await UploadingFile.get_or_create(user=user, file_id=request.file_id, defaults=defaults)
-        if not created:
-            to_save = []
+        to_save = []
 
+        if created:
             upload_state = await storage.init_upload(file.physical_id)
             serialized_state = upload_state.write() if upload_state else None
             if serialized_state != file.state:
+                file.state = serialized_state
                 to_save.append("state")
 
-            if request.file_part == 0 and file.mime is None and mime is not None:
-                file.mime = mime
-                to_save.append("mime")
+        if not created and request.file_part == 0 and file.mime is None and mime is not None:
+            file.mime = mime
+            to_save.append("mime")
 
-            if to_save:
-                await file.save(update_fields=to_save)
+        if to_save:
+            await file.save(update_fields=to_save)
 
     with measure_time("<get last part>"):
         last_part = await UploadingFilePart.filter(file=file).order_by("-part_id").first()
