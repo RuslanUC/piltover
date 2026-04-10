@@ -1,3 +1,4 @@
+from typing import cast
 from uuid import UUID
 
 from s3lite import Client
@@ -8,9 +9,9 @@ from ..tl.types.internal import UploadStateS3, UploadPartStateS3
 
 
 class S3FileStorageComponent(BaseStorageComponent):
-    def __init__(self, client: Client, component_name: str) -> None:
+    def __init__(self, client: Client, bucket_name: str) -> None:
         self._client = client
-        self._bucket = component_name
+        self._bucket = bucket_name
 
     async def get_part(
             self, file_id: UUID, offset: int, length: int, suffix: str | None = None,
@@ -31,25 +32,15 @@ class S3FileStorageComponent(BaseStorageComponent):
         return self._client.share(self._bucket, file_name, ttl=60)
 
 
-class S3FileStorageDocuments(S3FileStorageComponent):
-    NAME = "documents"
-
-    def __init__(self, client: Client) -> None:
-        super().__init__(client, self.NAME)
-
-
-class S3FileStoragePhotos(S3FileStorageComponent):
-    NAME = "photos"
-
-    def __init__(self, client: Client) -> None:
-        super().__init__(client, self.NAME)
-
-
 class S3FileStorage(BaseStorage):
-    def __init__(self, endpoint: str, access_key_id: str, access_key_secret: str) -> None:
+    def __init__(
+            self, endpoint: str, access_key_id: str, access_key_secret: str,
+            uploading_bucket: str, documents_bucket: str, photos_bucket: str,
+    ) -> None:
         self._client = Client(access_key_id, access_key_secret, endpoint)
-        self._documents = S3FileStorageDocuments(self._client)
-        self._photos = S3FileStoragePhotos(self._client)
+        self._documents = S3FileStorageComponent(self._client, documents_bucket)
+        self._photos = S3FileStorageComponent(self._client, photos_bucket)
+        self._pending_uploads_bucket = uploading_bucket
 
     async def init_upload(self, file_id: UUID, suffix: str | None = None) -> UploadState:
         file_name = str(file_id)
@@ -78,10 +69,10 @@ class S3FileStorage(BaseStorage):
         if suffix is not None:
             file_name += f"-{suffix}"
 
-        # TODO: finalize multipart upload
-        # TODO: copy object to specific bucket
-        # TODO: remove object from "uploading" bucket
-        ...
+        parts_s3 = [(part.part_id, part.etag) for part in parts]
+        await self._client.finish_multipart_upload("uploading", file_name, state.upload_id, parts_s3)
+        await self._client.copy_object("uploading", file_name, cast(str, as_.value), file_name)
+        await self._client.delete_object("uploading", file_name)
 
     @property
     def documents(self) -> BaseStorageComponent:

@@ -23,6 +23,9 @@ class _StorageS3Config(BaseModel):
     endpoint: str
     access_key_id: str
     access_key_secret: str
+    pending_uploads_bucket: str = "uploading"
+    documents_bucket: str = "documents"
+    photos_bucket: str = "photos"
 
 
 class _TracingConfig(BaseModel):

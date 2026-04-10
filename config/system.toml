@@ -34,6 +34,9 @@ directory = "data"
 #endpoint = "http://127.0.0.1:8081"
 #access_key_id = "..."
 #access_key_secret = "..."
+#pending_uploads_bucket = "uploading"
+#documents_bucket = "documents"
+#photos_bucket = "photos"
 
 # Debug tracing.
 [system.debug_tracing]
