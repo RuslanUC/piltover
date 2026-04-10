@@ -66,6 +66,8 @@ class S3FileStorage(BaseStorage):
         if not isinstance(data, bytes):
             raise RuntimeError(f"\"data\" must be of \"bytes\" type, got \"{data.__class__.__name__}\"")
 
+        # TODO: s3 only supports parts >=5mb, do something about that.
+        #  maybe buffer parts somewhere?
         etag = await self._client.upload_object_part(
             self._pending_uploads_bucket, file_name, state.upload_id, part_id + 1, data,
         )

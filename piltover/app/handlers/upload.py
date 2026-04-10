@@ -5,6 +5,7 @@ from uuid import UUID
 import magic
 from loguru import logger
 from tortoise.expressions import Q
+from tortoise.transactions import in_transaction
 
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.context import request_ctx
@@ -39,7 +40,7 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
 
     storage = request_ctx.get().storage
 
-    with measure_time("UploadingFile.get_or_create(...)"):
+    async with in_transaction():
         file, created = await UploadingFile.get_or_create(user=user, file_id=request.file_id, defaults=defaults)
         to_save = []
 

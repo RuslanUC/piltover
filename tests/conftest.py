@@ -249,7 +249,8 @@ def _async_task_done_callback(task: Task) -> None:
         if task.exception() is not None:
             logger.opt(exception=task.exception()).error("Async task raised an exception")
     except CancelledError as e:
-        logger.opt(exception=e).error("Async task was cancelled")
+        # logger.opt(exception=e).error("Async task was cancelled")
+        ...
 
 
 class _DebugTask(asyncio.Task):
@@ -257,7 +258,7 @@ class _DebugTask(asyncio.Task):
         stack = self.get_stack()
         if stack:
             formatted = "".join(traceback.format_stack())
-            logger.error(f"Async task is being cancelled from:\n{formatted}")
+            # logger.error(f"Async task is being cancelled from:\n{formatted}")
         return super().cancel(*args, **kwargs)
 
     @classmethod
