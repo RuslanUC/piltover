@@ -397,6 +397,7 @@ def resolve_fields_for_check(c: Combinator) -> list[Field]:
 
 def start():
     if not DRY_RUN:
+        shutil.rmtree(DESTINATION_PATH / "base", ignore_errors=True)
         shutil.rmtree(DESTINATION_PATH / "types", ignore_errors=True)
         shutil.rmtree(DESTINATION_PATH / "functions", ignore_errors=True)
 
@@ -444,7 +445,6 @@ def start():
             field.full_type = arg_type
 
     for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
-        third_dot = "." if "." in c.qualname else ""
         slots = [f"\"{field.name}\"" for field in c.fields if not field.is_flag]
         slots.append("")  # For trailing comma
 
@@ -602,13 +602,13 @@ def start():
         imports = [
             f"from __future__ import annotations",
             f"from io import BytesIO",
-            f"from {third_dot}..primitives import *",
-            f"from {third_dot}.. import types",
-            f"from {third_dot}..tl_object import TLObject",
+            f"from ..primitives import *",
+            f"from .. import types",
+            f"from ..tl_object import TLObject",
         ]
 
         if c.section == "types":
-            imports.append(f"from {third_dot}.. import placeholders as tl_placeholders")
+            imports.append(f"from .. import placeholders as tl_placeholders")
 
         imports.append(f"")
 
@@ -616,19 +616,19 @@ def start():
             imports.extend((
                 f"from typing import TYPE_CHECKING",
                 f"if TYPE_CHECKING:",
-                f"    from {third_dot}.. import base",
+                f"    from .. import base",
                 f"    from piltover.context import NeedContextValuesContext",
                 f"",
             ))
         else:
             imports.extend((
-                f"from {third_dot}.. import base",
+                f"from .. import base",
                 f"",
             ))
 
         base_cls = "TLObject"
         if c.section == "functions":
-            imports.append(f"from {third_dot}..tl_object import TLRequest")
+            imports.append(f"from ..tl_object import TLRequest")
             if not c.typespace and c.type == "X":
                 result_type = "TLObject"
             else:
@@ -680,11 +680,11 @@ def start():
             f"",
         ]
 
-        dir_path = DESTINATION_PATH / c.section / c.namespace
+        file_name = f"{c.namespace}.py" if c.namespace else "__init__.py"
+        out_path = DESTINATION_PATH / c.section / file_name
         if not DRY_RUN:
-            dir_path.mkdir(parents=True, exist_ok=True)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        out_path = dir_path / f"__init__.py"
         if not out_path.exists():
             with open(out_path, "w") as f:
                 f.write("# mypy: disable-error-code=arg-type\n\n")
@@ -695,19 +695,16 @@ def start():
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
         d[c.namespace].append(c.name)
 
-    for namespace, types in namespaces_to_constructors.items():
-        out_path = DESTINATION_PATH / "types" / namespace / "__init__.py"
-
-        if not namespace:
-            with open(out_path, "a") as f:
-                f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
+    with open(DESTINATION_PATH / "types" / "__init__.py", "a") as f:
+        f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
 
     for namespace, types in namespaces_to_types.items():
-        base_dir = DESTINATION_PATH / "base" / namespace
+        file_name = f"{namespace}.py" if namespace else "__init__.py"
+        base_file = DESTINATION_PATH / "base" / file_name
         if not DRY_RUN:
-            base_dir.mkdir(parents=True, exist_ok=True)
+            base_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(base_dir / "__init__.py", "w") as f:
+        with open(base_file, "w") as f:
             f.write(f"{WARNING}\n\n")
             f.write("from piltover import tl\n\n")
 
@@ -736,12 +733,8 @@ def start():
 
                 f.write("\n")
 
-    for namespace, types in namespaces_to_functions.items():
-        out_path = DESTINATION_PATH / "functions" / namespace / "__init__.py"
-
-        if not namespace:
-            with open(out_path, "a") as f:
-                f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_functions))}\n")
+    with open(DESTINATION_PATH / "functions" / "__init__.py", "a") as f:
+        f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_functions))}\n")
 
     with open(DESTINATION_PATH / "all.py", "w") as f:
         f.write(WARNING + "\n\n")
