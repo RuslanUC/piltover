@@ -19,11 +19,11 @@ database_connection_string = "sqlite://data/secrets/piltover.db"
 # Cache backend. Available backends: memory, redis, memcached.
 backend = "memory"
 # Cache endpoint. Only for "redis" and "memcached" cache types.
-endpoint = "127.0.0.1"
+#endpoint = "127.0.0.1"
 # Cache port. Only for "redis" and "memcached" cache types.
-port = 6379
+#port = 6379
 # Cache database number. Only for "redis" cache type.
-db = 0
+#db = "0"
 
 # Debug tracing.
 [system.debug_tracing]
