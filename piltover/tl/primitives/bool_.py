@@ -12,7 +12,7 @@ class Bool(ABC):
     def read(cls, stream: BytesIO) -> bool:
         bool_constructor = stream.read(4)
         if bool_constructor not in (primitives.BOOL_TRUE, primitives.BOOL_FALSE):
-            raise InvalidConstructorException(bool_constructor, False, stream.read())
+            raise InvalidConstructorException(bool_constructor, stream.read())
 
         return bool_constructor == primitives.BOOL_TRUE
 

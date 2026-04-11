@@ -254,10 +254,10 @@ def _async_task_done_callback(task: Task) -> None:
 
 class _DebugTask(asyncio.Task):
     def cancel(self, *args, **kwargs) -> bool:
-        stack = self.get_stack()
-        if stack:
-            formatted = "".join(traceback.format_stack())
-            logger.error(f"Async task is being cancelled from:\n{formatted}")
+        # stack = self.get_stack()
+        # if stack:
+        #     formatted = "".join(traceback.format_stack())
+        #     logger.error(f"Async task is being cancelled from:\n{formatted}")
         return super().cancel(*args, **kwargs)
 
     @classmethod
@@ -272,7 +272,7 @@ class CustomEventLoop(DefaultEventLoopPolicy._loop_factory):
 
     def create_task(self, *args, **kwargs) -> Task:
         task: Task = super().create_task(*args, **kwargs)
-        task.add_done_callback(_async_task_done_callback)
+        # task.add_done_callback(_async_task_done_callback)
         return task
 
 

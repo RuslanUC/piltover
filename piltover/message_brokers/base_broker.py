@@ -191,9 +191,9 @@ class BaseMessageBroker(ABC):
                 continue
             try:
                 if isinstance(message.obj, ObjectWithLayerRequirement):
-                    await session.send(deepcopy(message.obj))
+                    await session.enqueue(deepcopy(message.obj), False)
                 else:
-                    await session.send(message.obj)
+                    await session.enqueue(message.obj, False)
             except Exception as e:
                 logger.opt(exception=e).error("Error occurred while sending message")
 

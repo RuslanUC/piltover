@@ -29,7 +29,7 @@ class Vector(list[T], ABC):
     @classmethod
     def check_constructor(cls, stream: BytesIO) -> None:
         if (constructor := stream.read(4)) != primitives.VECTOR:
-            raise InvalidConstructorException(constructor, False, stream.read())
+            raise InvalidConstructorException(constructor, stream.read())
 
     @classmethod
     def read_header(cls, stream: BytesIO) -> int:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import struct
+from asyncio import Event
 from io import BytesIO
 from time import time
 from typing import TYPE_CHECKING
@@ -16,22 +17,18 @@ from mtproto.transport.packets import MessagePacket, EncryptedMessagePacket, Une
 from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
 from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from taskiq.kicker import AsyncKicker
-from tortoise.expressions import Q
 
 from piltover._keygen_handlers import KEYGEN_HANDLERS
 from piltover._system_handlers import SYSTEM_HANDLERS
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import SerializationContext, ContextValues
-from piltover.db.enums import PrivacyRuleKeyType
-from piltover.db.models import ChatParticipant, Peer, Contact, PrivacyRule, Presence, PollVote, MessageRef, \
-    InstalledStickerset
-from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable
+from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable, UnknownConstructorException
 from piltover.session import Session, SessionManager
 from piltover.tl import NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, ReqPqMulti
 from piltover.tl.core_types import TLObject, MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.functions.internal import CallRpc
-from piltover.tl.types.internal import RpcResponse, NeedsContextValues
+from piltover.tl.types.internal import RpcResponse
 from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
 
@@ -45,7 +42,7 @@ _check_req_pq_tlid = (Int.write(ReqPq.tlid(), False), Int.write(ReqPqMulti.tlid(
 class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "gen_auth_data", "empty_session", "disconnect_timeout",
-        "msg_id_values", "out_seq_no", "write_lock", "active_sessions", "active_keys",
+        "msg_id_values", "out_seq_no", "write_lock", "active_sessions", "active_keys", "message_available",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -64,6 +61,8 @@ class Client:
 
         self.active_sessions = LRU(4, callback=self._session_evicted)
         self.active_keys = LRU(8)
+
+        self.message_available = Event()
 
     @staticmethod
     def _session_evicted(_: ..., session: Session) -> None:
@@ -146,18 +145,27 @@ class Client:
 
         await self._write_packet(encrypted)
 
-    async def send(self, obj: TLObject, session: Session, in_reply: bool) -> None:
-        with measure_time(".send(...)"):
-            context_values = None
-            if isinstance(obj, NeedsContextValues):
-                with measure_time("._resolve_context_values(...)"):
-                    context_values = await self._resolve_context_values(obj, session)
-                obj = obj.obj
+    async def _write_message(
+            self, message_id: int, seq_no: int, data: bytes, session: Session,
+    ) -> None:
+        if not session.auth_data or session.auth_data.auth_key is None:
+            raise Unreachable("Trying to send encrypted response, but auth_key is empty")
 
-            with measure_time("session.pack_message(...)"):
-                message = session.pack_message(obj, in_reply)
-            with measure_time("._send_message()"):
-                await self._send_message(message, session, context_values)
+        logger.debug(f"Sending message {message_id} to {session.session_id}")
+
+        session.update_salts_maybe(self.server.salt_key)
+
+        decrypted = DecryptedMessagePacket(
+            salt=session.salt_now.salt,
+            session_id=session.session_id,
+            message_id=message_id,
+            seq_no=seq_no,
+            data=data,
+        )
+
+        encrypted = decrypted.encrypt(session.auth_data.auth_key, ConnectionRole.SERVER)
+
+        await self._write_packet(encrypted)
 
     async def send_container(self, objects: list[tuple[TLObject, bool]], session: Session):
         logger.debug(f"Sending: {objects}")
@@ -244,13 +252,12 @@ class Client:
         # TODO: add validation for seq_no too low/high (code 32 and 33)
 
         if error_code:
-            await self.send(
+            await session.enqueue(
                 obj=BadMsgNotification(
                     bad_msg_id=packet.message_id,
                     bad_msg_seqno=packet.seq_no,
                     error_code=error_code,
                 ),
-                session=session,
                 in_reply=True,
             )
             return True
@@ -262,14 +269,13 @@ class Client:
                 f"Client sent bad salt ({int.from_bytes(packet.salt, 'little')}) "
                 f"in message {packet.message_id}, sending correct salt"
             )
-            await self.send(
+            await session.enqueue(
                 obj=BadServerSalt(
                     bad_msg_id=packet.message_id,
                     bad_msg_seqno=packet.seq_no,
                     error_code=48,
                     new_server_salt=Long.read_bytes(session.salt_now.salt),
                 ),
-                session=session,
                 in_reply=True,
             )
             return True
@@ -319,14 +325,13 @@ class Client:
                 session.min_msg_id = message.message_id
                 await session.fetch_layer()
                 logger.info(f"({self.peername}) Created session {session.session_id}")
-                await self.send(
-                    NewSessionCreated(
+                await session.enqueue(
+                    obj=NewSessionCreated(
                         first_msg_id=message.message_id,
                         unique_id=session.session_id,
                         server_salt=Long.read_bytes(session.salt_now.salt),
                     ),
-                    session,
-                    False,
+                    in_reply=False,
                 )
 
             logger.debug(f"Received from {session.session_id}: {message}")
@@ -372,23 +377,38 @@ class Client:
             logger.info("Failed to decrypt encrypted packet, disconnecting with 404")
             raise Disconnection(404)
 
-    async def _worker_loop(self) -> None:
+    async def _worker_loop_recv(self) -> None:
         while True:
             try:
                 await self.recv()
-            except AssertionError:
-                logger.exception("Unexpected failed assertion", backtrace=True)
-            except InvalidConstructorException as e:
-                if e.wrong_type:
-                    continue
-
+            except UnknownConstructorException as e:
                 logger.error(
-                    f"Invalid constructor: {e.constructor} ({hex(e.constructor)[2:]}), "
+                    f"Unknown constructor: {e.constructor} ({hex(e.constructor)[2:]}), "
                     f"leftover bytes={e.leftover_bytes}"
                 )
 
                 # TODO: does telegram disconnect when invalid constructor is sent
                 raise Disconnection(400)
+            except InvalidConstructorException:
+                ...
+
+    async def _worker_loop_send(self) -> None:
+        while True:
+            try:
+                await asyncio.wait_for(self.message_available.wait(), 0.1)
+            except TimeoutError:
+                pass
+
+            sent = False
+            for session in list(self.active_sessions.values()):
+                if session.message_queue.empty():
+                    continue
+                message_id, seq_no, data = session.message_queue.get_nowait()
+                await self._write_message(message_id, seq_no, data, session)
+                sent = True
+
+            if not sent and not any(not sess.message_queue.empty() for sess in self.active_sessions.values()):
+                self.message_available.clear()
 
     @logger.catch
     async def worker(self):
@@ -396,7 +416,10 @@ class Client:
 
         try:
             async with asyncio.timeout(None) as self.disconnect_timeout:
-                await self._worker_loop()
+                await asyncio.gather(
+                    self._worker_loop_recv(),
+                    self._worker_loop_send(),
+                )
         except Disconnection as err:
             if err.transport_error is not None:
                 await self._write_packet(ErrorPacket(err.transport_error), ignore_errors=True)
@@ -456,87 +479,4 @@ class Client:
 
     async def propagate(self, request: Message, session: Session) -> RpcResult | None:
         if (result := await self._process_request(request, session)) is not None:
-            await self.send(result, session, True)
-
-    # TODO: this method is probably should be between gateway and workers?
-    @staticmethod
-    async def _resolve_context_values(values: NeedsContextValues, session: Session) -> ContextValues:
-        result = ContextValues()
-
-        # TODO: cache fetched values
-
-        if values.poll_answers:
-            selected_answers = await PollVote.filter(
-                answer__poll_id__in=values.poll_answers, user_id=session.user_id,
-            ).values_list("answer__poll_id", "answer_id")
-            for poll_id, answer_id in selected_answers:
-                if poll_id not in result.poll_answers:
-                    result.poll_answers[poll_id] = set()
-                result.poll_answers[poll_id].add(answer_id)
-
-        peers_q = Q()
-
-        if values.chat_participants or values.channel_participants:
-            if values.chat_participants:
-                peers_q |= Q(chat_id__in=values.chat_participants)
-            if values.channel_participants:
-                peers_q |= Q(channel_id__in=values.channel_participants)
-
-            participants = await ChatParticipant.filter(peers_q, user_id=session.user_id).only(
-                "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at", "left",
-            )
-            for participant in participants:
-                if participant.chat_id is not None:
-                    result.chat_participants[participant.chat_id] = participant
-                else:
-                    result.channel_participants[participant.channel_id] = participant
-
-        if values.users:
-            peers_q |= Q(user_id__in=values.users)
-
-            contact_ids = set()
-            for contact in await Contact.filter(
-                Q(owner_id=session.user_id, target_id__in=values.users)
-                | Q(owner_id__in=values.users, target_id=session.user_id)
-            ):
-                result.contacts[(contact.owner_id, contact.target_id)] = contact
-                if contact.owner_id != session.user_id:
-                    contact_ids.add(contact.owner_id)
-
-            # NOTE (for future me refactoring this): this overwrites existing rules in context variables btw
-            result.privacyrules = await PrivacyRule.has_access_to_bulk(
-                users=values.users,
-                user=session.user_id,
-                keys=[
-                    PrivacyRuleKeyType.PHONE_NUMBER,
-                    PrivacyRuleKeyType.PROFILE_PHOTO,
-                    PrivacyRuleKeyType.STATUS_TIMESTAMP,
-                ],
-                contacts=contact_ids,
-            )
-
-            for presence in await Presence.filter(user_id__in=values.users).only("user_id", "last_seen"):
-                result.presences[presence.user_id] = presence
-
-        if peers_q.children:
-            result.peers.update({
-                (peer.type, peer.target_id_raw()): peer
-                for peer in await Peer.filter(
-                    peers_q, owner_id=session.user_id,
-                ).only("type", "user_id", "chat_id", "channel_id")
-            })
-
-        if values.channel_messages:
-            messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
-                "peer", "peer__channel", "content", "content__media", "content__media__file",
-            )
-            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, session.user_id)
-            reactionss = await MessageRef.to_tl_reactions_bulk(messages, session.user_id)
-            for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
-                result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
-
-        if values.stickersets:
-            for installed in await InstalledStickerset.filter(set_id__in=values.stickersets, user_id=session.user_id):
-                result.stickersets[installed.set_id] = installed
-
-        return result
+            await session.enqueue(result, True)

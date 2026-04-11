@@ -2,22 +2,26 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from asyncio import Queue, Event
 from time import time
 from typing import cast, TYPE_CHECKING
 
 from loguru import logger
-from tortoise.expressions import F
+from tortoise.expressions import F, Q
 
 import piltover
 from piltover.auth_data import AuthData
 from piltover.cache import Cache
-from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant
-from piltover.exceptions import Disconnection
+from piltover.context import ContextValues, SerializationContext
+from piltover.db.enums import PrivacyRuleKeyType
+from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
+    Peer, MessageRef, InstalledStickerset
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import Updates, Long, Int
 from piltover.tl.core_types import TLObject, Message, MsgContainer
-from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector
+from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues
 from piltover.tl.utils import is_content_related
+from piltover.utils.debug import measure_time
 
 if TYPE_CHECKING:
     from piltover.gateway import Client
@@ -44,7 +48,7 @@ class Session:
     __slots__ = (
         "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
         "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_values",
-        "out_seq_no",
+        "out_seq_no", "message_queue", "message_available",
     )
 
     def __init__(self, session_id: int, client: Client | None = None, auth_data: AuthData | None = None) -> None:
@@ -71,7 +75,11 @@ class Session:
         self.no_updates = False
         self.layer = 133
 
-        # TODO: add request queue and message queue
+        self.message_queue = Queue()
+        self.message_available: Event | None = None
+
+        # TODO: store request states (i.e. received, processing, acked, etc.)
+        # TODO: store whole session in redis or something
 
     def uniq_id(self) -> tuple[int, int]:
         key_id = 0 if self.auth_data is None else self.auth_data.auth_key_id
@@ -84,11 +92,16 @@ class Session:
     def connect(self, client: Client) -> None:
         # TODO: raise AuthKeyDuplicated if self.client is not None
         self.client = client
+        self.message_available = client.message_available
+        if not self.message_queue.empty():
+            self.message_available.set()
         piltover.session.SessionManager.broker.subscribe(self)
 
     # TODO: rewrite
     def disconnect(self) -> None:
         self.client = None
+        self.message_available = None
+        # TODO: clear message_queue
         piltover.session.SessionManager.broker.unsubscribe(self)
         piltover.session.SessionManager.cleanup(self)
 
@@ -99,7 +112,7 @@ class Session:
         else:
             return getattr(obj, field_name)
 
-    async def send(self, obj: TLObject) -> None:
+    async def enqueue(self, obj: TLObject, in_reply: bool) -> None:
         if self.client is None:
             return
 
@@ -129,12 +142,26 @@ class Session:
                 obj.seq = auth.upd_seq
                 obj.qts = auth.upd_qts
 
-        try:
-            await self.client.send(obj, self, False)
-        except Disconnection:
-            pass  # TODO: call self.client.on_disconnected() or something
-        except Exception as e:
-            logger.opt(exception=e).warning(f"Failed to send {obj} to {self.client}")
+        context_values = None
+        if isinstance(obj, NeedsContextValues):
+            with measure_time("._resolve_context_values(...)"):
+                context_values = await self._resolve_context_values(obj)
+            obj = obj.obj
+
+        with measure_time("session.pack_message(...)"):
+            message = self.pack_message(obj, in_reply)
+
+        logger.debug(f"Queueing message {message.message_id} to {self.session_id}: {message!r}")
+        logger.debug(f"SerializationContext: {self.user_id=}, {self.auth_id=}")
+
+        with measure_time("<serialize message>"):
+            with SerializationContext(
+                    auth_id=self.auth_id, user_id=self.user_id, layer=self.layer, values=context_values
+            ).use():
+                self.message_queue.put_nowait((message.message_id, message.seq_no, message.obj.write()))
+
+        if self.message_available is not None:
+            self.message_available.set()
 
         if isinstance(obj, Updates):
             obj.seq = 0
@@ -289,3 +316,84 @@ class Session:
         ])
 
         return self.pack_message(container, False)
+
+    async def _resolve_context_values(self, values: NeedsContextValues) -> ContextValues:
+        result = ContextValues()
+
+        # TODO: cache fetched values
+
+        if values.poll_answers:
+            selected_answers = await PollVote.filter(
+                answer__poll_id__in=values.poll_answers, user_id=self.user_id,
+            ).values_list("answer__poll_id", "answer_id")
+            for poll_id, answer_id in selected_answers:
+                if poll_id not in result.poll_answers:
+                    result.poll_answers[poll_id] = set()
+                result.poll_answers[poll_id].add(answer_id)
+
+        peers_q = Q()
+
+        if values.chat_participants or values.channel_participants:
+            if values.chat_participants:
+                peers_q |= Q(chat_id__in=values.chat_participants)
+            if values.channel_participants:
+                peers_q |= Q(channel_id__in=values.channel_participants)
+
+            participants = await ChatParticipant.filter(peers_q, user_id=self.user_id).only(
+                "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at", "left",
+            )
+            for participant in participants:
+                if participant.chat_id is not None:
+                    result.chat_participants[participant.chat_id] = participant
+                else:
+                    result.channel_participants[participant.channel_id] = participant
+
+        if values.users:
+            peers_q |= Q(user_id__in=values.users)
+
+            contact_ids = set()
+            for contact in await Contact.filter(
+                Q(owner_id=self.user_id, target_id__in=values.users)
+                | Q(owner_id__in=values.users, target_id=self.user_id)
+            ):
+                result.contacts[(contact.owner_id, contact.target_id)] = contact
+                if contact.owner_id != self.user_id:
+                    contact_ids.add(contact.owner_id)
+
+            # NOTE (for future me refactoring this): this overwrites existing rules in context variables btw
+            result.privacyrules = await PrivacyRule.has_access_to_bulk(
+                users=values.users,
+                user=self.user_id,
+                keys=[
+                    PrivacyRuleKeyType.PHONE_NUMBER,
+                    PrivacyRuleKeyType.PROFILE_PHOTO,
+                    PrivacyRuleKeyType.STATUS_TIMESTAMP,
+                ],
+                contacts=contact_ids,
+            )
+
+            for presence in await Presence.filter(user_id__in=values.users).only("user_id", "last_seen"):
+                result.presences[presence.user_id] = presence
+
+        if peers_q.children:
+            result.peers.update({
+                (peer.type, peer.target_id_raw()): peer
+                for peer in await Peer.filter(
+                    peers_q, owner_id=self.user_id,
+                ).only("type", "user_id", "chat_id", "channel_id")
+            })
+
+        if values.channel_messages:
+            messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
+                "peer", "peer__channel", "content", "content__media", "content__media__file",
+            )
+            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, self.user_id)
+            reactionss = await MessageRef.to_tl_reactions_bulk(messages, self.user_id)
+            for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
+                result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
+
+        if values.stickersets:
+            for installed in await InstalledStickerset.filter(set_id__in=values.stickersets, user_id=self.user_id):
+                result.stickersets[installed.set_id] = installed
+
+        return result

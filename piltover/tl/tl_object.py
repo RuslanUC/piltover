@@ -5,7 +5,7 @@ from io import BytesIO
 from typing import Generic, TypeVar, Self, TYPE_CHECKING
 
 import piltover.tl as tl
-from piltover.exceptions import Error, InvalidConstructorException
+from piltover.exceptions import Error, InvalidConstructorException, UnknownConstructorException
 from .primitives import Int
 
 if TYPE_CHECKING:
@@ -40,11 +40,11 @@ class TLObject(ABC):
 
         if cls is not TLObject:
             if constructor != cls.__tl_id__:
-                raise InvalidConstructorException(constructor, True, stream.read())
+                raise InvalidConstructorException(constructor, stream.read())
             return cls.deserialize(stream)
 
         if constructor not in tl.all.objects:
-            raise InvalidConstructorException(constructor, False, stream.read())
+            raise UnknownConstructorException(constructor, stream.read())
 
         obj = tl.all.objects[constructor].deserialize(stream)
 
