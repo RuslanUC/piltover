@@ -21,14 +21,16 @@ class AuthKey(Model):
 
     @classmethod
     async def get_auth_data(cls, key_id: int) -> AuthData | None:
-        if (key := await AuthKey.get_or_none(id=key_id)) is not None:
+        if (key := await AuthKey.get_or_none(id=key_id).only("id", "auth_key")) is not None:
             return AuthData(
                 auth_key_id=key.id,
                 auth_key=key.auth_key,
                 perm_auth_key_id=key.id
             )
 
-        temp_key = await TempAuthKey.get_or_none(id=key_id, expires_at__gt=int(time()))
+        temp_key = await TempAuthKey.get_or_none(
+            id=key_id, expires_at__gt=int(time()),
+        ).only("id", "auth_key", "perm_key_id")
         if temp_key is not None:
             return AuthData(
                 auth_key_id=temp_key.id,

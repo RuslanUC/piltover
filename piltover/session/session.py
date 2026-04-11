@@ -6,6 +6,7 @@ from time import time
 from typing import cast, TYPE_CHECKING
 
 from loguru import logger
+from tortoise.expressions import F
 
 import piltover
 from piltover.auth_data import AuthData
@@ -200,11 +201,13 @@ class Session:
             logger.trace("Refreshing auth...")
             self.auth_loaded_at = time()
 
-            auth = await UserAuthorization.get_or_none(key_id=perm_auth_key_id).select_related("user")
+            auth = await UserAuthorization.get_or_none(
+                key_id=perm_auth_key_id,
+            ).select_related("user").annotate(is_bot=F("user__bot")).only("id", "user_id", "mfa_pending", "is_bot")
             if auth is not None:
                 self.user_id = auth.user_id
                 self.auth_id = auth.id
-                self.is_bot = auth.user.bot
+                self.is_bot = auth.is_bot
                 self.mfa_pending = auth.mfa_pending
             else:
                 self._reset_auth()
@@ -216,12 +219,11 @@ class Session:
 
             channel_ids: TaggedLongVector | None = await Cache.obj.get(f"channels:{self.user_id}")
             if channel_ids is None:
-                channel_ids = TaggedLongVector(vec=[
-                    channel_id
-                    for channel_id in await ChatParticipant.filter(
+                channel_ids = TaggedLongVector(
+                    vec=await ChatParticipant.filter(
                         channel_id__not_isnull=True, user_id=self.user_id, left=False,
-                    ).values_list("channel_id", flat=True)
-                ])
+                    ).values_list("channel_id", flat=True),
+                )
                 await Cache.obj.set(f"channels:{self.user_id}", channel_ids, ttl=60 * 10)
 
             channel_ids: list[int] = channel_ids.vec
