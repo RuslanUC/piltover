@@ -34,6 +34,8 @@ from piltover.utils.users_chats_channels import UsersChatsChannels
 
 
 class UpdatesWithDefaults(Updates):
+    __slots__ = ()
+
     def __init__(
             self, *, updates: list[base.Update], users: list[base.User] | None = None,
             chats: list[base.Chat] | None = None, date: int | None = None, seq: int | None = None,

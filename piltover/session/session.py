@@ -143,14 +143,11 @@ class Session:
         # TODO: use *ToFormat?
         if isinstance(obj, Updates) and self.auth_id is not None:
             await UserAuthorization.filter(id=self.auth_id).update(upd_seq=F("upd_seq") + 1)
-            seq_and_qts = await UserAuthorization.get_or_none(id=self.auth_id).values_list("upd_seq", "upd_qts")
-            if seq_and_qts is None:
-                upd_seq = upd_qts = 0
-            else:
-                upd_seq, upd_qts = seq_and_qts
+            upd_seq = await UserAuthorization.get_or_none(id=self.auth_id).values_list("upd_seq", flat=True)
+            if upd_seq is None:
+                upd_seq = 0
             logger.trace(f"setting seq to {upd_seq} for user {self.user_id}, auth {self.auth_id}")
             obj.seq = upd_seq
-            obj.qts = upd_qts
 
         with measure_time("session.pack_message(...)"):
             message = self.pack_message(obj, in_reply)
