@@ -1121,7 +1121,8 @@ async def forward_messages(
 
     random_ids = dict(zip(request.id[:100], random_id))
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
-        *MessageRef.PREFETCH_FIELDS, "reply_to", "content__send_as_channel"
+        *MessageRef.PREFETCH_FIELDS, "reply_to", "content__send_as_channel",
+        "content__fwd_header__from_user", "content__fwd_header__from_chat", "content__fwd_header__from_channel",
     )
     reply_ids = {}
     media_group_ids: defaultdict[int | None, int | None] = defaultdict(Snowflake.make_id)
@@ -1151,8 +1152,8 @@ async def forward_messages(
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
     if to_peer.type is PeerType.CHANNEL:
-        peers = [await Peer.get_or_none(owner=None, channel=to_peer.channel).select_related("channel")]
-        to_peer = peers[0]
+        to_peer = await Peer.get_or_none(owner=None, channel=to_peer.channel).select_related("channel")
+        peers = [to_peer]
     else:
         peers = [to_peer, *(await to_peer.get_opposite())]
     result: defaultdict[Peer, list[MessageRef]] = defaultdict(list)
@@ -1388,7 +1389,7 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
         # TODO: delete for other users if request.revoke
         await Dialog.filter(peer=peer).update(visible=False)
         if peer.type == PeerType.CHAT:
-            await ChatParticipant.filter(char=peer.chat, user=user).delete()
+            await ChatParticipant.filter(chat=peer.chat, user=user).delete()
             await peer.delete()
             await upd.update_chat(peer.chat)
 
