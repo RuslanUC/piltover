@@ -28,7 +28,7 @@ MessageIdContent = Annotated[int, "Content id"]
 
 class MessageContent(Model):
     id: int = fields.BigIntField(primary_key=True)
-    message: str | None = fields.TextField(null=True, default=None)
+    message: str | None = fields.CharField(max_length=8192, null=True, default=None, db_index=True)
     date: datetime = fields.DatetimeField(auto_now_add=True)
     edit_date: datetime = fields.DatetimeField(null=True, default=None)
     type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR, description="")

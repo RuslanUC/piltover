@@ -17,6 +17,7 @@ from pyrogram.raw.types.updates import ChannelDifference, ChannelDifferenceEmpty
 from pyrogram.types import ChatMember, ChatPrivileges
 from pyrogram.utils import compute_password_check
 
+from piltover.config import APP_CONFIG
 from piltover.tl import InputCheckPasswordEmpty, ChannelAdminLogEventActionChangeTitle
 from tests.client import TestClient
 from tests.conftest import ClientFactory, ChannelWithClientsFactory
@@ -569,18 +570,27 @@ async def test_channel_trigger_pyrogram_getchannels(
 
 
 @pytest.mark.parametrize(
-    ("for_me", "after_start_idx_me", "after_start_idx_other",),
+    ("for_me", "after_start_idx_me", "after_start_idx_other", "channel_delete_history_min_id_threshold"),
     [
-        (True, 5, 0,),
-        (False, 5, 5,),
+        (True, 5, 0, 1000,),
+        (False, 5, 5, 1000,),
+        (True, 5, 0, 0,),
+        (False, 5, 5, 0,),
     ],
-    ids=("for me", "for everyone",),
+    ids=(
+            "for me, (not) actually delete",
+            "for everyone, actually delete",
+            "for me, set min id",
+            "for everyone, set min id",
+    ),
 )
 @pytest.mark.asyncio
 async def test_supergroup_delete_history(
         channel_with_clients: ChannelWithClientsFactory, for_me: bool, after_start_idx_me: int,
-        after_start_idx_other: int,
+        after_start_idx_other: int, channel_delete_history_min_id_threshold: int,
 ) -> None:
+    APP_CONFIG.channel_delete_history_min_id_threshold = channel_delete_history_min_id_threshold
+
     group, (client1, client2,) = await channel_with_clients(
         2, supergroup=True, clients_run=True, resolve_channel=True
     )

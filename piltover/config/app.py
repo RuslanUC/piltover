@@ -46,6 +46,7 @@ class _AppConfig(BaseModel):
     srp_password_reset_wait_seconds: int = 86400 * 7
     scheduled_instant_send_threshold: int = 30
     account_delete_wait_seconds: int = 86400 * 7
+    channel_delete_history_min_id_threshold: int = 1000
 
     gifs: _Gifs | None = None
 

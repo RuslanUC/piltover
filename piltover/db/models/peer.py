@@ -277,3 +277,12 @@ class Peer(Model):
             raise Unreachable
 
         return f"{self.__class__.__name__}(id={self.id!r}, owner_id={self.owner_id!r}, type={self.type!r}, {peer_id})"
+
+    @staticmethod
+    def input_is_self(user: models.User | int, input_peer: InputPeerUser | InputUser | InputPeerSelf) -> bool:
+        if isinstance(input_peer, InputUserSelf):
+            return True
+        if isinstance(input_peer, (InputPeerUser, InputUser)):
+            user_id = user if isinstance(user, int) else user.id
+            return input_peer.user_id == user_id
+        return False

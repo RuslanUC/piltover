@@ -5,7 +5,7 @@ from typing import cast
 from loguru import logger
 from tortoise import connections
 from tortoise.expressions import Q, Subquery, CombinedExpression, Connector, F
-from tortoise.functions import Min, Max, Count
+from tortoise.functions import Min, Max, Count, Coalesce
 from tortoise.queryset import QuerySet
 from tortoise.transactions import in_transaction
 
@@ -110,9 +110,10 @@ async def get_messages_query_internal(
         filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, unread_reactions: bool = False,
         only_mentions: bool = False, reply_to_id: int | None = None,
 ) -> QuerySet[MessageRef]:
-    query = Q(peer=peer) if isinstance(peer, Peer) else Q(peer__owner=peer)
-    if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
-        query |= Q(peer__owner=None, peer__channel_id=peer.channel_id)
+    if isinstance(peer, Peer):
+        query = peer.q_this_or_channel()
+    else:
+        query = Q(peer__owner=peer)
 
     has_filter = False
     if filter_ is not None and (filter_query := message_filter_to_query(filter_, peer)) is not None:
@@ -125,7 +126,7 @@ async def get_messages_query_internal(
         query &= Q(content__type=MessageType.REGULAR)
 
     if q:
-        query &= Q(content__message__istartswith=q)
+        query &= Q(content__message__icontains=q)
 
     if from_user_id:
         query &= Q(content__author_id=from_user_id)
@@ -160,12 +161,26 @@ async def get_messages_query_internal(
                 MessageMention.filter(peer_q, user_id=peer.owner_id, read=False).values("message_id")
             ))
         else:
+            # TODO: return EmptyQuerySet instead
             query = Q(id=0)
 
     if reply_to_id:
         query &= Q(reply_to_id=reply_to_id, top_message_id=reply_to_id, join_type=Q.OR)
 
-    query = await append_channel_min_message_id_to_query_maybe(peer, query)
+    if isinstance(peer, Peer) and peer.type is PeerType.CHANNEL:
+        channel = peer.channel
+        if channel.min_available_id and channel.min_available_id_force:
+            query &= Q(id__gte=max(channel.min_available_id, channel.min_available_id_force))
+        elif channel.min_available_id_force:
+            query &= Q(id__gte=channel.min_available_id_force)
+        elif channel.min_available_id:
+            query &= Q(id__gte=channel.min_available_id)
+        query &= Q(id__gte=Coalesce(
+            Subquery(
+                ChatParticipant.get_or_none(user_id=peer.owner_id, channel=channel).values("min_message_id")
+            ),
+            0,
+        ))
 
     limit = max(min(100, limit), 1)
 
@@ -229,10 +244,10 @@ async def get_messages_query_internal(
 
     message_ids_before_offset = await MessageRef.filter(
         query
-    ).limit(limit).order_by("-content__date").values_list("id", flat=True)
+    ).limit(limit).order_by("-id").values_list("id", flat=True)
 
     final_query = Q(id__in=message_ids_before_offset) | Q(id__in=message_ids_after_offset)
-    return MessageRef.filter(final_query).order_by("-content__date").select_related(*MessageRef.PREFETCH_MAYBECACHED)
+    return MessageRef.filter(final_query).order_by("-id").select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
 
 async def get_messages_internal(
@@ -372,7 +387,7 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
     return await format_messages_internal(
         user,
-        await MessageRef.filter(query).select_related(*MessageRef.PREFETCH_FIELDS)
+        await MessageRef.filter(query).select_related(*MessageRef.PREFETCH_MAYBECACHED)
     )
 
 
@@ -380,7 +395,9 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 async def get_messages_57(request: GetMessages_57, user: User) -> Messages:
     return await format_messages_internal(
         user,
-        await MessageRef.filter(id__in=request.id[:100], peer__owner=user).select_related(*MessageRef.PREFETCH_FIELDS),
+        await MessageRef.filter(
+            id__in=request.id[:100], peer__owner=user
+        ).select_related(*MessageRef.PREFETCH_MAYBECACHED),
     )
 
 
@@ -508,7 +525,7 @@ async def get_all_drafts(user: User):
     ucc = UsersChatsChannels()
 
     updates = []
-    drafts = await MessageDraft.filter(peer__owner=user).select_related("peer")
+    drafts = await MessageDraft.filter(peer__owner=user).select_related("peer").order_by("-date").limit(250)
     for draft in drafts:
         updates.append(UpdateDraftMessage(peer=draft.peer.to_tl(), draft=draft.to_tl()))
         ucc.add_peer(draft.peer)

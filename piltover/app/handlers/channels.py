@@ -489,7 +489,7 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
 
     return await format_messages_internal(
         user,
-        await MessageRef.filter(query).select_related(*MessageRef.PREFETCH_FIELDS)
+        await MessageRef.filter(query).select_related(*MessageRef.PREFETCH_MAYBECACHED)
     )
 
 
@@ -1623,8 +1623,8 @@ async def delete_history(request: DeleteHistory, user: User) -> Updates:
 
     message_ids = await MessageRef.filter(
         peer__owner=None, peer__channel=channel, id__lte=request.max_id,
-    ).order_by("-id").limit(1001).values_list("id", flat=True)
-    if len(message_ids) > 1000:
+    ).order_by("-id").limit(APP_CONFIG.channel_delete_history_min_id_threshold + 1).values_list("id", flat=True)
+    if len(message_ids) > APP_CONFIG.channel_delete_history_min_id_threshold:
         channel.min_available_id = channel.min_available_id_force = message_ids[0]
         await channel.save(update_fields=["min_available_id", "min_available_id_force"])
         return await upd.update_channel_available_messages(channel, new_min_available_id)

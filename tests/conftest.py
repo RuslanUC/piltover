@@ -144,7 +144,8 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
             delattr(Auth, "_real_auth")
 
         if pytestconfig.getoption("--dump-db"):
-            db_dumps_dir = args.data_dir / "test-database-dumps"
+            from piltover.config import SYSTEM_CONFIG
+            db_dumps_dir = SYSTEM_CONFIG.data_dir / "test-database-dumps"
             db_dumps_dir.mkdir(parents=True, exist_ok=True)
             db_dump_file = db_dumps_dir / f"{request.node.name}.db"
             if db_dump_file.exists():
