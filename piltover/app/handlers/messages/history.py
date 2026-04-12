@@ -228,6 +228,66 @@ async def get_messages_query_internal(
       message before offset_id (date DESC)
     """
 
+    # TODO: fetch messages in one query, not three (before ids, after ids and message list itself);
+    #  figure out if this will be faster than current approach:
+    """
+    WITH
+        after_numbered AS (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn
+            FROM messageref
+            WHERE id >= :offset_id -- TODO: filters
+        ),
+        after_limited AS (
+            SELECT id, rn
+            FROM after_numbered
+            WHERE rn <= LEAST(ABS(:add_offset), :limit)
+        ),
+        after_cnt AS (
+            SELECT COUNT(id) AS cnt FROM after_limited
+        ),
+        before_numbered AS (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY id DESC) AS rn
+            FROM messageref
+            WHERE id < :offset_id -- TODO: filters
+        ),
+        before_limited AS (
+            SELECT id, rn
+            FROM before_numbered
+            WHERE rn <= :limit - (SELECT cnt FROM after_cnt)
+        ),
+        combined AS (
+            SELECT id FROM after_limited
+            UNION ALL
+            SELECT id FROM before_limited
+        )
+    SELECT id
+    FROM combined
+    ORDER BY id DESC
+    ;
+    
+    -- or this
+    
+    WITH
+        last_id AS (
+            SELECT id AS last_id
+            FROM messageref
+            WHERE id > :offset_id -- TODO: filters
+            ORDER BY id
+            LIMIT 1 OFFSET :add_offset_minus_one
+        ),
+        whole_thing AS (
+            SELECT id
+            FROM messageref
+            WHERE id <= (SELECT last_id FROM last_id) -- TODO: filters
+            ORDER BY id DESC
+            LIMIT :limit
+        )
+    SELECT id
+    FROM whole_thing
+    ORDER BY id DESC
+    ;
+    """
+
     after_offset_limit = min(abs(add_offset), limit)
     message_ids_after_offset = await MessageRef.filter(
         query & Q(id__gte=offset_id)

@@ -107,10 +107,6 @@ faker = "^40.5.1"
 pytest-repeat = "^0.9.4"
 pytest-env = "^1.6.0"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
 [tool.coverage.run]
 data_file = "coverage.coverage"
 omit = [
