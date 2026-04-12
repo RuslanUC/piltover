@@ -57,12 +57,14 @@ class LayerConverter:
             assert isinstance(obj, (bool, int, float, str, bytes))
             return cast(TLObject, obj)
 
-        for slot in obj.__slots__:
-            attr = getattr(obj, slot)
-            if isinstance(attr, TLObject):
-                setattr(obj, slot, cls.downgrade(attr, to_layer))
-            elif isinstance(attr, list):
-                setattr(obj, slot, cls._try_downgrade_list(attr, to_layer))
+        for obj_cls in obj.__class__.mro():
+            slots = getattr(obj_cls, "__slots__", ())
+            for slot in slots:
+                attr = getattr(obj, slot)
+                if isinstance(attr, TLObject):
+                    setattr(obj, slot, cls.downgrade(attr, to_layer))
+                elif isinstance(attr, list):
+                    setattr(obj, slot, cls._try_downgrade_list(attr, to_layer))
 
         return obj
 

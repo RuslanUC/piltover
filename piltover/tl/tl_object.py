@@ -61,7 +61,12 @@ class TLObject(ABC):
 
     def __repr__(self) -> str:
         fields = []
-        for slot in self.__slots__:
+        slots = []
+
+        for cls in self.__class__.mro():
+            slots.extend(getattr(cls, "__slots__", ()))
+
+        for slot in slots:
             value = getattr(self, slot)
             if self.tlid() in (0xb304a621, 0xde7b673d, 0x96a18d5) \
                     and slot == "bytes_" and value is not None and len(value) > 32:
