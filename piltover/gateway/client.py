@@ -189,8 +189,10 @@ class Client:
         else:
             await self.propagate(req_message, session)
 
-    # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
+    # TODO: move into Session?
     async def _is_message_bad(self, packet: DecryptedMessagePacket, session: Session, check_salt: bool) -> bool:
+        # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
+
         error_code = 0
         inner_id = Int.read_bytes(packet.data[:4], False)
 
@@ -358,16 +360,9 @@ class Client:
         while True:
             try:
                 await self.recv()
-            except UnknownConstructorException as e:
-                logger.error(
-                    f"Unknown constructor: {e.constructor} ({hex(e.constructor)[2:]}), "
-                    f"leftover bytes={e.leftover_bytes}"
-                )
-
-                # TODO: does telegram disconnect when invalid constructor is sent
-                raise Disconnection(400)
-            except InvalidConstructorException:
-                ...
+            except Exception as e:
+                logger.opt(exception=e).error("An error occurred in recv loop")
+                raise
 
     async def _worker_loop_send(self) -> None:
         while True:
