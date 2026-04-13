@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from piltover.utils.utils import classinstancemethod
-
 
 class Bytes(bytes):
     @classmethod
@@ -22,18 +20,17 @@ class Bytes(bytes):
 
         return result
 
-    # noinspection PyMethodParameters
-    @classinstancemethod
-    def write(cls: type[bytes], self: bytes,) -> bytes:
+    @classmethod
+    def write(cls, value: bytes) -> bytes:
         result = b""
-        ln = len(self)
-        if ln >= 254:
+        ln = len(value)
+        if ln >= 0xFE:
             result += bytes([254])
             result += int.to_bytes(ln, 3, "little")
         else:
             result += bytes([ln])
 
-        result += self
+        result += value
         padding = len(result) % 4
         if padding:
             result += b"\x00" * (4 - padding)
@@ -46,7 +43,6 @@ class String(str):
     def read(cls, stream: BytesIO) -> str:
         return Bytes.read(stream).decode("utf8")
 
-    # noinspection PyMethodParameters
-    @classinstancemethod
-    def write(cls: type[str], self: str) -> bytes:
-        return Bytes.write(self.encode("utf8"))
+    @classmethod
+    def write(cls, value: str) -> bytes:
+        return Bytes.write(value.encode("utf8"))

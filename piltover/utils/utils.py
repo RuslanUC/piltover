@@ -6,7 +6,7 @@ TAdd = TypeVar("TAdd")
 
 
 def background(coro: Coroutine[None, None, T]) -> asyncio.Task[T]:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     task = loop.create_task(coro)
     return task
 

@@ -3,8 +3,6 @@ from __future__ import annotations
 from io import BytesIO
 from struct import Struct
 
-from piltover.utils.utils import classinstancemethod
-
 
 class Int(int):
     BIT_SIZE = 32
@@ -22,10 +20,9 @@ class Int(int):
     def read(cls, stream: BytesIO, signed: bool = True) -> int:
         return cls.read_bytes(stream.read(cls.SIZE), signed)
 
-    # noinspection PyMethodParameters
-    @classinstancemethod
-    def write(cls: type[Int], self: int, signed: bool = True) -> bytes:
-        return self.to_bytes(cls.SIZE, "little", signed=signed)
+    @classmethod
+    def write(cls, value: int, signed: bool = True) -> bytes:
+        return value.to_bytes(cls.SIZE, "little", signed=signed)
 
 
 class Long(Int):

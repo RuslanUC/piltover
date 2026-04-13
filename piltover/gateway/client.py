@@ -18,8 +18,8 @@ from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
 from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from taskiq.kicker import AsyncKicker
 
-from piltover._keygen_handlers import KEYGEN_HANDLERS
-from piltover._system_handlers import SYSTEM_HANDLERS
+from piltover.gateway._keygen_handlers import KEYGEN_HANDLERS
+from piltover.gateway._system_handlers import SYSTEM_HANDLERS
 from piltover.auth_data import AuthData, GenAuthData
 from piltover.context import SerializationContext, ContextValues
 from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable, UnknownConstructorException
