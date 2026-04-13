@@ -27,7 +27,7 @@ class ErrorRpc(Error):
 
 
 class InvalidConstructorException(Error):
-    def __init__(self, constructor: int | bytes, leftover_bytes: bytes = b""):
+    def __init__(self, constructor: int, leftover_bytes: bytes = b""):
         self.constructor = constructor
         self.leftover_bytes = leftover_bytes
 

@@ -18,11 +18,10 @@ from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
 from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from taskiq.kicker import AsyncKicker
 
+from piltover.auth_data import AuthData, GenAuthData
+from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable, UnknownConstructorException
 from piltover.gateway._keygen_handlers import KEYGEN_HANDLERS
 from piltover.gateway._system_handlers import SYSTEM_HANDLERS
-from piltover.auth_data import AuthData, GenAuthData
-from piltover.context import SerializationContext, ContextValues
-from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable, UnknownConstructorException
 from piltover.session import Session, SessionManager
 from piltover.tl import NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, ReqPqMulti
 from piltover.tl.core_types import TLObject, MsgContainer, Message, RpcResult
@@ -42,7 +41,7 @@ _check_req_pq_tlid = (Int.write(ReqPq.tlid(), False), Int.write(ReqPqMulti.tlid(
 class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "gen_auth_data", "empty_session", "disconnect_timeout",
-        "msg_id_values", "out_seq_no", "write_lock", "active_sessions", "active_keys", "message_available",
+        "write_lock", "active_sessions", "active_keys", "message_available",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -118,33 +117,6 @@ class Client:
                 return
             raise Disconnection from e
 
-    async def _send_message(
-            self, message: Message, session: Session, context_values: ContextValues | None = None,
-    ) -> None:
-        if not session.auth_data or session.auth_data.auth_key is None:
-            raise Unreachable("Trying to send encrypted response, but auth_key is empty")
-
-        logger.debug(f"Sending to {session.session_id}: {message!r}")
-
-        auth_id = session.auth_id
-        user_id = session.user_id
-        logger.debug(f"SerializationContext ({self.peername}): {user_id=}, {auth_id=}")
-
-        session.update_salts_maybe(self.server.salt_key)
-
-        with SerializationContext(auth_id=auth_id, user_id=user_id, layer=session.layer, values=context_values).use():
-            decrypted = DecryptedMessagePacket(
-                salt=session.salt_now.salt,
-                session_id=session.session_id,
-                message_id=message.message_id,
-                seq_no=message.seq_no,
-                data=message.obj.write(),
-            )
-
-        encrypted = decrypted.encrypt(session.auth_data.auth_key, ConnectionRole.SERVER)
-
-        await self._write_packet(encrypted)
-
     async def _write_message(
             self, message_id: int, seq_no: int, data: bytes, session: Session,
     ) -> None:
@@ -166,11 +138,6 @@ class Client:
         encrypted = decrypted.encrypt(session.auth_data.auth_key, ConnectionRole.SERVER)
 
         await self._write_packet(encrypted)
-
-    async def send_container(self, objects: list[tuple[TLObject, bool]], session: Session):
-        logger.debug(f"Sending: {objects}")
-        message = session.pack_container(objects)
-        await self._send_message(message, session)
 
     async def send_unencrypted(self, obj: TLObject) -> None:
         logger.debug(obj)
@@ -318,8 +285,18 @@ class Client:
                 )
             except (struct.error, ValueError, InvalidConstructorException) as e:
                 logger.opt(exception=e).error(f"Failed to read object. Raw data: {decrypted.data}")
-                # TODO: send "FETCH_FAILED_..." or whatever error that means "invalid constructor"
-                raise
+                constructor = e.constructor if isinstance(e, InvalidConstructorException) else 0
+                await session.enqueue(
+                    RpcResult(
+                        req_msg_id=decrypted.message_id,
+                        result=RpcError(
+                            error_code=400,
+                            error_message=f"INPUT_METHOD_INVALID_{constructor}_0",
+                        ),
+                    ),
+                    False,
+                )
+                return
 
             if not session.min_msg_id:
                 session.min_msg_id = message.message_id
