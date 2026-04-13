@@ -27,7 +27,7 @@ backend = "memory"
 
 # Debug tracing.
 [system.debug_tracing]
-# Tracing backend. Available backends: console, zipkin.
-backend = "console"
+# Tracing backend. Available backends: console, zipkin, noop.
+backend = "noop"
 # Zipkin address where to send all traces.
 #zipkin_address = "http://127.0.0.1:9411/api/v2/spans"

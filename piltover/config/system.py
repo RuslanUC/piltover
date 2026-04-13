@@ -14,7 +14,7 @@ class _CacheConfig(BaseModel):
 
 
 class _TracingConfig(BaseModel):
-    backend: Literal["console", "zipkin"] = "console"
+    backend: Literal["console", "zipkin", "noop"] = "noop"
     zipkin_address: str | None = None
 
 
