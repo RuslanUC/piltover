@@ -19,11 +19,12 @@ from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from taskiq.kicker import AsyncKicker
 
 from piltover.auth_data import AuthData, GenAuthData
-from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable, UnknownConstructorException
+from piltover.exceptions import Disconnection, InvalidConstructorException, Unreachable
 from piltover.gateway._keygen_handlers import KEYGEN_HANDLERS
 from piltover.gateway._system_handlers import SYSTEM_HANDLERS
 from piltover.session import Session, SessionManager
-from piltover.tl import NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, ReqPqMulti
+from piltover.tl import NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, ReqPqMulti, \
+    MsgsAck
 from piltover.tl.core_types import TLObject, MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.functions.internal import CallRpc
@@ -218,6 +219,7 @@ class Client:
             error_code = 35
 
         # TODO: add validation for message_id duplication (code 19)
+        # TODO: what's the difference between code 16 and code 20???
         # TODO: add validation for seq_no too low/high (code 32 and 33)
 
         if error_code:
@@ -409,6 +411,16 @@ class Client:
 
             self.active_sessions.clear()
 
+    async def _wait_result_with_ack(
+            self, task: AsyncTaskiqTask[str], message_id: int, session: Session,
+    ) -> TaskiqResult[str]:
+        try:
+            return await task.wait_result(timeout=1.5)
+        except TaskiqResultTimeoutError as e:
+            logger.opt(exception=e).warning(f"Task timeout exceeded, sending ack to message {message_id}")
+            await session.enqueue(MsgsAck(msg_ids=[message_id]), False)
+            return await task.wait_result(timeout=15)
+
     async def _process_request(self, request: Message, session: Session) -> RpcResult | None:
         if request.obj.tlid() in SYSTEM_HANDLERS:
             return await SYSTEM_HANDLERS[request.obj.tlid()](self, request, session)
@@ -418,10 +430,13 @@ class Client:
                 task = await self._kiq(request.obj, session, request.message_id)
             with measure_time(".wait_result()"):
                 try:
-                    task_result: TaskiqResult[str] = await task.wait_result(timeout=5)
-                except TaskiqResultTimeoutError as e:
-                    logger.opt(exception=e).error(f"Task timeout exceeded for request {request!r}")
-                    raise
+                    task_result = await self._wait_result_with_ack(task, request.message_id, session)
+                except Exception as e:
+                    logger.opt(exception=e).error(f"Failed to get result for request {request!r}")
+                    return RpcResult(
+                        req_msg_id=request.message_id,
+                        result=RpcError(error_code=500, error_message="INTERNAL_SERVER_ERROR_TIMEOUT"),
+                    )
 
         if task_result.is_err:
             logger.opt(exception=task_result.error).error("An error occurred in worker while processing request.")
