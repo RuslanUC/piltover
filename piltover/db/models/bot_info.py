@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from tortoise import Model, fields
 
+from piltover.cache import Cache
 from piltover.db import models
 from piltover.tl.types import BotInfo as TLBotInfo
 
@@ -18,10 +19,16 @@ class BotInfo(Model):
     user_id: int
     description_photo_id: int | None
 
+    def _cache_key(self) -> str:
+        return f"bot-info:{self.user_id}:{self.version}"
+
     async def to_tl(self) -> TLBotInfo:
+        if (cached := await Cache.obj.get(self._cache_key())) is not None:
+            return cached
+
         commands = await models.BotCommand.filter(bot_id=self.user_id)
 
-        return TLBotInfo(
+        result = TLBotInfo(
             user_id=self.user_id,
             description=self.description,
             description_photo=self.description_photo.to_tl_photo() if self.description_photo_id is not None else None,
@@ -31,3 +38,6 @@ class BotInfo(Model):
             ],
             privacy_policy_url=self.privacy_policy_url,
         )
+
+        await Cache.obj.set(self._cache_key(), result)
+        return result

@@ -5,7 +5,7 @@ from tortoise.expressions import Q, Subquery
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Channel, BotInfo, ChatParticipant, \
-    MessageRef
+    MessageRef, Wallpaper
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
@@ -28,9 +28,9 @@ async def get_full_user(request: GetFullUser, user: User):
     ])
     privacy_rules = privacy_rules[target_user.id]
 
-    chat_wallpaper = await ChatWallpaper.get_or_none(user=user, target=target_user).select_related(
-        "wallpaper", "wallpaper__document", "wallpaper__settings",
-    )
+    wallpaper = await Wallpaper.get_or_none(
+        chatwallpapers__user_id=user.id, chatwallpapers__target_id=target_user.id
+    ).select_related("document", "settings")
 
     has_scheduled = await MessageRef.filter(peer=peer, content__scheduled_date__not_isnull=True).exists()
     pinned_msg_id = cast(
@@ -50,7 +50,10 @@ async def get_full_user(request: GetFullUser, user: User):
         personal_channel_msg_id = None
 
     if personal_channel is not None:
-        await Peer.get_or_create(owner=user, type=PeerType.CHANNEL, channel=personal_channel)
+        await Peer.bulk_create(
+            [Peer(owner=user, type=PeerType.CHANNEL, channel=personal_channel)],
+            ignore_conflicts=True,
+        )
 
     bot_info = None
     if target_user.bot:
@@ -82,7 +85,7 @@ async def get_full_user(request: GetFullUser, user: User):
             common_chats_count=await ChatParticipant.common_chats_query(user.id, peer.user_id).count(),
             birthday=birthday,
             read_dates_private=target_user.read_dates_private,
-            wallpaper=chat_wallpaper.wallpaper.to_tl() if chat_wallpaper is not None else None,
+            wallpaper=wallpaper.to_tl() if wallpaper is not None else None,
             has_scheduled=has_scheduled,
             ttl_period=peer.user_ttl_period_days * 86400 if peer.user_ttl_period_days else None,
             pinned_msg_id=pinned_msg_id,
