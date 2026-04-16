@@ -315,7 +315,9 @@ class Client:
                     in_reply=False,
                 )
 
-            logger.debug(f"Received from {session.session_id}: {message}")
+            logger.debug(
+                f"Received from {session.session_id} ({session.auth_data.auth_key_id} {session.user_id}): {message}"
+            )
             asyncio.create_task(self.handle_encrypted_message(message, session))
         elif isinstance(packet, UnencryptedMessagePacket):
             decoded = TLObject.read(BytesIO(packet.message_data))

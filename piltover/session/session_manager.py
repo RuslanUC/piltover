@@ -6,7 +6,8 @@ from piltover.auth_data import AuthData
 from piltover.context import NeedContextValuesContext
 from piltover.session import Session
 from piltover.tl import TLObject, Vector
-from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, MessageToUsers, ObjectWithLayerRequirement
+from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, MessageToUsers, \
+    ObjectWithLayerRequirement, InternalPushForUsers, InternalPushForUsersShort
 
 if TYPE_CHECKING:
     from piltover.gateway import Client
@@ -97,6 +98,21 @@ class SessionManager:
                 obj=obj,
                 min_layer=min_layer,
             )
+
+        await cls.broker.send(message)
+
+    @classmethod
+    async def send_internal_push(cls, user_id: int | list[int]) -> None:
+        if not user_id:
+            return
+
+        if isinstance(user_id, list) and len(user_id) == 1:
+            user_id = user_id[0]
+
+        if isinstance(user_id, list):
+            message = InternalPushForUsers(users=user_id)
+        else:
+            message = InternalPushForUsersShort(user=user_id)
 
         await cls.broker.send(message)
 

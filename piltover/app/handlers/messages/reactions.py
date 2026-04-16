@@ -223,7 +223,7 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
         peer_query = Q(messagerefs__peer=peer)
 
     await MessageContent.filter(
-        id__in=Subquery(MessageContent.filter(peer_query, author_reactions_unread=True, author=user))
+        id__in=Subquery(MessageContent.filter(peer_query, author_reactions_unread=True, author=user).values("id"))
     ).update(
         reactions_version=F("reactions_version") + 1,
         author_reactions_unread=False,

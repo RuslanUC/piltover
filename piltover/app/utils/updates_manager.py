@@ -120,6 +120,8 @@ async def send_message(user: User | None, messages: dict[Peer, MessageRef], igno
     if updates_to_create:
         await Update.bulk_create(updates_to_create)
 
+    await SessionManager.send_internal_push(list(peer_by_user_id))
+
     return result
 
 
@@ -258,6 +260,8 @@ async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | Non
 
     if updates_to_create:
         await Update.bulk_create(updates_to_create)
+
+    await SessionManager.send_internal_push(list(peer_by_user_id))
 
     return result_update
 

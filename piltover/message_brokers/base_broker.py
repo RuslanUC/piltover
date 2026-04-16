@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from abc import abstractmethod, ABC
 from copy import deepcopy
 from enum import Flag
@@ -8,8 +9,10 @@ from typing import TYPE_CHECKING, Iterable
 from loguru import logger
 
 from piltover.cache import Cache
+from piltover.tl import UpdatesTooLong
+from piltover.tl.base.internal import MessageInternal
 from piltover.tl.types.internal import MessageToUsers, MessageToUsersShort, SetSessionInternalPush, ChannelSubscribe, \
-    ObjectWithLayerRequirement
+    ObjectWithLayerRequirement, InternalPushForUsers, InternalPushForUsersShort
 
 if TYPE_CHECKING:
     from piltover.session import Session
@@ -18,9 +21,6 @@ if TYPE_CHECKING:
 class BrokerType(Flag):
     READ = 1 << 0
     WRITE = 1 << 1
-
-
-InternalMessages = MessageToUsers | MessageToUsersShort | SetSessionInternalPush
 
 
 class BaseMessageBroker(ABC):
@@ -32,6 +32,7 @@ class BaseMessageBroker(ABC):
         self.subscribed_keys: dict[int, set[Session]] = {}
         self.subscribed_auths: dict[int, set[Session]] = {}
         self.subscribed_channels: dict[int, set[Session]] = {}
+        self.internal_push_users: dict[int, set[Session]] = {}
 
     def _cleanup(self) -> None:
         self.subscribed_users.clear()
@@ -39,6 +40,7 @@ class BaseMessageBroker(ABC):
         self.subscribed_keys.clear()
         self.subscribed_auths.clear()
         self.subscribed_channels.clear()
+        self.internal_push_users.clear()
 
     async def startup(self) -> None:
         self._cleanup()
@@ -47,7 +49,7 @@ class BaseMessageBroker(ABC):
         self._cleanup()
 
     @abstractmethod
-    async def send(self, message: InternalMessages) -> None: ...
+    async def send(self, message: MessageInternal) -> None: ...
 
     @abstractmethod
     async def _listen(self) -> None: ...
@@ -79,6 +81,15 @@ class BaseMessageBroker(ABC):
 
         self.subscribed_auths[auth_id].add(session)
 
+    def subscribe_internal_push(self, user_id: int, session: Session) -> None:
+        if not user_id:
+            return None
+
+        if user_id not in self.internal_push_users:
+            self.internal_push_users[user_id] = set()
+
+        self.internal_push_users[user_id].add(session)
+
     def subscribe(self, session: Session) -> None:
         self.subscribed_sessions[session.session_id] = session
 
@@ -88,6 +99,11 @@ class BaseMessageBroker(ABC):
         self.subscribe_auth(session.auth_id, session)
 
         self.channels_diff_update(session, [], session.channel_ids)
+
+        if session.is_internal_push:
+            self.subscribe_internal_push(session.user_id, session)
+        else:
+            self.unsubscribe_internal_push(session.user_id, session)
 
     def unsubscribe_user(self, user_id: int, session: Session) -> None:
         if user_id not in self.subscribed_users:
@@ -116,6 +132,15 @@ class BaseMessageBroker(ABC):
         if not self.subscribed_auths[auth_id]:
             del self.subscribed_auths[auth_id]
 
+    def unsubscribe_internal_push(self, user_id: int, session: Session) -> None:
+        if user_id not in self.internal_push_users:
+            return
+
+        if session in self.internal_push_users[user_id]:
+            self.internal_push_users[user_id].remove(session)
+        if not self.internal_push_users[user_id]:
+            del self.internal_push_users[user_id]
+
     def unsubscribe(self, session: Session) -> None:
         self.subscribed_sessions.pop(session.session_id, None)
 
@@ -125,6 +150,8 @@ class BaseMessageBroker(ABC):
         self.unsubscribe_auth(session.auth_id, session)
 
         self.channels_diff_update(session, session.channel_ids, [])
+
+        self.unsubscribe_internal_push(session.user_id, session)
 
     def channels_diff_update(self, session: Session, to_delete: Iterable[int], to_add: Iterable[int]) -> None:
         if not to_delete and not to_add:
@@ -219,7 +246,31 @@ class BaseMessageBroker(ABC):
         for session in sessions:
             self.channels_diff_update(session, to_delete, to_add)
 
-    async def process_message(self, message: InternalMessages) -> None:
+    async def _process_internal_push_to_users(self, message: InternalPushForUsers | InternalPushForUsersShort) -> None:
+        if isinstance(message, InternalPushForUsers):
+            users = message.users
+        else:
+            users = [message.user]
+
+        send_to = set()
+
+        for user_id in users:
+            await asyncio.sleep(0)
+            if user_id not in self.internal_push_users:
+                continue
+            send_to.update(self.internal_push_users[user_id])
+
+        logger.trace(f"Got internal push to {len(users)} users that will be sent to {len(send_to)} sessions")
+
+        to_send = UpdatesTooLong()
+
+        for session in send_to:
+            try:
+                await session.enqueue(to_send, False)
+            except Exception as e:
+                logger.opt(exception=e).error("Error occurred while sending internal push")
+
+    async def _process_message(self, message: MessageInternal) -> None:
         if isinstance(message, (MessageToUsers, MessageToUsersShort)):
             return await self._process_message_to_users(message)
         if isinstance(message, SetSessionInternalPush):
@@ -227,9 +278,17 @@ class BaseMessageBroker(ABC):
             uniq_id = message.key_id, message.session_id
             if uniq_id not in SessionManager.sessions:
                 return
-            # TODO: refresh auth
             session = SessionManager.sessions[uniq_id]
-            # session.set_user_id(message.user_id)
+            session.is_internal_push = True
+            await session.refresh_auth_maybe(True)
+            self.subscribe(session)
+            logger.debug(f"Registered session {uniq_id} for internal push")
             return
         if isinstance(message, ChannelSubscribe):
             return await self._process_channels_subscribe(message)
+        if isinstance(message, (InternalPushForUsers, InternalPushForUsersShort)):
+            return await self._process_internal_push_to_users(message)
+
+    async def process_message(self, message: MessageInternal) -> None:
+        loop = asyncio.get_running_loop()
+        loop.create_task(self._process_message(message))

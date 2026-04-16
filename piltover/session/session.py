@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 from asyncio import Queue, Event
@@ -48,7 +49,7 @@ class Session:
     __slots__ = (
         "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
         "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_values",
-        "out_seq_no", "message_queue", "message_available",
+        "out_seq_no", "message_queue", "message_available", "is_internal_push",
     )
 
     def __init__(self, session_id: int, client: Client | None = None, auth_data: AuthData | None = None) -> None:
@@ -74,6 +75,7 @@ class Session:
 
         self.no_updates = False
         self.layer = 133
+        self.is_internal_push = False
 
         self.message_queue = Queue()
         self.message_available: Event | None = None
@@ -115,6 +117,8 @@ class Session:
     async def enqueue(self, obj: TLObject, in_reply: bool) -> None:
         if self.client is None:
             return
+
+        await asyncio.sleep(0)
 
         if isinstance(obj, ObjectWithLayerRequirement):
             field_paths = obj.fields
@@ -159,6 +163,7 @@ class Session:
             with SerializationContext(
                     auth_id=self.auth_id, user_id=self.user_id, layer=self.layer, values=context_values
             ).use():
+                # TODO: serialize in a different thread
                 self.message_queue.put_nowait((message.message_id, message.seq_no, message.obj.write()))
 
         if self.message_available is not None:

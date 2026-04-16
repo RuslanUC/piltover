@@ -129,13 +129,20 @@ async def set_account_ttl(request: SetAccountTTL, user: User):
 @handler.on_request(RegisterDevice, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def register_device(request: RegisterDevice, user: User) -> bool:
     if request.token_type not in PushTokenType._value2member_map_:
-        return False
+        raise ErrorRpc(error_code=400, error_message="TOKEN_TYPE_INVALID")
+    if not request.token:
+        raise ErrorRpc(error_code=400, error_message="TOKEN_EMPTY")
 
     token_type = PushTokenType(request.token_type)
 
     if token_type is not PushTokenType.INTERNAL:
         return False
-    sess_id = int(request.token)
+
+    try:
+        sess_id = int(request.token)
+    except ValueError:
+        raise ErrorRpc(error_code=400, error_message="TOKEN_INVALID")
+
     key_id = request_ctx.get().auth_key_id
 
     await SessionManager.broker.send(SetSessionInternalPush(

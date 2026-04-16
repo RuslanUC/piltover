@@ -5,8 +5,9 @@ from aio_pika import connect_robust, ExchangeType, Message as RmqMessage
 from aio_pika.abc import AbstractChannel, DeliveryMode, AbstractQueue
 
 from piltover.exceptions import Error
-from piltover.message_brokers.base_broker import BaseMessageBroker, BrokerType, InternalMessages
+from piltover.message_brokers.base_broker import BaseMessageBroker, BrokerType
 from piltover.tl import TLObject
+from piltover.tl.base.internal import MessageInternal
 
 
 class RabbitMqMessageBroker(BaseMessageBroker):
@@ -50,7 +51,7 @@ class RabbitMqMessageBroker(BaseMessageBroker):
 
         await super().shutdown()
 
-    async def send(self, message: InternalMessages) -> None:
+    async def send(self, message: MessageInternal) -> None:
         if BrokerType.WRITE not in self.broker_type:
             return
 

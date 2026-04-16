@@ -93,6 +93,9 @@ class MessageRef(Model):
             ("peer", "random_id"),
         )
 
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(id={self.id}, peer={self.peer!r}, content={self.content!r})"
+
     def cache_key(self, user_id: int) -> str:
         return f"message-ref:{user_id}:{self.id}:{self.version}"
 
