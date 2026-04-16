@@ -40,6 +40,7 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.debug import measure_time
 from piltover.utils.snowflake import Snowflake
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.sending")
@@ -1148,7 +1149,7 @@ async def forward_messages(
         if check_can_send_plain and not to_peer.chat_or_channel.can_send_plain(to_participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if check_can_send_media and not to_peer.chat_or_channel.can_send_media(to_participant, check_can_send_media):
-            # TODO: send correct message error message
+            # TODO: send correct error message
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
     if to_peer.type is PeerType.CHANNEL:
@@ -1398,7 +1399,11 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
 
 @handler.on_request(ClearAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def clear_all_drafts(user: User) -> bool:
-    ...  # TODO
+    peers = await Peer.filter(owner=user, messagedrafts__id__not_isnull=True).limit(500)
+    await MessageDraft.filter(peer_id__in=[peer.id for peer in peers]).delete()
+    await upd.update_drafts(user, peers, [None] * len(peers))
+
+    return True
 
 
 @handler.on_request(SendInlineBotResult_133, ReqHandlerFlags.BOT_NOT_ALLOWED)

@@ -95,9 +95,6 @@ class User(Model):
 
         return current, fallback
 
-    # TODO: fetch ALL privacy rules (including all exceptions) in to_tl/to_tl_bulk
-    #  to not refetch them every time in gateway?
-
     async def to_tl(self, *, userphoto: models.UserPhoto | None | _Missing = _MISSING) -> TLUserBase:
         if self.deleted:
             return TLUser(
@@ -111,8 +108,6 @@ class User(Model):
             return cached
 
         # TODO: min (https://core.telegram.org/api/min)
-        # TODO: add some "version" field and save tl user
-        #  in some cache with key f"{self.id}:{current_user.id}:{version}"
 
         username = await self.get_username()
 
@@ -140,7 +135,6 @@ class User(Model):
         if userphoto is _MISSING:
             userphoto = await self.get_db_current_photo()
         if userphoto is not None:
-            # TODO: use fallback photo is userphoto is None?
             photo = userphoto.to_tl_profile()
 
         emoji_status = None

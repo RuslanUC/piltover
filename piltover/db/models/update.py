@@ -132,10 +132,8 @@ class Update(Model):
 
                 if isinstance(self.draft, models.MessageDraft):
                     draft = self.draft.to_tl()
-                elif self.draft_id is None:
-                    draft = DraftMessageEmpty()
                 else:
-                    raise Unreachable
+                    draft = DraftMessageEmpty()
 
                 return UpdateDraftMessage(
                     peer=self.peer.to_tl(),

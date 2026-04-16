@@ -528,6 +528,48 @@ async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> No
     await SessionManager.send(updates, user.id)
 
 
+async def update_drafts(user: User, peers: list[Peer], drafts: [MessageDraft | None]) -> Updates:
+    if len(peers) != len(drafts):
+        raise ValueError
+
+    new_pts = await State.add_pts(user, len(drafts))
+    updates_to_create = []
+    updates_to_send = []
+    ucc = UsersChatsChannels()
+
+    for num, (peer, draft) in enumerate(zip(peers, drafts), start=1):
+        updates_to_create.append(Update(
+            user=user,
+            update_type=UpdateType.DRAFT_UPDATE,
+            pts=new_pts - len(drafts) + num,
+            related_id=peer.id,
+            peer=peer,
+            draft=draft,
+        ))
+
+        updates_to_send.append(UpdateDraftMessage(
+            peer=peer.to_tl(),
+            draft=draft.to_tl() if draft else DraftMessageEmpty(),
+        ))
+
+        ucc.add_peer(peer)
+
+    if updates_to_create:
+        await Update.bulk_create(updates_to_create)
+
+    users, chats, channels = await ucc.resolve()
+
+    updates = UpdatesWithDefaults(
+        updates=updates_to_send,
+        users=users,
+        chats=[*chats, *channels],
+    )
+
+    await SessionManager.send(updates, user.id)
+
+    return updates
+
+
 async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
     new_pts = await State.add_pts(user, 1)
 

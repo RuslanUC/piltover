@@ -30,13 +30,16 @@ from tqdm import tqdm
 from tl_gen_placeholders import PLACEHOLDERS
 from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS, BASE_CLASSES_NEED_CONTEXT
 
-DRY_RUN = False
+DRY_RUN = True
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl")
 
 SECTION_RE = re.compile(r"---(\w+)---")
 LAYER_RE = re.compile(r"//\sLAYER\s(\d+)")
 COMBINATOR_RE = re.compile(r"^([\w.]+)#([0-9a-f]+)\s.*=\s([\w<>.]+);$", re.MULTILINE)
+# COMBINATOR_FOR_CRC_RE = re.compile(
+#     r"^(?P<name>[\w.]+)(#[0-9a-f]{1,8})?\s*(?P<fields>.*?)\s*=\s*(?P<typename>[\w<>.]+);$", re.MULTILINE,
+# )
 ARGS_RE = re.compile(r"[^{](\w+):([\w?!.<>#]+)")
 FLAGS_RE = re.compile(r"flags(\d?)\.(\d+)\?")
 
@@ -209,7 +212,28 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
         combinator_match = COMBINATOR_RE.match(line)
         if combinator_match:
             # noinspection PyShadowingBuiltins
-            qualname, id, qualtype = combinator_match.groups()
+            qualname, tlid, qualtype = combinator_match.groups()
+
+            """
+            crc_check_match = COMBINATOR_FOR_CRC_RE.match(line)
+            if crc_check_match:
+                crc_check_name = crc_check_match.group("name").strip()
+                crc_check_fields = crc_check_match.group("fields").strip()
+                crc_check_typename = crc_check_match.group("typename").strip()
+                if crc_check_fields:
+                    to_check = f"{crc_check_name} {crc_check_fields} = {crc_check_typename}"
+                else:
+                    to_check = f"{crc_check_name} = {crc_check_typename}"
+
+                expected_crc = zlib.crc32(to_check.encode("utf8"))
+                if int(tlid, 16) != expected_crc:
+                    print(
+                        f"CRC32 mismatch for constructor \"{qualname}#{tlid}\": "
+                        f"expected tl id to be {hex(expected_crc)[2:]}"
+                    )
+            else:
+                print(f"WHAT {line!r}")
+            """
 
             namespace, name = qualname.split(".") if "." in qualname else ("", qualname)
             name = camel(name)
@@ -236,7 +260,7 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
                 qualname=qualname,
                 namespace=namespace,
                 name=name,
-                id=f"0x{id}",
+                id=f"0x{tlid}",
                 args=args,
                 qualtype=qualtype,
                 typespace=typespace,

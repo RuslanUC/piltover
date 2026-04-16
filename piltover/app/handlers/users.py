@@ -100,7 +100,6 @@ async def get_full_user(request: GetFullUser, user: User):
             # video_calls_available=True,
         ),
         chats=[await personal_channel.to_tl()] if personal_channel is not None else [],
-        # TODO: pass photo_fallback_db if photo_db is None?
         users=[await target_user.to_tl(userphoto=photo_db)],
     )
 
