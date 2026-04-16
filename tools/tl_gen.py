@@ -30,7 +30,7 @@ from tqdm import tqdm
 from tl_gen_placeholders import PLACEHOLDERS
 from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS, BASE_CLASSES_NEED_CONTEXT
 
-DRY_RUN = True
+DRY_RUN = False
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl")
 
