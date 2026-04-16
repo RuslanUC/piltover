@@ -380,7 +380,13 @@ class Worker(MessageHandler):
             return
 
         peer = message.peer
-        bot_message = await bots.process_message_to_bot(peer, message)
+
+        ctx_token = request_ctx.set(RequestContext(0, 0, 0, 0, None, 133, 0, 0, self, self._storage))
+
+        try:
+            bot_message = await bots.process_message_to_bot(peer, message)
+        finally:
+            request_ctx.reset(ctx_token)
 
         if bot_message is not None:
             await upd.send_message(None, {peer: bot_message})

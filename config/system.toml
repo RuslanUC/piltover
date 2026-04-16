@@ -14,6 +14,10 @@ database_connection_string = "sqlite://data/secrets/piltover.db"
 #  Should only be specified if running gateway and worker(s) in separate processes.
 #redis_address = "redis://127.0.0.1:6379"
 
+# Whether to enable @system bot. When enabled, it responds to /info command with instance info
+#  (name, versions, some non-critical config options).
+enable_system_bot = false
+
 # Where all cached data (users, chats, messages, etc.) will be stored
 [system.cache]
 # Cache backend. Available backends: memory, redis, memcached.

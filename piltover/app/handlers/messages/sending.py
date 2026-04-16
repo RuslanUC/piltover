@@ -40,7 +40,6 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils.debug import measure_time
 from piltover.utils.snowflake import Snowflake
-from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.sending")

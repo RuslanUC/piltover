@@ -806,6 +806,7 @@ async def create_system_data(
             ("botfather", "BotFather"),
             ("stickers", "Stickers"),
             ("gif", "Tenor GIF Search"),
+            ("system", "System info"),
         ])
 
     if countries_list and args.auth_countries_file.exists():

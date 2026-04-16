@@ -5,6 +5,7 @@ from piltover.app.bot_handlers.botfather.callback_handler import botfather_callb
 from piltover.app.bot_handlers.gif.inline_handler import gif_inline_query_handler
 from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
 from piltover.app.bot_handlers.stickers import StickersBotInteractionHandler
+from piltover.app.bot_handlers.system import SystemBotInteractionHandler
 from piltover.app.bot_handlers.test_bot import PingTestBotBotInteractionHandler
 from piltover.db.models import Peer, InlineQuery, InlineQueryResult, InlineQueryResultItem, MessageRef
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
@@ -16,6 +17,7 @@ async def _awaitable_none(_p: Peer, _m: MessageRef) -> None:
 
 HANDLERS: dict[str, BotInteractionHandler] = {
     "test_bot": PingTestBotBotInteractionHandler(),
+    "system": SystemBotInteractionHandler(),
     "botfather": BotfatherBotInteractionHandler(),
     "stickers": StickersBotInteractionHandler(),
 }

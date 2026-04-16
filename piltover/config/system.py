@@ -25,6 +25,7 @@ class _System(BaseModel):
     redis_address: str | None = None
     cache: _CacheConfig
     debug_tracing: _TracingConfig
+    enable_system_bot: bool = False
 
 
 class SystemConfig(BaseSettings):
