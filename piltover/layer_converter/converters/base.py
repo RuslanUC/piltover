@@ -7,16 +7,6 @@ TBase = TypeVar("TBase", bound=TLObject)
 TTarget = TypeVar("TTarget", bound=TLObject)
 
 
-class BaseUpgrader(ABC):
-    BASE_TYPE: type[TBase]
-    BASE_LAYER: int
-
-    @classmethod
-    @abstractmethod
-    def upgrade(cls, from_obj: TBase) -> TLObject:  # pragma: no cover
-        ...
-
-
 class BaseDowngrader(ABC):
     BASE_TYPE: type[TBase]
     TARGET_LAYER: int

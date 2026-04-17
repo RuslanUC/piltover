@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import struct
+import time
 from asyncio import Event
 from io import BytesIO
-from time import time
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -201,11 +201,11 @@ class Client:
             # 18: incorrect two lower order msg_id bits (the server expects client message msg_id to be divisible by 4)
             logger.debug(f"Client sent message id which is not divisible by 4")
             error_code = 18
-        elif (packet.message_id >> 32) < (time() - 300):
+        elif (packet.message_id >> 32) < (time.time() - 300):
             # 16: msg_id too low
             logger.debug(f"Client sent message id which is too low")
             error_code = 16
-        elif (packet.message_id >> 32) > (time() + 30):
+        elif (packet.message_id >> 32) > (time.time() + 30):
             # 17: msg_id too high
             logger.debug(f"Client sent message id which is too low")
             error_code = 17
@@ -414,14 +414,19 @@ class Client:
             self.active_sessions.clear()
 
     async def _wait_result_with_ack(
-            self, task: AsyncTaskiqTask[str], message_id: int, session: Session,
+            self, task: AsyncTaskiqTask[str], message_id: int, session: Session, method_name: str,
     ) -> TaskiqResult[str]:
+        start_time = time.perf_counter()
+
         try:
             return await task.wait_result(timeout=1.5)
         except TaskiqResultTimeoutError as e:
             logger.opt(exception=e).warning(f"Task timeout exceeded, sending ack to message {message_id}")
             await session.enqueue(MsgsAck(msg_ids=[message_id]), False)
             return await task.wait_result(timeout=15)
+        finally:
+            end_time = time.perf_counter()
+            logger.debug(f"\"{method_name}\" ({message_id}) took {(end_time - start_time) * 1000:.2f} ms to execute")
 
     async def _process_request(self, request: Message, session: Session) -> RpcResult | None:
         if request.obj.tlid() in SYSTEM_HANDLERS:
@@ -432,7 +437,9 @@ class Client:
                 task = await self._kiq(request.obj, session, request.message_id)
             with measure_time(".wait_result()"):
                 try:
-                    task_result = await self._wait_result_with_ack(task, request.message_id, session)
+                    task_result = await self._wait_result_with_ack(
+                        task, request.message_id, session, request.obj.__class__.__name__
+                    )
                 except Exception as e:
                     logger.opt(exception=e).error(f"Failed to get result for request {request!r}")
                     return RpcResult(

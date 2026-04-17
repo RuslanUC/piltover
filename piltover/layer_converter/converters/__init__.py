@@ -1,4 +1,4 @@
-from .base import BaseDowngrader, BaseUpgrader
+from .base import BaseDowngrader
 from .bot_results_downgrade import *
 from .botinfo_downgrade import *
 from .channel_downgrader import *
