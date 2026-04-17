@@ -67,10 +67,11 @@ class LayerConverter:
             downgraded = True
 
         if isinstance(obj, list):
-            return cast(tuple[TLObject, bool], cls._try_downgrade_list(obj, to_layer))
+            obj, list_downgraded = cls._try_downgrade_list(obj, to_layer)
+            return cast(TLObject, obj), list_downgraded or downgraded
         if not isinstance(obj, TLObject):
             assert isinstance(obj, (bool, int, float, str, bytes))
-            return cast(tuple[TLObject, bool], obj)
+            return cast(TLObject, obj), downgraded
 
         copied = False
 
@@ -92,7 +93,7 @@ class LayerConverter:
                 if not copied:
                     obj = copy.copy(obj)
                     copied = True
-                    
+
                 setattr(obj, slot, new_attr)
 
         return obj, downgraded
