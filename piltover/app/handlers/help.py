@@ -21,20 +21,15 @@ CACHED_COUNTRIES_LIST: tuple[CountriesList | None, int] = (None, 0)
 
 @handler.on_request(GetConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_config(user: User | None):
-    if user is None:
-        default_reaction = None
-    else:
+    default_reaction = None
+    if user is not None:
         settings = await UserReactionsSettings.get_or_none(user=user).select_related("default_reaction")
         if settings is None:
-            default_reaction = await Reaction.get_or_none(Reaction.q_from_reaction("❤"))
-            await UserReactionsSettings.create(user=user, default_reaction=default_reaction)
-        elif settings.default_reaction_id is None:
-            default_reaction = await Reaction.get_or_none(Reaction.q_from_reaction("❤"))
-            if default_reaction is not None:
-                settings.default_reaction = default_reaction
-                await settings.save(update_fields=["default_reaction_id"])
+            reaction = await Reaction.get_or_none(Reaction.q_from_reaction("❤")).only("reaction")
+            if reaction is not None:
+                default_reaction = ReactionEmoji(emoticon=reaction.reaction)
         else:
-            default_reaction = settings.default_reaction
+            default_reaction = settings.to_tl_reaction()
 
     return Config(
         date=int(time()),
@@ -74,7 +69,7 @@ async def get_config(user: User | None):
         webfile_dc_id=APP_CONFIG.this_dc,
         preload_featured_stickers=False,
         revoke_pm_inbox=True,
-        reactions_default=ReactionEmoji(emoticon=default_reaction.reaction) if default_reaction is not None else None,
+        reactions_default=default_reaction,
         gif_search_username="gif",  # TODO: only include this if bot exists?
     )
 

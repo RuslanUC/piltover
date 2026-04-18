@@ -159,20 +159,26 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
 
 @handler.on_request(SetDefaultReaction, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
-    if not isinstance(request.reaction, ReactionEmoji):
+    defaults: dict[str, Reaction | File | None] = {}
+
+    if isinstance(request.reaction, ReactionEmoji):
+        reaction = await Reaction.get_or_none(Reaction.q_from_reaction(request.reaction.emoticon))
+        if reaction is None:
+            raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
+        defaults["default_reaction"] = reaction
+        defaults["default_custom_emoji"] = None
+    elif isinstance(request.reaction, ReactionCustomEmoji):
+        custom_reaction = await File.get_or_none(
+            id=request.reaction.document_id, type=FileType.DOCUMENT_EMOJI
+        ).only("id")
+        if custom_reaction is None:
+            raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
+        defaults["default_reaction"] = None
+        defaults["default_custom_emoji"] = custom_reaction
+    else:
         raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
-    reaction = await Reaction.get_or_none(Reaction.q_from_reaction(request.reaction.emoticon))
-    if reaction is None:
-        raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
-
-    settings, created = await UserReactionsSettings.get_or_create(user=user)
-    if reaction.id == settings.default_reaction_id:
-        return True
-
-    settings.default_reaction = reaction
-    await settings.save(update_fields=["default_reaction_id"])
-
+    await UserReactionsSettings.update_or_create(user=user, defaults=defaults)
     await upd.update_config(user)
 
     return True
