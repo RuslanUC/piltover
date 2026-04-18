@@ -485,6 +485,8 @@ class MessageRef(Model):
             top_message: MessageRef | None = None,
             **message_kwargs,
     ) -> dict[models.Peer, Self]:
+        # TODO: create composite index with random_id, peer (and user so in channels it will work properly?) \
+        #  and rely on database error
         if random_id is not None and await cls.filter(peer=peer, random_id=random_id).exists():
             raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 

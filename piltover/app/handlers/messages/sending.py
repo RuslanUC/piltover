@@ -84,12 +84,13 @@ async def send_created_messages_internal(
         mentioned_user_ids: set[int],
 ) -> Updates:
     if opposite and peer.type is not PeerType.CHANNEL and not user.bot:
+        # TODO: execute in the background
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, await peer.get_opposite())
 
     if opposite and peer.type is PeerType.CHAT and mentioned_user_ids:
         message = next(iter(messages.values())).content
-        mentioned_users = await User.filter(owner__chat_id=peer.chat_id, id__in=mentioned_user_ids)
+        mentioned_users = await User.filter(owner__chat_id=peer.chat_id, id__in=mentioned_user_ids).only("id")
         unread_mentions_to_create = []
         for mentioned_user in mentioned_users:
             unread_mentions_to_create.append(MessageMention(
@@ -101,7 +102,8 @@ async def send_created_messages_internal(
         if unread_mentions_to_create:
             await MessageMention.bulk_create(unread_mentions_to_create)
 
-    if clear_draft and (draft := await MessageDraft.get_or_none(peer=peer)) is not None:
+    # TODO: execute in the background
+    if clear_draft and (draft := await MessageDraft.get_or_none(peer=peer).only("id")) is not None:
         await draft.delete()
         await upd.update_draft(user, peer, None)
 
@@ -129,7 +131,7 @@ async def send_created_messages_internal(
         if mentioned_user_ids:
             mentioned_users = await User.filter(
                 id__in=mentioned_user_ids, owner__channel_id=peer.channel_id,
-            )
+            ).only("id")
             unread_mentions_to_create = []
             for mentioned_user in mentioned_users:
                 unread_mentions_to_create.append(MessageMention(
