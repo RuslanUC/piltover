@@ -47,6 +47,19 @@ internal.tagged_bytes_vector#8d538c0f vec:Vector<bytes> = internal.TaggedVector;
 internal.tagged_string_vector#492bec2d vec:Vector<string> = internal.TaggedVector;
 internal.tagged_object_vector#b002bb63 vec:Vector<Object> = internal.TaggedVector;
 
+// Tagged types
+
+internal.tagged_int#202f2b94 value:int = internal.TaggedValue;
+internal.tagged_long#8b45cf0f value:long = internal.TaggedValue;
+internal.tagged_int128#3698302b value:Int128 = internal.TaggedValue;
+internal.tagged_int256#c5087dfc value:Int256 = internal.TaggedValue;
+internal.tagged_float#fa738c5 value:double = internal.TaggedValue;
+internal.tagged_bool#9eb8a6a1 value:Bool = internal.TaggedValue;
+internal.tagged_bytes#942948e0 value:bytes = internal.TaggedValue;
+internal.tagged_string#678b99df value:string = internal.TaggedValue;
+internal.tagged_object#fd2458a4 value:Object = internal.TaggedValue;
+internal.tagged_vector#8ba60692 value:internal.TaggedVector = internal.TaggedValue;
+
 // For benchmarking only
 
 internal_benchmarking.nested_object#d5525aa8 some_int:int some_long:long = internal_benchmarking.NestedObject;
@@ -212,6 +225,13 @@ stickerSetToFormatInternal#1445ac69 flags:# id:int access_hash:long title:string
 // Uploaded files metadata
 
 // internal.uploadedFileMetadata#efa4ccd5 flags:# multipart:flags.0?true = internal.UploadedFileMetadata;
+
+// Taskiq-related
+
+internal_taskiq.dictItem#2420c746 key:string value:internal.TaggedValue = internal_taskiq.DictItem;
+internal_taskiq.intDictItem#a20a62a3 key:string value:int = internal_taskiq.IntDictItem;
+
+internal_taskiq.taskIQMessage#b7b3f21 flags:# task_id:string task_name:string labels:flags.0?Vector<internal_taskiq.DictItem> labels_types:flags.1?Vector<internal_taskiq.IntDictItem> args:flags.2?Vector<internal.TaggedValue> kwargs:flags.3?Vector<internal_taskiq.DictItem> = internal_taskiq.TaskIQMessage;
 
 ---functions---
 

@@ -15,7 +15,6 @@ from mtproto.transport import Connection
 from mtproto.transport.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, \
     DecryptedMessagePacket, ErrorPacket, QuickAckPacket, BasePacket
 from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
-from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from taskiq.kicker import AsyncKicker
 
 from piltover.auth_data import AuthData, GenAuthData
@@ -147,7 +146,9 @@ class Client:
             obj.write(),
         ))
 
-    async def _kiq(self, obj: TLObject, session: Session, message_id: int | None = None) -> AsyncTaskiqTask:
+    async def _kiq(
+            self, obj: TLObject, session: Session, message_id: int | None = None,
+    ) -> AsyncTaskiqTask[RpcResponse]:
         with measure_time("session.refresh_auth_maybe()"):
             await session.refresh_auth_maybe()
 
@@ -163,7 +164,7 @@ class Client:
             user_id=session.user_id,
             is_bot=session.is_bot,
             mfa_pending=session.mfa_pending,
-        ).write().hex()
+        )
 
         with measure_time(".kiq()"):
             return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
@@ -414,8 +415,8 @@ class Client:
             self.active_sessions.clear()
 
     async def _wait_result_with_ack(
-            self, task: AsyncTaskiqTask[str], message_id: int, session: Session, method_name: str,
-    ) -> TaskiqResult[str]:
+            self, task: AsyncTaskiqTask[RpcResponse], message_id: int, session: Session, method_name: str,
+    ) -> TaskiqResult[RpcResponse]:
         start_time = time.perf_counter()
 
         try:
@@ -455,8 +456,6 @@ class Client:
             )
 
         result = task_result.return_value
-        if not isinstance(self.server.broker.result_backend, InmemoryResultBackend):
-            result = RpcResponse.read(BytesIO(bytes.fromhex(result)))
         if not isinstance(result, RpcResponse):
             logger.error(f"Got response from worker that is not a RpcResponse object: {result}")
             return RpcResult(

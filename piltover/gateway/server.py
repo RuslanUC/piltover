@@ -10,6 +10,7 @@ from loguru import logger
 from taskiq import TaskiqEvents, AsyncBroker
 
 from piltover.gateway.client import Client
+from piltover.taskiq_tl_message_formatter import TLFormatter
 
 try:
     from taskiq_aio_pika import AioPikaBroker
@@ -88,6 +89,8 @@ class Gateway:
             self.message_broker = RabbitMqMessageBroker(BrokerType.READ, rabbitmq_address)
             self.broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, self._broker_startup)
             self.broker.add_event_handler(TaskiqEvents.CLIENT_SHUTDOWN, self._broker_shutdown)
+
+        self.broker.with_formatter(TLFormatter())
 
     async def _broker_startup(self, _) -> None:
         await self.message_broker.startup()

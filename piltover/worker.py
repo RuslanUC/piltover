@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, UTC
 from inspect import getfullargspec
-from io import BytesIO
 from pathlib import Path
 from typing import Awaitable, Callable, Any, TypeVar
 
@@ -20,6 +19,7 @@ from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
 from piltover.session import SessionManager
 from piltover.storage import LocalFileStorage
+from piltover.taskiq_tl_message_formatter import TLFormatter
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
 from piltover.utils.debug import measure_time
@@ -140,6 +140,8 @@ class Worker(MessageHandler):
             self.broker = AioPikaBroker(rabbitmq_address).with_result_backend(RedisAsyncResultBackend(redis_address))
             self.message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
 
+        self.broker.with_formatter(TLFormatter())
+
         # TODO: add RedisPubSub
         self.pubsub = InMemoryPubSub()
 
@@ -185,9 +187,9 @@ class Worker(MessageHandler):
         else:
             return response.write().hex()
 
-    async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse | str:
-        with measure_time("read CallRpc"):
-            call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
+    async def _handle_tl_rpc(self, call: CallRpc) -> RpcResponse | str:
+        if not isinstance(call, CallRpc):
+            raise RuntimeError(f"Expected CallRpc, got \"{call.__class__.__name__}\"")
 
         logger.trace(f"Got request: {call!r}")
 
@@ -253,10 +255,7 @@ class Worker(MessageHandler):
             refresh_auth=handler.refresh_session,
         )
 
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return response
-        else:
-            return response.write().hex()
+        return response
 
     async def _handle_scheduled_message(self, message_id: int) -> None:
         from piltover.app.handlers.messages import sending

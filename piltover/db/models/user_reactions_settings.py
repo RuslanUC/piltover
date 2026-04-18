@@ -25,4 +25,3 @@ class UserReactionsSettings(Model):
             return ReactionCustomEmoji(document_id=self.default_custom_emoji_id)
 
         raise Unreachable
-
