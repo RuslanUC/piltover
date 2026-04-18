@@ -50,7 +50,7 @@ class MessageRef(Model):
     id: int = fields.BigIntField(primary_key=True)
     content: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
-    random_id: int | None = fields.BigIntField(null=True, default=None)
+    random_id: int | None = fields.BigIntField(null=True, default=None, db_index=True)
     pinned: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
     from_scheduled: bool = fields.BooleanField(default=False)
