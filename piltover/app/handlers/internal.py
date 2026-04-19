@@ -10,15 +10,17 @@ from piltover.app.handlers.messages.sending import send_created_messages_interna
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft
 from piltover.enums import ReqHandlerFlags
+from piltover.tl import TLObject
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
     ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft
+from piltover.tl.types.internal import TaggedBool
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("internal")
 
 
 @handler.on_request(SendScheduledMessage, ReqHandlerFlags.INTERNAL)
-async def send_scheduled_message(request: SendScheduledMessage) -> bool:
+async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
     logger.trace(f"Processing scheduled message {request.message_id}")
 
     async with in_transaction():
@@ -32,7 +34,7 @@ async def send_scheduled_message(request: SendScheduledMessage) -> bool:
         )
         if scheduled is None:
             logger.warning(f"Scheduled message {request.message_id} does not exist?")
-            return False
+            return TaggedBool(value=False)
 
         task = scheduled.taskiqscheduledmessages
 
@@ -51,11 +53,11 @@ async def send_scheduled_message(request: SendScheduledMessage) -> bool:
 
     await upd.delete_scheduled_messages(peer.owner, peer, [scheduled.id], [new_message.id])
 
-    return True
+    return TaggedBool(value=True)
 
 
 @handler.on_request(DeleteScheduledMessage, ReqHandlerFlags.INTERNAL)
-async def delete_scheduled_message(request: DeleteScheduledMessage) -> bool:
+async def delete_scheduled_message(request: DeleteScheduledMessage) -> TLObject:
     logger.trace(f"Deleting scheduled-for-deletion message {request.message_id}")
 
     async with in_transaction():
@@ -81,11 +83,11 @@ async def delete_scheduled_message(request: DeleteScheduledMessage) -> bool:
         for channel, message_ids in channel_messages.items():
             await upd.delete_messages_channel(channel, message_ids)
 
-    return True
+    return TaggedBool(value=True)
 
 
 @handler.on_request(CreateDiscussionThread, ReqHandlerFlags.INTERNAL)
-async def create_discussion_thread(request: CreateDiscussionThread) -> bool:
+async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
     logger.trace(f"Creating discussion thread for channel message {request.message_id}")
 
     # TODO: forward media groups correctly
@@ -96,7 +98,7 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> bool:
             *MessageRef.PREFETCH_FIELDS, "peer__channel", "content__send_as_channel",
         )
         if message is None or not message.peer.channel.discussion_id:
-            return False
+            return TaggedBool(value=False)
 
         discussion_peer = await Peer.get_or_none(
             owner=None, channel_id=message.peer.channel.discussion_id,
@@ -125,17 +127,17 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> bool:
     await upd.send_messages_channel([discussion_message], discussion_peer.channel)
     await upd.edit_message_channel(message.peer.channel, message)
 
-    return True
+    return TaggedBool(value=True)
 
 
 @handler.on_request(ProcessMessageToBuiltinBot, ReqHandlerFlags.INTERNAL)
-async def process_message_to_builtin_bot(request: ProcessMessageToBuiltinBot) -> bool:
+async def process_message_to_builtin_bot(request: ProcessMessageToBuiltinBot) -> TLObject:
     logger.info(f"Processing message to bot {request.messageref_id}")
     message = await MessageRef.select_for_update().get_or_none(id=request.messageref_id).select_related(
         "peer", "peer__owner", "peer__user", "content", "content__media", "content__media__file",
     )
     if message is None:
-        return False
+        return TaggedBool(value=False)
 
     peer = message.peer
 
@@ -143,11 +145,11 @@ async def process_message_to_builtin_bot(request: ProcessMessageToBuiltinBot) ->
     if bot_message is not None:
         await upd.send_message(None, {peer: bot_message})
 
-    return True
+    return TaggedBool(value=True)
 
 
 @handler.on_request(UpdateStatusForPeers, ReqHandlerFlags.INTERNAL)
-async def update_status_for_peers(request: UpdateStatusForPeers) -> bool:
+async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
     user = await User.get(id=request.peer_owner).only("id", "bot")
     presence = await Presence.update_to_now(user)
 
@@ -155,27 +157,27 @@ async def update_status_for_peers(request: UpdateStatusForPeers) -> bool:
 
     if peer_type is PeerType.USER:
         if request.peer_user == 777000:
-            return True
+            return TaggedBool(value=True)
         if await Peer.filter(
                 owner_id=request.peer_user, user_id=request.peer_owner, blocked_at__not_isnull=True
         ).exists():
-            return True
+            return TaggedBool(value=True)
         peers = [await User.get(id=request.peer_user).only("id")]
     elif peer_type is PeerType.CHAT:
         peers = await User.filter(charparticipants__chat_id=request.peer_chat, id__not=request.peer_owner).only("id")
     else:
-        return False
+        return TaggedBool(value=False)
 
     await upd.update_status(user, presence, peers)
-    return True
+    return TaggedBool(value=True)
 
 
 @handler.on_request(ClearDraft, ReqHandlerFlags.INTERNAL)
-async def clear_draft(request: ClearDraft) -> bool:
+async def clear_draft(request: ClearDraft) -> TLObject:
     if (draft := await MessageDraft.get_or_none(peer_id=request.peer_id).only("id")) is not None:
         peer = await Peer.get(id=request.peer_id).select_related("owner")
         await draft.delete()
         await upd.update_draft(peer.owner, peer, None)
-        return True
+        return TaggedBool(value=True)
 
-    return False
+    return TaggedBool(value=False)
