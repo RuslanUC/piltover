@@ -4,7 +4,6 @@ import asyncio
 import builtins
 import hashlib
 import logging
-import traceback
 from asyncio import Task, DefaultEventLoopPolicy, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
@@ -24,11 +23,26 @@ from tortoise import connections
 from tortoise.backends.sqlite import SqliteClient
 
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
-from tests.client import setup_test_dc, TestClient
 from tests.scheduled_loop import run_scheduler_loop_every_100ms
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
+    from tests.client import TestClient
+
+
+@pytest.fixture(autouse=True, scope="session")
+def redirect_logging_to_loguru() -> None:
+    from piltover.utils.logging_loguru_handler import InterceptHandler
+
+    InterceptHandler.redirect_to_loguru("pyrogram")
+    InterceptHandler.redirect_to_loguru("aiocache.base", logging.DEBUG)
+    InterceptHandler.redirect_to_loguru("taskiq", logging.WARNING)
+    InterceptHandler.redirect_to_loguru(taskiq_sched_logger.name, logging.DEBUG)
+    InterceptHandler.redirect_to_loguru("asyncio", logging.WARNING)
+    InterceptHandler.redirect_to_loguru("tg_secret.client", logging.DEBUG)
+    # InterceptHandler.redirect_to_loguru("tortoise", logging.DEBUG)
+    InterceptHandler.redirect_to_loguru("tortoise.db_client", logging.DEBUG)
+
 
 T = TypeVar("T")
 
@@ -86,8 +100,9 @@ async def _empty_async_func(*args, **kwargs) -> None:
 
 @pytest_asyncio.fixture(autouse=True)
 async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> AsyncIterator[Gateway]:
-    from piltover.app.app import app, args
+    from piltover.app.app import app
     from piltover.config import APP_CONFIG
+    from tests.client import setup_test_dc
 
     marks = {mark.name for mark in request.node.own_markers}
     real_key_gen = "real_key_gen" in marks
@@ -206,43 +221,6 @@ def _print(*args, **kwargs) -> None:
 
 builtins.input = _input
 builtins.print = _print
-
-
-# https://stackoverflow.com/a/72735401
-class InterceptHandler(logging.Handler):
-    _instance: InterceptHandler | None = None
-
-    @logger.catch(default=True)
-    def emit(self, record):
-        try:
-            level = logger.level(record.levelname).name
-        except ValueError:
-            level = record.levelno
-
-        import sys
-        frame, depth = sys._getframe(6), 6
-        while frame and frame.f_code.co_filename == logging.__file__:
-            frame = frame.f_back
-            depth += 1
-
-        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
-
-    @classmethod
-    def redirect_to_loguru(cls, logger_name: str, level: int = logging.INFO) -> None:
-        if not isinstance(cls._instance, cls):
-            cls._instance = cls()
-
-        std_logger = logging.getLogger(logger_name)
-        std_logger.setLevel(level)
-        std_logger.addHandler(cls._instance)
-
-
-InterceptHandler.redirect_to_loguru("pyrogram")
-InterceptHandler.redirect_to_loguru("aiocache.base", logging.DEBUG)
-InterceptHandler.redirect_to_loguru("taskiq", logging.WARNING)
-InterceptHandler.redirect_to_loguru(taskiq_sched_logger.name, logging.DEBUG)
-InterceptHandler.redirect_to_loguru("asyncio", logging.WARNING)
-InterceptHandler.redirect_to_loguru("tg_secret.client", logging.DEBUG)
 
 
 def _async_task_done_callback(task: Task) -> None:
@@ -367,6 +345,8 @@ class ChannelWithClientsFactory(Protocol):
 @pytest_asyncio.fixture()
 async def client_fake(faker: Faker) -> ClientFactorySync:
     def _create_client(phone_number: str | None = None) -> TestClient:
+        from tests.client import TestClient
+
         if phone_number is None:
             phone_number = faker.msisdn()
 

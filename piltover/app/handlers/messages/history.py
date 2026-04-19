@@ -776,7 +776,7 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     mentioned_ids = await MessageMention.filter(
         user=user, chat_id=peer.chat_id, channel_id=peer.channel_id, read=False,
     ).values_list("message_id", flat=True)
-    logger.trace(f"Unread mentioned ids: {mentioned_ids}")
+    logger.trace("Unread mentioned ids: {ids}", ids=mentioned_ids)
 
     if not mentioned_ids:
         if peer.type is PeerType.CHANNEL:

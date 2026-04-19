@@ -88,7 +88,7 @@ class MessageHandler:
     ) -> Callable[[HandlerFunc[T]], HandlerFunc[T]]:
         def decorator(func: HandlerFunc[T]):
             if typ.tlid() in self.request_handlers:
-                logger.warning(f"Overriding existing handler for {typ.tlname()} ({hex(typ.tlid())[2:]})")
+                logger.warning("Overriding existing handler for {name} ({tlid:x})", name=typ.tlname(), tlid=typ.tlid())
 
             logger.trace(f"Added handler for function {typ.tlname()}" + (f" on {self.name}" if self.name else ""))
 
@@ -261,7 +261,7 @@ class Worker(MessageHandler):
             if ctx.any():
                 result_obj = ctx.to_tl(result_obj)
 
-        logger.trace(f"Returning to gateway: {result_obj!r}")
+        logger.trace("Returning to gateway: {result!r}", result=result_obj)
 
         response = RpcResponse(
             obj=result_obj,
@@ -308,7 +308,7 @@ class Worker(MessageHandler):
             logger.warning(f"Handler for {call.obj} returned None")
             result = RpcError(error_code=500, error_message="NOT_IMPLEMENTED")
 
-        logger.trace(f"Returning internal result: {result!r}")
+        logger.trace("Returning internal result: {result!r}", result=result)
 
         if isinstance(self.broker.result_backend, InmemoryResultBackend):
             return result

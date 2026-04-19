@@ -109,5 +109,5 @@ class Gateway:
 
     @staticmethod
     async def get_auth_data(auth_key_id: int) -> AuthData | None:
-        logger.debug(f"Requested auth key: {auth_key_id}")
+        logger.debug("Requested auth key: {auth_key_id}", auth_key_id=auth_key_id)
         return await AuthKey.get_auth_data(auth_key_id)

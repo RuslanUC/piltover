@@ -21,7 +21,7 @@ handler = MessageHandler("internal")
 
 @handler.on_request(SendScheduledMessage, ReqHandlerFlags.INTERNAL)
 async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
-    logger.trace(f"Processing scheduled message {request.message_id}")
+    logger.trace("Processing scheduled message {message_id}", message_id=request.message_id)
 
     async with in_transaction():
         scheduled = await MessageRef.select_for_update(
@@ -58,7 +58,7 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
 
 @handler.on_request(DeleteScheduledMessage, ReqHandlerFlags.INTERNAL)
 async def delete_scheduled_message(request: DeleteScheduledMessage) -> TLObject:
-    logger.trace(f"Deleting scheduled-for-deletion message {request.message_id}")
+    logger.trace("Deleting scheduled-for-deletion message {message_id}", message_id=request.message_id)
 
     async with in_transaction():
         to_delete = await MessageRef.select_for_update(
@@ -88,7 +88,7 @@ async def delete_scheduled_message(request: DeleteScheduledMessage) -> TLObject:
 
 @handler.on_request(CreateDiscussionThread, ReqHandlerFlags.INTERNAL)
 async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
-    logger.trace(f"Creating discussion thread for channel message {request.message_id}")
+    logger.trace("Creating discussion thread for channel message {message_id}", message_id=request.message_id)
 
     # TODO: forward media groups correctly
 

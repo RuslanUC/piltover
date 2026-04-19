@@ -34,7 +34,7 @@ class OrmDatabaseScheduleSource(ScheduleSource):
             scheduled_time__lte=current_minute, state=TaskIqScheduledState.SCHEDULED,
         ).order_by("scheduled_time").limit(100)
 
-        logger.trace(f"Got {len(scheduled_messages)} scheduled messages")
+        logger.trace("Got {count} scheduled messages", count=len(scheduled_messages))
 
         scheduled_ids = [scheduled.id for scheduled in scheduled_messages]
 

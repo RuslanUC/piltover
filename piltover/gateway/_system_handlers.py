@@ -64,21 +64,19 @@ async def invoke_without_updates(client: Client, request: Message[InvokeWithoutU
 async def init_connection(client: Client, request: Message[InitConnection], session: Session) -> RpcResult:
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
-    authorization = await UserAuthorization.get_or_none(key_id=session.auth_data.perm_auth_key_id)
-    if authorization is not None:
-        # TODO: set api id
-        authorization.active_at = datetime.now(UTC)
-        authorization.device_model = request.obj.device_model
-        authorization.system_version = request.obj.system_version
-        authorization.app_version = request.obj.app_version
-        authorization.ip = client.peername[0]
 
-        await authorization.save(update_fields=["active_at", "device_model", "system_version", "app_version", "ip"])
+    await UserAuthorization.filter(key_id=session.auth_data.perm_auth_key_id).update(
+        active_at=datetime.now(UTC),
+        device_model=request.obj.device_model,
+        system_version=request.obj.system_version,
+        app_version=request.obj.app_version,
+        ip=client.peername[0],
+    )
 
-        if not session.no_updates:
-            ...  # TODO: subscribe user to updates manually
+    if not session.no_updates:
+        ...  # TODO: subscribe user to updates manually
 
-    logger.info(f"initConnection with Api ID: {request.obj.api_id}")
+    logger.info("initConnection with Api ID: {api_id}", api_id=request.obj.api_id)
 
     return await _invoke_inner_query(client, request, session)
 

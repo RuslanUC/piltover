@@ -388,7 +388,7 @@ class TestClient(Client):
             _updates = updates
 
         for update in _updates:
-            logger.trace(f"Got update btw: {update}")
+            logger.trace("Got update btw: {update}", update=update)
             self._got_updates[type(update)].append(update)
 
         self._updates_event.set()

@@ -211,7 +211,9 @@ class BaseMessageBroker(ABC):
                     continue
                 send_to.update(self.subscribed_auths[auth_id])
 
-        logger.trace(f"Got message {message!r} that will be sent to {len(send_to)} sessions")
+        logger.trace(
+            "Got message {message!r} that will be sent to {count} sessions", message=message, count=len(send_to)
+        )
 
         for session in send_to:
             if session.auth_id in ignore_auths:
@@ -234,7 +236,7 @@ class BaseMessageBroker(ABC):
             sessions.update(self.subscribed_users[user_id])
 
         logger.trace(f"Will subscribe/unsubscribe {len(sessions)} sessions...")
-        logger.trace(f"{message=!r}, {self.subscribed_users=}")
+        logger.trace("{message!r}, {users}", message=message, users=self.subscribed_users)
 
         to_add, to_delete = message.channel_ids, []
         if not message.subscribe:
