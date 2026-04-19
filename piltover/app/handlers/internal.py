@@ -150,7 +150,7 @@ async def process_message_to_builtin_bot(request: ProcessMessageToBuiltinBot) ->
 
 @handler.on_request(UpdateStatusForPeers, ReqHandlerFlags.INTERNAL)
 async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
-    user = await User.get(id=request.peer_owner).only("id", "bot")
+    user = await User.get(id=request.peer_owner)
     presence = await Presence.update_to_now(user)
 
     peer_type = PeerType(request.peer_type)

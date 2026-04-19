@@ -53,6 +53,11 @@ async def invoke_with_layer(client: Client, request: Message[InvokeWithLayer], s
 
 
 async def invoke_after_msg(client: Client, request: Message[InvokeAfterMsg], session: Session) -> RpcResult:
+    logger.critical(
+        "Client wants to execute request after other request would be executed, "
+        "but this is not implemented yet: {request}",
+        request=request,
+    )
     return await _invoke_inner_query(client, request, session)
 
 
