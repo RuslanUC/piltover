@@ -90,9 +90,5 @@ class Presence(Model):
             raise RuntimeError("Can't set presence for bot")
 
         last_seen = datetime.now(UTC)
-        presence, created = await cls.get_or_create(user=user, defaults={"status": status, "last_seen": last_seen})
-        if not created:
-            presence.last_seen = last_seen
-            await presence.save(update_fields=["last_seen"])
-
+        presence, _ = await cls.update_or_create(user=user, defaults={"status": status, "last_seen": last_seen})
         return presence

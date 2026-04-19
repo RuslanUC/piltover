@@ -53,7 +53,7 @@ class User(Model):
     accent_color_id: int | None
     profile_color_id: int | None
 
-    username: models.Username | QuerySet[models.Username]
+    username: models.Username | QuerySet[models.Username] | None
 
     cached_username: models.Username | None | _Missing = _MISSING
 

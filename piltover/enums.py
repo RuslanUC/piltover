@@ -8,3 +8,5 @@ class ReqHandlerFlags(IntFlag):
     REFRESH_SESSION = 1 << 3
     USER_NOT_ALLOWED = 1 << 4
     INTERNAL = 1 << 5
+    DONT_FETCH_USER = 1 << 6
+    FETCH_USER_WITH_USERNAME = 1 << 7

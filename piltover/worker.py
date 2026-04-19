@@ -51,6 +51,7 @@ class RequestHandler:
     __slots__ = (
         "func", "flags", "has_request_arg", "has_user_arg",
         "auth_required", "allow_mfa_pending", "bots_not_allowed", "refresh_session", "users_not_allowed", "is_internal",
+        "has_user_id_arg", "dont_fetch_user", "prefetch_username",
     )
 
     def __init__(self, func: HandlerFunc, flags: int):
@@ -59,6 +60,7 @@ class RequestHandler:
         func_args = set(getfullargspec(func).args)
         self.has_request_arg = "request" in func_args
         self.has_user_arg = "user" in func_args
+        self.has_user_id_arg = "user_id" in func_args
 
         self.auth_required = not (self.flags & ReqHandlerFlags.AUTH_NOT_REQUIRED)
         self.allow_mfa_pending = bool(self.flags & ReqHandlerFlags.ALLOW_MFA_PENDING)
@@ -66,11 +68,22 @@ class RequestHandler:
         self.refresh_session = bool(self.flags & ReqHandlerFlags.REFRESH_SESSION)
         self.users_not_allowed = bool(self.flags & ReqHandlerFlags.USER_NOT_ALLOWED)
         self.is_internal = bool(self.flags & ReqHandlerFlags.INTERNAL)
+        self.dont_fetch_user = bool(self.flags & ReqHandlerFlags.DONT_FETCH_USER)
+        self.prefetch_username = bool(self.flags & ReqHandlerFlags.FETCH_USER_WITH_USERNAME)
 
-    async def __call__(self, request: TLObject, user: User | None) -> Any:
-        kwargs = {}
-        if self.has_request_arg: kwargs["request"] = request
-        if self.has_user_arg: kwargs["user"] = user
+    async def __call__(self, request: TLObject, user: User | None, user_id: int | None) -> Any:
+        kwargs: dict = {}
+        if self.has_request_arg:
+            kwargs["request"] = request
+        if self.has_user_arg:
+            kwargs["user"] = user
+        if self.has_user_id_arg:
+            if user_id is not None:
+                kwargs["user_id"] = user_id
+            elif user is not None:
+                kwargs["user_id"] = user.id
+            else:
+                kwargs["user_id"] = None
 
         return await self.func(**kwargs)
 
@@ -166,13 +179,17 @@ class Worker(MessageHandler):
         )
 
     @classmethod
-    async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False) -> User | None:
+    async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False, with_username: bool = False) -> User | None:
         if call.user_id is None or call.auth_id is None:
             return None
         if call.mfa_pending and not allow_mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
 
-        return await User.get_or_none(id=call.user_id, userauthorizations__id=call.auth_id)
+        query = User.get_or_none(id=call.user_id, userauthorizations__id=call.auth_id)
+        if with_username:
+            query = query.select_related("username")
+
+        return await query
 
     async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse:
         with measure_time("_handle_tl_rpc()"):
@@ -217,15 +234,18 @@ class Worker(MessageHandler):
             return self._err_response(call.message_id, 400, "USER_BOT_REQUIRED")
 
         user = None
-        if handler.auth_required or handler.has_user_arg:
+        if (handler.auth_required or handler.has_user_arg) and not handler.dont_fetch_user:
             try:
                 with measure_time(".get_user(...)"):
-                    user = await self.get_user(call, handler.allow_mfa_pending)
+                    user = await self.get_user(call, handler.allow_mfa_pending, handler.prefetch_username)
             except ErrorRpc as e:
                 return self._err_response(call.message_id, e.error_code, e.error_message)
 
             if user is None and handler.auth_required:
                 return self._err_response(call.message_id, 401, "AUTH_KEY_UNREGISTERED")
+        elif handler.dont_fetch_user and handler.auth_required \
+                and (not call.user_id or (call.mfa_pending and not handler.allow_mfa_pending)):
+            return self._err_response(call.message_id, 401, "AUTH_KEY_UNREGISTERED")
 
         ctx_token = request_ctx.set(RequestContext(
             call.auth_key_id, call.perm_auth_key_id, call.message_id, call.session_id, call.obj, call.layer,
@@ -235,7 +255,7 @@ class Worker(MessageHandler):
         try:
             with measure_time(f"handler({call.obj.tlname()})"):
                 # TODO: wrap handler call in in_transaction?
-                result = await handler(call.obj, user)
+                result = await handler(call.obj, user, call.user_id)
         except ErrorRpc as e:
             reason = f", reason: {e.reason}" if e.reason is not None else ""
             logger.warning(f"{call.obj.tlname()}: [{e.error_code} {e.error_message}]{reason}")
@@ -293,7 +313,7 @@ class Worker(MessageHandler):
         try:
             with measure_time(f"internal_handler({call.obj.tlname()})"):
                 # TODO: wrap handler call in in_transaction?
-                result = await handler(call.obj, None)
+                result = await handler(call.obj, None, None)
         except ErrorRpc as e:
             reason = f", reason: {e.reason}" if e.reason is not None else ""
             logger.warning(f"{call.obj.tlname()}: [{e.error_code} {e.error_message}]{reason}")

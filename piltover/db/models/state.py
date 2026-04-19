@@ -30,14 +30,16 @@ class State(Model):
     # TODO: add add_pts_bulk
 
     @classmethod
-    async def add_pts(cls, user: models.User, pts_count: int) -> int:
+    async def add_pts(cls, user: models.User | int, pts_count: int) -> int:
+        user_id = user.id if isinstance(user, models.User) else user
+
         if pts_count <= 0:
-            return cast(int, await cls.get(user=user).values_list("pts", flat=True))
+            return cast(int, await cls.get(user_id=user_id).values_list("pts", flat=True))
 
         async with in_transaction():
-            pts = cast(int, await cls.select_for_update().get(user=user).values_list("pts", flat=True))
+            pts = cast(int, await cls.select_for_update().get(user_id=user_id).values_list("pts", flat=True))
             new_pts = pts + pts_count
-            await cls.filter(user=user).update(pts=new_pts)
+            await cls.filter(user_id=user_id).update(pts=new_pts)
 
         return new_pts
 

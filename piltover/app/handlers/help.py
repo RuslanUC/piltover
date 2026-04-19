@@ -3,7 +3,7 @@ from time import time
 
 from piltover.app.utils.utils import telegram_hash
 from piltover.config import APP_CONFIG, DICE_CONFIG
-from piltover.db.models import AuthCountry, User, Reaction, UserReactionsSettings, PeerColorOption
+from piltover.db.models import AuthCountry, Reaction, UserReactionsSettings, PeerColorOption
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, JsonNumber, \
     JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji
@@ -19,11 +19,11 @@ handler = MessageHandler("help")
 CACHED_COUNTRIES_LIST: tuple[CountriesList | None, int] = (None, 0)
 
 
-@handler.on_request(GetConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED)
-async def get_config(user: User | None):
+@handler.on_request(GetConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_config(user_id: int | None):
     default_reaction = None
-    if user is not None:
-        settings = await UserReactionsSettings.get_or_none(user=user).select_related("default_reaction")
+    if user_id is not None:
+        settings = await UserReactionsSettings.get_or_none(user_id=user_id).select_related("default_reaction")
         if settings is None:
             reaction = await Reaction.get_or_none(Reaction.q_from_reaction("❤")).only("reaction")
             if reaction is not None:

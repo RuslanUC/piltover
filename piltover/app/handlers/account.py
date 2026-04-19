@@ -61,7 +61,7 @@ DELETION_CANCELLED_FMT, DELETION_CANCELLED_FMT_ENTITIES = FormatableTextWithEnti
 ).format()
 
 
-@handler.on_request(CheckUsername, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(CheckUsername, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def check_username(request: CheckUsername) -> bool:
     request.username = request.username.lower()
     validate_username(request.username)
@@ -70,12 +70,11 @@ async def check_username(request: CheckUsername) -> bool:
     return True
 
 
-@handler.on_request(UpdateUsername, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(UpdateUsername, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.FETCH_USER_WITH_USERNAME)
 async def update_username(request: UpdateUsername, user: User) -> TLUser:
     request.username = request.username.lower().strip()
-    current_username = await user.get_username()
-    if (not request.username and current_username is None) \
-            or (current_username is not None and current_username.username == request.username):
+    if (not request.username and user.username is None) \
+            or (user.username is not None and user.username.username == request.username):
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED")
 
     if request.username:
@@ -84,14 +83,14 @@ async def update_username(request: UpdateUsername, user: User) -> TLUser:
             raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
 
     async with in_transaction():
-        if current_username is None:
-            user.cached_username = await Username.create(user=user, username=request.username)
-        elif current_username is not None and request.username:
-            current_username.username = request.username
-            await current_username.save(update_fields=["username"])
-        elif current_username is not None and not request.username:
-            await current_username.delete()
-            user.cached_username = None
+        if user.username is None:
+            user._username = await Username.create(user=user, username=request.username)
+        elif user.username is not None and request.username:
+            user.username.username = request.username
+            await user.username.save(update_fields=["username"])
+        elif user.username is not None and not request.username:
+            await user.username.delete()
+            user._username = None
 
         user.version += 1
         await user.save(update_fields=["version"])
@@ -100,34 +99,34 @@ async def update_username(request: UpdateUsername, user: User) -> TLUser:
     return await user.to_tl()
 
 
-@handler.on_request(GetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_authorizations(user: User):
+@handler.on_request(GetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_authorizations(user_id: int) -> Authorizations:
     current_key_id = request_ctx.get().perm_auth_key_id
-    authorizations = await UserAuthorization.filter(user=user).all()
+    authorizations = await UserAuthorization.filter(user_id=user_id).all()
     authorizations = [auth.to_tl(current=auth.key_id == current_key_id) for auth in authorizations]
 
     return Authorizations(authorization_ttl_days=15, authorizations=authorizations)
 
 
-@handler.on_request(GetAccountTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_account_ttl(user: User):
+@handler.on_request(GetAccountTTL, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_account_ttl(user_id: int) -> AccountDaysTTL:
+    user = await User.get(id=user_id).only("ttl_days")
     return AccountDaysTTL(days=user.ttl_days)
 
 
-@handler.on_request(SetAccountTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def set_account_ttl(request: SetAccountTTL, user: User):
+@handler.on_request(SetAccountTTL, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def set_account_ttl(request: SetAccountTTL, user_id: int) -> bool:
     if request.ttl.days not in range(30, 366):
         raise ErrorRpc(error_code=400, error_message="TTL_DAYS_INVALID")
 
-    user.ttl_days = request.ttl.days
-    await user.save(update_fields=["ttl_days"])
+    await User.filter(id=user_id).update(ttl_days=request.ttl.days)
 
     return True
 
 
-@handler.on_request(RegisterDevice_70, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(RegisterDevice, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def register_device(request: RegisterDevice, user: User) -> bool:
+@handler.on_request(RegisterDevice_70, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(RegisterDevice, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def register_device(request: RegisterDevice, user_id: int) -> bool:
     if request.token_type not in PushTokenType._value2member_map_:
         raise ErrorRpc(error_code=400, error_message="TOKEN_TYPE_INVALID")
     if not request.token:
@@ -148,21 +147,23 @@ async def register_device(request: RegisterDevice, user: User) -> bool:
     await SessionManager.broker.send(SetSessionInternalPush(
         key_id=key_id,
         session_id=sess_id,
-        user_id=user.id,
+        user_id=user_id,
     ))
 
     return True
 
 
-@handler.on_request(GetPassword, ReqHandlerFlags.ALLOW_MFA_PENDING | ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_password(user: User) -> Password:
-    password, _ = await UserPassword.get_or_create(user=user)
+@handler.on_request(
+    GetPassword, ReqHandlerFlags.ALLOW_MFA_PENDING | ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER
+)
+async def get_password(user_id: int) -> Password:
+    password, _ = await UserPassword.get_or_create(user_id=user_id)
     return await password.to_tl()
 
 
-@handler.on_request(UpdatePasswordSettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def update_password_settings(request: UpdatePasswordSettings, user: User) -> bool:
-    password, _ = await UserPassword.get_or_create(user=user)
+@handler.on_request(UpdatePasswordSettings, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def update_password_settings(request: UpdatePasswordSettings, user_id: int) -> bool:
+    password, _ = await UserPassword.get_or_create(user_id=user_id)
     await check_password_internal(password, request.password)
 
     new = request.new_settings
@@ -174,8 +175,8 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
         password.hint = None
         password.salt1 = password.salt1[:8]
         await password.save(update_fields=["password", "hint", "salt1"])
-        await UserAuthorization.filter(user=user, mfa_pending=True).delete()
-        await UserPasswordReset.filter(user=user).delete()
+        await UserAuthorization.filter(user_id=user_id, mfa_pending=True).delete()
+        await UserPasswordReset.filter(user_id=user_id).delete()
         return True
 
     p, _ = gen_safe_prime()
@@ -194,21 +195,21 @@ async def update_password_settings(request: UpdatePasswordSettings, user: User) 
     password.salt1 = new.new_algo.salt1
     password.modified_at = datetime.now(UTC)
     await password.save(update_fields=["password", "hint", "salt1", "modified_at"])
-    await UserPasswordReset.filter(user=user).delete()
+    await UserPasswordReset.filter(user_id=user_id).delete()
 
     return True
 
 
-@handler.on_request(GetPasswordSettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_password_settings(request: GetPasswordSettings, user: User) -> PasswordSettings:
-    password, _ = await UserPassword.get_or_create(user=user)
+@handler.on_request(GetPasswordSettings, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_password_settings(request: GetPasswordSettings, user_id: int) -> PasswordSettings:
+    password, _ = await UserPassword.get_or_create(user_id=user_id)
     await check_password_internal(password, request.password)
 
     return PasswordSettings()
 
 
-async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRules:
-    rule = await PrivacyRule.get_or_none(user=user, key=key).prefetch_related("exceptions", "exceptions__user")
+async def get_privacy_internal(key: PrivacyRuleKeyType, user_id: int) -> PrivacyRules:
+    rule = await PrivacyRule.get_or_none(user_id=user_id, key=key).prefetch_related("exceptions", "exceptions__user")
     if rule is None:
         return PrivacyRules(
             rules=[PrivacyValueDisallowAll()],
@@ -224,9 +225,9 @@ async def get_privacy_internal(key: PrivacyRuleKeyType, user: User) -> PrivacyRu
     )
 
 
-@handler.on_request(GetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_privacy(request: GetPrivacy, user: User) -> PrivacyRules:
-    return await get_privacy_internal(PrivacyRuleKeyType.from_tl(request.key), user)
+@handler.on_request(GetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_privacy(request: GetPrivacy, user_id: int) -> PrivacyRules:
+    return await get_privacy_internal(PrivacyRuleKeyType.from_tl(request.key), user_id)
 
 
 @handler.on_request(SetPrivacy, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -238,7 +239,7 @@ async def set_privacy(request: SetPrivacy, user: User) -> PrivacyRules:
     key = PrivacyRuleKeyType.from_tl(request.key)
     rule = await PrivacyRule.update_from_tl(user, key, request.rules)
 
-    rules = await get_privacy_internal(key, user)
+    rules = await get_privacy_internal(key, user.id)
 
     await upd.update_privacy(user, rule, rules)
     await upd.update_user(user)
@@ -259,11 +260,13 @@ async def get_global_privacy_settings(user: User) -> GlobalPrivacySettings:
     )
 
 
-@handler.on_request(SetGlobalPrivacySettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def set_global_privacy_settings(request: SetGlobalPrivacySettings, user: User):
+@handler.on_request(SetGlobalPrivacySettings, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def set_global_privacy_settings(request: SetGlobalPrivacySettings, user_id: int) -> GlobalPrivacySettings:
+    user = await User.get(id=user_id).only("id", "read_dates_private")
+
     if user.read_dates_private != request.settings.hide_read_marks:
+        await User.filter(id=user.id).update(read_dates_private=request.settings.hide_read_marks)
         user.read_dates_private = request.settings.hide_read_marks
-        await user.save(update_fields=["read_dates_private"])
 
     return await get_global_privacy_settings(user)
 
@@ -288,22 +291,26 @@ async def update_status(request: UpdateStatus, user: User) -> bool:
 
 @handler.on_request(UpdateProfile, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_profile(request: UpdateProfile, user: User):
-    updates = {}
+    to_update = []
     if request.first_name is not None:
         if len(request.first_name) > 128 or not request.first_name:
             raise ErrorRpc(error_code=400, error_message="FIRSTNAME_INVALID")
-        updates["first_name"] = request.first_name
+        user.first_name = request.first_name
+        to_update.append("first_name")
     if request.last_name is not None:
-        updates["last_name"] = request.last_name[:128]
+        user.last_name = request.last_name[:128]
+        to_update.append("last_name")
     if request.about is not None:
         if len(request.about) > APP_CONFIG.user_bio_limit:
             raise ErrorRpc(error_code=400, error_message="ABOUT_TOO_LONG")
-        updates["about"] = request.about
+        user.about = request.about
+        to_update.append("about")
 
-    if updates:
-        updates["version"] = user.version + 1
-        await user.update_from_dict(updates).save(update_fields=updates.keys())
-        if "about" in updates:
+    if to_update:
+        user.version += 1
+        to_update.append("version")
+        await user.save(update_fields=to_update)
+        if "about" in to_update:
             await upd.update_user(user)
         else:
             await upd.update_user_name(user)
@@ -336,7 +343,7 @@ async def get_auto_download_settings():  # pragma: no cover
             disabled=False,
             audio_preload_next=False,
             phonecalls_less_data=True,
-            photo_size_max=1048576,
+            photo_size_max=1024 * 1024,
             video_size_max=0,
             file_size_max=0,
             video_upload_maxbitrate=50,
@@ -347,9 +354,9 @@ async def get_auto_download_settings():  # pragma: no cover
             disabled=False,
             audio_preload_next=True,
             phonecalls_less_data=False,
-            photo_size_max=1048576,
-            video_size_max=10485760,
-            file_size_max=1048576,
+            photo_size_max=1024 * 1024,
+            video_size_max=1024 * 1024 * 10,
+            file_size_max=1024 * 1024,
             video_upload_maxbitrate=100,
             small_queue_active_operations_max=0,
             large_queue_active_operations_max=0,
@@ -358,9 +365,9 @@ async def get_auto_download_settings():  # pragma: no cover
             disabled=False,
             audio_preload_next=True,
             phonecalls_less_data=False,
-            photo_size_max=1048576,
-            video_size_max=15728640,
-            file_size_max=3145728,
+            photo_size_max=1024 * 1024,
+            video_size_max=1024 * 1024 * 15,
+            file_size_max=1024 * 1024 * 3,
             video_upload_maxbitrate=100,
             small_queue_active_operations_max=0,
             large_queue_active_operations_max=0,
@@ -429,8 +436,8 @@ async def update_birthday(request: UpdateBirthday, user: User) -> bool:
     return True
 
 
-@handler.on_request(ChangeAuthorizationSettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def change_auth_settings(request: ChangeAuthorizationSettings, user: User) -> bool:
+@handler.on_request(ChangeAuthorizationSettings, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def change_auth_settings(request: ChangeAuthorizationSettings, user_id: int) -> bool:
     auth_id = request_ctx.get().auth_id
     this_auth = await UserAuthorization.get_or_none(id=auth_id)
 
@@ -438,7 +445,7 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user: User)
         auth = this_auth
     else:
         auth_hash_hex = Long.write(request.hash).hex()
-        auth = await UserAuthorization.get_or_none(user=user, hash__startswith=auth_hash_hex)
+        auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex)
     if auth is None:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
@@ -467,8 +474,8 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user: User)
     return True
 
 
-@handler.on_request(ResetAuthorization, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def reset_authorization(request: ResetAuthorization, user: User) -> bool:
+@handler.on_request(ResetAuthorization, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def reset_authorization(request: ResetAuthorization, user_id: int) -> bool:
     auth_id = request_ctx.get().auth_id
     this_auth = await UserAuthorization.get_or_none(id=auth_id)
 
@@ -476,24 +483,25 @@ async def reset_authorization(request: ResetAuthorization, user: User) -> bool:
         raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")
 
     auth_hash_hex = Long.write(request.hash).hex()
-    auth = await UserAuthorization.get_or_none(user=user, hash__startswith=auth_hash_hex).select_related("key")
+    auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex).select_related("key")
     if auth is None or auth == this_auth:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
     keys = await auth.key.get_ids()
     await auth.delete()
 
+    # TODO: also notify gateway that auth needs to be refreshed
     await SessionManager.send(UpdatesTooLong(), key_id=keys)
 
     return True
 
 
-@handler.on_request(ResetPassword, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def reset_password(user: User) -> ResetPasswordResult:
-    if (password := await UserPassword.get_or_none(user=user)) is None:
+@handler.on_request(ResetPassword, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def reset_password(user_id: int) -> ResetPasswordResult:
+    if (password := await UserPassword.get_or_none(user_id=user_id).only("id")) is None:
         raise ErrorRpc(error_code=400, error_message="PASSWORD_EMPTY")
 
-    reset_request, created = await UserPasswordReset.get_or_create(user=user)
+    reset_request, created = await UserPasswordReset.get_or_create(user_id=user_id)
     reset_date = reset_request.date + timedelta(seconds=APP_CONFIG.srp_password_reset_wait_seconds)
     if datetime.now(UTC) > reset_date:
         await password.delete()
@@ -503,9 +511,9 @@ async def reset_password(user: User) -> ResetPasswordResult:
     return ResetPasswordRequestedWait(until_date=int(reset_date.timestamp()))
 
 
-@handler.on_request(DeclinePasswordReset, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def decline_password_reset(user: User) -> bool:
-    if (reset_request := await UserPasswordReset.get_or_none(user=user)) is None:
+@handler.on_request(DeclinePasswordReset, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def decline_password_reset(user_id: int) -> bool:
+    if (reset_request := await UserPasswordReset.get_or_none(user_id=user_id).only("id")) is None:
         raise ErrorRpc(error_code=400, error_message="RESET_REQUEST_MISSING")
 
     await reset_request.delete()
@@ -514,7 +522,7 @@ async def decline_password_reset(user: User) -> bool:
 
 
 async def _create_sent_code(
-        user: User, phone_number: str, purpose: PhoneCodePurpose, check_user_exists: bool = True,
+        user_id: int, phone_number: str, purpose: PhoneCodePurpose, check_user_exists: bool = True,
 ) -> TLSentCode:
     try:
         if int(phone_number) < 100000:
@@ -528,7 +536,7 @@ async def _create_sent_code(
     code = await SentCode.create(
         phone_number=int(phone_number),
         purpose=purpose,
-        user=user,
+        user_id=user_id,
     )
 
     print(f"Code: {code.code}")
@@ -540,9 +548,9 @@ async def _create_sent_code(
     )
 
 
-@handler.on_request(SendChangePhoneCode, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def send_change_phone_code(request: SendChangePhoneCode, user: User) -> TLSentCode:
-    return await _create_sent_code(user, request.phone_number, PhoneCodePurpose.CHANGE_NUMBER)
+@handler.on_request(SendChangePhoneCode, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def send_change_phone_code(request: SendChangePhoneCode, user_id: int) -> TLSentCode:
+    return await _create_sent_code(user_id, request.phone_number, PhoneCodePurpose.CHANGE_NUMBER)
 
 
 @handler.on_request(ChangePhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -571,9 +579,12 @@ def _make_deletion_cancel_hash(user: User, task_id: bytes) -> str:
     ).hexdigest()
 
 
-@handler.on_request(SendConfirmPhoneCode, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def send_confirm_phone_code(request: SendConfirmPhoneCode, user: User) -> TLSentCode:
-    task_id = cast(UUID | None, await TaskIqScheduledDeleteUser.filter(user=user).first().values_list("id", flat=True))
+@handler.on_request(SendConfirmPhoneCode, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def send_confirm_phone_code(request: SendConfirmPhoneCode, user_id: int) -> TLSentCode:
+    user = await User.get(id=user_id).only("id", "phone_number")
+    task_id = cast(
+        UUID | None, await TaskIqScheduledDeleteUser.filter(user_id=user_id).first().values_list("id", flat=True)
+    )
     if task_id is None:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
@@ -581,7 +592,7 @@ async def send_confirm_phone_code(request: SendConfirmPhoneCode, user: User) -> 
     if request.hash != check_hash:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
-    return await _create_sent_code(user, user.phone_number, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION, False)
+    return await _create_sent_code(user_id, user.phone_number, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION, False)
 
 
 @handler.on_request(ConfirmPhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -660,7 +671,7 @@ async def delete_account(request: DeleteAccount, user: User) -> bool:
     raise ErrorRpc(error_code=420, error_message=f"2FA_CONFIRM_WAIT_{time_left}")
 
 
-@handler.on_request(GetChatThemes, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetChatThemes, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_chat_themes(request: GetChatThemes) -> Themes | ThemesNotModified:
     query = Theme.filter(creator=None).order_by("id")
     ids = await query.values_list("id", flat=True)
@@ -678,9 +689,9 @@ async def get_chat_themes(request: GetChatThemes) -> Themes | ThemesNotModified:
     )
 
 
-@handler.on_request(UploadWallPaper_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(UploadWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user: User) -> WallPaper:
+@handler.on_request(UploadWallPaper_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(UploadWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user_id: int) -> WallPaper:
     attributes = []
     if request.file.name:
         attributes.append(DocumentAttributeFilename(file_name=request.file.name))
@@ -688,7 +699,7 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
     if not request.mime_type.startswith("image/"):
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_MIME_INVALID")
 
-    uploaded_file = await UploadingFile.get_or_none(user=user, file_id=request.file.id)
+    uploaded_file = await UploadingFile.get_or_none(user_id=user_id, file_id=request.file.id)
     if uploaded_file is None:
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_FILE_INVALID")
     if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):
@@ -707,7 +718,7 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
         motion=request.settings.motion,
     )
     wallpaper = await Wallpaper.create(
-        creator=user,
+        creator_id=user_id,
         slug=urlsafe_b64encode(urandom(32)).decode("utf8"),
         pattern=False,
         dark=False,
@@ -718,7 +729,7 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user:
     return wallpaper.to_tl()
 
 
-@handler.on_request(GetWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_wallpaper(request: GetWallPaper) -> WallPaper:
     wallpaper = await Wallpaper.from_input(request.wallpaper)
     if wallpaper is None:
@@ -726,10 +737,12 @@ async def get_wallpaper(request: GetWallPaper) -> WallPaper:
     return wallpaper.to_tl()
 
 
-@handler.on_request(GetMultiWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_multi_wallpapers(request: GetMultiWallPapers, user: User) -> TLObjectVector[WallPaper]:
+@handler.on_request(GetMultiWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_multi_wallpapers(request: GetMultiWallPapers, user_id: int) -> TLObjectVector[WallPaper]:
     if not request.wallpapers:
         return TLObjectVector()
+
+    user = await User.get(id=user_id).only("id")
 
     query = Q()
     for wp in request.wallpapers:
@@ -743,8 +756,8 @@ async def get_multi_wallpapers(request: GetMultiWallPapers, user: User) -> TLObj
     ])
 
 
-@handler.on_request(SaveWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def save_wallpaper(request: SaveWallPaper, user: User) -> bool:
+@handler.on_request(SaveWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def save_wallpaper(request: SaveWallPaper, user_id: int) -> bool:
     if isinstance(request.wallpaper, InputWallPaperNoFile):
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
 
@@ -752,7 +765,7 @@ async def save_wallpaper(request: SaveWallPaper, user: User) -> bool:
     if wallpaper is None:
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
 
-    installed = await InstalledWallpaper.get_or_none(user=user, wallpaper=wallpaper).select_related("settings")
+    installed = await InstalledWallpaper.get_or_none(user_id=user_id, wallpaper=wallpaper).select_related("settings")
     if request.unsave:
         await installed.delete()
         return True
@@ -774,7 +787,7 @@ async def save_wallpaper(request: SaveWallPaper, user: User) -> bool:
                 rotation=request.settings.rotation,
                 emoticon=request.settings.emoticon,
             )
-        await InstalledWallpaper.create(user=user, wallpaper=wallpaper, settings=settings)
+        await InstalledWallpaper.create(user_id=user_id, wallpaper=wallpaper, settings=settings)
     else:
         if installed.settings.to_tl() != request.settings:
             if wallpaper.document is not None:
@@ -794,21 +807,21 @@ async def save_wallpaper(request: SaveWallPaper, user: User) -> bool:
     return True
 
 
-@handler.on_request(InstallWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def install_wallpaper(request: InstallWallPaper, user: User) -> bool:
+@handler.on_request(InstallWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def install_wallpaper(request: InstallWallPaper, user_id: int) -> bool:
     return await save_wallpaper(
         request=SaveWallPaper(
             wallpaper=request.wallpaper,
             unsave=False,
             settings=request.settings,
         ),
-        user=user,
+        user_id=user_id,
     )
 
 
-@handler.on_request(GetWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_wallpapers(request: GetWallPapers, user: User) -> WallPapers | WallPapersNotModified:
-    query = InstalledWallpaper.filter(user=user).order_by("id")
+@handler.on_request(GetWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_wallpapers(request: GetWallPapers, user_id: int) -> WallPapers | WallPapersNotModified:
+    query = InstalledWallpaper.filter(user_id=user_id).order_by("id")
     ids = await query.values_list("id", flat=True)
 
     wallpapers_hash = telegram_hash(ids, 64)
@@ -824,9 +837,9 @@ async def get_wallpapers(request: GetWallPapers, user: User) -> WallPapers | Wal
     )
 
 
-@handler.on_request(ResetWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def reset_wallpapers(user: User) -> bool:
-    await InstalledWallpaper.filter(user=user).delete()
+@handler.on_request(ResetWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def reset_wallpapers(user_id: int) -> bool:
+    await InstalledWallpaper.filter(user_id=user_id).delete()
     return True
 
 
@@ -879,12 +892,12 @@ async def update_color(request: UpdateColor, user: User) -> bool:
     return True
 
 
-@handler.on_request(GetDefaultBackgroundEmojis, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetDefaultBackgroundEmojis, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_default_background_emojis(
-        request: GetDefaultBackgroundEmojis, user: User,
+        request: GetDefaultBackgroundEmojis, user_id: int,
 ) -> EmojiList | EmojiListNotModified:
     ids = await File.filter(
-        stickerset__installedstickersets__user=user,
+        stickerset__installedstickersets__user_id=user_id,
     ).order_by("-stickerset__installedstickersets__installed_at", "id").values_list("id", flat=True)
 
     emojis_hash = telegram_hash(ids, 64)
