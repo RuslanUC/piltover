@@ -1,26 +1,23 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from datetime import datetime, UTC
 from inspect import getfullargspec
 from io import BytesIO
 from pathlib import Path
 from typing import Awaitable, Callable, Any, TypeVar
 
 from loguru import logger
-from taskiq import InMemoryBroker, TaskiqEvents
+from taskiq import InMemoryBroker, TaskiqEvents, AsyncTaskiqTask
 from taskiq.brokers.inmemory_broker import InmemoryResultBackend
-from tortoise.transactions import in_transaction
+from taskiq.kicker import AsyncKicker
 
 from piltover._faster_taskiq_inmemory_result_backend import FasterInmemoryResultBackend
-from piltover.db.enums import PeerType
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.in_memory_broker import InMemoryMessageBroker
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
 from piltover.session import SessionManager
 from piltover.storage import LocalFileStorage
-from piltover.tl.functions.internal import CallRpc
+from piltover.tl.functions.internal import CallRpc, CallRpcInternal
 from piltover.tl.types.internal import RpcResponse
 from piltover.utils.debug import measure_time
 
@@ -35,7 +32,7 @@ except ImportError:
     REMOTE_BROKER_SUPPORTED = False
 
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
-from piltover.db.models import User, Peer, MessageRef, MessageContent
+from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import TLObject, RpcError, TLRequest, layer
@@ -53,7 +50,7 @@ HandlerFunc = (Callable[[], HandlerResult] |
 class RequestHandler:
     __slots__ = (
         "func", "flags", "has_request_arg", "has_user_arg",
-        "auth_required", "allow_mfa_pending", "bots_not_allowed", "refresh_session", "users_not_allowed",
+        "auth_required", "allow_mfa_pending", "bots_not_allowed", "refresh_session", "users_not_allowed", "is_internal",
     )
 
     def __init__(self, func: HandlerFunc, flags: int):
@@ -68,6 +65,7 @@ class RequestHandler:
         self.bots_not_allowed = bool(self.flags & ReqHandlerFlags.BOT_NOT_ALLOWED)
         self.refresh_session = bool(self.flags & ReqHandlerFlags.REFRESH_SESSION)
         self.users_not_allowed = bool(self.flags & ReqHandlerFlags.USER_NOT_ALLOWED)
+        self.is_internal = bool(self.flags & ReqHandlerFlags.INTERNAL)
 
     async def __call__(self, request: TLObject, user: User | None) -> Any:
         kwargs = {}
@@ -145,10 +143,7 @@ class Worker(MessageHandler):
 
         # self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
         self.broker.register_task(self._handle_tl_rpc_measure_time, "handle_tl_rpc")
-        self.broker.register_task(self._handle_scheduled_message, "send_scheduled")
-        self.broker.register_task(self._handle_scheduled_delete_message, "delete_scheduled")
-        self.broker.register_task(self._handle_create_discussion, "create_discussion")
-        self.broker.register_task(self._handle_process_message_to_bot, "process_message_to_bot")
+        self.broker.register_task(self._handle_tl_rpc_internal, "handle_tl_rpc_internal")
         self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
         self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
 
@@ -160,6 +155,15 @@ class Worker(MessageHandler):
     async def _broker_shutdown(self, _) -> None:
         await self.message_broker.shutdown()
         await self.pubsub.shutdown()
+
+    async def call_internal(self, request: TLObject) -> AsyncTaskiqTask[TLObject]:
+        return await AsyncKicker(
+            task_name="handle_tl_rpc_internal",
+            broker=self.broker,
+            labels={},
+        ).kiq(
+            call=CallRpcInternal(obj=request).write().hex(),
+        )
 
     @classmethod
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False) -> User | None:
@@ -185,14 +189,25 @@ class Worker(MessageHandler):
         else:
             return response.write().hex()
 
+    def _err_response_internal(self, code: int, message: str) -> RpcError | str:
+        response = RpcError(error_code=code, error_message=message)
+
+        if isinstance(self.broker.result_backend, InmemoryResultBackend):
+            return response
+        else:
+            return response.write().hex()
+
     async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse | str:
         with measure_time("read CallRpc"):
             call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
 
-        logger.trace(f"Got request: {call!r}")
+        logger.trace("Got request: {call!r}", call=call)
 
-        if not (handler := self.request_handlers.get(call.obj.tlid())):
-            logger.warning(f"No handler found for obj: {call.obj}")
+        if not (handler := self.request_handlers.get(call.obj.tlid())) or handler.is_internal:
+            logger.warning("No handler found for obj: {obj}", obj=call.obj)
+            return self._err_response(call.message_id, 500, "NOT_IMPLEMENTED")
+        if handler.is_internal:
+            logger.warning("Client tried to execute internal request: {call!r}", call=call)
             return self._err_response(call.message_id, 500, "NOT_IMPLEMENTED")
 
         # TODO: send this error from gateway
@@ -228,8 +243,8 @@ class Worker(MessageHandler):
         except Exception as e:
             logger.opt(exception=e).warning(f"Error while processing {call.obj.tlname()}")
             result = RpcError(error_code=500, error_message="Server error")
-
-        request_ctx.reset(ctx_token)
+        finally:
+            request_ctx.reset(ctx_token)
 
         if result is None:
             logger.warning(f"Handler for {call.obj} returned None")
@@ -258,135 +273,44 @@ class Worker(MessageHandler):
         else:
             return response.write().hex()
 
-    async def _handle_scheduled_message(self, message_id: int) -> None:
-        from piltover.app.handlers.messages import sending
-        import piltover.app.utils.updates_manager as upd
+    async def _handle_tl_rpc_internal(self, call: str) -> Any:
+        with measure_time("read CallRpc"):
+            call = CallRpcInternal.read(BytesIO(bytes.fromhex(call)), True)
 
-        logger.trace(f"Processing scheduled message {message_id}")
+        logger.trace("Got internal request: {call!r}", call=call)
 
-        async with in_transaction():
-            scheduled = await MessageRef.select_for_update(
-                skip_locked=True, no_key=True,
-            ).get_or_none(
-                id=message_id,
-            ).select_related(
-                "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",
-                "content__media", "reply_to", "content__fwd_header", "content__post_info", "content__send_as_channel",
-            )
-            if scheduled is None:
-                logger.warning(f"Scheduled message {message_id} does not exist?")
-                return
+        if not (handler := self.request_handlers.get(call.obj.tlid())):
+            logger.warning("No handler found for obj: {obj}", obj=call.obj)
+            return self._err_response_internal(500, "NOT_IMPLEMENTED")
+        if not handler.is_internal:
+            logger.warning("Tried to execute non-internal request: {call!r}", call=call)
+            return self._err_response_internal(500, "ERROR_METHOD_NOT_INTERNAL")
 
-            task = scheduled.taskiqscheduledmessages
-            peer = scheduled.peer
-
-            ctx_token = request_ctx.set(RequestContext(
-                1, 1, 0, 0, None, layer, -1, scheduled.peer.owner_id, self, self._storage,
-            ))
-
-            messages = await scheduled.send_scheduled(task.opposite)
-
-            await sending.send_created_messages_internal(
-                messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
-            )
-
-            request_ctx.reset(ctx_token)
-
-            await scheduled.delete()
-
-        if peer.type is PeerType.CHANNEL and task.opposite:
-            new_message = next(iter(messages.values()))
-        else:
-            new_message = messages[peer]
-
-        await upd.delete_scheduled_messages(peer.owner, peer, [scheduled.id], [new_message.id])
-
-    async def _handle_scheduled_delete_message(self, message_id: int) -> None:
-        import piltover.app.utils.updates_manager as upd
-
-        async with in_transaction():
-            to_delete = await MessageRef.select_for_update(
-                skip_locked=True, no_key=True,
-            ).filter(content_id=message_id).select_related("peer", "peer__owner", "peer__channel")
-
-            all_ids = []
-            regular_messages = defaultdict(list)
-            channel_messages = defaultdict(list)
-
-            for message in to_delete:
-                all_ids.append(message.id)
-                if message.peer.type is PeerType.CHANNEL:
-                    channel_messages[message.peer.channel_id].append(message.id)
-                else:
-                    regular_messages[message.peer.owner].append(message.id)
-
-            await MessageContent.filter(id=message_id).delete()
-
-            if regular_messages:
-                await upd.delete_messages(None, regular_messages)
-            for channel, message_ids in channel_messages.items():
-                await upd.delete_messages_channel(channel, message_ids)
-
-    async def _handle_create_discussion(self, message_id: int) -> None:
-        import piltover.app.utils.updates_manager as upd
-        from piltover.app.handlers.messages.sending import _resolve_noforwards
-
-        # TODO: forward media groups correctly
-
-        async with in_transaction():
-            logger.info(f"Creating discussion thread for message {message_id}")
-            message = await MessageRef.select_for_update().get_or_none(id=message_id).select_related(
-                *MessageRef.PREFETCH_FIELDS, "peer__channel", "content__send_as_channel",
-            )
-            if message is None or not message.peer.channel.discussion_id:
-                return
-
-            discussion_peer = await Peer.get_or_none(
-                owner=None, channel_id=message.peer.channel.discussion_id,
-            ).select_related("channel")
-
-            discussion_message, = await message.forward_for_peers(
-                to_peer=discussion_peer,
-                peers=[discussion_peer],
-                no_forwards=_resolve_noforwards(discussion_peer, None, False),
-                fwd_header=await message.create_fwd_header(False),
-                is_forward=True,
-                pinned=True,
-                is_discussion=True,
-            )
-
-            logger.debug(f"Created discussion message {discussion_message.id} for message {message.id}")
-
-            message.discussion = discussion_message
-            message.content.edit_date = datetime.now(UTC)
-            message.content.edit_hide = True
-            message.content.version += 1
-            message.content.replies_version += 1
-            await message.save(update_fields=["discussion_id"])
-            await message.content.save(update_fields=["edit_date", "edit_hide", "version", "replies_version"])
-
-        await upd.send_messages_channel([discussion_message], discussion_peer.channel)
-        await upd.edit_message_channel(message.peer.channel, message)
-
-    async def _handle_process_message_to_bot(self, message_id: int) -> None:
-        import piltover.app.utils.updates_manager as upd
-        from piltover.app.bot_handlers import bots
-
-        logger.info(f"Processing message to bot {message_id}")
-        message = await MessageRef.select_for_update().get_or_none(id=message_id).select_related(
-            "peer", "peer__owner", "peer__user", "content", "content__media", "content__media__file",
-        )
-        if message is None:
-            return
-
-        peer = message.peer
-
-        ctx_token = request_ctx.set(RequestContext(0, 0, 0, 0, None, 133, 0, 0, self, self._storage))
+        ctx_token = request_ctx.set(RequestContext(
+            0, 0, 0, 0, call.obj, layer, call.as_auth_id or 0, call.as_user or 0, self, self._storage,
+        ))
 
         try:
-            bot_message = await bots.process_message_to_bot(peer, message)
+            with measure_time(f"internal_handler({call.obj.tlname()})"):
+                # TODO: wrap handler call in in_transaction?
+                result = await handler(call.obj, None)
+        except ErrorRpc as e:
+            reason = f", reason: {e.reason}" if e.reason is not None else ""
+            logger.warning(f"{call.obj.tlname()}: [{e.error_code} {e.error_message}]{reason}")
+            result = RpcError(error_code=e.error_code, error_message=e.error_message)
+        except Exception as e:
+            logger.opt(exception=e).warning(f"Error while processing {call.obj.tlname()}")
+            result = RpcError(error_code=500, error_message="Server error")
         finally:
             request_ctx.reset(ctx_token)
 
-        if bot_message is not None:
-            await upd.send_message(None, {peer: bot_message})
+        if result is None:
+            logger.warning(f"Handler for {call.obj} returned None")
+            result = RpcError(error_code=500, error_message="NOT_IMPLEMENTED")
+
+        logger.trace(f"Returning internal result: {result!r}")
+
+        if isinstance(self.broker.result_backend, InmemoryResultBackend):
+            return result
+        else:
+            return result.write().hex()

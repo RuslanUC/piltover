@@ -502,8 +502,6 @@ class MessageRef(Model):
         elif opposite and peer.type is PeerType.CHANNEL:
             peers = [await models.Peer.get_or_none(owner=None, channel=peer.channel, type=PeerType.CHANNEL)]
 
-        messages: dict[models.Peer, MessageRef] = {}
-
         if reply_to is not None:
             replies = {
                 ref.peer_id: ref
@@ -514,15 +512,29 @@ class MessageRef(Model):
         else:
             replies = {}
 
-        for to_peer in peers:
-            # TODO: probably create in bulk too?
-            messages[to_peer] = await cls.create(
+        refs_to_create = [
+            cls(
                 peer=to_peer,
                 content=content,
                 random_id=random_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
                 reply_to=replies.get(to_peer.id),
                 top_message=top_message,
             )
+            for to_peer in peers
+        ]
+
+        if refs_to_create:
+            await cls.bulk_create(refs_to_create)
+
+        refs = await cls.filter(content=content)
+
+        peer_by_id = {peer.id: peer for peer in peers}
+        messages: dict[models.Peer, MessageRef] = {}
+
+        for ref in refs:
+            ref.peer = peer_by_id[ref.peer_id]
+            ref.content = content
+            messages[ref.peer] = ref
 
         if unhide_dialog:
             await models.Dialog.create_or_unhide_bulk(peers)

@@ -229,3 +229,11 @@ internal.get_available_servers#a2ed5af3 auth:bytes = internal.AvailableServers;
 
 // TODO: tl id is not updated
 internal.call_rpc#ead5e531 flags:# is_bot:flags.6?true mfa_pending:flags.7?true auth_key_id:flags.1?long perm_auth_key_id:flags.0?long session_id:flags.2?long message_id:flags.3?long auth_id:flags.4?long user_id:flags.5?long layer:int obj:Object = internal.RpcResponse;
+internal.call_rpc_internal#e876b427 flags:# as_user:flags.0?long as_auth_id:flags.1?long obj:Object = Object;
+
+internal.send_scheduled_message#babeae6e message_id:long = Bool;
+internal.delete_scheduled_message#acd1c8f0 message_id:long = Bool;
+internal.create_discussion_thread#6bdac34b message_id:long = Bool;
+internal.process_message_to_builtin_bot#820fd380 messageref_id:long = Bool;
+internal.update_status_for_peers#ed609074 peer_type:int peer_owner:long peer_user:long peer_chat:long = Bool;
+internal.clear_draft#b8b19f5d peer_id:long = Bool;

@@ -9,6 +9,7 @@ from taskiq import InMemoryBroker, TaskiqScheduler, ScheduleSource, ScheduledTas
 
 from piltover.db.enums import TaskIqScheduledState
 from piltover.db.models import TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
+from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CallRpcInternal
 
 try:
     from taskiq_aio_pika import AioPikaBroker
@@ -43,11 +44,13 @@ class OrmDatabaseScheduleSource(ScheduleSource):
 
         return [
             ScheduledTask(
-                task_name="send_scheduled",
+                task_name="handle_tl_rpc_internal",
                 schedule_id=str(scheduled.id),
                 labels={},
                 args=[],
-                kwargs={"message_id": scheduled.message_id},
+                kwargs={
+                    "call": CallRpcInternal(obj=SendScheduledMessage(message_id=scheduled.message_id)).write().hex(),
+                },
                 time=datetime.fromtimestamp(scheduled.scheduled_time, UTC),
             )
             for scheduled in scheduled_messages
@@ -67,11 +70,13 @@ class OrmDatabaseScheduleSource(ScheduleSource):
 
         return [
             ScheduledTask(
-                task_name="delete_scheduled",
+                task_name="handle_tl_rpc_internal",
                 schedule_id=str(scheduled.id),
                 labels={},
                 args=[],
-                kwargs={"message_id": scheduled.message_id},
+                kwargs={
+                    "call": CallRpcInternal(obj=DeleteScheduledMessage(message_id=scheduled.message_id)).write().hex(),
+                },
                 time=datetime.fromtimestamp(scheduled.scheduled_for, UTC),
             )
             for scheduled in scheduled_messages

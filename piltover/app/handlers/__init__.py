@@ -1,5 +1,5 @@
 from piltover.app.handlers import auth, updates, users, stories, account, messages, photos, contacts, langpack, \
-    channels, upload, internal, help as help_, stickers, stubs, phone
+    channels, upload, internal_web, help as help_, stickers, stubs, phone, internal
 from piltover.worker import Worker
 
 
@@ -17,6 +17,7 @@ def register_handlers(worker_: Worker) -> None:
     worker_.register_handler(langpack.handler)
     worker_.register_handler(channels.handler)
     worker_.register_handler(upload.handler)
-    worker_.register_handler(internal.handler)
+    worker_.register_handler(internal_web.handler)
     worker_.register_handler(stickers.handler)
     worker_.register_handler(phone.handler)
+    worker_.register_handler(internal.handler)

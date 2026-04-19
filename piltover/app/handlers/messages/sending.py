@@ -7,7 +7,6 @@ from uuid import UUID
 
 from fastrand import xorshift128plusrandint
 from loguru import logger
-from taskiq.kicker import AsyncKicker
 from tortoise.expressions import Q, F, Subquery
 from tortoise.transactions import in_transaction
 
@@ -31,6 +30,8 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
     DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
     InputChannelEmpty, InputPeerSelf
+from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
+    ClearDraft
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
     SendMessage_148, SendMedia_148, EditMessage_133, UpdatePinnedMessage, ForwardMessages, ForwardMessages_148, \
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
@@ -83,10 +84,15 @@ async def send_created_messages_internal(
         messages: dict[Peer, MessageRef], opposite: bool, peer: Peer, user: User, clear_draft: bool,
         mentioned_user_ids: set[int],
 ) -> Updates:
-    if opposite and peer.type is not PeerType.CHANNEL and not user.bot:
-        # TODO: execute in the background
-        presence = await Presence.update_to_now(user)
-        await upd.update_status(user, presence, await peer.get_opposite())
+    ctx = request_ctx.get(None)
+
+    if opposite and peer.type is not PeerType.CHANNEL and not user.bot and ctx is not None:
+        await ctx.worker.call_internal(UpdateStatusForPeers(
+            peer_type=peer.type.value,
+            peer_owner=peer.owner_id,
+            peer_user=peer.user_id or 0,
+            peer_chat=peer.chat_id or 0,
+        ))
 
     if opposite and peer.type is PeerType.CHAT and mentioned_user_ids:
         message = next(iter(messages.values())).content
@@ -102,10 +108,8 @@ async def send_created_messages_internal(
         if unread_mentions_to_create:
             await MessageMention.bulk_create(unread_mentions_to_create)
 
-    # TODO: execute in the background
-    if clear_draft and (draft := await MessageDraft.get_or_none(peer=peer).only("id")) is not None:
-        await draft.delete()
-        await upd.update_draft(user, peer, None)
+    if clear_draft and ctx is not None:
+        await ctx.worker.call_internal(ClearDraft(peer_id=peer.id))
 
     ttl_tasks = []
     for message in messages.values():
@@ -143,20 +147,21 @@ async def send_created_messages_internal(
             if unread_mentions_to_create:
                 await MessageMention.bulk_create(unread_mentions_to_create)
 
-        if message.content.type is MessageType.REGULAR and message.peer.owner_id is None and peer.channel.discussion_id:
+        if message.content.type is MessageType.REGULAR \
+                and message.peer.owner_id is None \
+                and peer.channel.discussion_id \
+                and ctx is not None:
             logger.debug(f"Creating task create_discussion({message.id})...")
-            ctx = request_ctx.get()
-            await AsyncKicker(task_name="create_discussion", broker=ctx.worker.broker, labels={}).kiq(message.id)
+            await ctx.worker.call_internal(CreateDiscussionThread(message_id=message.id))
 
         return await upd.send_message_channel(user, peer.channel, message)
 
     if (update := await upd.send_message(user, messages)) is None:
         raise Unreachable
 
-    if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS:
+    if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS and ctx is not None:
         message = messages[peer]
-        ctx = request_ctx.get()
-        await AsyncKicker(task_name="process_message_to_bot", broker=ctx.worker.broker, labels={}).kiq(message.id)
+        await ctx.worker.call_internal(ProcessMessageToBuiltinBot(messageref_id=message.id))
 
     return update
 
@@ -189,7 +194,6 @@ async def send_message_internal(
         if reply_to is None:
             raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
         if opposite and peer.type is PeerType.CHANNEL and peer.channel.supergroup:
-            logger.info(f"erm {reply_to.top_message}, {reply_to.reply_to}")
             if reply_to.is_discussion:
                 reply_to_top = reply_to
             elif reply_to.top_message is not None:

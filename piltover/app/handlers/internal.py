@@ -1,162 +1,181 @@
-from os import urandom
-from time import time
+from collections import defaultdict
+from datetime import datetime, UTC
+
+from loguru import logger
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
-from piltover.config import APP_CONFIG
-from piltover.context import request_ctx
+from piltover.app.bot_handlers import bots
+from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards
 from piltover.db.enums import PeerType
-from piltover.db.models import Peer, ApiApplication, User, WebAuthorization, MessageRef
-from piltover.exceptions import ErrorRpc, InvalidConstructorException
-from piltover.tl import Long
-from piltover.tl.functions.internal import SendCode, SignIn, GetUserApp, EditUserApp, GetAvailableServers
-from piltover.tl.types.internal import SentCode, Authorization, AppNotFound, AppInfo, AvailableServers, \
-    AvailableServer, PublicKey
+from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft
+from piltover.enums import ReqHandlerFlags
+from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
+    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("internal")
 
-LOGIN_MESSAGE_FMT = (
-    "Web login code. Dear {name}, we received a request from your account to log in on my.<todo: domain>. "
-    "This is your login code:\n"
-    "{code}\n\n"
-    f"Do not give this code to anyone, even if they say they're from {APP_CONFIG.name}! "
-    f"This code can be used to delete your {APP_CONFIG.name} account. We never ask to send it anywhere.\n"
-    "If you didn't request this code by trying to log in on my.<todo: domain>, simply ignore this message.\n"
-)
 
+@handler.on_request(SendScheduledMessage, ReqHandlerFlags.INTERNAL)
+async def send_scheduled_message(request: SendScheduledMessage) -> bool:
+    logger.trace(f"Processing scheduled message {request.message_id}")
 
-@handler.on_request(SendCode)
-async def send_code(request: SendCode, user: User) -> SentCode:
-    if user.id != 777000:
-        raise InvalidConstructorException(SentCode.tlid())
+    async with in_transaction():
+        scheduled = await MessageRef.select_for_update(
+            skip_locked=True, no_key=True,
+        ).get_or_none(
+            id=request.message_id,
+        ).select_related(
+            "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",
+            "content__media", "reply_to", "content__fwd_header", "content__post_info", "content__send_as_channel",
+        )
+        if scheduled is None:
+            logger.warning(f"Scheduled message {request.message_id} does not exist?")
+            return False
 
-    try:
-        if int(request.phone_number) < 100000:
-            raise ValueError
-    except ValueError:
-        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+        task = scheduled.taskiqscheduledmessages
 
-    random_hash = urandom(16)
-    resp = SentCode(random_hash=random_hash)
+        messages = await scheduled.send_scheduled(task.opposite)
+        await scheduled.delete()
 
-    target_user = await User.get_or_none(phone_number=request.phone_number)
-    if target_user is None:
-        return resp
-
-    webauth = await WebAuthorization.create(phone_number=request.phone_number, hash=random_hash.hex())
-    print(f"Password: {webauth.password}")
-
-    peer_system, _ = await Peer.get_or_create(owner=target_user, user=user, type=PeerType.USER)
-    message = await MessageRef.create_for_peer(
-        peer_system, user, opposite=False, unhide_dialog=True,
-        message=LOGIN_MESSAGE_FMT.format(code=webauth.password, name=target_user.first_name),
+    await send_created_messages_internal(
+        messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
     )
 
-    await upd.send_message(target_user, message, False)
-    return resp
+    peer = scheduled.peer
+    if peer.type is PeerType.CHANNEL and task.opposite:
+        new_message = next(iter(messages.values()))
+    else:
+        new_message = messages[peer]
 
-
-@handler.on_request(SignIn)
-async def sign_in(request: SignIn, user: User) -> Authorization:
-    if user.id != 777000:
-        raise InvalidConstructorException(SignIn.tlid())
-
-    try:
-        if int(request.phone_number) < 100000:
-            raise ValueError
-    except ValueError:
-        raise ErrorRpc(error_code=10400, error_message="PHONE_NUMBER_INVALID")
-
-    webauth = await WebAuthorization.get_or_none(
-        phone_number=request.phone_number, random_hash=request.random_hash.hex(), expires_at__gt=int(time()),
-        user=None, password=request.password
-    )
-    if webauth is None:
-        raise ErrorRpc(error_code=10400, error_message="PASSWORD_INVALID")
-
-    target_user = await User.get_or_none(phone_number=request.phone_number)
-    if target_user is None:
-        raise ErrorRpc(error_code=10400, error_message="PASSWORD_INVALID")
-
-    webauth.user = target_user
-    webauth.expires_at = int(time() + 60 * 60)
-    auth_bytes = urandom(16)
-    webauth.random_hash = auth_bytes.hex()
-    await webauth.save(update_fields=["user_id", "expires_at", "random_hash"])
-
-    return Authorization(auth=Long.write(webauth.id) + auth_bytes)
-
-
-async def _auth_user(auth_bytes: bytes) -> User:
-    if len(auth_bytes) < 16:
-        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
-
-    webauth_id = Long.read_bytes(auth_bytes[:8])
-    webauth = await WebAuthorization.get_or_none(
-        id=webauth_id, random_hash=auth_bytes[8:].hex(), expires_at__gt=int(time()),
-    ).select_related("user")
-    if webauth is None or webauth.user is None:
-        raise ErrorRpc(error_code=10401, error_message="USER_AUTH_INVALID")
-
-    return webauth.user
-
-
-@handler.on_request(GetUserApp)
-async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound:
-    if user.id != 777000:
-        raise InvalidConstructorException(GetUserApp.tlid())
-
-    target_user = await _auth_user(request.auth)
-    if (app := await ApiApplication.get_or_none(owner=target_user)) is None:
-        return AppNotFound()
-
-    return AppInfo(
-        api_id=app.id,
-        api_hash=app.hash,
-        title=app.name,
-        short_name=app.short_name,
-    )
-
-
-@handler.on_request(EditUserApp)
-async def edit_user_app(request: EditUserApp, user: User) -> bool:
-    if user.id != 777000:
-        raise InvalidConstructorException(EditUserApp.tlid())
-
-    target_user = await _auth_user(request.auth)
-
-    app, created = await ApiApplication.get_or_create(owner=target_user, defaults={
-        "name": request.title,
-        "short_name": request.short_name,
-    })
-    if not created:
-        app.name = request.title
-        app.short_name = request.short_name
-        await app.save(update_fields=["name", "short_name"])
+    await upd.delete_scheduled_messages(peer.owner, peer, [scheduled.id], [new_message.id])
 
     return True
 
 
-@handler.on_request(GetAvailableServers)
-async def get_available_servers(user: User) -> AvailableServers:
-    if user.id != 777000:
-        raise InvalidConstructorException(GetAvailableServers.tlid())
+@handler.on_request(DeleteScheduledMessage, ReqHandlerFlags.INTERNAL)
+async def delete_scheduled_message(request: DeleteScheduledMessage) -> bool:
+    logger.trace(f"Deleting scheduled-for-deletion message {request.message_id}")
 
-    worker = request_ctx.get().worker
-    return AvailableServers(
-        servers=[
-            AvailableServer(
-                address=dc_option.addresses[0].ip,
-                port=dc_option.addresses[0].port,
-                dc_id=dc_option.id,
-                name="Production" if dc_option.id == APP_CONFIG.this_dc else "Test",
-                public_keys=[
-                    PublicKey(
-                        key=worker.public_key,
-                        fingerprint=worker.fingerprint,
-                    )
-                ],
-            )
-            for dc_option in APP_CONFIG.dc_list
-        ]
+    async with in_transaction():
+        to_delete = await MessageRef.select_for_update(
+            skip_locked=True, no_key=True,
+        ).filter(content_id=request.message_id).select_related("peer", "peer__owner", "peer__channel")
+
+        all_ids = []
+        regular_messages = defaultdict(list)
+        channel_messages = defaultdict(list)
+
+        for message in to_delete:
+            all_ids.append(message.id)
+            if message.peer.type is PeerType.CHANNEL:
+                channel_messages[message.peer.channel_id].append(message.id)
+            else:
+                regular_messages[message.peer.owner].append(message.id)
+
+        await MessageContent.filter(id=request.message_id).delete()
+
+        if regular_messages:
+            await upd.delete_messages(None, regular_messages)
+        for channel, message_ids in channel_messages.items():
+            await upd.delete_messages_channel(channel, message_ids)
+
+    return True
+
+
+@handler.on_request(CreateDiscussionThread, ReqHandlerFlags.INTERNAL)
+async def create_discussion_thread(request: CreateDiscussionThread) -> bool:
+    logger.trace(f"Creating discussion thread for channel message {request.message_id}")
+
+    # TODO: forward media groups correctly
+
+    async with in_transaction():
+        logger.info(f"Creating discussion thread for message {request.message_id}")
+        message = await MessageRef.select_for_update().get_or_none(id=request.message_id).select_related(
+            *MessageRef.PREFETCH_FIELDS, "peer__channel", "content__send_as_channel",
+        )
+        if message is None or not message.peer.channel.discussion_id:
+            return False
+
+        discussion_peer = await Peer.get_or_none(
+            owner=None, channel_id=message.peer.channel.discussion_id,
+        ).select_related("channel")
+
+        discussion_message, = await message.forward_for_peers(
+            to_peer=discussion_peer,
+            peers=[discussion_peer],
+            no_forwards=_resolve_noforwards(discussion_peer, None, False),
+            fwd_header=await message.create_fwd_header(False),
+            is_forward=True,
+            pinned=True,
+            is_discussion=True,
+        )
+
+        logger.debug(f"Created discussion message {discussion_message.id} for message {message.id}")
+
+        message.discussion = discussion_message
+        message.content.edit_date = datetime.now(UTC)
+        message.content.edit_hide = True
+        message.content.version += 1
+        message.content.replies_version += 1
+        await message.save(update_fields=["discussion_id"])
+        await message.content.save(update_fields=["edit_date", "edit_hide", "version", "replies_version"])
+
+    await upd.send_messages_channel([discussion_message], discussion_peer.channel)
+    await upd.edit_message_channel(message.peer.channel, message)
+
+    return True
+
+
+@handler.on_request(ProcessMessageToBuiltinBot, ReqHandlerFlags.INTERNAL)
+async def process_message_to_builtin_bot(request: ProcessMessageToBuiltinBot) -> bool:
+    logger.info(f"Processing message to bot {request.messageref_id}")
+    message = await MessageRef.select_for_update().get_or_none(id=request.messageref_id).select_related(
+        "peer", "peer__owner", "peer__user", "content", "content__media", "content__media__file",
     )
+    if message is None:
+        return False
+
+    peer = message.peer
+
+    bot_message = await bots.process_message_to_bot(peer, message)
+    if bot_message is not None:
+        await upd.send_message(None, {peer: bot_message})
+
+    return True
+
+
+@handler.on_request(UpdateStatusForPeers, ReqHandlerFlags.INTERNAL)
+async def update_status_for_peers(request: UpdateStatusForPeers) -> bool:
+    user = await User.get(id=request.peer_owner).only("id", "bot")
+    presence = await Presence.update_to_now(user)
+
+    peer_type = PeerType(request.peer_type)
+
+    if peer_type is PeerType.USER:
+        if request.peer_user == 777000:
+            return True
+        if await Peer.filter(
+                owner_id=request.peer_user, user_id=request.peer_owner, blocked_at__not_isnull=True
+        ).exists():
+            return True
+        peers = [await User.get(id=request.peer_user).only("id")]
+    elif peer_type is PeerType.CHAT:
+        peers = await User.filter(charparticipants__chat_id=request.peer_chat, id__not=request.peer_owner).only("id")
+    else:
+        return False
+
+    await upd.update_status(user, presence, peers)
+    return True
+
+
+@handler.on_request(ClearDraft, ReqHandlerFlags.INTERNAL)
+async def clear_draft(request: ClearDraft) -> bool:
+    if (draft := await MessageDraft.get_or_none(peer_id=request.peer_id).only("id")) is not None:
+        peer = await Peer.get(id=request.peer_id).select_related("owner")
+        await draft.delete()
+        await upd.update_draft(peer.owner, peer, None)
+        return True
+
+    return False

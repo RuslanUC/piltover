@@ -7,3 +7,4 @@ class ReqHandlerFlags(IntFlag):
     BOT_NOT_ALLOWED = 1 << 2
     REFRESH_SESSION = 1 << 3
     USER_NOT_ALLOWED = 1 << 4
+    INTERNAL = 1 << 5
