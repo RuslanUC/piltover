@@ -91,14 +91,16 @@ class ChatParticipant(Model):
             user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp()),
         )
 
-    async def to_tl_channel(self, user: models.User, creator_id: int | None = None) -> ChannelParticipants:
+    async def to_tl_channel(self, user: models.User | int, creator_id: int | None = None) -> ChannelParticipants:
         if creator_id is None:
             self.channel = await self.channel
             creator_id = self.channel.creator_id
 
         return self.to_tl_channel_with_creator(user, creator_id)
 
-    def to_tl_channel_with_creator(self, user: models.User, creator_id: int) -> ChannelParticipants:
+    def to_tl_channel_with_creator(self, user: models.User | int, creator_id: int) -> ChannelParticipants:
+        user_id = user.id if isinstance(user, models.User) else user
+
         if self.user_id == creator_id:
             return ChannelParticipantCreator(
                 user_id=self.user_id,
@@ -106,7 +108,7 @@ class ChatParticipant(Model):
                 rank=self.admin_rank or None,
             )
         elif self.is_admin:
-            is_self = self.user_id == user.id
+            is_self = self.user_id == user_id
             return ChannelParticipantAdmin(
                 user_id=self.user_id,
                 inviter_id=(self.inviter_id or 0) if is_self else None,
@@ -125,7 +127,7 @@ class ChatParticipant(Model):
                 date=int(self.invited_at.timestamp()),
                 banned_rights=self.banned_rights.to_tl(),
             )
-        elif self.user_id == user.id:
+        elif self.user_id == user_id:
             return ChannelParticipantSelf(
                 user_id=self.user_id,
                 inviter_id=self.inviter_id,

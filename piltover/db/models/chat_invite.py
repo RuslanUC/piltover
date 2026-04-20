@@ -79,19 +79,21 @@ class ChatInvite(Model):
 
     @classmethod
     async def get_or_create_permanent(
-            cls, user: models.User, chat_or_channel: models.ChatBase, request: bool = False,
+            cls, user: models.User | int, chat_or_channel: models.ChatBase, request: bool = False,
             limit: int | None = None, title: str | None = None, force_create: bool = False,
     ) -> ChatInvite:
+        user_id = user.id if isinstance(user, models.User) else user
+
         if not force_create:
             invite = await cls.filter(
-                **models.Chat.or_channel(chat_or_channel), user=user, revoked=False, expires_at__isnull=True
+                **models.Chat.or_channel(chat_or_channel), user_id=user_id, revoked=False, expires_at__isnull=True
             ).first()
             if invite is not None:
                 return invite
 
         return await ChatInvite.create(
             **models.Chat.or_channel(chat_or_channel),
-            user=user,
+            user_id=user_id,
             request_needed=request,
             usage_limit=limit if not request else None,
             title=title,

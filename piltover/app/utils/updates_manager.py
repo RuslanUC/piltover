@@ -1037,10 +1037,14 @@ async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) 
     return pts, updates
 
 
-async def update_read_history_inbox_channel(user: User, channel_id: int, max_id: int, unread_count: int) -> Updates:
-    pts = await State.add_pts(user, 1)
+async def update_read_history_inbox_channel(
+        user: User | int, channel_id: int, max_id: int, unread_count: int,
+) -> Updates:
+    user_id = user.id if isinstance(user, User) else user
+
+    pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.READ_INBOX_CHANNEL,
         pts=pts,
         pts_count=1,
@@ -1066,7 +1070,7 @@ async def update_read_history_inbox_channel(user: User, channel_id: int, max_id:
         chats=chats_and_channels,
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
@@ -1243,10 +1247,12 @@ async def update_chat_default_banned_rights(chat: Chat) -> Updates:
     return updates
 
 
-async def update_channel_for_user(channel: Channel, user: User) -> Updates:
-    pts = await State.add_pts(user, 1)
+async def update_channel_for_user(channel: Channel, user: User | int) -> Updates:
+    user_id = user.id if isinstance(user, User) else user
+
+    pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user, update_type=UpdateType.UPDATE_CHANNEL, pts=pts, related_id=channel.id,
+        user_id=user_id, update_type=UpdateType.UPDATE_CHANNEL, pts=pts, related_id=channel.id,
     )
 
     updates = UpdatesWithDefaults(
@@ -1254,7 +1260,7 @@ async def update_channel_for_user(channel: Channel, user: User) -> Updates:
         chats=[await channel.to_tl()],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
     return updates
 
 
@@ -1605,9 +1611,9 @@ async def read_messages_contents(user: User, message_ids: list[int]) -> tuple[in
     return new_pts, updates
 
 
-async def read_channel_messages_contents(user: User, channel: Channel, message_ids: list[int]) -> None:
+async def read_channel_messages_contents(user_id: int, channel: Channel, message_ids: list[int]) -> None:
     # TODO: do we save it in database?
-    #  if yes - what pts sequence do we even use?
+    #  if yes - what pts sequence do we even use? user's or channel's?
     #  if no - that's stupid, no?
     #  await Update.create(
     #      user=user,
@@ -1627,7 +1633,7 @@ async def read_channel_messages_contents(user: User, channel: Channel, message_i
                 )
             ],
         ),
-        user.id
+        user_id
     )
 
 
@@ -2029,11 +2035,11 @@ async def update_channel_available_messages(channel: Channel, min_id: int) -> Up
     return updates
 
 
-async def update_channel_participant_available_message(user: User, channel: Channel, min_id: int) -> Updates:
+async def update_channel_participant_available_message(user_id: int, channel: Channel, min_id: int) -> Updates:
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_CHANNEL_MIN_AVAILABLE_ID,
-        pts=await State.add_pts(user, 1),
+        pts=await State.add_pts(user_id, 1),
         pts_count=1,
         related_id=channel.id,
         additional_data=[min_id],
@@ -2047,7 +2053,7 @@ async def update_channel_participant_available_message(user: User, channel: Chan
         chats=[await channel.to_tl()],
     )
 
-    await SessionManager.send(updates, user_id=user.id)
+    await SessionManager.send(updates, user_id=user_id)
 
     return updates
 

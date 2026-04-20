@@ -248,19 +248,21 @@ class Channel(ChatBase):
         return new_pts
 
     @classmethod
-    def from_input(cls, user: models.User, input_channel: InputChannel | InputPeerChannel) -> QuerySet[Self]:
+    def from_input(cls, user: models.User | int, input_channel: InputChannel | InputPeerChannel) -> QuerySet[Self]:
         if not isinstance(input_channel, (InputChannel, InputPeerChannel)):
             return EmptyQuerySet(cls)
+
+        user_id = user.id if isinstance(user, models.User) else user
 
         ctx = request_ctx.get()
 
         channel_id = models.Channel.norm_id(input_channel.channel_id)
-        if not models.Channel.check_access_hash(user.id, ctx.auth_id, channel_id, input_channel.access_hash):
+        if not models.Channel.check_access_hash(user_id, ctx.auth_id, channel_id, input_channel.access_hash):
             return EmptyQuerySet(cls)
         return cls.filter(id=channel_id, deleted=False)
 
     @classmethod
     def get_from_input(
-            cls, user: models.User, input_channel: InputChannel | InputPeerChannel
+            cls, user: models.User | int, input_channel: InputChannel | InputPeerChannel
     ) -> QuerySetSingle[Self | None]:
         return cls.from_input(user, input_channel).get_or_none()

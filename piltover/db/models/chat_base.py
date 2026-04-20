@@ -146,14 +146,16 @@ class ChatBase(Model):
 
         raise NotImplementedError
 
-    async def get_participant(self, user: models.User, allow_left: bool = False) -> models.ChatParticipant | None:
+    async def get_participant(self, user: models.User | int, allow_left: bool = False) -> models.ChatParticipant | None:
+        user_id = user.id if isinstance(user, models.User) else user
+
         query = models.ChatParticipant
         if not allow_left:
             query = query.filter(left=False)
-        return await query.get_or_none(**self.or_channel(self), user=user)
+        return await query.get_or_none(**self.or_channel(self), user_id=user_id)
 
     async def get_participant_raise(
-            self, user: models.User, message: str = "CHAT_RESTRICTED",
+            self, user: models.User | int, message: str = "CHAT_RESTRICTED",
     ) -> models.ChatParticipant:
         if (participant := await self.get_participant(user)) is not None:
             return participant

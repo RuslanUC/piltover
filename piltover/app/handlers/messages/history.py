@@ -324,16 +324,18 @@ async def get_messages_internal(
 
 
 async def format_messages_internal(
-        user: User, messages: list[MessageRef], allow_slicing: bool = False,
+        user: User | int, messages: list[MessageRef], allow_slicing: bool = False,
         peer: Peer | None = None, saved_peer: Peer | None = None, offset_id: int | None = None,
         query: QuerySet[MessageRef] | None = None, with_reactions: bool = True,
 ) -> Messages | MessagesSlice:
+    user_id = user.id if isinstance(user, User) else user
+
     ucc = UsersChatsChannels()
 
     for message in messages:
         ucc.add_message(message.content_id)
 
-    messages_tl = await MessageRef.to_tl_bulk_maybecached(messages, user.id, with_reactions)
+    messages_tl = await MessageRef.to_tl_bulk_maybecached(messages, user_id, with_reactions)
     users, chats, channels = await ucc.resolve()
 
     """
@@ -814,7 +816,7 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     if peer.type is PeerType.CHANNEL:
         pts = peer.channel.pts
         pts_count = 0
-        await upd.read_channel_messages_contents(user, peer.channel, ref_ids)
+        await upd.read_channel_messages_contents(user.id, peer.channel, ref_ids)
     else:
         pts, _ = await upd.read_messages_contents(user, ref_ids)
 
@@ -825,14 +827,14 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     )
 
 
-async def read_message_contents_internal(user: User, valid_refs: list[MessageRef]) -> list[int] | None:
+async def read_message_contents_internal(user_id: int, valid_refs: list[MessageRef]) -> list[int] | None:
     if not valid_refs:
         return None
 
     content_ids = [ref.content_id for ref in valid_refs]
     ref_by_content_id = {ref.content_id: ref for ref in valid_refs}
 
-    mentions = await MessageMention.filter(user=user, message_id__in=content_ids, read=False)
+    mentions = await MessageMention.filter(user_id=user_id, message_id__in=content_ids, read=False)
     refs_with_media = {
         ref.id: ref
         for ref in valid_refs
@@ -843,10 +845,10 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
         )
     }
     unread_reaction_ids = await MessageContent.filter(
-        id__in=content_ids, author=user, author_reactions_unread=True,
+        id__in=content_ids, author_id=user_id, author_reactions_unread=True,
     ).values_list("id", flat=True)
 
-    for read_media in await MessageMediaRead.filter(user=user, message_id__in=list(refs_with_media)):
+    for read_media in await MessageMediaRead.filter(user_id=user_id, message_id__in=list(refs_with_media)):
         del refs_with_media[read_media.message_id]
 
     if not mentions and not refs_with_media and not unread_reaction_ids:
@@ -861,7 +863,7 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
     media_read_to_create = []
     for ref in refs_with_media.values():
         read_ids.add(ref.id)
-        media_read_to_create.append(MessageMediaRead(user=user, message=ref))
+        media_read_to_create.append(MessageMediaRead(user_id=user_id, message=ref))
 
     if not read_ids and not unread_reaction_ids:
         return None
@@ -881,7 +883,7 @@ async def read_message_contents_internal(user: User, valid_refs: list[MessageRef
     for ref in valid_refs:
         if ref.id not in read_ids:
             continue
-        await Cache.obj.delete(ref.cache_key(user.id))
+        await Cache.obj.delete(ref.cache_key(user_id))
 
     return list(read_ids) + unread_reaction_ids
 
@@ -898,7 +900,7 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> Aff
         "content", "content__media", "content__media__file",
     )
 
-    message_ids = await read_message_contents_internal(user, valid_refs)
+    message_ids = await read_message_contents_internal(user.id, valid_refs)
     if message_ids is None:
         return AffectedMessages(
             pts=await State.add_pts(user, 0),

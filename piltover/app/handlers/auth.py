@@ -259,8 +259,8 @@ async def export_login_token():
     return LoginToken(expires=int(login.created_at.timestamp()) + QrLogin.EXPIRE_TIME, token=login.to_token())
 
 
-@handler.on_request(AcceptLoginToken, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def accept_login_token(request: AcceptLoginToken, user: User) -> Authorization:
+@handler.on_request(AcceptLoginToken, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def accept_login_token(request: AcceptLoginToken, user_id: int) -> Authorization:
     login = await QrLogin.from_token(request.token)
     if login is None:
         raise ErrorRpc(error_code=400, error_message="AUTH_TOKEN_INVALID")
@@ -269,9 +269,9 @@ async def accept_login_token(request: AcceptLoginToken, user: User) -> Authoriza
     if (login.created_at + timedelta(seconds=QrLogin.EXPIRE_TIME)) < datetime.now(UTC):
         raise ErrorRpc(error_code=400, error_message="AUTH_TOKEN_EXPIRED")
 
-    password, _ = await UserPassword.get_or_create(user=user)
+    password, _ = await UserPassword.get_or_create(user_id=user_id)
     auth = await UserAuthorization.create(
-        ip="127.0.0.1", user=user, key=login.key, mfa_pending=password.password is not None,
+        ip="127.0.0.1", user_id=user_id, key=login.key, mfa_pending=password.password is not None,
     )
 
     login.auth = auth
