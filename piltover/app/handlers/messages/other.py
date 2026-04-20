@@ -85,7 +85,7 @@ async def set_typing(request: SetTyping, user: User):
     return True
 
 
-@handler.on_request(GetDhConfig, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetDhConfig, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_dh_config(request: GetDhConfig):
     random_bytes = xorshift128plus_bytes(min(1024, request.random_length)) if request.random_length else b""
 
@@ -102,39 +102,39 @@ async def get_dh_config(request: GetDhConfig):
     )
 
 
-@handler.on_request(GetDefaultHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_default_history_ttl(user: User) -> DefaultHistoryTTL:
+@handler.on_request(GetDefaultHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_default_history_ttl(user_id: int) -> DefaultHistoryTTL:
+    user = await User.get(id=user_id).only("history_ttl_days")
     return DefaultHistoryTTL(period=user.history_ttl_days * 86400)
 
 
-@handler.on_request(SetDefaultHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def set_default_history_ttl(request: SetDefaultHistoryTTL, user: User) -> bool:
+@handler.on_request(SetDefaultHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def set_default_history_ttl(request: SetDefaultHistoryTTL, user_id: int) -> bool:
     if request.period % 86400 != 0:
         raise ErrorRpc(error_code=400, error_message="TTL_PERIOD_INVALID")
 
-    user.history_ttl_days = request.period // 86400
-    await user.save(update_fields=["history_ttl_days"])
+    await User.filter(id=user_id).update(history_ttl_days=request.period // 86400)
 
     return True
 
 
-@handler.on_request(SaveDefaultSendAs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def save_default_send_as(request: SaveDefaultSendAs, user: User) -> bool:
+@handler.on_request(SaveDefaultSendAs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def save_default_send_as(request: SaveDefaultSendAs, user_id: int) -> bool:
     peer = await Peer.from_input_peer_raise(
-        user, request.peer, message="PEER_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
+        user_id, request.peer, message="PEER_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
     )
 
     group = peer.channel
     if not group.supergroup:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    send_as_channel = await process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user_id)
     if send_as_channel is None:
-        await DefaultSendAs.filter(user_id=user.id, group_id=group.id).delete()
+        await DefaultSendAs.filter(user_id=user_id, group_id=group.id).delete()
     else:
-        await DefaultSendAs.update_or_create(user=user, group=group, defaults={
+        await DefaultSendAs.update_or_create(user_id=user_id, group=group, defaults={
             "channel": send_as_channel,
         })
 
-    await upd.update_channel_for_user(group, user)
+    await upd.update_channel_for_user(group, user_id)
     return True

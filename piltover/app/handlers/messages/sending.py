@@ -393,17 +393,19 @@ async def _update_channel_slowmode_maybe(channel: Channel, user: User) -> None:
     })
 
 
-async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User) -> Channel | None:
+async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User | int) -> Channel | None:
     if send_as is None or isinstance(send_as, (InputPeerEmpty, InputChannelEmpty, InputPeerSelf)):
         return None
 
+    user_id = user.id if isinstance(user, User) else user
+
     ctx = request_ctx.get()
     channel_id = Channel.norm_id(send_as.channel_id)
-    if not Channel.check_access_hash(user.id, ctx.auth_id, channel_id, send_as.access_hash):
+    if not Channel.check_access_hash(user_id, ctx.auth_id, channel_id, send_as.access_hash):
         raise ErrorRpc(error_code=400, error_message="SEND_AS_PEER_INVALID", reason="invalid access hash")
 
     send_as_channel = await Channel.get_or_none(
-        creator=user, channel=True, deleted=False, id=channel_id, username__isnull=False
+        creator_id=user_id, channel=True, deleted=False, id=channel_id, username__isnull=False
     )
     if send_as_channel is None:
         raise ErrorRpc(error_code=400, error_message="SEND_AS_PEER_INVALID", reason="invalid channel")
@@ -454,7 +456,7 @@ async def send_message(request: SendMessage, user: User):
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, scheduled_date=request.schedule_date,
-        entities=await process_message_entities(request.message, request.entities, user),
+        entities=await process_message_entities(request.message, request.entities, user.id),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
@@ -625,7 +627,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
     entities = None
     if message_text is not None:
-        entities = await process_message_entities(message_text, request.entities, user)
+        entities = await process_message_entities(message_text, request.entities, user.id)
 
     reply_markup = content.reply_markup
     if user.bot and request.reply_markup is not None:
@@ -1019,7 +1021,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, message=request.message, media=media,
-        entities=await process_message_entities(request.message, request.entities, user),
+        entities=await process_message_entities(request.message, request.entities, user.id),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
@@ -1046,7 +1048,7 @@ async def save_draft(request: SaveDraft, user: User) -> bool:
             await upd.update_draft(user, peer, None)
         return True
 
-    entities = await process_message_entities(request.message, request.entities, user)
+    entities = await process_message_entities(request.message, request.entities, user.id)
 
     # TODO: media
 
@@ -1308,7 +1310,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
             single_media.message,
             single_media.random_id,
             media,
-            await process_message_entities(single_media.message, single_media.entities, user),
+            await process_message_entities(single_media.message, single_media.entities, user.id),
         ))
 
     if await MessageRef.filter(peer=peer, random_id__in=[str(random_id) for _, random_id, _, _ in messages]).exists():

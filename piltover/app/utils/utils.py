@@ -297,7 +297,7 @@ VALID_ENTITIES = (
 )
 
 
-async def _validate_message_entities(text: str, entities: list[MessageEntityBase], user: User) -> list[dict]:
+async def _validate_message_entities(text: str, entities: list[MessageEntityBase], user_id: int) -> list[dict]:
     if not entities:
         return []
     if len(entities) > 1024:
@@ -351,23 +351,25 @@ async def _validate_message_entities(text: str, entities: list[MessageEntityBase
 
     if fetch_users:
         ctx = request_ctx.get()
-        got_users = {user.id}
+        got_users = {user_id}
         users_ids = []
         for input_user, _ in fetch_users:
             if isinstance(input_user, InputUser):
-                if not User.check_access_hash(user.id, ctx.auth_id, input_user.user_id, input_user.access_hash):
+                if not User.check_access_hash(user_id, ctx.auth_id, input_user.user_id, input_user.access_hash):
                     continue
                 users_ids.append(input_user.user_id)
             # TODO: InputUserFromMessage
 
         if users_ids:
-            got_users.update(await Peer.filter(owner=user, user_id__in=users_ids).values_list("user_id", flat=True))
+            got_users.update(
+                await Peer.filter(owner_id=user_id, user_id__in=users_ids).values_list("user_id", flat=True)
+            )
 
         for input_user, idx in reversed(fetch_users):
             # entity = cast(MessageEntityMentionName, result[idx])
             entity = result[idx]
             if isinstance(input_user, InputUserSelf):
-                entity["user_id"] = user.id
+                entity["user_id"] = user_id
             elif isinstance(input_user, (InputUser, InputUserFromMessage)):
                 if input_user.user_id in got_users:
                     entity["user_id"] = input_user.user_id
@@ -435,12 +437,12 @@ def _insert_entity_maybe(
 
 
 async def process_message_entities(
-        text: str | None, entities: list[MessageEntityBase], user: User,
+        text: str | None, entities: list[MessageEntityBase], user_id: int,
 ) -> list[dict] | None:
     if not text:
         return None
 
-    entities = await _validate_message_entities(text, entities, user)
+    entities = await _validate_message_entities(text, entities, user_id)
 
     # TODO: calculate this properly:
     #  dont use utf16 at all,

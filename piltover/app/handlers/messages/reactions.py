@@ -23,7 +23,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.reactions")
 
 
-@handler.on_request(GetAvailableReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(GetAvailableReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_available_reactions(request: GetAvailableReactions) -> AvailableReactions | AvailableReactionsNotModified:
     ids = await Reaction.all().order_by("id").values_list("id", flat=True)
 
@@ -53,8 +53,8 @@ async def get_available_reactions(request: GetAvailableReactions) -> AvailableRe
 REACTION_NOT_MODIFIED = ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
 
-@handler.on_request(SendReaction)
-async def send_reaction(request: SendReaction, user: User) -> Updates:
+@handler.on_request(SendReaction, ReqHandlerFlags.DONT_FETCH_USER)
+async def send_reaction(request: SendReaction, user_id: int) -> Updates:
     reaction = None
     custom_reaction = None
     if request.reaction:
@@ -69,10 +69,10 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         else:
             raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant_raise(user)
+        participant = await chat_or_channel.get_participant_raise(user_id)
         # TODO: check if this is correct permission
         if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN", reason="can't view messages")
@@ -102,7 +102,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
     if uniq_reactions > APP_CONFIG.reactions_unique_max:
         raise ErrorRpc(error_code=400, error_message="REACTIONS_TOO_MANY")
 
-    existing_reaction = await MessageReaction.get_or_none(user=user, message_id=message.content_id)
+    existing_reaction = await MessageReaction.get_or_none(user_id=user_id, message_id=message.content_id)
     if existing_reaction is None and reaction is None and custom_reaction is None:
         raise REACTION_NOT_MODIFIED
     if existing_reaction is not None:
@@ -116,7 +116,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
             await existing_reaction.delete()
         else:
             reactions_q = MessageReaction.filter(
-                user=user, message_id=message.content_id,
+                user_id=user_id, message_id=message.content_id,
             ).values_list("id", flat=True)
             await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
@@ -124,12 +124,12 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
 
     if reaction is not None or custom_reaction is not None:
         await MessageReaction.create(
-            user=user,
+            user_id=user_id,
             message=message.content,
             reaction=reaction,
             custom_emoji=custom_reaction,
         )
-        if message.content.author_id != user.id:
+        if message.content.author_id != user_id:
             author_reactions_unread = True
 
     await MessageContent.filter(id=message.content_id).update(
@@ -138,7 +138,7 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
     )
     await message.content.refresh_from_db(["reactions_version", "author_reactions_unread"])
 
-    result = await upd.update_reactions(user, [message], peer)
+    result = await upd.update_reactions(user_id, [message], peer)
 
     # TODO: if small supergroup - send updates to all participants,
     #  if big supergroup - send updates only to author (+admins?)
@@ -147,18 +147,18 @@ async def send_reaction(request: SendReaction, user: User) -> Updates:
         for opp_message in await MessageRef.filter(
             content_id=message.content_id,
         ).select_related("peer", "peer__owner", "content"):
-            await upd.update_reactions(opp_message.peer.owner, [opp_message], opp_message.peer)
+            await upd.update_reactions(opp_message.peer.owner_id, [opp_message], opp_message.peer)
 
     if (reaction is not None or custom_reaction is not None) and request.add_to_recent:
-        await RecentReaction.update_time_or_create(user, reaction, custom_reaction, datetime.now(UTC))
-        recent_updates = await upd.update_recent_reactions(user)
+        await RecentReaction.update_time_or_create(user_id, reaction, custom_reaction, datetime.now(UTC))
+        recent_updates = await upd.update_recent_reactions(user_id)
         result.updates.extend(recent_updates.updates)
 
     return result
 
 
-@handler.on_request(SetDefaultReaction, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
+@handler.on_request(SetDefaultReaction, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def set_default_reaction(request: SetDefaultReaction, user_id: int) -> bool:
     defaults: dict[str, Reaction | File | None] = {}
 
     if isinstance(request.reaction, ReactionEmoji):
@@ -178,18 +178,18 @@ async def set_default_reaction(request: SetDefaultReaction, user: User) -> bool:
     else:
         raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
-    await UserReactionsSettings.update_or_create(user=user, defaults=defaults)
-    await upd.update_config(user)
+    await UserReactionsSettings.update_or_create(user_id=user_id, defaults=defaults)
+    await upd.update_config(user_id)
 
     return True
 
 
-@handler.on_request(GetMessagesReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_messages_reactions(request: GetMessagesReactions, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+@handler.on_request(GetMessagesReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_messages_reactions(request: GetMessagesReactions, user_id: int) -> Updates:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant_raise(user)
+        participant = await chat_or_channel.get_participant_raise(user_id)
         # TODO: check if this is correct permission
         if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
@@ -197,15 +197,15 @@ async def get_messages_reactions(request: GetMessagesReactions, user: User) -> U
     if (messages := await MessageRef.get_many(request.id, peer, prefetch_fields=("peer__channel",))) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    return await upd.update_reactions(user, messages, peer, False)
+    return await upd.update_reactions(user_id, messages, peer, False)
 
 
-@handler.on_request(GetUnreadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_unread_reactions(request: GetUnreadReactions, user: User) -> Messages:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(GetUnreadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_unread_reactions(request: GetUnreadReactions, user_id: int) -> Messages:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     query = await get_messages_query_internal(
-        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, user.id,
+        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, user_id,
         unread_reactions=True,
     )
 
@@ -215,27 +215,29 @@ async def get_unread_reactions(request: GetUnreadReactions, user: User) -> Messa
         return Messages(messages=[], chats=[], users=[])
 
     return await format_messages_internal(
-        user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id, query=query, with_reactions=True,
+        user_id, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id, query=query, with_reactions=True,
     )
 
 
-@handler.on_request(ReadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(ReadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def read_reactions(request: ReadReactions, user_id: int) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     if peer.type is PeerType.CHANNEL:
-        peer_query = Q(messagerefs__peer__owner=user, messagerefs__peer__channel_id=peer.channel_id)
+        peer_query = Q(messagerefs__peer__owner_id=user_id, messagerefs__peer__channel_id=peer.channel_id)
     else:
         peer_query = Q(messagerefs__peer=peer)
 
     await MessageContent.filter(
-        id__in=Subquery(MessageContent.filter(peer_query, author_reactions_unread=True, author=user).values("id"))
+        id__in=Subquery(
+            MessageContent.filter(peer_query, author_reactions_unread=True, author_id=user_id).values("id")
+        )
     ).update(
         reactions_version=F("reactions_version") + 1,
         author_reactions_unread=False,
     )
 
-    pts = await State.add_pts(user, 0)
+    pts = await State.add_pts(user_id, 0)
 
     # TODO: UpdateMessageReactions with unread=False
 
@@ -246,10 +248,10 @@ async def read_reactions(request: ReadReactions, user: User) -> AffectedHistory:
     )
 
 
-@handler.on_request(GetRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_recent_reactions(request: GetRecentReactions, user: User) -> Reactions | ReactionsNotModified:
+@handler.on_request(GetRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_recent_reactions(request: GetRecentReactions, user_id: int) -> Reactions | ReactionsNotModified:
     limit = min(50, max(1, request.limit))
-    ids = await RecentReaction.filter(user=user).limit(limit).order_by("-used_at").values_list("id", flat=True)
+    ids = await RecentReaction.filter(user_id=user_id).limit(limit).order_by("-used_at").values_list("id", flat=True)
 
     reactions_hash = telegram_hash(ids, 64)
 
@@ -267,11 +269,11 @@ async def get_recent_reactions(request: GetRecentReactions, user: User) -> React
     )
 
 
-@handler.on_request(ClearRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def clear_recent_reactions(user: User) -> bool:
-    if await RecentReaction.filter(user=user).exists():
-        await RecentReaction.filter(user=user).delete()
-        await upd.update_recent_reactions(user)
+@handler.on_request(ClearRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def clear_recent_reactions(user_id: int) -> bool:
+    if await RecentReaction.filter(user_id=user_id).exists():
+        await RecentReaction.filter(user_id=user_id).delete()
+        await upd.update_recent_reactions(user_id)
 
     return True
 
@@ -285,9 +287,9 @@ REACTIONS_LIST_EMPTY = MessageReactionsList(
 )
 
 
-@handler.on_request(GetMessageReactionsList, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_message_reactions_list(request: GetMessageReactionsList, user: User) -> MessageReactionsList:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(GetMessageReactionsList, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_message_reactions_list(request: GetMessageReactionsList, user_id: int) -> MessageReactionsList:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     can_see_list = (
             peer.type in (PeerType.SELF, PeerType.USER, PeerType.CHAT)
@@ -299,7 +301,7 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user: Use
     if (message := await MessageRef.get_(request.id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    if message.content.author_id == user.id:
+    if message.content.author_id == user_id:
         is_unread = message.content.author_reactions_unread
     else:
         is_unread = False
@@ -342,7 +344,7 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user: Use
     peer_reactions = []
     for reaction in reactions:
         users[reaction.user_id] = reaction.user
-        peer_reactions.append(reaction.to_tl_peer_reaction(user.id, is_unread))
+        peer_reactions.append(reaction.to_tl_peer_reaction(user_id, is_unread))
 
     return MessageReactionsList(
         count=await query_simple.count(),

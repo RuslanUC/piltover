@@ -11,13 +11,13 @@ from piltover.app.bot_handlers.bots import process_callback_query, process_inlin
 from piltover.app.utils.utils import check_password_internal, process_message_entities
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, InlineQueryPeer, FileType, InlineQueryResultType
-from piltover.db.models import User, Peer, UserPassword, CallbackQuery, InlineQuery, File, InlineQueryResultItem, \
+from piltover.db.models import Peer, UserPassword, CallbackQuery, InlineQuery, File, InlineQueryResultItem, \
     MessageRef
 from piltover.db.models.inline_query_result import InlineQueryResult
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.tl import KeyboardButtonCallback, ReplyInlineMarkup, InputPeerEmpty, InputBotInlineResult, \
-    InputBotInlineMessageText, objects, InputBotInlineMessageMediaAuto, \
+    InputBotInlineMessageText, InputBotInlineMessageMediaAuto, \
     InputBotInlineResultPhoto, InputBotInlineResultDocument, InputPhoto, InputDocument
 from piltover.tl.functions.messages import GetBotCallbackAnswer, SetBotCallbackAnswer, GetInlineBotResults, \
     SetInlineBotResults
@@ -27,15 +27,15 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.bot_callbacks")
 
 
-@handler.on_request(GetBotCallbackAnswer, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> BotCallbackAnswer:
+@handler.on_request(GetBotCallbackAnswer, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -> BotCallbackAnswer:
     if not request.data:  # in what case would data be None ??????
         raise ErrorRpc(error_code=400, error_message="DATA_INVALID")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant(user)
+        participant = await chat_or_channel.get_participant(user_id)
         # TODO: check if this is correct permission
         if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
@@ -74,7 +74,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
         raise ErrorRpc(error_code=400, error_message="DATA_INVALID")
 
     if button.requires_password:
-        password = await UserPassword.get_or_none(user=user)
+        password = await UserPassword.get_or_none(user_id=user_id)
         if password is None or password.password is None:
             raise ErrorRpc(error_code=400, error_message="PASSWORD_MISSING")
         await check_password_internal(password, request.password)
@@ -90,7 +90,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
         ctx = request_ctx.get()
         pubsub = ctx.worker.pubsub
 
-        query = await CallbackQuery.create(user=user, message=message_for_bot, data=request.data)
+        query = await CallbackQuery.create(user_id=user_id, message=message_for_bot, data=request.data)
 
         topic = f"bot-callback-query/{query.id}"
         await pubsub.listen(topic, None)
@@ -110,8 +110,8 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user: User) -> 
         return answer
 
 
-@handler.on_request(SetBotCallbackAnswer, ReqHandlerFlags.USER_NOT_ALLOWED)
-async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> bool:
+@handler.on_request(SetBotCallbackAnswer, ReqHandlerFlags.USER_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def set_bot_callback_answer(request: SetBotCallbackAnswer, user_id: int) -> bool:
     if request.message and len(request.message) > 240:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
 
@@ -119,7 +119,7 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> 
 
     async with in_transaction():
         query = await CallbackQuery.select_for_update(no_key=True).get_or_none(
-            message__content__author=user, id=request.query_id,
+            message__content__author_id=user_id, id=request.query_id,
             created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
         )
         if query is None:
@@ -142,16 +142,16 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user: User) -> 
     return True
 
 
-@handler.on_request(GetInlineBotResults, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> BotResults:
-    bot = await Peer.from_input_peer_raise(user, request.bot)
+@handler.on_request(GetInlineBotResults, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> BotResults:
+    bot = await Peer.from_input_peer_raise(user_id, request.bot)
     if bot.type is not PeerType.USER or not bot.user.bot:
         raise ErrorRpc(error_code=400, error_message="BOT_INVALID")
 
     if isinstance(request.peer, InputPeerEmpty):
         query_peer = None
     else:
-        peer = await Peer.from_input_peer_raise(user, request.peer)
+        peer = await Peer.from_input_peer_raise(user_id, request.peer)
         if peer.type is PeerType.SELF:
             query_peer = InlineQueryPeer.USER
         elif peer.type is PeerType.USER and peer.user.bot and peer.user_id == bot.user_id:
@@ -170,7 +170,7 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
             query_peer = None
 
     cached = await InlineQueryResult.filter(
-        Q(query__user=user, private=True) | Q(private=False),
+        Q(query__user_id=user_id, private=True) | Q(private=False),
         query__query=request.query,
         query__offset=request.offset[:64],
         query__bot=bot,
@@ -182,7 +182,7 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
         return await cached.to_tl()
 
     inline_query = InlineQuery(
-        user=user,
+        user_id=user_id,
         bot=bot.user,
         query=request.query[:128],
         offset=request.offset[:64],
@@ -229,24 +229,14 @@ async def get_inline_bot_results(request: GetInlineBotResults, user: User) -> Bo
         return results
 
 
-async def _process_entities_tl(text: str, entities: list[...], user: User) -> list[...] | None:
-    entities_dict = await process_message_entities(text, entities, user)
-    result = []
-    for entity in entities_dict:
-        tl_id = entity.pop("_")
-        result.append(objects[tl_id](**entity))
-
-    return result or None
-
-
 _DOCUMENT_RESULT_TYPES = {
     InlineQueryResultType.STICKER, InlineQueryResultType.GIF, InlineQueryResultType.VOICE,
     InlineQueryResultType.VIDEO, InlineQueryResultType.AUDIO, InlineQueryResultType.FILE
 }
 
 
-@handler.on_request(SetInlineBotResults, ReqHandlerFlags.USER_NOT_ALLOWED)
-async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bool:
+@handler.on_request(SetInlineBotResults, ReqHandlerFlags.USER_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def set_inline_bot_results(request: SetInlineBotResults, user_id: int) -> bool:
     ctx = request_ctx.get()
     cache_time = 300 if request.cache_time <= 0 else request.cache_time
 
@@ -254,7 +244,7 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
 
     async with in_transaction():
         query = await InlineQuery.select_for_update(no_key=True).get_or_none(
-            id=request.query_id, bot=user, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
+            id=request.query_id, bot_id=user_id, created_at__gte=datetime.now(UTC) - timedelta(seconds=15),
         )
         if query is None:
             raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
@@ -280,11 +270,11 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                 item.send_message_no_webpage = message.no_webpage
                 item.send_message_invert_media = message.invert_media
                 item.send_message_text = message.message
-                item.send_message_entities = await process_message_entities(message.message, message.entities, user)
+                item.send_message_entities = await process_message_entities(message.message, message.entities, user_id)
             elif isinstance(message, InputBotInlineMessageMediaAuto):
                 item.send_message_invert_media = message.invert_media
                 item.send_message_text = message.message
-                item.send_message_entities = await process_message_entities(message.message, message.entities, user)
+                item.send_message_entities = await process_message_entities(message.message, message.entities, user_id)
             else:
                 # TODO: InputBotInlineMessageMediaGeo
                 # TODO: InputBotInlineMessageMediaVenue
@@ -310,7 +300,7 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
                     raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
 
                 photo = await File.from_input(
-                    user.id, result.photo.id, result.photo.access_hash, result.photo.file_reference, FileType.PHOTO,
+                    user_id, result.photo.id, result.photo.access_hash, result.photo.file_reference, FileType.PHOTO,
                 )
                 if photo is None:
                     raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
@@ -327,7 +317,7 @@ async def set_inline_bot_results(request: SetInlineBotResults, user: User) -> bo
 
                 input_doc = result.document
                 doc = await File.from_input(
-                    user.id, input_doc.id, input_doc.access_hash, input_doc.file_reference, FileType.PHOTO,
+                    user_id, input_doc.id, input_doc.access_hash, input_doc.file_reference, FileType.PHOTO,
                 )
                 if doc is None:
                     raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")

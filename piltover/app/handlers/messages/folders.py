@@ -1,5 +1,5 @@
 import piltover.app.utils.updates_manager as upd
-from piltover.db.models import User, DialogFolder
+from piltover.db.models import DialogFolder
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import DialogFilterDefault, TextWithEntities, TLObjectVector
@@ -11,12 +11,12 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.folders")
 
 
-@handler.on_request(GetDialogFilters_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(GetDialogFilters, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_dialog_filters(user: User) -> DialogFilters:
+@handler.on_request(GetDialogFilters_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(GetDialogFilters, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_dialog_filters(user_id: int) -> DialogFilters:
     folders = TLObjectVector()
     dialog_folders = await DialogFolder.filter(
-        owner=user, id_for_user__gt=0,
+        owner_id=user_id, id_for_user__gt=0,
     ).prefetch_related("pinned_peers", "include_peers", "exclude_peers").order_by("position", "id")
     for folder in dialog_folders:
         folders.append(folder.to_tl())
@@ -30,19 +30,19 @@ async def get_dialog_filters(user: User) -> DialogFilters:
     )
 
 
-@handler.on_request(UpdateDialogFilter, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
+@handler.on_request(UpdateDialogFilter, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def update_dialog_filter(request: UpdateDialogFilter, user_id: int) -> bool:
     if request.id < 2 or request.id >= (2 ** 15 - 1):
         raise ErrorRpc(error_code=400, error_message="FILTER_ID_INVALID")
 
-    folder = await DialogFolder.get_or_none(owner=user, id_for_user=request.id)
+    folder = await DialogFolder.get_or_none(owner_id=user_id, id_for_user=request.id)
 
     if request.filter is None and folder is None:
         return True
     elif request.filter is None and folder is not None:
         await folder.delete()
 
-        await upd.update_folder(user, request.id, None)
+        await upd.update_folder(user_id, request.id, None)
         return True
 
     title = request.filter.title
@@ -52,7 +52,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
 
     if folder is None:
         folder = await DialogFolder.create(
-            owner=user,
+            owner_id=user_id,
             name="",
             id_for_user=-1,
             position=0,
@@ -62,7 +62,7 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
         await folder.save()
 
         folder = await DialogFolder.get(id=folder.id).prefetch_related("pinned_peers", "include_peers", "exclude_peers")
-        await upd.update_folder(user, request.id, folder)
+        await upd.update_folder(user_id, request.id, folder)
         return True
 
     updated_fields = folder.get_difference(request.filter)
@@ -73,15 +73,15 @@ async def update_dialog_filter(request: UpdateDialogFilter, user: User) -> bool:
     await folder.save(update_fields=updated_fields)
 
     folder = await DialogFolder.get(id=folder.id).prefetch_related("pinned_peers", "include_peers", "exclude_peers")
-    await upd.update_folder(user, request.id, folder)
+    await upd.update_folder(user_id, request.id, folder)
     return True
 
 
-@handler.on_request(UpdateDialogFiltersOrder, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def update_dialog_filters_order(request: UpdateDialogFiltersOrder, user: User) -> bool:
+@handler.on_request(UpdateDialogFiltersOrder, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def update_dialog_filters_order(request: UpdateDialogFiltersOrder, user_id: int) -> bool:
     folders = {
         folder.id_for_user: folder
-        for folder in await DialogFolder.filter(owner=user, id_for_user__gt=0)
+        for folder in await DialogFolder.filter(owner_id=user_id, id_for_user__gt=0)
     }
     new_order = []
 
@@ -101,5 +101,5 @@ async def update_dialog_filters_order(request: UpdateDialogFiltersOrder, user: U
     folder_ids = [folder.id_for_user for folder in new_order]
     folder_ids.insert(0, 0)
 
-    await upd.update_folders_order(user, folder_ids)
+    await upd.update_folders_order(user_id, folder_ids)
     return True

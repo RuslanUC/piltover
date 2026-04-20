@@ -34,7 +34,7 @@ class Dialog(Model):
 
     @classmethod
     def top_message_query_bulk(
-            cls, _: models.User, dialogs: list[Dialog], prefetch: bool = True,
+            cls, _: int, dialogs: list[Dialog], prefetch: bool = True,
     ) -> QuerySet[models.MessageRef]:
         peers_q = []
         for dialog in dialogs:

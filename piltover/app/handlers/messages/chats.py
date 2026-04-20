@@ -116,19 +116,19 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
     )
 
 
-@handler.on_request(GetChats)
-async def get_chats(request: GetChats, user: User) -> Chats:
+@handler.on_request(GetChats, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_chats(request: GetChats, user_id: int) -> Chats:
     chat_ids = [Chat.norm_id(chat_id) for chat_id in request.id]
-    peers = await Peer.filter(owner=user, chat_id__in=chat_ids).select_related("chat")
+    peers = await Peer.filter(owner_id=user_id, chat_id__in=chat_ids).select_related("chat")
 
     return Chats(
         chats=await Chat.to_tl_bulk([peer.chat for peer in peers]),
     )
 
 
-@handler.on_request(GetFullChat)
-async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
-    peer = await Peer.from_chat_id_raise(user, request.chat_id, allow_migrated=True, select_related=("chat__photo",))
+@handler.on_request(GetFullChat, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_full_chat(request: GetFullChat, user_id: int) -> MessagesChatFull:
+    peer = await Peer.from_chat_id_raise(user_id, request.chat_id, allow_migrated=True, select_related=("chat__photo",))
 
     chat = peer.chat
     photo = PhotoEmpty(id=0)
@@ -136,9 +136,9 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
         photo = chat.photo.to_tl_photo()
 
     invite = None
-    participant = await ChatParticipant.get_or_none(chat=chat, user=user)
+    participant = await ChatParticipant.get_or_none(chat=chat, user_id=user_id)
     if chat.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
-        invite = await ChatInvite.get_or_create_permanent(user, peer.chat_or_channel)
+        invite = await ChatInvite.get_or_create_permanent(user_id, peer.chat_or_channel)
 
     return MessagesChatFull(
         full_chat=ChatFull(
@@ -160,13 +160,13 @@ async def get_full_chat(request: GetFullChat, user: User) -> MessagesChatFull:
             exported_invite=await invite.to_tl() if invite is not None else None,
         ),
         chats=[await chat.to_tl()],
-        users=[await user.to_tl()],
+        users=[],
     )
 
 
 @handler.on_request(EditChatTitle)
 async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
-    peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    peer = await Peer.from_chat_id_raise(user.id, request.chat_id)
 
     participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
     if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
@@ -180,12 +180,12 @@ async def edit_chat_title(request: EditChatTitle, user: User) -> Updates:
     )
 
 
-@handler.on_request(EditChatAbout)
-async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
+@handler.on_request(EditChatAbout, ReqHandlerFlags.DONT_FETCH_USER)
+async def edit_chat_about(request: EditChatAbout, user_id: int) -> bool:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
-    participant = await peer.chat_or_channel.get_participant(user)
-    if participant is None or not (participant.is_admin or peer.chat_or_channel.creator_id == user.id):
+    participant = await peer.chat_or_channel.get_participant(user_id)
+    if participant is None or not (participant.is_admin or peer.chat_or_channel.creator_id == user_id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat_or_channel = peer.chat_or_channel
@@ -197,7 +197,7 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
     elif isinstance(chat_or_channel, Channel):
         await AdminLogEntry.create(
             channel=peer.channel,
-            user=user,
+            user_id=user_id,
             action=AdminLogEntryAction.CHANGE_ABOUT,
             prev=old_about.encode("utf8"),
             new=chat_or_channel.description.encode("utf8"),
@@ -211,18 +211,18 @@ async def edit_chat_about(request: EditChatAbout, user: User) -> bool:
 
 
 async def resolve_input_chat_photo(
-        user: User, photo: InputChatPhotoEmpty | InputChatPhoto | InputChatUploadedPhoto,
+        user_id: int, photo: InputChatPhotoEmpty | InputChatPhoto | InputChatUploadedPhoto,
 ) -> File | None:
     if isinstance(photo, InputChatPhotoEmpty):
         return None
     elif isinstance(photo, InputChatPhoto):
-        if not await Peer.filter(owner=user, chat__photo_id=photo.id).exists():
+        if not await Peer.filter(owner_id=user_id, chat__photo_id=photo.id).exists():
             raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
         return await File.get_or_none(id=photo.id)
     elif isinstance(photo, InputChatUploadedPhoto):
         if photo.file is None:
             raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
-        uploaded_file = await UploadingFile.get_or_none(user=user, file_id=photo.file.id)
+        uploaded_file = await UploadingFile.get_or_none(user_id=user_id, file_id=photo.file.id)
         if uploaded_file is None:
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
         if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):
@@ -240,14 +240,14 @@ async def resolve_input_chat_photo(
 
 @handler.on_request(EditChatPhoto)
 async def edit_chat_photo(request: EditChatPhoto, user: User):
-    peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    peer = await Peer.from_chat_id_raise(user.id, request.chat_id)
 
     participant = await ChatParticipant.get_or_none(chat=peer.chat, user=user)
     if participant is None or not (participant.is_admin or peer.chat.creator_id == user.id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat = peer.chat
-    await chat.update(photo=await resolve_input_chat_photo(user, request.photo))
+    await chat.update(photo=await resolve_input_chat_photo(user.id, request.photo))
 
     return await send_message_internal(
         user, peer, None, None, False,
@@ -261,7 +261,7 @@ async def edit_chat_photo(request: EditChatPhoto, user: User):
 @handler.on_request(AddChatUser_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
 @handler.on_request(AddChatUser, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def add_chat_user(request: AddChatUser, user: User):
-    chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    chat_peer = await Peer.from_chat_id_raise(user.id, request.chat_id)
     user_peer = await Peer.from_input_peer_raise(user, request.user_id)
 
     participant = await chat_peer.chat.get_participant_raise(user)
@@ -330,7 +330,7 @@ async def add_chat_user(request: AddChatUser, user: User):
 
 @handler.on_request(DeleteChatUser)
 async def delete_chat_user(request: DeleteChatUser, user: User):
-    chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
+    chat_peer = await Peer.from_chat_id_raise(user.id, request.chat_id)
     user_peer = await Peer.from_input_peer_raise(user, request.user_id)
 
     participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user=user)
@@ -367,14 +367,14 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     return updates
 
 
-@handler.on_request(EditChatAdmin, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
-    chat_peer = await Peer.from_chat_id_raise(user, request.chat_id)
-    user_peer = await Peer.from_input_peer_raise(user, request.user_id)
+@handler.on_request(EditChatAdmin, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def edit_chat_admin(request: EditChatAdmin, user_id: int) -> bool:
+    chat_peer = await Peer.from_chat_id_raise(user_id, request.chat_id)
+    user_peer = await Peer.from_input_peer_raise(user_id, request.user_id)  # TODO: only allow user peers
 
     if not await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
-    if chat_peer.chat.creator_id != user.id:
+    if chat_peer.chat.creator_id != user_id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user=user_peer.user)
@@ -396,9 +396,9 @@ async def edit_chat_admin(request: EditChatAdmin, user: User) -> bool:
     return True
 
 
-@handler.on_request(ToggleNoForwards, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(ToggleNoForwards, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def toggle_no_forwards(request: ToggleNoForwards, user_id: int) -> Updates:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -407,7 +407,7 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
     if request.enabled == chat_or_channel.no_forwards:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
-    participant = await chat_or_channel.get_participant(user)
+    participant = await chat_or_channel.get_participant(user_id)
     if participant is None or not chat_or_channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -418,7 +418,7 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
     if peer.type is PeerType.CHANNEL:
         await AdminLogEntry.create(
             channel=peer.channel,
-            user=user,
+            user_id=user_id,
             action=AdminLogEntryAction.TOGGLE_NOFORWARDS,
             new=b"\x01" if request.enabled else b"\x00",
         )
@@ -429,16 +429,16 @@ async def toggle_no_forwards(request: ToggleNoForwards, user: User) -> Updates:
         return await upd.update_channel(peer.channel)
 
 
-@handler.on_request(EditChatDefaultBannedRights)
-async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, user: User) -> Updates:
+@handler.on_request(EditChatDefaultBannedRights, ReqHandlerFlags.DONT_FETCH_USER)
+async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, user_id: int) -> Updates:
     new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
     if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
         raise ErrorRpc(error_code=406, error_message="BANNED_RIGHTS_INVALID")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
-    participant = await peer.chat_or_channel.get_participant(user)
-    if participant is None or not (participant.is_admin or peer.chat_or_channel.creator_id == user.id):
+    participant = await peer.chat_or_channel.get_participant(user_id)
+    if participant is None or not (participant.is_admin or peer.chat_or_channel.creator_id == user_id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     chat_or_channel = peer.chat_or_channel
@@ -454,7 +454,7 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
     if peer.type is PeerType.CHANNEL:
         await AdminLogEntry.create(
             channel=peer.channel,
-            user=user,
+            user_id=user_id,
             action=AdminLogEntryAction.DEFAULT_BANNED_RIGHTS,
             prev=old_banned_rights,
             new=new_banned_rights,
@@ -469,7 +469,7 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
 
 @handler.on_request(MigrateChat, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def migrate_chat(request: MigrateChat, user: User) -> Updates:
-    peer = await Peer.from_chat_id_raise(user, request.chat_id, select_related=("chat__creator", "chat__photo"))
+    peer = await Peer.from_chat_id_raise(user.id, request.chat_id, select_related=("chat__creator", "chat__photo"))
     if peer.type is not PeerType.CHAT:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -565,9 +565,9 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
     return updates
 
 
-@handler.on_request(GetOnlines)
-async def get_onlines(request: GetOnlines, user: User) -> ChatOnlines:
-    peer = await Peer.from_input_peer_raise(user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
+@handler.on_request(GetOnlines, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_onlines(request: GetOnlines, user_id: int) -> ChatOnlines:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
     onlines = await Presence.filter(
         status=UserStatus.ONLINE, last_seen__gt=datetime.now(UTC) - timedelta(minutes=1), user_id__in=Subquery(
@@ -580,14 +580,14 @@ async def get_onlines(request: GetOnlines, user: User) -> ChatOnlines:
     return ChatOnlines(onlines=onlines)
 
 
-@handler.on_request(GetCommonChats)
-async def get_common_chats(request: GetCommonChats, user: User) -> ChatsBase:
-    peer = await Peer.from_input_peer_raise(user, request.user_id, peer_types=(PeerType.USER, PeerType.SELF))
+@handler.on_request(GetCommonChats, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_common_chats(request: GetCommonChats, user_id: int) -> ChatsBase:
+    peer = await Peer.from_input_peer_raise(user_id, request.user_id, peer_types=(PeerType.USER, PeerType.SELF))
 
     limit = max(1, min(100, request.limit))
 
     query = ChatParticipant.common_chats_query(
-        user.id, peer.user_id, request.max_id if request.max_id > 0 else None,
+        user_id, peer.user_id, request.max_id if request.max_id > 0 else None,
     )
 
     chats = []

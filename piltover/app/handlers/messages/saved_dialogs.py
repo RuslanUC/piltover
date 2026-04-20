@@ -17,22 +17,22 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.saved_dialogs")
 
 
-@handler.on_request(GetSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_saved_dialogs(request: GetSavedDialogs, user: User) -> SavedDialogs:
+@handler.on_request(GetSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_saved_dialogs(request: GetSavedDialogs, user_id: int) -> SavedDialogs:
     return SavedDialogs(
         **(await get_dialogs_internal(
-            SavedDialog, user, request.offset_id, request.offset_date, request.limit, request.offset_peer
+            SavedDialog, user_id, request.offset_id, request.offset_date, request.limit, request.offset_peer
         ))
     )
 
 
-@handler.on_request(GetSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_saved_history(request: GetSavedHistory, user: User) -> Messages:
-    self_peer = await Peer.get(owner=user, type=PeerType.SELF)
+@handler.on_request(GetSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages:
+    self_peer = await Peer.get(owner_id=user_id, type=PeerType.SELF)
     if self_peer is None:
         return Messages(messages=[], chats=[], users=[])
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     messages = await get_messages_internal(
         self_peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, saved_peer=peer
@@ -41,18 +41,18 @@ async def get_saved_history(request: GetSavedHistory, user: User) -> Messages:
         return Messages(messages=[], chats=[], users=[])
 
     return await format_messages_internal(
-        user, messages, allow_slicing=True, peer=self_peer, saved_peer=peer, offset_id=request.offset_id,
+        user_id, messages, allow_slicing=True, peer=self_peer, saved_peer=peer, offset_id=request.offset_id,
     )
 
 
-@handler.on_request(DeleteSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def delete_saved_history(request: DeleteSavedHistory, user: User) -> AffectedHistory:
-    self_peer = await Peer.get(owner=user, type=PeerType.SELF)
+@handler.on_request(DeleteSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def delete_saved_history(request: DeleteSavedHistory, user_id: int) -> AffectedHistory:
+    self_peer = await Peer.get(owner_id=user_id, type=PeerType.SELF)
     if self_peer is None:
-        updates_state, _ = await State.get_or_create(user=user)
+        updates_state, _ = await State.get_or_create(user_id=user_id)
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     query = Q(peer=self_peer, content__fwd_header__saved_peer=peer)
     if request.max_id:
         query &= Q(id__lte=request.max_id)
@@ -63,7 +63,7 @@ async def delete_saved_history(request: DeleteSavedHistory, user: User) -> Affec
 
     ids = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", flat=True)
     if not ids:
-        updates_state = await State.get(user=user)
+        updates_state = await State.get(user_id=user_id)
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
 
     offset = 0
@@ -71,25 +71,25 @@ async def delete_saved_history(request: DeleteSavedHistory, user: User) -> Affec
         offset = ids.pop()
 
     await MessageRef.filter(id__in=ids).delete()
-    pts = await upd.delete_messages(user, {user: ids})
+    pts = await upd.delete_messages(user_id, {user_id: ids})
 
     return AffectedHistory(pts=pts, pts_count=len(ids), offset=offset)
 
 
-@handler.on_request(GetPinnedSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_pinned_saved_dialogs(user: User) -> SavedDialogs:
+@handler.on_request(GetPinnedSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_pinned_saved_dialogs(user_id: int) -> SavedDialogs:
     dialogs = await SavedDialog.filter(
-        peer__owner=user, pinned_index__not_isnull=True,
+        peer__owner_id=user_id, pinned_index__not_isnull=True,
     ).select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
 
     return SavedDialogs(
-        **(await format_dialogs(SavedDialog, user, dialogs))
+        **(await format_dialogs(SavedDialog, user_id, dialogs))
     )
 
 
-@handler.on_request(ToggleSavedDialogPin, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def toggle_saved_dialog_pin(request: ToggleSavedDialogPin, user: User) -> bool:
-    if (dialog := await SavedDialog.get_or_none(peer__owner=user).select_related("peer")) is None:
+@handler.on_request(ToggleSavedDialogPin, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def toggle_saved_dialog_pin(request: ToggleSavedDialogPin, user_id: int) -> bool:
+    if (dialog := await SavedDialog.get_or_none(peer__owner_id=user_id).select_related("peer")) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
 
     if bool(dialog.pinned_index) == request.pinned:
@@ -97,12 +97,12 @@ async def toggle_saved_dialog_pin(request: ToggleSavedDialogPin, user: User) -> 
 
     if request.pinned:
         # TODO: set pinned index to Max("pinned_index") + 1 instead of whatever this is
-        dialog.pinned_index = await SavedDialog.filter(peer__owner=user, pinned_index__not_isnull=True).count()
+        dialog.pinned_index = await SavedDialog.filter(peer__owner_id=user_id, pinned_index__not_isnull=True).count()
     else:
         dialog.pinned_index = None
 
     await dialog.save(update_fields=["pinned_index"])
-    await upd.pin_saved_dialog(user, dialog)
+    await upd.pin_saved_dialog(user_id, dialog)
 
     return True
 

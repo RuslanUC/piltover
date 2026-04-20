@@ -164,7 +164,7 @@ async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
             return TaggedBool(value=True)
         peers = [await User.get(id=request.peer_user).only("id")]
     elif peer_type is PeerType.CHAT:
-        peers = await User.filter(charparticipants__chat_id=request.peer_chat, id__not=request.peer_owner).only("id")
+        peers = await User.filter(chatparticipants__chat_id=request.peer_chat, id__not=request.peer_owner).only("id")
     else:
         return TaggedBool(value=False)
 

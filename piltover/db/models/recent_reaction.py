@@ -29,18 +29,18 @@ class RecentReaction(Model):
 
     @classmethod
     async def update_time_or_create(
-            cls, user: models.User, reaction: models.Reaction | None, custom_emoji: models.File | None,
+            cls, user_id: int, reaction: models.Reaction | None, custom_emoji: models.File | None,
             time: datetime,
     ) -> tuple[RecentReaction, bool]:
         async with in_transaction() as connection:
             instance = await cls.select_for_update().using_db(connection).get_or_none(
-                user=user, reaction=reaction, custom_emoji=custom_emoji,
+                user_id=user_id, reaction=reaction, custom_emoji=custom_emoji,
             )
             if instance:
                 instance.used_at = time
                 await instance.save(update_fields=["used_at"], using_db=connection)
                 return instance, False
-        return await cls.get_or_create(user=user, reaction=reaction, custom_emoji=custom_emoji, defaults={
+        return await cls.get_or_create(user_id=user_id, reaction=reaction, custom_emoji=custom_emoji, defaults={
             "used_at": time,
         })
 

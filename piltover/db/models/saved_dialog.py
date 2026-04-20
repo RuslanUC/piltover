@@ -28,13 +28,13 @@ class SavedDialog(Model):
 
     @classmethod
     def top_message_query_bulk(
-            cls, user: models.User, dialogs: list[SavedDialog], prefetch: bool = True
+            cls, user_id: int, dialogs: list[SavedDialog], prefetch: bool = True
     ) -> QuerySet[models.MessageRef]:
         peer_ids = [dialog.peer_id for dialog in dialogs]
         return models.MessageRef.filter(
             id__in=Subquery(
                 models.MessageRef.filter(
-                    peer__owner=user, peer__type=PeerType.SELF, content__fwd_header__saved_peer_id__in=peer_ids,
+                    peer__owner_id=user_id, peer__type=PeerType.SELF, content__fwd_header__saved_peer_id__in=peer_ids,
                 ).group_by("content__fwd_header__saved_peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(

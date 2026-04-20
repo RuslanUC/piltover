@@ -317,17 +317,21 @@ async def send_messages_channel(messages: list[MessageRef], channel: Channel) ->
     return result
 
 
-async def delete_messages(user: User | None, messages: dict[User, list[int]]) -> int:
+async def delete_messages(user: User | int | None, messages: dict[User | int, list[int]]) -> int:
+    current_user_id = user.id if isinstance(user, User) else user
+
     updates_to_create = []
     user_new_pts = None
 
     for upd_user, message_ids in messages.items():
+        upd_user_id = upd_user.id if isinstance(upd_user, User) else upd_user
+
         pts_count = len(message_ids)
         # TODO: move out of the loop?
         new_pts = await State.add_pts(upd_user, pts_count)
 
         update = Update(
-            user=upd_user,
+            user_id=upd_user_id,
             update_type=UpdateType.MESSAGE_DELETE,
             pts=new_pts,
             related_id=None,
@@ -345,10 +349,10 @@ async def delete_messages(user: User | None, messages: dict[User, list[int]]) ->
                     ),
                 ],
             ),
-            upd_user.id
+            upd_user_id
         )
 
-        if user == upd_user:
+        if current_user_id == upd_user_id:
             user_new_pts = new_pts
 
     await Update.bulk_create(updates_to_create)
@@ -471,10 +475,10 @@ async def edit_message_channel(channel: Channel, message: MessageRef) -> Updates
     return updates
 
 
-async def pin_dialog(user: User, peer: Peer, dialog: Dialog) -> None:
-    new_pts = await State.add_pts(user, 1)
+async def pin_dialog(user_id: int, peer: Peer, dialog: Dialog) -> None:
+    new_pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.DIALOG_PIN,
         pts=new_pts,
         related_id=peer.id,
@@ -484,7 +488,7 @@ async def pin_dialog(user: User, peer: Peer, dialog: Dialog) -> None:
 
     ucc = UsersChatsChannels()
     ucc.add_peer(peer)
-    ucc.add_user(user.id)
+    ucc.add_user(user_id)
     users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
@@ -500,7 +504,7 @@ async def pin_dialog(user: User, peer: Peer, dialog: Dialog) -> None:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
 
 async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> None:
@@ -574,11 +578,11 @@ async def update_drafts(user: User, peers: list[Peer], drafts: [MessageDraft | N
     return updates
 
 
-async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
-    new_pts = await State.add_pts(user, 1)
+async def reorder_pinned_dialogs(user_id: int, dialogs: list[Dialog]) -> None:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.DIALOG_PIN_REORDER,
         pts=new_pts,
         related_id=None,
@@ -603,7 +607,7 @@ async def reorder_pinned_dialogs(user: User, dialogs: list[Dialog]) -> None:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
 
 async def pin_messages(
@@ -974,10 +978,10 @@ async def update_chat(chat: Chat) -> Updates | None:
     return updates
 
 
-async def update_dialog_unread_mark(user: User, dialog: Dialog) -> None:
-    pts = await State.add_pts(user, 1)
+async def update_dialog_unread_mark(user_id: int, dialog: Dialog) -> None:
+    pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK,
         pts=pts,
         related_id=dialog.id,
@@ -998,7 +1002,7 @@ async def update_dialog_unread_mark(user: User, dialog: Dialog) -> None:
         ],
         users=users,
         chats=[*chats, *channels],
-    ), user.id)
+    ), user_id)
 
 
 async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) -> tuple[int, Updates]:
@@ -1174,11 +1178,11 @@ async def update_channel(channel: Channel, send_to_users: list[int] | None = Non
     return update
 
 
-async def update_folder_peers(user: User, dialogs: list[Dialog]) -> Updates:
-    new_pts = await State.add_pts(user, len(dialogs))
+async def update_folder_peers(user_id: int, dialogs: list[Dialog]) -> Updates:
+    new_pts = await State.add_pts(user_id, len(dialogs))
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.FOLDER_PEERS,
         pts=new_pts,
         pts_count=len(dialogs),
@@ -1208,7 +1212,7 @@ async def update_folder_peers(user: User, dialogs: list[Dialog]) -> Updates:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
@@ -1264,10 +1268,13 @@ async def update_channel_for_user(channel: Channel, user: User | int) -> Updates
     return updates
 
 
-async def update_message_poll(poll: Poll, user: User) -> Updates:
-    pts = await State.add_pts(user, 1)
+async def update_message_poll(poll: Poll, user_id: int) -> Updates:
+    pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user, update_type=UpdateType.UPDATE_POLL, pts=pts, related_id=poll.id,
+        user_id=user_id,
+        update_type=UpdateType.UPDATE_POLL,
+        pts=pts,
+        related_id=poll.id,
     )
 
     updates = UpdatesWithDefaults(
@@ -1280,15 +1287,15 @@ async def update_message_poll(poll: Poll, user: User) -> Updates:
         ],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
     return updates
 
 
-async def update_folder(user: User, folder_id: int, folder: DialogFolder | None) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def update_folder(user_id: int, folder_id: int, folder: DialogFolder | None) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_FOLDER,
         pts=new_pts,
         pts_count=1,
@@ -1307,16 +1314,16 @@ async def update_folder(user: User, folder_id: int, folder: DialogFolder | None)
         ],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
 
-async def update_folders_order(user: User, folder_ids: list[int]) -> Updates:
-    new_pts = await State.add_pts(user, len(folder_ids))
+async def update_folders_order(user_id: int, folder_ids: list[int]) -> Updates:
+    new_pts = await State.add_pts(user_id, len(folder_ids))
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.FOLDERS_ORDER,
         pts=new_pts,
         pts_count=len(folder_ids),
@@ -1328,12 +1335,12 @@ async def update_folders_order(user: User, folder_ids: list[int]) -> Updates:
         updates=[UpdateDialogFilterOrder(order=folder_ids)],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
 
-async def update_reactions(user: User, messages: list[MessageRef], peer: Peer, send: bool = True) -> Updates:
+async def update_reactions(user_id: int, messages: list[MessageRef], peer: Peer, send: bool = True) -> Updates:
     ucc = UsersChatsChannels()
 
     # TODO: add reactions and not messages maybe?
@@ -1341,7 +1348,7 @@ async def update_reactions(user: User, messages: list[MessageRef], peer: Peer, s
         ucc.add_message(message.content_id)
 
     users, chats, channels = await ucc.resolve()
-    reactions = await MessageRef.to_tl_reactions_bulk(messages, user.id)
+    reactions = await MessageRef.to_tl_reactions_bulk(messages, user_id)
 
     updates = UpdatesWithDefaults(
         updates=[
@@ -1356,26 +1363,26 @@ async def update_reactions(user: User, messages: list[MessageRef], peer: Peer, s
     )
 
     if send:
-        await SessionManager.send(updates, user.id)
+        await SessionManager.send(updates, user_id)
 
     return updates
 
 
-async def encryption_update(user: User, chat: EncryptedChat) -> None:
-    new_pts = await State.add_pts(user, 1)
+async def encryption_update(user_id: int, chat: EncryptedChat) -> None:
+    new_pts = await State.add_pts(user_id, 1)
 
-    await Update.filter(user=user, update_type=UpdateType.UPDATE_ENCRYPTION, encrypted_chat_id=chat.id).delete()
+    await Update.filter(user_id=user_id, update_type=UpdateType.UPDATE_ENCRYPTION, encrypted_chat_id=chat.id).delete()
     update = await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_ENCRYPTION,
         pts=new_pts,
         pts_count=1,
         related_id=chat.id,
         encrypted_chat=chat,
     )
-    logger.trace(f"Sending UPDATE_ENCRYPTION to user {user.id}")
+    logger.trace(f"Sending UPDATE_ENCRYPTION to user {user_id}")
 
-    other_user = chat.from_user if user.id == chat.to_user_id else chat.to_user
+    other_user = chat.from_user if user_id == chat.to_user_id else chat.to_user
 
     await SessionManager.send(
         UpdatesWithDefaults(
@@ -1387,7 +1394,7 @@ async def encryption_update(user: User, chat: EncryptedChat) -> None:
             ],
             users=[await other_user.to_tl()],
         ),
-        user_id=user.id,
+        user_id=user_id,
     )
 
 
@@ -1409,11 +1416,11 @@ async def send_encrypted_typing(chat_id: int, auth_id: int) -> None:
     )
 
 
-async def update_config(user: User) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def update_config(user_id: int) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_CONFIG,
         pts=new_pts,
         pts_count=1,
@@ -1424,16 +1431,16 @@ async def update_config(user: User) -> Updates:
         updates=[UpdateConfig()],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
 
-async def update_recent_reactions(user: User) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def update_recent_reactions(user_id: int) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_RECENT_REACTIONS,
         pts=new_pts,
         pts_count=1,
@@ -1444,7 +1451,7 @@ async def update_recent_reactions(user: User) -> Updates:
         updates=[UpdateRecentReactions()],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
@@ -1848,18 +1855,18 @@ async def update_peer_notify_settings(
     return updates
 
 
-async def update_saved_gifs(user: User) -> Updates:
+async def update_saved_gifs(user_id: int) -> Updates:
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.SAVED_GIFS,
-        pts=await State.add_pts(user, 1),
+        pts=await State.add_pts(user_id, 1),
         pts_count=1,
         related_id=None,
     )
 
     updates = UpdatesWithDefaults(updates=[UpdateSavedGifs()])
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
@@ -1928,10 +1935,10 @@ async def update_faved_stickers(user_id: int) -> Updates:
     return updates
 
 
-async def pin_saved_dialog(user: User, dialog: SavedDialog) -> None:
-    new_pts = await State.add_pts(user, 1)
+async def pin_saved_dialog(user_id: int, dialog: SavedDialog) -> None:
+    new_pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.SAVED_DIALOG_PIN,
         pts=new_pts,
         related_id=dialog.peer_id,
@@ -1939,7 +1946,7 @@ async def pin_saved_dialog(user: User, dialog: SavedDialog) -> None:
 
     ucc = UsersChatsChannels()
     ucc.add_peer(dialog.peer)
-    ucc.add_user(user.id)
+    ucc.add_user(user_id)
     users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
@@ -1953,7 +1960,7 @@ async def pin_saved_dialog(user: User, dialog: SavedDialog) -> None:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
 
 async def reorder_pinned_saved_dialogs(user: User, dialogs: list[SavedDialog]) -> None:

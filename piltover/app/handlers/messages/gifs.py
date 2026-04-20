@@ -4,7 +4,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash
 from piltover.config import APP_CONFIG
 from piltover.db.enums import FileType
-from piltover.db.models import User, SavedGif, File
+from piltover.db.models import SavedGif, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl.functions.messages import SaveGif, GetSavedGifs
@@ -14,32 +14,34 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.gifs")
 
 
-@handler.on_request(SaveGif, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def save_gif(request: SaveGif, user: User) -> bool:
+@handler.on_request(SaveGif, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def save_gif(request: SaveGif, user_id: int) -> bool:
     doc = request.id
 
     if request.unsave:
-        saved_gif = await SavedGif.get_or_none(user=user, gif_id=doc.id)
+        saved_gif = await SavedGif.get_or_none(user_id=user_id, gif_id=doc.id)
         if saved_gif is not None:
             await saved_gif.delete()
-            await upd.update_saved_gifs(user)
+            await upd.update_saved_gifs(user_id)
         return True
 
-    file = await File.from_input(user.id, doc.id, doc.access_hash, doc.file_reference, FileType.DOCUMENT_GIF)
+    file = await File.from_input(user_id, doc.id, doc.access_hash, doc.file_reference, FileType.DOCUMENT_GIF)
     if file is None:
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
-    await SavedGif.update_or_create(user=user, gif=file, defaults={
+    await SavedGif.update_or_create(user_id=user_id, gif=file, defaults={
         "last_access": datetime.now(UTC)
     })
 
-    await upd.update_saved_gifs(user)
+    await upd.update_saved_gifs(user_id)
     return True
 
 
-@handler.on_request(GetSavedGifs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_saved_gifs(request: GetSavedGifs, user: User) -> SavedGifs | SavedGifsNotModified:
-    query = SavedGif.filter(user=user).order_by("-last_access").limit(APP_CONFIG.saved_gifs_limit).select_related("gif")
+@handler.on_request(GetSavedGifs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_saved_gifs(request: GetSavedGifs, user_id: int) -> SavedGifs | SavedGifsNotModified:
+    query = SavedGif.filter(
+        user_id=user_id
+    ).order_by("-last_access").limit(APP_CONFIG.saved_gifs_limit).select_related("gif")
     ids = await query.values_list("id", flat=True)
 
     gifs_hash = telegram_hash(ids, 64)

@@ -66,10 +66,10 @@ class Peer(Model):
 
     @classmethod
     async def from_chat_id_raise(
-            cls, user: models.User, chat_id: int, message: str = "CHAT_ID_INVALID", allow_migrated: bool = False,
+            cls, user_id: int, chat_id: int, message: str = "CHAT_ID_INVALID", allow_migrated: bool = False,
             select_related: tuple[str, ...] | None = None,
     ) -> Peer:
-        if (peer := await Peer.from_chat_id(user.id, chat_id, allow_migrated, select_related)) is not None:
+        if (peer := await Peer.from_chat_id(user_id, chat_id, allow_migrated, select_related)) is not None:
             return peer
         raise ErrorRpc(error_code=400, error_message=message)
 

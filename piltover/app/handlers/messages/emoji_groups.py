@@ -28,21 +28,21 @@ async def _get_emoji_groups_by_category(category: EmojiGroupCategory, hash_: int
     )
 
 
-@handler.on_request(GetEmojiStickerGroups, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetEmojiStickerGroups, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_emoji_sticker_groups(request: GetEmojiStickerGroups) -> BaseEmojiGroups:
     return await _get_emoji_groups_by_category(EmojiGroupCategory.STICKER, request.hash)
 
 
-@handler.on_request(GetEmojiGroups, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetEmojiGroups, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_emoji_groups(request: GetEmojiGroups) -> BaseEmojiGroups:
     return await _get_emoji_groups_by_category(EmojiGroupCategory.REGULAR, request.hash)
 
 
-@handler.on_request(GetEmojiStatusGroups, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetEmojiStatusGroups, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_emoji_status_groups(request: GetEmojiStatusGroups) -> BaseEmojiGroups:
     return await _get_emoji_groups_by_category(EmojiGroupCategory.STATUS, request.hash)
 
 
-@handler.on_request(GetEmojiProfilePhotoGroups, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+@handler.on_request(GetEmojiProfilePhotoGroups, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_emoji_profile_photo_groups(request: GetEmojiProfilePhotoGroups) -> BaseEmojiGroups:
     return await _get_emoji_groups_by_category(EmojiGroupCategory.PROFILE_PHOTO, request.hash)

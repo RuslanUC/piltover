@@ -25,7 +25,7 @@ DialogT = TypeVar("DialogT", bound=Dialog | SavedDialog)
 
 
 async def format_dialogs(
-        model: type[DialogT], user: User, dialogs: list[DialogT], allow_slicing: bool = False,
+        model: type[DialogT], user_id: int, dialogs: list[DialogT], allow_slicing: bool = False,
         folder_id: int | None = None,
 ) -> dict[str, list]:
     if dialogs:
@@ -35,7 +35,7 @@ async def format_dialogs(
         for dialog in dialogs:
             dialog_by_peer[dialog.peer_key()] = (dialog, None)
 
-        messages = await model.top_message_query_bulk(user, dialogs)
+        messages = await model.top_message_query_bulk(user_id, dialogs)
         for message in messages:
             ucc.add_message(message.content_id)
             peer_key = message.peer_key()
@@ -51,7 +51,7 @@ async def format_dialogs(
 
         result = {
             "dialogs": await model.to_tl_bulk(dialogs, dialog_by_peer),
-            "messages": await MessageRef.to_tl_bulk_maybecached(messages, user.id),
+            "messages": await MessageRef.to_tl_bulk_maybecached(messages, user_id),
             "chats": [*chats, *channels],
             "users": users,
         }
@@ -66,7 +66,7 @@ async def format_dialogs(
     if not allow_slicing:
         return result
 
-    dialogs_query = model.filter(peer__owner=user)
+    dialogs_query = model.filter(peer__owner_id=user_id)
     if folder_id is not None and issubclass(model, Dialog):
         dialogs_query = dialogs_query.filter(folder_id=DialogFolderId(folder_id))
     count = await dialogs_query.count()
@@ -84,7 +84,7 @@ class PeerWithDialogs(Peer):
 
 
 async def get_dialogs_internal(
-        model: type[Dialog | SavedDialog], user: User, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
+        model: type[Dialog | SavedDialog], user_id: int, offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: InputPeerUser | InputPeerChat | None = None, folder_id: int | None = None,
         exclude_pinned: bool = False, allow_slicing: bool = False, only_visible: bool = True,
 ) -> dict:
@@ -93,13 +93,13 @@ async def get_dialogs_internal(
 
     prefix = f"{model._meta.db_table}s"
 
-    query = Q(**{f"{prefix}__peer__owner": user})
+    query = Q(**{f"{prefix}__peer__owner_id": user_id})
 
     if offset_peer is not None:
         input_peer = offset_peer
         offset_peer = peer_message_id = None
         try:
-            offset_peer = await Peer.from_input_peer_raise(user, input_peer)
+            offset_peer = await Peer.from_input_peer_raise(user_id, input_peer)
             peer_message_id = await MessageRef.filter(
                 peer=offset_peer,
             ).order_by("-id").first().values_list("id", flat=True)
@@ -142,22 +142,22 @@ async def get_dialogs_internal(
         dialog.peer = peer_with_dialog
         dialogs.append(dialog)
 
-    return await format_dialogs(model, user, dialogs, allow_slicing, folder_id)
+    return await format_dialogs(model, user_id, dialogs, allow_slicing, folder_id)
 
 
-@handler.on_request(GetDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_dialogs(request: GetDialogs, user: User) -> Dialogs:
+@handler.on_request(GetDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_dialogs(request: GetDialogs, user_id: int) -> Dialogs:
     result = await get_dialogs_internal(
-        Dialog, user, request.offset_id, request.offset_date, request.limit, request.offset_peer, request.folder_id,
+        Dialog, user_id, request.offset_id, request.offset_date, request.limit, request.offset_peer, request.folder_id,
         request.exclude_pinned, True, True,
     )
     return Dialogs(**result) if "count" not in result else DialogsSlice(**result)
 
 
-@handler.on_request(GetPeerDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
+@handler.on_request(GetPeerDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_peer_dialogs(request: GetPeerDialogs, user_id: int) -> PeerDialogs:
     ctx = request_ctx.get()
-    query = Q(peer__owner=user)
+    query = Q(peer__owner_id=user_id)
 
     peers_query = None
     for peer_dialog in request.peers:
@@ -166,14 +166,14 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
         if isinstance(peer, InputPeerSelf):
             add_to_query = Q(peer__type=PeerType.SELF, peer__user=None)
         elif isinstance(peer, InputPeerUser):
-            if not User.check_access_hash(user.id, ctx.auth_id, peer.user_id, peer.access_hash):
+            if not User.check_access_hash(user_id, ctx.auth_id, peer.user_id, peer.access_hash):
                 continue
             add_to_query = Q(peer__type=PeerType.USER, peer__user_id=peer.user_id)
         elif isinstance(peer, InputPeerChat):
             add_to_query = Q(peer__type=PeerType.CHAT, peer__chat_id=Chat.norm_id(peer.chat_id))
         elif isinstance(peer, InputPeerChannel):
             channel_id = Channel.norm_id(peer.channel_id)
-            if not Channel.check_access_hash(user.id, ctx.auth_id, channel_id, peer.access_hash):
+            if not Channel.check_access_hash(user_id, ctx.auth_id, channel_id, peer.access_hash):
                 continue
             add_to_query = Q(peer__type=PeerType.CHANNEL, peer__channel_id=channel_id)
         else:
@@ -182,32 +182,32 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
         peers_query = add_to_query if peers_query is None else peers_query | add_to_query
 
     if peers_query is None:
-        return PeerDialogs(dialogs=[], messages=[], chats=[], users=[], state=await get_state_internal(user.id))
+        return PeerDialogs(dialogs=[], messages=[], chats=[], users=[], state=await get_state_internal(user_id))
 
     query &= peers_query
     dialogs = await Dialog.filter(query).select_related("peer", "peer__owner", "peer__user", "peer__chat")
 
     return PeerDialogs(
-        **(await format_dialogs(Dialog, user, dialogs)),
-        state=await get_state_internal(user.id),
+        **(await format_dialogs(Dialog, user_id, dialogs)),
+        state=await get_state_internal(user_id),
     )
 
 
-@handler.on_request(GetPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_pinned_dialogs(request: GetPinnedDialogs, user: User):
+@handler.on_request(GetPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_pinned_dialogs(request: GetPinnedDialogs, user_id: int) -> PeerDialogs:
     dialogs = await Dialog.filter(
-        peer__owner=user, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True,
+        peer__owner_id=user_id, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True
     ).select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
 
     return PeerDialogs(
-        **(await format_dialogs(Dialog, user, dialogs)),
-        state=await get_state_internal(user.id)
+        **(await format_dialogs(Dialog, user_id, dialogs)),
+        state=await get_state_internal(user_id)
     )
 
 
-@handler.on_request(ToggleDialogPin, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
-    if (peer := await Peer.from_input_peer(user, request.peer.peer)) is None \
+@handler.on_request(ToggleDialogPin, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def toggle_dialog_pin(request: ToggleDialogPin, user_id: int):
+    if (peer := await Peer.from_input_peer(user_id, request.peer.peer)) is None \
             or (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
 
@@ -228,15 +228,15 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user: User):
         dialog.pinned_index = None
 
     await dialog.save(update_fields=["pinned_index"])
-    await upd.pin_dialog(user, peer, dialog)
+    await upd.pin_dialog(user_id, peer, dialog)
 
     return True
 
 
-@handler.on_request(ReorderPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
+@handler.on_request(ReorderPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user_id: int):
     pinned_now = await Dialog.filter(
-        peer__owner=user, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True,
+        peer__owner_id=user_id, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True
     ).select_related("peer")
     pinned_now = {dialog.peer: dialog for dialog in pinned_now}
     pinned_after = []
@@ -244,7 +244,7 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
     folder_id = DialogFolderId(request.folder_id)
 
     for dialog_peer in request.order:
-        if (peer := await Peer.from_input_peer(user, dialog_peer.peer)) is None:
+        if (peer := await Peer.from_input_peer(user_id, dialog_peer.peer)) is None:
             continue
 
         dialog = pinned_now.get(peer, None)
@@ -269,14 +269,14 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user: User):
 
     if pinned_after:
         await Dialog.bulk_update(pinned_after, fields=["pinned_index"])
-    await upd.reorder_pinned_dialogs(user, pinned_after)
+    await upd.reorder_pinned_dialogs(user_id, pinned_after)
 
     return True
 
 
-@handler.on_request(MarkDialogUnread, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(user, request.peer.peer)
+@handler.on_request(MarkDialogUnread, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def mark_dialog_unread(request: MarkDialogUnread, user_id: int) -> bool:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer.peer)
     if (dialog := await Dialog.get_or_none(peer=peer, visible=True).select_related("peer")) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -285,29 +285,29 @@ async def mark_dialog_unread(request: MarkDialogUnread, user: User) -> bool:
 
     dialog.unread_mark = request.unread
     await dialog.save(update_fields=["unread_mark"])
-    await upd.update_dialog_unread_mark(user, dialog)
+    await upd.update_dialog_unread_mark(user_id, dialog)
 
     return True
 
 
-@handler.on_request(GetDialogUnreadMarks, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_dialog_unread_marks(user: User) -> TLObjectVector[DialogPeer]:
-    dialogs = await Dialog.filter(peer__owner=user, unread_mark=True, visible=True).select_related("peer")
+@handler.on_request(GetDialogUnreadMarks, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_dialog_unread_marks(user_id: int) -> TLObjectVector[DialogPeer]:
+    peers = await Peer.filter(owner_id=user_id, dialogs__unread_mark=True, dialogs__visible=True)
 
     return TLObjectVector([
-        DialogPeer(peer=dialog.peer.to_tl())
-        for dialog in dialogs
+        DialogPeer(peer=peer.to_tl())
+        for peer in peers
     ])
 
 
-@handler.on_request(EditPeerFolders, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def edit_peer_folders(request: EditPeerFolders, user: User) -> Updates:
+@handler.on_request(EditPeerFolders, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def edit_peer_folders(request: EditPeerFolders, user_id: int) -> Updates:
     updated_dialogs = []
 
     for folder_peer in request.folder_peers:
         if folder_peer.folder_id not in DialogFolderId._value2member_map_:
             raise ErrorRpc(error_code=400, error_message="FOLDER_ID_INVALID")
-        if (peer := await Peer.from_input_peer(user, folder_peer.peer)) is None \
+        if (peer := await Peer.from_input_peer(user_id, folder_peer.peer)) is None \
                 or (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
             continue
 
@@ -320,4 +320,4 @@ async def edit_peer_folders(request: EditPeerFolders, user: User) -> Updates:
         updated_dialogs.append(dialog)
 
     await Dialog.bulk_update(updated_dialogs, ["folder_id"])
-    return await upd.update_folder_peers(user, updated_dialogs)
+    return await upd.update_folder_peers(user_id, updated_dialogs)

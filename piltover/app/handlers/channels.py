@@ -422,7 +422,7 @@ async def edit_channel_photo(request: EditPhoto, user: User):
 
     channel = peer.channel
     old_photo = channel.photo
-    await channel.update(photo=await resolve_input_chat_photo(user, request.photo))
+    await channel.update(photo=await resolve_input_chat_photo(user.id, request.photo))
 
     await AdminLogEntry.create(
         channel=peer.channel,
