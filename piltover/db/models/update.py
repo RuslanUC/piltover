@@ -72,7 +72,7 @@ class Update(Model):
     # TODO: add to_tl_bulk
 
     async def to_tl(
-            self, user: models.User, formatted_messages: dict[int, TLMessageBase],
+            self, user_id: int, formatted_messages: dict[int, TLMessageBase],
             auth_id: int | None = None, ucc: UsersChatsChannels | None = None,
     ) -> UpdateTypes | None:
 
@@ -111,7 +111,7 @@ class Update(Model):
 
             case UpdateType.DIALOG_PIN_REORDER:
                 dialogs = await models.Dialog.filter(
-                    peer__owner=user, pinned_index__not_isnull=True, visible=True,
+                    peer__owner_id=user_id, pinned_index__not_isnull=True, visible=True,
                 ).select_related("peer")
 
                 for dialog in dialogs:
@@ -145,7 +145,7 @@ class Update(Model):
                 return UpdateUser(user_id=self.related_id)
 
             case UpdateType.CHAT_CREATE:
-                if (peer := await models.Peer.from_chat_id(user, self.related_id)) is None:
+                if (peer := await models.Peer.from_chat_id(user_id, self.related_id)) is None:
                     return None
 
                 ucc.add_peer(peer)
@@ -323,7 +323,7 @@ class Update(Model):
                 folder = None
                 if self.related_id is not None:
                     folder = await models.DialogFolder.get_or_none(
-                        owner=user, id=self.related_id, id_for_user=folder_id_for_user,
+                        owner_id=user_id, id=self.related_id, id_for_user=folder_id_for_user,
                     ).prefetch_related("pinned_peers", "include_peers", "exclude_peers")
 
                 return UpdateDialogFilter(
@@ -341,7 +341,7 @@ class Update(Model):
                 if self.encrypted_chat is None:
                     return None
 
-                if user.id == self.encrypted_chat.to_user_id:
+                if user_id == self.encrypted_chat.to_user_id:
                     other_user_id = self.encrypted_chat.from_user_id
                 else:
                     other_user_id = self.encrypted_chat.to_user_id
@@ -394,7 +394,7 @@ class Update(Model):
             case UpdateType.UPDATE_CHAT_WALLPAPER:
                 if self.related_ids:
                     chat_wallpaper = await models.ChatWallpaper.get_or_none(
-                        user=user, wallpaper_id=self.related_ids[0],
+                        user_id=user_id, wallpaper_id=self.related_ids[0],
                     ).select_related("wallpaper", "wallpaper__document", "wallpaper__settings")
                     wallpaper = chat_wallpaper.wallpaper if chat_wallpaper is not None else None
                 else:
@@ -485,14 +485,14 @@ class Update(Model):
                 peer = not_peer = None
                 if self.related_id is not None:
                     settings = await models.PeerNotifySettings.get_or_none(
-                        user=user, peer__owner=user, peer_id=self.related_id,
+                        user_id=user_id, peer__owner_id=user_id, peer_id=self.related_id,
                     ).select_related("peer")
                     if settings is not None and settings.peer is not None:
                         peer = settings.peer
                         ucc.add_peer(settings.peer)
                 elif self.additional_data and self.additional_data[0] in NotifySettingsNotPeerType._value2member_map_:
                     settings = await models.PeerNotifySettings.get_or_none(
-                        user=user, peer=None, not_peer=NotifySettingsNotPeerType(self.additional_data[0]),
+                        user_id=user_id, peer=None, not_peer=NotifySettingsNotPeerType(self.additional_data[0]),
                     ).select_related("peer")
                     not_peer = settings.not_peer
                 else:
@@ -510,7 +510,7 @@ class Update(Model):
                 return UpdateSavedGifs()
 
             case UpdateType.BOT_INLINE_QUERY:
-                query = await models.InlineQuery.get_or_none(id=self.related_id, bot=user)
+                query = await models.InlineQuery.get_or_none(id=self.related_id, bot_id=user_id)
                 if query is None:
                     return None
 
@@ -532,7 +532,7 @@ class Update(Model):
 
             case UpdateType.SAVED_DIALOG_PIN:
                 saved_dialog = await models.SavedDialog.get_or_none(
-                    peer__owner=user, peer_id=self.related_id,
+                    peer__owner_id=user_id, peer_id=self.related_id,
                 ).select_related("peer")
                 if saved_dialog is None:
                     return None
@@ -546,7 +546,7 @@ class Update(Model):
 
             case UpdateType.SAVED_DIALOG_PIN_REORDER:
                 dialogs = await models.SavedDialog.filter(
-                    peer__owner=user, pinned_index__not_isnull=True,
+                    peer__owner_id=user_id, pinned_index__not_isnull=True,
                 ).select_related("peer")
 
                 for dialog in dialogs:
@@ -561,7 +561,7 @@ class Update(Model):
 
             case UpdateType.UPDATE_PRIVACY:
                 rule = await models.PrivacyRule.get_or_none(
-                    user=user, id=self.related_id,
+                    user_id=user_id, id=self.related_id,
                 ).prefetch_related("exceptions")
                 if rule is None:
                     return None
@@ -585,7 +585,9 @@ class Update(Model):
                 )
 
             case UpdateType.PHONE_CALL:
-                call = await models.PhoneCall.get_or_none(Q(from_user=user) | Q(to_user=user), id=self.related_id)
+                call = await models.PhoneCall.get_or_none(
+                    Q(from_user_id=user_id) | Q(to_user_id=user_id), id=self.related_id
+                )
                 if call is None:
                     return None
 
@@ -628,10 +630,10 @@ class Update(Model):
                 else:
                     status = EmojiStatusEmpty()
 
-                ucc.add_user(user.id)
+                ucc.add_user(user_id)
 
                 return UpdateUserEmojiStatus(
-                    user_id=user.id,
+                    user_id=user_id,
                     emoji_status=status,
                 )
 

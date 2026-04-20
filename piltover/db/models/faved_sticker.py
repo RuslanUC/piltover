@@ -23,15 +23,15 @@ class FavedSticker(Model):
 
     @classmethod
     async def update_time_or_create(
-            cls, user: models.User, sticker: models.File, time: datetime | None = None,
+            cls, user_id: int, sticker: models.File, time: datetime | None = None,
     ) -> tuple[FavedSticker, bool]:
         if time is None:
             time = datetime.now(UTC)
 
         async with in_transaction() as connection:
-            instance = await cls.select_for_update().using_db(connection).get_or_none(user=user, sticker=sticker)
+            instance = await cls.select_for_update().using_db(connection).get_or_none(user_id=user_id, sticker=sticker)
             if instance:
                 instance.faved_at = time
                 await instance.save(update_fields=["faved_at"], using_db=connection)
                 return instance, False
-        return await cls.get_or_create(user=user, sticker=sticker, defaults={"faved_at": time})
+        return await cls.get_or_create(user_id=user_id, sticker=sticker, defaults={"faved_at": time})

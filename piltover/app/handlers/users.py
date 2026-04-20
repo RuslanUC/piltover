@@ -4,8 +4,9 @@ from tortoise.expressions import Q, Subquery
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, ChatWallpaper, Contact, Channel, BotInfo, ChatParticipant, \
+from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, BotInfo, ChatParticipant, \
     MessageRef, Wallpaper
+from piltover.enums import ReqHandlerFlags
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
@@ -16,12 +17,12 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("users")
 
 
-@handler.on_request(GetFullUser)
-async def get_full_user(request: GetFullUser, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.id, peer_types=(PeerType.SELF, PeerType.USER))
-    target_user = peer.peer_user(user)
+@handler.on_request(GetFullUser, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
+    peer = await Peer.from_input_peer_raise(user_id, request.id, peer_types=(PeerType.SELF, PeerType.USER))
+    target_user = peer.user
 
-    privacy_rules = await PrivacyRule.has_access_to_bulk([target_user], user, [
+    privacy_rules = await PrivacyRule.has_access_to_bulk([target_user], user_id, [
         PrivacyRuleKeyType.ABOUT,
         PrivacyRuleKeyType.BIRTHDAY,
         PrivacyRuleKeyType.PROFILE_PHOTO,
@@ -29,7 +30,7 @@ async def get_full_user(request: GetFullUser, user: User):
     privacy_rules = privacy_rules[target_user.id]
 
     wallpaper = await Wallpaper.get_or_none(
-        chatwallpapers__user_id=user.id, chatwallpapers__target_id=target_user.id
+        chatwallpapers__user_id=user_id, chatwallpapers__target_id=target_user.id
     ).select_related("document", "settings")
 
     has_scheduled = await MessageRef.filter(peer=peer, content__scheduled_date__not_isnull=True).exists()
@@ -51,7 +52,7 @@ async def get_full_user(request: GetFullUser, user: User):
 
     if personal_channel is not None:
         await Peer.bulk_create(
-            [Peer(owner=user, type=PeerType.CHANNEL, channel=personal_channel)],
+            [Peer(owner_id=user_id, type=PeerType.CHANNEL, channel=personal_channel)],
             ignore_conflicts=True,
         )
 
@@ -82,7 +83,7 @@ async def get_full_user(request: GetFullUser, user: User):
             settings=PeerSettings(),
             profile_photo=photo,
             notify_settings=PeerNotifySettings(show_previews=True),
-            common_chats_count=await ChatParticipant.common_chats_query(user.id, peer.user_id).count(),
+            common_chats_count=await ChatParticipant.common_chats_query(user_id, peer.user_id).count(),
             birthday=birthday,
             read_dates_private=target_user.read_dates_private,
             wallpaper=wallpaper.to_tl() if wallpaper is not None else None,
@@ -109,8 +110,8 @@ _InputUsersSelf = (InputUserSelf, InputPeerSelf)
 _InputUsersInclMessage = (*_InputUsers, InputUserFromMessage, InputPeerUserFromMessage)
 
 
-@handler.on_request(GetUsers)
-async def get_users(request: GetUsers, user: User):
+@handler.on_request(GetUsers, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_users(request: GetUsers, user_id: int):
     ctx = request_ctx.get()
 
     user_ids = set()
@@ -122,13 +123,13 @@ async def get_users(request: GetUsers, user: User):
             continue
 
         is_self = isinstance(peer, _InputUsersSelf) \
-                  or (isinstance(peer, _InputUsersInclMessage) and peer.user_id == user.id)
-        if is_self and user.id not in user_ids:
-            user_ids.add(user.id)
+                  or (isinstance(peer, _InputUsersInclMessage) and peer.user_id == user_id)
+        if is_self and user_id not in user_ids:
+            user_ids.add(user_id)
             continue
 
         if isinstance(peer, _InputUsers):
-            if not User.check_access_hash(user.id, ctx.auth_id, peer.user_id, peer.access_hash):
+            if not User.check_access_hash(user_id, ctx.auth_id, peer.user_id, peer.access_hash):
                 continue
             user_ids.add(peer.user_id)
 
@@ -137,7 +138,7 @@ async def get_users(request: GetUsers, user: User):
     users = await User.filter(
         Q(id__in=user_ids)
         | Q(id__in=Subquery(
-            Contact.filter(owner=user, target_id__in=contact_ids).values_list("target_id", flat=True)
+            Contact.filter(owner_id=user_id, target_id__in=contact_ids).values_list("target_id", flat=True)
         ))
     )
 

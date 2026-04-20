@@ -243,9 +243,11 @@ class Worker(MessageHandler):
 
             if user is None and handler.auth_required:
                 return self._err_response(call.message_id, 401, "AUTH_KEY_UNREGISTERED")
-        elif handler.dont_fetch_user and handler.auth_required \
-                and (not call.user_id or (call.mfa_pending and not handler.allow_mfa_pending)):
-            return self._err_response(call.message_id, 401, "AUTH_KEY_UNREGISTERED")
+        elif handler.dont_fetch_user and handler.auth_required:
+            if not call.user_id:
+                return self._err_response(call.message_id, 401, "AUTH_KEY_UNREGISTERED")
+            if call.mfa_pending and not handler.allow_mfa_pending:
+                return self._err_response(call.message_id, 401, "SESSION_PASSWORD_NEEDED")
 
         ctx_token = request_ctx.set(RequestContext(
             call.auth_key_id, call.perm_auth_key_id, call.message_id, call.session_id, call.obj, call.layer,

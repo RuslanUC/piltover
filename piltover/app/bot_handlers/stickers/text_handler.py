@@ -575,7 +575,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
 
             await state.delete()
 
-        await upd.new_stickerset(owner, stickerset)
+        await upd.new_stickerset(owner.id, stickerset)
 
     @classmethod
     async def _newpack_short_name(cls, peer: Peer, message: MessageRef, state: StickersBotUserState) -> MessageRef:

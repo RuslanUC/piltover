@@ -156,12 +156,15 @@ class Session:
         with measure_time("session.pack_message(...)"):
             message = self.pack_message(obj, in_reply)
 
-        logger.debug(f"Queueing message {message.message_id} to {self.session_id}: {message!r}")
+        logger.debug(
+            "Queueing message {message_id} to {session_id}: {message!r}",
+            message_id=message.message_id, session_id=self.session_id, message=message,
+        )
         logger.debug(f"SerializationContext: {self.user_id=}, {self.auth_id=}")
 
         with measure_time("<serialize message>"):
             with SerializationContext(
-                    auth_id=self.auth_id, user_id=self.user_id, layer=self.layer, values=context_values
+                    auth_id=self.auth_id, user_id=self.user_id, layer=self.layer, values=context_values,
             ).use():
                 # TODO: serialize in a different thread
                 self.message_queue.put_nowait((message.message_id, message.seq_no, message.obj.write()))

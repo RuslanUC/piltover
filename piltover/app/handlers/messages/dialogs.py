@@ -182,14 +182,14 @@ async def get_peer_dialogs(request: GetPeerDialogs, user: User) -> PeerDialogs:
         peers_query = add_to_query if peers_query is None else peers_query | add_to_query
 
     if peers_query is None:
-        return PeerDialogs(dialogs=[], messages=[], chats=[], users=[], state=await get_state_internal(user))
+        return PeerDialogs(dialogs=[], messages=[], chats=[], users=[], state=await get_state_internal(user.id))
 
     query &= peers_query
     dialogs = await Dialog.filter(query).select_related("peer", "peer__owner", "peer__user", "peer__chat")
 
     return PeerDialogs(
         **(await format_dialogs(Dialog, user, dialogs)),
-        state=await get_state_internal(user),
+        state=await get_state_internal(user.id),
     )
 
 
@@ -201,7 +201,7 @@ async def get_pinned_dialogs(request: GetPinnedDialogs, user: User):
 
     return PeerDialogs(
         **(await format_dialogs(Dialog, user, dialogs)),
-        state=await get_state_internal(user)
+        state=await get_state_internal(user.id)
     )
 
 

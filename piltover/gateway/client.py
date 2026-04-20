@@ -327,7 +327,7 @@ class Client:
                     raise Disconnection
                 packet: UnencryptedMessagePacket | None = None
                 while isinstance(peeked, UnencryptedMessagePacket) and peeked.message_data[:4] in _check_req_pq_tlid:
-                    logger.debug(f"Skipping reqPQ: {decoded}")
+                    logger.debug("Skipping reqPQ: {req_pq}", req_pq=decoded)
                     packet = self.conn.next_event()
                     peeked = self.conn.peek_packet()
                     if peeked is TransportEvent.DISCONNECT:
@@ -388,7 +388,7 @@ class Client:
 
     @logger.catch
     async def worker(self):
-        logger.debug(f"Client connected: {self.peername}")
+        logger.debug("Client connected: {addr}", addr=self.peername)
 
         try:
             async with asyncio.timeout(None) as self.disconnect_timeout:
@@ -426,7 +426,12 @@ class Client:
             return await task.wait_result(timeout=15)
         finally:
             end_time = time.perf_counter()
-            logger.debug(f"\"{method_name}\" ({message_id}) took {(end_time - start_time) * 1000:.2f} ms to execute")
+            logger.debug(
+                "\"{method_name}\" ({message_id}) took {time_taken:.2f} ms to execute",
+                method_name=method_name,
+                message_id=message_id,
+                time_taken=(end_time - start_time) * 1000,
+            )
 
     async def _process_request(self, request: Message, session: Session) -> RpcResult | None:
         if request.obj.tlid() in SYSTEM_HANDLERS:

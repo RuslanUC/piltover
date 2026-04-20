@@ -51,11 +51,11 @@ class Peer(Model):
 
     @classmethod
     async def from_chat_id(
-            cls, user: models.User, chat_id: int, allow_migrated: bool = False,
+            cls, user_id: int, chat_id: int, allow_migrated: bool = False,
             select_related: tuple[str, ...] | None = None,
     ) -> Peer | None:
         chat_id = models.Chat.norm_id(chat_id)
-        query = Q(owner=user, chat_id=chat_id, type=PeerType.CHAT)
+        query = Q(owner_id=user_id, chat_id=chat_id, type=PeerType.CHAT)
         if not allow_migrated:
             query &= Q(chat__migrated=False)
 
@@ -69,7 +69,7 @@ class Peer(Model):
             cls, user: models.User, chat_id: int, message: str = "CHAT_ID_INVALID", allow_migrated: bool = False,
             select_related: tuple[str, ...] | None = None,
     ) -> Peer:
-        if (peer := await Peer.from_chat_id(user, chat_id, allow_migrated, select_related)) is not None:
+        if (peer := await Peer.from_chat_id(user.id, chat_id, allow_migrated, select_related)) is not None:
             return peer
         raise ErrorRpc(error_code=400, error_message=message)
 

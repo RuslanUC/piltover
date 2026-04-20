@@ -889,12 +889,12 @@ async def update_user_name(user: User) -> None:
     await Update.bulk_create(updates_to_create)
 
 
-async def add_remove_contact(user: User, targets: list[User]) -> Updates:
+async def add_remove_contact(user_id: int, targets: list[User]) -> Updates:
     updates = []
     users = set()
     updates_to_create = []
 
-    new_pts = await State.add_pts(user, len(targets))
+    new_pts = await State.add_pts(user_id, len(targets))
     pts_before = new_pts - len(targets)
 
     for num, target in enumerate(targets, start=1):
@@ -902,7 +902,7 @@ async def add_remove_contact(user: User, targets: list[User]) -> Updates:
             continue
 
         updates_to_create.append(Update(
-            user=user,
+            user_id=user_id,
             update_type=UpdateType.UPDATE_CONTACT,
             pts=pts_before + num,
             related_id=target.id,
@@ -921,15 +921,15 @@ async def add_remove_contact(user: User, targets: list[User]) -> Updates:
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
 
-async def block_unblock_user(user: User, target: Peer) -> None:
-    pts = await State.add_pts(user, 1)
+async def block_unblock_user(user_id: int, target: Peer) -> None:
+    pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_BLOCK,
         pts=pts,
         related_id=target.user.id,
@@ -944,7 +944,7 @@ async def block_unblock_user(user: User, target: Peer) -> None:
             ),
         ],
         users=[await target.user.to_tl()],
-    ), user.id)
+    ), user_id)
 
 
 async def update_chat(chat: Chat) -> Updates | None:
@@ -1487,11 +1487,11 @@ async def new_auth(user: User, auth: UserAuthorization) -> Updates:
     return updates
 
 
-async def new_stickerset(user: User, stickerset: Stickerset) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def new_stickerset(user_id: int, stickerset: Stickerset) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.NEW_STICKERSET,
         pts=new_pts,
         pts_count=1,
@@ -1506,16 +1506,16 @@ async def new_stickerset(user: User, stickerset: Stickerset) -> Updates:
         ],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
 
-async def update_stickersets(user: User) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def update_stickersets(user_id: int) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_STICKERSETS,
         pts=new_pts,
         pts_count=1,
@@ -1524,16 +1524,16 @@ async def update_stickersets(user: User) -> Updates:
 
     updates = UpdatesWithDefaults(updates=[UpdateStickerSets()])
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
 
-async def update_stickersets_order(user: User, new_order: list[int]) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def update_stickersets_order(user_id: int, new_order: list[int]) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_STICKERSETS_ORDER,
         pts=new_pts,
         pts_count=1,
@@ -1549,7 +1549,7 @@ async def update_stickersets_order(user: User, new_order: list[int]) -> Updates:
         ],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
@@ -1892,11 +1892,11 @@ async def bot_inline_query(bot: User, query: InlineQuery) -> None:
     await SessionManager.send(updates, bot.id)
 
 
-async def update_recent_stickers(user: User) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def update_recent_stickers(user_id: int) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_RECENT_STICKERS,
         pts=new_pts,
         pts_count=1,
@@ -1905,16 +1905,16 @@ async def update_recent_stickers(user: User) -> Updates:
 
     updates = UpdatesWithDefaults(updates=[UpdateRecentStickers()])
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
 
-async def update_faved_stickers(user: User) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def update_faved_stickers(user_id: int) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_FAVED_STICKERS,
         pts=new_pts,
         pts_count=1,
@@ -1923,7 +1923,7 @@ async def update_faved_stickers(user: User) -> Updates:
 
     updates = UpdatesWithDefaults(updates=[UpdateFavedStickers()])
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 

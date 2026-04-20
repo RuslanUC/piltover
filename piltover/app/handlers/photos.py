@@ -15,16 +15,15 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("photos")
 
 
-@handler.on_request(GetUserPhotos)
-async def get_user_photos(request: GetUserPhotos, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.user_id)
-    peer_user = peer.peer_user(user)
+@handler.on_request(GetUserPhotos, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_user_photos(request: GetUserPhotos, user_id: int) -> Photos | PhotosSlice:
+    peer = await Peer.from_input_peer_raise(user_id, request.user_id, peer_types=(PeerType.SELF, PeerType.USER))
 
-    if not await PrivacyRule.has_access_to(user, peer_user, PrivacyRuleKeyType.PROFILE_PHOTO):
+    if not await PrivacyRule.has_access_to(user_id, peer.user, PrivacyRuleKeyType.PROFILE_PHOTO):
         return Photos(photos=[], users=[])
 
     limit = min(100, max(request.limit, 1))
-    photos_query = UserPhoto.filter(user=peer_user, fallback=False).select_related("file")
+    photos_query = UserPhoto.filter(user=peer.user, fallback=False).select_related("file")
 
     photos = []
     if request.offset < 0:
@@ -42,9 +41,9 @@ async def get_user_photos(request: GetUserPhotos, user: User):
     if limit:
         photos.extend(await photos_query.limit(limit).order_by("-id"))
 
-    photos_total = await UserPhoto.filter(user=peer_user, fallback=False).count()
+    photos_total = await UserPhoto.filter(user=peer.user, fallback=False).count()
     photos_tl = [photo.to_tl() for photo in photos]
-    users_tl = [await peer_user.to_tl()]
+    users_tl = [await peer.user.to_tl()]
 
     if photos_total >= len(photos):
         return PhotosSlice(

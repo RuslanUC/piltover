@@ -8,7 +8,8 @@ from tortoise.expressions import Q
 from piltover.app.utils.utils import PHOTOSIZE_TO_INT, MIME_TO_TL
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, FileType
-from piltover.db.models import User, UploadingFile, UploadingFilePart, File, Peer, Stickerset
+from piltover.db.models import UploadingFile, UploadingFilePart, File, Peer, Stickerset
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, \
     InputEncryptedFileLocation, InputStickerSetThumb
@@ -21,9 +22,9 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("upload")
 
 
-@handler.on_request(SaveFilePart)
-@handler.on_request(SaveBigFilePart)
-async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
+@handler.on_request(SaveFilePart, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SaveBigFilePart, ReqHandlerFlags.DONT_FETCH_USER)
+async def save_file_part(request: SaveFilePart | SaveBigFilePart, user_id: int) -> bool:
     defaults = {}
     if isinstance(request, SaveBigFilePart):
         defaults["total_parts"] = request.file_total_parts
@@ -37,7 +38,7 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user: User):
         logger.trace(f"Resolved file mime type from first part: {mime!r}")
 
     with measure_time("UploadingFile.get_or_create(...)"):
-        file, created = await UploadingFile.get_or_create(user=user, file_id=request.file_id, defaults=defaults)
+        file, created = await UploadingFile.get_or_create(user_id=user_id, file_id=request.file_id, defaults=defaults)
         if not created and request.file_part == 0 and file.mime is None and mime is not None:
             file.mime = mime
             await file.save(update_fields=["mime"])
@@ -84,8 +85,8 @@ SUPPORTED_LOCS = (
 )
 
 
-@handler.on_request(GetFile)
-async def get_file(request: GetFile, user: User) -> TLFile:
+@handler.on_request(GetFile, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_file(request: GetFile, user_id: int) -> TLFile:
     if not isinstance(request.location, SUPPORTED_LOCS):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     if request.limit < 0 or request.limit > 1024 * 1024:
@@ -97,7 +98,8 @@ async def get_file(request: GetFile, user: User) -> TLFile:
     ctx = request_ctx.get()
 
     if isinstance(location, InputPeerPhotoFileLocation):
-        peer = await Peer.from_input_peer_raise(user, location.peer)
+        # TODO: just check access hash without fetching peer
+        peer = await Peer.from_input_peer_raise(user_id, location.peer)
         if peer.type in (PeerType.SELF, PeerType.USER):
             q = Q(userphotos__file_id=location.photo_id, userphotos__user_id=peer.user_id)
         elif peer.type is PeerType.CHAT:
@@ -107,7 +109,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     elif isinstance(location, InputEncryptedFileLocation):
-        if not File.check_access_hash(user.id, ctx.auth_id, location.id, location.access_hash):
+        if not File.check_access_hash(user_id, ctx.auth_id, location.id, location.access_hash):
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         q = Q(id=location.id, type=FileType.ENCRYPTED)
     elif isinstance(location, InputStickerSetThumb):
@@ -116,7 +118,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         q = Q(stickersetthumbs__id=location.thumb_version) | set_q
     else:
-        valid, const = File.is_file_ref_valid(location.file_reference, user.id, location.id)
+        valid, const = File.is_file_ref_valid(location.file_reference, user_id, location.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="FILE_REFERENCE_EXPIRED", reason="file ref is invalid")
 
@@ -128,7 +130,7 @@ async def get_file(request: GetFile, user: User) -> TLFile:
                 constant_file_ref=UUID(bytes=location.file_reference[12:]),
             )
         else:
-            if not File.check_access_hash(user.id, ctx.auth_id, location.id, location.access_hash):
+            if not File.check_access_hash(user_id, ctx.auth_id, location.id, location.access_hash):
                 raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
             q = Q(id=location.id, type__not=FileType.ENCRYPTED)
 

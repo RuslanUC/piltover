@@ -25,9 +25,9 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("contacts")
 
 
-@handler.on_request(GetContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_contacts(user: User):
-    contacts = await Contact.filter(owner=user, target_id__not_isnull=True).select_related("target")
+@handler.on_request(GetContacts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_contacts(user_id: int):
+    contacts = await Contact.filter(owner_id=user_id, target_id__not_isnull=True).select_related("target")
 
     contacts_tl = []
     users_to_tl = []
@@ -43,13 +43,13 @@ async def get_contacts(user: User):
     )
 
 
-async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
-    if resolved.user == user:
-        peer = await Peer.get(owner=user, user=user, type=PeerType.SELF)
+async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPeer:
+    if resolved.user_id == user_id:
+        peer = await Peer.get(owner_id=user_id, user_id=user_id, type=PeerType.SELF)
     elif resolved.user is not None:
-        peer, _ = await Peer.get_or_create(owner=user, user=resolved.user, type=PeerType.USER)
+        peer, _ = await Peer.get_or_create(owner_id=user_id, user=resolved.user, type=PeerType.USER)
     elif resolved.channel is not None:
-        peer, _ = await Peer.get_or_create(owner=user, channel=resolved.channel, type=PeerType.CHANNEL)
+        peer, _ = await Peer.get_or_create(owner_id=user_id, channel=resolved.channel, type=PeerType.CHANNEL)
     else:  # pragma: no cover
         raise RuntimeError("Unreachable")
 
@@ -62,11 +62,11 @@ async def _format_resolved_peer(user: User, resolved: Username) -> ResolvedPeer:
     )
 
 
-async def _format_resolved_peer_by_phone(user: User, resolved: User) -> ResolvedPeer:
-    if resolved == user:
-        peer = await Peer.get(owner=user, user=user, type=PeerType.SELF)
+async def _format_resolved_peer_by_phone(user_id: int, resolved: User) -> ResolvedPeer:
+    if resolved.id == user_id:
+        peer = await Peer.get(owner_id=user_id, user_id=user_id, type=PeerType.SELF)
     else:
-        peer, _ = await Peer.get_or_create(owner=user, user=resolved, type=PeerType.USER)
+        peer, _ = await Peer.get_or_create(owner_id=user_id, user=resolved, type=PeerType.USER)
 
     return ResolvedPeer(
         peer=peer.to_tl(),
@@ -75,21 +75,21 @@ async def _format_resolved_peer_by_phone(user: User, resolved: User) -> Resolved
     )
 
 
-@handler.on_request(ResolveUsername_133)
-@handler.on_request(ResolveUsername)
-async def resolve_username(request: ResolveUsername, user: User) -> ResolvedPeer:
+@handler.on_request(ResolveUsername_133, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(ResolveUsername, ReqHandlerFlags.DONT_FETCH_USER)
+async def resolve_username(request: ResolveUsername, user_id: int) -> ResolvedPeer:
     resolved_username = await Username.get_or_none(username=request.username).select_related("user", "channel")
     if resolved_username is None:
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_OCCUPIED")
 
-    return await _format_resolved_peer(user, resolved_username)
+    return await _format_resolved_peer(user_id, resolved_username)
 
 
-@handler.on_request(GetBlocked, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice:
+@handler.on_request(GetBlocked, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_blocked(request: GetBlocked, user_id: int) -> Blocked | BlockedSlice:
     limit = max(min(request.limit, 1), 100)
     blocked_query = Peer.filter(
-        owner=user, type=PeerType.USER, blocked_at__not_isnull=True,
+        owner_id=user_id, type=PeerType.USER, blocked_at__not_isnull=True,
     ).select_related("user").order_by("-id")
     blocked_peers = await blocked_query.limit(limit).offset(request.offset)
     count = await blocked_query.count()
@@ -115,13 +115,13 @@ async def get_blocked(request: GetBlocked, user: User) -> Blocked | BlockedSlice
     )
 
 
-@handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def contacts_search(request: Search, user: User) -> Found:
+@handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def contacts_search(request: Search, user_id: int) -> Found:
     limit = max(1, min(100, request.limit))
 
     results = await Username.filter(
-        user_id__not_in=Subquery(Contact.filter(owner=user).values("target_id")),
-        user_id__not=user.id,
+        user_id__not_in=Subquery(Contact.filter(owner_id=user_id).values("target_id")),
+        user_id__not=user_id,
     ).filter(
         Q(
             username__icontains=request.q,
@@ -149,7 +149,7 @@ async def contacts_search(request: Search, user: User) -> Found:
     channels_by_id = {result_channel.id: result_channel for result_channel in channels}
     for existing_peer in await Peer.filter(
         Q(join_type=Q.OR, user_id__in=list(users_by_id.keys()), channel_id__in=list(channels_by_id.keys())),
-        owner=user,
+        owner_id=user_id,
     ):
         if existing_peer.type is PeerType.USER:
             del users_by_id[existing_peer.user_id]
@@ -158,10 +158,12 @@ async def contacts_search(request: Search, user: User) -> Found:
 
     await Peer.bulk_create([
         *(
-            Peer(owner=user, type=PeerType.USER, user=result_user) for result_user in users_by_id.values()
+            Peer(owner_id=user_id, type=PeerType.USER, user=result_user)
+            for result_user in users_by_id.values()
         ),
         *(
-            Peer(owner=user, type=PeerType.CHANNEL, channel=result_channel) for result_channel in channels_by_id.values()
+            Peer(owner_id=user_id, type=PeerType.CHANNEL, channel=result_channel)
+            for result_channel in channels_by_id.values()
         ),
     ])
 
@@ -183,10 +185,10 @@ async def get_top_peers():  # pragma: no cover
     )
 
 
-@handler.on_request(GetStatuses, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_statuses(user: User) -> list[ContactStatus]:
+@handler.on_request(GetStatuses, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_statuses(user_id: int) -> list[ContactStatus]:
     statuses = await Presence.filter(user_id__in=Subquery(
-        Contact.filter(owner=user).values_list("target_id", flat=True)
+        Contact.filter(owner_id=user_id).values_list("target_id", flat=True)
     ))
 
     return TLObjectVector([
@@ -195,17 +197,17 @@ async def get_statuses(user: User) -> list[ContactStatus]:
     ])
 
 
-@handler.on_request(GetBirthdays, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_birthdays(user: User) -> ContactBirthdays:
+@handler.on_request(GetBirthdays, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_birthdays(user_id: int) -> ContactBirthdays:
     yesterday = date.today() - timedelta(days=1)
     tomorrow = date.today() + timedelta(days=1)
     birthday_peers = await Peer.filter(
-        owner=user, user__birthday__gte=yesterday, user__birthday__lte=tomorrow
+        owner_id=user_id, user__birthday__gte=yesterday, user__birthday__lte=tomorrow
     ).select_related("user")
 
     privacyrules = await PrivacyRule.has_access_to_bulk(
         users=[peer.user for peer in birthday_peers],
-        user=user,
+        user=user_id,
         keys=[PrivacyRuleKeyType.BIRTHDAY],
     )
 
@@ -226,31 +228,31 @@ async def get_birthdays(user: User) -> ContactBirthdays:
     )
 
 
-@handler.on_request(ResolvePhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def resolve_phone(request: ResolvePhone, user: User) -> ResolvedPeer:
+@handler.on_request(ResolvePhone, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def resolve_phone(request: ResolvePhone, user_id: int) -> ResolvedPeer:
     if (resolved := await User.get_or_none(phone_number=request.phone)) is None:
         raise ErrorRpc(error_code=400, error_message="PHONE_NOT_OCCUPIED")
 
-    if not await PrivacyRule.has_access_to(user, resolved, PrivacyRuleKeyType.ADDED_BY_PHONE):
+    if not await PrivacyRule.has_access_to(user_id, resolved, PrivacyRuleKeyType.ADDED_BY_PHONE):
         raise ErrorRpc(error_code=400, error_message="PHONE_NOT_OCCUPIED")
 
-    return await _format_resolved_peer_by_phone(user, resolved)
+    return await _format_resolved_peer_by_phone(user_id, resolved)
 
 
-@handler.on_request(AddContact, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def add_contact(request: AddContact, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.id)
+@handler.on_request(AddContact, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def add_contact(request: AddContact, user_id: int) -> Updates:
+    peer = await Peer.from_input_peer_raise(user_id, request.id)
     if peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    await Contact.update_or_create(owner=user, target=peer.user, defaults={
+    await Contact.update_or_create(owner_id=user_id, target=peer.user, defaults={
         "first_name": request.first_name,
         "last_name": request.last_name,
         "known_phone_number": request.phone or None,
     })
 
     if request.add_phone_privacy_exception:
-        rule = await PrivacyRule.get_or_create(user=user, key=PrivacyRuleKeyType.PHONE_NUMBER, defaults={
+        rule = await PrivacyRule.get_or_create(user_id=user_id, key=PrivacyRuleKeyType.PHONE_NUMBER, defaults={
             "allow_all": False,
             "allow_contacts": False,
         })
@@ -258,15 +260,16 @@ async def add_contact(request: AddContact, user: User) -> Updates:
             "allow": True,
         })
 
-    return await upd.add_remove_contact(user, [peer.user])
+    return await upd.add_remove_contact(user_id, [peer.user])
 
 
-@handler.on_request(DeleteContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
+@handler.on_request(DeleteContacts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def delete_contacts(request: DeleteContacts, user_id: int) -> Updates:
     peers = {}
     for peer_id in request.id:
         try:
-            peer = await Peer.from_input_peer_raise(user, peer_id)
+            # TODO: dont do this in a loop
+            peer = await Peer.from_input_peer_raise(user_id, peer_id)
         except ErrorRpc:
             continue
         if peer.type is not PeerType.USER:
@@ -274,22 +277,22 @@ async def delete_contacts(request: DeleteContacts, user: User) -> Updates:
 
         peers[peer.user.id] = peer
 
-    contacts = await Contact.filter(owner=user, target_id__in=list(peers.keys())).values_list("id", "target_id")
+    contacts = await Contact.filter(owner_id=user_id, target_id__in=list(peers.keys())).values_list("id", "target_id")
     contact_ids = {contact_id for contact_id, _ in contacts}
     user_ids = {user_id for _, user_id in contacts}
 
     users = [peer.user for user_id, peer in peers.items() if user_id in user_ids]
     await Contact.filter(id__in=contact_ids).delete()
 
-    return await upd.add_remove_contact(user, users)
+    return await upd.add_remove_contact(user_id, users)
 
 
-@handler.on_request(Unblock_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(Unblock, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(Block_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(Block, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def block_unblock(request: Block, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(user, request.id)
+@handler.on_request(Unblock_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(Unblock, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(Block_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(Block, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def block_unblock(request: Block, user_id: int) -> bool:
+    peer = await Peer.from_input_peer_raise(user_id, request.id)
     if peer.type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -297,13 +300,15 @@ async def block_unblock(request: Block, user: User) -> bool:
     if bool(peer.blocked_at) != to_block:
         peer.blocked_at = datetime.now(UTC) if to_block else None
         await peer.save(update_fields=["blocked_at"])
-        await upd.block_unblock_user(user, peer)
+        await upd.block_unblock_user(user_id, peer)
 
     return True
 
 
 @handler.on_request(ImportContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def import_contacts(request: ImportContacts, user: User) -> ImportedContacts:
+    # TODO: refactor this whole function
+
     to_import = request.contacts[:100]
     to_retry = [contact.client_id for contact in request.contacts[100:]]
 
@@ -333,10 +338,10 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
     to_create = []
     to_update = []
     for user_id, contact_user in users.items():
-        if user.phone_number not in phone_numbers:
+        if contact_user.phone_number not in phone_numbers:
             continue  # TODO: or place in to_retry?
 
-        input_contact = to_import[phone_numbers[user.phone_number]]
+        input_contact = to_import[phone_numbers[contact_user.phone_number]]
 
         if user_id in existing_contacts:
             contact = existing_contacts[user_id]
@@ -344,7 +349,7 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
                 continue
             contact.first_name = input_contact.first_name
             contact.last_name = input_contact.last_name
-            contact.known_phone_number = user.phone_number
+            contact.known_phone_number = input_contact.phone
             to_update.append(contact)
         else:
             contact = Contact(
@@ -352,14 +357,16 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
                 target=contact_user,
                 first_name=input_contact.first_name,
                 last_name=input_contact.last_name,
-                known_phone_number=user.phone_number
+                known_phone_number=input_contact.phone
             )
             to_create.append(contact)
 
         imported.append(ImportedContact(user_id=user_id, client_id=input_contact.client_id))
 
-    await Contact.bulk_update(to_update, fields=["first_name", "last_name", "known_phone_number"])
-    await Contact.bulk_create(to_create)
+    if to_update:
+        await Contact.bulk_update(to_update, fields=["first_name", "last_name", "known_phone_number"])
+    if to_create:
+        await Contact.bulk_create(to_create)
 
     # TODO: updates?
 
@@ -371,10 +378,10 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
     )
 
 
-@handler.on_request(ExportContactToken, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def export_contact_token(user: User) -> ExportedContactToken:
+@handler.on_request(ExportContactToken, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def export_contact_token(user_id: int) -> ExportedContactToken:
     created_at = int(time())
-    payload = Long.write(user.id) + Long.write(created_at)
+    payload = Long.write(user_id) + Long.write(created_at)
 
     token_bytes = payload + hmac.new(APP_CONFIG.hmac_key, payload, sha256).digest()
     token = urlsafe_b64encode(token_bytes).decode("utf8")
@@ -385,8 +392,8 @@ async def export_contact_token(user: User) -> ExportedContactToken:
     )
 
 
-@handler.on_request(ImportContactToken, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def import_contact_token(request: ImportContactToken, user: User) -> TLUser:
+@handler.on_request(ImportContactToken, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def import_contact_token(request: ImportContactToken, user_id: int) -> TLUser:
     try:
         token_bytes = urlsafe_b64decode(request.token)
     except ValueError:
@@ -409,8 +416,8 @@ async def import_contact_token(request: ImportContactToken, user: User) -> TLUse
     if (target_user := await User.get_or_none(id=target_user_id, deleted=False)) is None:
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="user does not exist")
 
-    if target_user != user:
-        await Peer.get_or_create(owner=user, user=target_user, type=PeerType.USER)
+    if target_user.id != user_id:
+        await Peer.get_or_create(owner_id=user_id, user=target_user, type=PeerType.USER)
 
     return await target_user.to_tl()
 

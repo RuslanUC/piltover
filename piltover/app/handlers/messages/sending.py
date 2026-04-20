@@ -1010,8 +1010,8 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     send_as_channel = await process_send_as(request.send_as, user)
 
     if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
-        await RecentSticker.update_time_or_create(user, media.file)
-        await upd.update_recent_stickers(user)
+        await RecentSticker.update_time_or_create(user.id, media.file)
+        await upd.update_recent_stickers(user.id)
 
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user)

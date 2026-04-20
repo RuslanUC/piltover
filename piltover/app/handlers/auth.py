@@ -204,7 +204,10 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
 
     if encrypted_message.auth_key_id != request.perm_auth_key_id:
-        logger.debug(f"Perm auth key id mismatch: {encrypted_message.auth_key_id} != {request.perm_auth_key_id}")
+        logger.debug(
+            "Perm auth key id mismatch: {actual} != {expected}",
+            actual=encrypted_message.auth_key_id, expected=request.perm_auth_key_id
+        )
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
 
     perm_key = await AuthKey.get_or_none(id=encrypted_message.auth_key_id)
