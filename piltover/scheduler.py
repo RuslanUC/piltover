@@ -28,10 +28,8 @@ class OrmDatabaseScheduleSource(ScheduleSource):
 
     @staticmethod
     async def _get_scheduled_to_send_messages() -> list[ScheduledTask]:
-        current_minute = int(time())
-        current_minute += (-current_minute % 60)
         scheduled_messages = await TaskIqScheduledMessage.filter(
-            scheduled_time__lte=current_minute, state=TaskIqScheduledState.SCHEDULED,
+            scheduled_time__lte=int(time()), state=TaskIqScheduledState.SCHEDULED,
         ).order_by("scheduled_time").limit(100)
 
         logger.trace("Got {count} scheduled messages", count=len(scheduled_messages))
