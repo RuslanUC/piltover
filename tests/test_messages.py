@@ -976,7 +976,7 @@ async def test_send_scheduled_message(exit_stack: AsyncExitStack) -> None:
     assert len(messages) == 0
     assert await client.get_chat_history_count("me") == 0
 
-    update = await client.expect_update(UpdateNewMessage, 4)
+    update = await client.expect_update(UpdateNewMessage, 6)
     assert update.message.from_scheduled
     assert update.message.message == "test 123"
 
@@ -1020,7 +1020,7 @@ async def test_edit_scheduled_message_date(exit_stack: AsyncExitStack) -> None:
 async def test_delete_scheduled_message(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
-    message = await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=1))
+    message = await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=2))
 
     await client.invoke(DeleteScheduledMessages(
         peer=await client.resolve_peer("me"),
