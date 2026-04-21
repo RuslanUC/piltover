@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import builtins
 import hashlib
 import logging
-from asyncio import Task, DefaultEventLoopPolicy, CancelledError
+from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Coroutine, Protocol, overload, Literal, NoReturn
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn
 from unittest import mock
 
 import pytest
@@ -229,39 +228,6 @@ def _async_task_done_callback(task: Task) -> None:
             logger.opt(exception=task.exception()).error("Async task raised an exception")
     except CancelledError as e:
         logger.opt(exception=e).error("Async task was cancelled")
-
-
-class _DebugTask(asyncio.Task):
-    def cancel(self, *args, **kwargs) -> bool:
-        # stack = self.get_stack()
-        # if stack:
-        #     formatted = "".join(traceback.format_stack())
-        #     logger.error(f"Async task is being cancelled from:\n{formatted}")
-        return super().cancel(*args, **kwargs)
-
-    @classmethod
-    def factory(cls, loop: asyncio.BaseEventLoop, coro: Coroutine, **kwargs) -> asyncio.Task:
-        return cls(coro, loop=loop, **kwargs)
-
-
-class CustomEventLoop(DefaultEventLoopPolicy._loop_factory):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.set_task_factory(_DebugTask.factory)
-
-    def create_task(self, *args, **kwargs) -> Task:
-        task: Task = super().create_task(*args, **kwargs)
-        # task.add_done_callback(_async_task_done_callback)
-        return task
-
-
-class CustomEventLoopPolicy(DefaultEventLoopPolicy):
-    _loop_factory = CustomEventLoop
-
-
-@pytest.fixture(scope="session")
-def event_loop_policy():
-    return CustomEventLoopPolicy()
 
 
 @pytest_asyncio.fixture(autouse=True)
