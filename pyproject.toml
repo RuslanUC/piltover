@@ -39,9 +39,9 @@ dependencies = [
     "aiofiles (>=25.1.0,<26.0.0)",
     # Taskiq >= 0.11.16 has some problem with __name__ attribute of class methods
     #  https://github.com/taskiq-python/taskiq/issues/436
-    "taskiq (==0.11.11)",
-    "taskiq-aio-pika (==0.4.4)",
-    "taskiq-redis (==1.0.2)",
+    "taskiq (>=0.12,<0.13)",
+    "taskiq-aio-pika (>=0.6,<0.7)",
+    "taskiq-redis (>=1.2,<2)",
     "aiocache (>=0.12.3,<1.0.0)",
     "fastrand @ git+https://github.com/RuslanUC/fastrand.git@feat/add-functions-to-generate-random-bytes",
     "python-magic (>=0.4.27,<1.0.0)",

@@ -66,7 +66,7 @@ version = "2.6.1"
 description = "Happy Eyeballs for asyncio"
 optional = false
 python-versions = ">=3.9"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "aiohappyeyeballs-2.6.1-py3-none-any.whl", hash = "sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8"},
     {file = "aiohappyeyeballs-2.6.1.tar.gz", hash = "sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558"},
@@ -78,7 +78,7 @@ version = "3.13.4"
 description = "Async http client/server framework (asyncio)"
 optional = false
 python-versions = ">=3.9"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "aiohttp-3.13.4-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:6290fe12fe8cefa6ea3c1c5b969d32c010dfe191d4392ff9b599a3f473cbe722"},
     {file = "aiohttp-3.13.4-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:7520d92c0e8fbbe63f36f20a5762db349ff574ad38ad7bc7732558a650439845"},
@@ -261,7 +261,7 @@ version = "1.4.0"
 description = "aiosignal: a list of registered asynchronous callbacks"
 optional = false
 python-versions = ">=3.9"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "aiosignal-1.4.0-py3-none-any.whl", hash = "sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e"},
     {file = "aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7"},
@@ -286,6 +286,24 @@ files = [
 [package.extras]
 dev = ["attribution (==1.8.0)", "black (==25.11.0)", "build (>=1.2)", "coverage[toml] (==7.10.7)", "flake8 (==7.3.0)", "flake8-bugbear (==24.12.12)", "flit (==3.12.0)", "mypy (==1.19.0)", "ufmt (==2.8.0)", "usort (==1.0.8.post1)"]
 docs = ["sphinx (==8.1.3)", "sphinx-mdinclude (==0.6.2)"]
+
+[[package]]
+name = "aiostream"
+version = "0.7.1"
+description = "Generator-based operators for asynchronous iteration"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "aiostream-0.7.1-py3-none-any.whl", hash = "sha256:ea8739e9158ee6a606b3feedf3762721c3507344e540d09a10984c5e88a13b37"},
+    {file = "aiostream-0.7.1.tar.gz", hash = "sha256:272aaa0d8f83beb906f5aa9022bb59046bb7a103fa3770f807c31f918595acf6"},
+]
+
+[package.dependencies]
+typing-extensions = "*"
+
+[package.extras]
+dev = ["pytest", "pytest-asyncio", "pytest-cov"]
 
 [[package]]
 name = "aiozipkin"
@@ -416,7 +434,7 @@ version = "26.1.0"
 description = "Classes Without Boilerplate"
 optional = false
 python-versions = ">=3.9"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "attrs-26.1.0-py3-none-any.whl", hash = "sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"},
     {file = "attrs-26.1.0.tar.gz", hash = "sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32"},
@@ -933,7 +951,7 @@ version = "1.8.0"
 description = "A list-like structure which implements collections.abc.MutableSequence"
 optional = false
 python-versions = ">=3.9"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "frozenlist-1.8.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:b37f6d31b3dcea7deb5e9696e529a6aa4a898adc33db82da12e4c60a7c4d2011"},
     {file = "frozenlist-1.8.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ef2b7b394f208233e471abc541cc6991f907ffd47dc72584acee3147899d6565"},
@@ -1140,30 +1158,6 @@ files = [
 
 [package.extras]
 all = ["flake8 (>=7.1.1)", "mypy (>=1.11.2)", "pytest (>=8.3.2)", "ruff (>=0.6.2)"]
-
-[[package]]
-name = "importlib-metadata"
-version = "9.0.0"
-description = "Read metadata from Python packages"
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "importlib_metadata-9.0.0-py3-none-any.whl", hash = "sha256:2d21d1cc5a017bd0559e36150c21c830ab1dc304dedd1b7ea85d20f45ef3edd7"},
-    {file = "importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc"},
-]
-
-[package.dependencies]
-zipp = ">=3.20"
-
-[package.extras]
-check = ["pytest-checkdocs (>=2.14)", "pytest-ruff (>=0.2.1) ; sys_platform != \"cygwin\""]
-cover = ["pytest-cov"]
-doc = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-lint"]
-enabler = ["pytest-enabler (>=3.4)"]
-perf = ["ipython"]
-test = ["packaging", "pyfakefs", "pytest (>=6,!=8.1.*)", "pytest-perf (>=0.9.2)"]
-type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 
 [[package]]
 name = "iniconfig"
@@ -2722,24 +2716,6 @@ test = ["cffi (>=1.17.0)", "flaky", "greenlet (>=3)", "ipython", "pytest", "pyte
 types = ["typing_extensions"]
 
 [[package]]
-name = "pyjwt"
-version = "2.12.1"
-description = "JSON Web Token implementation in Python"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "pyjwt-2.12.1-py3-none-any.whl", hash = "sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c"},
-    {file = "pyjwt-2.12.1.tar.gz", hash = "sha256:c74a7a2adf861c04d002db713dd85f84beb242228e671280bf709d765b03672b"},
-]
-
-[package.extras]
-crypto = ["cryptography (>=3.4.0)"]
-dev = ["coverage[toml] (==7.10.7)", "cryptography (>=3.4.0)", "pre-commit", "pytest (>=8.4.2,<9.0.0)", "sphinx", "sphinx-rtd-theme", "zope.interface"]
-docs = ["sphinx", "sphinx-rtd-theme", "zope.interface"]
-tests = ["coverage[toml] (==7.10.7)", "pytest (>=8.4.2,<9.0.0)"]
-
-[[package]]
 name = "pylinkify"
 version = "0.1.0"
 description = "Simple linkify wrapper for extracting urls from text"
@@ -2924,36 +2900,27 @@ files = [
 ]
 
 [[package]]
-name = "pytz"
-version = "2026.1.post1"
-description = "World timezone definitions, modern and historical"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "pytz-2026.1.post1-py2.py3-none-any.whl", hash = "sha256:f2fd16142fda348286a75e1a524be810bb05d444e5a081f37f7affc635035f7a"},
-    {file = "pytz-2026.1.post1.tar.gz", hash = "sha256:3378dde6a0c3d26719182142c56e60c7f9af7e968076f31aae569d72a0358ee1"},
-]
-
-[[package]]
 name = "redis"
-version = "5.3.1"
+version = "7.4.0"
 description = "Python client for Redis database and key-value store"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "redis-5.3.1-py3-none-any.whl", hash = "sha256:dc1909bd24669cc31b5f67a039700b16ec30571096c5f1f0d9d2324bff31af97"},
-    {file = "redis-5.3.1.tar.gz", hash = "sha256:ca49577a531ea64039b5a36db3d6cd1a0c7a60c34124d46924a45b956e8cf14c"},
+    {file = "redis-7.4.0-py3-none-any.whl", hash = "sha256:a9c74a5c893a5ef8455a5adb793a31bb70feb821c86eccb62eebef5a19c429ec"},
+    {file = "redis-7.4.0.tar.gz", hash = "sha256:64a6ea7bf567ad43c964d2c30d82853f8df927c5c9017766c55a1d1ed95d18ad"},
 ]
 
 [package.dependencies]
 async-timeout = {version = ">=4.0.3", markers = "python_full_version < \"3.11.3\""}
-PyJWT = ">=2.9.0"
 
 [package.extras]
-hiredis = ["hiredis (>=3.0.0)"]
-ocsp = ["cryptography (>=36.0.1)", "pyopenssl (==23.2.1)", "requests (>=2.31.0)"]
+circuit-breaker = ["pybreaker (>=1.4.0)"]
+hiredis = ["hiredis (>=3.2.0)"]
+jwt = ["pyjwt (>=2.9.0)"]
+ocsp = ["cryptography (>=36.0.1)", "pyopenssl (>=20.0.1)", "requests (>=2.31.0)"]
+otel = ["opentelemetry-api (>=1.39.1)", "opentelemetry-exporter-otlp-proto-http (>=1.39.1)", "opentelemetry-sdk (>=1.39.1)"]
+xxhash = ["xxhash (>=3.6.0,<3.7.0)"]
 
 [[package]]
 name = "rich"
@@ -3030,50 +2997,50 @@ tornado = ">=2.0"
 
 [[package]]
 name = "taskiq"
-version = "0.11.11"
+version = "0.12.2"
 description = "Distributed task queue with full async support"
 optional = false
-python-versions = "<4.0.0,>=3.8.1"
+python-versions = "<4,>=3.10"
 groups = ["main"]
 files = [
-    {file = "taskiq-0.11.11-py3-none-any.whl", hash = "sha256:41c2f27355c90924e6fcd693aade7d21bb974a7bbc71bd54d3026cece9e806a2"},
-    {file = "taskiq-0.11.11.tar.gz", hash = "sha256:c2c10eac817c230b338e0059873c75236efa38700495206424f0fae18228c426"},
+    {file = "taskiq-0.12.2-py3-none-any.whl", hash = "sha256:491491ad255fb88bf4d3e04e356dd1e6507ca7d8197b68a2f89ce7c5b5c7cc51"},
+    {file = "taskiq-0.12.2.tar.gz", hash = "sha256:de0c375d9c68481dd0625ebaa332f8f582866a0499663a45cedf7407b00e03f0"},
 ]
 
 [package.dependencies]
-anyio = ">=3"
-importlib-metadata = "*"
+aiohttp = ">=3"
+anyio = ">=4"
 packaging = ">=19"
-pycron = ">=3.0.0,<4.0.0"
+pycron = ">=3.0.0"
 pydantic = ">=1.0,<=3.0"
-pytz = "*"
-taskiq_dependencies = ">=1.3.1,<2"
-typing-extensions = ">=3.10.0.0"
+taskiq-dependencies = ">=1.3.1,<2"
 
 [package.extras]
-cbor = ["cbor2 (>=5,<6)"]
-metrics = ["prometheus_client (>=0,<1)"]
-msgpack = ["msgpack (>=1.0.7,<2.0.0)"]
-orjson = ["orjson (>=3,<4)"]
-reload = ["gitignore-parser (>=0,<1)", "watchdog (>=4,<5)"]
+cbor = ["cbor2 (>=5)"]
+metrics = ["prometheus-client (>=0)"]
+msgpack = ["msgpack (>=1.0.7)"]
+opentelemetry = ["opentelemetry-api (>=1.38.0,<2.0.0)", "opentelemetry-instrumentation (>=0.59b0,<1)", "opentelemetry-semantic-conventions (>=0.59b0,<1)"]
+orjson = ["orjson (>=3)"]
+reload = ["gitignore-parser (>=0)", "watchdog (>=4)"]
 uv = ["uvloop (>=0.16.0,<1) ; sys_platform != \"win32\""]
-zmq = ["pyzmq (>=26,<27)"]
+zmq = ["pyzmq (>=26)"]
 
 [[package]]
 name = "taskiq-aio-pika"
-version = "0.4.4"
+version = "0.6.0"
 description = "RabbitMQ broker for taskiq"
 optional = false
-python-versions = "<4.0.0,>=3.8.1"
+python-versions = "<4,>=3.10"
 groups = ["main"]
 files = [
-    {file = "taskiq_aio_pika-0.4.4-py3-none-any.whl", hash = "sha256:8f3405daab41d46f9c5273bdbbb977dd43fd44e82d1b87619078794ae37bcc45"},
-    {file = "taskiq_aio_pika-0.4.4.tar.gz", hash = "sha256:357f37a6b8828bc61fc4091dcd80b54c6b820eb6774cc72d2f9e372c6a8c0037"},
+    {file = "taskiq_aio_pika-0.6.0-py3-none-any.whl", hash = "sha256:6bff38b61b24afd7d41b78ea9ffca0702fe9653e82289ca1287b063a53af2145"},
+    {file = "taskiq_aio_pika-0.6.0.tar.gz", hash = "sha256:0a4ec304a5e860e205aaea5077d90d2a009a4842f3ee008b5185c29301992ed9"},
 ]
 
 [package.dependencies]
-aio-pika = ">=9.0,<10.0"
-taskiq = ">=0.6.0,<1"
+aio-pika = ">=9.0.0"
+aiostream = ">=0.7.1"
+taskiq = ">=0.12.0,<1"
 
 [[package]]
 name = "taskiq-dependencies"
@@ -3089,19 +3056,19 @@ files = [
 
 [[package]]
 name = "taskiq-redis"
-version = "1.0.2"
+version = "1.2.2"
 description = "Redis integration for taskiq"
 optional = false
-python-versions = "<4.0.0,>=3.8.1"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "taskiq_redis-1.0.2-py3-none-any.whl", hash = "sha256:d24c4ba34560eb882af351ec34eab4fc90ff6b82ef9b3245d0a499d335b92086"},
-    {file = "taskiq_redis-1.0.2.tar.gz", hash = "sha256:9a8e8b8e26847e25fbe6e6f8f910632a66f3d38bb5249699193efcfd1e84e25f"},
+    {file = "taskiq_redis-1.2.2-py3-none-any.whl", hash = "sha256:574d085c0c07f7fa9945e51195fe2db5b9d3c2a07bcfdc5a7ca323eae5319dff"},
+    {file = "taskiq_redis-1.2.2.tar.gz", hash = "sha256:103c488d143138bab8fc84044dbe68cd3561251090695a6042120398e9915325"},
 ]
 
 [package.dependencies]
-redis = ">=5,<6"
-taskiq = ">=0.11.1,<1"
+redis = ">=7.0.0,<8"
+taskiq = ">=0.12.0"
 
 [[package]]
 name = "telnetlib3"
@@ -3808,27 +3775,7 @@ idna = ">=2.0"
 multidict = ">=4.0"
 propcache = ">=0.2.1"
 
-[[package]]
-name = "zipp"
-version = "3.23.0"
-description = "Backport of pathlib-compatible object wrapper for zip files"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "zipp-3.23.0-py3-none-any.whl", hash = "sha256:071652d6115ed432f5ce1d34c336c0adfd6a884660d1e9712a256d3d3bd4b14e"},
-    {file = "zipp-3.23.0.tar.gz", hash = "sha256:a07157588a12518c9d4034df3fbbee09c814741a33ff63c05fa29d26a2404166"},
-]
-
-[package.extras]
-check = ["pytest-checkdocs (>=2.4)", "pytest-ruff (>=0.2.1) ; sys_platform != \"cygwin\""]
-cover = ["pytest-cov"]
-doc = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-lint"]
-enabler = ["pytest-enabler (>=2.2)"]
-test = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more_itertools", "pytest (>=6,!=8.1.*)", "pytest-ignore-flaky"]
-type = ["pytest-mypy"]
-
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11.1,<4.0"
-content-hash = "b823d18994d5e3a7204b516caf4a9bec7ec32045a967f0eec216acc623829e42"
+content-hash = "b87c3354c2da0712701aad8af3f57fc38db9d77dd89bd190697e180522a92e38"
