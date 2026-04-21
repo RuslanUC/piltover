@@ -5,9 +5,9 @@ import hashlib
 import logging
 from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
+from datetime import timedelta
 from os import urandom
 from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn
-from unittest import mock
 
 import pytest
 import pytest_asyncio
@@ -22,7 +22,6 @@ from tortoise import connections
 from tortoise.backends.sqlite import SqliteClient
 
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
-from tests.scheduled_loop import run_scheduler_loop_every_100ms
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
@@ -126,16 +125,13 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
             scheduler.startup = _empty_async_func
             scheduler.shutdown = _empty_async_func
 
-            stack.enter_context(
-                mock.patch("taskiq.cli.scheduler.run.run_scheduler_loop", run_scheduler_loop_every_100ms)
-            )
-
         test_server: Gateway = await stack.enter_async_context(app.run_test(
             create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
             create_peer_colors=create_peer_colors, create_languages=create_languages,
             create_system_stickersets=create_system_stickersets, create_emoji_groups=create_emoji_groups,
             run_scheduler=run_scheduler, run_actual_server=USE_REAL_TCP_FOR_TESTING,
-            create_sys_user=not dont_create_sys_user,
+            create_sys_user=not dont_create_sys_user, scheduler_update_interval=1,
+            scheduler_loop_interval=1,
         ))
 
         server_reset_token = server_instance.set(test_server)

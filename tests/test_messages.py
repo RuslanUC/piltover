@@ -1004,7 +1004,7 @@ async def test_edit_scheduled_message_date(exit_stack: AsyncExitStack) -> None:
         schedule_date=int(time()),
     ))
 
-    update = await client.expect_update(UpdateNewMessage, 1)
+    update = await client.expect_update(UpdateNewMessage, 3)
     assert update.message.from_scheduled
     assert update.message.message == "test 123"
 
@@ -1055,7 +1055,7 @@ async def test_messages_ttl(exit_stack: AsyncExitStack) -> None:
         period=0,
     ))
 
-    update = await client.expect_update(UpdateDeleteMessages, 1.5)
+    update = await client.expect_update(UpdateDeleteMessages, 3)
     assert update.messages == [message2.id]
 
     message3 = await client.send_message(group.id, "test message 2 that wont be deleted")
