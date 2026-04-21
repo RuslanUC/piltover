@@ -96,6 +96,9 @@ class MessageRef(Model):
             ("peer", "content"),
             ("peer", "random_id"),
         )
+        indexes = (
+            ("peer_id", "pinned"),
+        )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(id={self.id}, peer={self.peer!r}, content={self.content!r})"

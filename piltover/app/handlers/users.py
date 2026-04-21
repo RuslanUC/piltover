@@ -39,7 +39,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
         await MessageRef.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True),
     )
 
-    personal_channel = await Channel.get_or_none(userpersonalchannels__user=target_user)
+    personal_channel = await Channel.get_or_none(userpersonalchannels__user=target_user).only("id", "version")
     if personal_channel is not None:
         personal_channel_msg_id = cast(
             int | None,
@@ -52,7 +52,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
 
     if personal_channel is not None:
         await Peer.bulk_create(
-            [Peer(owner_id=user_id, type=PeerType.CHANNEL, channel=personal_channel)],
+            [Peer(owner_id=user_id, type=PeerType.CHANNEL, channel_id=personal_channel.id)],
             ignore_conflicts=True,
         )
 
@@ -100,7 +100,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
             translations_disabled=True,
             # video_calls_available=True,
         ),
-        chats=[await personal_channel.to_tl()] if personal_channel is not None else [],
+        chats=[await personal_channel.to_tl_maybecached()] if personal_channel is not None else [],
         users=[await target_user.to_tl(userphoto=photo_db)],
     )
 

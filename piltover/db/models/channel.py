@@ -214,6 +214,14 @@ class Channel(ChatBase):
 
         return tl
 
+    async def to_tl_maybecached(self) -> TLChatBase:
+        cached_channel = await Cache.obj.get(self.cache_key())
+        if cached_channel is not None:
+            return cached_channel
+
+        await self.refresh_from_db()
+        return await self.to_tl()
+
     def min_id(self, participant: models.ChatParticipant) -> int | None:
         min_available_id_force = self.min_available_id_force or 0
         if participant is not None:

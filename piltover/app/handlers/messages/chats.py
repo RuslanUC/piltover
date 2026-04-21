@@ -589,7 +589,7 @@ async def get_common_chats(request: GetCommonChats, user_id: int) -> ChatsBase:
 
     query = ChatParticipant.common_chats_query(
         user_id, peer.user_id, request.max_id if request.max_id > 0 else None,
-    )
+    ).select_related("chat", "chat__photo", "channel", "channel__photo")
 
     chats = []
     channels = []

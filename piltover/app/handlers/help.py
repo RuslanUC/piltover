@@ -3,10 +3,10 @@ from time import time
 
 from piltover.app.utils.utils import telegram_hash
 from piltover.config import APP_CONFIG, DICE_CONFIG
-from piltover.db.models import AuthCountry, Reaction, UserReactionsSettings, PeerColorOption
+from piltover.db.models import AuthCountry, UserReactionsSettings, PeerColorOption
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscriptionOption, JsonNumber, \
-    JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji
+    JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji, ReactionCustomEmoji
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
     GetPeerProfileColors, DismissSuggestion, GetTimezonesList, AcceptTermsOfService, HidePromoData
@@ -23,13 +23,17 @@ CACHED_COUNTRIES_LIST: tuple[CountriesList | None, int] = (None, 0)
 async def get_config(user_id: int | None):
     default_reaction = None
     if user_id is not None:
-        settings = await UserReactionsSettings.get_or_none(user_id=user_id).select_related("default_reaction")
+        settings = await UserReactionsSettings.get_or_none(
+            user_id=user_id,
+        ).select_related("default_reaction").values_list("default_reaction__reaction", "default_custom_emoji_id")
         if settings is None:
-            reaction = await Reaction.get_or_none(Reaction.q_from_reaction("❤")).only("reaction")
-            if reaction is not None:
-                default_reaction = ReactionEmoji(emoticon=reaction.reaction)
+            default_reaction = ReactionEmoji(emoticon="❤")
         else:
-            default_reaction = settings.to_tl_reaction()
+            reaction, default_custom_emoji_id = settings
+            if reaction is not None:
+                default_reaction = ReactionEmoji(emoticon=reaction)
+            elif default_custom_emoji_id:
+                default_reaction = ReactionCustomEmoji(document_id=default_custom_emoji_id)
 
     return Config(
         date=int(time()),
