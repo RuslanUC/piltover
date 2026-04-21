@@ -175,9 +175,9 @@ async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
 @handler.on_request(ClearDraft, ReqHandlerFlags.INTERNAL)
 async def clear_draft(request: ClearDraft) -> TLObject:
     if (draft := await MessageDraft.get_or_none(peer_id=request.peer_id).only("id")) is not None:
-        peer = await Peer.get(id=request.peer_id).select_related("owner")
+        peer = await Peer.get(id=request.peer_id)
         await draft.delete()
-        await upd.update_draft(peer.owner, peer, None)
+        await upd.update_draft(peer.owner_id, peer, None)
         return TaggedBool(value=True)
 
     return TaggedBool(value=False)

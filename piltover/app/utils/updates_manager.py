@@ -1,5 +1,6 @@
 from asyncio import sleep
 from time import time
+from typing import Iterable, Collection
 
 from loguru import logger
 from tortoise.transactions import in_transaction
@@ -507,10 +508,10 @@ async def pin_dialog(user_id: int, peer: Peer, dialog: Dialog) -> None:
     await SessionManager.send(updates, user_id)
 
 
-async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> None:
-    new_pts = await State.add_pts(user, 1)
+async def update_draft(user_id: int, peer: Peer, draft: MessageDraft | None) -> None:
+    new_pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.DRAFT_UPDATE,
         pts=new_pts,
         related_id=peer.id,
@@ -533,21 +534,21 @@ async def update_draft(user: User, peer: Peer, draft: MessageDraft | None) -> No
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
 
-async def update_drafts(user: User, peers: list[Peer], drafts: [MessageDraft | None]) -> Updates:
+async def update_drafts(user_id: int, peers: list[Peer], drafts: Collection[MessageDraft | None]) -> Updates:
     if len(peers) != len(drafts):
         raise ValueError
 
-    new_pts = await State.add_pts(user, len(drafts))
+    new_pts = await State.add_pts(user_id, len(drafts))
     updates_to_create = []
     updates_to_send = []
     ucc = UsersChatsChannels()
 
     for num, (peer, draft) in enumerate(zip(peers, drafts), start=1):
         updates_to_create.append(Update(
-            user=user,
+            user_id=user_id,
             update_type=UpdateType.DRAFT_UPDATE,
             pts=new_pts - len(drafts) + num,
             related_id=peer.id,
@@ -573,7 +574,7 @@ async def update_drafts(user: User, peers: list[Peer], drafts: [MessageDraft | N
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
@@ -611,7 +612,7 @@ async def reorder_pinned_dialogs(user_id: int, dialogs: list[Dialog]) -> None:
 
 
 async def pin_messages(
-        user: User, messages_by_peer: dict[Peer, list[MessageRef]],
+        user_id: int, messages_by_peer: dict[Peer, list[MessageRef]],
 ) -> tuple[int, int, Updates]:
     updates_to_create = []
     user_pts = user_pts_count = 0
@@ -688,7 +689,7 @@ async def pin_messages(
             chats=chats_and_channels,
         )
 
-        if user.id == peer.owner.id:
+        if user_id == peer.owner_id:
             result_update = update
             user_pts = pts
             user_pts_count = len(messages)

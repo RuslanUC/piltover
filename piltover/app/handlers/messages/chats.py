@@ -353,6 +353,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     )
     await chat_peer.chat.refresh_from_db(["participants_count", "version"])
 
+    # TODO: if user was creator of the chat, make another user a creator
     # TODO: remove scheduled messages?
 
     chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}

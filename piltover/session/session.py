@@ -402,7 +402,9 @@ class Session:
                 result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
 
         if values.stickersets:
-            for installed in await InstalledStickerset.filter(set_id__in=values.stickersets, user_id=self.user_id):
+            for installed in await InstalledStickerset.filter(
+                    set_id__in=values.stickersets, user_id=self.user_id,
+            ).only("set_id", "installed_date", "archived"):
                 result.stickersets[installed.set_id] = installed
 
         return result

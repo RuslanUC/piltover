@@ -39,6 +39,7 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
     SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
     SendInlineBotResult, SendMultiMedia_176, UnpinAllMessages
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
+from piltover.utils import SingleElementList
 from piltover.utils.debug import measure_time
 from piltover.utils.snowflake import Snowflake
 from piltover.worker import MessageHandler
@@ -354,7 +355,7 @@ def _resolve_noforwards(peer: Peer, user: User | None, request_noforwards: bool 
 
 async def _check_bot_blocked(user: User, peer: Peer) -> None:
     if user.bot and peer.type is PeerType.USER \
-            and await Peer.filter(owner=peer.user, user=user, blocked_at__not_isnull=True).exists():
+            and await Peer.filter(owner=peer.user, user_id=user.id, blocked_at__not_isnull=True).exists():
         raise ErrorRpc(error_code=400, error_message="USER_IS_BLOCKED")
 
 
@@ -495,7 +496,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
             for message in await MessageRef.filter(id__in=ids).select_related("peer", "peer__owner")
         }
 
-        _, _, result = await upd.pin_messages(user, messages)
+        _, _, result = await upd.pin_messages(user.id, messages)
 
     if not request.unpin and not request.silent and not request.pm_oneside:
         updates = await send_message_internal(
@@ -507,26 +508,26 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
     return result
 
 
-@handler.on_request(DeleteMessages)
-async def delete_messages(request: DeleteMessages, user: User):
+@handler.on_request(DeleteMessages, ReqHandlerFlags.DONT_FETCH_USER)
+async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMessages:
     ids = request.id[:100]
-    messages: dict[User, list[int]] = defaultdict(list)
+    messages: dict[int, list[int]] = defaultdict(list)
 
     if not request.revoke:
         messages = {
-            user: await MessageRef.filter(id__in=ids, peer__owner=user).values_list("id", flat=True),
+            user_id: await MessageRef.filter(id__in=ids, peer__owner_id=user_id).values_list("id", flat=True),
         }
     else:
         # TODO: maybe just fetch all messages for all peers where content id matches?
         #  i.e. do something like
         #  all_messages = await MessageRef.filter(content_id__in=Subquery(
-        #      MessageRef.filter(id__in=ids, peer__owner=user).values("content_id"),
+        #      MessageRef.filter(id__in=ids, peer__owner_id=user_id).values("content_id"),
         #  )).select_related("peer", "peer__owner")
 
-        our_messages = await MessageRef.filter(id__in=ids, peer__owner=user).select_related("peer")
+        our_messages = await MessageRef.filter(id__in=ids, peer__owner_id=user_id).select_related("peer")
         if not our_messages:
             return AffectedMessages(
-                pts=await State.add_pts(user, 0),
+                pts=await State.add_pts(user_id, 0),
                 pts_count=0,
             )
 
@@ -540,27 +541,23 @@ async def delete_messages(request: DeleteMessages, user: User):
 
         if not queries:
             return AffectedMessages(
-                pts=await State.add_pts(user, 0),
+                pts=await State.add_pts(user_id, 0),
                 pts_count=0,
             )
 
-        all_messages = await MessageRef.filter(Q(*queries, join_type=Q.OR)).select_related("peer", "peer__owner")
+        all_messages = await MessageRef.filter(Q(*queries, join_type=Q.OR)).select_related("peer")
         for message in all_messages:
-            messages[message.peer.owner].append(message.id)
+            messages[message.peer.owner_id].append(message.id)
 
     all_ids = [i for ids in messages.values() for i in ids]
     if not all_ids:
         return AffectedMessages(
-            pts=await State.add_pts(user, 0),
+            pts=await State.add_pts(user_id, 0),
             pts_count=0,
         )
 
     await MessageRef.filter(id__in=all_ids).delete()
-    pts = await upd.delete_messages(user, messages)
-
-    if not user.bot:
-        presence = await Presence.update_to_now(user)
-        await upd.update_status(user, presence, list(messages.keys()))
+    pts = await upd.delete_messages(user_id, messages)
 
     return AffectedMessages(pts=pts, pts_count=len(all_ids))
 
@@ -708,12 +705,12 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
 
 async def _get_media_thumb(
-        user: User, media: InputMediaUploadedDocument | InputMediaUploadedDocument_133,
+        user_id: int, media: InputMediaUploadedDocument | InputMediaUploadedDocument_133,
 ) -> bytes | None:
     if media.thumb is None:
         return None
 
-    uploaded_thumb = await UploadingFile.get_or_none(user=user, file_id=media.thumb.id)
+    uploaded_thumb = await UploadingFile.get_or_none(user_id=user_id, file_id=media.thumb.id)
     if uploaded_thumb is None \
             or uploaded_thumb.mime is None \
             or not uploaded_thumb.mime.startswith("image/"):
@@ -735,7 +732,7 @@ async def _get_media_thumb(
 
 
 async def _get_input_media_file(
-        user: User, media: InputMediaPhoto | InputMediaDocument | InputMediaDocument_133,
+        user_id: int, media: InputMediaPhoto | InputMediaDocument | InputMediaDocument_133,
 ) -> File | None:
     file_type = FileType.PHOTO if isinstance(media, InputMediaPhoto) else None
     if isinstance(media, InputMediaPhoto):
@@ -743,7 +740,7 @@ async def _get_input_media_file(
     else:
         add_query = Q(type__not=FileType.PHOTO)
     return await File.from_input(
-        user.id, media.id.id, media.id.access_hash, media.id.file_reference, file_type, add_query=add_query,
+        user_id, media.id.id, media.id.access_hash, media.id.file_reference, file_type, add_query=add_query,
         select_related=("stickerset",),
     )
 
@@ -787,14 +784,14 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             file_type = FileType.PHOTO
         else:
             file_type = FileType.DOCUMENT
-            thumb_bytes = await _get_media_thumb(user, media)
+            thumb_bytes = await _get_media_thumb(user.id, media)
 
         if media.file.name:
             attributes.insert(0, DocumentAttributeFilename(file_name=media.file.name))
         with measure_time("finalize_upload"):
             file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
-        file = await _get_input_media_file(user, media)
+        file = await _get_input_media_file(user.id, media)
         if file is None:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID", reason="file_reference is invalid")
         if file is None or (file.photo_sizes is None and isinstance(media, InputMediaPhoto)):
@@ -930,7 +927,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     )
 
 
-async def _get_input_media_banned_rights(user: User, media: InputMedia) -> ChatBannedRights:
+async def _get_input_media_banned_rights(user_id: int, media: InputMedia) -> ChatBannedRights:
     if isinstance(media, (InputMediaPhoto, InputMediaUploadedPhoto)):
         return ChatBannedRights.SEND_PHOTOS
     if isinstance(media, InputMediaPoll):
@@ -965,7 +962,7 @@ async def _get_input_media_banned_rights(user: User, media: InputMedia) -> ChatB
 
         return ChatBannedRights.SEND_DOCS
     if isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
-        file = await _get_input_media_file(user, media)
+        file = await _get_input_media_file(user_id, media)
         if file is None:
             return ChatBannedRights.SEND_DOCS
         if (rights := file.to_chat_banned_right()) is not None:
@@ -988,7 +985,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant(user)
-        if not chat_or_channel.can_send_media(participant, await _get_input_media_banned_rights(user, request.media)):
+        if not chat_or_channel.can_send_media(participant, await _get_input_media_banned_rights(user.id, request.media)):
             # TODO: send correct error
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHANNEL:
@@ -1028,14 +1025,14 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     )
 
 
-@handler.on_request(SaveDraft_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SaveDraft_148, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SaveDraft_166, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SaveDraft, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def save_draft(request: SaveDraft, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(SaveDraft_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SaveDraft_148, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SaveDraft_166, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SaveDraft, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def save_draft(request: SaveDraft, user_id: int) -> bool:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
-        await peer.chat_or_channel.get_participant_raise(user)
+        await peer.chat_or_channel.get_participant_raise(user_id)
 
     reply_to_message_id = _resolve_reply_id(request)
     reply_to = None
@@ -1045,10 +1042,10 @@ async def save_draft(request: SaveDraft, user: User) -> bool:
     if not request.message and reply_to is None:
         if (existing_draft := await MessageDraft.get_or_none(peer=peer)) is not None:
             await existing_draft.delete()
-            await upd.update_draft(user, peer, None)
+            await upd.update_draft(user_id, peer, None)
         return True
 
-    entities = await process_message_entities(request.message, request.entities, user.id)
+    entities = await process_message_entities(request.message, request.entities, user_id)
 
     # TODO: media
 
@@ -1065,7 +1062,7 @@ async def save_draft(request: SaveDraft, user: User) -> bool:
         }
     )
 
-    await upd.update_draft(user, peer, draft)
+    await upd.update_draft(user_id, peer, draft)
     return True
 
 
@@ -1227,24 +1224,25 @@ async def forward_messages(
     return update
 
 
-@handler.on_request(UploadMedia_133)
-@handler.on_request(UploadMedia)
-async def upload_media(request: UploadMedia | UploadMedia_133, user: User):
+@handler.on_request(UploadMedia_133, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(UploadMedia, ReqHandlerFlags.DONT_FETCH_USER)
+async def upload_media(request: UploadMedia | UploadMedia_133, user_id: int):
     if not isinstance(request.media, (
             InputMediaPhoto, InputMediaDocument, InputMediaDocument_133, InputMediaUploadedDocument,
             InputMediaUploadedDocument_133, InputMediaUploadedPhoto,
     )):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant_raise(user)
+        participant = await chat_or_channel.get_participant_raise(user_id)
         if not chat_or_channel.can_send_media(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
     _check_we_blocked_user(peer)
 
+    user = await User.get(id=user_id).only("id", "phone_number")
     media = await _process_media(user, request.media)
     return await media.to_tl()
 
@@ -1345,9 +1343,9 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
     return updates
 
 
-@handler.on_request(DeleteHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(DeleteHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type is PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -1360,22 +1358,22 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
         query &= Q(date__lte=datetime.fromtimestamp(request.max_date, UTC))
 
     content_ids: list[int] = []
-    messages: defaultdict[User, list[int]] = defaultdict(list)
+    messages: defaultdict[int, list[int]] = defaultdict(list)
     offset_id = 0
 
     messages_to_delete = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", "content_id")
     for message_id, content_id in messages_to_delete:
-        if len(messages[user]) == 1000:
+        if len(messages[user_id]) == 1000:
             offset_id = message_id
             break
 
-        messages[user].append(message_id)
+        messages[user_id].append(message_id)
         content_ids.append(content_id)
 
     if not content_ids:
-        return AffectedHistory(pts=await State.add_pts(user, 0), pts_count=0, offset=0)
+        return AffectedHistory(pts=await State.add_pts(user_id, 0), pts_count=0, offset=0)
 
-    if request.revoke:
+    if request.revoke and peer.type is not PeerType.SELF:
         peers_q = None
         if peer.type is PeerType.USER:
             peers_q = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id)
@@ -1386,29 +1384,31 @@ async def delete_history(request: DeleteHistory, user: User) -> AffectedHistory:
             # TODO: delete history for each user separately if request.revoke
             #  (so messages that current user already deleted without revoke will be deleted too)
             #  (maybe just call delete_history for each user (opposite_peer)?)
-            refs = await MessageRef.filter(peers_q, content_id__in=content_ids).select_related("peer", "peer__owner")
-            for ref in refs:
-                messages[ref.peer.owner].append(ref.id)
+            refs = await MessageRef.filter(
+                peers_q, content_id__in=content_ids,
+            ).select_related("peer").values_list("id", "peer__owner_id")
+            for ref_id, peer_user_id in refs:
+                messages[peer_user_id].append(ref_id)
 
     await MessageContent.filter(id__in=content_ids).delete()
-    pts = await upd.delete_messages(user, messages)
+    pts = await upd.delete_messages(user_id, messages)
 
     if not offset_id:
         # TODO: delete for other users if request.revoke
         await Dialog.filter(peer=peer).update(visible=False)
         if peer.type == PeerType.CHAT:
-            await ChatParticipant.filter(chat=peer.chat, user=user).delete()
+            await ChatParticipant.filter(chat=peer.chat, user_id=user_id).delete()
             await peer.delete()
             await upd.update_chat(peer.chat)
 
-    return AffectedHistory(pts=pts, pts_count=len(messages[user]), offset=offset_id)
+    return AffectedHistory(pts=pts, pts_count=len(messages[user_id]), offset=offset_id)
 
 
-@handler.on_request(ClearAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def clear_all_drafts(user: User) -> bool:
-    peers = await Peer.filter(owner=user, messagedrafts__id__not_isnull=True).limit(500)
+@handler.on_request(ClearAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def clear_all_drafts(user_id: int) -> bool:
+    peers = await Peer.filter(owner_id=user_id, messagedrafts__id__not_isnull=True).limit(500)
     await MessageDraft.filter(peer_id__in=[peer.id for peer in peers]).delete()
-    await upd.update_drafts(user, peers, [None] * len(peers))
+    await upd.update_drafts(user_id, peers, SingleElementList(None, len(peers)))
 
     return True
 
@@ -1485,16 +1485,17 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
     )
 
 
-@handler.on_request(UnpinAllMessages)
-async def unpin_all_messages(request: UnpinAllMessages, user: User) -> AffectedHistory:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(UnpinAllMessages, ReqHandlerFlags.DONT_FETCH_USER)
+async def unpin_all_messages(request: UnpinAllMessages, user_id: int) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant_raise(user)
+        participant = await chat_or_channel.get_participant_raise(user_id)
         if not chat_or_channel.can_pin_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
+    user = await User.get(id=user_id).only("id", "bot")
     await _check_bot_blocked(user, peer)
 
     if peer.type is PeerType.SELF:
@@ -1517,7 +1518,7 @@ async def unpin_all_messages(request: UnpinAllMessages, user: User) -> AffectedH
         if peer.type is PeerType.CHANNEL:
             pts = peer.channel.pts
         else:
-            pts = await State.add_pts(user, 0)
+            pts = await State.add_pts(user_id, 0)
 
         return AffectedHistory(
             pts=pts,
@@ -1537,7 +1538,7 @@ async def unpin_all_messages(request: UnpinAllMessages, user: User) -> AffectedH
             raise Unreachable
         pts, pts_count, _ = await upd.pin_channel_messages(peer.channel, messages)
     else:
-        pts, pts_count, _ = await upd.pin_messages(user, by_peer)
+        pts, pts_count, _ = await upd.pin_messages(user_id, by_peer)
 
     return AffectedHistory(
         pts=pts,
