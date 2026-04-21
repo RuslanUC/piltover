@@ -583,7 +583,12 @@ async def get_onlines(request: GetOnlines, user_id: int) -> ChatOnlines:
 
 @handler.on_request(GetCommonChats, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_common_chats(request: GetCommonChats, user_id: int) -> ChatsBase:
+    if Peer.input_is_self(user_id, request.user_id):
+        return Chats(chats=[])
+
     peer = await Peer.from_input_peer_raise(user_id, request.user_id, peer_types=(PeerType.USER, PeerType.SELF))
+    if peer.type is PeerType.SELF:
+        return Chats(chats=[])
 
     limit = max(1, min(100, request.limit))
 

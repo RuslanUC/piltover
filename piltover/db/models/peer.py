@@ -288,7 +288,7 @@ class Peer(Model):
 
     @staticmethod
     def input_is_self(user: models.User | int, input_peer: InputPeerUser | InputUser | InputPeerSelf) -> bool:
-        if isinstance(input_peer, InputUserSelf):
+        if isinstance(input_peer, (InputUserSelf, InputPeerSelf)):
             return True
         if isinstance(input_peer, (InputPeerUser, InputUser)):
             user_id = user if isinstance(user, int) else user.id

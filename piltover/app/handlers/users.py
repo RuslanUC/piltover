@@ -75,6 +75,11 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     else:
         photo_db = None
 
+    if peer.type is PeerType.SELF:
+        common_chats_count = 0
+    else:
+        common_chats_count = await ChatParticipant.common_chats_query(user_id, peer.user_id).count()
+
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
@@ -83,7 +88,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
             settings=PeerSettings(),
             profile_photo=photo,
             notify_settings=PeerNotifySettings(show_previews=True),
-            common_chats_count=await ChatParticipant.common_chats_query(user_id, peer.user_id).count(),
+            common_chats_count=common_chats_count,
             birthday=birthday,
             read_dates_private=target_user.read_dates_private,
             wallpaper=wallpaper.to_tl() if wallpaper is not None else None,
