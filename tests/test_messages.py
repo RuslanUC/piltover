@@ -1083,10 +1083,10 @@ async def test_send_multiple_scheduled_messages(exit_stack: AsyncExitStack) -> N
     update1 = await client.expect_update(UpdateNewMessage, 5)
     assert update1.message.from_scheduled
     assert update1.message.message == "test 123"
-    update2 = await client.expect_update(UpdateNewMessage, 5)
+    update2 = await client.expect_update(UpdateNewMessage, 6)
     assert update2.message.from_scheduled
     assert update2.message.message == "test 456"
-    update3 = await client.expect_update(UpdateNewMessage, 5)
+    update3 = await client.expect_update(UpdateNewMessage, 7)
     assert update3.message.from_scheduled
     assert update3.message.message == "test 789"
 
