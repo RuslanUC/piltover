@@ -1080,13 +1080,13 @@ async def test_send_multiple_scheduled_messages(exit_stack: AsyncExitStack) -> N
     assert len(messages) == 0
     assert await client.get_chat_history_count("me") == 0
 
-    update1 = await client.expect_update(UpdateNewMessage, 4)
+    update1 = await client.expect_update(UpdateNewMessage, 5)
     assert update1.message.from_scheduled
     assert update1.message.message == "test 123"
-    update2 = await client.expect_update(UpdateNewMessage, 2)
+    update2 = await client.expect_update(UpdateNewMessage, 5)
     assert update2.message.from_scheduled
     assert update2.message.message == "test 456"
-    update3 = await client.expect_update(UpdateNewMessage, 2)
+    update3 = await client.expect_update(UpdateNewMessage, 5)
     assert update3.message.from_scheduled
     assert update3.message.message == "test 789"
 

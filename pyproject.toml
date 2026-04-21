@@ -37,8 +37,6 @@ dependencies = [
     "pillow (>=12.1.0,<13.0.0)",
     "mtproto[tgcrypto,http,ws] @ git+https://github.com/RuslanUC/mtproto.git",
     "aiofiles (>=25.1.0,<26.0.0)",
-    # Taskiq >= 0.11.16 has some problem with __name__ attribute of class methods
-    #  https://github.com/taskiq-python/taskiq/issues/436
     "taskiq (>=0.12,<0.13)",
     "taskiq-aio-pika (>=0.6,<0.7)",
     "taskiq-redis (>=1.2,<2)",

@@ -5,7 +5,6 @@ import hashlib
 import logging
 from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
-from datetime import timedelta
 from os import urandom
 from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn
 
