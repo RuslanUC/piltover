@@ -364,6 +364,8 @@ class Client:
         while True:
             try:
                 await self.recv()
+            except Disconnection:
+                raise
             except Exception as e:
                 logger.opt(exception=e).error("An error occurred in recv loop")
                 raise
@@ -386,16 +388,35 @@ class Client:
             if not sent and not any(not sess.message_queue.empty() for sess in self.active_sessions.values()):
                 self.message_available.clear()
 
+    async def _timer_task(self) -> None:
+        try:
+            async with self.disconnect_timeout:
+                await asyncio.get_running_loop().create_future()
+        except TimeoutError:
+            ...
+
     @logger.catch
     async def worker(self):
         logger.debug("Client connected: {addr}", addr=self.peername)
 
+        loop = asyncio.get_running_loop()
+        self.disconnect_timeout = asyncio.timeout(None)
+
+        done, pending = await asyncio.wait(
+            [
+                loop.create_task(self._timer_task()),
+                loop.create_task(self._worker_loop_recv()),
+                loop.create_task(self._worker_loop_send()),
+            ],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
         try:
-            async with asyncio.timeout(None) as self.disconnect_timeout:
-                await asyncio.gather(
-                    self._worker_loop_recv(),
-                    self._worker_loop_send(),
-                )
+            for task in pending:
+                task.cancel()
+
+            for task in done:
+                await task
         except Disconnection as err:
             if err.transport_error is not None:
                 await self._write_packet(ErrorPacket(err.transport_error), ignore_errors=True)
