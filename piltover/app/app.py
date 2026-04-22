@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import AsyncIterator
@@ -94,7 +95,9 @@ class PiltoverApp:
         if self._gateway.worker is not None:
             register_handlers(self._gateway.worker)
 
-    def _run_in_memory_scheduler(self) -> asyncio.Task | None:
+    def _run_in_memory_scheduler(
+            self, update_interval: timedelta | None = None, loop_interval: timedelta | None = None,
+    ) -> asyncio.Task | None:
         if self._gateway.scheduler is None:
             return None
 
@@ -102,7 +105,12 @@ class PiltoverApp:
         from taskiq.cli.scheduler.args import SchedulerArgs
 
         return asyncio.create_task(run_scheduler(
-            SchedulerArgs(scheduler=self._gateway.scheduler.scheduler, modules=[])
+            SchedulerArgs(
+                scheduler=self._gateway.scheduler.scheduler,
+                modules=[],
+                update_interval=update_interval,
+                loop_interval=loop_interval,
+            )
         ))
 
     async def run(self, host: str | None = None, port: int | None = None):
@@ -137,7 +145,8 @@ class PiltoverApp:
             self, create_sys_user: bool = True, create_countries: bool = False, create_reactions: bool = False,
             create_chat_themes: bool = False, create_peer_colors: bool = False, create_languages: bool = False,
             create_system_stickersets: bool = False, create_emoji_groups: bool = False, run_scheduler: bool = False,
-            run_actual_server: bool = False,
+            run_actual_server: bool = False, scheduler_update_interval: timedelta | None = None,
+            scheduler_loop_interval: timedelta | None = None,
     ) -> AsyncIterator[Gateway]:
         if SYSTEM_CONFIG.debug_tracing:
             Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
@@ -162,7 +171,7 @@ class PiltoverApp:
 
         scheduler_task = None
         if run_scheduler:
-            scheduler_task = self._run_in_memory_scheduler()
+            scheduler_task = self._run_in_memory_scheduler(scheduler_update_interval, scheduler_loop_interval)
 
         if run_actual_server:
             server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)

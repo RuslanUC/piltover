@@ -976,7 +976,7 @@ async def test_send_scheduled_message(exit_stack: AsyncExitStack) -> None:
     assert len(messages) == 0
     assert await client.get_chat_history_count("me") == 0
 
-    update = await client.expect_update(UpdateNewMessage, 4)
+    update = await client.expect_update(UpdateNewMessage, 6)
     assert update.message.from_scheduled
     assert update.message.message == "test 123"
 
@@ -1004,7 +1004,7 @@ async def test_edit_scheduled_message_date(exit_stack: AsyncExitStack) -> None:
         schedule_date=int(time()),
     ))
 
-    update = await client.expect_update(UpdateNewMessage, 1)
+    update = await client.expect_update(UpdateNewMessage, 3)
     assert update.message.from_scheduled
     assert update.message.message == "test 123"
 
@@ -1020,7 +1020,7 @@ async def test_edit_scheduled_message_date(exit_stack: AsyncExitStack) -> None:
 async def test_delete_scheduled_message(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
-    message = await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=1))
+    message = await client.send_message("me", "test 123", schedule_date=datetime.now() + timedelta(seconds=2))
 
     await client.invoke(DeleteScheduledMessages(
         peer=await client.resolve_peer("me"),
@@ -1055,7 +1055,7 @@ async def test_messages_ttl(exit_stack: AsyncExitStack) -> None:
         period=0,
     ))
 
-    update = await client.expect_update(UpdateDeleteMessages, 1.5)
+    update = await client.expect_update(UpdateDeleteMessages, 3)
     assert update.messages == [message2.id]
 
     message3 = await client.send_message(group.id, "test message 2 that wont be deleted")
@@ -1080,13 +1080,13 @@ async def test_send_multiple_scheduled_messages(exit_stack: AsyncExitStack) -> N
     assert len(messages) == 0
     assert await client.get_chat_history_count("me") == 0
 
-    update1 = await client.expect_update(UpdateNewMessage, 4)
+    update1 = await client.expect_update(UpdateNewMessage, 5)
     assert update1.message.from_scheduled
     assert update1.message.message == "test 123"
-    update2 = await client.expect_update(UpdateNewMessage, 2)
+    update2 = await client.expect_update(UpdateNewMessage, 6)
     assert update2.message.from_scheduled
     assert update2.message.message == "test 456"
-    update3 = await client.expect_update(UpdateNewMessage, 2)
+    update3 = await client.expect_update(UpdateNewMessage, 7)
     assert update3.message.from_scheduled
     assert update3.message.message == "test 789"
 

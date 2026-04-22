@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import builtins
 import hashlib
 import logging
-from asyncio import Task, DefaultEventLoopPolicy, CancelledError
+from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Coroutine, Protocol, overload, Literal, NoReturn
-from unittest import mock
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn
 
 import pytest
 import pytest_asyncio
@@ -23,7 +21,6 @@ from tortoise import connections
 from tortoise.backends.sqlite import SqliteClient
 
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
-from tests.scheduled_loop import run_scheduler_loop_every_100ms
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
@@ -127,16 +124,13 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
             scheduler.startup = _empty_async_func
             scheduler.shutdown = _empty_async_func
 
-            stack.enter_context(
-                mock.patch("taskiq.cli.scheduler.run.run_scheduler_loop", run_scheduler_loop_every_100ms)
-            )
-
         test_server: Gateway = await stack.enter_async_context(app.run_test(
             create_countries=create_countries, create_reactions=create_reactions, create_chat_themes=create_chat_themes,
             create_peer_colors=create_peer_colors, create_languages=create_languages,
             create_system_stickersets=create_system_stickersets, create_emoji_groups=create_emoji_groups,
             run_scheduler=run_scheduler, run_actual_server=USE_REAL_TCP_FOR_TESTING,
-            create_sys_user=not dont_create_sys_user,
+            create_sys_user=not dont_create_sys_user, scheduler_update_interval=1,
+            scheduler_loop_interval=1,
         ))
 
         server_reset_token = server_instance.set(test_server)
@@ -229,39 +223,6 @@ def _async_task_done_callback(task: Task) -> None:
             logger.opt(exception=task.exception()).error("Async task raised an exception")
     except CancelledError as e:
         logger.opt(exception=e).error("Async task was cancelled")
-
-
-class _DebugTask(asyncio.Task):
-    def cancel(self, *args, **kwargs) -> bool:
-        # stack = self.get_stack()
-        # if stack:
-        #     formatted = "".join(traceback.format_stack())
-        #     logger.error(f"Async task is being cancelled from:\n{formatted}")
-        return super().cancel(*args, **kwargs)
-
-    @classmethod
-    def factory(cls, loop: asyncio.BaseEventLoop, coro: Coroutine, **kwargs) -> asyncio.Task:
-        return cls(coro, loop=loop, **kwargs)
-
-
-class CustomEventLoop(DefaultEventLoopPolicy._loop_factory):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.set_task_factory(_DebugTask.factory)
-
-    def create_task(self, *args, **kwargs) -> Task:
-        task: Task = super().create_task(*args, **kwargs)
-        # task.add_done_callback(_async_task_done_callback)
-        return task
-
-
-class CustomEventLoopPolicy(DefaultEventLoopPolicy):
-    _loop_factory = CustomEventLoop
-
-
-@pytest.fixture(scope="session")
-def event_loop_policy():
-    return CustomEventLoopPolicy()
 
 
 @pytest_asyncio.fixture(autouse=True)

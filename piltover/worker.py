@@ -154,9 +154,16 @@ class Worker(MessageHandler):
         # TODO: add RedisPubSub
         self.pubsub = InMemoryPubSub()
 
+        # https://github.com/taskiq-python/taskiq/issues/436
+        async def _handle_tl_rpc_measure_time(call_hex: str) -> RpcResponse | str:
+            return await self._handle_tl_rpc_measure_time(call_hex)
+
+        async def _handle_tl_rpc_internal(call: str) -> Any:
+            return await self._handle_tl_rpc_internal(call)
+
         # self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
-        self.broker.register_task(self._handle_tl_rpc_measure_time, "handle_tl_rpc")
-        self.broker.register_task(self._handle_tl_rpc_internal, "handle_tl_rpc_internal")
+        self.broker.register_task(_handle_tl_rpc_measure_time, "handle_tl_rpc")
+        self.broker.register_task(_handle_tl_rpc_internal, "handle_tl_rpc_internal")
         self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
         self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
 
@@ -191,7 +198,7 @@ class Worker(MessageHandler):
 
         return await query
 
-    async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse:
+    async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse | str:
         with measure_time("_handle_tl_rpc()"):
             return await self._handle_tl_rpc(call_hex)
 
