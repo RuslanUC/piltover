@@ -1,20 +1,24 @@
+import asyncio
 import re
 from contextlib import AsyncExitStack
 from datetime import timedelta, datetime, UTC
-from typing import cast
+from io import BytesIO
+from typing import cast, Any
 
 import pytest
 from faker import Faker
 from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified, TtlDaysInvalid, AuthKeyUnregistered, \
     TwoFaConfirmWait, PasswordHashInvalid
+from pyrogram.raw.core import TLRequest
 from pyrogram.raw.functions.account import CheckUsername, SetAccountTTL, GetAccountTTL, GetAuthorizations, \
     DeleteAccount, GetPassword, SendConfirmPhoneCode, ConfirmPhone
-from pyrogram.raw.types import UpdateUserName, UpdateUser, AccountDaysTTL, CodeSettings, UpdateNewMessage
+from pyrogram.raw.types import UpdateUserName, UpdateUser, AccountDaysTTL, CodeSettings, UpdateNewMessage, \
+    UpdatesTooLong
 from pyrogram.raw.types.auth import SentCode as TLSentCode
 from pyrogram.utils import compute_password_check
 
 from piltover.db.models import User, UserPassword, SentCode, PhoneCodePurpose, TaskIqScheduledDeleteUser
-from tests.client import TestClient
+from tests.client import TestClient, InternalPushSession
 from tests.conftest import ClientFactory, ClientFactorySync
 
 
@@ -356,3 +360,87 @@ async def test_delete_account_password_scheduled_cancel(
     ))
 
     assert TaskIqScheduledDeleteUser.filter(user_id=client.me.id).exists()
+
+
+class RegisterDevice_70(TLRequest[bool]):
+    __slots__ = ("token_type", "token",)
+
+    ID = 0x637ea878
+    QUALNAME = "functions.account.RegisterDevice_70"
+
+    def __init__(self, *, token_type: int, token: str):
+        self.token_type = token_type
+        self.token = token
+
+    @classmethod
+    def read(cls, b: BytesIO, *args: Any) -> Any:
+        from pyrogram.raw.core import Int, String
+
+        token_type = Int.read(b)
+        token = String.read(b)
+
+        return cls(token_type=token_type, token=token)
+
+    def write(self, *args: Any) -> bytes:
+        from pyrogram.raw.core import Int, String
+
+        b = BytesIO()
+        b.write(Int(self.ID, False))
+        b.write(Int(self.token_type, True))
+        b.write(String(self.token))
+        return b.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("disconnect",),
+    [
+        (False,),
+        (True,),
+    ],
+    ids=(
+        "dont disconnect client",
+        "disconnect client",
+    )
+)
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_internal_push(client_fake: ClientFactorySync, disconnect: bool) -> None:
+    client1 = client_fake()
+    client2 = client_fake()
+    async with client2:
+        await client1.start()
+
+        user1 = await client2.resolve_user(client1)
+
+        push_session = InternalPushSession(
+            dc_id=client1.session.dc_id,
+            auth_key=client1.session.auth_key,
+            test_mode=client1.session.test_mode,
+            is_media=client1.session.is_media,
+            is_cdn=client1.session.is_cdn,
+        )
+
+        await push_session.start()
+
+        assert await client1.invoke(RegisterDevice_70(
+            token_type=7,
+            token=str(push_session.session_id_int),
+        ))
+
+        if disconnect:
+            await client1.stop()
+
+        data_waiter = push_session.data_waiter()
+        message = await client2.send_message(user1.id, "test message")
+
+        internal_push_obj = await asyncio.wait_for(data_waiter, 3)
+        assert isinstance(internal_push_obj, UpdatesTooLong)
+
+        data_waiter = push_session.data_waiter()
+        await message.delete(True)
+
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(data_waiter, 3)
+
+        if not disconnect:
+            await client1.stop()

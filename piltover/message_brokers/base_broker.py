@@ -216,7 +216,7 @@ class BaseMessageBroker(ABC):
         )
 
         for session in send_to:
-            if session.auth_id in ignore_auths:
+            if session.auth_id in ignore_auths or session.is_internal_push:
                 continue
             try:
                 if isinstance(message.obj, ObjectWithLayerRequirement):

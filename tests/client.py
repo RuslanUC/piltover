@@ -11,15 +11,18 @@ from time import time
 from typing import TypeVar, Self, TYPE_CHECKING, Any, cast, overload, Literal
 from urllib.parse import parse_qs, urlparse
 
+import pyrogram
 from loguru import logger
 from pyrogram import Client
+from pyrogram.connection import Connection
 from pyrogram.connection.transport import TCP
-from pyrogram.crypto import rsa
+from pyrogram.crypto import rsa, mtproto
 from pyrogram.crypto.rsa import PublicKey
+from pyrogram.errors import AuthKeyDuplicated, RPCError, SecurityCheckMismatch
 from pyrogram.raw.base import InputPrivacyKey
 from pyrogram.raw.core import TLObject as PyroTLObject
 from pyrogram.raw.core.tl_object import TLObjectT, TLRequest as PyroTLRequest
-from pyrogram.raw.functions import InvokeWithLayer
+from pyrogram.raw.functions import InvokeWithLayer, Ping
 from pyrogram.raw.functions.account import SetPrivacy
 from pyrogram.raw.functions.channels import GetAdminLog
 from pyrogram.raw.functions.contacts import ExportContactToken, ImportContactToken
@@ -29,19 +32,19 @@ from pyrogram.raw.types import Updates, InputPrivacyKeyAddedByPhone, InputPrivac
     InputPrivacyValueDisallowChatParticipants, InputPrivacyValueDisallowUsers, InputPrivacyValueDisallowContacts, \
     InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts, UpdateShort, \
     UpdatesCombined, ExportedContactToken, UpdatesTooLong, ChannelAdminLogEventsFilter
-from pyrogram.session import Session as PyroSession, Auth
+from pyrogram.session import Session as PyroSession, Auth, Session
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
 from pyrogram.types import User
 
 from piltover.tl.types.channels import AdminLogResults
+from piltover.tl import Long
 from tests import USE_REAL_TCP_FOR_TESTING, server_instance, test_phone_number, skipping_auth
 
 if TYPE_CHECKING:
     from piltover.gateway import Gateway
     from piltover.tl import TLRequest
-
 
 T = TypeVar("T")
 InputPrivacyKey = InputPrivacyKeyAddedByPhone | InputPrivacyKeyChatInvite | InputPrivacyKeyForwards \
@@ -525,3 +528,100 @@ class TestClient(Client):
         ))
 
         return AdminLogResults.read(BytesIO(result.write()))
+
+
+class InternalPushSession(Session):
+    def __init__(
+            self,
+            dc_id: int,
+            auth_key: bytes,
+            test_mode: bool,
+            is_media: bool = False,
+            is_cdn: bool = False
+    ) -> None:
+        super().__init__(None, dc_id, auth_key, test_mode, is_media, is_cdn)
+
+        self._waiter: asyncio.Future | None = None
+
+    @property
+    def session_id_int(self) -> int:
+        return Long.read_bytes(self.session_id)
+
+    async def start(self):
+        while True:
+            self.connection = Connection(
+                self.dc_id,
+                self.test_mode,
+                False,
+                {},
+                self.is_media
+            )
+
+            try:
+                await self.connection.connect()
+
+                self.recv_task = self.loop.create_task(self.recv_worker())
+
+                await self.send(Ping(ping_id=0), timeout=self.START_TIMEOUT)
+
+                self.ping_task = self.loop.create_task(self.ping_worker())
+
+                logger.info(f"Initialized internal push session: {self.session_id_int}")
+            except AuthKeyDuplicated as e:
+                await self.stop()
+                raise e
+            except (OSError, RPCError):
+                await self.stop()
+            except Exception as e:
+                await self.stop()
+                raise e
+            else:
+                break
+
+        self.is_started.set()
+
+        logger.info("Session started")
+
+    async def stop(self):
+        self.is_started.clear()
+
+        self.stored_msg_ids.clear()
+
+        self.ping_task_event.set()
+
+        if self.ping_task is not None:
+            await self.ping_task
+
+        self.ping_task_event.clear()
+
+        await self.connection.close()
+
+        if self.recv_task:
+            await self.recv_task
+
+        logger.info("Session stopped")
+
+    async def handle_packet(self, packet):
+        try:
+            data = await self.loop.run_in_executor(
+                pyrogram.crypto_executor,
+                mtproto.unpack,
+                BytesIO(packet),
+                self.session_id,
+                self.auth_key,
+                self.auth_key_id,
+                # self.stored_msg_ids
+            )
+        except SecurityCheckMismatch as e:
+            return
+
+        if self._waiter is not None:
+            self._waiter.set_result(data.body)
+            self._waiter = None
+
+        await super().handle_packet(packet)
+
+    def data_waiter(self) -> asyncio.Future:
+        if self._waiter is None:
+            self._waiter = asyncio.get_running_loop().create_future()
+        return self._waiter
