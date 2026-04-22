@@ -54,6 +54,8 @@ class User(Model):
     profile_color_id: int | None
 
     username: models.Username | QuerySet[models.Username] | None
+    background_emojis: models.UserBackgroundEmojis | QuerySet[models.UserBackgroundEmojis] | None
+    emoji_status: models.UserEmojiStatus | QuerySet[models.UserEmojiStatus] | None
 
     cached_username: models.Username | None | _Missing = _MISSING
 
@@ -109,9 +111,15 @@ class User(Model):
 
         # TODO: min (https://core.telegram.org/api/min)
 
-        username = await self.get_username()
+        if self.username is None or isinstance(self.username, models.Username):
+            username = self.username
+        else:
+            username = await self.get_username()
 
-        emojis = await models.UserBackgroundEmojis.get_or_none(user=self)
+        if self.background_emojis is None or isinstance(self.background_emojis, models.UserBackgroundEmojis):
+            emojis = self.background_emojis
+        else:
+            emojis = await models.UserBackgroundEmojis.get_or_none(user=self)
 
         color = None
         profile_color = None
@@ -139,7 +147,10 @@ class User(Model):
 
         emoji_status = None
         if not self.bot:
-            emoji_status = await models.UserEmojiStatus.get_or_none(user_id=self.id)
+            if self.emoji_status is None or isinstance(self.emoji_status, models.UserEmojiStatus):
+                emoji_status = self.emoji_status
+            else:
+                emoji_status = await models.UserEmojiStatus.get_or_none(user_id=self.id)
 
         result = UserToFormat(
             id=self.id,

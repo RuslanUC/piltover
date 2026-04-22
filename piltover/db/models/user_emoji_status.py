@@ -10,7 +10,7 @@ from piltover.tl import EmojiStatus, EmojiStatusEmpty
 
 class UserEmojiStatus(Model):
     id: int = fields.BigIntField(primary_key=True)
-    user: models.User = fields.OneToOneField("models.User")
+    user: models.User = fields.OneToOneField("models.User", related_name="emoji_status")
     emoji: models.File = fields.ForeignKeyField("models.File")
     until: datetime | None = fields.DatetimeField(null=True, default=None)
 

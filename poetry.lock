@@ -2971,21 +2971,6 @@ psycopg = ["psycopg[binary,pool] (>=3.0.12,<4.0.0)"]
 ptpython = ["ptpython (>=3.0.0)"]
 
 [[package]]
-name = "tortoise-orm-trace-unused-fields"
-version = "0.1.0b2"
-description = "Small hook to trace Tortoise-ORM unused fields"
-optional = false
-python-versions = ">=3.11"
-groups = ["main"]
-files = [
-    {file = "tortoise_orm_trace_unused_fields-0.1.0b2-py3-none-any.whl", hash = "sha256:2386685cc897e707ee43fda7646fdae13c21b7ed65049a41ff634de7383327d0"},
-    {file = "tortoise_orm_trace_unused_fields-0.1.0b2.tar.gz", hash = "sha256:8a41b4fd0d4ab8cb399fda6f116df608b0503492a6ea733e46a4c4c6d0fb27e5"},
-]
-
-[package.dependencies]
-tortoise-orm = ">=1.0.0,<2"
-
-[[package]]
 name = "tqdm"
 version = "4.67.3"
 description = "Fast, Extensible Progress Meter"
@@ -3476,4 +3461,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11.1,<4.0"
-content-hash = "dfb18769b02c1d6eeba6ab78cd71cb3dafde5b90b4e74d341e1708a262a9c45b"
+content-hash = "02f27d29fedf1b96fd9b652c31a0287792a8758beaedb82fa7ea6b50ef0e2052"

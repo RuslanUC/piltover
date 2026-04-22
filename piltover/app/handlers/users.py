@@ -1,5 +1,6 @@
 from typing import cast
 
+from loguru import logger
 from tortoise.expressions import Q, Subquery
 
 from piltover.context import request_ctx
@@ -7,6 +8,7 @@ from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, BotInfo, ChatParticipant, \
     MessageRef, Wallpaper
 from piltover.enums import ReqHandlerFlags
+from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
@@ -19,7 +21,22 @@ handler = MessageHandler("users")
 
 @handler.on_request(GetFullUser, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
-    peer = await Peer.from_input_peer_raise(user_id, request.id, peer_types=(PeerType.SELF, PeerType.USER))
+    ctx = request_ctx.get()
+    peer_query = Peer.filter(owner_id=user_id)
+
+    if Peer.input_is_self(user_id, request.id):
+        peer_query = peer_query.get(user_id=user_id)
+    elif isinstance(request.id, (InputUser, InputPeerUser)):
+        if not User.check_access_hash(user_id, ctx.auth_id, request.id.user_id, request.id.access_hash):
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+        peer_query = peer_query.get(user_id=request.id.user_id)
+    else:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    peer = await peer_query.select_related("user__username", "user__background_emojis", "user__emoji_status")
+    if peer is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
     target_user = peer.user
 
     privacy_rules = await PrivacyRule.has_access_to_bulk([target_user], user_id, [
