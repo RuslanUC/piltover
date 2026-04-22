@@ -4,6 +4,7 @@ from datetime import datetime
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
+from tortoise.queryset import QuerySetSingle
 
 from piltover.context import request_ctx
 from piltover.db import models
@@ -294,3 +295,22 @@ class Peer(Model):
             user_id = user if isinstance(user, int) else user.id
             return input_peer.user_id == user_id
         return False
+
+    @classmethod
+    def query_from_input_user_or_raise(
+            cls, user_id: int, input_user: InputPeerUser | InputUser | InputPeerSelf, auth_id: int | None = None,
+    ) -> QuerySetSingle[Peer]:
+        if auth_id is None:
+            ctx = request_ctx.get()
+            auth_id = ctx.auth_id
+
+        peer_query = Peer.filter(owner_id=user_id)
+
+        if Peer.input_is_self(user_id, input_user):
+            return peer_query.get(user_id=user_id)
+        elif isinstance(input_user, (InputUser, InputPeerUser)):
+            if not models.User.check_access_hash(user_id, auth_id, input_user.user_id, input_user.access_hash):
+                raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+            return peer_query.get(user_id=input_user.user_id)
+        else:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")

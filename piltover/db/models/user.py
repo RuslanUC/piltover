@@ -56,6 +56,7 @@ class User(Model):
     username: models.Username | QuerySet[models.Username] | None
     background_emojis: models.UserBackgroundEmojis | QuerySet[models.UserBackgroundEmojis] | None
     emoji_status: models.UserEmojiStatus | QuerySet[models.UserEmojiStatus] | None
+    bot_info: models.BotInfo | QuerySet[models.BotInfo] | None
 
     cached_username: models.Username | None | _Missing = _MISSING
 
@@ -196,6 +197,7 @@ class User(Model):
             usernames = {}
 
         if user_ids:
+            # TODO: dont fetch for users that already have background emojis prefetched
             background_emojis = {
                 emojis.user_id: emojis
                 for emojis in await models.UserBackgroundEmojis.filter(user_id__in=user_ids)
@@ -224,6 +226,7 @@ class User(Model):
             photos = {}
 
         if user_ids:
+            # TODO: dont fetch for users that already have emoji statuses prefetched
             emoji_statuses = {
                 status.user_id: status
                 for status in await models.UserEmojiStatus.filter(user_id__in=user_ids)
