@@ -129,23 +129,23 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
 
 
 async def _create_channel(
-        creator: User, title: str, description: str | None, is_channel: bool, is_supergroup: bool,
+        creator_id: int, title: str, description: str | None, is_channel: bool, is_supergroup: bool,
 ) -> tuple[Channel, Peer]:
     channel = await Channel.create(
-        creator=creator, name=title, description=description, channel=is_channel, supergroup=is_supergroup,
+        creator_id=creator_id, name=title, description=description, channel=is_channel, supergroup=is_supergroup,
     )
     peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL)
 
     return channel, peer_channel
 
 
-async def _add_user_to_channel(channel: Channel, user: User) -> ChatParticipant:
-    user_is_creator = channel.creator_id == user.id
+async def _add_user_to_channel(channel: Channel, user_id: int) -> ChatParticipant:
+    user_is_creator = channel.creator_id == user_id
 
-    peer_for_user, _ = await Peer.get_or_create(owner=user, channel=channel, type=PeerType.CHANNEL)
+    peer_for_user, _ = await Peer.get_or_create(owner_id=user_id, channel=channel, type=PeerType.CHANNEL)
     participant, _ = await ChatParticipant.update_or_create(
         channel=channel,
-        user=user,
+        user_id=user_id,
         defaults={
             "chat_channel_id": channel.make_id(),
             "left": False,
@@ -153,13 +153,13 @@ async def _add_user_to_channel(channel: Channel, user: User) -> ChatParticipant:
         },
     )
     await Dialog.create_or_unhide(peer_for_user)
-    await SessionManager.subscribe_to_channel(channel.id, [user.id])
+    await SessionManager.subscribe_to_channel(channel.id, [user_id])
 
     return participant
 
 
-@handler.on_request(CreateChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def create_channel(request: CreateChannel, user: User) -> Updates:
+@handler.on_request(CreateChannel, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def create_channel(request: CreateChannel, user_id: int) -> Updates:
     if not request.broadcast and not request.megagroup:
         raise ErrorRpc(error_code=400, error_message="CHANNELS_TOO_MUCH")
 
@@ -173,12 +173,15 @@ async def create_channel(request: CreateChannel, user: User) -> Updates:
         raise ErrorRpc(error_code=400, error_message="CHAT_ABOUT_TOO_LONG")
 
     async with in_transaction():
-        channel, peer_channel = await _create_channel(user, title, description, request.broadcast, request.megagroup)
-        await _add_user_to_channel(channel, user)
+        channel, peer_channel = await _create_channel(user_id, title, description, request.broadcast, request.megagroup)
+        await _add_user_to_channel(channel, user_id)
+
+    user = await User.get(id=user_id).only("id")
+    user.bot = False
 
     updates = await send_message_internal(
         user, peer_channel, None, None, False,
-        author=user, type=MessageType.SERVICE_CHANNEL_CREATE,
+        author=user_id, type=MessageType.SERVICE_CHANNEL_CREATE,
         extra_info=MessageActionChannelCreate(title=request.title).write(),
     )
 
@@ -374,13 +377,13 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     )
 
 
-@handler.on_request(EditTitle)
-async def edit_channel_title(request: EditTitle, user: User) -> Updates:
+@handler.on_request(EditTitle, ReqHandlerFlags.DONT_FETCH_USER)
+async def edit_channel_title(request: EditTitle, user_id: int) -> Updates:
     peer = await Peer.from_input_peer_raise(
-        user.id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
+        user_id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
-    participant = await peer.channel.get_participant(user.id)
+    participant = await peer.channel.get_participant(user_id)
     if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -389,17 +392,19 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
 
     await AdminLogEntry.create(
         channel=peer.channel,
-        user_id=user.id,
+        user_id=user_id,
         action=AdminLogEntryAction.CHANGE_TITLE,
         prev=old_title.encode("utf8"),
         new=peer.channel.name.encode("utf8"),
         searchable=f"{old_title}\n{peer.channel.name}",
     )
 
+    user = await User.get(id=user_id).only("id", "bot")
+
     updates = await upd.update_channel(peer.channel)
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
-        author=user, type=MessageType.SERVICE_CHAT_EDIT_TITLE,
+        author=user_id, type=MessageType.SERVICE_CHAT_EDIT_TITLE,
         extra_info=MessageActionChatEditTitle(title=request.title).write(),
     )
     updates.updates.extend(updates_msg.updates)
@@ -409,33 +414,35 @@ async def edit_channel_title(request: EditTitle, user: User) -> Updates:
     return updates
 
 
-@handler.on_request(EditPhoto)
-async def edit_channel_photo(request: EditPhoto, user: User):
+@handler.on_request(EditPhoto, ReqHandlerFlags.DONT_FETCH_USER)
+async def edit_channel_photo(request: EditPhoto, user_id: int):
     peer = await Peer.from_input_peer_raise(
-        user.id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
+        user_id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
         select_related=("channel__photo",),
     )
 
-    participant = await peer.channel.get_participant(user.id)
+    participant = await peer.channel.get_participant(user_id)
     if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     channel = peer.channel
     old_photo = channel.photo
-    await channel.update(photo=await resolve_input_chat_photo(user.id, request.photo))
+    await channel.update(photo=await resolve_input_chat_photo(user_id, request.photo))
 
     await AdminLogEntry.create(
         channel=peer.channel,
-        user_id=user.id,
+        user_id=user_id,
         action=AdminLogEntryAction.CHANGE_PHOTO,
         old_photo=old_photo,
         new_photo=channel.photo,
     )
 
+    user = await User.get(id=user_id).only("id", "bot")
+
     updates = await upd.update_channel(peer.channel)
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
-        author=user, type=MessageType.SERVICE_CHAT_EDIT_PHOTO,
+        author=user_id, type=MessageType.SERVICE_CHAT_EDIT_PHOTO,
         extra_info=MessageActionChatEditPhoto(
             photo=channel.photo.to_tl_photo() if channel.photo else PhotoEmpty(id=0),
         ).write(),
@@ -1072,13 +1079,13 @@ async def edit_creator(request: EditCreator, user_id: int) -> Updates:
 CHANNEL_PRIVATE_ERR = ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
 
-@handler.on_request(JoinChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def join_channel(request: JoinChannel, user: User) -> Updates:
-    channel = await Channel.get_from_input(user, request.channel)
+@handler.on_request(JoinChannel, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def join_channel(request: JoinChannel, user_id: int) -> Updates:
+    channel = await Channel.get_from_input(user_id, request.channel)
     if channel is None:
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    participant = await ChatParticipant.get_or_none(channel=channel, user=user)
+    participant = await ChatParticipant.get_or_none(channel=channel, user_id=user_id)
     if participant is not None:
         if not participant.left:
             raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
@@ -1093,10 +1100,13 @@ async def join_channel(request: JoinChannel, user: User) -> Updates:
         ).select_related("username")
         if linked_channel is None:
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="no linked channel")
-        linked_participant = await linked_channel.get_participant(user, True)
+        linked_participant = await linked_channel.get_participant(user_id, True)
         if not linked_channel.can_view_messages(linked_participant):
             logger.warning(f"{linked_participant}, {linked_participant.left}")
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="cant access linked channel")
+
+    user = await User.get(id=user_id).only("id")
+    user.bot = False
 
     return await user_join_chat_or_channel(channel, user, None)
 

@@ -489,7 +489,7 @@ class MessageRef(Model):
 
     @classmethod
     async def create_for_peer(
-            cls, peer: models.Peer, author: models.User, random_id: int | None = None,
+            cls, peer: models.Peer, author: models.User | int, random_id: int | None = None,
             opposite: bool = True, unhide_dialog: bool = True, reply_to: MessageRef | None = None,
             top_message: MessageRef | None = None,
             **message_kwargs,
@@ -499,9 +499,17 @@ class MessageRef(Model):
         if random_id is not None and await cls.filter(peer=peer, random_id=random_id).exists():
             raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
+        author_kwargs = {}
+        if isinstance(author, models.User):
+            author_kwargs["author"] = author
+        elif isinstance(author, int):
+            author_kwargs["author_id"] = author
+        else:
+            raise ValueError(f"Expected User or int, got {author}")
+
         content = await models.MessageContent.create_for_peer(
             related_peer=peer,
-            author=author,
+            **author_kwargs,
             **message_kwargs,
         )
 

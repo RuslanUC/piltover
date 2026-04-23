@@ -250,7 +250,7 @@ def _get_invite_hash_from_link(invite_link: str) -> str | None:
 
 async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_invite: ChatInvite | None) -> Updates:
     if isinstance(chat_or_channel, Channel):
-        channels_count = await ChatParticipant.filter(user=user, channel_id__not=None, left=False).count()
+        channels_count = await ChatParticipant.filter(user_id=user.id, channel_id__not=None, left=False).count()
         if channels_count > APP_CONFIG.channels_per_user_limit:
             raise ErrorRpc(error_code=400, error_message="CHANNELS_TOO_MUCH")
 
@@ -275,10 +275,10 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
 
     async with in_transaction():
         new_peer, _ = await Peer.get_or_create(
-            owner=user, type=PeerType.CHAT if isinstance(chat_or_channel, Chat) else PeerType.CHANNEL,
+            owner_id=user.id, type=PeerType.CHAT if isinstance(chat_or_channel, Chat) else PeerType.CHANNEL,
             **Chat.or_channel(chat_or_channel),
         )
-        await ChatParticipant.update_or_create(user=user, **Chat.or_channel(chat_or_channel), defaults={
+        await ChatParticipant.update_or_create(user_id=user.id, **Chat.or_channel(chat_or_channel), defaults={
             "inviter_id": from_invite.user_id if from_invite is not None else 0,
             "invite": from_invite,
             "min_message_id": min_message_id,
@@ -287,14 +287,14 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         })
         await ChatInviteRequest.filter(id__in=Subquery(
             ChatInviteRequest.filter(
-                Chat.query(chat_or_channel, "invite") & Q(user=user)
+                Chat.query(chat_or_channel, "invite") & Q(user_id=user.id)
             ).values_list("id", flat=True)
         )).delete()
         await Dialog.create_or_unhide(new_peer)
         if isinstance(chat_or_channel, Channel):
             await AdminLogEntry.create(
                 channel=chat_or_channel,
-                user=user,
+                user_id=user.id,
                 # TODO: PARTICIPANT_JOIN_INVITE / PARTICIPANT_JOIN_REQUEST
                 action=AdminLogEntryAction.PARTICIPANT_JOIN,
             )
@@ -304,7 +304,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         await SessionManager.subscribe_to_channel(channel.id, [user.id])
 
         # TODO: send SERVICE_CHAT_USER_INVITE_JOIN or SERVICE_CHAT_USER_ADD message if channel is a supergroup
-        return await upd.update_channel_for_user(channel, user)
+        return await upd.update_channel_for_user(channel, user.id)
 
     chat_peers = {
         peer.owner_id: peer
@@ -315,13 +315,13 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
     if from_invite is not None:
         updates_msg = await send_message_internal(
             user, chat_peers[user.id], None, None, False,
-            author=user, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
+            author=user.id, type=MessageType.SERVICE_CHAT_USER_INVITE_JOIN,
             extra_info=MessageActionChatJoinedByLink(inviter_id=from_invite.user_id).write(),
         )
     else:
         updates_msg = await send_message_internal(
             user, chat_peers[user.id], None, None, False,
-            author=user, type=MessageType.SERVICE_CHAT_USER_ADD,
+            author=user.id, type=MessageType.SERVICE_CHAT_USER_ADD,
             extra_info=MessageActionChatAddUser(users=[user.id]).write(),
         )
 
@@ -330,17 +330,20 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
     return updates
 
 
-@handler.on_request(ImportChatInvite, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def import_chat_invite(request: ImportChatInvite, user: User) -> Updates:
-    invite = await _get_invite_with_some_checks(request.hash, user.id)
-    if await ChatParticipant.filter(Chat.query(invite.chat_or_channel), user=user, left=False).exists():
+@handler.on_request(ImportChatInvite, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def import_chat_invite(request: ImportChatInvite, user_id: int) -> Updates:
+    invite = await _get_invite_with_some_checks(request.hash, user_id)
+    if await ChatParticipant.filter(Chat.query(invite.chat_or_channel), user_id=user_id, left=False).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
     if invite.request_needed or isinstance(invite.chat_or_channel, Channel) and invite.channel.join_request:
-        query = Chat.query(invite.chat_or_channel, "invite") & Q(user=user)
+        query = Chat.query(invite.chat_or_channel, "invite") & Q(user_id=user_id)
         if not await ChatInviteRequest.filter(query).exists():
             # TODO: send updatePendingJoinRequests
-            await ChatInviteRequest.create(user=user, invite=invite)
+            await ChatInviteRequest.create(user_id=user_id, invite=invite)
         raise ErrorRpc(error_code=400, error_message="INVITE_REQUEST_SENT")
+
+    user = await User.get(id=user_id).only("id")
+    user.bot = False
 
     return await user_join_chat_or_channel(invite.chat_or_channel, user, invite)
 
@@ -486,7 +489,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
     else:
         # TODO: send SERVICE_CHAT_USER_INVITE_JOIN and SERVICE_CHAT_USER_REQUEST_JOIN
         await SessionManager.subscribe_to_channel(chat.id, requested_users)
-        return await upd.update_channel_for_user(chat, user)
+        return await upd.update_channel_for_user(chat, user.id)
 
     for request in requests:
         await send_message_internal(
@@ -503,13 +506,13 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
     return await make_chat_join_request_updates(chat)
 
 
-@handler.on_request(HideChatJoinRequest)
-async def hide_chat_join_request(request: HideChatJoinRequest, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(HideChatJoinRequest, ReqHandlerFlags.DONT_FETCH_USER)
+async def hide_chat_join_request(request: HideChatJoinRequest, user_id: int) -> Updates:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    participant = await peer.chat_or_channel.get_participant(user)
+    participant = await peer.chat_or_channel.get_participant(user_id)
     if not peer.chat_or_channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -530,16 +533,17 @@ async def hide_chat_join_request(request: HideChatJoinRequest, user: User) -> Up
         )).delete()
         return await make_chat_join_request_updates(peer.chat_or_channel)
 
+    user = await User.get(id=user_id).only("id", "bot")
     return await add_requested_users_to_chat(user, peer.chat_or_channel, [invite_request])
 
 
-@handler.on_request(HideAllChatJoinRequests, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user: User) -> Updates:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(HideAllChatJoinRequests, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user_id: int) -> Updates:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    participant = await peer.chat_or_channel.get_participant(user)
+    participant = await peer.chat_or_channel.get_participant(user_id)
     if not peer.chat_or_channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
@@ -565,6 +569,7 @@ async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user: Us
         )).delete()
         return await make_chat_join_request_updates(peer.chat_or_channel)
 
+    user = await User.get(id=user_id).only("id", "bot")
     return await add_requested_users_to_chat(user, peer.chat_or_channel, requests)
 
 

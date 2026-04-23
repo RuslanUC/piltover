@@ -159,8 +159,8 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
 
     # TODO: send service message if discard_reason is not None
 
-    await upd.phone_call_update(user, call, [ctx.auth_id])
-    await upd.phone_call_update(peer.user, call, target_authorizations)
+    await upd.phone_call_update(user.id, call, [ctx.auth_id])
+    await upd.phone_call_update(peer.user_id, call, target_authorizations)
 
     return PhonePhoneCall(
         phone_call=call.to_tl(),
@@ -171,11 +171,11 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
     )
 
 
-@handler.on_request(DiscardCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def discard_call(request: DiscardCall, user: User) -> Updates:
+@handler.on_request(DiscardCall, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def discard_call(request: DiscardCall, user_id: int) -> Updates:
     ctx = request_ctx.get()
     call = await PhoneCall.get_or_none(
-        Q(from_user=user, from_sess_id=ctx.auth_id) | Q(to_user=user),
+        Q(from_user_id=user_id, from_sess_id=ctx.auth_id) | Q(to_user_id=user_id),
         id=request.peer.id, access_hash=request.peer.access_hash, discard_reason__isnull=True,
     ).select_related("from_user", "to_user")
     if call is None:
@@ -185,7 +185,7 @@ async def discard_call(request: DiscardCall, user: User) -> Updates:
         target_authorizations = await UserAuthorization.filter(
             user=call.to_user, allow_call_requests=True,
         ).values_list("id")
-        if user.id == call.from_user_id:
+        if user_id == call.from_user_id:
             reason = CallDiscardReason.MISSED
         else:
             reason = CallDiscardReason.BUSY
@@ -201,11 +201,14 @@ async def discard_call(request: DiscardCall, user: User) -> Updates:
         call.duration = int((datetime.now(UTC) - call.started_at).total_seconds())
     await call.save(update_fields=["discard_reason"])
 
-    peer, _ = await Peer.get_or_create(owner=user, user=call.other_user(user), defaults={"type": PeerType.USER})
-    peer.owner = user
-    peer.user = call.other_user(user)
+    user = await User.get(id=user_id).only("id")
+    user.bot = False
+
+    other_user = call.other_user(user)
+    peer, _ = await Peer.get_or_create(owner_id=user, user=other_user, defaults={"type": PeerType.USER})
+    peer.user = other_user
     await send_message_internal(
-        user, peer, None, None, False, author=call.from_user, type=MessageType.SERVICE_PHONE_CALL,
+        user, peer, None, None, False, author=call.from_user_id, type=MessageType.SERVICE_PHONE_CALL,
         extra_info=MessageActionPhoneCall(
             call_id=call.id,
             reason=CALL_DISCARD_REASON_TO_TL[reason],
@@ -213,8 +216,8 @@ async def discard_call(request: DiscardCall, user: User) -> Updates:
         ).write(),
     )
 
-    await upd.phone_call_update(call.to_user, call, target_authorizations)
-    return await upd.phone_call_update(user, call, [call.from_sess_id])
+    await upd.phone_call_update(call.to_user_id, call, target_authorizations)
+    return await upd.phone_call_update(user_id, call, [call.from_sess_id])
 
 
 @handler.on_request(AcceptCall, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -242,8 +245,8 @@ async def accept_call(request: AcceptCall, user: User) -> PhonePhoneCall:
         user=call.to_user, allow_call_requests=True,
     ).values_list("id")
 
-    await upd.phone_call_update(user, call, target_authorizations)
-    await upd.phone_call_update(call.from_user, call, [call.from_sess_id])
+    await upd.phone_call_update(user.id, call, target_authorizations)
+    await upd.phone_call_update(call.from_user_id, call, [call.from_sess_id])
 
     return PhonePhoneCall(
         phone_call=call.to_tl(),
@@ -280,8 +283,8 @@ async def confirm_call(request: ConfirmCall, user: User) -> PhonePhoneCall:
     call.started_at = datetime.now(UTC)
     await call.save(update_fields=["g_a", "key_fp", "protocol", "started_at"])
 
-    await upd.phone_call_update(user, call, [call.from_sess_id])
-    await upd.phone_call_update(call.to_user, call, [call.to_sess_id])
+    await upd.phone_call_update(user.id, call, [call.from_sess_id])
+    await upd.phone_call_update(call.to_user_id, call, [call.to_sess_id])
 
     # TODO: add connections to call
 

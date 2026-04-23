@@ -55,7 +55,7 @@ class Wallpaper(Model):
 
     @classmethod
     async def from_input(
-            cls, wp: base.InputWallPaper, user: models.User | None = None, auth_id: int | None = None,
+            cls, wp: base.InputWallPaper, user: models.User | int | None = None, auth_id: int | None = None,
     ) -> Self | None:
         q = cls.from_input_q(wp, user, auth_id)
         if q is None:
@@ -64,12 +64,13 @@ class Wallpaper(Model):
 
     @classmethod
     def from_input_q(
-            cls, wp: base.InputWallPaper, user: models.User | None = None, auth_id: int | None = None,
+            cls, wp: base.InputWallPaper, user: models.User | int | None = None, auth_id: int | None = None,
     ) -> Q | None:
         if isinstance(wp, InputWallPaper):
             if user is None:
                 return None
-            if not cls.check_access_hash(user.id, auth_id, wp.id, wp.access_hash):
+            user_id = user.id if isinstance(user, models.User) else user
+            if not cls.check_access_hash(user_id, auth_id, wp.id, wp.access_hash):
                 return None
             return Q(id=wp.id)
         elif isinstance(wp, InputWallPaperNoFile):

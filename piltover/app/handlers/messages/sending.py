@@ -54,7 +54,7 @@ DocOrPhotoMedia = (
 )
 
 
-async def _extract_mentions_from_message(entities: list[dict], text: str, author: User) -> set[int]:
+async def _extract_mentions_from_message(entities: list[dict], text: str, author_id: int) -> set[int]:
     mentioned_user_ids = set()
     mentioned_usernames = set()
 
@@ -77,7 +77,7 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
         query |= Q(id__in=list(mentioned_user_ids))
 
     return set(
-        await User.filter(id__not=author.id).filter(query).values_list("id", flat=True)
+        await User.filter(id__not=author_id).filter(query).values_list("id", flat=True)
     )
 
 
@@ -155,9 +155,9 @@ async def send_created_messages_internal(
             logger.debug(f"Creating task create_discussion({message.id})...")
             await ctx.worker.call_internal(CreateDiscussionThread(message_id=message.id))
 
-        return await upd.send_message_channel(user, peer.channel, message)
+        return await upd.send_message_channel(user.id, peer.channel, message)
 
-    if (update := await upd.send_message(user, messages)) is None:
+    if (update := await upd.send_message(user.id, messages)) is None:
         raise Unreachable
 
     if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS and ctx is not None:
@@ -168,11 +168,14 @@ async def send_created_messages_internal(
 
 
 async def send_message_internal(
-        user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool, author: User,
-        opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, *,
+        user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool,
+        author: User | int, opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, *,
         message: str | None = None, entities: list[dict[str, int | str]] | None = None,
         **message_kwargs
 ) -> Updates:
+    """
+    NOTE (probably only to myself): `user` MUST have at least `id` and `bot` prefetched
+    """
     if opposite \
             and peer.type is PeerType.USER \
             and peer.user.bot \
@@ -181,7 +184,7 @@ async def send_message_internal(
         opposite = False
 
     if opposite and reply_to_message_id and peer.type is PeerType.CHANNEL:
-        participant = await peer.channel.get_participant(user)
+        participant = await peer.channel.get_participant(user.id)
         if (channel_min_id := peer.channel.min_id(participant)) is not None:
             if channel_min_id >= reply_to_message_id:
                 reply_to_message_id = None
@@ -206,7 +209,9 @@ async def send_message_internal(
 
     if opposite and (peer.type is PeerType.CHAT or (peer.type is PeerType.CHANNEL and peer.channel.supergroup)):
         if entities and message:
-            mentioned_user_ids = await _extract_mentions_from_message(entities, message, author)
+            mentioned_user_ids = await _extract_mentions_from_message(
+                entities, message, author.id if isinstance(author, User) else author,
+            )
 
         if reply_to:
             mentioned_user_ids.add(reply_to.content.author_id)
@@ -254,7 +259,7 @@ async def send_message_internal(
             opposite=real_opposite,
         )
 
-        return await upd.new_scheduled_message(user, message)
+        return await upd.new_scheduled_message(user.id, message)
 
     updates = await send_created_messages_internal(messages, opposite, peer, user, clear_draft, mentioned_user_ids)
 
@@ -262,7 +267,7 @@ async def send_message_internal(
     if not unread_count:
         if peer.type is PeerType.CHANNEL:
             message = next(iter(messages.values()))
-            readstate_updates = await upd.update_read_history_inbox_channel(user, peer.channel_id, message.id, 0)
+            readstate_updates = await upd.update_read_history_inbox_channel(user.id, peer.channel_id, message.id, 0)
         else:
             message = messages[peer]
             _, readstate_updates = await upd.update_read_history_inbox(peer, message.id, 0)
@@ -369,13 +374,13 @@ def _check_disallow_send_to_bot(user: User, peer: Peer) -> None:
         raise ErrorRpc(error_code=400, error_message="USER_IS_BOT")
 
 
-async def _check_channel_slowmode(channel: Channel, participant: ChatParticipant | None, user: User) -> None:
+async def _check_channel_slowmode(channel: Channel, participant: ChatParticipant | None, user_id: int) -> None:
     if not channel.slowmode_seconds:
         return
     if participant is not None and not participant.left and participant.is_admin:
         return
     last_date = cast(datetime | None, await SlowmodeLastMessage.get_or_none(
-        channel=channel, user_id=user.id,
+        channel=channel, user_id=user_id,
     ).values_list("last_message", flat=True))
     if last_date is None:
         return
@@ -386,10 +391,10 @@ async def _check_channel_slowmode(channel: Channel, participant: ChatParticipant
         raise ErrorRpc(error_code=420, error_message=f"SLOWMODE_WAIT_{wait}")
 
 
-async def _update_channel_slowmode_maybe(channel: Channel, user: User) -> None:
+async def _update_channel_slowmode_maybe(channel: Channel, user_id: int) -> None:
     if not channel.slowmode_seconds:
         return
-    await SlowmodeLastMessage.update_or_create(channel=channel, user=user, defaults={
+    await SlowmodeLastMessage.update_or_create(channel=channel, user_id=user_id, defaults={
         "last_message": datetime.now(UTC),
     })
 
@@ -414,24 +419,26 @@ async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User |
     return send_as_channel
 
 
-@handler.on_request(SendMessage_148)
-@handler.on_request(SendMessage_176)
-@handler.on_request(SendMessage)
-async def send_message(request: SendMessage, user: User):
+@handler.on_request(SendMessage_148, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMessage_176, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMessage, ReqHandlerFlags.DONT_FETCH_USER)
+async def send_message(request: SendMessage, user_id: int):
+    user = await User.get(id=user_id).only("id", "bot", "first_name")
+
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
     if not request.random_id:
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant(user)
+        participant = await chat_or_channel.get_participant(user_id)
         if not chat_or_channel.can_send_plain(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_SEND_PLAIN_FORBIDDEN")
         if peer.type is PeerType.CHANNEL:
-            await _check_channel_slowmode(peer.channel, participant, user)
+            await _check_channel_slowmode(peer.channel, participant, user_id)
 
     _check_disallow_send_to_bot(user, peer)
     _check_we_blocked_user(peer)
@@ -449,30 +456,32 @@ async def send_message(request: SendMessage, user: User):
     else:
         is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
-    send_as_channel = await process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user_id)
 
     if peer.type is PeerType.CHANNEL:
-        await _update_channel_slowmode_maybe(peer.channel, user)
+        await _update_channel_slowmode_maybe(peer.channel, user_id)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, message=request.message, scheduled_date=request.schedule_date,
-        entities=await process_message_entities(request.message, request.entities, user.id),
+        entities=await process_message_entities(request.message, request.entities, user_id),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
     )
 
 
-@handler.on_request(UpdatePinnedMessage)
-async def update_pinned_message(request: UpdatePinnedMessage, user: User):
+@handler.on_request(UpdatePinnedMessage, ReqHandlerFlags.DONT_FETCH_USER)
+async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
+    user = await User.get(id=user_id).only("id", "bot")
+
     if user.bot and request.pm_oneside:
         raise ErrorRpc(error_code=400, error_message="BOT_ONESIDE_NOT_AVAIL")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant_raise(user, message="PIN_RESTRICTED")
+        participant = await chat_or_channel.get_participant_raise(user_id, message="PIN_RESTRICTED")
         if not chat_or_channel.can_pin_messages(participant):
             raise ErrorRpc(error_code=403, error_message="PIN_RESTRICTED")
 
@@ -496,11 +505,11 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
             for message in await MessageRef.filter(id__in=ids).select_related("peer")
         }
 
-        _, _, result = await upd.pin_messages(user.id, messages)
+        _, _, result = await upd.pin_messages(user_id, messages)
 
     if not request.unpin and not request.silent and not request.pm_oneside:
         updates = await send_message_internal(
-            user, peer, None, message.id, False, author=user, type=MessageType.SERVICE_PIN_MESSAGE,
+            user, peer, None, message.id, False, author=user_id, type=MessageType.SERVICE_PIN_MESSAGE,
             extra_info=MessageActionPinMessage().write(),
         )
         result.updates.extend(updates.updates)
@@ -971,10 +980,12 @@ async def _get_input_media_banned_rights(user_id: int, media: InputMedia) -> Cha
     return ChatBannedRights.NONE
 
 
-@handler.on_request(SendMedia_148)
-@handler.on_request(SendMedia_176)
-@handler.on_request(SendMedia)
-async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: User):
+@handler.on_request(SendMedia_148, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMedia_176, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMedia, ReqHandlerFlags.DONT_FETCH_USER)
+async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user_id: int):
+    user = await User.get(id=user_id).only("id", "bot", "first_name", "phone_number")
+
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
     if not request.random_id:
@@ -989,7 +1000,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
             # TODO: send correct error
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHANNEL:
-            await _check_channel_slowmode(peer.channel, participant, user)
+            await _check_channel_slowmode(peer.channel, participant, user_id)
 
     _check_disallow_send_to_bot(user, peer)
     _check_we_blocked_user(peer)
@@ -1006,19 +1017,19 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user: U
     else:
         is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
-    send_as_channel = await process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user_id)
 
     if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
-        await RecentSticker.update_time_or_create(user.id, media.file)
-        await upd.update_recent_stickers(user.id)
+        await RecentSticker.update_time_or_create(user_id, media.file)
+        await upd.update_recent_stickers(user_id)
 
     if peer.type is PeerType.CHANNEL:
-        await _update_channel_slowmode_maybe(peer.channel, user)
+        await _update_channel_slowmode_maybe(peer.channel, user_id)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, message=request.message, media=media,
-        entities=await process_message_entities(request.message, request.entities, user.id),
+        entities=await process_message_entities(request.message, request.entities, user_id),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
@@ -1101,7 +1112,7 @@ async def forward_messages(
         if not chat_or_channel.can_send_messages(to_participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
     if to_peer.type is PeerType.CHANNEL:
-        await _check_channel_slowmode(to_peer.channel, to_participant, user)
+        await _check_channel_slowmode(to_peer.channel, to_participant, user.id)
         if to_peer.channel.slowmode_seconds is not None and not to_participant.is_admin and len(request.id) > 1:
             raise ErrorRpc(error_code=400, error_message="SLOWMODE_MULTI_MSGS_DISABLED")
 
@@ -1219,7 +1230,7 @@ async def forward_messages(
         raise Unreachable
 
     if to_peer.type is PeerType.CHANNEL:
-        await _update_channel_slowmode_maybe(to_peer.channel, user)
+        await _update_channel_slowmode_maybe(to_peer.channel, user.id)
 
     return update
 
@@ -1247,23 +1258,25 @@ async def upload_media(request: UploadMedia | UploadMedia_133, user_id: int):
     return await media.to_tl()
 
 
-@handler.on_request(SendMultiMedia_176)
-@handler.on_request(SendMultiMedia_148)
-@handler.on_request(SendMultiMedia)
-async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMultiMedia_176, user: User):
+@handler.on_request(SendMultiMedia_176, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMultiMedia_148, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMultiMedia, ReqHandlerFlags.DONT_FETCH_USER)
+async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMultiMedia_176, user_id: int):
+    user = await User.get(id=user_id).only("id", "bot", "first_name")
+
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant(user)
+        participant = await chat_or_channel.get_participant(user_id)
         # TODO: check specific media type
         if not chat_or_channel.can_send_media(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHANNEL:
-            await _check_channel_slowmode(peer.channel, participant, user)
+            await _check_channel_slowmode(peer.channel, participant, user_id)
 
     _check_disallow_send_to_bot(user, peer)
     _check_we_blocked_user(peer)
@@ -1290,7 +1303,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
 
         media_id = single_media.media.id
 
-        valid, const = File.is_file_ref_valid(media_id.file_reference, user.id, media_id.id)
+        valid, const = File.is_file_ref_valid(media_id.file_reference, user_id, media_id.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
         media_q = Q(file_id=media_id.id)
@@ -1299,7 +1312,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
             media_q &= Q(file__constant_access_hash=media_id.access_hash, file__constant_file_ref=UUID(bytes=file_ref))
         else:
             ctx = request_ctx.get()
-            if not File.check_access_hash(user.id, ctx.auth_id, media_id.id, media_id.access_hash):
+            if not File.check_access_hash(user_id, ctx.auth_id, media_id.id, media_id.access_hash):
                 raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         # TODO: dont do this in a loop
@@ -1309,7 +1322,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
             single_media.message,
             single_media.random_id,
             media,
-            await process_message_entities(single_media.message, single_media.entities, user.id),
+            await process_message_entities(single_media.message, single_media.entities, user_id),
         ))
 
     if await MessageRef.filter(peer=peer, random_id__in=[str(random_id) for _, random_id, _, _ in messages]).exists():
@@ -1317,7 +1330,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
 
     group_id = Snowflake.make_id()
 
-    send_as_channel = await process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user_id)
 
     updates = None
     for idx, (message, random_id, media, entities) in enumerate(messages):
@@ -1339,7 +1352,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
         updates.updates.extend(new_updates.updates)
 
     if peer.type is PeerType.CHANNEL:
-        await _update_channel_slowmode_maybe(peer.channel, user)
+        await _update_channel_slowmode_maybe(peer.channel, user_id)
 
     return updates
 
@@ -1414,33 +1427,35 @@ async def clear_all_drafts(user_id: int) -> bool:
     return True
 
 
-@handler.on_request(SendInlineBotResult_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SendInlineBotResult_135, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SendInlineBotResult_148, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SendInlineBotResult_160, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SendInlineBotResult_176, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(SendInlineBotResult, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Updates:
+@handler.on_request(SendInlineBotResult_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendInlineBotResult_135, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendInlineBotResult_148, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendInlineBotResult_160, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendInlineBotResult_176, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendInlineBotResult, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> Updates:
     if not request.random_id:
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
-        participant = await chat_or_channel.get_participant(user)
+        participant = await chat_or_channel.get_participant(user_id)
         # TODO: check specific message and/or media type
         if not chat_or_channel.can_send_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
         if peer.type is PeerType.CHANNEL:
-            await _check_channel_slowmode(peer.channel, participant, user)
+            await _check_channel_slowmode(peer.channel, participant, user_id)
+
+    user = await User.get(id=user_id).only("id", "first_name")
 
     _check_disallow_send_to_bot(user, peer)
     _check_we_blocked_user(peer)
     await _check_bot_blocked(user, peer)
 
     item = await InlineQueryResultItem.get_or_none(
-        Q(result__private=True, result__query__user=user) | Q(result__private=False),
+        Q(result__private=True, result__query__user_id=user_id) | Q(result__private=False),
         result__query_id=request.query_id, item_id=request.id,
     ).select_related(
         "photo", "document", "document__stickerset", "result", "result__query", "result__query__bot"
@@ -1454,7 +1469,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user: User) -> Up
         is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
     else:
         is_anonymous = False
-    send_as_channel = await process_send_as(request.send_as, user)
+    send_as_channel = await process_send_as(request.send_as, user_id)
 
     media = None
     if item.photo_id or item.document_id:

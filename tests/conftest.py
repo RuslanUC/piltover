@@ -383,9 +383,10 @@ async def test_channel(faker: Faker) -> ChannelFactory:
         if name is None:
             name = faker.slug()
 
-        owner = await User.get(phone_number=client.phone_number)
-        channel, peer_channel = await _create_channel(owner, name, "", not supergroup, supergroup)
-        await _add_user_to_channel(channel, owner)
+        owner = await User.get(phone_number=client.phone_number).only("id")
+        owner.bot = False
+        channel, peer_channel = await _create_channel(owner.id, name, "", not supergroup, supergroup)
+        await _add_user_to_channel(channel, owner.id)
 
         if create_service_message:
             await send_message_internal(
@@ -419,7 +420,7 @@ async def channel_with_clients(
         for _ in range(num_clients - 1):
             client = await client_with_auth(run=clients_run)
             user = await User.get(phone_number=client.phone_number)
-            await _add_user_to_channel(channel, user)
+            await _add_user_to_channel(channel, user.id)
             clients.append(client)
 
         if resolve_channel:

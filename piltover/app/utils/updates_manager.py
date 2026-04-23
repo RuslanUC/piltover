@@ -129,7 +129,7 @@ async def send_message(
     return result
 
 
-async def send_message_channel(user: User, channel: Channel, message: MessageRef) -> Updates:
+async def send_message_channel(user_id: int, channel: Channel, message: MessageRef) -> Updates:
     new_pts = await channel.add_pts(1)
     await ChannelUpdate.create(
         channel=channel,
@@ -145,7 +145,7 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
 
     chats_and_channels = [*chats, *channels]
 
-    message_for_user = await message.to_tl(user, False)
+    message_for_user = await message.to_tl(user_id, False)
     generic_message = ChannelMessageToFormat(
         content=message_for_user.content,
         common=message.to_tl_common_channel(),
@@ -158,7 +158,7 @@ async def send_message_channel(user: User, channel: Channel, message: MessageRef
                 UpdateMessageIDToFormat(
                     id=message.id,
                     random_id=message.random_id or 0,
-                    target_user=user.id,
+                    target_user=user_id,
                 ),
                 UpdateNewChannelMessage(
                     message=generic_message,
@@ -1656,11 +1656,11 @@ async def read_channel_messages_contents(user_id: int, channel: Channel, message
     )
 
 
-async def new_scheduled_message(user: User, message: MessageRef) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def new_scheduled_message(user_id: int, message: MessageRef) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.NEW_SCHEDULED_MESSAGE,
         pts=new_pts,
         pts_count=1,
@@ -1669,9 +1669,9 @@ async def new_scheduled_message(user: User, message: MessageRef) -> Updates:
         message=message,
     )
 
-    updates = UpdatesWithDefaults(updates=[UpdateNewScheduledMessage(message=await message.to_tl(user))])
+    updates = UpdatesWithDefaults(updates=[UpdateNewScheduledMessage(message=await message.to_tl(user_id))])
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
@@ -2074,10 +2074,10 @@ async def update_channel_participant_available_message(user_id: int, channel: Ch
     return updates
 
 
-async def phone_call_update(user: User, call: PhoneCall, sessions: list[int] | None = None) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+async def phone_call_update(user_id: int, call: PhoneCall, sessions: list[int] | None = None) -> Updates:
+    new_pts = await State.add_pts(user_id, 1)
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.PHONE_CALL,
         pts=new_pts,
         pts_count=1,
@@ -2098,7 +2098,7 @@ async def phone_call_update(user: User, call: PhoneCall, sessions: list[int] | N
 
     await SessionManager.send(
         updates,
-        user_id=user.id if sessions is not None else None,
+        user_id=user_id if sessions is not None else None,
         auth_id=sessions,
     )
 

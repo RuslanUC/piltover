@@ -915,13 +915,13 @@ async def read_message_contents(request: ReadMessageContents, user: User) -> Aff
     )
 
 
-@handler.on_request(SetHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
+@handler.on_request(SetHistoryTTL, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def set_history_ttl(request: SetHistoryTTL, user_id: int) -> Updates:
     if request.period % 86400 != 0:
         raise ErrorRpc(error_code=400, error_message="TTL_PERIOD_INVALID")
 
     ttl_days = request.period // 86400
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     old_value = 0
     if peer.type is PeerType.SELF:
@@ -933,9 +933,9 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
         peer.user_ttl_period_days = opp_peer.user_ttl_period_days = ttl_days
         await Peer.bulk_update([peer, opp_peer], fields=["user_ttl_period_days"])
     elif peer.type in (PeerType.CHAT, PeerType.CHANNEL):
-        participant = await peer.chat_or_channel.get_participant(user)
+        participant = await peer.chat_or_channel.get_participant(user_id)
         if peer.type is PeerType.CHAT \
-                and (participant is None or not (participant.is_admin or peer.chat.creator_id == user.id)):
+                and (participant is None or not (participant.is_admin or peer.chat.creator_id == user_id)):
             raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
         elif peer.type is PeerType.CHANNEL \
                 and not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
@@ -949,7 +949,7 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
     if peer.type is PeerType.CHANNEL:
         await AdminLogEntry.create(
             channel=peer.channel,
-            user=user,
+            user_id=user_id,
             action=AdminLogEntryAction.EDIT_HISTORY_TTL,
             prev=Int.write(old_value * 86400),
             new=Int.write(ttl_days * 86400),
@@ -958,9 +958,12 @@ async def set_history_ttl(request: SetHistoryTTL, user: User) -> Updates:
     else:
         updates = await upd.update_history_ttl(peer, ttl_days)
 
+    user = await User.get(id=user_id).only("id")
+    user.bot = False
+
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
-        author=user, type=MessageType.SERVICE_CHAT_UPDATE_TTL, ttl_period_days=None,
+        author=user_id, type=MessageType.SERVICE_CHAT_UPDATE_TTL, ttl_period_days=None,
         extra_info=MessageActionSetMessagesTTL(period=ttl_days * 86400).write(),
     )
     updates.updates.extend(updates_msg.updates)

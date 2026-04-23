@@ -15,7 +15,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("wallpaper")
 
 
-async def _get_wallpaper(request: SetChatWallPaper, user: User, peer: Peer) -> tuple[Wallpaper | None, bool]:
+async def _get_wallpaper(request: SetChatWallPaper, user_id: int, peer: Peer) -> tuple[Wallpaper | None, bool]:
     create_svc_message = False
 
     if request.wallpaper is None and request.id is None:
@@ -23,7 +23,7 @@ async def _get_wallpaper(request: SetChatWallPaper, user: User, peer: Peer) -> t
     elif request.wallpaper is not None:
         create_svc_message = True
         auth_id = request_ctx.get().auth_id
-        set_wallpaper = await Wallpaper.from_input(request.wallpaper, user, auth_id)
+        set_wallpaper = await Wallpaper.from_input(request.wallpaper, user_id, auth_id)
         if set_wallpaper is None:
             raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
     elif request.id is not None:
@@ -60,7 +60,7 @@ async def _get_wallpaper(request: SetChatWallPaper, user: User, peer: Peer) -> t
 async def set_channel_wallpaper(request: SetChatWallPaper, user: User, peer: Peer) -> Updates:
     channel = peer.channel
 
-    set_wallpaper, create_svc_message = await _get_wallpaper(request, user, peer)
+    set_wallpaper, create_svc_message = await _get_wallpaper(request, user.id, peer)
 
     if set_wallpaper is None:
         if channel.wallpaper_id is not None:
@@ -91,11 +91,13 @@ async def set_channel_wallpaper(request: SetChatWallPaper, user: User, peer: Pee
     return updates
 
 
-@handler.on_request(SetChatWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def set_chat_wallpaper(request: SetChatWallPaper, user: User) -> Updates:
+@handler.on_request(SetChatWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def set_chat_wallpaper(request: SetChatWallPaper, user_id: int) -> Updates:
     if not isinstance(request.peer, (InputPeerUser, InputUser, InputPeerChannel, InputChannel)):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
+
+    user = await User.get(id=user_id).only("id", "bot")
 
     if peer.type is PeerType.CHANNEL:
         return await set_channel_wallpaper(request, user, peer)
@@ -105,7 +107,7 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user: User) -> Updates:
 
     # TODO: support for_both and revert
 
-    set_wallpaper, create_svc_message = await _get_wallpaper(request, user, peer)
+    set_wallpaper, create_svc_message = await _get_wallpaper(request, user_id, peer)
 
     if set_wallpaper is None:
         if existing_wp is not None:
