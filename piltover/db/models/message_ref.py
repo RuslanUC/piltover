@@ -190,13 +190,15 @@ class MessageRef(Model):
             reply_to=self.make_reply_to_header(),
         )
 
-    async def to_tl(self, user: models.User, with_reactions: bool = True) -> MessageToFormat:
+    async def to_tl(self, user: models.User | int, with_reactions: bool = True) -> MessageToFormat:
+        user_id = user.id if isinstance(user, models.User) else user
+
         reactions = None
         if with_reactions and self.content.type is MessageType.REGULAR:
-            reactions = await self.to_tl_reactions(user.id)
+            reactions = await self.to_tl_reactions(user_id)
 
         return MessageToFormat(
-            ref=await self.to_tl_ref(user.id),
+            ref=await self.to_tl_ref(user_id),
             content=await self.content.to_tl_content(),
             reactions=reactions,
             replies=await self.to_tl_replies(),

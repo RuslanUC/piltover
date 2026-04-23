@@ -40,14 +40,20 @@ class Presence(Model):
     LAST_WEEK = LAST_WEEK
     LAST_MONTH = LAST_MONTH
 
-    async def to_tl(self, user: models.User | None, has_access: bool | _PresenceMissing = _MISSING) -> TLUserStatus:
+    async def to_tl(
+            self, user: models.User | int | None, has_access: bool | _PresenceMissing = _MISSING,
+    ) -> TLUserStatus:
+        user_id = user.id if isinstance(user, models.User) else user
+
         now = datetime.now(UTC)
         delta = now - self.last_seen
         if delta < timedelta(seconds=30):
             return UserStatusOnline(expires=int(time() + 30))
 
         if has_access is _MISSING:
-            has_access = await models.PrivacyRule.has_access_to(user, self.user_id, PrivacyRuleKeyType.STATUS_TIMESTAMP)
+            has_access = await models.PrivacyRule.has_access_to(
+                user_id, self.user_id, PrivacyRuleKeyType.STATUS_TIMESTAMP
+            )
 
         return self.to_tl_noprivacycheck(has_access)
 

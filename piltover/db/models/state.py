@@ -44,8 +44,8 @@ class State(Model):
         return new_pts
 
     @classmethod
-    async def add_pts_bulk(cls, users: list[models.User], pts_counts: Collection[int] | int) -> list[int]:
-        user_ids = [user.id for user in users]
+    async def add_pts_bulk(cls, users: list[models.User | int], pts_counts: Collection[int] | int) -> list[int]:
+        user_ids = [(user.id if isinstance(user, models.User) else user) for user in users]
 
         if not isinstance(pts_counts, Collection):
             pts_counts = SingleElementList(pts_counts, len(users))

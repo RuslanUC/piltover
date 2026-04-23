@@ -480,7 +480,7 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
 
     chat = peer.chat
 
-    participants = await ChatParticipant.filter(chat=chat).select_related("user")
+    participants = await ChatParticipant.filter(chat=chat)
 
     async with in_transaction():
         channel = await Channel.create(
@@ -500,13 +500,13 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
         participants_to_create = []
 
         for participant in participants:
-            peers_to_create.append(Peer(owner=participant.user, type=PeerType.CHANNEL, channel=channel))
+            peers_to_create.append(Peer(owner_id=participant.user_id, type=PeerType.CHANNEL, channel=channel))
             if chat.creator_id == participant.user_id:
                 admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
             else:
                 admin_rights = participant.admin_rights
             participants_to_create.append(ChatParticipant(
-                user=participant.user,
+                user_id=participant.user_id,
                 channel=channel,
                 chat_channel_id=channel.make_id(),
                 inviter_id=participant.inviter_id,
@@ -546,7 +546,8 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
 
     await SessionManager.subscribe_to_channel(channel.id, [new_peer.owner_id for new_peer in new_peers])
 
-    updates = await upd.migrate_chat(chat, channel)
+    user_ids = [participant.user_id for participant in participants]
+    updates = await upd.migrate_chat(chat, channel, user_ids)
 
     msg_updates = await send_message_internal(
         user, peer, None, None, False, unhide_dialog=False,
