@@ -711,9 +711,9 @@ async def uninstall_stickerset(request: UninstallStickerSet, user_id: int) -> bo
 async def reorder_sticker_sets(request: ReorderStickerSets, user_id: int) -> bool:
     sets: list[InstalledStickerset | None] = await InstalledStickerset.filter(
         user_id=user_id, archived=False, set__deleted=False,
-    ).order_by("pos", "-installed_at").select_related("set")
+    ).order_by("pos", "-installed_at")
     by_ids = {
-        installed.set.id: (installed, idx)
+        installed.set_id: (installed, idx)
         for idx, installed in enumerate(sets)
     }
 
@@ -830,7 +830,7 @@ async def get_recent_stickers(request: GetRecentStickers, user_id: int) -> Recen
 
     query = RecentSticker.filter(
         user_id=user_id,
-    ).order_by("-used_at").limit(APP_CONFIG.recent_stickers_limit).select_related("sticker", "sticker__stickerset")
+    ).order_by("-used_at").limit(APP_CONFIG.recent_stickers_limit)
     ids = await query.values_list("id", flat=True)
 
     stickers_hash = telegram_hash(ids, 64)
@@ -840,7 +840,7 @@ async def get_recent_stickers(request: GetRecentStickers, user_id: int) -> Recen
     stickers = []
     dates = []
 
-    for recent in await query:
+    for recent in await query.select_related("sticker", "sticker__stickerset"):
         stickers.append(recent.sticker.to_tl_document())
         dates.append(int(recent.used_at.timestamp()))
 
@@ -914,7 +914,7 @@ async def fave_sticker(request: FaveSticker, user_id: int) -> bool:
 async def get_faved_stickers(request: GetFavedStickers, user_id: int) -> FavedStickers | FavedStickersNotModified:
     query = FavedSticker.filter(
         user_id=user_id,
-    ).order_by("-faved_at").limit(APP_CONFIG.faved_stickers_limit).select_related("sticker", "sticker__stickerset")
+    ).order_by("-faved_at").limit(APP_CONFIG.faved_stickers_limit)
     ids = await query.values_list("id", flat=True)
 
     stickers_hash = telegram_hash(ids, 64)
@@ -926,7 +926,7 @@ async def get_faved_stickers(request: GetFavedStickers, user_id: int) -> FavedSt
         packs=[],
         stickers=[
             faved.sticker.to_tl_document()
-            for faved in await query
+            for faved in await query.select_related("sticker", "sticker__stickerset")
         ],
     )
 

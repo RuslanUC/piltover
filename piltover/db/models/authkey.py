@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from time import time
+from typing import cast
 
 from tortoise import fields, Model
 
@@ -12,12 +13,13 @@ class AuthKey(Model):
     auth_key: bytes = fields.BinaryField()
     layer: int = fields.SmallIntField(default=133)
 
-    async def get_ids(self) -> list[int]:
-        ids = [self.id]
-        if (temp_id := await TempAuthKey.filter(perm_key=self).first().values_list("id", flat=True)) is not None:
-            ids.append(temp_id)
+    @classmethod
+    async def get_temp_id(cls, key_id: int) -> int | None:
+        return cast(int | None, await TempAuthKey.filter(perm_key_id=key_id).first().values_list("id", flat=True))
 
-        return ids
+    @classmethod
+    async def get_temp_ids_bulk(cls, key_ids: list[int]) -> list[int]:
+        return await TempAuthKey.filter(perm_key_id__in=key_ids).values_list("id", flat=True)
 
     @classmethod
     async def get_auth_data(cls, key_id: int) -> AuthData | None:

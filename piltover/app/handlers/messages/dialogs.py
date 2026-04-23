@@ -132,7 +132,7 @@ async def get_dialogs_internal(
     #  Dialogs.annotate(last_message_id=Subquery(Message.filter(peer=F("peer")).order_by("-id").first().values_list("id", flat=True)))
     peers_with_dialogs = Peer.annotate(last_message_id=Max("messagerefs__id"), **date_annotation)\
         .filter(query).limit(limit).order_by("-last_message_id", "-id")\
-        .select_related("owner", "user", "chat", prefix)
+        .select_related("user", "chat", prefix)
 
     peer_with_dialog: PeerWithDialogs
     dialogs: list[Dialog | SavedDialog] = []
@@ -185,7 +185,7 @@ async def get_peer_dialogs(request: GetPeerDialogs, user_id: int) -> PeerDialogs
         return PeerDialogs(dialogs=[], messages=[], chats=[], users=[], state=await get_state_internal(user_id))
 
     query &= peers_query
-    dialogs = await Dialog.filter(query).select_related("peer", "peer__owner", "peer__user", "peer__chat")
+    dialogs = await Dialog.filter(query).select_related("peer", "peer__user", "peer__chat")
 
     return PeerDialogs(
         **(await format_dialogs(Dialog, user_id, dialogs)),

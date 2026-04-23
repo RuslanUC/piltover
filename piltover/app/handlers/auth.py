@@ -276,13 +276,16 @@ async def accept_login_token(request: AcceptLoginToken, user_id: int) -> Authori
 
     password, _ = await UserPassword.get_or_create(user_id=user_id)
     auth = await UserAuthorization.create(
-        ip="127.0.0.1", user_id=user_id, key=login.key, mfa_pending=password.password is not None,
+        ip="127.0.0.1", user_id=user_id, key_id=login.key_id, mfa_pending=password.password is not None,
     )
 
     login.auth = auth
     await login.save(update_fields=["auth_id"])
 
-    key_ids = await login.key.get_ids()
+    key_ids = [login.key_id]
+    if (temp_key_id := await AuthKey.get_temp_id(login.key_id)) is not None:
+        key_ids.append(temp_key_id)
+
     await SessionManager.send(
         UpdateShort(
             update=UpdateLoginToken(),
@@ -307,9 +310,9 @@ async def reset_authorizations(user: User) -> bool:
     if (this_auth.created_at + timedelta(days=1)) > datetime.now(UTC):
         raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")
 
-    auths = await UserAuthorization.filter(user=user, id__not=auth_id).select_related("key")
+    auths = await UserAuthorization.filter(user=user, id__not=auth_id)
 
-    keys = [auth.key.id for auth in auths]
+    keys = [auth.key_id for auth in auths]
     temp_keys_ids = await TempAuthKey.filter(perm_key_id__in=keys).values_list("id", flat=True)
     keys.extend(temp_keys_ids)
 

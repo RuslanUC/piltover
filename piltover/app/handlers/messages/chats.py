@@ -95,7 +95,7 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 
     chat_peers = {
         peer.owner_id: peer
-        for peer in await Peer.filter(chat=chat).select_related("owner")
+        for peer in await Peer.filter(chat=chat)
     }
     for peer in chat_peers.values():
         peer.chat = chat
@@ -284,7 +284,7 @@ async def add_chat_user(request: AddChatUser, user: User):
     if chat_peer.owner_id not in chat_peers:
         chat_peers[chat_peer.owner_id] = chat_peer
     invited_user = user_peer.peer_user(user)
-    if user_peer.peer_user(user).id not in chat_peers:
+    if invited_user.id not in chat_peers:
         async with in_transaction():
             chat_peers[invited_user.id] = await Peer.create(owner=invited_user, chat=chat_peer.chat, type=PeerType.CHAT)
             await ChatParticipant.create(
@@ -356,7 +356,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
     # TODO: if user was creator of the chat, make another user a creator
     # TODO: remove scheduled messages?
 
-    chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
+    chat_peers = {peer.owner_id: peer for peer in await Peer.filter(chat=chat_peer.chat)}
 
     updates_msg = await upd.send_message(user, messages)
     updates = await upd.update_chat_participants(chat_peer.chat, list(chat_peers.values()))
@@ -556,7 +556,7 @@ async def migrate_chat(request: MigrateChat, user: User) -> Updates:
     )
     updates.updates.extend(msg_updates.updates)
 
-    peer_channel = await Peer.get(owner=user, channel=channel).select_related("owner", "channel")
+    peer_channel = await Peer.get(owner=user, channel=channel).select_related("channel")
     msg_updates = await send_message_internal(
         user, peer_channel, None, None, False, unhide_dialog=False,
         author=user, type=MessageType.SERVICE_CHAT_MIGRATE_FROM,

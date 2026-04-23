@@ -306,7 +306,7 @@ async def send_signaling_data(request: SendSignalingData, user: User) -> bool:
     call = await PhoneCall.get_or_none(
         Q(from_user=user, from_sess_id=ctx.auth_id) | Q(to_user=user, to_sess_id=ctx.auth_id),
         id=request.peer.id, access_hash=request.peer.access_hash, discard_reason__isnull=True,
-    ).select_related()
+    )
     if call is None:
         raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
 

@@ -146,7 +146,7 @@ async def send_reaction(request: SendReaction, user_id: int) -> Updates:
     if peer.type is not PeerType.CHANNEL:
         for opp_message in await MessageRef.filter(
             content_id=message.content_id,
-        ).select_related("peer", "peer__owner", "content"):
+        ).select_related("peer", "content"):
             await upd.update_reactions(opp_message.peer.owner_id, [opp_message], opp_message.peer)
 
     if (reaction is not None or custom_reaction is not None) and request.add_to_recent:
@@ -324,7 +324,7 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user_id: 
 
     query = query_simple.order_by("-date").limit(limit + 1).select_related("reaction", "user")
 
-    if request.offset is not None:
+    if request.offset is not None and len(request.offset) <= 16:
         try:
             offset_id = int(request.offset)
             if offset_id.bit_length() > 63:

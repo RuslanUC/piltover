@@ -307,8 +307,8 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         return await upd.update_channel_for_user(channel, user)
 
     chat_peers = {
-        peer.owner.id: peer
-        for peer in await Peer.filter(Chat.query(chat_or_channel)).select_related("owner", "chat", "channel")
+        peer.owner_id: peer
+        for peer in await Peer.filter(Chat.query(chat_or_channel)).select_related("chat", "channel")
     }
 
     updates = await upd.update_chat_participants(cast(Chat, chat_or_channel), list(chat_peers.values()))
@@ -453,14 +453,14 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
     peer_type = PeerType.CHAT if isinstance(chat, Chat) else PeerType.CHANNEL
     this_peer = await Peer.get_or_none(
         owner=user, type=peer_type, **Chat.or_channel(chat),
-    ).select_related("owner", "chat", "channel")
+    ).select_related("chat", "channel")
 
     requested_users = [request.user.id for request in requests]
     new_peers = {
-        peer.owner.id: peer
+        peer.owner_id: peer
         for peer in await Peer.filter(
             owner_id__in=requested_users, type=peer_type, **Chat.or_channel(chat)
-        ).select_related("owner")
+        )
     }
     participants_to_create = []
     for request in requests:

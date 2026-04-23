@@ -41,7 +41,7 @@ async def save_gif(request: SaveGif, user_id: int) -> bool:
 async def get_saved_gifs(request: GetSavedGifs, user_id: int) -> SavedGifs | SavedGifsNotModified:
     query = SavedGif.filter(
         user_id=user_id
-    ).order_by("-last_access").limit(APP_CONFIG.saved_gifs_limit).select_related("gif")
+    ).order_by("-last_access").limit(APP_CONFIG.saved_gifs_limit)
     ids = await query.values_list("id", flat=True)
 
     gifs_hash = telegram_hash(ids, 64)
@@ -52,6 +52,6 @@ async def get_saved_gifs(request: GetSavedGifs, user_id: int) -> SavedGifs | Sav
         hash=gifs_hash,
         gifs=[
             gif.gif.to_tl_document()
-            for gif in await query
+            for gif in await query.select_related("gif")
         ]
     )

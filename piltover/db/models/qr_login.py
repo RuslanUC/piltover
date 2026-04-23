@@ -22,6 +22,7 @@ class QrLogin(Model):
     nonce: int = fields.BigIntField(default=qr_gen_nonce)
     auth: models.UserAuthorization | None = fields.ForeignKeyField("models.UserAuthorization", null=True, default=None)
 
+    key_id: int
     auth_id: int | None
 
     def to_token(self) -> bytes:
@@ -35,4 +36,4 @@ class QrLogin(Model):
         login_id = Long.read_bytes(token[:8])
         nonce = Long.read_bytes(token[8:])
 
-        return await cls.get_or_none(id=login_id, nonce=nonce).select_related("key")
+        return await cls.get_or_none(id=login_id, nonce=nonce)

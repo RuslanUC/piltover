@@ -43,6 +43,6 @@ class PingTestBotBotInteractionHandler(BotInteractionHandler[NoneType, NoneType]
                 )
             ]
         )
-        await SessionManager.send(updates_to_send, peer.owner.id)
+        await SessionManager.send(updates_to_send, peer.owner_id)
 
         return await send_bot_message(peer, "test")

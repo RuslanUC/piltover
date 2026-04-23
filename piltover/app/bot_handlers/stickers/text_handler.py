@@ -336,7 +336,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             return ret
 
         state_data = StickersStateReplacesticker.deserialize(BytesIO(state.data))
-        async with in_transaction:
+        async with in_transaction():
             old_sticker = await File.get(
                 id=state_data.file_id, stickerset__owner=peer.owner,
             ).select_related("stickerset")

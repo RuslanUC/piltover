@@ -122,13 +122,7 @@ async def contacts_search(request: Search, user_id: int) -> Found:
     results = await Username.filter(
         user_id__not_in=Subquery(Contact.filter(owner_id=user_id).values("target_id")),
         user_id__not=user_id,
-    ).filter(
-        Q(
-            username__icontains=request.q,
-            user__first_name__icontains=request.q,
-            user__last_name__icontains=request.q,
-            join_type=Q.OR,
-          )
+        username__contains=request.q.lower(),
     ).select_related("user", "channel").limit(limit)
 
     peers = []

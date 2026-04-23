@@ -101,7 +101,7 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user: User) -> Updates:
         return await set_channel_wallpaper(request, user, peer)
 
     target = peer.peer_user(user)
-    existing_wp = await ChatWallpaper.get_or_none(user=user, target=target).select_related("target")
+    existing_wp = await ChatWallpaper.get_or_none(user=user, target=target)
 
     # TODO: support for_both and revert
 

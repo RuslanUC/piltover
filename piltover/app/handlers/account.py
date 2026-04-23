@@ -21,7 +21,7 @@ from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, Pee
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis, \
-    TaskIqScheduledDeleteUser, UserEmojiStatus
+    TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
@@ -483,11 +483,13 @@ async def reset_authorization(request: ResetAuthorization, user_id: int) -> bool
         raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")
 
     auth_hash_hex = Long.write(request.hash).hex()
-    auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex).select_related("key")
+    auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex)
     if auth is None or auth == this_auth:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
-    keys = await auth.key.get_ids()
+    keys = [auth.key_id]
+    if (temp_key_id := await AuthKey.get_temp_id(auth.key_id)) is not None:
+        keys.append(temp_key_id)
     await auth.delete()
 
     # TODO: also notify gateway that auth needs to be refreshed
@@ -621,17 +623,15 @@ async def _delete_account(user: User) -> None:
         "deleted", "phone_number", "first_name", "last_name", "about", "birthday", "version",
     ])
 
-    auths = await UserAuthorization.filter(user=user).select_related("key")
+    auths = await UserAuthorization.filter(user=user)
 
-    auth_ids = []
-    keys = []
-    for auth in auths:
-        keys.extend(await auth.key.get_ids())
-        auth_ids.append(auth.id)
+    auth_ids = [auth.id for auth in auths]
+    key_ids = [auth.key_id for auth in auths]
+    key_ids.extend(await AuthKey.get_temp_ids_bulk(key_ids))
 
     await UserAuthorization.filter(id__in=auth_ids).delete()
 
-    await SessionManager.send(UpdatesTooLong(), key_id=keys, auth_id=auth_ids)
+    await SessionManager.send(UpdatesTooLong(), key_id=key_ids, auth_id=auth_ids)
 
 
 @handler.on_request(DeleteAccount, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.ALLOW_MFA_PENDING)

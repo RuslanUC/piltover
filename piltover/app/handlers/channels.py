@@ -248,8 +248,8 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     if channel.all_reactions:
         available_reactions = ChatReactionsAll(allow_custom=channel.all_reactions_custom)
     else:
-        some = await AvailableChannelReaction.filter(channel=channel).select_related("reaction")
-        some = [ReactionEmoji(emoticon=reaction.reaction.reaction) for reaction in some]
+        some = await Reaction.filter(availablechannelreactions__channel=channel)
+        some = [ReactionEmoji(emoticon=reaction.reaction) for reaction in some]
         if some:
             available_reactions = ChatReactionsSome(reactions=some)
         else:
@@ -731,7 +731,8 @@ async def get_participants(request: GetParticipants, user_id: int) -> ChannelPar
         if participant.user_id != user_id:
             peers_to_create.append(Peer(owner_id=user_id, user=participant.user, type=PeerType.USER))
 
-    await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
+    if peers_to_create:
+        await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
 
     for participant in participants:
         participants_tl.append(participant.to_tl_channel_with_creator(user_id, creator_id=channel.creator_id))
@@ -1389,7 +1390,7 @@ async def set_discussion_group(request: SetDiscussionGroup, user_id: int) -> boo
     else:
         raise ErrorRpc(error_code=400, error_message="MEGAGROUP_ID_INVALID")
 
-    if channel.discussion is None and group is None:
+    if channel.discussion_id is None and group is None:
         raise ErrorRpc(error_code=400, error_message="LINK_NOT_MODIFIED")
     if group is not None and channel.discussion_id == group.id:
         raise ErrorRpc(error_code=400, error_message="LINK_NOT_MODIFIED")

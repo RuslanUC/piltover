@@ -15,7 +15,7 @@ class EncryptedFile(Model):
 
     def to_tl(self) -> TLEncryptedFile:
         return TLEncryptedFile(
-            id=self.file.id,
+            id=self.file_id,
             access_hash=-1,
             size=self.file.size,
             dc_id=2,

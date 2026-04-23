@@ -493,7 +493,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user: User):
 
         messages = {
             message.peer: [message]
-            for message in await MessageRef.filter(id__in=ids).select_related("peer", "peer__owner")
+            for message in await MessageRef.filter(id__in=ids).select_related("peer")
         }
 
         _, _, result = await upd.pin_messages(user.id, messages)
@@ -1302,6 +1302,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
             if not File.check_access_hash(user.id, ctx.auth_id, media_id.id, media_id.access_hash):
                 raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
+        # TODO: dont do this in a loop
         media = await MessageMedia.get_or_none(media_q).select_related("file", "file__stickerset", "poll")
 
         messages.append((
