@@ -45,12 +45,6 @@ class Peer(Model):
         return (user or self.owner) if self.type is PeerType.SELF else self.user
 
     @classmethod
-    async def from_user_id(cls, user: models.User, user_id: int) -> Peer | None:
-        if user.id == user_id:
-            return await Peer.get(owner=user, type=PeerType.SELF)
-        return await Peer.get_or_none(owner=user, user_id=user_id, type=PeerType.USER).select_related("user")
-
-    @classmethod
     async def from_chat_id(
             cls, user_id: int, chat_id: int, allow_migrated: bool = False,
             select_related: tuple[str, ...] | None = None,
@@ -151,16 +145,16 @@ class Peer(Model):
         if self.type is PeerType.USER:
             if self.user_id == 777000:
                 return []
-            peer, created = await Peer.get_or_create(type=PeerType.USER, owner=self.user, user=self.owner)
+            peer, created = await Peer.get_or_create(type=PeerType.USER, owner_id=self.user_id, user_id=self.owner_id)
             if peer.blocked_at is not None and not allow_blocked:
                 return []
-            if not created:
-                peer.owner = self.user
+            peer.user = self.owner
+            peer.owner = self.user
             return [peer]
         elif self.type is PeerType.CHAT:
             return await Peer.filter(
-                type=PeerType.CHAT, owner_id__not=self.owner.id, chat_id=self.chat_id,
-            ).select_related("owner", "chat")
+                type=PeerType.CHAT, owner_id__not=self.owner_id, chat_id=self.chat_id,
+            )
 
         return []
 
@@ -184,23 +178,6 @@ class Peer(Model):
             return query
         else:
             raise Unreachable
-
-    async def get_for_user(self, for_user: models.User) -> Peer | None:
-        if for_user.id == self.owner_id:
-            return self
-        if self.type is PeerType.SELF or self.type is PeerType.USER:
-            return await Peer.get_or_none(
-                owner=for_user, user_id=self.user_id,
-            ).select_related("owner", "user")
-        elif self.type is PeerType.CHAT:
-            return await Peer.get_or_none(
-                type=PeerType.CHAT, owner=for_user, chat_id=self.chat_id,
-            ).select_related("owner", "chat")
-        elif self.type is PeerType.CHANNEL:
-            return await Peer.get_or_none(
-                type=PeerType.CHANNEL, owner=for_user, channel_id=self.channel_id,
-            ).select_related("owner", "channel")
-        raise Unreachable
 
     def to_tl(self) -> PeerUser | PeerChat | PeerChannel:
         if self.type is PeerType.SELF:

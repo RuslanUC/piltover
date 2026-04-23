@@ -197,7 +197,7 @@ async def get_chat_invite_importers(request: GetChatInviteImporters, user_id: in
             query = query_no_date
 
         importer: ChatParticipant
-        async for importer in ChatParticipant.filter(query).order_by("-invited_at").limit(limit).select_related("user"):
+        for importer in await ChatParticipant.filter(query).order_by("-invited_at").limit(limit).select_related("user"):
             importers.append(ChatInviteImporter(
                 requested=False,
                 user_id=importer.user.id,
@@ -481,7 +481,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
     )).delete()
 
     if isinstance(chat, Chat):
-        chat_peers = await Peer.filter(Chat.query(chat)).select_related("owner")
+        chat_peers = await Peer.filter(Chat.query(chat))
         await upd.update_chat_participants(chat, chat_peers)
     else:
         # TODO: send SERVICE_CHAT_USER_INVITE_JOIN and SERVICE_CHAT_USER_REQUEST_JOIN

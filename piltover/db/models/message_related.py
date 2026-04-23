@@ -39,17 +39,17 @@ class MessageRelated(Model):
     @classmethod
     async def get_for_message(
             cls, message: models.MessageContent,
-    ) -> tuple[Iterable[models.User], Iterable[models.Chat], Iterable[models.Channel]]:
-        users = {}
-        chats = {}
-        channels = {}
+    ) -> tuple[Iterable[int], Iterable[int], Iterable[int]]:
+        users = set()
+        chats = set()
+        channels = set()
 
-        for related in await cls.filter(message=message).select_related("user", "chat", "channel"):
+        for related in await cls.filter(message=message):
             if related.user_id is not None:
-                users[related.user_id] = related.user
+                users.add(related.user_id)
             if related.chat_id is not None:
-                chats[related.chat_id] = related.chat
+                chats.add(related.chat_id)
             if related.channel_id is not None:
-                channels[related.channel_id] = related.channel
+                channels.add(related.channel_id)
 
-        return users.values(), chats.values(), channels.values()
+        return users, chats, channels

@@ -63,14 +63,14 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
 
     invited_peers: list[Peer] = []
     if invited_user_ids:
-        invited_peers = await Peer.filter(owner=user, user_id__in=invited_user_ids).select_related("user")
+        invited_peers = await Peer.filter(owner=user, user_id__in=invited_user_ids)
 
-    invited_users = []
+    invited_users_ids = []
     for invited_peer in invited_peers:
         if invited_peer.blocked_at is not None:
             missing.append(MissingInvitee(user_id=invited_peer.user_id))
         else:
-            invited_users.append(invited_peer.user)
+            invited_users_ids.append(invited_peer.user_id)
 
     async with in_transaction():
         chat = await Chat.create(name=request.title, creator=user, participants_count=0)
@@ -82,10 +82,10 @@ async def create_chat(request: CreateChat, user: User) -> InvitedUsers:
             )
         ]
 
-        for invited_user in invited_users:
-            chat_peers_to_create.append(Peer(owner=invited_user, chat=chat, type=PeerType.CHAT))
+        for invited_user_id in invited_users_ids:
+            chat_peers_to_create.append(Peer(owner_id=invited_user_id, chat=chat, type=PeerType.CHAT))
             participants_to_create.append(ChatParticipant(
-                user=invited_user, chat=chat, chat_channel_id=chat.make_id(), inviter_id=user.id,
+                user_id=invited_user_id, chat=chat, chat_channel_id=chat.make_id(), inviter_id=user.id,
             ))
 
         await Peer.bulk_create(chat_peers_to_create)
@@ -278,11 +278,11 @@ async def add_chat_user(request: AddChatUser, user: User):
         raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
     chat_peers = {
-        peer.owner.id: peer
-        for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner", "chat")
+        peer.owner_id: peer
+        for peer in await Peer.filter(chat=chat_peer.chat).select_related("chat")
     }
-    if chat_peer.owner.id not in chat_peers:
-        chat_peers[chat_peer.owner.id] = chat_peer
+    if chat_peer.owner_id not in chat_peers:
+        chat_peers[chat_peer.owner_id] = chat_peer
     invited_user = user_peer.peer_user(user)
     if user_peer.peer_user(user).id not in chat_peers:
         async with in_transaction():
@@ -391,7 +391,7 @@ async def edit_chat_admin(request: EditChatAdmin, user_id: int) -> bool:
     chat_peer.chat.version += 1
     await chat_peer.chat.save(update_fields=["version"])
 
-    chat_peers = {peer.owner.id: peer for peer in await Peer.filter(chat=chat_peer.chat).select_related("owner")}
+    chat_peers = {peer.owner_id: peer for peer in await Peer.filter(chat=chat_peer.chat)}
     await upd.update_chat_participants(chat_peer.chat, list(chat_peers.values()))
 
     return True

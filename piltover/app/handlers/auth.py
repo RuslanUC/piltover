@@ -239,7 +239,9 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
 async def export_login_token():
     ctx = request_ctx.get()
     if ctx.auth_id:
-        auth = await UserAuthorization.get_or_none(id=ctx.auth_id).select_related("user")
+        auth = await UserAuthorization.get_or_none(id=ctx.auth_id).select_related(
+            "user", "user__username", "user__background_emojis", "user__emoji_status", "user__bot_info",
+        )
         if auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         return LoginTokenSuccess(authorization=AuthAuthorization(user=await auth.user.to_tl()))

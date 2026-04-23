@@ -275,8 +275,8 @@ class MessageContent(Model):
             send_as_channel=self.send_as_channel,
         )
 
-        related_users, related_chats, related_channels = await models.MessageRelated.get_for_message(self)
-        await self._create_related(content, related_users, related_chats, related_channels)
+        related_user_ids, related_chat_ids, related_channel_ids = await models.MessageRelated.get_for_message(self)
+        await self._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
 
         return content
 
@@ -460,30 +460,32 @@ class MessageContent(Model):
         related_channels = []
 
         if user_ids:
-            related_users = await models.User.filter(id__in=user_ids)
+            related_users = await models.User.filter(id__in=user_ids).values_list("id", flat=True)
         if chat_ids:
-            related_chats = await models.Chat.filter(id__in=chat_ids)
+            related_chats = await models.Chat.filter(id__in=chat_ids).values_list("id", flat=True)
         if channel_ids:
-            related_channels = await models.Channel.filter(id__in=channel_ids)
+            related_channels = await models.Channel.filter(id__in=channel_ids).values_list("id", flat=True)
 
         await cls._create_related(message, related_users, related_chats, related_channels)
 
     @staticmethod
     async def _create_related(
             message: MessageContent,
-            users: Iterable[models.User], chats: Iterable[models.Chat], channels: Iterable[models.Channel],
+            users: Iterable[models.User | int],
+            chats: Iterable[models.Chat | int],
+            channels: Iterable[models.Channel | int],
     ) -> None:
         related_to_create = [
             *(
-                models.MessageRelated(message=message, user=rel)
+                models.MessageRelated(message=message, user_id=(rel.id if isinstance(rel, models.User) else rel))
                 for rel in users
             ),
             *(
-                models.MessageRelated(message=message, chat=rel)
+                models.MessageRelated(message=message, chat_id=(rel.id if isinstance(rel, models.Chat) else rel))
                 for rel in chats
             ),
             *(
-                models.MessageRelated(message=message, channel=rel)
+                models.MessageRelated(message=message, channel_id=(rel.id if isinstance(rel, models.Channel) else rel))
                 for rel in channels
             ),
         ]
