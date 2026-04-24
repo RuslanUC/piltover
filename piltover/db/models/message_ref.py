@@ -488,6 +488,12 @@ class MessageRef(Model):
         return await self.content.create_fwd_header(self, to_self, discussion)
 
     @classmethod
+    async def create_fwd_header_bulk(
+            cls, refs: list[MessageRef], user_id: int, to_self: bool
+    ) -> list[models.MessageFwdHeader]:
+        return await models.MessageContent.create_fwd_header_bulk(refs, user_id, to_self)
+
+    @classmethod
     async def create_for_peer(
             cls, peer: models.Peer, author: models.User | int, random_id: int | None = None,
             opposite: bool = True, unhide_dialog: bool = True, reply_to: MessageRef | None = None,

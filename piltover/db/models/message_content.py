@@ -4,9 +4,11 @@ from datetime import datetime, UTC
 from io import BytesIO
 from os import environ
 from typing import Iterable, Self, Annotated
+from uuid import uuid4
 
 from loguru import logger
 from tortoise import fields, Model
+from tortoise.transactions import in_transaction
 
 from piltover.cache import Cache
 from piltover.db import models
@@ -355,7 +357,7 @@ class MessageContent(Model):
                 channel_post_id = ref.id
                 channel_post_author = self.post_author
             else:
-                # TODO: handle anonymous admins in chats and channels
+                # TODO: handle anonymous admins and "send_as_channel" in chats and channels
                 if await models.PrivacyRule.has_access_to(ref.peer.owner_id, self.author, PrivacyRuleKeyType.FORWARDS):
                     from_user = self.author
                 from_name = self.author.first_name
@@ -383,6 +385,104 @@ class MessageContent(Model):
             saved_name=self.author.first_name if to_self else None,
             saved_date=self.date if to_self else None,
         )
+
+    @classmethod
+    async def create_fwd_header_bulk(
+            cls, refs: list[models.MessageRef], user_id: int, to_self: bool,
+    ) -> list[models.MessageFwdHeader]:
+        if not refs:
+            return []
+
+        # TODO: pass prefetched privacy rules as an argument
+        # TODO: handle send_as_channel authors
+
+        fetch_privacy_rules_for = set()
+
+        for ref in refs:
+            if ref.content.fwd_header_id is None and not ref.content.channel_post:
+                fetch_privacy_rules_for.add(ref.content.author_id)
+            if to_self and ref.peer.type is PeerType.USER:
+                fetch_privacy_rules_for.add(ref.peer.user_id)
+
+        privacy_rules = await models.PrivacyRule.has_access_to_bulk(
+            fetch_privacy_rules_for, user_id, [PrivacyRuleKeyType.FORWARDS]
+        )
+
+        fwd_headers = []
+        internal_ids = []
+
+        for ref in refs:
+            content = ref.content
+
+            if content.fwd_header is not None:
+                from_user = content.fwd_header.from_user
+                from_chat = content.fwd_header.from_chat
+                from_channel = content.fwd_header.from_channel
+                from_name = content.fwd_header.from_name
+                channel_post_id = content.fwd_header.channel_post_id
+                channel_post_author = content.fwd_header.channel_post_author
+            else:
+                from_user = None
+                from_chat = None
+                from_channel = None
+                channel_post_id = None
+                channel_post_author = None
+                if content.channel_post:
+                    from_channel = ref.peer.channel
+                    from_name = from_channel.name
+                    channel_post_id = ref.id
+                    channel_post_author = content.post_author
+                else:
+                    # TODO: handle anonymous admins and "send_as_channel" in chats and channels
+                    if privacy_rules[content.author_id][PrivacyRuleKeyType.FORWARDS]:
+                        from_user = content.author
+                    from_name = content.author.first_name
+
+            saved_peer = ref.peer if to_self else None
+            if saved_peer is not None and saved_peer.type is PeerType.USER:
+                peer_ = ref.peer
+                if not privacy_rules[peer_.user_id][PrivacyRuleKeyType.FORWARDS]:
+                    saved_peer = None
+
+            internal_random_id = uuid4()
+            internal_ids.append(internal_random_id)
+            fwd_headers.append(models.MessageFwdHeader(
+                from_user=from_user,
+                from_chat=from_chat,
+                from_channel=from_channel,
+                from_name=from_name,
+                date=content.fwd_header.date if content.fwd_header else content.date,
+                saved_out=True,
+
+                channel_post_id=channel_post_id,
+                channel_post_author=channel_post_author,
+
+                saved_peer=saved_peer,
+                saved_id=ref.id if to_self else None,
+                saved_from=content.author if to_self else None,
+                saved_name=content.author.first_name if to_self else None,
+                saved_date=content.date if to_self else None,
+
+                internal_random_id=internal_random_id,
+            ))
+
+        async with in_transaction():
+            await models.MessageFwdHeader.bulk_create(fwd_headers)
+
+            ids = {
+                random_id: actual_id
+                for actual_id, random_id in await models.MessageFwdHeader.filter(
+                    internal_random_id__in=internal_ids,
+                ).values_list("id", "internal_random_id")
+            }
+
+            for fwd_header in fwd_headers:
+                fwd_header.id = ids[fwd_header.internal_random_id]
+                fwd_header._saved_in_db = True
+
+            await models.MessageFwdHeader.filter(id__in=list(ids.values())).update(internal_random_id=None)
+
+        return fwd_headers
 
     @classmethod
     async def create_for_peer(cls, related_peer: models.Peer, **message_kwargs) -> Self:

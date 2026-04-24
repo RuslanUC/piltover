@@ -1185,9 +1185,14 @@ async def forward_messages(
         is_anonymous = False
     send_as_channel_id = await process_send_as(request.send_as, user)
 
+    if request.drop_author:
+        fwd_headers = SingleElementList(None, len(messages))
+    else:
+        fwd_headers = await MessageRef.create_fwd_header_bulk(messages, user.id, to_peer.type is PeerType.SELF)
+
     # TODO: schedule_date
 
-    for message, post_info in zip(messages, post_infos):
+    for message, post_info, fwd_header in zip(messages, post_infos, fwd_headers):
         # TODO: forward in bulk?
         forwarded = await message.forward_for_peers(
             to_peer=to_peer,
@@ -1205,7 +1210,7 @@ async def forward_messages(
             anonymous=is_anonymous,
             new_channel_author_id=send_as_channel_id,
 
-            fwd_header=await message.create_fwd_header(to_peer.type is PeerType.SELF) if not request.drop_author else None,
+            fwd_header=fwd_header,
             is_forward=True,
         )
 
@@ -1255,7 +1260,7 @@ async def upload_media(request: UploadMedia | UploadMedia_133, user_id: int):
 
     _check_we_blocked_user(peer)
 
-    user = await User.get(id=user_id).only("id", "phone_number")
+    user = await User.get(id=user_id).only("id")
     media = await _process_media(user, request.media)
     return await media.to_tl()
 

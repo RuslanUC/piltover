@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 
 from tortoise import fields, Model
 
@@ -26,6 +27,7 @@ class MessageFwdHeader(Model):
     saved_from: models.User = fields.ForeignKeyField("models.User", null=True, default=None, related_name="saved_user")
     saved_name: str = fields.CharField(max_length=64, null=True, default=None)
     saved_date: datetime = fields.DatetimeField(null=True, default=None)
+    internal_random_id: UUID | None = fields.UUIDField(null=True, default=None, unique=True)
 
     from_user_id: int | None
     from_chat_id: int | None
