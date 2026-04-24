@@ -628,7 +628,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
     elif request.message is not None and len(message_text) > APP_CONFIG.max_caption_length and content.media_id:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
-    if content.author != user:
+    if content.author_id != user.id:
         raise ErrorRpc(error_code=403, error_message="MESSAGE_AUTHOR_REQUIRED")
     if content.message == request.message:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
@@ -1139,7 +1139,7 @@ async def forward_messages(
 
     random_ids = dict(zip(request.id[:100], random_id))
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
-        *MessageRef.PREFETCH_FIELDS, "reply_to", "content__send_as_channel",
+        *MessageRef.PREFETCH_FIELDS, "reply_to", "content__author", "content__send_as_channel",
         "content__fwd_header__from_user", "content__fwd_header__from_chat", "content__fwd_header__from_channel",
     )
     reply_ids = {}

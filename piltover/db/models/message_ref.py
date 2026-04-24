@@ -72,16 +72,12 @@ class MessageRef(Model):
     taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
     PREFETCH_FIELDS_MIN = (
-        "peer", "content", "content__author", "content__media",
+        "peer", "content", "content__media",
     )
     PREFETCH_FIELDS = (
         *PREFETCH_FIELDS_MIN, "peer__owner", "content__media__file", "content__media__file__stickerset",
         "content__media__poll", "content__fwd_header", "content__fwd_header__saved_peer", "content__post_info",
         "content__via_bot", "peer__channel",
-    )
-    _PREFETCH_ALL_TOP_FIELDS = (
-        "peer", "content__author", "content__media", "content__fwd_header", "reply_to",
-        "content__via_bot",
     )
     PREFETCH_MAYBECACHED = ("peer", "content", "peer__channel")
     _FETCH_CACHED_REFS = ("content__media", "content__media__file")

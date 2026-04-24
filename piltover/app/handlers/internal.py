@@ -95,7 +95,7 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
     async with in_transaction():
         logger.info(f"Creating discussion thread for message {request.message_id}")
         message = await MessageRef.select_for_update().get_or_none(id=request.message_id).select_related(
-            *MessageRef.PREFETCH_FIELDS, "peer__channel", "content__send_as_channel",
+            *MessageRef.PREFETCH_FIELDS, "peer__channel", "content__author", "content__send_as_channel",
         )
         if message is None or not message.peer.channel.discussion_id:
             return TaggedBool(value=False)

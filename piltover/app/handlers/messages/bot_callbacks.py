@@ -45,7 +45,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -
                 and request.msg_id < channel_min_id:
             raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    if (message := await MessageRef.get_(request.msg_id, peer)) is None:
+    if (message := await MessageRef.get_(request.msg_id, peer, prefetch=("content__author",))) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if not message.content.author.bot:
@@ -94,7 +94,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -
 
         topic = f"bot-callback-query/{query.id}"
         await pubsub.listen(topic, None)
-        await upd.bot_callback_query(message_for_bot.content.author, query)
+        await upd.bot_callback_query(message_for_bot.content.author_id, query)
 
         result = await pubsub.listen(topic, 15)
         if result is None:

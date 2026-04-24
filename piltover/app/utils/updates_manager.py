@@ -1779,11 +1779,11 @@ async def migrate_chat(chat: Chat, channel: Channel, user_ids: list[int]) -> Upd
     return updates
 
 
-async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
-    new_pts = await State.add_pts(bot, 1)
+async def bot_callback_query(bot_id: int, query: CallbackQuery) -> None:
+    new_pts = await State.add_pts(bot_id, 1)
 
     await Update.create(
-        user=bot,
+        user_id=bot_id,
         update_type=UpdateType.BOT_CALLBACK_QUERY,
         pts=new_pts,
         pts_count=1,
@@ -1810,7 +1810,7 @@ async def bot_callback_query(bot: User, query: CallbackQuery) -> None:
         chats=[*chats, *channels],
     )
 
-    await SessionManager.send(updates, bot.id)
+    await SessionManager.send(updates, bot_id)
 
 
 async def update_user_phone(user: User) -> Updates:
