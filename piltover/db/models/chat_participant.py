@@ -29,6 +29,7 @@ class ChatParticipant(Model):
     invited_at: datetime = fields.DatetimeField(auto_now_add=True)
     banned_until: datetime = fields.DatetimeField(null=True, default=None)
     banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights.NONE)
+    # TODO: add index on `admin_rights`?
     admin_rights: ChatAdminRights = IntFlagField(ChatAdminRights, default=ChatAdminRights.NONE)
     invite: models.ChatInvite | None = fields.ForeignKeyField("models.ChatInvite", null=True, default=None, on_delete=fields.SET_NULL)
     admin_rank: str = fields.CharField(max_length=24, default="")

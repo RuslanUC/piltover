@@ -275,6 +275,7 @@ class Peer(Model):
     @classmethod
     def query_from_input_user_or_raise(
             cls, user_id: int, input_user: InputPeerUser | InputUser | InputPeerSelf, auth_id: int | None = None,
+            error_message: str = "PEER_ID_INVALID",
     ) -> QuerySetSingle[Peer]:
         if auth_id is None:
             ctx = request_ctx.get()
@@ -289,4 +290,4 @@ class Peer(Model):
                 raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
             return peer_query.get(user_id=input_user.user_id)
         else:
-            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+            raise ErrorRpc(error_code=400, error_message=error_message)

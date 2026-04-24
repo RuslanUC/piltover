@@ -10,7 +10,7 @@ dc_list = [
 ]
 # Id of this datacenter.
 this_dc = 2
-# Instance name. Will be used in system messages and for system user name.
+# Instance name. Will be used in system messages and for system user's name.
 name = "Piltover"
 # Username of system user. System user is a user with id 777000, all login codes and system messages will be sent there.
 system_user_username = "piltover"
@@ -42,6 +42,10 @@ recent_stickers_limit = 25
 reactions_unique_max = 11
 # Maximum length of user's "about" field (in characters).
 user_bio_limit = 100
+# Maximum amount of admins in basic group
+basic_group_admin_limit = 10
+# Maximum amount of admins in channels and supergroups
+channel_admin_limit = 25
 
 # Key used to sign access hashes, file references, etc.
 #  Must be changed from default one and kept in secret!

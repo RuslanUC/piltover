@@ -39,6 +39,8 @@ class _AppConfig(BaseModel):
     recent_stickers_limit: int = 25
     reactions_unique_max: int = 11
     user_bio_limit: int = 100
+    basic_group_admin_limit: int = 10
+    channel_admin_limit: int = 25
 
     hmac_key: Base64Bytes
     file_ref_expire_minutes: int = 60 * 4

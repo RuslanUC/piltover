@@ -389,18 +389,23 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
 @handler.on_request(EditChatAdmin, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def edit_chat_admin(request: EditChatAdmin, user_id: int) -> bool:
     chat_peer = await Peer.from_chat_id_raise(user_id, request.chat_id)
-    user_peer = await Peer.from_input_peer_raise(user_id, request.user_id)  # TODO: only allow user peers
+    target_peer = await Peer.query_from_input_user_or_raise(user_id, request.user_id).only("user_id")
 
-    if not await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
+    if not await Peer.filter(owner_id=target_peer.user_id, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
     if chat_peer.chat.creator_id != user_id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user=user_peer.user)
+    participant = await ChatParticipant.get_or_none(
+        chat=chat_peer.chat, user_id=target_peer.user_id,
+    ).only("id", "admin_rights")
     if participant.is_admin == request.is_admin:
         return True
 
     if request.is_admin:
+        admins_count = await ChatParticipant.filter(chat=chat_peer.chat, admin_rights__gt=0).count()
+        if admins_count > APP_CONFIG.basic_group_admin_limit:
+            raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
         participant.admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
     else:
         participant.admin_rights = ChatAdminRights(0)

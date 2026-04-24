@@ -614,16 +614,22 @@ async def edit_admin(request: EditAdmin, user_id: int) -> Updates:
     if not channel.admin_has_permission(participant, ChatAdminRights.ADD_ADMINS):
         raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
 
-    target_peer = await Peer.from_input_peer_raise(
-        user_id, request.user_id, "PARTICIPANT_ID_INVALID", peer_types=(PeerType.USER, PeerType.SELF,)
-    )
+    target_peer = await Peer.query_from_input_user_or_raise(
+        user_id, request.user_id, error_message="PARTICIPANT_ID_INVALID",
+    ).only("user_id")
     if target_peer.user_id == creator_id and target_peer.user_id != user_id:
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
-    target_participant = await channel.get_participant(target_peer.user)
+    target_participant = await channel.get_participant(target_peer.user_id)
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
     new_admin_rights = ChatAdminRights.from_tl(request.admin_rights)
+
+    if new_admin_rights > 0 and not target_participant.is_admin:
+        admins_count = await ChatParticipant.filter(channel=channel, admin_rights__gt=0).count()
+        if admins_count > APP_CONFIG.channel_admin_limit:
+            raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
+
     if target_peer.user_id == creator_id:
         new_admin_rights |= ChatAdminRights.from_tl(CREATOR_RIGHTS)
 
