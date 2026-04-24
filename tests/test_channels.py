@@ -7,7 +7,7 @@ from PIL import Image
 from faker import Faker
 from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInvalid, \
     ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden, InviteHashExpired, UsernameNotModified, \
-    ChatTitleEmpty, ChatAboutTooLong, RightForbidden
+    ChatTitleEmpty, ChatAboutTooLong, RightForbidden, UsersTooMuch
 from pyrogram.raw.functions.account import GetPassword
 from pyrogram.raw.functions.channels import EditCreator, DeleteHistory
 from pyrogram.raw.functions.updates import GetChannelDifference
@@ -773,6 +773,31 @@ async def test_channel_get_difference(channel_with_clients: ChannelWithClientsFa
     ))
     assert isinstance(empty_difference, ChannelDifferenceEmpty)
     assert empty_difference.pts == difference.pts
+
+
+@pytest.mark.asyncio
+async def test_channel_promote_user_exceed_admins_limit_fail(channel_with_clients: ChannelWithClientsFactory) -> None:
+    APP_CONFIG.channel_admin_limit = 1
+
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+    user2 = await client1.resolve_user(client2)
+
+    with pytest.raises(UsersTooMuch):
+        await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges(can_manage_chat=True))
+
+
+@pytest.mark.asyncio
+async def test_channel_demote_user_exceed_admins_limit_success(channel_with_clients: ChannelWithClientsFactory) -> None:
+    APP_CONFIG.channel_admin_limit = 2
+
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+    user2 = await client1.resolve_user(client2)
+
+    assert await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges(can_manage_chat=True))
+
+    APP_CONFIG.channel_admin_limit = 1
+
+    assert await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges())
 
 
 # TODO: add tests for restricting chat members (including restricting before join)

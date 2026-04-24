@@ -6,7 +6,7 @@ import logging
 from asyncio import Task, CancelledError
 from contextlib import AsyncExitStack
 from os import urandom
-from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn
+from typing import AsyncIterator, TypeVar, TYPE_CHECKING, cast, Protocol, overload, Literal, NoReturn, Any, Generator
 
 import pytest
 import pytest_asyncio
@@ -39,6 +39,23 @@ def redirect_logging_to_loguru() -> None:
     InterceptHandler.redirect_to_loguru("tg_secret.client", logging.DEBUG)
     # InterceptHandler.redirect_to_loguru("tortoise", logging.DEBUG)
     InterceptHandler.redirect_to_loguru("tortoise.db_client", logging.DEBUG)
+
+
+@pytest.fixture(autouse=True, scope="function")
+def restore_configs() -> Generator[None, Any, None]:
+    from piltover.config import APP_CONFIG, SYSTEM_CONFIG, GATEWAY_CONFIG, WORKER_CONFIG
+
+    app_config_backup = APP_CONFIG.model_copy(deep=True)
+    system_config_backup = SYSTEM_CONFIG.model_copy(deep=True)
+    gateway_config_backup = GATEWAY_CONFIG.model_copy(deep=True)
+    worker_config_backup = WORKER_CONFIG.model_copy(deep=True)
+
+    yield
+
+    APP_CONFIG.__dict__.update(APP_CONFIG.__class__.model_validate(app_config_backup).__dict__)
+    SYSTEM_CONFIG.__dict__.update(SYSTEM_CONFIG.__class__.model_validate(system_config_backup).__dict__)
+    GATEWAY_CONFIG.__dict__.update(GATEWAY_CONFIG.__class__.model_validate(gateway_config_backup).__dict__)
+    WORKER_CONFIG.__dict__.update(WORKER_CONFIG.__class__.model_validate(worker_config_backup).__dict__)
 
 
 T = TypeVar("T")

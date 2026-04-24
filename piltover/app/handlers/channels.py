@@ -627,7 +627,7 @@ async def edit_admin(request: EditAdmin, user_id: int) -> Updates:
 
     if new_admin_rights > 0 and not target_participant.is_admin:
         admins_count = await ChatParticipant.filter(channel=channel, admin_rights__gt=0).count()
-        if admins_count > APP_CONFIG.channel_admin_limit:
+        if admins_count >= APP_CONFIG.channel_admin_limit:
             raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
     if target_peer.user_id == creator_id:

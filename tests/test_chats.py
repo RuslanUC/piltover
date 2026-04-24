@@ -4,15 +4,17 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, Forbidden
+from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, Forbidden, UsersTooMuch
 from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs, MigrateChat
 from pyrogram.raw.types import UpdateUserName, UpdateNewMessage, MessageService, MessageActionChatMigrateTo, \
     UpdateNewChannelMessage, InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
 from pyrogram.raw.types.messages import Dialogs
 from pyrogram.utils import get_channel_id
 
+from piltover.config import APP_CONFIG
 from piltover.tl import InputPeerEmpty
 from tests.client import TestClient
+from tests.conftest import ClientFactory
 from tests.utils import color_is_near
 
 PHOTO_COLOR = (0x00, 0xff, 0x00)
@@ -281,3 +283,60 @@ async def test_get_common_chats(exit_stack: AsyncExitStack) -> None:
     common_chats = await client2.get_common_chats("test1_username")
     assert len(common_chats) == 1
     assert common_chats[0].id == group1.id
+
+
+@pytest.mark.asyncio
+async def test_promote_user_to_admin_exceed_admin_limit_fail(client_with_auth: ClientFactory) -> None:
+    APP_CONFIG.basic_group_admin_limit = 1
+
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    user2 = await client1.resolve_user(client2)
+    user1 = await client2.resolve_user(client1)
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer(user1.id)]),
+    )
+
+    group = await client1.create_group("idk", [user2.id])
+
+    with pytest.raises(UsersTooMuch):
+        await client1.invoke(EditChatAdmin(
+            chat_id=abs(group.id),
+            user_id=await client1.resolve_peer(user2.id),
+            is_admin=True,
+        ))
+
+
+@pytest.mark.asyncio
+async def test_demote_user_to_admin_exceed_admin_limit_success(client_with_auth: ClientFactory) -> None:
+    APP_CONFIG.basic_group_admin_limit = 2
+
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    user2 = await client1.resolve_user(client2)
+    user1 = await client2.resolve_user(client1)
+
+    await client2.set_privacy(
+        InputPrivacyKeyChatInvite(),
+        InputPrivacyValueAllowUsers(users=[await client2.resolve_peer(user1.id)]),
+    )
+
+    group = await client1.create_group("idk", [user2.id])
+
+    assert await client1.invoke(EditChatAdmin(
+        chat_id=abs(group.id),
+        user_id=await client1.resolve_peer(user2.id),
+        is_admin=True,
+    ))
+
+    APP_CONFIG.basic_group_admin_limit = 1
+
+    assert await client1.invoke(EditChatAdmin(
+        chat_id=abs(group.id),
+        user_id=await client1.resolve_peer(user2.id),
+        is_admin=False,
+    ))

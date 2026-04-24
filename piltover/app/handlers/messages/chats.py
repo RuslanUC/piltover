@@ -404,7 +404,7 @@ async def edit_chat_admin(request: EditChatAdmin, user_id: int) -> bool:
 
     if request.is_admin:
         admins_count = await ChatParticipant.filter(chat=chat_peer.chat, admin_rights__gt=0).count()
-        if admins_count > APP_CONFIG.basic_group_admin_limit:
+        if admins_count >= APP_CONFIG.basic_group_admin_limit:
             raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
         participant.admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
     else:
