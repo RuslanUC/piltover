@@ -389,7 +389,7 @@ async def _validate_message_entities(text: str, entities: list[MessageEntityBase
 
             if check_id not in files \
                     or files[check_id].stickerset_id is None \
-                    or files[check_id].stickerset.deleted\
+                    or files[check_id].stickerset.deleted \
                     or files[check_id].sticker_alt != u16text[off:off+ln].decode("utf-16le"):
                 del result[idx]
                 continue

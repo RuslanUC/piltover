@@ -272,7 +272,7 @@ class MessageContent(Model):
             post_author=self.post_author,
             post_info=self.post_info,
             ttl_period_days=self.ttl_period_days,
-            send_as_channel=self.send_as_channel,
+            send_as_channel_id=self.send_as_channel_id,
         )
 
         related_user_ids, related_chat_ids, related_channel_ids = await models.MessageRelated.get_for_message(self)
@@ -285,14 +285,14 @@ class MessageContent(Model):
             fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
             drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
             is_forward: bool = False, no_forwards: bool = False,
-            new_channel_author: models.Channel | None = None, channel_post: bool | None = None,
+            new_channel_author_id: int | None = None, channel_post: bool | None = None,
             post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
             anonymous: bool | None = None,
     ) -> Self:
         if new_author is None and self.author is not None:
             new_author = self.author
-        if new_channel_author is None and self.send_as_channel is not None:
-            new_channel_author = self.send_as_channel
+        if new_channel_author_id is None and self.send_as_channel_id is not None:
+            new_channel_author_id = self.send_as_channel_id
 
         if anonymous is None:
             anonymous = self.anonymous if not drop_author else None
@@ -319,7 +319,7 @@ class MessageContent(Model):
             anonymous=anonymous,
             no_forwards=no_forwards,
             via_bot=self.via_bot,
-            send_as_channel=new_channel_author,
+            send_as_channel_id=new_channel_author_id,
         )
 
         related_user_ids = set()

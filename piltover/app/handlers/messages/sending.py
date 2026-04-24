@@ -170,7 +170,7 @@ async def send_created_messages_internal(
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool,
         author: User | int, opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, *,
-        message: str | None = None, entities: list[dict[str, int | str]] | None = None,
+        text: str | None = None, entities: list[dict[str, int | str]] | None = None,
         **message_kwargs
 ) -> Updates:
     """
@@ -208,9 +208,9 @@ async def send_message_internal(
     mentioned_user_ids = set()
 
     if opposite and (peer.type is PeerType.CHAT or (peer.type is PeerType.CHANNEL and peer.channel.supergroup)):
-        if entities and message:
+        if entities and text:
             mentioned_user_ids = await _extract_mentions_from_message(
-                entities, message, author.id if isinstance(author, User) else author,
+                entities, text, author.id if isinstance(author, User) else author,
             )
 
         if reply_to:
@@ -232,7 +232,10 @@ async def send_message_internal(
 
     messages = await MessageRef.create_for_peer(
         peer, author, random_id, opposite, unhide_dialog,
-        message=message, entities=entities, reply_to=reply_to, top_message=reply_to_top,
+        message=text,
+        entities=entities,
+        reply_to=reply_to,
+        top_message=reply_to_top,
         **message_kwargs,
     )
 
@@ -399,7 +402,7 @@ async def _update_channel_slowmode_maybe(channel: Channel, user_id: int) -> None
     })
 
 
-async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User | int) -> Channel | None:
+async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User | int) -> int | None:
     if send_as is None or isinstance(send_as, (InputPeerEmpty, InputChannelEmpty, InputPeerSelf)):
         return None
 
@@ -410,13 +413,12 @@ async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User |
     if not Channel.check_access_hash(user_id, ctx.auth_id, channel_id, send_as.access_hash):
         raise ErrorRpc(error_code=400, error_message="SEND_AS_PEER_INVALID", reason="invalid access hash")
 
-    send_as_channel = await Channel.get_or_none(
+    if not await Channel.filter(
         creator_id=user_id, channel=True, deleted=False, id=channel_id, username__isnull=False
-    )
-    if send_as_channel is None:
+    ).exists():
         raise ErrorRpc(error_code=400, error_message="SEND_AS_PEER_INVALID", reason="invalid channel")
 
-    return send_as_channel
+    return channel_id
 
 
 @handler.on_request(SendMessage_148, ReqHandlerFlags.DONT_FETCH_USER)
@@ -456,18 +458,18 @@ async def send_message(request: SendMessage, user_id: int):
     else:
         is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
-    send_as_channel = await process_send_as(request.send_as, user_id)
+    send_as_channel_id = await process_send_as(request.send_as, user_id)
 
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user_id)
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
-        author=user, message=request.message, scheduled_date=request.schedule_date,
+        author=user, text=request.message, scheduled_date=request.schedule_date,
         entities=await process_message_entities(request.message, request.entities, user_id),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
+        no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel_id=send_as_channel_id,
     )
 
 
@@ -1017,7 +1019,7 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user_id
     else:
         is_anonymous = False
     reply_markup = await process_reply_markup(request.reply_markup, user)
-    send_as_channel = await process_send_as(request.send_as, user_id)
+    send_as_channel_id = await process_send_as(request.send_as, user_id)
 
     if request.update_stickersets_order and media.file and media.file.type is FileType.DOCUMENT_STICKER:
         await RecentSticker.update_time_or_create(user_id, media.file)
@@ -1028,11 +1030,11 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user_id
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
-        author=user, message=request.message, media=media,
+        author=user, text=request.message, media=media,
         entities=await process_message_entities(request.message, request.entities, user_id),
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
+        no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel_id=send_as_channel_id,
     )
 
 
@@ -1181,7 +1183,7 @@ async def forward_messages(
         is_anonymous, post_signature = _make_supergroup_anonymous_maybe(to_peer, to_participant)
     else:
         is_anonymous = False
-    send_as_channel = await process_send_as(request.send_as, user)
+    send_as_channel_id = await process_send_as(request.send_as, user)
 
     # TODO: schedule_date
 
@@ -1201,7 +1203,7 @@ async def forward_messages(
             post_info=post_info,
             post_author=post_signature,
             anonymous=is_anonymous,
-            new_channel_author=send_as_channel,
+            new_channel_author_id=send_as_channel_id,
 
             fwd_header=await message.create_fwd_header(to_peer.type is PeerType.SELF) if not request.drop_author else None,
             is_forward=True,
@@ -1330,20 +1332,23 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
 
     group_id = Snowflake.make_id()
 
-    send_as_channel = await process_send_as(request.send_as, user_id)
+    send_as_channel_id = await process_send_as(request.send_as, user_id)
+
+    is_channel_post, post_infos, post_signature = await _make_channel_post_info_many(
+        peer, user, participant, len(messages),
+    )
+    if not is_channel_post:
+        is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
+    else:
+        is_anonymous = False
 
     updates = None
-    for idx, (message, random_id, media, entities) in enumerate(messages):
-        is_channel_post, post_info, post_signature = await _make_channel_post_info_maybe(peer, user, participant)
-        if not is_channel_post:
-            is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
-        else:
-            is_anonymous = False
+    for idx, ((message, random_id, media, entities), post_info) in enumerate(zip(messages, post_infos)):
         new_updates = await send_message_internal(
             user, peer, random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
-            author=user, message=message, media=media, entities=entities, media_group_id=group_id,
+            author=user, text=message, media=media, entities=entities, media_group_id=group_id,
             channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
-            no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel=send_as_channel,
+            no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel_id=send_as_channel_id,
         )
         if updates is None:
             updates = new_updates
@@ -1469,7 +1474,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> 
         is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
     else:
         is_anonymous = False
-    send_as_channel = await process_send_as(request.send_as, user_id)
+    send_as_channel_id = await process_send_as(request.send_as, user_id)
 
     media = None
     if item.photo_id or item.document_id:
@@ -1494,10 +1499,10 @@ async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> 
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
-        author=user, message=item.send_message_text or "", media=media, entities=item.send_message_entities,
+        author=user, text=item.send_message_text or "", media=media, entities=item.send_message_entities,
         channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
         #reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot, send_as_channel=send_as_channel,
+        no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot, send_as_channel_id=send_as_channel_id,
     )
 
 

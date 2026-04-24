@@ -182,17 +182,6 @@ class ChatBase(Model):
         return self.creator_id == participant.user_id \
             or ((participant.admin_rights & permission) == permission)
 
-    def can_invite(self, participant: models.ChatParticipant) -> bool:
-        if isinstance(self, models.Chat) \
-                and not self.user_has_permission(participant, ChatBannedRights.INVITE_USERS):
-            return False
-        elif isinstance(self, models.Channel) \
-                and not self.user_has_permission(participant, ChatBannedRights.INVITE_USERS) \
-                and not self.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
-            return False
-
-        return True
-
     def make_id(self) -> int:
         raise NotImplementedError
 

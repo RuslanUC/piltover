@@ -443,7 +443,7 @@ class MessageRef(Model):
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
             is_discussion: bool = False, channel_post: bool | None = None,
             post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
-            anonymous: bool | None = None, new_channel_author: models.Channel | None = None,
+            anonymous: bool | None = None, new_channel_author_id: int | None = None,
     ) -> list[Self]:
         content = await self.content.clone_forward(
             related_peer=to_peer,
@@ -458,7 +458,7 @@ class MessageRef(Model):
             post_info=post_info,
             post_author=post_author,
             anonymous=anonymous,
-            new_channel_author=new_channel_author,
+            new_channel_author_id=new_channel_author_id,
         )
 
         if reply_to_content_id:

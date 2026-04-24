@@ -128,12 +128,12 @@ async def save_default_send_as(request: SaveDefaultSendAs, user_id: int) -> bool
     if not group.supergroup:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    send_as_channel = await process_send_as(request.send_as, user_id)
-    if send_as_channel is None:
+    send_as_channel_id = await process_send_as(request.send_as, user_id)
+    if send_as_channel_id is None:
         await DefaultSendAs.filter(user_id=user_id, group_id=group.id).delete()
     else:
         await DefaultSendAs.update_or_create(user_id=user_id, group=group, defaults={
-            "channel": send_as_channel,
+            "channel_id": send_as_channel_id,
         })
 
     await upd.update_channel_for_user(group, user_id)
