@@ -44,6 +44,7 @@ class Stickerset(Model):
     id: int = fields.BigIntField(primary_key=True)
     title: str = fields.CharField(max_length=64)
     short_name: str | None = fields.CharField(max_length=64, unique=True, null=True)
+    # TODO: replace with per-user "offline" access hash
     access_hash: int = fields.BigIntField(default=stickerset_gen_access_hash)
     owner: models.User | None = fields.ForeignKeyField("models.User", null=True)
     official: bool = fields.BooleanField(default=False)
