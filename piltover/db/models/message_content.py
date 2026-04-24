@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, UTC
 from io import BytesIO
 from os import environ
-from typing import Iterable, Self, Annotated
-from uuid import uuid4
+from typing import Iterable, Self, Annotated, Sequence
+from uuid import uuid4, UUID
 
 from loguru import logger
 from tortoise import fields, Model
@@ -57,6 +58,7 @@ class MessageContent(Model):
     replies_version: int = fields.IntField(default=0)
     send_as_channel: models.Channel | None = NullableFK("models.Channel")
     author_reactions_unread: bool = fields.BooleanField(default=False)
+    internal_random_id: UUID | None = fields.UUIDField(null=True, default=None, unique=True)
 
     peer_id: int
     author_id: int | None
@@ -284,7 +286,8 @@ class MessageContent(Model):
 
     async def clone_forward(
             self, related_peer: models.Peer, new_author: models.User | None = None,
-            fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
+            # TODO: make required
+            fwd_header: models.MessageFwdHeader | None = None,
             drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
             is_forward: bool = False, no_forwards: bool = False,
             new_channel_author_id: int | None = None, channel_post: bool | None = None,
@@ -307,13 +310,13 @@ class MessageContent(Model):
 
         content = await models.MessageContent.create(
             message=self.message if self.media is None or not drop_captions else None,
+            entities=self.entities if self.media is None or not drop_captions else None,
             date=self.date if not is_forward else datetime.now(UTC),
             edit_date=self.edit_date if not is_forward else None,
             type=self.type,
             author=new_author,
             media=self.media,
             fwd_header=fwd_header,
-            entities=self.entities,
             media_group_id=media_group_id,
             channel_post=channel_post,
             post_author=post_author,
@@ -328,9 +331,100 @@ class MessageContent(Model):
         related_chat_ids = set()
         related_channel_ids = set()
         content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
-        await self._create_related_from_ids(content, related_user_ids, related_chat_ids, related_channel_ids)
+        await self._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
 
         return content
+
+    @classmethod
+    async def clone_forward_bulk(
+            cls, contents: list[Self], fwd_headers: Sequence[models.MessageFwdHeader | None],
+            post_infos: Sequence[models.ChannelPostInfo | None], media_group_ids: Sequence[int | None],
+            related_peer: models.Peer, new_author: models.User | None = None, drop_captions: bool = False,
+            drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
+            new_channel_author_id: int | None = None, channel_post: bool | None = None, post_author: str | None = None,
+            anonymous: bool | None = None,
+    ) -> list[Self]:
+        new_contents = []
+        internal_random_ids = []
+
+        for content, fwd_header, post_info, media_group_id in zip(contents, fwd_headers, post_infos, media_group_ids):
+            new_author_c = new_author
+            new_channel_author_id_c = new_channel_author_id
+            anonymous_c = anonymous
+            channel_post_c = channel_post
+            post_author_c = post_author
+
+            if new_author_c is None and content.author is not None:
+                new_author_c = content.author
+            if new_channel_author_id_c is None and content.send_as_channel_id is not None:
+                new_channel_author_id_c = content.send_as_channel_id
+
+            if anonymous_c is None:
+                anonymous_c = content.anonymous if not drop_author else None
+            if channel_post_c is None:
+                channel_post_c = content.channel_post if not drop_author else None
+            if post_info is None:
+                post_info = content.post_info if not drop_author else None
+            if post_author_c is None:
+                post_author_c = content.post_author if not drop_author else None
+
+            internal_random_id = uuid4()
+            internal_random_ids.append(internal_random_id)
+            new_contents.append(models.MessageContent(
+                message=content.message if content.media is None or not drop_captions else None,
+                entities=content.entities if content.media is None or not drop_captions else None,
+                date=content.date if not is_forward else datetime.now(UTC),
+                edit_date=content.edit_date if not is_forward else None,
+                type=content.type,
+                author=new_author_c,
+                media=content.media,
+                fwd_header=fwd_header,
+                media_group_id=media_group_id,
+                channel_post=channel_post_c,
+                post_author=post_author_c,
+                post_info=post_info,
+                anonymous=anonymous_c,
+                no_forwards=no_forwards,
+                via_bot=content.via_bot,
+                send_as_channel_id=new_channel_author_id_c,
+                internal_random_id=internal_random_id,
+            ))
+
+        await cls.bulk_create(new_contents)
+
+        msg_id_by_random_id = {
+            internal_random_id: content_id
+            for content_id, internal_random_id in await cls.filter(
+                internal_random_id__in=internal_random_ids,
+            ).values_list("id", "internal_random_id")
+        }
+
+        await cls.filter(id__in=list(msg_id_by_random_id.values())).update(internal_random_id=None)
+
+        related_to_create = []
+
+        for content in new_contents:
+            await asyncio.sleep(0)
+
+            content.id = msg_id_by_random_id[content.internal_random_id]
+            content._saved_in_db = True
+
+            related_user_ids = set()
+            related_chat_ids = set()
+            related_channel_ids = set()
+            content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
+
+            for related_user_id in related_user_ids:
+                related_to_create.append(models.MessageRelated(message_id=content.id, user_id=related_user_id))
+            for related_chat_id in related_chat_ids:
+                related_to_create.append(models.MessageRelated(message_id=content.id, chat_id=related_chat_id))
+            for related_channel_id in related_channel_ids:
+                related_to_create.append(models.MessageRelated(message_id=content.id, channel_id=related_channel_id))
+
+        if related_to_create:
+            await models.MessageRelated.bulk_create(related_to_create)
+
+        return new_contents
 
     async def create_fwd_header(
             self, ref: models.MessageRef, to_self: bool, discussion: bool = False,
@@ -493,7 +587,7 @@ class MessageContent(Model):
         content = await MessageContent.create(**message_kwargs)
 
         content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
-        await cls._create_related_from_ids(content, related_user_ids, related_chat_ids, related_channel_ids)
+        await cls._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
 
         return content
 
@@ -549,24 +643,6 @@ class MessageContent(Model):
 
         if self.via_bot_id is not None:
             user_ids.add(self.via_bot_id)
-
-    @classmethod
-    async def _create_related_from_ids(
-            cls, message: MessageContent,
-            user_ids: Iterable[int], chat_ids: Iterable[int], channel_ids: Iterable[int],
-    ) -> None:
-        related_users = []
-        related_chats = []
-        related_channels = []
-
-        if user_ids:
-            related_users = await models.User.filter(id__in=user_ids).values_list("id", flat=True)
-        if chat_ids:
-            related_chats = await models.Chat.filter(id__in=chat_ids).values_list("id", flat=True)
-        if channel_ids:
-            related_channels = await models.Channel.filter(id__in=channel_ids).values_list("id", flat=True)
-
-        await cls._create_related(message, related_users, related_chats, related_channels)
 
     @staticmethod
     async def _create_related(

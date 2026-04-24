@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TypeVar, Self, Iterable, cast
+from typing import TypeVar, Self, Iterable, cast, Sequence
 
 from loguru import logger
 from tortoise import fields, Model
@@ -11,7 +11,7 @@ from tortoise.functions import Count, Max
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
-from piltover.db.models.utils import Missing, MISSING, NullableFKSetNull
+from piltover.db.models.utils import NullableFKSetNull
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount, \
     MessageReplies as TLMessageReplies, PeerChannel, PeerUser
@@ -434,7 +434,8 @@ class MessageRef(Model):
     async def forward_for_peers(
             self, to_peer: models.Peer, peers: Iterable[models.Peer], new_author: models.User | None = None,
             random_id: int | None = None,
-            fwd_header: models.MessageFwdHeader | None | Missing = MISSING,
+            # TODO: make required
+            fwd_header: models.MessageFwdHeader | None = None,
             reply_to_content_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
             is_discussion: bool = False, channel_post: bool | None = None,
@@ -496,6 +497,66 @@ class MessageRef(Model):
         for message in messages:
             message.id = ref_ids_by_peer_ids[message.peer.id]
             message._saved_in_db = True
+
+        return messages
+
+    @classmethod
+    async def forward_for_peers_bulk(
+            cls,
+            new_contents: list[models.MessageContent],
+            to_peer: models.Peer,
+            peers: Iterable[models.Peer],
+            random_ids: Sequence[int | None],
+            reply_to_content_ids: Sequence[int | None],
+            pinned: Sequence[bool],
+            is_discussion: Sequence[bool],
+    ) -> list[Self]:
+        if not peers or not new_contents:
+            return []
+
+        messages = []
+        for content, random_id, pinned_ in zip(new_contents, random_ids, pinned):
+            for peer in peers:
+                # TODO: fill reply_to_id
+                messages.append(models.MessageRef(
+                    peer=peer,
+                    content=content,
+                    pinned=pinned_,
+                    random_id=random_id if peer == to_peer else None,
+                    is_discussion=is_discussion,
+                ))
+
+        await MessageRef.bulk_create(messages)
+
+        ref_ids_by_peer_ids = {
+            (peer_id, content_id): ref_id
+            for ref_id, peer_id, content_id in await MessageRef.filter(
+                peer_id__in=[peer.id for peer in peers], content_id__in=[content.id for content in new_contents],
+            ).values_list("id", "peer_id", "content_id")
+        }
+
+        replies_by_content_id = {
+            content.id: reply_to_content_id
+            for content, reply_to_content_id in zip(new_contents, reply_to_content_ids)
+            if reply_to_content_id is not None
+        }
+
+        to_update = []
+
+        for message in messages:
+            message.id = ref_ids_by_peer_ids[(message.peer.id, message.content.id)]
+            message._saved_in_db = True
+
+            if message.content.id in replies_by_content_id:
+                reply_to_ref_id = ref_ids_by_peer_ids.get(
+                    (message.peer.id, replies_by_content_id[message.content.id])
+                )
+                if reply_to_ref_id:
+                    message.reply_to_id = reply_to_ref_id
+                    to_update.append(message)
+
+        if to_update:
+            await cls.bulk_update(to_update, ["reply_to_id"])
 
         return messages
 

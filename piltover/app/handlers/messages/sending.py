@@ -1142,7 +1142,6 @@ async def forward_messages(
         *MessageRef.PREFETCH_FIELDS, "reply_to", "content__author", "content__send_as_channel",
         "content__fwd_header__from_user", "content__fwd_header__from_chat", "content__fwd_header__from_channel",
     )
-    reply_ids = {}
     media_group_ids: defaultdict[int | None, int | None] = defaultdict(Snowflake.make_id)
     media_group_ids[None] = None
 
@@ -1192,32 +1191,42 @@ async def forward_messages(
 
     # TODO: schedule_date
 
-    for message, post_info, fwd_header in zip(messages, post_infos, fwd_headers):
-        # TODO: forward in bulk?
-        forwarded = await message.forward_for_peers(
-            to_peer=to_peer,
-            peers=peers,
-            new_author=user,
-            drop_captions=request.drop_media_captions,
-            random_id=random_ids[message.id],
-            reply_to_content_id=reply_ids.get(message.reply_to.content_id) if message.reply_to else None,
-            media_group_id=media_group_ids[message.content.media_group_id],
-            drop_author=request.drop_author,
-            no_forwards=_resolve_noforwards(to_peer, user, request.noforwards),
-            channel_post=is_channel_post,
-            post_info=post_info,
-            post_author=post_signature,
-            anonymous=is_anonymous,
-            new_channel_author_id=send_as_channel_id,
+    forwarded_contents = await MessageContent.clone_forward_bulk(
+        contents=[ref.content for ref in messages],
+        fwd_headers=fwd_headers,
+        post_infos=post_infos,
+        media_group_ids=[media_group_ids[ref.content.media_group_id] for ref in messages],
+        related_peer=to_peer,
+        new_author=user,
+        drop_captions=request.drop_media_captions,
+        drop_author=request.drop_author,
+        is_forward=True,
+        no_forwards=_resolve_noforwards(to_peer, user, request.noforwards),
+        new_channel_author_id=send_as_channel_id,
+        channel_post=is_channel_post,
+        post_author=post_signature,
+        anonymous=is_anonymous,
+    )
 
-            fwd_header=fwd_header,
-            is_forward=True,
-        )
+    old_ids_to_new_ids = {old.content_id: new.id for old, new in zip(messages, forwarded_contents)}
+    reply_to_content_ids = [
+        old_ids_to_new_ids.get(old.reply_to.content_id) if old.reply_to is not None else None
+        for old in messages
 
-        for opp_peer, fwd_message in zip(peers, forwarded):
-            result[opp_peer].append(fwd_message)
-            if message.id not in reply_ids:
-                reply_ids[message.content.id] = fwd_message.content_id
+    ]
+
+    forwarded = await MessageRef.forward_for_peers_bulk(
+        new_contents=forwarded_contents,
+        to_peer=to_peer,
+        peers=peers,
+        random_ids=[random_ids[ref.id] for ref in messages],
+        reply_to_content_ids=reply_to_content_ids,
+        pinned=SingleElementList(False, len(forwarded_contents)),
+        is_discussion=SingleElementList(False, len(forwarded_contents)),
+    )
+
+    for forwarded_ref in forwarded:
+        result[forwarded_ref.peer].append(forwarded_ref)
 
     await Dialog.create_or_unhide_bulk(peers)
 
