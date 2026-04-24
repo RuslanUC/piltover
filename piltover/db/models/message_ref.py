@@ -441,6 +441,9 @@ class MessageRef(Model):
             post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
             anonymous: bool | None = None, new_channel_author_id: int | None = None,
     ) -> list[Self]:
+        if not peers:
+            return []
+
         content = await self.content.clone_forward(
             related_peer=to_peer,
             new_author=new_author,
@@ -457,26 +460,42 @@ class MessageRef(Model):
             new_channel_author_id=new_channel_author_id,
         )
 
+        peer_ids = [peer.id for peer in peers]
+
+        replies: dict[int, int]
         if reply_to_content_id:
             replies = {
-                ref.peer_id: ref
-                for ref in await MessageRef.filter(
-                    peer_id__in=[peer.id for peer in peers], content_id=reply_to_content_id,
-                )
+                peer_id: ref_id
+                for ref_id, peer_id in await MessageRef.filter(
+                    peer_id__in=peer_ids, content_id=reply_to_content_id,
+                ).values_list("id", "peer_id")
             }
         else:
             replies = {}
 
         messages = []
         for peer in peers:
-            messages.append(await models.MessageRef.create(
+            messages.append(models.MessageRef(
                 peer=peer,
                 content=content,
                 pinned=self.pinned if pinned is None else pinned,
                 random_id=random_id if peer == to_peer else None,
-                reply_to=replies.get(peer.id),
+                reply_to_id=replies.get(peer.id),
                 is_discussion=is_discussion,
             ))
+
+        await MessageRef.bulk_create(messages)
+
+        ref_ids_by_peer_ids = {
+            peer_id: ref_id
+            for ref_id, peer_id in await MessageRef.filter(
+                peer_id__in=peer_ids, content_id=content.id,
+            ).values_list("id", "peer_id")
+        }
+
+        for message in messages:
+            message.id = ref_ids_by_peer_ids[message.peer.id]
+            message._saved_in_db = True
 
         return messages
 
