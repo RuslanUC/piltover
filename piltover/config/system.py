@@ -2,7 +2,7 @@ from os import environ
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
 
@@ -29,7 +29,7 @@ class _System(BaseModel):
 
 
 class SystemConfig(BaseSettings):
-    system: _System
+    system: _System = Field(init=False)
 
     model_config = SettingsConfigDict(toml_file=environ.get("SYSTEM_CONFIG", "config/system.toml"))
 

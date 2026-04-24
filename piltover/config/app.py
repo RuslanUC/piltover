@@ -1,7 +1,7 @@
 from os import environ
 from typing import Literal
 
-from pydantic import BaseModel, Base64Bytes
+from pydantic import BaseModel, Base64Bytes, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
 
@@ -26,11 +26,11 @@ class _AppConfig(BaseModel):
     name: str = "Piltover"
     system_user_username: str = "piltover"
 
-    basic_group_member_limit: int = 50
-    super_group_member_limit: int = 1000
+    basic_group_member_limit: int = Field(default=50, ge=3, le=200)
+    super_group_member_limit: int = Field(default=1000, ge=3, le=100000)
     edit_time_limit: int = 48 * 60 * 60
-    max_message_length: int = 4096
-    max_caption_length: int = 2048
+    max_message_length: int = Field(default=4096, ge=0, le=4096)
+    max_caption_length: int = Field(default=2048, ge=0, le=4096)
     channels_per_user_limit: int = 100
     public_channels_limit: int = 10
     pinned_dialogs_limit: int = 5
@@ -54,7 +54,7 @@ class _AppConfig(BaseModel):
 
 
 class AppConfig(BaseSettings):
-    app: _AppConfig
+    app: _AppConfig = Field(init=False)
 
     model_config = SettingsConfigDict(toml_file=environ.get("APP_CONFIG", "config/app.toml"))
 

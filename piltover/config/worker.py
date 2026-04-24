@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Self
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
 _ENV_VAR = "WORKER_CONFIG"
@@ -21,7 +21,7 @@ class _Worker(BaseModel):
 
 
 class WorkerConfig(BaseSettings):
-    worker: _Worker
+    worker: _Worker = Field(init=False)
 
     model_config = SettingsConfigDict(toml_file=os.environ.get(_ENV_VAR, "config/worker.toml"))
 
