@@ -299,8 +299,8 @@ async def block_unblock(request: Block, user_id: int) -> bool:
     return True
 
 
-@handler.on_request(ImportContacts, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def import_contacts(request: ImportContacts, user: User) -> ImportedContacts:
+@handler.on_request(ImportContacts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def import_contacts(request: ImportContacts, user_id: int) -> ImportedContacts:
     # TODO: refactor this whole function
 
     to_import = request.contacts[:100]
@@ -316,29 +316,29 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
 
     users = {
         contact.id: contact
-        for contact in await User.filter(id__not=user.id, phone_number__in=list(phone_numbers.keys()))
+        for contact in await User.filter(id__not=user_id, phone_number__in=list(phone_numbers.keys()))
     }
     existing_contacts = {
         contact.target_id: contact
-        for contact in await Contact.filter(owner=user, target_id__in=list(users.keys()))
+        for contact in await Contact.filter(owner_id=user_id, target_id__in=list(users.keys()))
     }
-    not_allowed = await PrivacyRule.has_access_to_bulk(users.values(), user, [PrivacyRuleKeyType.ADDED_BY_PHONE])
-    for user_id, privacy in not_allowed.items():
-        if not privacy[PrivacyRuleKeyType.ADDED_BY_PHONE] and user_id in users:
-            del users[user_id]
+    not_allowed = await PrivacyRule.has_access_to_bulk(users.values(), user_id, [PrivacyRuleKeyType.ADDED_BY_PHONE])
+    for contact_user_id, privacy in not_allowed.items():
+        if not privacy[PrivacyRuleKeyType.ADDED_BY_PHONE] and contact_user_id in users:
+            del users[contact_user_id]
 
     imported = []
 
     to_create = []
     to_update = []
-    for user_id, contact_user in users.items():
+    for contact_user_id, contact_user in users.items():
         if contact_user.phone_number not in phone_numbers:
             continue  # TODO: or place in to_retry?
 
         input_contact = to_import[phone_numbers[contact_user.phone_number]]
 
-        if user_id in existing_contacts:
-            contact = existing_contacts[user_id]
+        if contact_user_id in existing_contacts:
+            contact = existing_contacts[contact_user_id]
             if contact.first_name == input_contact.first_name and contact.last_name == input_contact.last_name:
                 continue
             contact.first_name = input_contact.first_name
@@ -347,7 +347,7 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
             to_update.append(contact)
         else:
             contact = Contact(
-                owner=user,
+                owner_id=user_id,
                 target=contact_user,
                 first_name=input_contact.first_name,
                 last_name=input_contact.last_name,
@@ -355,7 +355,7 @@ async def import_contacts(request: ImportContacts, user: User) -> ImportedContac
             )
             to_create.append(contact)
 
-        imported.append(ImportedContact(user_id=user_id, client_id=input_contact.client_id))
+        imported.append(ImportedContact(user_id=contact_user_id, client_id=input_contact.client_id))
 
     if to_update:
         await Contact.bulk_update(to_update, fields=["first_name", "last_name", "known_phone_number"])

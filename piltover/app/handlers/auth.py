@@ -79,12 +79,12 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
         timeout=30,
     )
 
-    user = await User.get_or_none(phone_number=phone_number)
+    user = await User.get_or_none(phone_number=phone_number).only("id")
     if user is None:
         return resp
 
     text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
-    if not await send_official_notification_message(user, text, entities):
+    if not await send_official_notification_message(user.id, text, entities):
         return resp
 
     resp.type_ = SentCodeTypeApp(length=5)

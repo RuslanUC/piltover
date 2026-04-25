@@ -59,28 +59,28 @@ class PeerNotifySettings(Model):
     @staticmethod
     @overload
     async def peer_from_tl(
-            user: models.User, notify_peer: BaseInputNotifyPeer,
+            user_id: int, notify_peer: BaseInputNotifyPeer,
     ) -> tuple[models.Peer | None, NotifySettingsNotPeerType | None]:
         ...
 
     @staticmethod
     @overload
-    async def peer_from_tl(user: models.User, notify_peer: InputNotifyPeer) -> tuple[models.Peer, None]:
+    async def peer_from_tl(user_id: int, notify_peer: InputNotifyPeer) -> tuple[models.Peer, None]:
         ...
 
     @staticmethod
     @overload
     async def peer_from_tl(
-            user: models.User, notify_peer: InputNotifyUsers | InputNotifyChats | InputNotifyBroadcasts,
+            user_id: int, notify_peer: InputNotifyUsers | InputNotifyChats | InputNotifyBroadcasts,
     ) -> tuple[None, NotifySettingsNotPeerType]:
         ...
 
     @staticmethod
     async def peer_from_tl(
-            user: models.User, notify_peer: BaseInputNotifyPeer,
+            user_id: int, notify_peer: BaseInputNotifyPeer,
     ) -> tuple[models.Peer | None, NotifySettingsNotPeerType | None]:
         if isinstance(notify_peer, InputNotifyPeer):
-            peer = await models.Peer.from_input_peer_raise(user, notify_peer.peer)
+            peer = await models.Peer.from_input_peer_raise(user_id, notify_peer.peer)
             return peer, None
         elif isinstance(notify_peer, InputNotifyUsers):
             return None, NotifySettingsNotPeerType.USERS

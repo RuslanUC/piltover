@@ -346,13 +346,13 @@ async def add_chat_user(request: AddChatUser, user_id: int):
     )
 
 
-@handler.on_request(DeleteChatUser)
-async def delete_chat_user(request: DeleteChatUser, user: User):
-    chat_peer = await Peer.from_chat_id_raise(user.id, request.chat_id)
-    user_peer = await Peer.from_input_peer_raise(user, request.user_id)
+@handler.on_request(DeleteChatUser, ReqHandlerFlags.DONT_FETCH_USER)
+async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
+    chat_peer = await Peer.from_chat_id_raise(user_id, request.chat_id)
+    user_peer = await Peer.from_input_peer_raise(user_id, request.user_id)
 
-    participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user=user)
-    if participant is None or not (participant.is_admin or chat_peer.chat.creator_id == user.id):
+    participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user_id=user_id)
+    if participant is None or not (participant.is_admin or chat_peer.chat.creator_id == user_id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     target_chat_peer = await Peer.get_or_none(owner=user_peer.user, chat=chat_peer.chat)
@@ -360,9 +360,9 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     messages = await MessageRef.create_for_peer(
-        chat_peer, user,
+        chat_peer, user_id,
         type=MessageType.SERVICE_CHAT_USER_DEL,
-        extra_info=MessageActionChatDeleteUser(user_id=user_peer.peer_user(user).id).write(),
+        extra_info=MessageActionChatDeleteUser(user_id=user_peer.user_id).write(),
     )
     await ChatParticipant.filter(chat=chat_peer.chat, user=user_peer.user).delete()
     await Chat.filter(id=chat_peer.chat_id).update(
@@ -376,7 +376,7 @@ async def delete_chat_user(request: DeleteChatUser, user: User):
 
     chat_peers = {peer.owner_id: peer for peer in await Peer.filter(chat=chat_peer.chat)}
 
-    updates_msg = await upd.send_message(user, messages)
+    updates_msg = await upd.send_message(user_id, messages)
     updates = await upd.update_chat_participants(chat_peer.chat, list(chat_peers.values()))
     if isinstance(updates_msg, Updates):
         updates.updates.extend(updates_msg.updates)

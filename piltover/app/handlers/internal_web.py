@@ -6,6 +6,7 @@ from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, ApiApplication, User, WebAuthorization, MessageRef
+from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
 from piltover.tl import Long
 from piltover.tl.functions.internal import SendCode, SignIn, GetUserApp, EditUserApp, GetAvailableServers
@@ -25,9 +26,9 @@ LOGIN_MESSAGE_FMT = (
 )
 
 
-@handler.on_request(SendCode)
-async def send_code(request: SendCode, user: User) -> SentCode:
-    if user.id != 777000:
+@handler.on_request(SendCode, ReqHandlerFlags.DONT_FETCH_USER)
+async def send_code(request: SendCode, user_id: int) -> SentCode:
+    if user_id != 777000:
         raise InvalidConstructorException(SentCode.tlid())
 
     try:
@@ -46,9 +47,9 @@ async def send_code(request: SendCode, user: User) -> SentCode:
     webauth = await WebAuthorization.create(phone_number=request.phone_number, hash=random_hash.hex())
     print(f"Password: {webauth.password}")
 
-    peer_system, _ = await Peer.get_or_create(owner=target_user, user=user, type=PeerType.USER)
+    peer_system, _ = await Peer.get_or_create(owner=target_user, user_id=user_id, type=PeerType.USER)
     message = await MessageRef.create_for_peer(
-        peer_system, user, opposite=False, unhide_dialog=True,
+        peer_system, user_id, opposite=False, unhide_dialog=True,
         message=LOGIN_MESSAGE_FMT.format(code=webauth.password, name=target_user.first_name),
     )
 
@@ -56,9 +57,9 @@ async def send_code(request: SendCode, user: User) -> SentCode:
     return resp
 
 
-@handler.on_request(SignIn)
-async def sign_in(request: SignIn, user: User) -> Authorization:
-    if user.id != 777000:
+@handler.on_request(SignIn, ReqHandlerFlags.DONT_FETCH_USER)
+async def sign_in(request: SignIn, user_id: int) -> Authorization:
+    if user_id != 777000:
         raise InvalidConstructorException(SignIn.tlid())
 
     try:
@@ -101,9 +102,9 @@ async def _auth_user(auth_bytes: bytes) -> User:
     return webauth.user
 
 
-@handler.on_request(GetUserApp)
-async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound:
-    if user.id != 777000:
+@handler.on_request(GetUserApp, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_user_app(request: GetUserApp, user_id: int) -> AppInfo | AppNotFound:
+    if user_id != 777000:
         raise InvalidConstructorException(GetUserApp.tlid())
 
     target_user = await _auth_user(request.auth)
@@ -118,21 +119,17 @@ async def get_user_app(request: GetUserApp, user: User) -> AppInfo | AppNotFound
     )
 
 
-@handler.on_request(EditUserApp)
-async def edit_user_app(request: EditUserApp, user: User) -> bool:
-    if user.id != 777000:
+@handler.on_request(EditUserApp, ReqHandlerFlags.DONT_FETCH_USER)
+async def edit_user_app(request: EditUserApp, user_id: int) -> bool:
+    if user_id != 777000:
         raise InvalidConstructorException(EditUserApp.tlid())
 
     target_user = await _auth_user(request.auth)
 
-    app, created = await ApiApplication.get_or_create(owner=target_user, defaults={
+    await ApiApplication.update_or_create(owner=target_user, defaults={
         "name": request.title,
         "short_name": request.short_name,
     })
-    if not created:
-        app.name = request.title
-        app.short_name = request.short_name
-        await app.save(update_fields=["name", "short_name"])
 
     return True
 

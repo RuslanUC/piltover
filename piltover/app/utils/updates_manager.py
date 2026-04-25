@@ -1601,12 +1601,12 @@ async def update_chat_wallpaper(user: User, target: User, chat_wallpaper: ChatWa
     return updates
 
 
-async def read_messages_contents(user: User, message_ids: list[int]) -> tuple[int, Updates]:
+async def read_messages_contents(user_id: int, message_ids: list[int]) -> tuple[int, Updates]:
     pts_count = len(message_ids)
-    new_pts = await State.add_pts(user, pts_count)
+    new_pts = await State.add_pts(user_id, pts_count)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.READ_MESSAGES_CONTENTS,
         pts=new_pts,
         pts_count=pts_count,
@@ -1625,7 +1625,7 @@ async def read_messages_contents(user: User, message_ids: list[int]) -> tuple[in
         ],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return new_pts, updates
 
@@ -1677,13 +1677,13 @@ async def new_scheduled_message(user_id: int, message: MessageRef) -> Updates:
 
 
 async def delete_scheduled_messages(
-        user: User, peer: Peer, deleted_message_ids: list[int], sent_message_ids: list[int] | None = None,
+        user_id: int, peer: Peer, deleted_message_ids: list[int], sent_message_ids: list[int] | None = None,
 ) -> Updates:
     pts_count = len(deleted_message_ids)
-    new_pts = await State.add_pts(user, pts_count)
+    new_pts = await State.add_pts(user_id, pts_count)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.DELETE_SCHEDULED_MESSAGE,
         pts=new_pts,
         pts_count=pts_count,
@@ -1702,7 +1702,7 @@ async def delete_scheduled_messages(
         ],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 
@@ -1839,12 +1839,12 @@ async def update_user_phone(user: User) -> Updates:
 
 
 async def update_peer_notify_settings(
-        user: User, peer: Peer | None, not_peer: NotifySettingsNotPeerType | None, settings: PeerNotifySettings,
+        user_id: int, peer: Peer | None, not_peer: NotifySettingsNotPeerType | None, settings: PeerNotifySettings,
 ) -> Updates:
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.UPDATE_PEER_NOTIFY_SETTINGS,
-        pts=await State.add_pts(user, 1),
+        pts=await State.add_pts(user_id, 1),
         pts_count=1,
         related_id=peer.id if peer is not None else None,
         additional_data=[not_peer.value] if not_peer else None,
@@ -1859,7 +1859,7 @@ async def update_peer_notify_settings(
         ],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
     return updates
 

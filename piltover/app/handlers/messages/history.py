@@ -113,7 +113,7 @@ async def get_messages_query_internal(
     if isinstance(peer, Peer):
         query = peer.q_this_or_channel()
     else:
-        query = Q(peer__owner=peer)
+        query = Q(peer__owner=peer.id)
 
     has_filter = False
     if filter_ is not None and (filter_query := message_filter_to_query(filter_, peer)) is not None:
@@ -404,9 +404,9 @@ async def format_messages_internal(
     )
 
 
-@handler.on_request(GetHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_history(request: GetHistory, user: User) -> Messages:
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+@handler.on_request(GetHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_history(request: GetHistory, user_id: int) -> Messages:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset
@@ -414,11 +414,11 @@ async def get_history(request: GetHistory, user: User) -> Messages:
     if not messages:
         return Messages(messages=[], chats=[], users=[])
 
-    return await format_messages_internal(user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id)
+    return await format_messages_internal(user_id, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id)
 
 
-@handler.on_request(GetMessages)
-async def get_messages(request: GetMessages, user: User) -> Messages:
+@handler.on_request(GetMessages, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_messages(request: GetMessages, user_id: int) -> Messages:
     ids = []
     reply_ids = []
 
@@ -441,35 +441,35 @@ async def get_messages(request: GetMessages, user: User) -> Messages:
     if reply_ids:
         query |= Q(id__in=Subquery(
             MessageRef.filter(
-                peer__owner=user, peer__type__not=PeerType.CHANNEL, id__in=reply_ids,
+                peer__owner_id=user_id, peer__type__not=PeerType.CHANNEL, id__in=reply_ids,
             ).values_list("reply_to_id", flat=True)
         ))
 
-    query &= Q(peer__owner=user, peer__type__not=PeerType.CHANNEL)
+    query &= Q(peer__owner_id=user_id, peer__type__not=PeerType.CHANNEL)
 
     return await format_messages_internal(
-        user,
+        user_id,
         await MessageRef.filter(query).select_related(*MessageRef.PREFETCH_MAYBECACHED)
     )
 
 
-@handler.on_request(GetMessages_57)
-async def get_messages_57(request: GetMessages_57, user: User) -> Messages:
+@handler.on_request(GetMessages_57, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_messages_57(request: GetMessages_57, user_id: int) -> Messages:
     return await format_messages_internal(
-        user,
+        user_id,
         await MessageRef.filter(
-            id__in=request.id[:100], peer__owner=user
+            id__in=request.id[:100], peer__owner_id=user_id,
         ).select_related(*MessageRef.PREFETCH_MAYBECACHED),
     )
 
 
-@handler.on_request(ReadHistory, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def read_history(request: ReadHistory, user: User):
+@handler.on_request(ReadHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     peer = await Peer.from_input_peer_raise(
-        user, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
+        user_id, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
     )
     read_state, created = await ReadState.get_or_create(peer=peer)
-    state, _ = await State.get_or_create(user=user)
+    state, _ = await State.get_or_create(user_id=user_id)
 
     if request.max_id and request.max_id <= read_state.last_message_id:
         logger.debug(f"Ignoring ReadHistory, {request.max_id} <= {read_state.last_message_id}")
@@ -502,7 +502,7 @@ async def read_history(request: ReadHistory, user: User):
 
     await ReadHistoryChunk.create(peer=peer, read_content_id=content_id)
 
-    logger.info(f"Set last read message id to {max_id} for peer {peer.id} of user {user.id}")
+    logger.info(f"Set last read message id to {max_id} for peer {peer.id} of user {user_id}")
 
     messages_out: dict[Peer, int] = {}
     peers = await peer.get_opposite()
@@ -531,41 +531,41 @@ async def read_history(request: ReadHistory, user: User):
     )
 
 
-@handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def messages_search(request: Search, user: User) -> Messages:
+@handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def messages_search(request: Search, user_id: int) -> Messages:
     saved_peer = None
 
     if isinstance(request.peer, InputPeerEmpty):
         peer = None
     else:
-        peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+        peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
         if peer.type is PeerType.SELF and request.saved_peer_id:
-            saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
+            saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
 
     from_user_id = None
     if isinstance(request.from_id, InputPeerUser):
         from_user_id = request.from_id.user_id
     elif isinstance(request.from_id, InputPeerSelf):
-        from_user_id = user.id
+        from_user_id = user_id
 
     if peer is None:
-        peer = user
+        peer = await User.get(id=user_id).only("id")
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, from_user_id,
         request.min_date, request.max_date, request.q, request.filter, saved_peer,
     )
 
-    return await format_messages_internal(user, messages)
+    return await format_messages_internal(user_id, messages)
 
 
-@handler.on_request(GetSearchCounters, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_search_counters(request: GetSearchCounters, user: User):
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+@handler.on_request(GetSearchCounters, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[SearchCounter]:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
 
     base_query = peer.q_this_or_channel()
     if peer.type is PeerType.SELF and request.saved_peer_id:
-        saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
+        saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
         base_query &= Q(content__fwd_header__saved_peer=saved_peer)
 
     base_query = await append_channel_min_message_id_to_query_maybe(peer, base_query)
@@ -603,9 +603,11 @@ async def get_all_drafts(user: User):
     )
 
 
-@handler.on_request(SearchGlobal, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def search_global(request: SearchGlobal, user: User):
+@handler.on_request(SearchGlobal, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def search_global(request: SearchGlobal, user_id: int):
     limit = max(min(request.limit, 1), 10)
+
+    user = await User.get(id=user_id).only("id")
 
     # TODO: offset_peer, offset_rate ?
     messages = await get_messages_internal(
@@ -613,12 +615,12 @@ async def search_global(request: SearchGlobal, user: User):
         request.min_date, request.max_date, request.q, request.filter
     )
 
-    return await format_messages_internal(user, messages)
+    return await format_messages_internal(user_id, messages)
 
 
-@handler.on_request(GetMessagesViews, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesMessageViews:
-    peer = await Peer.from_input_peer_raise(user, request.peer)
+@handler.on_request(GetMessagesViews, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_messages_views(request: GetMessagesViews, user_id: int) -> MessagesMessageViews:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     request.id = request.id[:100]
 
@@ -635,14 +637,14 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
         views_to_create = []
         async with in_transaction():
             existing_views = set(await MessageUniqueView.filter(
-                message_id__in=content_ids, user_id=user.id,
+                message_id__in=content_ids, user_id=user_id,
             ).values_list("message_id", flat=True))
             for ref in refs:
                 if ref.content_id in existing_views:
                     continue
                 ids_to_increment.append(ref.content.post_info_id)
                 contents_to_refresh.append(ref.content)
-                views_to_create.append(MessageUniqueView(message=ref.content, user=user))
+                views_to_create.append(MessageUniqueView(message=ref.content, user_id=user_id))
 
             if views_to_create:
                 await MessageUniqueView.bulk_create(views_to_create, ignore_conflicts=True)
@@ -673,16 +675,16 @@ async def get_messages_views(request: GetMessagesViews, user: User) -> MessagesM
     )
 
 
-@handler.on_request(GetSearchResultsCalendar_134, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(GetSearchResultsCalendar, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_search_results_calendar(request: GetSearchResultsCalendar, user: User) -> SearchResultsCalendar:
+@handler.on_request(GetSearchResultsCalendar_134, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(GetSearchResultsCalendar, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_search_results_calendar(request: GetSearchResultsCalendar, user_id: int) -> SearchResultsCalendar:
     if isinstance(request.filter, (InputMessagesFilterEmpty, InputMessagesFilterMyMentions)):
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
     saved_peer = None
     if peer.type is PeerType.SELF and not isinstance(request, GetSearchResultsCalendar_134) and request.saved_peer_id:
-        saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
+        saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
 
     if (filter_query := message_filter_to_query(request.filter, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
@@ -730,7 +732,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
         ))
 
     messages = await MessageRef.filter(id__in=message_ids).select_related(*MessageRef.PREFETCH_FIELDS)
-    messages_tl = await MessageRef.to_tl_bulk(messages, user)
+    messages_tl = await MessageRef.to_tl_bulk(messages, user_id)
     ucc = UsersChatsChannels()
 
     for message in messages:
@@ -750,33 +752,33 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user: U
     )
 
 
-@handler.on_request(GetUnreadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(GetUnreadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_unread_mentions(request: GetUnreadMentions, user: User) -> Messages | MessagesSlice:
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+@handler.on_request(GetUnreadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(GetUnreadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_unread_mentions(request: GetUnreadMentions, user_id: int) -> Messages | MessagesSlice:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
 
     query = await get_messages_query_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, only_mentions=True,
     )
     messages = await query
 
-    return await format_messages_internal(user, messages, peer=peer, query=query, offset_id=request.offset_id)
+    return await format_messages_internal(user_id, messages, peer=peer, query=query, offset_id=request.offset_id)
 
 
-@handler.on_request(ReadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(ReadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+@handler.on_request(ReadMentions_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(ReadMentions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
 
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         return AffectedHistory(
-            pts=await State.add_pts(user, 0),
+            pts=await State.add_pts(user_id, 0),
             pts_count=0,
             offset=0,
         )
 
     mentioned_ids = await MessageMention.filter(
-        user=user, chat_id=peer.chat_id, channel_id=peer.channel_id, read=False,
+        user_id=user_id, chat_id=peer.chat_id, channel_id=peer.channel_id, read=False,
     ).values_list("message_id", flat=True)
     logger.trace("Unread mentioned ids: {ids}", ids=mentioned_ids)
 
@@ -784,14 +786,14 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
         if peer.type is PeerType.CHANNEL:
             pts = peer.channel.pts
         else:
-            pts = await State.add_pts(user, 0)
+            pts = await State.add_pts(user_id, 0)
         return AffectedHistory(
             pts=pts,
             pts_count=0,
             offset=0,
         )
 
-    await MessageMention.filter(user_id=user.id, message_id__in=mentioned_ids).update(read=True)
+    await MessageMention.filter(user_id=user_id, message_id__in=mentioned_ids).update(read=True)
 
     inval_cache_query = MessageRef.filter(content_id__in=mentioned_ids)
     if peer.type is PeerType.CHANNEL:
@@ -799,7 +801,7 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
             peer__owner=None, peer__channel_id=peer.channel_id,
         ).only("id", "version")
         for ref in inval_cache_refs:
-            await Cache.obj.delete(ref.cache_key(user.id))
+            await Cache.obj.delete(ref.cache_key(user_id))
     else:
         await inval_cache_query.update(version=F("version") + 1)
 
@@ -816,9 +818,9 @@ async def read_mentions(request: ReadMentions, user: User) -> AffectedHistory:
     if peer.type is PeerType.CHANNEL:
         pts = peer.channel.pts
         pts_count = 0
-        await upd.read_channel_messages_contents(user.id, peer.channel, ref_ids)
+        await upd.read_channel_messages_contents(user_id, peer.channel, ref_ids)
     else:
-        pts, _ = await upd.read_messages_contents(user, ref_ids)
+        pts, _ = await upd.read_messages_contents(user_id, ref_ids)
 
     return AffectedHistory(
         pts=pts,
@@ -888,26 +890,26 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
     return list(read_ids) + unread_reaction_ids
 
 
-@handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def read_message_contents(request: ReadMessageContents, user: User) -> AffectedMessages:
+@handler.on_request(ReadMessageContents, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def read_message_contents(request: ReadMessageContents, user_id: int) -> AffectedMessages:
     if not request.id:
         return AffectedMessages(
-            pts=await State.add_pts(user, 0),
+            pts=await State.add_pts(user_id, 0),
             pts_count=0,
         )
 
-    valid_refs = await MessageRef.filter(peer__owner=user, id__in=request.id[:100]).select_related(
+    valid_refs = await MessageRef.filter(peer__owner_id=user_id, id__in=request.id[:100]).select_related(
         "content", "content__media", "content__media__file",
     )
 
-    message_ids = await read_message_contents_internal(user.id, valid_refs)
+    message_ids = await read_message_contents_internal(user_id, valid_refs)
     if message_ids is None:
         return AffectedMessages(
-            pts=await State.add_pts(user, 0),
+            pts=await State.add_pts(user_id, 0),
             pts_count=0,
         )
 
-    pts, _ = await upd.read_messages_contents(user, message_ids)
+    pts, _ = await upd.read_messages_contents(user_id, message_ids)
 
     return AffectedMessages(
         pts=pts,
@@ -974,16 +976,17 @@ async def set_history_ttl(request: SetHistoryTTL, user_id: int) -> Updates:
 
 
 @handler.on_request(GetOutboxReadDate, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_outbox_read_date(request: GetOutboxReadDate, user: User) -> OutboxReadDate:
+async def get_outbox_read_date(request: GetOutboxReadDate, user_id: int) -> OutboxReadDate:
     peer = await Peer.from_input_peer_raise(
-        user, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
+        user_id, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
     )
+    user = await User.get(id=user_id).only("id", "read_dates_private")
     if peer.type is PeerType.USER and user.read_dates_private:
         raise ErrorRpc(error_code=403, error_message="YOUR_PRIVACY_RESTRICTED")
     if peer.type is PeerType.USER and peer.user.read_dates_private:
         raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
-    message = await MessageRef.get_or_none(peer=peer, id=request.msg_id, content__author=user)
+    message = await MessageRef.get_or_none(peer=peer, id=request.msg_id, content__author_id=user_id)
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
@@ -1007,16 +1010,16 @@ async def get_outbox_read_date(request: GetOutboxReadDate, user: User) -> Outbox
     )
 
 
-@handler.on_request(GetSearchResultsPositions_134, ReqHandlerFlags.BOT_NOT_ALLOWED)
-@handler.on_request(GetSearchResultsPositions, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_search_results_positions(request: GetSearchResultsPositions, user: User) -> SearchResultsPositions:
+@handler.on_request(GetSearchResultsPositions_134, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(GetSearchResultsPositions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_search_results_positions(request: GetSearchResultsPositions, user_id: int) -> SearchResultsPositions:
     if isinstance(request.filter, (InputMessagesFilterEmpty, InputMessagesFilterMyMentions)):
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer, allow_migrated_chat=True)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
     saved_peer = None
     if peer.type is PeerType.SELF and not isinstance(request, GetSearchResultsPositions_134) and request.saved_peer_id:
-        saved_peer = await Peer.from_input_peer_raise(user, request.saved_peer_id)
+        saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
 
     if (filter_query := message_filter_to_query(request.filter, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
@@ -1049,9 +1052,9 @@ async def get_search_results_positions(request: GetSearchResultsPositions, user:
     )
 
 
-@handler.on_request(GetDiscussionMessage)
-async def get_discussion_message(request: GetDiscussionMessage, user: User) -> DiscussionMessage:
-    peer = await Peer.from_input_peer_raise(user, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
+@handler.on_request(GetDiscussionMessage, ReqHandlerFlags.DONT_FETCH_USER)
+async def get_discussion_message(request: GetDiscussionMessage, user_id: int) -> DiscussionMessage:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
 
     message = await MessageRef.get_(request.msg_id, peer)
     if message is None:
@@ -1075,14 +1078,14 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
     else:
         total, max_id = 0, None
 
-    read_state = await DiscussionReadState.get_or_none(user=user, discussion_message_id=discussion_message.id)
+    read_state = await DiscussionReadState.get_or_none(user_id=user_id, discussion_message_id=discussion_message.id)
     if read_state is None:
         unread_count = total
     else:
         unread_count = await MessageRef.filter(replies_query, id__gt=read_state.last_message_id).count()
 
     return DiscussionMessage(
-        messages=[await discussion_message.to_tl(user)],
+        messages=[await discussion_message.to_tl(user_id)],
         max_id=max_id,
         read_inbox_max_id=read_state.last_message_id if read_state is not None else None,
         read_outbox_max_id=None,
@@ -1092,9 +1095,9 @@ async def get_discussion_message(request: GetDiscussionMessage, user: User) -> D
     )
 
 
-@handler.on_request(GetReplies, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_replies(request: GetReplies, user: User) -> Messages:
-    peer = await Peer.from_input_peer_raise(user, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
+@handler.on_request(GetReplies, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_replies(request: GetReplies, user_id: int) -> Messages:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset,
@@ -1103,19 +1106,19 @@ async def get_replies(request: GetReplies, user: User) -> Messages:
     if not messages:
         return Messages(messages=[], chats=[], users=[])
 
-    return await format_messages_internal(user, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id)
+    return await format_messages_internal(user_id, messages, allow_slicing=True, peer=peer, offset_id=request.offset_id)
 
 
-@handler.on_request(GetMessageReadParticipants, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_message_read_participants(request: GetMessageReadParticipants, user: User) -> list[ReadParticipantDate]:
+@handler.on_request(GetMessageReadParticipants, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_message_read_participants(request: GetMessageReadParticipants, user_id: User) -> list[ReadParticipantDate]:
     peer = await Peer.from_input_peer_raise(
-        user, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL)
+        user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL)
     )
 
     if await ChatParticipant.filter(**peer.query_chat_or_channel()).count() > 100:
         raise ErrorRpc(error_code=400, error_message="CHAT_TOO_BIG")
 
-    message = await MessageRef.get_or_none(peer.q_this_or_channel(), id=request.msg_id, content__author=user)
+    message = await MessageRef.get_or_none(peer.q_this_or_channel(), id=request.msg_id, content__author_id=user_id)
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
 
@@ -1140,9 +1143,9 @@ async def get_message_read_participants(request: GetMessageReadParticipants, use
     return result
 
 
-@handler.on_request(ReadDiscussion, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def read_discussion(request: ReadDiscussion, user: User) -> bool:
-    peer = await Peer.from_input_peer_raise(user, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
+@handler.on_request(ReadDiscussion, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def read_discussion(request: ReadDiscussion, user_id: int) -> bool:
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
     # TODO: check if user has access to messages
 
     discussion_query = peer.q_this_or_channel() & Q(
@@ -1159,9 +1162,11 @@ async def read_discussion(request: ReadDiscussion, user: User) -> bool:
 
     last_message_id = cast(int | None, await last_message_query.first().values_list("id", flat=True))
 
-    state, created = await DiscussionReadState.get_or_create(user=user, discussion_message_id=message.id, defaults={
-        "last_message_id": last_message_id or 0,
-    })
+    state, created = await DiscussionReadState.get_or_create(
+        user_id=user_id, discussion_message_id=message.id, defaults={
+            "last_message_id": last_message_id or 0,
+        }
+    )
     if not created and last_message_id is not None and last_message_id > state.last_message_id:
         state.last_message_id = last_message_id
         await state.save(update_fields=["last_message_id"])

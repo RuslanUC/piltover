@@ -7,7 +7,7 @@ from time import time
 from typing import cast
 from uuid import UUID
 
-from tortoise.expressions import Q
+from tortoise.expressions import Q, F
 from tortoise.transactions import in_transaction, atomic
 
 import piltover.app.utils.updates_manager as upd
@@ -318,10 +318,10 @@ async def update_profile(request: UpdateProfile, user: User):
     return await user.to_tl()
 
 
-@handler.on_request(GetNotifySettings, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_notify_settings(request: GetNotifySettings, user: User) -> TLPeerNotifySettings:
-    peer, not_peer = await PeerNotifySettings.peer_from_tl(user, request.peer)
-    settings, _ = await PeerNotifySettings.get_or_create(user=user, peer=peer, not_peer=not_peer)
+@handler.on_request(GetNotifySettings, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_notify_settings(request: GetNotifySettings, user_id: int) -> TLPeerNotifySettings:
+    peer, not_peer = await PeerNotifySettings.peer_from_tl(user_id, request.peer)
+    settings, _ = await PeerNotifySettings.get_or_create(user=user_id, peer=peer, not_peer=not_peer)
 
     return settings.to_tl()
 
@@ -597,33 +597,34 @@ async def send_confirm_phone_code(request: SendConfirmPhoneCode, user_id: int) -
     return await _create_sent_code(user_id, user.phone_number, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION, False)
 
 
-@handler.on_request(ConfirmPhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def confirm_phone(request: ConfirmPhone, user: User) -> bool:
+@handler.on_request(ConfirmPhone, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def confirm_phone(request: ConfirmPhone, user_id: int) -> bool:
+    user = await User.get(id=user_id).only("id", "phone_number")
+
     code = await SentCode.get_(user.phone_number, request.phone_code_hash, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION)
     await SentCode.check_raise_cls(code, request.phone_code)
     await SentCode.filter(id=code.id).update(used=True)
 
-    await TaskIqScheduledDeleteUser.filter(user=user).delete()
+    await TaskIqScheduledDeleteUser.filter(user=user_id).delete()
 
-    await send_official_notification_message(user, DELETION_CANCELLED_FMT, DELETION_CANCELLED_FMT_ENTITIES)
+    await send_official_notification_message(user_id, DELETION_CANCELLED_FMT, DELETION_CANCELLED_FMT_ENTITIES)
 
     return True
 
 
 @atomic()
-async def _delete_account(user: User) -> None:
-    user.deleted = True
-    user.phone_number = None
-    user.first_name = ""
-    user.last_name = None
-    user.about = None
-    user.birthday = None
-    user.version += 1
-    await user.save(update_fields=[
-        "deleted", "phone_number", "first_name", "last_name", "about", "birthday", "version",
-    ])
+async def _delete_account(user_id: int) -> None:
+    await User.filter(id=user_id).update(
+        deleted=True,
+        phone_number=None,
+        first_name="",
+        last_name=None,
+        about=None,
+        birthday=None,
+        version=F("version") + 1,
+    )
 
-    auths = await UserAuthorization.filter(user=user)
+    auths = await UserAuthorization.filter(user_id=user_id)
 
     auth_ids = [auth.id for auth in auths]
     key_ids = [auth.key_id for auth in auths]
@@ -634,36 +635,39 @@ async def _delete_account(user: User) -> None:
     await SessionManager.send(UpdatesTooLong(), key_id=key_ids, auth_id=auth_ids)
 
 
-@handler.on_request(DeleteAccount, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.ALLOW_MFA_PENDING)
-async def delete_account(request: DeleteAccount, user: User) -> bool:
-    password = await UserPassword.get_or_none(user=user)
+@handler.on_request(
+    DeleteAccount, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.ALLOW_MFA_PENDING | ReqHandlerFlags.DONT_FETCH_USER
+)
+async def delete_account(request: DeleteAccount, user_id: int) -> bool:
+    password = await UserPassword.get_or_none(user_id=user_id)
     if password is None or password.password is None:
-        await _delete_account(user)
+        await _delete_account(user_id)
         return True
 
     if password.modified_at > (datetime.now(UTC) - timedelta(days=7)):
-        await _delete_account(user)
+        await _delete_account(user_id)
         return True
     elif request.password is not None:
         await check_password_internal(password, request.password)
-        await _delete_account(user)
+        await _delete_account(user_id)
         return True
 
-    task, _ = await TaskIqScheduledDeleteUser.get_or_create(user=user, defaults={
+    task, _ = await TaskIqScheduledDeleteUser.get_or_create(user_id=user_id, defaults={
         "scheduled_time": datetime.now(UTC) + timedelta(seconds=APP_CONFIG.account_delete_wait_seconds),
         "state_updated_at": int(time()),
     })
 
     if task.scheduled_time < datetime.now(UTC):
-        await _delete_account(user)
+        await _delete_account(user_id)
         return True
 
+    user = await User.get(id=user_id).only("id", "phone_number")
     text, entities = CANCEL_DELETION_FMT.format(
         date=task.scheduled_time.strftime("%d.%m.%Y at %H:%M:%S"),
         phone=user.phone_number,
         hash=_make_deletion_cancel_hash(user, task.id.bytes)
     )
-    if not await send_official_notification_message(user, text, entities):
+    if not await send_official_notification_message(user_id, text, entities):
         await task.delete()
         raise ErrorRpc(error_code=500, error_message="SYSTEM_USER_DOES_NOT_EXIST")
 
@@ -931,22 +935,22 @@ async def update_personal_channel(request: UpdatePersonalChannel, user: User) ->
     return True
 
 
-@handler.on_request(UpdateNotifySettings)
-async def update_notify_settings(request: UpdateNotifySettings, user: User) -> bool:
-    peer, not_peer = await PeerNotifySettings.peer_from_tl(user, request.peer)
+@handler.on_request(UpdateNotifySettings, ReqHandlerFlags.DONT_FETCH_USER)
+async def update_notify_settings(request: UpdateNotifySettings, user_id: int) -> bool:
+    peer, not_peer = await PeerNotifySettings.peer_from_tl(user_id, request.peer)
 
     if request.settings.mute_until:
         muted_until = datetime.fromtimestamp(request.settings.mute_until, UTC)
     else:
         muted_until = None
 
-    settings, _ = await PeerNotifySettings.update_or_create(user=user, peer=peer, not_peer=not_peer, defaults={
+    settings, _ = await PeerNotifySettings.update_or_create(user_id=user_id, peer=peer, not_peer=not_peer, defaults={
         "show_previews": request.settings.show_previews,
         "muted": request.settings.silent if request.settings.silent is not None else False,
         "muted_until": muted_until,
     })
 
-    await upd.update_peer_notify_settings(user, peer, not_peer, settings)
+    await upd.update_peer_notify_settings(user_id, peer, not_peer, settings)
     return True
 
 
