@@ -9,10 +9,10 @@ from piltover.tl import Config, DcOption, NearestDc, JsonObject, PremiumSubscrip
     JsonObjectValue, JsonBool, JsonArray, JsonString, ReactionEmoji, ReactionCustomEmoji
 from piltover.tl.functions.help import GetConfig, GetAppConfig, GetNearestDc, GetCountriesList, \
     GetTermsOfServiceUpdate, GetPromoData, GetPremiumPromo, SaveAppLog, GetInviteText, GetPeerColors, \
-    GetPeerProfileColors, DismissSuggestion, GetTimezonesList, AcceptTermsOfService, HidePromoData
+    GetPeerProfileColors, DismissSuggestion, GetTimezonesList, AcceptTermsOfService, HidePromoData, GetRecentMeUrls
 from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, InviteText, TermsOfServiceUpdateEmpty, \
     PeerColors, PeerColorOption as TLPeerColorOption, AppConfig as TLAppConfig, CountriesListNotModified, \
-    AppConfigNotModified, PeerColorsNotModified, TimezonesList
+    AppConfigNotModified, PeerColorsNotModified, TimezonesList, RecentMeUrls
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("help")
@@ -471,3 +471,11 @@ async def get_timezones_list() -> TimezonesList:  # pragma: no cover
         timezones=[],
     )
 
+
+@handler.on_request(GetRecentMeUrls, ReqHandlerFlags.AUTH_NOT_REQUIRED)
+async def get_recent_me_urls() -> RecentMeUrls:  # pragma: no cover
+    return RecentMeUrls(
+        urls=[],
+        users=[],
+        chats=[],
+    )

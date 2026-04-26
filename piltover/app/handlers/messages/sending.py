@@ -12,14 +12,14 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
-from piltover.app.utils.utils import process_message_entities, process_reply_markup
+from piltover.app.utils.utils import process_message_entities, process_reply_markup, B64URL_STR_RE
 from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType, ChatAdminRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
-    SlowmodeLastMessage, MessageRef, MessageContent, ReadState
+    SlowmodeLastMessage, MessageRef, MessageContent, ReadState, Username
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -37,7 +37,7 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
     ForwardMessages_176, SaveDraft_166, ClearAllDrafts, SaveDraft_148, SaveDraft_133, SendInlineBotResult_133, \
     SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
-    SendInlineBotResult, SendMultiMedia_176, UnpinAllMessages
+    SendInlineBotResult, SendMultiMedia_176, UnpinAllMessages, StartBot
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.utils import SingleElementList
 from piltover.utils.debug import measure_time
@@ -1579,4 +1579,60 @@ async def unpin_all_messages(request: UnpinAllMessages, user_id: int) -> Affecte
         pts=pts,
         pts_count=pts_count,
         offset=0,
+    )
+
+
+@handler.on_request(StartBot, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def start_bot(request: StartBot, user_id: int):
+    if not request.start_param:
+        raise ErrorRpc(error_code=400, error_message="START_PARAM_EMPTY")
+    if len(request.start_param) > 64:
+        raise ErrorRpc(error_code=400, error_message="START_PARAM_TOO_LONG")
+    if not B64URL_STR_RE.match(request.start_param):
+        raise ErrorRpc(error_code=400, error_message="START_PARAM_INVALID")
+    if not request.random_id:
+        raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
+
+    user = await User.get(id=user_id).only("id", "bot", "first_name")
+
+    bot_peer = await Peer.query_from_input_user_or_raise(
+        user_id, request.bot, error_message="BOT_INVALID"
+    ).select_related("user")
+    if isinstance(request.peer, InputPeerEmpty):
+        chat_peer = bot_peer
+    else:
+        chat_peer = await Peer.from_input_peer_raise(user_id, request.peer)
+        if chat_peer.type is PeerType.SELF \
+                or (chat_peer.type is PeerType.USER and chat_peer.user_id != bot_peer.user_id) \
+                or (chat_peer.type is PeerType.CHANNEL and not chat_peer.channel.supergroup):
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    participant = None
+    if chat_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        chat_or_channel = chat_peer.chat_or_channel
+        participant = await chat_or_channel.get_participant(user_id)
+        if not chat_or_channel.can_send_plain(participant):
+            raise ErrorRpc(error_code=403, error_message="CHAT_SEND_PLAIN_FORBIDDEN")
+        if chat_peer.type is PeerType.CHANNEL:
+            await _check_channel_slowmode(chat_peer.channel, participant, user_id)
+
+    _check_we_blocked_user(chat_peer)
+
+    message_text = "/start"
+    if chat_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
+        username = await Username.get(user_id=bot_peer.user_id).only("username")
+        message_text += f"@{username.username}"
+    message_text += f" {request.start_param}"
+
+    is_anonymous, post_signature = _make_supergroup_anonymous_maybe(chat_peer, participant)
+
+    if chat_peer.type is PeerType.CHANNEL:
+        await _update_channel_slowmode_maybe(chat_peer.channel, user_id)
+
+    return await send_message_internal(
+        user, chat_peer, request.random_id, None, False,
+        author=user, text=message_text,
+        entities=await process_message_entities(message_text, [], user_id),
+        post_author=post_signature, anonymous=is_anonymous,
+        no_forwards=_resolve_noforwards(chat_peer, user),
     )
