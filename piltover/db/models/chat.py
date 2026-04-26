@@ -60,6 +60,12 @@ class Chat(ChatBase):
         return f"chat:{self.id}:{self.version}"
 
     async def to_tl(self) -> TLChatBase:
+        if self.deleted:
+            return ChatForbidden(
+                id=self.make_id(),
+                title=self.name,
+            )
+
         if (cached := await Cache.obj.get(self.cache_key())) is not None:
             return cached
 
@@ -83,12 +89,13 @@ class Chat(ChatBase):
         cached_chats = await Cache.obj.multi_get([
             chat.cache_key()
             for chat in chats
+            if not chat.deleted
         ])
 
         processing_chats = [
             chat
             for chat, cached in zip(chats, cached_chats)
-            if cached is None
+            if cached is None and not chat.deleted
         ]
         chat_ids = [chat.id for chat in processing_chats]
 
@@ -122,6 +129,12 @@ class Chat(ChatBase):
         tl = []
         to_cache = []
         for chat, cached in zip(chats, cached_chats):
+            if chat.deleted:
+                tl.append(ChatForbidden(
+                    id=chat.make_id(),
+                    title=chat.name,
+                ))
+
             if cached is not None:
                 tl.append(cached)
                 continue

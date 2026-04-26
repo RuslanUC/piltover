@@ -62,7 +62,6 @@ class Channel(ChatBase):
     profile_color: models.PeerColorOption | None = NullableFKSetNullR("models.PeerColorOption", "channel_profile")
     all_reactions: bool = fields.BooleanField(default=True)
     all_reactions_custom: bool = fields.BooleanField(default=False)
-    deleted: bool = fields.BooleanField(default=False)
     nojoin_allow_view: bool = fields.BooleanField(default=False)
     hidden_prehistory: bool = fields.BooleanField(default=False)
     min_available_id: int | None = fields.BigIntField(null=True, default=None)

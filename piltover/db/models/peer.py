@@ -50,7 +50,7 @@ class Peer(Model):
             select_related: tuple[str, ...] | None = None,
     ) -> Peer | None:
         chat_id = models.Chat.norm_id(chat_id)
-        query = Q(owner_id=user_id, chat_id=chat_id, type=PeerType.CHAT)
+        query = Q(owner_id=user_id, chat_id=chat_id, type=PeerType.CHAT, chat__deleted=False)
         if not allow_migrated:
             query &= Q(chat__migrated=False)
 
@@ -110,7 +110,7 @@ class Peer(Model):
             if peer_types is not None and PeerType.CHAT not in peer_types:
                 return None
             chat_id = models.Chat.norm_id(input_peer.chat_id)
-            query = Q(owner_id=user_id, chat_id=chat_id)
+            query = Q(owner_id=user_id, chat_id=chat_id, chat__deleted=False)
             if not allow_migrated_chat:
                 query &= Q(chat__migrated=False)
             return await Peer.get_or_none(query).select_related("chat", *select_related)

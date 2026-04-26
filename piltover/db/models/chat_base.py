@@ -36,6 +36,7 @@ class ChatBase(Model):
     banned_rights: ChatBannedRights = IntFlagField(ChatBannedRights, default=ChatBannedRights.NONE)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     ttl_period_days: int = fields.SmallIntField(default=0)
+    deleted: bool = fields.BooleanField(default=False)
 
     creator_id: int
     photo_id: int

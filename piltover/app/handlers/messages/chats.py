@@ -24,7 +24,7 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
 from piltover.tl.base.messages import Chats as ChatsBase
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
-    EditChatDefaultBannedRights, CreateChat_133, MigrateChat, GetOnlines, GetCommonChats
+    EditChatDefaultBannedRights, CreateChat_133, MigrateChat, GetOnlines, GetCommonChats, DeleteChat
 from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as MessagesChatFull, ChatsSlice
 from piltover.worker import MessageHandler
 
@@ -122,7 +122,7 @@ async def create_chat(request: CreateChat, user_id: int) -> InvitedUsers:
 @handler.on_request(GetChats, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_chats(request: GetChats, user_id: int) -> Chats:
     chat_ids = [Chat.norm_id(chat_id) for chat_id in request.id]
-    peers = await Peer.filter(owner_id=user_id, chat_id__in=chat_ids).select_related("chat")
+    peers = await Peer.filter(owner_id=user_id, chat_id__in=chat_ids, chat__deleted=False).select_related("chat")
 
     return Chats(
         chats=await Chat.to_tl_bulk([peer.chat for peer in peers]),
@@ -355,8 +355,7 @@ async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
     if participant is None or not (participant.is_admin or chat_peer.chat.creator_id == user_id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    target_chat_peer = await Peer.get_or_none(owner=user_peer.user, chat=chat_peer.chat)
-    if target_chat_peer is None:
+    if not await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     messages = await MessageRef.create_for_peer(
@@ -647,4 +646,13 @@ async def get_common_chats(request: GetCommonChats, user_id: int) -> ChatsBase:
     return Chats(chats=chats_and_channels)
 
 
-# TODO: DeleteChat
+@handler.on_request(DeleteChat, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def delete_chat(request: DeleteChat, user_id: int) -> Updates:
+    peer = await Peer.from_chat_id_raise(user_id, request.chat_id, allow_migrated=True)
+    if peer.chat.creator_id != user_id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+
+    await Chat.filter(id=peer.chat_id).update(version=F("version") + 1, deleted=True)
+    await peer.chat.refresh_from_db(["version", "deleted"])
+
+    return await upd.update_chat(peer.chat)

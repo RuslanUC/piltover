@@ -1364,7 +1364,7 @@ async def toggle_join_request(request: ToggleJoinRequest, user_id: int) -> Updat
 
 @handler.on_request(GetGroupsForDiscussion, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_groups_for_discussion(user_id: int) -> Chats:
-    chats = await Chat.filter(creator_id=user_id, migrated=False).order_by("-id")
+    chats = await Chat.filter(creator_id=user_id, migrated=False, deleted=False).order_by("-id")
     channels = await Channel.filter(creator_id=user_id, supergroup=True, is_discussion=False).order_by("-id")
 
     return Chats(
