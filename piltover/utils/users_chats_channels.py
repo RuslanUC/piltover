@@ -16,6 +16,10 @@ if TYPE_CHECKING:
     QsChat = QuerySet[models.Chat]
     QsChannel = QuerySet[models.Channel]
 
+USER_SELECT_RELATED = ("username", "background_emojis", "emoji_status",)
+CHAT_SELECT_RELATED = ("photo",)
+CHANNEL_SELECT_RELATED = ("photo",)
+
 
 class UsersChatsChannels:
     def __init__(self):
@@ -123,9 +127,9 @@ class UsersChatsChannels:
         users_q, chats_q, channels_q = self._query()
 
         return (
-            await users_q if fetch_users and users_q else [],
-            await chats_q if fetch_chats and chats_q else [],
-            await channels_q if fetch_channels and channels_q else [],
+            await users_q.select_related(*USER_SELECT_RELATED) if fetch_users and users_q else [],
+            await chats_q.select_related(*CHAT_SELECT_RELATED) if fetch_chats and chats_q else [],
+            await channels_q.select_related(*CHANNEL_SELECT_RELATED) if fetch_channels and channels_q else [],
         )
 
     async def resolve(

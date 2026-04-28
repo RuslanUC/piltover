@@ -135,6 +135,7 @@ class Channel(ChatBase):
                 ).first().values_list("username", flat=True)
             }
         else:
+            # TODO: dont fetch usernames if already prefetched
             usernames = {
                 channel_id: username
                 for channel_id, username in await models.Username.filter(
