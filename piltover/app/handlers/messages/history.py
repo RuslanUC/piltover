@@ -378,7 +378,7 @@ async def format_messages_internal(
         query = Q(peer=peer)
         if saved_peer is not None:
             query &= Q(content__fwd_header__saved_peer=saved_peer)
-        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+        query = append_channel_min_message_id_to_query_maybe(peer, query)
     messages_count = await MessageRef.filter(query).count()
 
     if messages_count <= len(messages_tl) and not offset_id:
@@ -568,7 +568,7 @@ async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[
         saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
         base_query &= Q(content__fwd_header__saved_peer=saved_peer)
 
-    base_query = await append_channel_min_message_id_to_query_maybe(peer, base_query)
+    base_query = append_channel_min_message_id_to_query_maybe(peer, base_query)
 
     counters = TLObjectVector()
 
@@ -1151,7 +1151,7 @@ async def read_discussion(request: ReadDiscussion, user_id: int) -> bool:
     discussion_query = peer.q_this_or_channel() & Q(
         id=request.msg_id, content__type=MessageType.REGULAR, is_discussion=True,
     )
-    discussion_query = await append_channel_min_message_id_to_query_maybe(peer, discussion_query)
+    discussion_query = append_channel_min_message_id_to_query_maybe(peer, discussion_query)
     message = await MessageRef.get_or_none(discussion_query)
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")

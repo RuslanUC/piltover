@@ -591,7 +591,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
                 Q(peer__owner=None, content__type=MessageType.REGULAR)
                 | Q(peer__owner=user, content__type=MessageType.SCHEDULED)
         )
-        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+        query = append_channel_min_message_id_to_query_maybe(peer, query)
         message = await MessageRef.get_or_none(query).select_related(*MessageRef.PREFETCH_FIELDS)
     else:
         message = await MessageRef.get_(
@@ -1133,9 +1133,7 @@ async def forward_messages(
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
     src_messages_query = Q(from_peer.q_this_or_channel(), id__in=request.id[:100], content__type=MessageType.REGULAR)
-    src_messages_query = await append_channel_min_message_id_to_query_maybe(
-        from_peer, src_messages_query, from_participant
-    )
+    src_messages_query = append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query, from_participant)
 
     random_ids = dict(zip(request.id[:100], random_id))
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
@@ -1541,7 +1539,7 @@ async def unpin_all_messages(request: UnpinAllMessages, user_id: int) -> Affecte
         peer_query = Q(peer__chat_id=peer.chat_id)
     elif peer.type is PeerType.CHANNEL:
         peer_query = Q(peer__owner=None, peer__channel_id=peer.channel_id)
-        peer_query = await append_channel_min_message_id_to_query_maybe(peer, peer_query, participant)
+        peer_query = append_channel_min_message_id_to_query_maybe(peer, peer_query, participant)
     else:
         raise Unreachable
 

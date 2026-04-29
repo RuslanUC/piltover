@@ -494,7 +494,7 @@ async def get_messages(request: GetMessages, user_id: int) -> Messages:
         ))
 
     query &= Q(peer__channel=channel)
-    query = await append_channel_min_message_id_to_query_maybe(channel, query, participant, user_id)
+    query = append_channel_min_message_id_to_query_maybe(channel, query, participant, user_id)
 
     return await format_messages_internal(
         user_id,
@@ -514,7 +514,7 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
 
     ids = request.id[:100]
     ids_query = Q(id__in=ids, peer__channel=channel) & (Q(peer__owner_id=user_id) | Q(peer__owner=None))
-    ids_query = await append_channel_min_message_id_to_query_maybe(channel, ids_query, participant, user_id)
+    ids_query = append_channel_min_message_id_to_query_maybe(channel, ids_query, participant, user_id)
     message_ids: list[int] = await MessageRef.filter(ids_query).values_list("id", flat=True)
 
     if not message_ids:

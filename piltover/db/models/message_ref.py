@@ -5,8 +5,8 @@ from typing import TypeVar, Self, Iterable, cast, Sequence
 
 from loguru import logger
 from tortoise import fields, Model
-from tortoise.expressions import Q
-from tortoise.functions import Count, Max
+from tortoise.expressions import Q, Subquery
+from tortoise.functions import Count, Max, Coalesce
 
 from piltover.cache import Cache
 from piltover.db import models
@@ -24,12 +24,10 @@ _T = TypeVar("_T")
 BackwardO2OOrT = fields.BackwardOneToOneRelation[_T] | _T
 
 
-async def append_channel_min_message_id_to_query_maybe(
+def append_channel_min_message_id_to_query_maybe(
         peer: models.Peer | models.Channel, query: Q, participant: models.ChatParticipant | None = None,
         user: models.User | int | None = None,
 ) -> Q:
-    # TODO: replace whole method with the thing from get_messages_query_internal from history.py (around line 170)
-
     user_id = user.id if isinstance(user, models.User) else user
 
     channel = None
@@ -42,10 +40,19 @@ async def append_channel_min_message_id_to_query_maybe(
         participant_user_id = user_id
 
     if channel is not None:
-        if participant is None:
-            participant = await channel.get_participant(participant_user_id)
-        if (channel_min_id := channel.min_id(participant)) is not None:
-            query &= Q(id__gte=channel_min_id)
+        if channel.min_available_id or channel.min_available_id_force:
+            query &= Q(id__gte=max(channel.min_available_id or 0, channel.min_available_id_force or 0))
+        if participant is not None and participant.min_message_id is not None:
+            query &= Q(id__gte=participant.min_message_id)
+        else:
+            query &= Q(id__gte=Coalesce(
+                Subquery(
+                    models.ChatParticipant.get_or_none(
+                        user_id=participant_user_id, channel=channel
+                    ).values("min_message_id")
+                ),
+                0,
+            ))
 
     return query
 
@@ -112,7 +119,7 @@ class MessageRef(Model):
             types_query |= Q(content__type=message_type)
 
         query = peer.q_this_or_channel() & types_query & Q(id=id_)
-        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+        query = append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.get_or_none(query).select_related(
             *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN),
@@ -124,7 +131,7 @@ class MessageRef(Model):
             cls, ids: list[int], peer: models.Peer, prefetch_all: bool = False, prefetch_fields: tuple[str, ...] = ()
                        ) -> list[Self]:
         query = peer.q_this_or_channel() & Q(id__in=ids, content__type=MessageType.REGULAR)
-        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+        query = append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.filter(query).select_related(
             *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN),

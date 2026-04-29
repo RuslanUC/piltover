@@ -21,7 +21,7 @@ async def get_poll_results(request: GetPollResults, user_id: int) -> Updates:
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
     if peer.type is PeerType.CHANNEL:
         query = Q(peer__type=PeerType.CHANNEL, peer__owner=None, peer__channel=peer.channel)
-        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+        query = append_channel_min_message_id_to_query_maybe(peer, query)
     else:
         query = Q(peer=peer)
 
@@ -100,7 +100,7 @@ async def send_vote(request: SendVote, user_id: int) -> Updates:
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type is PeerType.CHANNEL:
         query = Q(peer__type=PeerType.CHANNEL, peer__owner=None, peer__channel=peer.channel)
-        query = await append_channel_min_message_id_to_query_maybe(peer, query)
+        query = append_channel_min_message_id_to_query_maybe(peer, query)
     else:
         query = Q(peer=peer)
 
