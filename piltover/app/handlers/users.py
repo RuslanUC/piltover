@@ -36,9 +36,12 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     ])
     privacy_rules = privacy_rules[target_user.id]
 
-    wallpaper = await Wallpaper.get_or_none(
-        chatwallpapers__user_id=user_id, chatwallpapers__target_id=target_user.id
-    ).select_related("document", "settings")
+    if peer.user_has_wallpaper:
+        wallpaper = await Wallpaper.get_or_none(
+            chatwallpapers__user_id=user_id, chatwallpapers__target_id=target_user.id
+        ).select_related("document", "settings")
+    else:
+        wallpaper = None
 
     has_scheduled = await MessageRef.filter(peer=peer, content__scheduled_date__not_isnull=True).exists()
     pinned_msg_id = cast(

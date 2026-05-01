@@ -112,6 +112,7 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user_id: int) -> Updates
     if set_wallpaper is None:
         if existing_wp is not None:
             await existing_wp.delete()
+            await Peer.filter(id=peer.id).update(user_has_wallpaper=False)
             return await upd.update_chat_wallpaper(user, target, None)
 
         return upd.UpdatesWithDefaults(updates=[])
@@ -124,6 +125,8 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user_id: int) -> Updates
         chat_wp = existing_wp
         chat_wp.wallpaper = set_wallpaper
         await chat_wp.save(update_fields=["wallpaper_id"])
+
+    await Peer.filter(id=peer.id).update(user_has_wallpaper=True)
 
     updates = await upd.update_chat_wallpaper(user, target, chat_wp)
     if create_svc_message:

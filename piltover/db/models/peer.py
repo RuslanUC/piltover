@@ -24,6 +24,7 @@ class Peer(Model):
     type: PeerType = fields.IntEnumField(PeerType, description="")
     blocked_at: datetime = fields.DatetimeField(null=True, default=None)
     user_ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
+    user_has_wallpaper: bool = fields.BooleanField(default=False)
 
     user: models.User | None = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)
