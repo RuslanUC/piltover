@@ -17,6 +17,7 @@ class NewBot(BotInteractionHandler[BotFatherState, BotFatherUserState]):
 
     @staticmethod
     async def _handler(peer: Peer, _message: MessageRef, _state: None) -> MessageRef:
+        # TODO: check if user already has more (or equal) than `APP_CONFIG.max_bots_per_user` bots
         await BotFatherUserState.update_or_create(user=peer.owner, defaults={
             "state": BotFatherState.NEWBOT_WAIT_NAME,
             "data": None,

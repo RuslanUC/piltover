@@ -49,6 +49,7 @@ class _AppConfig(BaseModel):
     scheduled_instant_send_threshold: int = 30
     account_delete_wait_seconds: int = 86400 * 7
     channel_delete_history_min_id_threshold: int = 1000
+    max_bots_per_user: int = 24
 
     gifs: _Gifs | None = None
 

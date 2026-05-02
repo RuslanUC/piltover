@@ -8,7 +8,7 @@ from tortoise.transactions import in_transaction
 from piltover.app.bot_handlers.botfather.utils import send_bot_message
 from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
-from piltover.app.utils.utils import is_username_valid
+from piltover.app.utils.utils import is_username_valid, BOT_COMMAND_NAME_REGEX
 from piltover.context import request_ctx
 from piltover.db.enums import BotFatherState, MediaType, PeerType
 from piltover.db.models import Peer, BotFatherUserState, Username, User, Bot, BotInfo, UserPhoto, BotCommand, State, \
@@ -225,8 +225,11 @@ class Text(BotInteractionHandler[BotFatherState, BotFatherUserState]):
         for command in message.content.message.split("\n"):
             await sleep(0)
             name, _, description = command.partition(" - ")
-            # TODO: validate command name
-            if not name or len(name) > 32 or not description or len(description) > 240:
+            if not name \
+                    or len(name) > 32 \
+                    or not description \
+                    or len(description) > 240 \
+                    or not BOT_COMMAND_NAME_REGEX.fullmatch(name):
                 return await send_bot_message(peer, _bot_commands_invalid, entities=_bot_commands_invalid_entities)
             commands[name] = description
 

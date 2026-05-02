@@ -42,6 +42,7 @@ from piltover.utils.utils import xor
 USERNAME_MENTION_REGEX = re.compile(r'@[a-z0-9_]{5,32}')
 USERNAME_REGEX = re.compile(r'^[a-z0-9_]{5,32}$')
 USERNAME_REGEX_NO_LEN = re.compile(r'[a-z0-9_]{1,32}')
+BOT_COMMAND_NAME_REGEX = re.compile(r'[a-zA-Z0-9_]{1,64}')
 BOT_COMMAND_REGEX = re.compile(r'/[a-zA-Z0-9_]{1,64}\b')
 B64URL_STR_RE = re.compile(r'^[A-Za-z0-9\-_]*={0,2}$')
 

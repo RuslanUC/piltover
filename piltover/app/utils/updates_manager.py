@@ -75,8 +75,6 @@ async def send_message(
     ptss = await State.add_pts_bulk(pts_users, pts_counts)
 
     for target_user_id, new_pts in zip(pts_users, ptss):
-        # TODO: also generate UpdateShortMessage / UpdateShortSentMessage ?
-
         peer = peer_by_user_id[target_user_id]
         message = messages[peer]
 
@@ -1133,13 +1131,14 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
     # TODO: resolve related users/chats/channels here, before loop
     #  (if peer is USER, then related users is [peer.user], and so on)
 
-    for peer, max_id in messages.items():
-        # TODO: move out of the loop?
-        pts = await State.add_pts(peer.owner_id, 1)
+    items = list(messages.items())
+    ptss = await State.add_pts_bulk([peer.owner_id for peer, _ in items], 1)
+
+    for new_pts, (peer, max_id) in zip(ptss, items):
         updates_to_create.append(Update(
             user_id=peer.owner_id,
             update_type=UpdateType.READ_OUTBOX,
-            pts=pts,
+            pts=new_pts,
             pts_count=1,
             related_id=peer.id,
             additional_data=[max_id],
@@ -1156,7 +1155,7 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
                 UpdateReadHistoryOutbox(
                     peer=peer.to_tl(),
                     max_id=max_id,
-                    pts=pts,
+                    pts=new_pts,
                     pts_count=1,
                 ),
             ],

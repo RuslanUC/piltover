@@ -5,6 +5,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.botfather.mybots_command import text_no_bots, text_choose_bot
 from piltover.app.bot_handlers.botfather.utils import get_bot_selection_inline_keyboard, send_bot_message
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
+from piltover.config import APP_CONFIG
 from piltover.db.enums import BotFatherState
 from piltover.db.models import Peer, Bot, BotInfo, BotFatherUserState, UserPhoto, BotCommand, MessageRef
 from piltover.db.models.bot import bot_gen_token
@@ -66,8 +67,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             page = int(data[12:])
         except ValueError:
             return None
-        # TODO: move 24 to `AppConfig.MAX_BOTS_PER_USER`
-        if page < 0 or page > 24 // 6 - 1:
+        if page < 0 or page > APP_CONFIG.max_bots_per_user // 6 - 1:
             return None
 
         rows = await get_bot_selection_inline_keyboard(peer.owner, page)
