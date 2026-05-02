@@ -23,13 +23,11 @@ from piltover.exceptions import Disconnection, InvalidConstructorException, Unre
 from piltover.gateway._keygen_handlers import KEYGEN_HANDLERS
 from piltover.gateway._system_handlers import SYSTEM_HANDLERS
 from piltover.session import Session, SessionManager
-from piltover.tl import NewSessionCreated, BadServerSalt, BadMsgNotification, Long, Int, RpcError, ReqPq, ReqPqMulti, \
-    MsgsAck
+from piltover.tl import NewSessionCreated, Long, Int, RpcError, ReqPq, ReqPqMulti, MsgsAck
 from piltover.tl.core_types import TLObject, MsgContainer, Message, RpcResult
 from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
-from piltover.tl.utils import is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
 
 if TYPE_CHECKING:
@@ -190,69 +188,6 @@ class Client:
         else:
             await self.propagate(req_message, session)
 
-    # TODO: move into Session?
-    async def _is_message_bad(self, packet: DecryptedMessagePacket, session: Session, check_salt: bool) -> bool:
-        # https://core.telegram.org/mtproto/service_messages_about_messages#notice-of-ignored-error-message
-
-        error_code = 0
-        inner_id = Int.read_bytes(packet.data[:4], False)
-
-        if packet.message_id % 4 != 0:
-            # 18: incorrect two lower order msg_id bits (the server expects client message msg_id to be divisible by 4)
-            logger.debug(f"Client sent message id which is not divisible by 4")
-            error_code = 18
-        elif (packet.message_id >> 32) < (time.time() - 300):
-            # 16: msg_id too low
-            logger.debug(f"Client sent message id which is too low")
-            error_code = 16
-        elif (packet.message_id >> 32) > (time.time() + 30):
-            # 17: msg_id too high
-            logger.debug(f"Client sent message id which is too low")
-            error_code = 17
-        elif (packet.seq_no & 1) == 1 and is_id_strictly_not_content_related(inner_id):
-            # 34: an even msg_seqno expected (irrelevant message), but odd received
-            logger.debug(f"Client sent odd seq_no for content-related message ({hex(inner_id)[2:]})")
-            error_code = 34
-        elif (packet.seq_no & 1) == 0 and is_id_strictly_content_related(inner_id):
-            # 35: odd msg_seqno expected (relevant message), but even received
-            logger.debug(f"Client sent even seq_no for not content-related message ({hex(inner_id)[2:]})")
-            error_code = 35
-
-        # TODO: add validation for message_id duplication (code 19)
-        # TODO: what's the difference between code 16 and code 20???
-        # TODO: add validation for seq_no too low/high (code 32 and 33)
-
-        if error_code:
-            await session.enqueue(
-                obj=BadMsgNotification(
-                    bad_msg_id=packet.message_id,
-                    bad_msg_seqno=packet.seq_no,
-                    error_code=error_code,
-                ),
-                in_reply=True,
-            )
-            return True
-
-        # 48: incorrect server salt (in this case, the bad_server_salt response is received with the correct salt,
-        # and the message is to be re-sent with it)
-        if check_salt and packet.salt not in (session.salt_now.salt, session.salt_prev.salt):
-            logger.debug(
-                f"Client sent bad salt ({int.from_bytes(packet.salt, 'little')}) "
-                f"in message {packet.message_id}, sending correct salt"
-            )
-            await session.enqueue(
-                obj=BadServerSalt(
-                    bad_msg_id=packet.message_id,
-                    bad_msg_seqno=packet.seq_no,
-                    error_code=48,
-                    new_server_salt=Long.read_bytes(session.salt_now.salt),
-                ),
-                in_reply=True,
-            )
-            return True
-
-        return False
-
     async def recv(self):
         packet = await self.read_packet()
 
@@ -278,7 +213,7 @@ class Client:
 
             # For some reason some clients cant process BadServerSalt response to BindTempAuthKey request
             check_salt = decrypted.data[:4] != Int.write(BindTempAuthKey.tlid(), False)
-            if await self._is_message_bad(decrypted, session, check_salt):
+            if await session.is_message_bad(decrypted, check_salt):
                 return
 
             try:

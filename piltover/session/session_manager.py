@@ -73,6 +73,7 @@ class SessionManager:
             if isinstance(obj, ObjectWithLayerRequirement):
                 obj.object = ctx.to_tl(obj.object)
                 # TODO: this is (probably) a temporary fix (?)
+                #  note: probably can move the whole "layer requirement" thing into "*ToFormat"?
                 for field_ in obj.fields:
                     field_.field = f"obj.{field_.field}"
             else:
