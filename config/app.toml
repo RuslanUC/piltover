@@ -64,6 +64,8 @@ srp_password_reset_wait_seconds = 604800  # 86400 * 7
 scheduled_instant_send_threshold = 30
 # Time (in seconds) for user to wait deletion of account (when no 2fa password is set, or it is forgotten)
 account_delete_wait_seconds = 604800  # 86400 * 7
+# Maximum amount of bots single user can create
+max_bots_per_user = 24
 
 #[app.gifs]
 # Gifs search provider. Currently supported: tenor (deprecated, will be removed before 01.06.2026), klipy.

@@ -154,7 +154,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
 
     # TODO: only fetch channels of which current user is participant, NOT PEER
     channel_states = await ChannelUpdate.annotate(min_pts=Min("pts")).filter(
-        channel__peers__owner_id=user_id, date__gt=date,
+        channel__chatparticipants__user_id=user_id, channel__chatparticipants__left=False, date__gt=date,
     ).group_by("channel_id").values_list("channel_id", "min_pts")
     for channel_id, channel_pts in channel_states:
         other_updates.append(UpdateChannelTooLong(channel_id=channel_id, pts=channel_pts))
