@@ -8,16 +8,17 @@ from tortoise.expressions import Q, Subquery
 
 import piltover.app.utils.updates_manager as upd
 from piltover.config import APP_CONFIG
+from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, Channel, PrivacyRuleException, \
     PrivacyRule
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
-    ExportedContactToken, Long, User as TLUser, TLObjectVector, PeerUser, ContactStatus, PeerChannel
+    ExportedContactToken, Long, User as TLUser, TLObjectVector, PeerUser, ContactStatus, PeerChannel, LongVector
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
-    ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken
+    ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken, GetContactIDs
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, \
     BlockedSlice, ImportedContacts
 from piltover.worker import MessageHandler
@@ -259,25 +260,20 @@ async def add_contact(request: AddContact, user_id: int) -> Updates:
 
 @handler.on_request(DeleteContacts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_contacts(request: DeleteContacts, user_id: int) -> Updates:
-    peers = {}
+    ctx = request_ctx.get()
+    user_to_fetch_ids = set()
     for peer_id in request.id:
-        try:
-            # TODO: dont do this in a loop
-            peer = await Peer.from_input_peer_raise(user_id, peer_id)
-        except ErrorRpc:
+        if Peer.input_is_self(user_id, peer_id):
             continue
-        if peer.type is not PeerType.USER:
-            continue
+        if User.check_access_hash(user_id, ctx.auth_id, peer_id.user_id, peer_id.access_hash):
+            user_to_fetch_ids.add(peer_id.user_id)
 
-        peers[peer.user.id] = peer
-
-    contacts = await Contact.filter(owner_id=user_id, target_id__in=list(peers.keys())).values_list("id", "target_id")
+    contacts = await Contact.filter(owner_id=user_id, target_id__in=user_to_fetch_ids).values_list("id", "target_id")
     contact_ids = {contact_id for contact_id, _ in contacts}
-    user_ids = {user_id for _, user_id in contacts}
-
-    users = [peer.user for user_id, peer in peers.items() if user_id in user_ids]
     await Contact.filter(id__in=contact_ids).delete()
 
+    user_ids = {user_id for _, user_id in contacts}
+    users = await User.filter(id__in=user_ids).select_related("username", "background_emojis", "emoji_status")
     return await upd.add_remove_contact(user_id, users)
 
 
@@ -416,5 +412,12 @@ async def import_contact_token(request: ImportContactToken, user_id: int) -> TLU
     return await target_user.to_tl()
 
 
-# TODO: contacts.GetContactIDs
+@handler.on_request(GetContactIDs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_contact_ids(user_id: int) -> list[int]:
+    contact_ids = await Contact.filter(
+        owner_id=user_id, target_id__not_isnull=True,
+    ).values_list("target_id", flat=True)
+    return LongVector(contact_ids)
+
+
 # TODO: contacts.GetSaved ?

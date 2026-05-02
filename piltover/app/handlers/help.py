@@ -347,7 +347,7 @@ async def get_countries_list(request: GetCountriesList) -> CountriesList | Count
 
         country: AuthCountry
         for country in await AuthCountry.filter().order_by("id").prefetch_related("authcountrycodes"):
-            # TODO: add await sleep(0) ?
+            await asyncio.sleep(0)
             countries.countries.append(country.to_tl())
 
             countries.hash ^= countries.hash >> 21
