@@ -254,7 +254,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             return await send_bot_message(peer, _newpack_invalid_name)
 
         state_data = StickersStateRenamepack.deserialize(BytesIO(state.data))
-        stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner)
+        stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner).only("id", "title")
         if stickerset is None:
             await state.delete()
             return await send_bot_message(peer, _addsticker_shortname_invalid)
@@ -301,6 +301,8 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
 
         if file.needs_save:
             await file.save(update_fields=["width", "height"])
+
+        return None
 
     @classmethod
     async def _newpack_image(cls, peer: Peer, message: MessageRef, state: StickersBotUserState) -> MessageRef:

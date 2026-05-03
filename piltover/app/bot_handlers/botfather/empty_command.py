@@ -1,5 +1,8 @@
 from io import BytesIO
 
+from tortoise.expressions import F
+from tortoise.transactions import in_transaction
+
 from piltover.app.bot_handlers.botfather.text_handler import _bot_privacy_updated, _bot_privacy_updated_entities, \
     _bot_commands_updated, _bot_commands_updated_entities
 from piltover.app.bot_handlers.botfather.utils import send_bot_message
@@ -46,9 +49,9 @@ class Empty(BotInteractionHandler[BotFatherState, BotFatherUserState]):
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
-        info, _ = await BotInfo.get_or_create(user_id=bot.bot_id)
-        info.version += 1
-        await info.save(update_fields=["version"])
+        async with in_transaction():
+            if not await BotInfo.filter(user_id=bot.bot_id).update(version=F("version") + 1):
+                await BotInfo.bulk_create([BotInfo(user_id=bot.bot_id, version=1)])
 
         await state.delete()
         return await send_bot_message(peer, _bot_commands_updated, entities=_bot_commands_updated_entities)

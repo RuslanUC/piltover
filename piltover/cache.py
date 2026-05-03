@@ -80,9 +80,6 @@ class Cache:
 
     @classmethod
     def init(cls, backend: Literal["memory", "redis", "memcached", "none"], **backend_kwargs) -> None:
-        if cls.obj is not None:
-            return
-
         backend_kwargs.pop("serializer", None)
         serializer = TLSerializer()
 

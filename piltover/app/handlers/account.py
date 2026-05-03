@@ -30,6 +30,7 @@ from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivac
     UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
     EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus
 from piltover.tl.base.account import ResetPasswordResult
+from piltover.tl.base import User as TLUserBase
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
@@ -71,7 +72,7 @@ async def check_username(request: CheckUsername) -> bool:
 
 
 @handler.on_request(UpdateUsername, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.FETCH_USER_WITH_USERNAME)
-async def update_username(request: UpdateUsername, user: User) -> TLUser:
+async def update_username(request: UpdateUsername, user: User) -> TLUserBase:
     request.username = request.username.lower().strip()
     if (not request.username and user.username is None) \
             or (user.username is not None and user.username.username == request.username):
@@ -79,10 +80,11 @@ async def update_username(request: UpdateUsername, user: User) -> TLUser:
 
     if request.username:
         validate_username(request.username)
+
+    async with in_transaction():
         if await Username.filter(username__iexact=request.username).exists():
             raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
 
-    async with in_transaction():
         if user.username is None:
             user._username = await Username.create(user=user, username=request.username)
         elif user.username is not None and request.username:
@@ -556,7 +558,7 @@ async def send_change_phone_code(request: SendChangePhoneCode, user_id: int) -> 
 
 
 @handler.on_request(ChangePhone, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def change_phone(request: ChangePhone, user: User) -> TLUser:
+async def change_phone(request: ChangePhone, user: User) -> TLUserBase:
     phone_number = _validate_phone(request.phone_number)
     code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.CHANGE_NUMBER)
     await SentCode.check_raise_cls(code, request.phone_code)
