@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSett
 
 
 class _CacheConfig(BaseModel):
-    backend: Literal["memory", "redis", "memcached"] = "memory"
+    backend: Literal["memory", "redis", "memcached", "none"] = "memory"
     endpoint: str | None = None
     port: int | None = None
     db: str | None = None

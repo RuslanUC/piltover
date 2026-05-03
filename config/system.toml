@@ -20,7 +20,10 @@ enable_system_bot = false
 
 # Where all cached data (users, chats, messages, etc.) will be stored
 [system.cache]
-# Cache backend. Available backends: memory, redis, memcached.
+# Cache backend. Available backends: "memory", "redis", "memcached", "none".
+#  - "memory" - keeps cache in Python dict, not persistent between restarts.
+#  - "redis", "memcached" - keeps cache in Redis/Memcached, requires it to be installed and running, persistent between restarts.
+#  - "none" - disable caching completely.
 backend = "memory"
 # Cache endpoint. Only for "redis" and "memcached" cache types.
 #endpoint = "127.0.0.1"

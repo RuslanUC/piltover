@@ -5,6 +5,10 @@ from piltover.tl import types
 
 
 class ChannelMessageToFormat(types.ChannelMessageToFormatInternal):
+    @property
+    def id(self) -> int:
+        return self.common.id
+
     def _write(self) -> bytes:
         from piltover.db import models
 

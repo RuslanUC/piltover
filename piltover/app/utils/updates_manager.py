@@ -798,21 +798,10 @@ async def update_user(user: User) -> None:
 
 
 async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
-    updates_to_create = []
-
-    participants = [
-        participant.to_tl_chat_with_creator(chat.creator_id)
-        for participant in await ChatParticipant.filter(chat=chat).only(
-            "user_id", "admin_rights", "inviter_id", "invited_at",
-        )
-    ]
-    participant_ids = [participant.user_id for participant in participants]
-    users_tl = await User.to_tl_bulk(await User.filter(id__in=participant_ids))
-    chat_tl = await chat.to_tl()
-
     user_ids = [peer.owner_id for peer in peers]
     ptss = await State.add_pts_bulk(user_ids, 1)
 
+    updates_to_create = []
     for user_id, pts in zip(user_ids, ptss):
         updates_to_create.append(
             Update(
@@ -820,26 +809,31 @@ async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
                 update_type=UpdateType.CHAT_CREATE,
                 pts=pts,
                 related_id=chat.id,
-                related_ids=participant_ids,
             )
         )
+
+    participants = await ChatParticipant.filter(chat=chat).select_related("user")
+    participants_tl = [
+        participant.to_tl_chat_with_creator(chat.creator_id)
+        for participant in participants
+    ]
 
     updates = UpdatesWithDefaults(
         updates=[
             UpdateChatParticipants(
                 participants=ChatParticipants(
                     chat_id=chat.make_id(),
-                    participants=participants,
+                    participants=participants_tl,
                     version=1,
                 ),
             ),
         ],
-        users=users_tl,
-        chats=[chat_tl],
+        users=await User.to_tl_bulk((participant.user for participant in participants)),
+        chats=[await chat.to_tl()],
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user_id=participant_ids)
+    await SessionManager.send(updates, user_id=user_ids)
     return updates
 
 
@@ -1475,7 +1469,7 @@ async def new_auth(user: User, auth: UserAuthorization) -> Updates:
         update_type=UpdateType.NEW_AUTHORIZATION,
         pts=new_pts,
         pts_count=1,
-        related_id=auth.id,
+        authorization=auth,
     )
 
     unconfirmed = not auth.confirmed
@@ -1513,7 +1507,7 @@ async def new_stickerset(user_id: int, stickerset: Stickerset) -> Updates:
         update_type=UpdateType.NEW_STICKERSET,
         pts=new_pts,
         pts_count=1,
-        related_id=stickerset.id,
+        stickerset=stickerset,
     )
 
     updates = UpdatesWithDefaults(

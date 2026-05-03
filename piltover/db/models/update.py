@@ -1,26 +1,27 @@
 from __future__ import annotations
 
-from typing import cast
 from datetime import datetime
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
+from tortoise.query_utils import Prefetch
 
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType, NotifySettingsNotPeerType
+from piltover.db.models.utils import NullableFK, NullableFKSetNull
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
     UpdateDialogFilterOrder, UpdateRecentReactions, UpdateNewScheduledMessage
+from piltover.tl.base import Message as TLMessageBase
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
-    UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, ChatParticipantCreator, Username, \
+    UpdatePinnedMessages, UpdateUser, UpdateChatParticipants, ChatParticipants, Username, \
     UpdateUserName, UpdatePeerSettings, PeerUser, PeerSettings, UpdatePeerBlocked, UpdateChat, UpdateDialogUnreadMark, \
-    UpdateReadHistoryOutbox, ChatParticipant, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
+    UpdateReadHistoryOutbox, UpdateFolderPeers, FolderPeer, UpdateChannel, UpdateReadChannelInbox, \
     UpdateMessagePoll, UpdateDialogFilter, UpdateEncryption, UpdateConfig, UpdateNewAuthorization, \
     UpdateNewStickerSet, UpdateStickerSets, UpdateStickerSetsOrder, UpdatePeerWallpaper, UpdateReadMessagesContents, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateBotCallbackQuery, UpdateUserPhone, UpdateNotifySettings, \
     UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, UpdateFavedStickers, UpdateSavedDialogPinned, \
     UpdatePinnedSavedDialogs, UpdatePrivacy, UpdateMessageID, UpdatePhoneCall, UpdateChannelAvailableMessages, \
     UpdateReadChannelOutbox, EmojiStatus, EmojiStatusEmpty, UpdateUserEmojiStatus
-from piltover.tl.base import Message as TLMessageBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 
 UpdateTypes = UpdateDeleteMessages | UpdateEditMessage | UpdateReadHistoryInbox | UpdateDialogPinned \
@@ -52,12 +53,14 @@ class Update(Model):
     additional_data: list | dict = fields.JSONField(null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User", related_name="updates")
 
-    peer: models.Peer | None = fields.ForeignKeyField("models.Peer", null=True, default=None)
-    update_user: models.User | None = fields.ForeignKeyField("models.User", null=True, default=None, related_name="updated")
-    dialog: models.Dialog | None = fields.ForeignKeyField("models.Dialog", null=True, default=None)
-    draft: models.MessageDraft | None = fields.ForeignKeyField("models.MessageDraft", null=True, default=None, on_delete=fields.OnDelete.SET_NULL)
-    message: models.MessageRef | None = fields.ForeignKeyField("models.MessageRef", null=True, default=None)
-    encrypted_chat: models.EncryptedChat | None = fields.ForeignKeyField("models.EncryptedChat", null=True, default=None)
+    peer: models.Peer | None = NullableFK("models.Peer")
+    update_user: models.User | None = NullableFK("models.User", related_name="updated")
+    dialog: models.Dialog | None = NullableFK("models.Dialog")
+    draft: models.MessageDraft | None = NullableFKSetNull("models.MessageDraft")
+    message: models.MessageRef | None = NullableFK("models.MessageRef")
+    encrypted_chat: models.EncryptedChat | None = NullableFK("models.EncryptedChat")
+    authorization: models.UserAuthorization | None = NullableFK("models.UserAuthorization")
+    stickerset: models.Stickerset | None = NullableFK("models.Stickerset")
 
     user_id: int
     peer_id: int | None
@@ -66,6 +69,8 @@ class Update(Model):
     draft_id: int | None
     message_id: int | None
     encrypted_chat_id: int | None
+    authorization_id: int | None
+    stickerset_id: int | None
 
     MESSAGE_PREFETCH_MAYBECACHED = ("message", "message__peer", "message__content", "message__peer__channel")
 
@@ -145,29 +150,28 @@ class Update(Model):
                 return UpdateUser(user_id=self.related_id)
 
             case UpdateType.CHAT_CREATE:
-                peer = await models.Peer.get_or_none(
-                    owner_id=user_id, chat_id=self.related_id, type=PeerType.CHAT, chat__deleted=False,
-                ).select_related("chat")
-                if peer is None:
+                chat = await models.Chat.get_or_none(
+                    id=self.related_id,
+                    deleted=False,
+                    peers__owner_id=user_id,
+                ).prefetch_related(
+                    Prefetch(
+                        "chatparticipants",
+                        queryset=models.ChatParticipant.filter(left=False).only(
+                            "user_id", "admin_rights", "inviter_id", "invited_at",
+                        )
+                    ),
+                )
+
+                if chat is None:
                     return None
 
-                chat = cast(models.Chat, peer.chat)
                 ucc.add_chat(chat.id)
 
-                user_ids = set(self.related_ids)
                 participants = []
-
-                for participant in await models.ChatParticipant.filter(chat=chat, user_id__in=self.related_ids):
+                for participant in chat.chatparticipants:
                     participants.append(participant.to_tl_chat_with_creator(chat.creator_id))
-                    user_ids.remove(participant.user_id)
-
-                for missing_id in user_ids:
-                    if missing_id == chat.creator_id:
-                        participants.append(ChatParticipantCreator(user_id=missing_id))
-                    else:
-                        participants.append(ChatParticipant(
-                            user_id=missing_id, inviter_id=chat.creator_id, date=0,
-                        ))
+                    ucc.add_user(participant.user_id)
 
                 return UpdateChatParticipants(
                     participants=ChatParticipants(
@@ -178,6 +182,7 @@ class Update(Model):
                 )
 
             case UpdateType.USER_UPDATE_NAME:
+                # TODO: prefetch user
                 if (target := await models.User.get_or_none(id=self.related_id).select_related("username")) is None:
                     return None
 
@@ -364,24 +369,24 @@ class Update(Model):
                 return UpdateRecentReactions()
 
             case UpdateType.NEW_AUTHORIZATION:
-                if (auth := await models.UserAuthorization.get_or_none(id=self.related_id)) is None:
+                if self.authorization is None:
                     return None
 
-                unconfirmed = not auth.confirmed
+                unconfirmed = not self.authorization.confirmed
                 return UpdateNewAuthorization(
                     unconfirmed=unconfirmed,
-                    hash=auth.tl_hash,
-                    date=int(auth.created_at.timestamp()) if unconfirmed else None,
-                    device=auth.device_model if unconfirmed else None,
-                    location=auth.ip if unconfirmed else None,
+                    hash=self.authorization.tl_hash,
+                    date=int(self.authorization.created_at.timestamp()) if unconfirmed else None,
+                    device=self.authorization.device_model if unconfirmed else None,
+                    location=self.authorization.ip if unconfirmed else None,
                 )
 
             case UpdateType.NEW_STICKERSET:
-                if (stickerset := await models.Stickerset.get_or_none(id=self.related_id, deleted=False)) is None:
+                if self.stickerset is None or self.stickerset.deleted:
                     return None
 
                 return UpdateNewStickerSet(
-                    stickerset=await stickerset.to_tl_messages(),
+                    stickerset=await self.stickerset.to_tl_messages(),
                 )
 
             case UpdateType.UPDATE_STICKERSETS:

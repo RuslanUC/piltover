@@ -73,8 +73,9 @@ class User(Model):
 
     async def get_raw_username(self) -> str | None:
         username = await self.get_username()
-        if username is not None:
-            return username.username
+        if username is None:
+            return None
+        return username.username
 
     async def get_db_current_photo(self) -> models.UserPhoto | None:
         return await models.UserPhoto.get_or_none(user=self, current=True).select_related("file")

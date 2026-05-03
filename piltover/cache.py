@@ -34,11 +34,52 @@ class TLSerializer(BaseSerializer):
         return SerializationUtils.read(stream, typ)
 
 
+class NoCache(BaseCache):
+    async def _get(self, key, encoding="utf-8", _conn=None) -> None:
+        return None
+
+    async def _gets(self, key, encoding="utf-8", _conn=None) -> None:
+        return None
+
+    async def _multi_get(self, keys, encoding="utf-8", _conn=None) -> list[None]:
+        return [None for _ in keys]
+
+    async def _set(self, key, value, ttl=None, _cas_token=None, _conn=None) -> bool:
+        return True
+
+    async def _multi_set(self, pairs, ttl=None, _conn=None) -> bool:
+        return True
+
+    async def _add(self, key, value, ttl=None, _conn=None) -> bool:
+        return True
+
+    async def _exists(self, key, _conn=None) -> bool:
+        return False
+
+    async def _increment(self, key, delta, _conn=None) -> int:
+        return delta
+
+    async def _expire(self, key, ttl, _conn=None) -> bool:
+        return False
+
+    async def _delete(self, key, _conn=None) -> int:
+        return 0
+
+    async def _clear(self, namespace=None, _conn=None) -> bool:
+        return True
+
+    async def _raw(self, command, *args, encoding="utf-8", _conn=None, **kwargs) -> None:
+        return None
+
+    async def _redlock_release(self, key, value) -> int:
+        return 0
+
+
 class Cache:
-    obj: BaseCache | None = None
+    obj: BaseCache = NoCache()
 
     @classmethod
-    def init(cls, backend: Literal["memory", "redis", "memcached"], **backend_kwargs) -> None:
+    def init(cls, backend: Literal["memory", "redis", "memcached", "none"], **backend_kwargs) -> None:
         if cls.obj is not None:
             return
 
@@ -55,5 +96,7 @@ class Cache:
             backend_kwargs.pop("db", None)
             from aiocache import MemcachedCache
             cls.obj = MemcachedCache(serializer=serializer, **backend_kwargs)
+        elif backend == "none":
+            cls.obj = NoCache()
         else:
             raise ValueError(f"Unsupported cache backend: {backend}")

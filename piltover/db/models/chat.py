@@ -34,6 +34,8 @@ class Chat(ChatBase):
     # TODO: maybe sync this value once in a while
     participants_count: int = fields.SmallIntField()
 
+    chatparticipants: fields.ReverseRelation[models.ChatParticipant]
+
     def make_id(self) -> int:
         return self.make_id_from(self.id)
 
