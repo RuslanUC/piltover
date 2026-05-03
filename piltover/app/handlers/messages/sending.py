@@ -497,7 +497,15 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
         await message.refresh_from_db(["pinned", "version"])
         _, _, result = await upd.pin_channel_messages(peer.channel, [message])
     else:
-        peer_query = peer.get_opposite_query()
+        if peer.type is PeerType.SELF:
+            peer_query = Q(peer=peer)
+        elif peer.type is PeerType.USER:
+            peer_query = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id, peer__blocked_at__isnull=True)
+            peer_query = peer_query | Q(peer=peer)
+        elif peer.type is PeerType.CHAT:
+            peer_query = Q(peer__chat_id=peer.chat_id)
+        else:
+            raise Unreachable
 
         ids = await MessageRef.filter(peer_query, content_id=message.content_id).values_list("id", flat=True)
         await MessageRef.filter(id__in=ids).update(pinned=not request.unpin, version=F("version") + 1)
@@ -529,34 +537,15 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
             user_id: await MessageRef.filter(id__in=ids, peer__owner_id=user_id).values_list("id", flat=True),
         }
     else:
-        # TODO: maybe just fetch all messages for all peers where content id matches?
-        #  i.e. do something like
-        #  all_messages = await MessageRef.filter(content_id__in=Subquery(
-        #      MessageRef.filter(id__in=ids, peer__owner_id=user_id).values("content_id"),
-        #  )).select_related("peer", "peer__owner")
-
-        our_messages = await MessageRef.filter(id__in=ids, peer__owner_id=user_id).select_related("peer")
-        if not our_messages:
+        all_messages = await MessageRef.filter(content_id__in=Subquery(
+            MessageRef.filter(id__in=ids, peer__owner_id=user_id).values("content_id"),
+        )).select_related("peer")
+        if not all_messages:
             return AffectedMessages(
                 pts=await State.add_pts(user_id, 0),
                 pts_count=0,
             )
 
-        content_ids_by_peers: dict[Peer, list[int]] = defaultdict(list)
-        for message in our_messages:
-            content_ids_by_peers[message.peer].append(message.content_id)
-
-        queries = []
-        for peer, content_ids in content_ids_by_peers.items():
-            queries.append(peer.get_opposite_query(True) & Q(content_id__in=content_ids))
-
-        if not queries:
-            return AffectedMessages(
-                pts=await State.add_pts(user_id, 0),
-                pts_count=0,
-            )
-
-        all_messages = await MessageRef.filter(Q(*queries, join_type=Q.OR)).select_related("peer")
         for message in all_messages:
             messages[message.peer.owner_id].append(message.id)
 
@@ -1105,8 +1094,7 @@ async def forward_messages(
     if from_peer.type in (PeerType.CHAT, PeerType.CHANNEL) and from_peer.chat_or_channel.no_forwards:
         raise ErrorRpc(error_code=406, error_message="CHAT_FORWARDS_RESTRICTED")
 
-    if (to_peer := await Peer.from_input_peer(user, request.to_peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    to_peer = await Peer.from_input_peer_raise(user, request.to_peer, message="PEER_ID_INVALID")
     to_participant = None
     if to_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = to_peer.chat_or_channel

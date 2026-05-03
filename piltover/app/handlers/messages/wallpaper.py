@@ -1,4 +1,5 @@
 from io import BytesIO
+from typing import cast
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
@@ -97,12 +98,18 @@ async def set_chat_wallpaper(request: SetChatWallPaper, user_id: int) -> Updates
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
-    user = await User.get(id=user_id).only("id", "bot")
+    user = await User.get(id=user_id)
 
     if peer.type is PeerType.CHANNEL:
         return await set_channel_wallpaper(request, user, peer)
 
-    target = peer.peer_user(user)
+    if peer.type is PeerType.USER:
+        target = cast(User, peer.user)
+    elif peer.type is PeerType.SELF:
+        target = user
+    else:
+        raise Unreachable
+
     existing_wp = await ChatWallpaper.get_or_none(user=user, target=target)
 
     # TODO: support for_both and revert

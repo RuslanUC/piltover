@@ -1115,7 +1115,14 @@ async def get_message_read_participants(request: GetMessageReadParticipants, use
         user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL)
     )
 
-    if await ChatParticipant.filter(**peer.query_chat_or_channel()).count() > 100:
+    if peer.type is PeerType.CHAT:
+        query = ChatParticipant.filter(chat_id=peer.chat_id)
+    elif peer.type is PeerType.CHANNEL:
+        query = ChatParticipant.filter(channel_id=peer.channel_id)
+    else:
+        raise Unreachable
+
+    if await query.count() > 100:
         raise ErrorRpc(error_code=400, error_message="CHAT_TOO_BIG")
 
     message = await MessageRef.get_or_none(peer.q_this_or_channel(), id=request.msg_id, content__author_id=user_id)

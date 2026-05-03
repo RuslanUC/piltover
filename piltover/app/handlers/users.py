@@ -27,7 +27,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     if peer is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    target_user = peer.user
+    target_user = cast(User, peer.user)
 
     privacy_rules = await PrivacyRule.has_access_to_bulk([target_user], user_id, [
         PrivacyRuleKeyType.ABOUT,

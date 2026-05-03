@@ -28,7 +28,7 @@ class Dialog(Model):
     peer_id: int
 
     def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef]:
-        return models.MessageRef.filter(self.peer.q_this_and_channel()).select_related(
+        return models.MessageRef.filter(self.peer.q_this_or_channel()).select_related(
             *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
         ).order_by("-id").first()
 

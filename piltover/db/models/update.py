@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import cast
 from datetime import datetime
 
 from tortoise import fields, Model
@@ -7,7 +8,6 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import UpdateType, PeerType, NotifySettingsNotPeerType
-from piltover.exceptions import Unreachable
 from piltover.tl import UpdateEditMessage, UpdateReadHistoryInbox, UpdateDialogPinned, DialogPeer, \
     UpdateDialogFilterOrder, UpdateRecentReactions, UpdateNewScheduledMessage
 from piltover.tl.types import UpdateDeleteMessages, UpdatePinnedDialogs, UpdateDraftMessage, DraftMessageEmpty, \
@@ -72,8 +72,8 @@ class Update(Model):
     # TODO: add to_tl_bulk
 
     async def to_tl(
-            self, user_id: int, formatted_messages: dict[int, TLMessageBase],
-            auth_id: int | None = None, ucc: UsersChatsChannels | None = None,
+            self, user_id: int, formatted_messages: dict[int, TLMessageBase], auth_id: int | None,
+            ucc: UsersChatsChannels,
     ) -> UpdateTypes | None:
 
         match self.update_type:
@@ -145,29 +145,33 @@ class Update(Model):
                 return UpdateUser(user_id=self.related_id)
 
             case UpdateType.CHAT_CREATE:
-                if (peer := await models.Peer.from_chat_id(user_id, self.related_id)) is None:
+                peer = await models.Peer.get_or_none(
+                    owner_id=user_id, chat_id=self.related_id, type=PeerType.CHAT, chat__deleted=False,
+                ).select_related("chat")
+                if peer is None:
                     return None
 
-                ucc.add_peer(peer)
+                chat = cast(models.Chat, peer.chat)
+                ucc.add_chat(chat.id)
 
                 user_ids = set(self.related_ids)
                 participants = []
 
-                for participant in await models.ChatParticipant.filter(chat=peer.chat, user_id__in=self.related_ids):
-                    participants.append(participant.to_tl_chat_with_creator(peer.chat.creator_id))
+                for participant in await models.ChatParticipant.filter(chat=chat, user_id__in=self.related_ids):
+                    participants.append(participant.to_tl_chat_with_creator(chat.creator_id))
                     user_ids.remove(participant.user_id)
 
                 for missing_id in user_ids:
-                    if missing_id == peer.chat.creator_id:
+                    if missing_id == chat.creator_id:
                         participants.append(ChatParticipantCreator(user_id=missing_id))
                     else:
                         participants.append(ChatParticipant(
-                            user_id=missing_id, inviter_id=peer.chat.creator_id, date=0,
+                            user_id=missing_id, inviter_id=chat.creator_id, date=0,
                         ))
 
                 return UpdateChatParticipants(
                     participants=ChatParticipants(
-                        chat_id=peer.chat_id,
+                        chat_id=chat.id,
                         participants=participants,
                         version=1,
                     ),
@@ -182,7 +186,7 @@ class Update(Model):
                 return UpdateUserName(
                     user_id=target.id,
                     first_name=target.first_name,
-                    last_name=target.last_name,
+                    last_name=target.last_name or "",
                     usernames=[
                         Username(editable=True, active=True, username=target.username.username)
                     ] if target.username else [],

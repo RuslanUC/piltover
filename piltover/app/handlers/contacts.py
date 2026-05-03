@@ -99,7 +99,7 @@ async def get_blocked(request: GetBlocked, user_id: int) -> Blocked | BlockedSli
         PeerBlocked(peer_id=peer.to_tl(), date=int(peer.blocked_at.timestamp()))
         for peer in blocked_peers
     ]
-    users = await User.to_tl_bulk([blocked.user for blocked in blocked_peers])
+    users = await User.to_tl_bulk((blocked.user for blocked in blocked_peers))
 
     if count > (limit + request.offset):
         return BlockedSlice(
@@ -212,7 +212,7 @@ async def get_birthdays(user_id: int) -> ContactBirthdays:
         if not privacyrules[peer.user_id][PrivacyRuleKeyType.BIRTHDAY]:
             continue
         birthdays.append(ContactBirthday(
-            contact_id=peer.user.id,
+            contact_id=peer.user_id,
             birthday=peer.user.to_tl_birthday_noprivacycheck(),
         ))
         users_to_tl.append(peer.user)

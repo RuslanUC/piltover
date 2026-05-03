@@ -11,10 +11,10 @@ from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
-    InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, PeerChannel
+    InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, PeerChannel, InputUserFromMessage
+from piltover.tl.base import InputUser as InputUserBase, InputPeer as InputPeerBase, InputChannel as InputChannelBase
 
-InputPeers = InputPeerSelf | InputPeerUser | InputUserSelf | InputUser | InputPeerChat | InputChannel \
-             | InputChannelEmpty | InputPeerChannel
+InputPeers = InputPeerBase | InputUserBase | InputChannelBase
 InputOnlyPeers = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel
 
 
@@ -22,7 +22,7 @@ class Peer(Model):
     id: int = fields.BigIntField(primary_key=True)
     owner: models.User = fields.ForeignKeyField("models.User", related_name="owner", null=True)
     type: PeerType = fields.IntEnumField(PeerType, description="")
-    blocked_at: datetime = fields.DatetimeField(null=True, default=None)
+    blocked_at: datetime | None = fields.DatetimeField(null=True, default=None)
     user_ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
     user_has_wallpaper: bool = fields.BooleanField(default=False)
 
@@ -38,18 +38,15 @@ class Peer(Model):
         )
 
     owner_id: int
-    user_id: int
-    chat_id: int
-    channel_id: int
-
-    def peer_user(self, user: models.User | None = None) -> models.User | None:
-        return (user or self.owner) if self.type is PeerType.SELF else self.user
+    user_id: int | None
+    chat_id: int | None
+    channel_id: int | None
 
     @classmethod
-    async def from_chat_id(
-            cls, user_id: int, chat_id: int, allow_migrated: bool = False,
+    async def from_chat_id_raise(
+            cls, user_id: int, chat_id: int, message: str = "CHAT_ID_INVALID", allow_migrated: bool = False,
             select_related: tuple[str, ...] | None = None,
-    ) -> Peer | None:
+    ) -> Peer:
         chat_id = models.Chat.norm_id(chat_id)
         query = Q(owner_id=user_id, chat_id=chat_id, type=PeerType.CHAT, chat__deleted=False)
         if not allow_migrated:
@@ -58,14 +55,7 @@ class Peer(Model):
         if select_related is None:
             select_related = ()
 
-        return await Peer.get_or_none(query).select_related("chat", *select_related)
-
-    @classmethod
-    async def from_chat_id_raise(
-            cls, user_id: int, chat_id: int, message: str = "CHAT_ID_INVALID", allow_migrated: bool = False,
-            select_related: tuple[str, ...] | None = None,
-    ) -> Peer:
-        if (peer := await Peer.from_chat_id(user_id, chat_id, allow_migrated, select_related)) is not None:
+        if (peer := await Peer.get_or_none(query).select_related("chat", *select_related)) is not None:
             return peer
         raise ErrorRpc(error_code=400, error_message=message)
 
@@ -158,27 +148,6 @@ class Peer(Model):
 
         return []
 
-    def get_opposite_query(self, allow_blocked: bool = False, with_this: bool = True) -> Q:
-        # TODO: support different prefixes, not only peer__
-        if self.type is PeerType.SELF:
-            if with_this:
-                return Q(peer=self)
-            return Q(peer_id=0)
-        elif self.type is PeerType.USER:
-            query = Q(peer__owner_id=self.user_id, peer__user_id=self.owner_id)
-            if not allow_blocked:
-                query &= Q(peer__blocked_at__isnull=True)
-            if with_this:
-                return query | Q(peer=self)
-            return query
-        elif self.type is PeerType.CHAT:
-            query = Q(peer__chat_id=self.chat_id)
-            if not with_this:
-                query &= Q(peer__not=self)
-            return query
-        else:
-            raise Unreachable
-
     def to_tl(self) -> PeerUser | PeerChat | PeerChannel:
         if self.type is PeerType.SELF:
             return PeerUser(user_id=self.owner_id)
@@ -233,24 +202,10 @@ class Peer(Model):
 
         raise RuntimeError(f".chat_or_channel called on peer with type {self.type}")
 
-    def query_chat_or_channel(self) -> dict:
-        if self.type is PeerType.CHAT:
-            return {"chat_id": self.chat_id}
-        if self.type is PeerType.CHANNEL:
-            return {"channel_id": self.channel_id}
-
-        raise NotImplementedError
-
     def q_this_or_channel(self) -> Q:
         if self.type is PeerType.CHANNEL:
             return Q(peer__owner=None, peer__channel_id=self.channel_id)
         return Q(peer=self)
-
-    def q_this_and_channel(self) -> Q:
-        q = Q(peer=self)
-        if self.type is PeerType.CHANNEL:
-            q |= Q(peer__owner=None, peer__channel_id=self.channel_id)
-        return q
 
     def __repr__(self) -> str:
         if self.type in (PeerType.SELF, PeerType.USER):
@@ -265,17 +220,17 @@ class Peer(Model):
         return f"{self.__class__.__name__}(id={self.id!r}, owner_id={self.owner_id!r}, type={self.type!r}, {peer_id})"
 
     @staticmethod
-    def input_is_self(user: models.User | int, input_peer: InputPeerUser | InputUser | InputPeerSelf) -> bool:
+    def input_is_self(user: models.User | int, input_peer: InputUserBase | InputPeerBase) -> bool:
         if isinstance(input_peer, (InputUserSelf, InputPeerSelf)):
             return True
-        if isinstance(input_peer, (InputPeerUser, InputUser)):
+        if isinstance(input_peer, (InputPeerUser, InputUser, InputUserFromMessage)):
             user_id = user if isinstance(user, int) else user.id
             return input_peer.user_id == user_id
         return False
 
     @classmethod
     def query_from_input_user_or_raise(
-            cls, user_id: int, input_user: InputPeerUser | InputUser | InputPeerSelf, auth_id: int | None = None,
+            cls, user_id: int, input_user: InputUserBase | InputPeerBase, auth_id: int | None = None,
             error_message: str = "PEER_ID_INVALID",
     ) -> QuerySetSingle[Peer]:
         if auth_id is None:
