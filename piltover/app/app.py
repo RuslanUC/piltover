@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import os
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import timedelta, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import AsyncIterator
@@ -113,6 +113,9 @@ class PiltoverApp:
             )
         ))
 
+    async def _loop_lag_callback(self, lag: float, tasks: int, at: datetime) -> None:
+        logger.warning(f"Event loop {lag:.2f}s lag at {at}, tasks: {tasks}")
+
     async def run(self, host: str | None = None, port: int | None = None):
         if SYSTEM_CONFIG.debug_tracing:
             Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
@@ -137,8 +140,18 @@ class PiltoverApp:
         scheduler_task = self._run_in_memory_scheduler()
 
         logger.success(f"Running on {self._host}:{self._port}")
+
+        monitor = None
+        if SYSTEM_CONFIG.debug_enable_aiomonitor:
+            import aiomonitor
+            loop = asyncio.get_running_loop()
+            monitor = aiomonitor.start_monitor(loop)
+
         await self._gateway.serve()
         await scheduler_task
+
+        if SYSTEM_CONFIG.debug_enable_aiomonitor:
+            monitor.stop()
 
     @asynccontextmanager
     async def run_test(
@@ -173,6 +186,13 @@ class PiltoverApp:
         if run_scheduler:
             scheduler_task = self._run_in_memory_scheduler(scheduler_update_interval, scheduler_loop_interval)
 
+        try:
+            import loopmon
+            mon = loopmon.create(interval=0.1, callbacks=[self._loop_lag_callback])
+        except ImportError:
+            loopmon = mon = None
+            _ = loopmon
+
         if run_actual_server:
             server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
             async with server:
@@ -186,6 +206,9 @@ class PiltoverApp:
         if scheduler_task is not None:
             scheduler_task.cancel()
             await scheduler_task
+
+        if mon is not None:
+            await mon.stop()
 
         await self._gateway.broker.shutdown()
         await connections.close_all(True)

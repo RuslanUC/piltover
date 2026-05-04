@@ -1338,6 +1338,21 @@ win32-setctime = {version = ">=1.0.0", markers = "sys_platform == \"win32\""}
 dev = ["Sphinx (==8.1.3) ; python_version >= \"3.11\"", "build (==1.2.2) ; python_version >= \"3.11\"", "colorama (==0.4.5) ; python_version < \"3.8\"", "colorama (==0.4.6) ; python_version >= \"3.8\"", "exceptiongroup (==1.1.3) ; python_version >= \"3.7\" and python_version < \"3.11\"", "freezegun (==1.1.0) ; python_version < \"3.8\"", "freezegun (==1.5.0) ; python_version >= \"3.8\"", "mypy (==v0.910) ; python_version < \"3.6\"", "mypy (==v0.971) ; python_version == \"3.6\"", "mypy (==v1.13.0) ; python_version >= \"3.8\"", "mypy (==v1.4.1) ; python_version == \"3.7\"", "myst-parser (==4.0.0) ; python_version >= \"3.11\"", "pre-commit (==4.0.1) ; python_version >= \"3.9\"", "pytest (==6.1.2) ; python_version < \"3.8\"", "pytest (==8.3.2) ; python_version >= \"3.8\"", "pytest-cov (==2.12.1) ; python_version < \"3.8\"", "pytest-cov (==5.0.0) ; python_version == \"3.8\"", "pytest-cov (==6.0.0) ; python_version >= \"3.9\"", "pytest-mypy-plugins (==1.9.3) ; python_version >= \"3.6\" and python_version < \"3.8\"", "pytest-mypy-plugins (==3.1.0) ; python_version >= \"3.8\"", "sphinx-rtd-theme (==3.0.2) ; python_version >= \"3.11\"", "tox (==3.27.1) ; python_version < \"3.8\"", "tox (==4.23.2) ; python_version >= \"3.8\"", "twine (==6.0.1) ; python_version >= \"3.11\""]
 
 [[package]]
+name = "loopmon"
+version = "1.0.1"
+description = "Lightewight monitor library for asyncio.EventLoop"
+optional = false
+python-versions = ">=3.7,<4.0"
+groups = ["dev"]
+files = [
+    {file = "loopmon-1.0.1-py3-none-any.whl", hash = "sha256:96ef43eaa3763804c7bc2f4aaf849a54146192c25da2680cd8ebc13856a2d37f"},
+    {file = "loopmon-1.0.1.tar.gz", hash = "sha256:c259dd82b14c05ac2007eb3a4cb4e4d5f79cac931ce89556e9131ae5dc1abb4c"},
+]
+
+[package.dependencies]
+typing-extensions = ">=3.8"
+
+[[package]]
 name = "lru-dict"
 version = "1.4.1"
 description = "An Dict like LRU container."
@@ -3464,4 +3479,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11.1,<4.0"
-content-hash = "09b7aa8be6254a3e6e4451f447507b86a20e8d70971e3967dcca07cc999fd3b0"
+content-hash = "9da8bbffd1fa3d4b2f431be63451f38a78b87455336210d80d490f4f0fb2c0cd"

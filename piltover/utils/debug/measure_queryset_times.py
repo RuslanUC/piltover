@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import Iterable, Callable
+from typing import Iterable, Callable, Any
 
 from loguru import logger
 from tortoise.queryset import BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, \
     CountQuery, ExistsQuery, DeleteQuery, UpdateQuery, QuerySet, AwaitableQuery
+
 try:
     from tortoise.queryset_compiled import CompiledQuerySet
 except ImportError:
@@ -15,7 +16,7 @@ from piltover.gateway import Client
 from piltover.utils.debug import measure_time
 from piltover.worker import RequestHandler
 
-query_clss = [
+query_clss: list[type[AwaitableQuery]] = [
     BulkCreateQuery, BulkUpdateQuery, RawSQLQuery, ValuesQuery, ValuesListQuery, CountQuery, ExistsQuery,
     DeleteQuery, UpdateQuery, QuerySet,
 ]
@@ -63,7 +64,7 @@ def _get_patched_cls_original_method(obj: object, names: Iterable[str], suffix: 
     from piltover.exceptions import Unreachable
 
     for name in names:
-        real_method = getattr(obj, f"{name}{suffix}", None)
+        real_method: Callable | None = getattr(obj, f"{name}{suffix}", None)
         if real_method is not None:
             return name, real_method
 
@@ -117,7 +118,7 @@ def patch_queryset_for_measurement() -> QueryStats:
     _patch_cls_replace_method(Client, resolve_ctx_methods, real_suffix, staticmethod(_Client__resolve_context_values))
 
     for cls in query_clss:
-        async def _execute(self: AwaitableQuery, *args, **kwargs) -> ...:
+        async def _execute(self: AwaitableQuery, *args, **kwargs) -> Any:
             name, execute_real = _get_patched_cls_original_method(self, execute_methods, real_suffix)
             with measure_time(f"{self.__class__.__name__}.{name}()") as _time_spent:
                 result = await execute_real(*args, **kwargs)
@@ -129,7 +130,7 @@ def patch_queryset_for_measurement() -> QueryStats:
 
             return result
 
-        def _make_query(self: AwaitableQuery, *args, **kwargs) -> ...:
+        def _make_query(self: AwaitableQuery, *args, **kwargs) -> Any:
             name, make_query_real = _get_patched_cls_original_method(self, make_query_methods, real_suffix)
             with measure_time(f"{self.__class__.__name__}.{name}()") as _time_spent:
                 result = make_query_real(*args, **kwargs)

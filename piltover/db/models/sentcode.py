@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import IntEnum
 from random import randint
 from time import time
+from typing import overload, NoReturn, TypeGuard, Self
 from uuid import UUID, uuid4
 
 from loguru import logger
@@ -59,7 +60,7 @@ class SentCode(Model):
 
         return await SentCode.get_or_none(query)
 
-    async def check_raise(self, code: str | None) -> None:
+    async def check_raise(self, code: str | None) -> Self:
         if code is not None and self.code != int(code):
             raise ErrorRpc(
                 error_code=400, error_message="PHONE_CODE_INVALID",
@@ -68,9 +69,10 @@ class SentCode(Model):
         if self.expires_at < time():
             await self.delete()
             raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EXPIRED")
+        return self
 
     @classmethod
-    async def check_raise_cls(cls, sent_code: SentCode | None, code: str | None) -> None:
+    async def check_raise_cls(cls, sent_code: SentCode | None, code: str | None) -> SentCode:
         if sent_code is None:
             raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID", reason="sent_code is None")
-        await sent_code.check_raise(code)
+        return await sent_code.check_raise(code)

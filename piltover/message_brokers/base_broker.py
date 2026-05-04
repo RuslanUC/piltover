@@ -54,7 +54,7 @@ class BaseMessageBroker(ABC):
     @abstractmethod
     async def _listen(self) -> None: ...
 
-    def subscribe_user(self, user_id: int, session: Session) -> None:
+    def subscribe_user(self, user_id: int | None, session: Session) -> None:
         if not user_id:
             return
 
@@ -63,7 +63,7 @@ class BaseMessageBroker(ABC):
 
         self.subscribed_users[user_id].add(session)
 
-    def subscribe_key(self, key_id: int, session: Session) -> None:
+    def subscribe_key(self, key_id: int | None, session: Session) -> None:
         if not key_id:
             return
 
@@ -72,7 +72,7 @@ class BaseMessageBroker(ABC):
 
         self.subscribed_keys[key_id].add(session)
 
-    def subscribe_auth(self, auth_id: int, session: Session) -> None:
+    def subscribe_auth(self, auth_id: int | None, session: Session) -> None:
         if not auth_id:
             return
 
@@ -81,9 +81,9 @@ class BaseMessageBroker(ABC):
 
         self.subscribed_auths[auth_id].add(session)
 
-    def subscribe_internal_push(self, user_id: int, session: Session) -> None:
+    def subscribe_internal_push(self, user_id: int | None, session: Session) -> None:
         if not user_id:
-            return None
+            return
 
         if user_id not in self.internal_push_users:
             self.internal_push_users[user_id] = set()
@@ -105,8 +105,8 @@ class BaseMessageBroker(ABC):
         else:
             self.unsubscribe_internal_push(session.user_id, session)
 
-    def unsubscribe_user(self, user_id: int, session: Session) -> None:
-        if user_id not in self.subscribed_users:
+    def unsubscribe_user(self, user_id: int | None, session: Session) -> None:
+        if not user_id or user_id not in self.subscribed_users:
             return
 
         if session in self.subscribed_users[user_id]:
@@ -114,8 +114,8 @@ class BaseMessageBroker(ABC):
         if not self.subscribed_users[user_id]:
             del self.subscribed_users[user_id]
 
-    def unsubscribe_key(self, key_id: int, session: Session) -> None:
-        if key_id not in self.subscribed_keys:
+    def unsubscribe_key(self, key_id: int | None, session: Session) -> None:
+        if not key_id or key_id not in self.subscribed_keys:
             return
 
         if session in self.subscribed_keys[key_id]:
@@ -123,8 +123,8 @@ class BaseMessageBroker(ABC):
         if not self.subscribed_keys[key_id]:
             del self.subscribed_keys[key_id]
 
-    def unsubscribe_auth(self, auth_id: int, session: Session) -> None:
-        if auth_id not in self.subscribed_auths:
+    def unsubscribe_auth(self, auth_id: int | None, session: Session) -> None:
+        if not auth_id or auth_id not in self.subscribed_auths:
             return
 
         if session in self.subscribed_auths[auth_id]:
@@ -132,8 +132,8 @@ class BaseMessageBroker(ABC):
         if not self.subscribed_auths[auth_id]:
             del self.subscribed_auths[auth_id]
 
-    def unsubscribe_internal_push(self, user_id: int, session: Session) -> None:
-        if user_id not in self.internal_push_users:
+    def unsubscribe_internal_push(self, user_id: int | None, session: Session) -> None:
+        if not user_id or user_id not in self.internal_push_users:
             return
 
         if session in self.internal_push_users[user_id]:
@@ -273,23 +273,23 @@ class BaseMessageBroker(ABC):
                 logger.opt(exception=e).error("Error occurred while sending internal push")
 
     async def _process_message(self, message: MessageInternal) -> None:
-        if isinstance(message, (MessageToUsers, MessageToUsersShort)):
-            return await self._process_message_to_users(message)
-        if isinstance(message, SetSessionInternalPush):
-            from piltover.session import SessionManager
-            uniq_id = message.key_id, message.session_id
-            if uniq_id not in SessionManager.sessions:
-                return
-            session = SessionManager.sessions[uniq_id]
-            session.is_internal_push = True
-            await session.refresh_auth_maybe(True)
-            self.subscribe(session)
-            logger.debug(f"Registered session {uniq_id} for internal push")
-            return
-        if isinstance(message, ChannelSubscribe):
-            return await self._process_channels_subscribe(message)
-        if isinstance(message, (InternalPushForUsers, InternalPushForUsersShort)):
-            return await self._process_internal_push_to_users(message)
+        match message:
+            case MessageToUsers() | MessageToUsersShort():
+                await self._process_message_to_users(message)
+            case SetSessionInternalPush():
+                from piltover.session import SessionManager
+                uniq_id = message.key_id, message.session_id
+                if uniq_id not in SessionManager.sessions:
+                    return
+                session = SessionManager.sessions[uniq_id]
+                session.is_internal_push = True
+                await session.refresh_auth_maybe(True)
+                self.subscribe(session)
+                logger.debug(f"Registered session {uniq_id} for internal push")
+            case ChannelSubscribe():
+                await self._process_channels_subscribe(message)
+            case InternalPushForUsers() | InternalPushForUsersShort():
+                await self._process_internal_push_to_users(message)
 
     async def process_message(self, message: MessageInternal) -> None:
         loop = asyncio.get_running_loop()

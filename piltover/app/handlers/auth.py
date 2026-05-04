@@ -17,7 +17,7 @@ from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType
 from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, TempAuthKey, SentCode, User, \
-    QrLogin, PhoneCodePurpose, Bot, State
+    QrLogin, PhoneCodePurpose, State
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
@@ -61,12 +61,11 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
             raise ErrorRpc(error_code=400, error_message="PHONE_CODE_EMPTY")
 
         code = await SentCode.get_(phone_number, code_hash, None)
-        await SentCode.check_raise_cls(code, None)
-
-        code.code = SentCode.gen_phone_code()
-        code.hash = uuid4()
-        code.expires_at = SentCode.gen_expires_at()
-        await code.save(update_fields=["code", "hash", "expires_at"])
+        if code := await SentCode.check_raise_cls(code, None):
+            code.code = SentCode.gen_phone_code()
+            code.hash = uuid4()
+            code.expires_at = SentCode.gen_expires_at()
+            await code.save(update_fields=["code", "hash", "expires_at"])
 
     logger.trace(
         f"Code info: id={code.id!r}, phone_number={code.phone_number!r}, code={code.code!r}, hash={code.hash!r}"
@@ -109,12 +108,11 @@ async def sign_in(request: SignIn) -> AuthAuthorization | AuthorizationSignUpReq
         raise ErrorRpc(error_code=406, error_message="PHONE_CODE_INVALID", reason="Invalid phone code")
 
     code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNIN)
-    await SentCode.check_raise_cls(code, request.phone_code)
-
-    code.used = False
-    code.expires_at = SentCode.gen_expires_at()
-    code.purpose = PhoneCodePurpose.SIGNUP
-    await code.save(update_fields=["used", "expires_at", "purpose"])
+    if code := await SentCode.check_raise_cls(code, request.phone_code):
+        code.used = False
+        code.expires_at = SentCode.gen_expires_at()
+        code.purpose = PhoneCodePurpose.SIGNUP
+        await code.save(update_fields=["used", "expires_at", "purpose"])
 
     if (user := await User.get_or_none(phone_number=phone_number)) is None:
         return AuthorizationSignUpRequired()
@@ -141,10 +139,9 @@ async def sign_up(request: SignUp | SignUp_133):
     phone_number = _validate_phone(request.phone_number)
 
     code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.SIGNUP)
-    await SentCode.check_raise_cls(code, None)
-
-    code.used = True
-    await code.save(update_fields=["used"])
+    if code := await SentCode.check_raise_cls(code, None):
+        code.used = True
+        await code.save(update_fields=["used"])
 
     if await User.filter(phone_number=phone_number).exists():
         raise ErrorRpc(error_code=400, error_message="PHONE_NUMBER_OCCUPIED")
@@ -175,7 +172,7 @@ async def sign_up(request: SignUp | SignUp_133):
 )
 async def check_password(request: CheckPassword, user: User):
     ctx = request_ctx.get()
-    auth = await UserAuthorization.get_or_none(id=ctx.auth_id, user_id=ctx.user_id)
+    auth = await UserAuthorization.get(id=ctx.auth_id, user_id=ctx.user_id)
     if not auth.mfa_pending:  # ??
         return AuthAuthorization(user=await user.to_tl())
 
@@ -210,12 +207,16 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
         )
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
 
-    perm_key = await AuthKey.get_or_none(id=encrypted_message.auth_key_id)
+    perm_auth_key = cast(
+        bytes | None,
+        await AuthKey.get_or_none(id=encrypted_message.auth_key_id).values_list("auth_key", flat=True)
+    )
 
     try:
-        sec_check(perm_key is not None)
+        if perm_auth_key is None:
+            raise Exception
 
-        message = encrypted_message.decrypt(perm_key.auth_key, ConnectionRole.CLIENT, True)
+        message = encrypted_message.decrypt(perm_auth_key, ConnectionRole.CLIENT, True)
         sec_check(message.seq_no == 0)
         sec_check(len(message.data) == 40)
         sec_check(message.message_id == ctx.message_id)
@@ -229,8 +230,8 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
         logger.opt(exception=e).debug("Failed to decrypt inner message")
         raise ErrorRpc(error_code=400, error_message="ENCRYPTED_MESSAGE_INVALID")
 
-    await TempAuthKey.filter(perm_key=perm_key, id__not=obj.temp_auth_key_id).delete()
-    await TempAuthKey.filter(id=obj.temp_auth_key_id).update(perm_key=perm_key)
+    await TempAuthKey.filter(perm_key_id=encrypted_message.auth_key_id, id__not=obj.temp_auth_key_id).delete()
+    await TempAuthKey.filter(id=obj.temp_auth_key_id).update(perm_key_id=encrypted_message.auth_key_id)
 
     return True
 
@@ -239,7 +240,7 @@ async def bind_temp_auth_key(request: BindTempAuthKey):
 async def export_login_token():
     ctx = request_ctx.get()
     if ctx.auth_id:
-        auth = await UserAuthorization.get_or_none(id=ctx.auth_id).select_related(
+        auth = await UserAuthorization.get(id=ctx.auth_id).select_related(
             "user", "user__username", "user__background_emojis", "user__emoji_status", "user__bot_info",
         )
         if auth.mfa_pending:
@@ -255,7 +256,7 @@ async def export_login_token():
     if login is None:
         login = await QrLogin.create(key=await AuthKey.get(id=ctx.perm_auth_key_id))
 
-    if login.auth_id is not None:
+    if login.auth_id is not None and login.auth is not None:
         if login.auth.mfa_pending:
             raise ErrorRpc(error_code=401, error_message="SESSION_PASSWORD_NEEDED")
         user = login.auth.user
@@ -305,7 +306,7 @@ async def log_out() -> LoggedOut:
 @handler.on_request(ResetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reset_authorizations(user: User) -> bool:
     auth_id = request_ctx.get().auth_id
-    this_auth = await UserAuthorization.get_or_none(id=auth_id)
+    this_auth = await UserAuthorization.get(id=auth_id)
 
     if (this_auth.created_at + timedelta(days=1)) > datetime.now(UTC):
         raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")
@@ -335,8 +336,8 @@ async def cancel_code(request: CancelCode) -> bool:
         raise ErrorRpc(error_code=400, error_message="PHONE_CODE_INVALID")
 
     code = await SentCode.get_(phone_number, request.phone_code_hash, None)
-    await SentCode.check_raise_cls(code, None)
-    await code.delete()
+    if code := await SentCode.check_raise_cls(code, None):
+        await code.delete()
 
     return True
 
@@ -350,11 +351,9 @@ async def import_bot_authorization(request: ImportBotAuthorization) -> AuthAutho
     if not bot_id.isdigit():
         raise ErrorRpc(error_code=400, error_message="ACCESS_TOKEN_INVALID")
 
-    bot = await Bot.get_or_none(bot_id=int(bot_id), token_nonce=token_nonce).select_related("bot")
-    if bot is None:
+    user = await User.get_or_none(id=int(bot_id), bot_bot__token_nonce=token_nonce)
+    if user is None:
         raise ErrorRpc(error_code=400, error_message="ACCESS_TOKEN_INVALID")
-
-    user = bot.bot
 
     key = await AuthKey.get(id=request_ctx.get().perm_auth_key_id)
     await UserAuthorization.filter(key=key).delete()

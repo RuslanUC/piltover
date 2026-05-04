@@ -1,5 +1,5 @@
 import asyncio
-from typing import TypeVar, Coroutine, Callable, Awaitable
+from typing import TypeVar, Coroutine, Callable, Awaitable, overload, Any, NoReturn, Literal
 
 T = TypeVar("T")
 TAdd = TypeVar("TAdd")
@@ -35,7 +35,7 @@ def xor(a: bytes, b: bytes) -> bytes:
     return bytes(i ^ j for i, j in zip(a, b))
 
 
-def sec_check(cond: ..., exc: type[Exception] = Exception, msg: str | None = None) -> None:
+def sec_check(cond: bool, exc: type[Exception] = Exception, msg: str | None = None) -> None:
     if not cond:
         raise exc(msg) if msg else exc
 

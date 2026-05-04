@@ -5,7 +5,7 @@ import hashlib
 import hmac
 from asyncio import Queue, Event
 from time import time
-from typing import cast, TYPE_CHECKING
+from typing import cast, TYPE_CHECKING, Collection
 
 from loguru import logger
 from mtproto.transport.packets import DecryptedMessagePacket
@@ -18,6 +18,7 @@ from piltover.context import ContextValues, SerializationContext
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
     Peer, MessageRef, InstalledStickerset
+from piltover.exceptions import Unreachable
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
@@ -68,7 +69,7 @@ class Session:
         self.mfa_pending = False
         self.auth_loaded_at = 0.
 
-        self.channel_ids: list[int] = []
+        self.channel_ids: Collection[int] = []
         self.channels_loaded_at = 0.
 
         self.salt_now = Salt(b"\x00" * 8, 0)
@@ -85,7 +86,7 @@ class Session:
         # TODO: store whole session in redis or something
 
     def uniq_id(self) -> tuple[int, int]:
-        key_id = 0 if self.auth_data is None else self.auth_data.auth_key_id
+        key_id = 0 if self.auth_data is None or self.auth_data.auth_key_id is None else self.auth_data.auth_key_id
         return key_id, self.session_id
 
     def __hash__(self) -> int:
@@ -198,7 +199,7 @@ class Session:
         self.salt_now.valid_at = now - 1
 
     async def fetch_layer(self) -> None:
-        if self.auth_data.perm_auth_key_id is None:
+        if self.auth_data is None or self.auth_data.perm_auth_key_id is None:
             return
 
         perm_key_layer = cast(
@@ -220,7 +221,10 @@ class Session:
         self.channel_ids.clear()
 
     async def refresh_auth_maybe(self, force_refresh_auth: bool = False) -> None:
-        if force_refresh_auth:
+        if self.auth_data is None:
+            return
+
+        if force_refresh_auth and self.auth_data.auth_key_id is not None:
             self.auth_data = await AuthKey.get_auth_data(self.auth_data.auth_key_id)
 
         auth_key_id = self.auth_data.auth_key_id
@@ -355,8 +359,10 @@ class Session:
             for participant in participants:
                 if participant.chat_id is not None:
                     result.chat_participants[participant.chat_id] = participant
-                else:
+                elif participant.channel_id is not None:
                     result.channel_participants[participant.channel_id] = participant
+                else:
+                    raise Unreachable
 
         if values.users:
             peers_q |= Q(user_id__in=values.users)

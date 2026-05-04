@@ -7,7 +7,7 @@ from tortoise import Model, fields
 
 from piltover.db import models
 from piltover.db.enums import AdminLogEntryAction, ChatBannedRights
-from piltover.db.models.utils import IntFlagField
+from piltover.db.models.utils import IntFlagField, NullableFK
 from piltover.exceptions import InvalidConstructorException, Unreachable
 from piltover.tl import ChannelAdminLogEventActionChangeTitle, ChannelAdminLogEventActionChangeAbout, \
     ChannelAdminLogEventActionChangeUsername, ChannelAdminLogEventActionToggleSignatures, \
@@ -82,14 +82,14 @@ class AdminLogEntry(Model):
     date: datetime = fields.DatetimeField(auto_now_add=True)
 
     prev: bytes = fields.BinaryField(null=True, default=None)
-    old_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="old_photo")
+    old_photo: models.File | None = NullableFK("models.File", related_name="old_photo")
     old_banned_rights: ChatBannedRights | None = IntFlagField(ChatBannedRights, null=True, default=None)
-    old_channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None, related_name="old_channel")
+    old_channel: models.Channel | None = NullableFK("models.Channel", related_name="old_channel")
 
     new: bytes = fields.BinaryField(null=True, default=None)
-    new_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None, related_name="new_photo")
+    new_photo: models.File | None = NullableFK("models.File", related_name="new_photo")
     new_banned_rights: ChatBannedRights | None = IntFlagField(ChatBannedRights, null=True, default=None)
-    new_channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None, related_name="new_channel")
+    new_channel: models.Channel | None = NullableFK("models.Channel", related_name="new_channel")
 
     searchable: str | None = fields.CharField(max_length=8192, null=True, db_index=True, default=None)
 
@@ -123,8 +123,8 @@ class AdminLogEntry(Model):
             )
         elif self.action is AdminLogEntryAction.CHANGE_PHOTO:
             action = ChannelAdminLogEventActionChangePhoto(
-                prev_photo=self.old_photo.to_tl_photo() if self.old_photo_id else PhotoEmpty(id=0),
-                new_photo=self.new_photo.to_tl_photo() if self.new_photo_id else PhotoEmpty(id=0),
+                prev_photo=self.old_photo.to_tl_photo() if self.old_photo_id and self.old_photo else PhotoEmpty(id=0),
+                new_photo=self.new_photo.to_tl_photo() if self.new_photo_id and self.new_photo else PhotoEmpty(id=0),
             )
         elif self.action is AdminLogEntryAction.PARTICIPANT_JOIN:
             action = ChannelAdminLogEventActionParticipantJoin()

@@ -33,12 +33,13 @@ class AuthKey(Model):
         temp_key = await TempAuthKey.get_or_none(
             id=key_id, expires_at__gt=int(time()),
         ).only("id", "auth_key", "perm_key_id")
-        if temp_key is not None:
-            return AuthData(
-                auth_key_id=temp_key.id,
-                auth_key=temp_key.auth_key,
-                perm_auth_key_id=temp_key.perm_key_id,
-            )
+        if temp_key is None:
+            return None
+        return AuthData(
+            auth_key_id=temp_key.id,
+            auth_key=temp_key.auth_key,
+            perm_auth_key_id=temp_key.perm_key_id,
+        )
 
 
 class TempAuthKey(Model):
