@@ -4,7 +4,7 @@ import hashlib
 import hmac
 from datetime import date
 from enum import auto, Enum
-from typing import Iterable, Self
+from typing import Iterable, Self, cast
 
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
@@ -61,6 +61,18 @@ class User(Model):
     cached_username: models.Username | None | _Missing = _MISSING
 
     _CACHE_VERSION = 1
+
+    @property
+    def background_emojis_prefetched(self) -> bool:
+        return self.background_emojis is None or isinstance(self.background_emojis, models.UserBackgroundEmojis)
+
+    @property
+    def bot_info_prefetched(self) -> bool:
+        return isinstance(self.bot_info, models.BotInfo)
+
+    @property
+    def emoji_status_prefetched(self) -> bool:
+        return self.emoji_status is None or isinstance(self.emoji_status, models.UserEmojiStatus)
 
     def _cache_key(self) -> str:
         return f"user:{self.id}:{self.version}:{self._CACHE_VERSION}"
@@ -198,11 +210,23 @@ class User(Model):
             usernames = {}
 
         if user_ids:
-            # TODO: dont fetch for users that already have background emojis prefetched
             background_emojis = {
                 emojis.user_id: emojis
-                for emojis in await models.UserBackgroundEmojis.filter(user_id__in=user_ids)
+                for emojis in await models.UserBackgroundEmojis.filter(
+                    user_id__in=[
+                        user.id
+                        for user in users
+                        if (
+                                not user.bot
+                                and user.id not in cached_users
+                                and not user.background_emojis_prefetched
+                        )
+                    ],
+                )
             }
+            for user in users:
+                if user.background_emojis_prefetched:
+                    background_emojis[user.id] = cast(models.UserBackgroundEmojis, user.background_emojis)
         else:
             background_emojis = {}
 
@@ -210,9 +234,20 @@ class User(Model):
             bot_versions = {
                 user_id: version
                 for user_id, version in await models.BotInfo.filter(
-                    user_id__in=bot_ids,
+                    user_id__in=[
+                        user.id
+                        for user in users
+                        if (
+                                user.bot
+                                and user.id not in cached_users
+                                and not user.bot_info_prefetched
+                        )
+                    ],
                 ).values_list("user_id", "version")
             }
+            for user in users:
+                if user.bot_info_prefetched:
+                    bot_versions[user.id] = user.bot_info.version
         else:
             bot_versions = {}
 
@@ -227,11 +262,23 @@ class User(Model):
             photos = {}
 
         if user_ids:
-            # TODO: dont fetch for users that already have emoji statuses prefetched
             emoji_statuses = {
                 status.user_id: status
-                for status in await models.UserEmojiStatus.filter(user_id__in=user_ids)
+                for status in await models.UserEmojiStatus.filter(
+                    user_id__in=[
+                        user.id
+                        for user in users
+                        if (
+                                not user.bot
+                                and user.id not in cached_users
+                                and not user.emoji_status_prefetched
+                        )
+                    ],
+                )
             }
+            for user in users:
+                if user.emoji_status_prefetched:
+                    emoji_statuses[user.id] = cast(models.UserEmojiStatus, user.emoji_status)
         else:
             emoji_statuses = {}
 

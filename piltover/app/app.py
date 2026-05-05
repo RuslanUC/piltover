@@ -186,13 +186,6 @@ class PiltoverApp:
         if run_scheduler:
             scheduler_task = self._run_in_memory_scheduler(scheduler_update_interval, scheduler_loop_interval)
 
-        try:
-            import loopmon
-            mon = loopmon.create(interval=0.1, callbacks=[self._loop_lag_callback])
-        except ImportError:
-            loopmon = mon = None
-            _ = loopmon
-
         if run_actual_server:
             server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
             async with server:
@@ -206,9 +199,6 @@ class PiltoverApp:
         if scheduler_task is not None:
             scheduler_task.cancel()
             await scheduler_task
-
-        if mon is not None:
-            await mon.stop()
 
         await self._gateway.broker.shutdown()
         await connections.close_all(True)
