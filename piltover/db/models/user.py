@@ -6,6 +6,7 @@ from datetime import date
 from enum import auto, Enum
 from typing import Iterable, Self, cast
 
+from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
 from tortoise.queryset import QuerySet
@@ -125,10 +126,11 @@ class User(Model):
 
         # TODO: min (https://core.telegram.org/api/min)
 
+        username: models.Username | None
         if self.username is None or isinstance(self.username, models.Username):
             username = self.username
         else:
-            username = await self.get_username()
+            username = self._username = await self.username
 
         if self.background_emojis is None or isinstance(self.background_emojis, models.UserBackgroundEmojis):
             emojis = self.background_emojis
@@ -328,6 +330,55 @@ class User(Model):
             await Cache.obj.multi_set(to_cache)
 
         return tl
+
+    async def to_tl_maybecached(self) -> TLUserBase:
+        cached_user = await Cache.obj.get(self._cache_key())
+        if cached_user is not None:
+            logger.trace("Cache hit for user {user_id} in \"maybecached\"", user_id=self.id)
+            return cached_user
+
+        logger.trace("Cache miss for user {user_id} in \"maybecached\"", user_id=self.id)
+        await self.refresh_from_db()
+        return await self.to_tl()
+
+    @classmethod
+    async def to_tl_bulk_maybecached(cls, users: Iterable[models.User]) -> list[TLUserBase]:
+        if not users:
+            return []
+
+        cache_keys = [user._cache_key() for user in users]
+        result_users = await Cache.obj.get(cache_keys)
+
+        non_cached_users = [user for user, cached in zip(users, result_users) if cached is None]
+        logger.trace(
+            "{cached_users}/{total_users} users were cached",
+            cached_users=len(cache_keys) - len(non_cached_users),
+            total_users=len(cache_keys),
+        )
+        if not non_cached_users:
+            return result_users
+
+        non_cached_users_by_ids = {user.id: user for user in non_cached_users}
+
+        objs = await User.filter(id__in=list(non_cached_users_by_ids.keys()))
+        if len(non_cached_users_by_ids) != len(objs):
+            raise Unreachable
+
+        for obj in objs:
+            user = non_cached_users_by_ids[obj.id]
+            for field in User._meta.db_fields:
+                setattr(user, field, getattr(obj, field, None))
+
+        tl_users = {
+            tl_user.id: tl_user
+            for tl_user in await User.to_tl_bulk(non_cached_users)
+        }
+
+        for idx, (user, cached) in enumerate(zip(users, result_users)):
+            if cached is None:
+                result_users[idx] = tl_users[user.id]
+
+        return result_users
 
     async def to_tl_birthday(self, user: User) -> Birthday | None:
         if self.birthday is None or not await models.PrivacyRule.has_access_to(user, self, PrivacyRuleKeyType.BIRTHDAY):

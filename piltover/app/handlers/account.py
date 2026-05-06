@@ -291,7 +291,7 @@ async def update_status(request: UpdateStatus, user: User) -> bool:
     return True
 
 
-@handler.on_request(UpdateProfile, ReqHandlerFlags.BOT_NOT_ALLOWED)
+@handler.on_request(UpdateProfile, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.FETCH_USER_WITH_USERNAME)
 async def update_profile(request: UpdateProfile, user: User):
     to_update = []
     if request.first_name is not None:

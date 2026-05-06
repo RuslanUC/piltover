@@ -10,7 +10,7 @@ from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySet
 from piltover.db.models import User, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
     Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef, \
-    PhoneCall, UserEmojiStatus
+    PhoneCall, UserEmojiStatus, Username
 from piltover.session import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
@@ -865,16 +865,18 @@ async def update_user_name(user: User) -> None:
     # TODO: create update to SELF here and then send a worker task to create updates for all other users.
     #  In worker task, dont fetch all peers, but rather latest N `visible` dialogs with user.
 
+    if user.username is not None and not isinstance(user.username, Username):
+        raise ValueError("`username` must be prefetched")
+
     updates_to_create = []
 
-    username = await user.get_username()
-    username = username.username if username is not None else None
+    username = user.username.username if user.username is not None else None
 
     user_tl = await user.to_tl()
 
     usernames = [] if not username else [TLUsername(editable=True, active=True, username=username)]
     update = UpdateUserName(
-        user_id=user.id, first_name=user.first_name, last_name=user.last_name, usernames=usernames,
+        user_id=user.id, first_name=user.first_name, last_name=user.last_name or "", usernames=usernames,
     )
     # for peer in await Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
     for peer in await Peer.filter(owner_id=user.id, type=PeerType.SELF):
