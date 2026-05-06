@@ -112,7 +112,7 @@ class Text(BotInteractionHandler[BotFatherState, BotFatherUserState]):
             await State.create(user=bot_user)
             await Peer.create(owner=bot_user, type=PeerType.SELF, user=bot_user)
             await Username.create(user=bot_user, username=username)
-            bot = await Bot.create(owner=peer.owner, bot=bot_user)
+            bot = await Bot.create(owner_id=peer.owner_id, bot=bot_user)
             await BotInfo.create(user=bot_user)
             await state.delete()
 
@@ -126,7 +126,7 @@ class Text(BotInteractionHandler[BotFatherState, BotFatherUserState]):
             return await send_bot_message(peer, _bot_name_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).only("bot_id")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner_id=peer.owner_id).only("bot_id")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -143,7 +143,7 @@ class Text(BotInteractionHandler[BotFatherState, BotFatherUserState]):
             return await send_bot_message(peer, _bot_about_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).only("bot_id")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner_id=peer.owner_id).only("bot_id")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -160,7 +160,7 @@ class Text(BotInteractionHandler[BotFatherState, BotFatherUserState]):
             return await send_bot_message(peer, _bot_desc_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).only("bot_id")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner_id=peer.owner_id).only("bot_id")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -177,7 +177,7 @@ class Text(BotInteractionHandler[BotFatherState, BotFatherUserState]):
             return await send_bot_message(peer, _bot_photo_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).only("bot_id")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner_id=peer.owner_id).only("bot_id")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -205,7 +205,7 @@ class Text(BotInteractionHandler[BotFatherState, BotFatherUserState]):
             return await send_bot_message(peer, _bot_privacy_invalid)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).only("bot_id")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner_id=peer.owner_id).only("bot_id")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -237,7 +237,7 @@ class Text(BotInteractionHandler[BotFatherState, BotFatherUserState]):
             return await send_bot_message(peer, _bot_commands_invalid, entities=_bot_commands_invalid_entities)
 
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner).only("bot_id")
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner_id=peer.owner_id).only("bot_id")
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 

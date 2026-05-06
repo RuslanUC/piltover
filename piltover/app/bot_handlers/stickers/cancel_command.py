@@ -26,9 +26,9 @@ class Cancel(BotInteractionHandler[StickersBotState, StickersBotUserState]):
     async def _handler(peer: Peer, _message: MessageRef, _state: None) -> MessageRef:
         state = cast(
             StickersBotState | None,
-            await StickersBotUserState.filter(user=peer.owner).first().values_list("state", flat=True)
+            await StickersBotUserState.filter(user_id=peer.owner_id).first().values_list("state", flat=True)
         )
-        await StickersBotUserState.filter(user=peer.owner).delete()
+        await StickersBotUserState.filter(user_id=peer.owner_id).delete()
 
         text = _text_no_command
         entities = []

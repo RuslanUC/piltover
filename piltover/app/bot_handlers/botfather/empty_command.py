@@ -31,7 +31,7 @@ class Empty(BotInteractionHandler[BotFatherState, BotFatherUserState]):
     @staticmethod
     async def _handler_privacy(peer: Peer, _message: MessageRef, state: BotFatherUserState) -> MessageRef:
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
-        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner)
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner_id=peer.owner_id)
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 
@@ -45,7 +45,7 @@ class Empty(BotInteractionHandler[BotFatherState, BotFatherUserState]):
         state_data = BotfatherStateEditbot.deserialize(BytesIO(state.data))
         await BotCommand.filter(bot_id=state_data.bot_id).delete()
 
-        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner=peer.owner)
+        bot = await Bot.get_or_none(bot_id=state_data.bot_id, owner_id=peer.owner_id)
         if bot is None:
             return await send_bot_message(peer, "Bot does not exist (?)")
 

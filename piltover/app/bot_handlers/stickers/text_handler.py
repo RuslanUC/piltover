@@ -155,7 +155,7 @@ When you're done, simply send the <c>/publish</c> command.
 
 
 async def _invalid_set_selected(peer: Peer, emoji: bool | None) -> MessageRef:
-    keyboard_rows = await get_stickerset_selection_keyboard(peer.owner, emoji)
+    keyboard_rows = await get_stickerset_selection_keyboard(peer.owner_id, emoji)
     keyboard = ReplyKeyboardMarkup(rows=keyboard_rows, single_use=True) if keyboard_rows else None
     return await send_bot_message(peer, _addsticker_shortname_invalid, keyboard)
 
@@ -254,7 +254,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             return await send_bot_message(peer, _newpack_invalid_name)
 
         state_data = StickersStateRenamepack.deserialize(BytesIO(state.data))
-        stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner).only("id", "title")
+        stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner_id=peer.owner_id).only("id", "title")
         if stickerset is None:
             await state.delete()
             return await send_bot_message(peer, _addsticker_shortname_invalid)
@@ -340,7 +340,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         state_data = StickersStateReplacesticker.deserialize(BytesIO(state.data))
         async with in_transaction():
             old_sticker = await File.get(
-                id=state_data.file_id, stickerset__owner=peer.owner,
+                id=state_data.file_id, stickerset__owner_id=peer.owner_id,
             ).select_related("stickerset")
             stickerset = old_sticker.stickerset
             old_sticker.stickerset = None
@@ -428,7 +428,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
     async def _add_sticker_to_set(
             peer: Peer, set_id: int, file_id: int, emoji: str, is_emoji: bool
     ) -> tuple[MessageRef | None, Stickerset | None]:
-        stickerset = await Stickerset.get_or_none(owner=peer.owner, id=set_id, emoji=is_emoji)
+        stickerset = await Stickerset.get_or_none(owner_id=peer.owner_id, id=set_id, emoji=is_emoji)
         if stickerset is None:
             return await send_bot_message(peer, "This stickerset does not exist."), None
         file = await File.get_or_none(id=file_id)
@@ -542,7 +542,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
 
     @staticmethod
     async def _publish_set(
-            owner: User, name: str, short_name: str, is_emoji: bool, is_static: bool, is_webm: bool,
+            owner_id: int, name: str, short_name: str, is_emoji: bool, is_static: bool, is_webm: bool,
             stickers: list[NewpackInputSticker], state: StickersBotUserState,
     ) -> None:
         async with in_transaction():
@@ -550,7 +550,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
                 title=name,
                 short_name=short_name,
                 type=StickerSetType.STATIC,
-                owner=owner,
+                owner_id=owner_id,
                 emoji=is_emoji,
             )
 
@@ -573,11 +573,11 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
             await stickerset.save(update_fields=["owner_id", "hash"])
 
-            await InstalledStickerset.create(set=stickerset, user=owner)
+            await InstalledStickerset.create(set=stickerset, user_id=owner_id)
 
             await state.delete()
 
-        await upd.new_stickerset(owner.id, stickerset)
+        await upd.new_stickerset(owner_id, stickerset)
 
     @classmethod
     async def _newpack_short_name(cls, peer: Peer, message: MessageRef, state: StickersBotUserState) -> MessageRef:
@@ -586,7 +586,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             return ret
 
         state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
-        await cls._publish_set(peer.owner, state_data.name, short_name, False, True, False, state_data.stickers, state)
+        await cls._publish_set(peer.owner_id, state_data.name, short_name, False, True, False, state_data.stickers, state)
 
         text, entities = _text_published.format(short_name=short_name)
         return await send_bot_message(peer, text, entities=entities)
@@ -598,7 +598,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             return ret
 
         state_data = StickersStateNewemojipack.deserialize(BytesIO(state.data))
-        await cls._publish_set(peer.owner, state_data.name, short_name, True, True, False, state_data.stickers, state)
+        await cls._publish_set(peer.owner_id, state_data.name, short_name, True, True, False, state_data.stickers, state)
 
         text, entities = _text_published_emoji.format(short_name=short_name)
         return await send_bot_message(peer, text, entities=entities)
@@ -610,7 +610,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             return ret
 
         state_data = StickersStateNewpack.deserialize(BytesIO(state.data))
-        await cls._publish_set(peer.owner, state_data.name, short_name, False, False, True, state_data.stickers, state)
+        await cls._publish_set(peer.owner_id, state_data.name, short_name, False, False, True, state_data.stickers, state)
 
         text, entities = _text_published.format(short_name=short_name)
         return await send_bot_message(peer, text, entities=entities)
@@ -621,7 +621,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         if not sel_short_name:
             return await _invalid_set_selected(peer, False)
 
-        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
+        stickerset = await Stickerset.get_or_none(owner_id=peer.owner_id, short_name=sel_short_name)
         if stickerset is None:
             return await _invalid_set_selected(peer, False)
 
@@ -653,7 +653,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         if not sel_short_name:
             return await _invalid_set_selected(peer, False)
 
-        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
+        stickerset = await Stickerset.get_or_none(owner_id=peer.owner_id, short_name=sel_short_name)
         if stickerset is None:
             return await _invalid_set_selected(peer, False)
 
@@ -669,7 +669,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         if not sel_short_name:
             return await _invalid_set_selected(peer, None)
 
-        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
+        stickerset = await Stickerset.get_or_none(owner_id=peer.owner_id, short_name=sel_short_name)
         if stickerset is None:
             return await _invalid_set_selected(peer, None)
 
@@ -686,7 +686,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         if not sel_short_name:
             return await _invalid_set_selected(peer, None)
 
-        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
+        stickerset = await Stickerset.get_or_none(owner_id=peer.owner_id, short_name=sel_short_name)
         if stickerset is None:
             return await _invalid_set_selected(peer, None)
 
@@ -719,7 +719,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         if not sel_short_name:
             return await _invalid_set_selected(peer, False)
 
-        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
+        stickerset = await Stickerset.get_or_none(owner_id=peer.owner_id, short_name=sel_short_name)
         if stickerset is None:
             return await _invalid_set_selected(peer, False)
 
@@ -735,7 +735,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         if not sel_short_name:
             return await _invalid_set_selected(peer, True)
 
-        stickerset = await Stickerset.get_or_none(owner=peer.owner, short_name=sel_short_name)
+        stickerset = await Stickerset.get_or_none(owner_id=peer.owner_id, short_name=sel_short_name)
         if stickerset is None:
             return await _invalid_set_selected(peer, True)
 
@@ -789,15 +789,14 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             return await send_bot_message(peer, _delpack_confirm_invalid, entities=_delpack_confirm_invalid_entities)
 
         state_data = StickersStateDelpack.deserialize(BytesIO(state.data))
-        stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner)
+        stickerset = await Stickerset.get_or_none(id=state_data.set_id, owner=peer.owner_id).only("id")
         if stickerset is None:
             await state.delete()
             return await send_bot_message(peer, _addsticker_shortname_invalid)
 
-        stickerset.deleted = True
-        stickerset.owner = None
-        stickerset.short_name = None
-        await stickerset.save(update_fields=["deleted", "owner_id", "short_name"])
+        async with in_transaction():
+            await Stickerset.filter(id=stickerset.id).update(deleted=True, owner_id=None, short_name=None)
+            await File.filter(stickerset_id=stickerset.id).update(stickerset_id=None)
 
         return await send_bot_message(peer, _delpack_deleted)
 

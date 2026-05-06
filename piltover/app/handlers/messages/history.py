@@ -931,7 +931,7 @@ async def set_history_ttl(request: SetHistoryTTL, user_id: int) -> Updates:
     elif peer.type is PeerType.USER:
         if peer.user_ttl_period_days == ttl_days:
             raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-        opp_peer, _ = await Peer.get_or_create(type=PeerType.USER, owner=peer.user, user=peer.owner)
+        opp_peer, _ = await Peer.get_or_create(type=PeerType.USER, owner_id=peer.user_id, user_id=peer.owner_id)
         peer.user_ttl_period_days = opp_peer.user_ttl_period_days = ttl_days
         await Peer.bulk_update([peer, opp_peer], fields=["user_ttl_period_days"])
     elif peer.type in (PeerType.CHAT, PeerType.CHANNEL):
@@ -993,9 +993,9 @@ async def get_outbox_read_date(request: GetOutboxReadDate, user_id: int) -> Outb
     if peer.type is PeerType.SELF:
         peer_q = Q(peer=peer)
     elif peer.type is PeerType.USER:
-        peer_q = Q(peer__owner=peer.user, peer__user=peer.owner)
+        peer_q = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id)
     elif peer.type is PeerType.CHAT:
-        peer_q = Q(peer__chat=peer.chat, peer__owner__not=peer.owner)
+        peer_q = Q(peer__chat_id=peer.chat_id, peer__owner_id__not=peer.owner_id)
     else:
         raise Unreachable
 

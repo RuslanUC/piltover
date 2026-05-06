@@ -479,14 +479,15 @@ async def rename_stickerset(request: RenameStickerSet, user_id: int) -> Messages
 @handler.on_request(DeleteStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_stickerset(request: DeleteStickerSet, user_id: int) -> bool:
     auth_id = request_ctx.get().auth_id
-    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
+    if (q := Stickerset.from_input_q(user_id, auth_id, request.stickerset)) is None:
+        raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
+    stickerset = await Stickerset.get_or_none(q).only("id", "owner_id")
     if stickerset is None or stickerset.owner_id != user_id:
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
-    stickerset.deleted = True
-    stickerset.owner = None
-    stickerset.short_name = None
-    await stickerset.save(update_fields=["deleted", "owner_id", "short_name"])
+    async with in_transaction():
+        await Stickerset.filter(id=stickerset.id).update(deleted=True, owner_id=None, short_name=None)
+        await File.filter(stickerset_id=stickerset.id).update(stickerset_id=None)
 
     return True
 

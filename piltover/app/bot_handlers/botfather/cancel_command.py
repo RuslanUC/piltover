@@ -25,9 +25,9 @@ class Cancel(BotInteractionHandler[BotFatherState, BotFatherUserState]):
     async def _handler(peer: Peer, _message: MessageRef, _state: None) -> MessageRef:
         state = cast(
             BotFatherState | None,
-            await BotFatherUserState.filter(user=peer.owner).first().values_list("state", flat=True)
+            await BotFatherUserState.filter(user_id=peer.owner_id).first().values_list("state", flat=True)
         )
-        await BotFatherUserState.filter(user=peer.owner).delete()
+        await BotFatherUserState.filter(user_id=peer.owner_id).delete()
 
         command = BOTFATHER_STATE_TO_COMMAND_NAME[state]
         if command is None:

@@ -682,7 +682,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         if peer not in messages:
             got_peer = next(iter(messages.keys()))
             raise Unreachable(f"After editing scheduled message: expected ref peer to be {peer}, got {got_peer}")
-        return await upd.edit_message(user, messages)
+        return await upd.edit_message(user.id, messages)
 
     if peer.type is PeerType.CHANNEL:
         if len(messages) != 1:
@@ -701,7 +701,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, peers)
 
-    return await upd.edit_message(user, messages)
+    return await upd.edit_message(user.id, messages)
 
 
 async def _get_media_thumb(

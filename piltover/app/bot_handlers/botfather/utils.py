@@ -1,12 +1,12 @@
 from tortoise.expressions import Subquery
 
-from piltover.db.models import Username, User, Bot, Peer, MessageRef
+from piltover.db.models import Username, Bot, Peer, MessageRef
 from piltover.tl import KeyboardButtonRow, KeyboardButtonCallback, ReplyInlineMarkup, ReplyKeyboardMarkup
 
 
-async def get_bot_selection_inline_keyboard(user: User, page: int) -> list[KeyboardButtonRow] | None:
+async def get_bot_selection_inline_keyboard(user_id: int, page: int) -> list[KeyboardButtonRow] | None:
     user_bots = await Username.filter(
-        user__bot=True, user_id__in=Subquery(Bot.filter(owner=user).values_list("bot_id")),
+        user__bot=True, user_id__in=Subquery(Bot.filter(owner_id=user_id).values_list("bot_id")),
     ).order_by("-user_id").limit(7).offset(page * 6).values_list("username", "user_id")
 
     if not user_bots and not page:

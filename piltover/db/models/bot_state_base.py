@@ -39,12 +39,12 @@ class BotUserStateBase(Model):
         await self.save(update_fields=update_fields)
 
     @classmethod
-    async def set_state(cls, user: models.User, state: StateEnumT, data: bytes | None | StateMissing) -> None:
-        defaults = {
+    async def set_state(cls, user_id: int, state: StateEnumT, data: bytes | None | StateMissing) -> None:
+        defaults: dict = {
             "state": state,
             "last_access": datetime.now(UTC),
         }
         if data is not STATE_MISSING:
             defaults["data"] = data
 
-        await cls.update_or_create(user=user, defaults=defaults)
+        await cls.update_or_create(user_id=user_id, defaults=defaults)

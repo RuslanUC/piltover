@@ -235,7 +235,7 @@ class BotInteractionHandler(Generic[StateEnumT, StateT]):
     async def handle_command(self, command: str, peer: Peer, message: MessageRef) -> MessageRef | None:
         state = None
         if self.state_cls is not None and self._command_fetch_state.get(command, False):
-            state = await self.state_cls.get_or_none(user=peer.owner)
+            state = await self.state_cls.get_or_none(user_id=peer.owner_id)
 
         if state is not None:
             key = command, state.state
@@ -249,7 +249,7 @@ class BotInteractionHandler(Generic[StateEnumT, StateT]):
     async def handle_text(self, peer: Peer, message: MessageRef) -> MessageRef | None:
         state = None
         if self.state_cls is not None:
-            state = await self.state_cls.get_or_none(user=peer.owner)
+            state = await self.state_cls.get_or_none(user_id=peer.owner_id)
 
         state_step = state.state if state is not None else None
         if state_step in self._text_registry:

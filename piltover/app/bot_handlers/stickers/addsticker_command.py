@@ -18,11 +18,11 @@ class AddSticker(BotInteractionHandler[StickersBotState, StickersBotUserState]):
 
     @staticmethod
     async def _handler(peer: Peer, _message: MessageRef, _state: None) -> MessageRef:
-        keyboard_rows = await get_stickerset_selection_keyboard(peer.owner)
+        keyboard_rows = await get_stickerset_selection_keyboard(peer.owner_id)
         if keyboard_rows is None:
             return await send_bot_message(peer, _text_no_sets)
 
-        await StickersBotUserState.update_or_create(user=peer.owner, defaults={
+        await StickersBotUserState.update_or_create(user_id=peer.owner_id, defaults={
             "state": StickersBotState.ADDSTICKER_WAIT_PACK,
             "data": None,
             "last_access": datetime.now(UTC),

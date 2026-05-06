@@ -19,7 +19,7 @@ class MyBots(BotInteractionHandler[BotFatherState, BotFatherUserState]):
 
     @staticmethod
     async def _handler(peer: Peer, _message: MessageRef, _state: None) -> MessageRef:
-        rows = await get_bot_selection_inline_keyboard(peer.owner, 0)
+        rows = await get_bot_selection_inline_keyboard(peer.owner_id, 0)
         if rows is None:
             return await send_bot_message(peer, text_no_bots)
 

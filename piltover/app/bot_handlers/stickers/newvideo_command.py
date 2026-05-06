@@ -21,7 +21,7 @@ class NewVideo(BotInteractionHandler[StickersBotState, StickersBotUserState]):
 
     @staticmethod
     async def _handler(peer: Peer, _message: MessageRef, _state: None) -> MessageRef:
-        await StickersBotUserState.update_or_create(user=peer.owner, defaults={
+        await StickersBotUserState.update_or_create(user_id=peer.owner_id, defaults={
             "state": StickersBotState.NEWVIDEO_WAIT_NAME,
             "data": None,
             "last_access": datetime.now(UTC),

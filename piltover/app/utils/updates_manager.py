@@ -394,7 +394,7 @@ async def delete_messages_channel(channel: Channel, messages: list[int]) -> tupl
     return updates, new_pts
 
 
-async def edit_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
+async def edit_message(user_id: int, messages: dict[Peer, MessageRef]) -> Updates:
     updates_to_create = []
     result_update = None
 
@@ -403,15 +403,15 @@ async def edit_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
-    for peer, message in messages.items():
-        # TODO: move out of the loop?
-        pts = await State.add_pts(peer.owner_id, 1)
+    messages_items = list(messages.items())
+    ptss = await State.add_pts_bulk([peer.owner_id for peer, _ in messages_items], 1)
 
+    for (peer, message), new_pts in zip(messages_items, ptss):
         updates_to_create.append(
             Update(
                 user_id=peer.owner_id,
                 update_type=UpdateType.MESSAGE_EDIT,
-                pts=pts,
+                pts=new_pts,
                 related_id=message.id,
                 message=message,
             )
@@ -422,7 +422,7 @@ async def edit_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
                 UpdateEditMessage(
                     # TODO: move out of the loop?
                     message=await message.to_tl(peer.owner_id),
-                    pts=pts,
+                    pts=new_pts,
                     pts_count=1,
                 )
             ],
@@ -430,7 +430,7 @@ async def edit_message(user: User, messages: dict[Peer, MessageRef]) -> Updates:
             chats=chats_and_channels,
         )
 
-        if user.id == peer.owner_id:
+        if user_id == peer.owner_id:
             result_update = update
 
         await SessionManager.send(update, peer.owner_id)

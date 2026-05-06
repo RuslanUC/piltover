@@ -75,7 +75,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
     async with in_transaction():
         scheduled_messages = await MessageRef.select_for_update(
             skip_locked=True, no_key=True,
-        ).get_or_none(
+        ).filter(
             peer=peer, id__in=request.id[:100],
         ).select_related(
             "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",

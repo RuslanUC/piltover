@@ -18,7 +18,7 @@ class NewEmojiPack(BotInteractionHandler[StickersBotState, StickersBotUserState]
 
     @staticmethod
     async def _handler(peer: Peer, _message: MessageRef, _state: None) -> MessageRef:
-        await StickersBotUserState.update_or_create(user=peer.owner, defaults={
+        await StickersBotUserState.update_or_create(user_id=peer.owner_id, defaults={
             "state": StickersBotState.NEWEMOJIPACK_WAIT_TYPE,
             "data": None,
             "last_access": datetime.now(UTC),
