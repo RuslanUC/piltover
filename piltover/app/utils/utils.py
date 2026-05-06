@@ -382,7 +382,9 @@ async def _validate_message_entities(text: str, entities: list[MessageEntityBase
         ids = {check_id for check_id, _ in check_emojis}
         files = {
             file.id: file
-            for file in await File.filter(id__in=ids, type=FileType.DOCUMENT_EMOJI).select_related("stickerset")
+            for file in await File.filter(
+                id__in=ids, type=FileType.DOCUMENT_EMOJI
+            ).only("id", "stickerset_id", "sticker_alt")
         }
 
         for check_id, idx in reversed(check_emojis):
@@ -391,7 +393,6 @@ async def _validate_message_entities(text: str, entities: list[MessageEntityBase
 
             if check_id not in files \
                     or files[check_id].stickerset_id is None \
-                    or files[check_id].stickerset.deleted \
                     or files[check_id].sticker_alt != u16text[off:off+ln].decode("utf-16le"):
                 del result[idx]
                 continue

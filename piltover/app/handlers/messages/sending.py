@@ -741,7 +741,6 @@ async def _get_input_media_file(
         add_query = Q(type__not=FileType.PHOTO)
     return await File.from_input(
         user_id, media.id.id, media.id.access_hash, media.id.file_reference, file_type, add_query=add_query,
-        select_related=("stickerset",),
     )
 
 
@@ -1318,7 +1317,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
                 raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         # TODO: dont do this in a loop
-        media = await MessageMedia.get_or_none(media_q).select_related("file", "file__stickerset", "poll")
+        media = await MessageMedia.get_or_none(media_q).select_related("file", "poll")
 
         messages.append((
             single_media.message,
@@ -1463,7 +1462,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> 
         Q(result__private=True, result__query__user_id=user_id) | Q(result__private=False),
         result__query_id=request.query_id, item_id=request.id,
     ).select_related(
-        "photo", "document", "document__stickerset", "result", "result__query", "result__query__bot"
+        "photo", "document", "result", "result__query", "result__query__bot"
     )
     if item is None:
         raise ErrorRpc(error_code=400, error_message="RESULT_ID_INVALID")

@@ -1740,7 +1740,8 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user_id: int) ->
         if not is_emoji and channel.stickerset_id is None:
             raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
     else:
-        new_stickerset = await Stickerset.from_input(request.stickerset)
+        auth_id = request_ctx.get().auth_id
+        new_stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
         if new_stickerset is None or new_stickerset.official or new_stickerset.emoji != is_emoji:
             raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 

@@ -6,6 +6,7 @@ from .file import file_fill_access_hash_calc as file_all_fill_access_hash_calc
 from .file import file_fill_file_reference_calc as file_all_fill_file_reference_calc
 from .wallpaper import wallpaper_fill_access_hash_calc as wallpaper_all_fill_access_hash_calc
 from .theme import theme_fill_access_hash_calc as theme_all_fill_access_hash_calc
+from .stickerset import sticker_set_fill_access_hash_calc as sticker_set_all_fill_access_hash_calc
 
 channel_forbidden_fill_access_hash_calc = channel_all_fill_access_hash_calc
 channel_fill_access_hash_calc = channel_all_fill_access_hash_calc
@@ -49,3 +50,7 @@ wall_paper_fill_access_hash_calc = wallpaper_all_fill_access_hash_calc
 
 theme_fill_access_hash_calc = theme_all_fill_access_hash_calc
 theme_133_fill_access_hash_calc = theme_all_fill_access_hash_calc
+
+sticker_set_fill_access_hash_calc = sticker_set_all_fill_access_hash_calc
+sticker_set_133_fill_access_hash_calc = sticker_set_all_fill_access_hash_calc
+input_sticker_set_id_fill_access_hash_calc = sticker_set_all_fill_access_hash_calc

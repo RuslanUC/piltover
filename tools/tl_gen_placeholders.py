@@ -95,6 +95,8 @@ PLACEHOLDERS = {
     0x2dd14edc: access_hash_calc,
     # StickerSet_133
     0xd7df217a: access_hash_calc,
+    # InputStickerSetID
+    0x9de7a269: access_hash_calc,
 
     # InputChannel
     0xf35aec28: access_hash_calc,

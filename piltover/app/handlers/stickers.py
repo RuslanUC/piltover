@@ -461,7 +461,8 @@ async def change_sticker_position(request: ChangeStickerPosition, user_id: int) 
 
 @handler.on_request(RenameStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
 async def rename_stickerset(request: RenameStickerSet, user_id: int) -> MessagesStickerSet:
-    stickerset = await Stickerset.from_input(request.stickerset)
+    auth_id = request_ctx.get().auth_id
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None or stickerset.owner_id != user_id:
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
@@ -477,7 +478,8 @@ async def rename_stickerset(request: RenameStickerSet, user_id: int) -> Messages
 
 @handler.on_request(DeleteStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_stickerset(request: DeleteStickerSet, user_id: int) -> bool:
-    stickerset = await Stickerset.from_input(request.stickerset)
+    auth_id = request_ctx.get().auth_id
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None or stickerset.owner_id != user_id:
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
@@ -550,7 +552,7 @@ async def change_sticker(request: ChangeSticker, user_id: int) -> MessagesSticke
 
 
 @handler.on_request(GetStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
-async def get_stickerset(request: GetStickerSet) -> MessagesStickerSet | StickerSetNotModified:
+async def get_stickerset(request: GetStickerSet, user_id: int) -> MessagesStickerSet | StickerSetNotModified:
     if isinstance(request.stickerset, InputStickerSetPremiumGifts):
         return MessagesStickerSet(
             set=StickerSet(
@@ -567,7 +569,8 @@ async def get_stickerset(request: GetStickerSet) -> MessagesStickerSet | Sticker
             documents=[],
         )
 
-    stickerset = await Stickerset.from_input(request.stickerset)
+    auth_id = request_ctx.get().auth_id
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
@@ -579,7 +582,8 @@ async def get_stickerset(request: GetStickerSet) -> MessagesStickerSet | Sticker
 
 @handler.on_request(AddStickerToSet, ReqHandlerFlags.DONT_FETCH_USER)
 async def add_sticker_to_set(request: AddStickerToSet, user_id: int) -> MessagesStickerSet:
-    stickerset = await Stickerset.from_input(request.stickerset)
+    auth_id = request_ctx.get().auth_id
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None or stickerset.owner_id != user_id:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
@@ -666,7 +670,8 @@ async def get_all_stickers(request: GetAllStickers, user_id: int) -> AllStickers
 async def install_stickerset(
         request: InstallStickerSet, user_id: int,
 ) -> StickerSetInstallResultSuccess | StickerSetInstallResultArchive:
-    stickerset = await Stickerset.from_input(request.stickerset)
+    auth_id = request_ctx.get().auth_id
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
@@ -692,7 +697,8 @@ async def install_stickerset(
 
 @handler.on_request(UninstallStickerSet, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def uninstall_stickerset(request: UninstallStickerSet, user_id: int) -> bool:
-    stickerset = await Stickerset.from_input(request.stickerset)
+    auth_id = request_ctx.get().auth_id
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
@@ -803,7 +809,8 @@ async def toggle_sticker_sets(request: ToggleStickerSets, user_id: int) -> bool:
 
 @handler.on_request(SetStickerSetThumb, ReqHandlerFlags.DONT_FETCH_USER)
 async def set_stickerset_thumb(request: SetStickerSetThumb, user_id: int) -> MessagesStickerSet:
-    stickerset = await Stickerset.from_input(request.stickerset)
+    auth_id = request_ctx.get().auth_id
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None or stickerset.owner_id != user_id:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
@@ -840,7 +847,7 @@ async def get_recent_stickers(request: GetRecentStickers, user_id: int) -> Recen
     stickers = []
     dates = []
 
-    for recent in await query.select_related("sticker", "sticker__stickerset"):
+    for recent in await query.select_related("sticker"):
         stickers.append(recent.sticker.to_tl_document())
         dates.append(int(recent.used_at.timestamp()))
 
@@ -933,8 +940,7 @@ async def get_faved_stickers(request: GetFavedStickers, user_id: int) -> FavedSt
 
 @handler.on_request(GetCustomEmojiDocuments, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_custom_emoji_documents(request: GetCustomEmojiDocuments) -> list[Document]:
-    # TODO: add limit?
-    files = await File.filter(id__in=request.document_id, type=FileType.DOCUMENT_EMOJI).select_related("stickerset")
+    files = await File.filter(id__in=request.document_id[:250], type=FileType.DOCUMENT_EMOJI)
     return TLObjectVector(
         file.to_tl_document()
         for file in files

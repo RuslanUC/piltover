@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from typing import Generator
 
 from fastrand import xorshift128plus_bytes
@@ -9,12 +11,14 @@ from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.cache import Cache
+from piltover.config import APP_CONFIG
 from piltover.db import models
 from piltover.db.enums import StickerSetType, StickerSetOfficialType
 from piltover.tl import InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize, \
     StickerPack, InputStickerSetAnimatedEmoji, InputStickerSetDice, InputStickerSetAnimatedEmojiAnimations, \
     InputStickerSetEmojiGenericAnimations, InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons
 from piltover.tl.to_format import StickerSetToFormat
+from piltover.tl.types.internal_access import AccessHashPayloadStickerset
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 from piltover.tl.base import InputStickerSet as InputStickerSetBase, StickerSet as TLStickerSetBase
 
@@ -44,8 +48,6 @@ class Stickerset(Model):
     id: int = fields.BigIntField(primary_key=True)
     title: str = fields.CharField(max_length=64)
     short_name: str | None = fields.CharField(max_length=64, unique=True, null=True)
-    # TODO: replace with per-user "offline" access hash
-    access_hash: int = fields.BigIntField(default=stickerset_gen_access_hash)
     owner: models.User | None = fields.ForeignKeyField("models.User", null=True)
     official: bool = fields.BooleanField(default=False)
     hash: int = fields.IntField(default=0)
@@ -57,20 +59,27 @@ class Stickerset(Model):
 
     owner_id: int | None
 
-    @staticmethod
-    def from_input_q(input_set: InputStickerSetBase | None, prefix: str | None = None) -> Q | None:
+    @classmethod
+    def from_input_q(
+            cls, user_id: int, auth_id: int, input_set: InputStickerSetBase | None, prefix: str | None = None,
+    ) -> Q | None:
         prefix = f"{prefix}__" if prefix is not None else ""
         if input_set is None or isinstance(input_set, InputStickerSetEmpty):
             return None
         elif isinstance(input_set, InputStickerSetID):
+            if not cls.check_access_hash(user_id, auth_id, input_set.id, input_set.access_hash):
+                return None
             return Q(**{
-                f"{prefix}id": input_set.id, f"{prefix}access_hash": input_set.access_hash, f"{prefix}deleted": False,
+                f"{prefix}id": input_set.id, f"{prefix}deleted": False,
             })
         elif isinstance(input_set, InputStickerSetShortName):
             return Q(**{f"{prefix}short_name": input_set.short_name, f"{prefix}deleted": False})
         elif isinstance(input_set, InputStickerSetDice):
             if input_set.emoticon not in EMOTICON_TO_DICE_ENUM:
-                logger.warning(f"Invalid sticker set dice: {input_set.emoticon!r}, not in {EMOTICON_TO_DICE_ENUM.keys()}")
+                logger.warning(
+                    "Invalid sticker set dice: {emoticon!r}, not in {valid}",
+                    emoticon=input_set.emoticon, valid=EMOTICON_TO_DICE_ENUM.keys(),
+                )
                 return None
             dice_type = EMOTICON_TO_DICE_ENUM[input_set.emoticon]
             return Q(**{f"{prefix}official_type": dice_type, f"{prefix}deleted": False})
@@ -86,8 +95,8 @@ class Stickerset(Model):
         return None
 
     @classmethod
-    async def from_input(cls, input_set: InputStickerSetBase | None) -> Stickerset | None:
-        if (q := cls.from_input_q(input_set)) is None:
+    async def from_input(cls, user_id: int, auth_id: int, input_set: InputStickerSetBase | None) -> Stickerset | None:
+        if (q := cls.from_input_q(user_id, auth_id, input_set)) is None:
             return None
         return await cls.get_or_none(q)
 
@@ -101,7 +110,7 @@ class Stickerset(Model):
 
         result = StickerSetToFormat(
             id=self.id,
-            access_hash=self.access_hash,
+            access_hash=-1,
             title=self.title,
             short_name=self.short_name,
             official=self.official,
@@ -117,8 +126,9 @@ class Stickerset(Model):
         await Cache.obj.set(cache_key, result)
         return result
 
+    # TODO: also add documents_query_cls that takes stickerset id
     def documents_query(self) -> QuerySet[models.File]:
-        return models.File.filter(stickerset=self).order_by("sticker_pos").select_related("stickerset")
+        return models.File.filter(stickerset=self).order_by("sticker_pos")
 
     def gen_for_hash(self, stickers: list[models.File]) -> Generator[str | int, None, None]:
         yield self.id
@@ -163,3 +173,13 @@ class Stickerset(Model):
 
     def cache_key_messages(self) -> str:
         return f"stickerset-messages:{self.id}:{self.hash}"
+
+    @staticmethod
+    def make_access_hash(user: int, auth: int, set_id: int) -> int:
+        to_sign = AccessHashPayloadStickerset(this_user_id=user, set_id=set_id, auth_id=auth).write()
+        digest = hmac.new(APP_CONFIG.hmac_key, to_sign, hashlib.sha256).digest()
+        return Long.read_bytes(digest[-8:])
+
+    @classmethod
+    def check_access_hash(cls, user: int, auth: int, set_id: int, access_hash: int) -> bool:
+        return cls.make_access_hash(user, auth, set_id) == access_hash

@@ -21,7 +21,7 @@ class InlineQueryResult(Model):
 
     async def get_items(self) -> list[models.InlineQueryResultItem]:
         return await models.InlineQueryResultItem.filter(result=self).order_by("position").select_related(
-            "photo", "document", "document__stickerset"
+            "photo", "document",
         )
 
     async def to_tl(self, items: list[models.InlineQueryResultItem] | None = None) -> BotResults:

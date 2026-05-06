@@ -6,7 +6,6 @@ from base64 import b85decode
 from datetime import datetime
 from io import BytesIO
 from time import time
-from typing import Self
 from uuid import UUID, uuid4
 
 from PIL import UnidentifiedImageError
@@ -25,7 +24,6 @@ from piltover.tl import DocumentAttributeImageSize, DocumentAttributeAnimated, D
     PhotoSize, DocumentAttributeSticker, InputStickerSetEmpty, PhotoPathSize, Long, InputStickerSetID, MaskCoords, \
     DocumentAttributeVideo_133, DocumentAttributeVideo_160, DocumentAttributeVideo_185, Int, \
     DocumentAttributeCustomEmoji
-from piltover.tl.base import PhotoSizeInst
 from piltover.tl.types.internal_access import AccessHashPayloadFile, FileReferencePayload
 
 VIDEO_ATTRIBUTES = (
@@ -131,8 +129,8 @@ class File(Model):
             ))
         if self.type is FileType.DOCUMENT_STICKER:
             stickerset_ = InputStickerSetEmpty()
-            if self.stickerset_id is not None and not self.stickerset.deleted:
-                stickerset_ = InputStickerSetID(id=self.stickerset.id, access_hash=self.stickerset.access_hash)
+            if self.stickerset_id is not None:
+                stickerset_ = InputStickerSetID(id=self.stickerset_id, access_hash=-1)
             result.append(DocumentAttributeSticker(
                 alt=self.sticker_alt or "",
                 stickerset=stickerset_,
@@ -141,8 +139,8 @@ class File(Model):
             ))
         if self.type is FileType.DOCUMENT_EMOJI:
             stickerset_ = InputStickerSetEmpty()
-            if self.stickerset_id is not None and not self.stickerset.deleted:
-                stickerset_ = InputStickerSetID(id=self.stickerset.id, access_hash=self.stickerset.access_hash)
+            if self.stickerset_id is not None:
+                stickerset_ = InputStickerSetID(id=self.stickerset_id, access_hash=-1)
             result.append(DocumentAttributeCustomEmoji(
                 alt=self.sticker_alt or "",
                 stickerset=stickerset_,
@@ -199,7 +197,7 @@ class File(Model):
 
         return True
 
-    def _to_tl_thumbs(self) -> list[PhotoSizeInst]:
+    def _to_tl_thumbs(self) -> list[PhotoStrippedSize | PhotoSize | PhotoPathSize]:
         sizes: list[PhotoStrippedSize | PhotoSize | PhotoPathSize]
         sizes = [PhotoSize(**size) for size in self.photo_sizes] if self.photo_sizes else []
         if self.photo_stripped:
@@ -296,8 +294,8 @@ class File(Model):
     async def from_input(
             cls, user_id: int, file_id: int, access_hash: int, file_reference: bytes,
             type_: FileType | None = None, mimes: list[str] | None = None, add_query: Q | None = None,
-            select_related: tuple[str] = (),
-    ) -> Self | None:
+            select_related: tuple[str, ...] = (),
+    ) -> File | None:
         valid, const = File.is_file_ref_valid(file_reference, user_id, file_id)
         if not valid:
             return None

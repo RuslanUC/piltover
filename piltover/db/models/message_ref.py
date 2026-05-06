@@ -82,14 +82,14 @@ class MessageRef(Model):
         "peer", "content", "content__media",
     )
     PREFETCH_FIELDS = (
-        *PREFETCH_FIELDS_MIN, "content__media__file", "content__media__file__stickerset",
+        *PREFETCH_FIELDS_MIN, "content__media__file",
         "content__media__poll", "content__fwd_header", "content__fwd_header__saved_peer", "content__post_info",
         "content__via_bot", "peer__channel",
     )
     PREFETCH_MAYBECACHED = ("peer", "content", "peer__channel")
     _FETCH_CACHED_REFS = ("content__media", "content__media__file")
     _FETCH_CACHED_CONTENTS = (
-        "content__media", "content__media__file", "content__media__file__stickerset", "content__media__poll",
+        "content__media", "content__media__file", "content__media__poll",
         "content__media__poll__pollanswers", "content__post_info",
         "content__fwd_header", "content__fwd_header__saved_peer",
     )
