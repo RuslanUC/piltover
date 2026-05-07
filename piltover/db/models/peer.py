@@ -61,11 +61,38 @@ class Peer(Model):
         raise ErrorRpc(error_code=400, error_message=message)
 
     @classmethod
-    async def from_input_peer(
+    def type_and_id_from_input(cls, user_id: int, input_peer: InputPeers) -> tuple[PeerType, int] | None:
+        if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
+            return None
+
+        ctx = request_ctx.get()
+
+        if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
+                or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user_id):
+            return PeerType.SELF, user_id
+
+        if isinstance(input_peer, (InputPeerUser, InputUser)):
+            if not models.User.check_access_hash(user_id, ctx.auth_id, input_peer.user_id, input_peer.access_hash):
+                return None
+            return PeerType.USER, input_peer.user_id
+
+        if isinstance(input_peer, InputPeerChat):
+            chat_id = models.Chat.norm_id(input_peer.chat_id)
+            return PeerType.CHAT, chat_id
+
+        if isinstance(input_peer, (InputPeerChannel, InputChannel)):
+            channel_id = models.Channel.norm_id(input_peer.channel_id)
+            if not models.Channel.check_access_hash(user_id, ctx.auth_id, channel_id, input_peer.access_hash):
+                return None
+            return PeerType.CHANNEL, channel_id
+
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
+
+    @classmethod
+    def query_from_input_peer(
             cls, user: models.User | int, input_peer: InputPeers, allow_bot: bool = True,
             allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
-            select_related: tuple[str, ...] | None = None,
-    ) -> Peer | None:
+    ) -> QuerySetSingle[Peer | None] | None:
         if isinstance(input_peer, (InputUserEmpty, InputPeerEmpty, InputChannelEmpty)):
             return None
 
@@ -73,14 +100,58 @@ class Peer(Model):
 
         ctx = request_ctx.get()
 
+        if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
+                or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user_id):
+            if peer_types is not None and PeerType.SELF not in peer_types:
+                return None
+            return Peer.get(owner_id=user_id, type=PeerType.SELF, user_id=user_id)
+
+        if isinstance(input_peer, (InputPeerUser, InputUser)):
+            if peer_types is not None and PeerType.USER not in peer_types:
+                return None
+            if not models.User.check_access_hash(user_id, ctx.auth_id, input_peer.user_id, input_peer.access_hash):
+                return None
+            query = Q(owner_id=user_id, user_id=input_peer.user_id)
+            if not allow_bot:
+                query &= Q(user__bot=False)
+            return Peer.get_or_none(query)
+
+        if isinstance(input_peer, InputPeerChat):
+            if peer_types is not None and PeerType.CHAT not in peer_types:
+                return None
+            chat_id = models.Chat.norm_id(input_peer.chat_id)
+            query = Q(owner_id=user_id, chat_id=chat_id, chat__deleted=False)
+            if not allow_migrated_chat:
+                query &= Q(chat__migrated=False)
+            return Peer.get_or_none(query)
+
+        if isinstance(input_peer, (InputPeerChannel, InputChannel)):
+            if peer_types is not None and PeerType.CHANNEL not in peer_types:
+                return None
+            channel_id = models.Channel.norm_id(input_peer.channel_id)
+            if not models.Channel.check_access_hash(user_id, ctx.auth_id, channel_id, input_peer.access_hash):
+                return None
+            return Peer.get_or_none(owner_id=user_id, channel_id=channel_id, channel__deleted=False)
+
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
+
+    @classmethod
+    async def from_input_peer(
+            cls, user: models.User | int, input_peer: InputPeers, allow_bot: bool = True,
+            allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
+            select_related: tuple[str, ...] | None = None,
+    ) -> Peer | None:
+        query = cls.query_from_input_peer(user, input_peer, allow_bot, allow_migrated_chat, peer_types)
+        if query is None:
+            return None
+
+        user_id = user.id if isinstance(user, models.User) else user
+
         if select_related is None:
             select_related = ()
 
         if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user_id):
-            if peer_types is not None and PeerType.SELF not in peer_types:
-                return None
-            query = Peer.get(owner_id=user_id, type=PeerType.SELF, user_id=user_id)
             if isinstance(user, models.User):
                 peer = await query
                 peer.user = user
@@ -91,31 +162,17 @@ class Peer(Model):
         if isinstance(input_peer, (InputPeerUser, InputUser)):
             if peer_types is not None and PeerType.USER not in peer_types:
                 return None
-            if not models.User.check_access_hash(user_id, ctx.auth_id, input_peer.user_id, input_peer.access_hash):
-                return None
-            query = Q(owner_id=user_id, user_id=input_peer.user_id)
-            if not allow_bot:
-                query &= Q(user__bot=False)
-            return await Peer.get_or_none(query).select_related("owner", "user", *select_related)
+            return await query.select_related("owner", "user", *select_related)
 
         if isinstance(input_peer, InputPeerChat):
             if peer_types is not None and PeerType.CHAT not in peer_types:
                 return None
-            chat_id = models.Chat.norm_id(input_peer.chat_id)
-            query = Q(owner_id=user_id, chat_id=chat_id, chat__deleted=False)
-            if not allow_migrated_chat:
-                query &= Q(chat__migrated=False)
-            return await Peer.get_or_none(query).select_related("chat", *select_related)
+            return await query.select_related("chat", *select_related)
 
         if isinstance(input_peer, (InputPeerChannel, InputChannel)):
             if peer_types is not None and PeerType.CHANNEL not in peer_types:
                 return None
-            channel_id = models.Channel.norm_id(input_peer.channel_id)
-            if not models.Channel.check_access_hash(user_id, ctx.auth_id, channel_id, input_peer.access_hash):
-                return None
-            return await Peer.get_or_none(
-                owner_id=user_id, channel_id=channel_id, channel__deleted=False,
-            ).select_related("channel", *select_related)
+            return await query.select_related("channel", *select_related)
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 

@@ -91,25 +91,29 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner_id=peer.owner_id, bot_id=bot_id).select_related("bot", "bot__username")
-        if bot is None:
+        bot_info = await User.get_or_none(
+            id=bot_id, bot_bot__owner_id=peer.owner_id
+        ).select_related("username").values_list("first_name", "username__username")
+        if bot_info is None:
             return None
 
+        bot_first_name, bot_username = bot_info
+
         message.content.message, message.content.entities = __text_bot_selected.format(
-            name=bot.bot.first_name, username=bot.bot.username.username,
+            name=bot_first_name, username=bot_username,
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"API Token", data=f"bots-token/{bot.bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"Edit Bot", data=f"bots-edit/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"API Token", data=f"bots-token/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"Edit Bot", data=f"bots-edit/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"TODO Bot Settings", data=f"bots-settings/{bot.bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"TODO Payments", data=f"bots-payments/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"TODO Bot Settings", data=f"bots-settings/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"TODO Payments", data=f"bots-payments/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"TODO Transfer Ownership", data=f"bots-transfer/{bot.bot_id}".encode("latin1")),
-                KeyboardButtonCallback(text=f"TODO Delete Bot", data=f"bots-delete/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"TODO Transfer Ownership", data=f"bots-transfer/{bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"TODO Delete Bot", data=f"bots-delete/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
                 KeyboardButtonCallback(text=f"<- Back to Bot List", data=f"mybots".encode("latin1")),
@@ -146,19 +150,25 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner_id=peer.owner_id, bot_id=bot_id).select_related("bot", "bot__username")
-        if bot is None:
+        bot_info = await Bot.get_or_none(
+            bot_id=bot_id, owner_id=peer.owner_id
+        ).select_related("bot", "bot__username").values_list(
+            "token_nonce", "bot__first_name", "bot__username__username",
+        )
+        if bot_info is None:
             return None
 
+        token_nonce, bot_first_name, bot_username = bot_info
+
         message.content.message, message.content.entities = __text_bot_token.format(
-            name=bot.bot.first_name, username=bot.bot.username.username, token=f"{bot.bot_id}:{bot.token_nonce}",
+            name=bot_first_name, username=bot_username, token=f"{bot_id}:{token_nonce}",
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"Revoke current token", data=f"bots-revoke/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"Revoke current token", data=f"bots-revoke/{bot_id}".encode("latin1")),
             ]),
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot_id}".encode("latin1")),
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
@@ -176,19 +186,27 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await Bot.get_or_none(owner_id=peer.owner_id, bot_id=bot_id).select_related("bot", "bot__username")
-        if bot is None:
+        bot_q = Bot.filter(owner_id=peer.owner_id, bot_id=bot_id)
+
+        if not await bot_q.exists():
             return None
 
-        bot.token_nonce = bot_gen_token()
-        await bot.save(update_fields=["token_nonce"])
+        await bot_q.update(token_nonce=bot_gen_token())
+
+        bot_info = await bot_q.get_or_none().select_related("bot", "bot__username").values_list(
+            "token_nonce", "bot__first_name", "bot__username__username",
+        )
+        if bot_info is None:
+            return None
+
+        token_nonce, bot_first_name, bot_username = bot_info
 
         message.content.message, message.content.entities = __text_bot_token_revoked.format(
-            name=bot.bot.first_name, username=bot.bot.username.username, token=f"{bot.bot_id}:{bot.token_nonce}",
+            name=bot_first_name, username=bot_username, token=f"{bot_id}:{token_nonce}",
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[
-                KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot.bot_id}".encode("latin1")),
+                KeyboardButtonCallback(text=f"<- Back to Bot", data=f"bots/{bot_id}".encode("latin1")),
             ]),
         ]).write()
         message.content.invalidate_reply_markup_cache()
@@ -206,24 +224,42 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
         except ValueError:
             return None
 
-        bot = await User.get_or_none(id=bot_id, bot_bot__owner_id=peer.owner_id).select_related("username")
-        if bot is None:
+        bot_info = await User.get_or_none(
+            id=bot_id, bot_bot__owner_id=peer.owner_id,
+        ).select_related("username").values_list("first_name", "about", "username__username")
+        if bot_info is None:
             return None
 
-        bot_info, _ = await BotInfo.get_or_create(user_id=bot_id)
+        bot_first_name, bot_about, bot_username = bot_info
+
+        bot_info = await BotInfo.get_or_none(
+            user_id=bot_id,
+        ).only("description", "description_photo_id", "privacy_policy_url")
         has_photo = await UserPhoto.filter(user_id=bot_id).exists()
         commands_count = await BotCommand.filter(bot_id=bot_id).count()
         comm_plural_s = "s" if commands_count > 1 else ""
 
+        description = bot_info.description if bot_info is not None and bot_info.description else "🚫"
+        description_photo = (
+            "has description picture"
+            if bot_info is not None and bot_info.description_photo
+            else "🚫 no description picture"
+        )
+        privacy_policy_url = (
+            bot_info.privacy_policy_url
+            if bot_info is not None and bot_info.privacy_policy_url
+            else "🚫"
+        )
+
         message.content.message, message.content.entities = __text_bot_edit_info.format(
-            username=bot.username.username,
-            name=bot.first_name,
-            about=bot.about if bot.about else "🚫",
-            description=bot_info.description if bot_info.description else "🚫",
-            picture="has description picture" if bot_info.description_photo else "🚫 no description picture",
+            username=bot_username,
+            name=bot_first_name,
+            about=bot_about if bot_about else "🚫",
+            description=description,
+            picture=description_photo,
             profile_picture="🖼 has a botpic" if has_photo else "🚫 no botpic",
             commands=f"{commands_count} command{comm_plural_s}" if commands_count else "no commands yet",
-            privacy_policy=bot_info.privacy_policy_url if bot_info.privacy_policy_url else "🚫",
+            privacy_policy=privacy_policy_url,
         )
         message.content.reply_markup = ReplyInlineMarkup(rows=[
             KeyboardButtonRow(buttons=[

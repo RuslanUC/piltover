@@ -7,7 +7,8 @@ from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType
 from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule, Bot
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector, InputUser
+from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector
+from piltover.tl.base import InputUser as TLInputUserBase
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto, PhotosSlice
 from piltover.worker import MessageHandler
@@ -17,7 +18,7 @@ handler = MessageHandler("photos")
 
 @handler.on_request(GetUserPhotos, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_user_photos(request: GetUserPhotos, user_id: int) -> Photos | PhotosSlice:
-    peer = await Peer.from_input_peer_raise(user_id, request.user_id, peer_types=(PeerType.SELF, PeerType.USER))
+    peer = await Peer.query_from_input_user_or_raise(user_id, request.user_id).select_related("user__username")
 
     if not await PrivacyRule.has_access_to(user_id, peer.user, PrivacyRuleKeyType.PROFILE_PHOTO):
         return Photos(photos=[], users=[])
@@ -58,11 +59,11 @@ async def get_user_photos(request: GetUserPhotos, user_id: int) -> Photos | Phot
     )
 
 
-async def _current_user_or_bot(input_bot: InputUser, user: User) -> User:
+async def _current_user_or_bot(input_bot: TLInputUserBase | None, user: User) -> User:
     if input_bot is None:
         return user
 
-    peer = await Peer.from_input_peer_raise(user, input_bot, "BOT_INVALID")
+    peer = await Peer.query_from_input_user_or_raise(user.id, input_bot, error_message="BOT_INVALID")
     if peer.type is not PeerType.USER or not peer.user.bot:
         raise ErrorRpc(error_code=400, error_message="BOT_INVALID")
     if not await Bot.filter(owner=user, bot=peer.user).exists():
@@ -94,7 +95,6 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
         elif not request.fallback:
             await UserPhoto.filter(user=target_user).update(current=False)
         elif request.fallback:
-            # TODO: or dont delete and just get latest UserPhoto in GetFullUser?
             await UserPhoto.filter(user=target_user, fallback=True).delete()
 
         photo = await UserPhoto.create(
@@ -119,13 +119,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
 async def delete_photos(request: DeletePhotos, user: User):
     deleted = LongVector()
 
-    ids = []
-
-    for photo in request.id:
-        if not isinstance(photo, InputPhoto):
-            continue
-        ids.append(photo.id)
-
+    ids = [photo.id for photo in request.id if isinstance(photo, InputPhoto)]
     if not ids:
         return deleted
 
@@ -138,8 +132,7 @@ async def delete_photos(request: DeletePhotos, user: User):
         need_new_current = False
         for photo_id, current in photos:
             actual_ids.append(photo_id)
-            if current:
-                need_new_current = True
+            need_new_current = need_new_current or current
 
         await UserPhoto.filter(id__in=actual_ids).delete()
 

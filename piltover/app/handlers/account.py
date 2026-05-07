@@ -26,11 +26,11 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
-    AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, User as TLUser, Long, \
-    UpdatesTooLong, WallPaper, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
+    AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, Long, \
+    UpdatesTooLong, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
     EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus
 from piltover.tl.base.account import ResetPasswordResult
-from piltover.tl.base import User as TLUserBase
+from piltover.tl.base import User as TLUserBase, WallPaper as TLWallPaperBase
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
     GetContentSettings, GetThemes, GetGlobalPrivacySettings, GetPrivacy, GetPassword, \
     RegisterDevice, GetAccountTTL, GetAuthorizations, UpdateUsername, CheckUsername, RegisterDevice_70, \
@@ -689,15 +689,18 @@ async def get_chat_themes(request: GetChatThemes) -> Themes | ThemesNotModified:
     return Themes(
         hash=themes_hash,
         themes=[
-            await theme.to_tl()
-            for theme in await query.select_related("document")
+            theme.to_tl()
+            for theme in await query.select_related("document").prefetch_related(
+                "themesettingss", "themesettingss__wallpaper", "themesettingss__wallpaper__document",
+                "themesettingss__wallpaper__settings",
+            )
         ]
     )
 
 
 @handler.on_request(UploadWallPaper_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(UploadWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user_id: int) -> WallPaper:
+async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user_id: int) -> TLWallPaperBase:
     attributes = []
     if request.file.name:
         attributes.append(DocumentAttributeFilename(file_name=request.file.name))
@@ -736,7 +739,7 @@ async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user_
 
 
 @handler.on_request(GetWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_wallpaper(request: GetWallPaper) -> WallPaper:
+async def get_wallpaper(request: GetWallPaper) -> TLWallPaperBase:
     wallpaper = await Wallpaper.from_input(request.wallpaper)
     if wallpaper is None:
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
@@ -744,7 +747,7 @@ async def get_wallpaper(request: GetWallPaper) -> WallPaper:
 
 
 @handler.on_request(GetMultiWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_multi_wallpapers(request: GetMultiWallPapers, user_id: int) -> TLObjectVector[WallPaper]:
+async def get_multi_wallpapers(request: GetMultiWallPapers, user_id: int) -> TLObjectVector[TLWallPaperBase]:
     if not request.wallpapers:
         return TLObjectVector()
 

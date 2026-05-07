@@ -24,7 +24,12 @@ class Theme(Model):
     creator_id: int
     document_id: int | None
 
-    async def to_tl(self) -> ThemeToFormat:
+    themesettingss: fields.ReverseRelation[models.ThemeSettings]
+
+    def to_tl(self) -> ThemeToFormat:
+        if not self.themesettingss._fetched:
+            raise ValueError("\"themesettingss\" must be fetched!")
+
         # TODO: cache tl theme
         # TODO: count installs maybe
         return ThemeToFormat(
@@ -36,9 +41,7 @@ class Theme(Model):
             document=self.document.to_tl_document() if self.document is not None else None,
             settings=[
                 settings.to_tl()
-                for settings in await models.ThemeSettings.filter(theme=self).select_related(
-                    "wallpaper", "wallpaper__document", "wallpaper__settings",
-                )
+                for settings in self.themesettingss
             ],
             emoticon=self.emoticon,
         )
@@ -52,4 +55,3 @@ class Theme(Model):
     @staticmethod
     def check_access_hash(user: int, auth: int, theme: int, access_hash: int) -> bool:
         return Theme.make_access_hash(user, auth, theme) == access_hash
-

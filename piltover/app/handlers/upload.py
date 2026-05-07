@@ -1,4 +1,5 @@
 from time import time
+from typing import cast
 from uuid import UUID
 
 import magic
@@ -44,7 +45,10 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user_id: int) 
             await file.save(update_fields=["mime"])
 
     with measure_time("<get last part>"):
-        last_part = await UploadingFilePart.filter(file=file).order_by("-part_id").first()
+        last_part_id = cast(
+            int | None,
+            await UploadingFilePart.filter(file=file).order_by("-part_id").first().values_list("part_id", flat=True)
+        )
 
     if file.total_parts > 0 and isinstance(request, SaveFilePart):
         raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
@@ -53,12 +57,13 @@ async def save_file_part(request: SaveFilePart | SaveBigFilePart, user_id: int) 
 
     size = len(request.bytes_)
     with measure_time("<check existing part>"):
-        if (ex_part := await UploadingFilePart.get_or_none(file=file, part_id=request.file_part)) is not None:
-            if size == ex_part.size:
+        existing_part = await UploadingFilePart.get_or_none(file=file, part_id=request.file_part).only("size")
+        if existing_part is not None:
+            if size == existing_part.size:
                 return True
             raise ErrorRpc(error_code=400, error_message="FILE_PART_INVALID")
     maybe_last = size % 1024 != 0 or 524288 % size != 0
-    if maybe_last and last_part is not None and last_part.part_id >= request.file_part:
+    if maybe_last and last_part_id is not None and last_part_id >= request.file_part:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_SIZE_INVALID")
     if size > 524288:
         raise ErrorRpc(error_code=400, error_message="FILE_PART_TOO_BIG")
@@ -98,14 +103,16 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
     ctx = request_ctx.get()
 
     if isinstance(location, InputPeerPhotoFileLocation):
-        # TODO: just check access hash without fetching peer
-        peer = await Peer.from_input_peer_raise(user_id, location.peer)
-        if peer.type in (PeerType.SELF, PeerType.USER):
-            q = Q(userphotos__file_id=location.photo_id, userphotos__user_id=peer.user_id)
-        elif peer.type is PeerType.CHAT:
-            q = Q(chats__photo_id=location.photo_id, chats__id=peer.chat_id)
-        elif peer.type is PeerType.CHANNEL:
-            q = Q(channels__photo_id=location.photo_id, channels__id=peer.channel_id)
+        peer_info = Peer.type_and_id_from_input(user_id, location.peer)
+        if peer_info is None:
+            raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
+        peer_type, peer_id = peer_info
+        if peer_type in (PeerType.SELF, PeerType.USER):
+            q = Q(userphotos__file_id=location.photo_id, userphotos__user_id=peer_id)
+        elif peer_type is PeerType.CHAT:
+            q = Q(chats__photo_id=location.photo_id, chats__id=peer_id)
+        elif peer_type is PeerType.CHANNEL:
+            q = Q(channels__photo_id=location.photo_id, channels__id=peer_id)
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     elif isinstance(location, InputEncryptedFileLocation):
@@ -113,7 +120,7 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         q = Q(id=location.id, type=FileType.ENCRYPTED)
     elif isinstance(location, InputStickerSetThumb):
-        set_q = Stickerset.from_input_q(location.stickerset, prefix="stickersetthumbs__set")
+        set_q = Stickerset.from_input_q(user_id, ctx.auth_id, location.stickerset, prefix="stickersetthumbs__set")
         if set_q is None:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         q = Q(stickersetthumbs__id=location.thumb_version) | set_q
@@ -134,7 +141,7 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
                 raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
             q = Q(id=location.id, type__not=FileType.ENCRYPTED)
 
-    file = await File.get_or_none(q)
+    file = await File.get_or_none(q).only("size", "photo_sizes", "mime_type", "physical_id", "created_at")
     if file is None:
         if isinstance(location, InputStickerSetThumb):
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
