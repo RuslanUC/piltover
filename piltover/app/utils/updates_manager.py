@@ -325,12 +325,14 @@ async def delete_messages(user: User | int | None, messages: dict[User | int, li
     updates_to_create = []
     user_new_pts = None
 
-    for upd_user, message_ids in messages.items():
-        upd_user_id = upd_user.id if isinstance(upd_user, User) else upd_user
+    messages_items = list(messages.items())
+    ptss = await State.add_pts_bulk(
+        [user_or_id for user_or_id, _ in messages_items],
+        [len(ids) for _, ids in messages_items]
+    )
 
-        pts_count = len(message_ids)
-        # TODO: move out of the loop?
-        new_pts = await State.add_pts(upd_user, pts_count)
+    for (upd_user, message_ids), new_pts in zip(messages_items, ptss):
+        upd_user_id = upd_user.id if isinstance(upd_user, User) else upd_user
 
         update = Update(
             user_id=upd_user_id,
@@ -347,7 +349,7 @@ async def delete_messages(user: User | int | None, messages: dict[User | int, li
                     UpdateDeleteMessages(
                         messages=message_ids,
                         pts=new_pts,
-                        pts_count=pts_count,
+                        pts_count=len(message_ids),
                     ),
                 ],
             ),
@@ -625,22 +627,25 @@ async def pin_messages(
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
-    for peer, messages in messages_by_peer.items():
-        # TODO: move out of the loop?
-        pts = await State.add_pts(peer.owner_id, len(messages))
+    messages_items = list(messages_by_peer.items())
+    ptss = await State.add_pts_bulk(
+        [peer.owner_id for peer, _ in messages_items],
+        [len(ids) for _, ids in messages_items],
+    )
 
+    for (peer, messages), new_pts in zip(messages_items, ptss):
         pinned_update = UpdatePinnedMessages(
             pinned=True,
             peer=peer.to_tl(),
             messages=[],
-            pts=pts,
+            pts=new_pts,
             pts_count=0,
         )
         unpinned_update = UpdatePinnedMessages(
             pinned=False,
             peer=peer.to_tl(),
             messages=[],
-            pts=pts,
+            pts=new_pts,
             pts_count=0,
         )
 
@@ -692,7 +697,7 @@ async def pin_messages(
 
         if user_id == peer.owner_id:
             result_update = update
-            user_pts = pts
+            user_pts = new_pts
             user_pts_count = len(messages)
 
         await SessionManager.send(update, peer.owner_id)
@@ -828,7 +833,7 @@ async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
                 ),
             ),
         ],
-        users=await User.to_tl_bulk((participant.user for participant in participants)),
+        users=await User.to_tl_bulk([participant.user for participant in participants]),
         chats=[await chat.to_tl()],
     )
 
@@ -1627,7 +1632,7 @@ async def read_messages_contents(user_id: int, message_ids: list[int]) -> tuple[
 
 async def read_channel_messages_contents(user_id: int, channel: Channel, message_ids: list[int]) -> None:
     # TODO: do we save it in database?
-    #  if yes - what pts sequence do we even use? user's or channel's?
+    #  if yes - what pts sequence do we even use? user's (surely) or channel's?
     #  if no - that's stupid, no?
     #  await Update.create(
     #      user=user,
@@ -1894,7 +1899,7 @@ async def bot_inline_query(bot: User, query: InlineQuery) -> None:
                 user_id=query.user_id,
                 query=query.query,
                 peer_type=InlineQuery.INLINE_PEER_TO_TL[query.inline_peer],
-                offset=query.offset,
+                offset=query.offset or "",
             )
         ],
         users=[await query.user.to_tl()],

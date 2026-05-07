@@ -11,7 +11,7 @@ from piltover.db import models
 from piltover.db.enums import CallDiscardReason, CALL_DISCARD_REASON_TO_TL
 from piltover.exceptions import InvalidConstructorException
 from piltover.tl import Long, PhoneCallDiscarded, PhoneCallProtocol, PhoneCallDiscardReasonDisconnect, PhoneConnection
-from piltover.tl.base import EncryptedChat as EncryptedChatBase
+from piltover.tl.base import PhoneCall as TLPhoneCallBase
 from piltover.tl.to_format import PhoneCallToFormat
 
 
@@ -54,7 +54,7 @@ class PhoneCall(Model):
     def other_user(self, current: models.User) -> models.User:
         return self.to_user if current.id == self.from_user_id else self.from_user
 
-    def to_tl(self) -> EncryptedChatBase:
+    def to_tl(self) -> TLPhoneCallBase:
         if self.discard_reason is not None:
             return PhoneCallDiscarded(
                 id=self.id,

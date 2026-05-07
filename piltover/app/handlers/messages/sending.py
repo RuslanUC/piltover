@@ -2,7 +2,7 @@ from array import array
 from collections import defaultdict
 from datetime import datetime, UTC, timedelta
 from time import time
-from typing import cast
+from typing import cast, Literal
 from uuid import UUID
 
 from fastrand import xorshift128plusrandint
@@ -29,7 +29,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
     GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
     DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
-    InputChannelEmpty, InputPeerSelf
+    InputChannelEmpty, InputPeerSelf, InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage
 from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
     ClearDraft
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
@@ -174,13 +174,16 @@ async def send_message_internal(
         **message_kwargs
 ) -> Updates:
     """
-    NOTE (probably only to myself): `user` MUST have at least `id` and `bot` prefetched
+    NOTE (probably only to myself):
+     `user` MUST have at least `id` and `bot` prefetched;
+     `peer.user` must have `username` prefetched;
     """
     if opposite \
             and peer.type is PeerType.USER \
             and peer.user.bot \
             and peer.user.system \
-            and await peer.user.get_raw_username() in bots.HANDLERS:
+            and isinstance(peer.user.username, Username) \
+            and peer.user.username.username in bots.HANDLERS:
         opposite = False
 
     if opposite and reply_to_message_id and peer.type is PeerType.CHANNEL:
@@ -231,7 +234,11 @@ async def send_message_internal(
         message_kwargs["ttl_period_days"] = peer.chat_or_channel.ttl_period_days
 
     messages = await MessageRef.create_for_peer(
-        peer, author, random_id, opposite, unhide_dialog,
+        peer, author,
+        random_id=random_id,
+        random_user_id=user.id,
+        opposite=opposite,
+        unhide_dialog=unhide_dialog,
         message=text,
         entities=entities,
         reply_to=reply_to,
@@ -284,6 +291,37 @@ async def send_message_internal(
     return updates
 
 
+async def get_updates_for_random_id(user_id: int, peer: Peer, random_id: int) -> Updates | None:
+    if (message := await MessageRef.get_from_random_id(user_id, peer, random_id)) is None:
+        return None
+
+    updates = upd.UpdatesWithDefaults(
+        updates=[
+            UpdateMessageID(
+                id=message.id,
+                random_id=random_id,
+            ),
+        ]
+    )
+
+    message_tl = await message.to_tl_maybecached(user_id)
+
+    if peer.type is PeerType.CHANNEL:
+        updates.updates.append(UpdateNewChannelMessage(
+            message=message_tl,
+            pts=peer.channel.pts,
+            pts_count=0,
+        ))
+    else:
+        updates.updates.append(UpdateNewMessage(
+            message=message_tl,
+            pts=await State.add_pts(user_id, 0),
+            pts_count=0,
+        ))
+
+    return updates
+
+
 SendMessageTypes = SendMessage_148 | SendMessage_176 | SendMessage | SendMedia_148 | SendMedia_176 | SendMedia \
                    | SendMultiMedia_148 | SendMultiMedia | SaveDraft | SaveDraft_133 | SaveDraft_148 | SaveDraft_166 \
                    | SendInlineBotResult_133 | SendInlineBotResult_135 | SendInlineBotResult_148 \
@@ -301,10 +339,11 @@ OLD_REPLY_TYPES = (
 def _resolve_reply_id(
         request: SendMessageTypes,
 ) -> int | None:
-    if isinstance(request, NEW_REPLY_TYPES) and request.reply_to is not None:
+    if isinstance(request, NEW_REPLY_TYPES) and isinstance(request.reply_to, InputReplyToMessage):
         return request.reply_to.reply_to_msg_id
     elif isinstance(request, OLD_REPLY_TYPES) and request.reply_to_msg_id is not None:
         return request.reply_to_msg_id
+    return None
 
 
 async def _make_channel_post_info_many(
@@ -433,6 +472,9 @@ async def send_message(request: SendMessage, user_id: int):
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
+    if (updates := await get_updates_for_random_id(user_id, peer, request.random_id)) is not None:
+        return updates
+
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -463,6 +505,9 @@ async def send_message(request: SendMessage, user_id: int):
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user_id)
 
+    if peer.type is PeerType.USER and peer.user.bot and peer.user.username is not None:
+        # TODO: prefetch when fetching peer
+        peer.user._username = await peer.user.username
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user, text=request.message, scheduled_date=request.schedule_date,
@@ -518,6 +563,9 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
         _, _, result = await upd.pin_messages(user_id, messages)
 
     if not request.unpin and not request.silent and not request.pm_oneside:
+        if peer.type is PeerType.USER and peer.user.bot and peer.user.username is not None:
+            # TODO: prefetch when fetching peer
+            peer.user._username = await peer.user.username
         updates = await send_message_internal(
             user, peer, None, message.id, False, author=user_id, type=MessageType.SERVICE_PIN_MESSAGE,
             extra_info=MessageActionPinMessage().write(),
@@ -982,6 +1030,9 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user_id
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
     peer = await Peer.from_input_peer_raise(user, request.peer)
+    if (updates := await get_updates_for_random_id(user_id, peer, request.random_id)) is not None:
+        return updates
+
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -1016,6 +1067,9 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user_id
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user_id)
 
+    if peer.type is PeerType.USER and peer.user.bot and peer.user.username is not None:
+        # TODO: prefetch when fetching peer
+        peer.user._username = await peer.user.username
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, text=request.message, media=media,
@@ -1074,6 +1128,8 @@ async def forward_messages(
         request: ForwardMessages | ForwardMessages_148 | ForwardMessages_176, user: User,
 ) -> Updates:
     from_peer = None
+
+    # TODO: return already existing messages with random_id from request.random_ids
 
     if isinstance(request.from_peer, InputPeerEmpty):
         first_msg = await MessageRef.get_or_none(peer__owner=user, id=request.id[-1]).select_related(
@@ -1205,6 +1261,7 @@ async def forward_messages(
         to_peer=to_peer,
         peers=peers,
         random_ids=[random_ids[ref.id] for ref in messages],
+        random_user_id=user.id,
         reply_to_content_ids=reply_to_content_ids,
         pinned=SingleElementList(False, len(forwarded_contents)),
         is_discussion=SingleElementList(False, len(forwarded_contents)),
@@ -1264,6 +1321,8 @@ async def upload_media(request: UploadMedia | UploadMedia_133, user_id: int):
 @handler.on_request(SendMultiMedia, ReqHandlerFlags.DONT_FETCH_USER)
 async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMultiMedia_176, user_id: int):
     user = await User.get(id=user_id).only("id", "bot", "first_name")
+
+    # TODO: return existing messages by random_id
 
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
@@ -1340,6 +1399,10 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
         is_anonymous, post_signature = _make_supergroup_anonymous_maybe(peer, participant)
     else:
         is_anonymous = False
+
+    if peer.type is PeerType.USER and peer.user.bot and peer.user.username is not None:
+        # TODO: prefetch when fetching peer
+        peer.user._username = await peer.user.username
 
     updates = None
     for idx, ((message, random_id, media, entities), post_info) in enumerate(zip(messages, post_infos)):
@@ -1442,6 +1505,9 @@ async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> 
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
+    if (updates := await get_updates_for_random_id(user_id, peer, request.random_id)) is not None:
+        return updates
+
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -1496,6 +1562,9 @@ async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> 
     if request.hide_via and via_bot.system:
         via_bot = None
 
+    if peer.type is PeerType.USER and peer.user.bot and peer.user.username is not None:
+        # TODO: prefetch when fetching peer
+        peer.user._username = await peer.user.username
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
         author=user, text=item.send_message_text or "", media=media, entities=item.send_message_entities,
@@ -1592,6 +1661,9 @@ async def start_bot(request: StartBot, user_id: int):
                 or (chat_peer.type is PeerType.CHANNEL and not chat_peer.channel.supergroup):
             raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
+    if (updates := await get_updates_for_random_id(user_id, chat_peer, request.random_id)) is not None:
+        return updates
+
     participant = None
     if chat_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = chat_peer.chat_or_channel
@@ -1614,6 +1686,9 @@ async def start_bot(request: StartBot, user_id: int):
     if chat_peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(chat_peer.channel, user_id)
 
+    if chat_peer.type is PeerType.USER and chat_peer.user.bot and chat_peer.user.username is not None:
+        # TODO: prefetch when fetching peer
+        chat_peer.user._username = await chat_peer.user.username
     return await send_message_internal(
         user, chat_peer, request.random_id, None, False,
         author=user, text=message_text,

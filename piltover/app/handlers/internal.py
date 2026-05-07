@@ -107,8 +107,8 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
         discussion_message, = await message.forward_for_peers(
             to_peer=discussion_peer,
             peers=[discussion_peer],
-            no_forwards=_resolve_noforwards(discussion_peer, None, False),
             fwd_header=await message.create_fwd_header(False),
+            no_forwards=_resolve_noforwards(discussion_peer, None, False),
             is_forward=True,
             pinned=True,
             is_discussion=True,

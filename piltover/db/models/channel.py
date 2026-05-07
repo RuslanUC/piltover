@@ -222,7 +222,7 @@ class Channel(ChatBase):
         await self.refresh_from_db()
         return await self.to_tl()
 
-    def min_id(self, participant: models.ChatParticipant) -> int | None:
+    def min_id(self, participant: models.ChatParticipant | None) -> int | None:
         min_available_id_force = self.min_available_id_force or 0
         if participant is not None:
             return max(min_available_id_force, participant.min_message_id or 0) or None

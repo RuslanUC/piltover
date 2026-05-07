@@ -10,10 +10,12 @@ from pyrogram.enums import MessageEntityType
 from pyrogram.errors import NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
-    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft, GetMessagesViews
+    GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft, GetMessagesViews, \
+    SendMessage
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
-    UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty
+    UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty, Updates, \
+    UpdateMessageID
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F, Subquery
@@ -1418,3 +1420,73 @@ async def test_forward_multiple_messages_same_peer_self(client_with_auth: Client
     texts = ["test 3", "test 2", "test 1"]
     for i in range(len(messages)):
         assert messages[i].text == texts[i % len(texts)]
+
+
+@pytest.mark.asyncio
+async def test_message_random_id_duplicate_in_private_chat(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    updates1 = await client.invoke(SendMessage(
+        peer=await client.resolve_peer("me"),
+        message="test 123456",
+        random_id=123,
+    ))
+    assert isinstance(updates1, Updates)
+    assert isinstance(updates1.updates[0], UpdateMessageID)
+    assert isinstance(updates1.updates[1], UpdateNewMessage)
+    assert updates1.updates[1].pts_count == 1
+
+    updates2 = await client.invoke(SendMessage(
+        peer=await client.resolve_peer("me"),
+        message="test 123456",
+        random_id=123,
+    ))
+    assert isinstance(updates2, Updates)
+    assert isinstance(updates2.updates[0], UpdateMessageID)
+    assert isinstance(updates2.updates[1], UpdateNewMessage)
+    assert updates2.updates[1].pts_count == 0
+
+    assert updates1.updates[0] == updates2.updates[0]
+    assert updates1.updates[1].message.id == updates2.updates[1].message.id
+    assert updates1.updates[1].message.peer_id == updates2.updates[1].message.peer_id
+    assert updates1.updates[1].message.from_id == updates2.updates[1].message.from_id
+    assert updates1.updates[1].message.date == updates2.updates[1].message.date
+    assert updates1.updates[1].message.message == updates2.updates[1].message.message
+
+    messages = [message async for message in client.get_chat_history("me")]
+    assert len(messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_message_random_id_duplicate_in_channel(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    updates1 = await client.invoke(SendMessage(
+        peer=await client.resolve_peer(channel.id),
+        message="test 123456",
+        random_id=123,
+    ))
+    assert isinstance(updates1, Updates)
+    assert isinstance(updates1.updates[0], UpdateMessageID)
+    assert isinstance(updates1.updates[1], UpdateNewChannelMessage)
+    assert updates1.updates[1].pts_count == 1
+
+    updates2 = await client.invoke(SendMessage(
+        peer=await client.resolve_peer(channel.id),
+        message="test 123456",
+        random_id=123,
+    ))
+    assert isinstance(updates2, Updates)
+    assert isinstance(updates2.updates[0], UpdateMessageID)
+    assert isinstance(updates2.updates[1], UpdateNewChannelMessage)
+    assert updates2.updates[1].pts_count == 0
+
+    assert updates1.updates[0] == updates2.updates[0]
+    assert updates1.updates[1].message.id == updates2.updates[1].message.id
+    assert updates1.updates[1].message.peer_id == updates2.updates[1].message.peer_id
+    assert updates1.updates[1].message.date == updates2.updates[1].message.date
+    assert updates1.updates[1].message.message == updates2.updates[1].message.message
+
+    messages = [message async for message in client.get_chat_history(channel.id)]
+    assert len(messages) == 1
+

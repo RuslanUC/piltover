@@ -177,7 +177,7 @@ async def discard_call(request: DiscardCall, user_id: int) -> Updates:
     call = await PhoneCall.get_or_none(
         Q(from_user_id=user_id, from_sess_id=ctx.auth_id) | Q(to_user_id=user_id),
         id=request.peer.id, access_hash=request.peer.access_hash, discard_reason__isnull=True,
-    ).select_related("from_user", "to_user")
+    ).select_related("from_user", "to_user", "from_user__username", "to_user__username")
     if call is None:
         raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
 

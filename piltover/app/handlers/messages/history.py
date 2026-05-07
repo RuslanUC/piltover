@@ -963,6 +963,9 @@ async def set_history_ttl(request: SetHistoryTTL, user_id: int) -> Updates:
     user = await User.get(id=user_id).only("id")
     user.bot = False
 
+    if peer.type is PeerType.USER and peer.user.bot and peer.user.username is not None:
+        # TODO: prefetch when fetching peer
+        peer.user._username = await peer.user.username
     updates_msg = await send_message_internal(
         user, peer, None, None, False,
         author=user_id, type=MessageType.SERVICE_CHAT_UPDATE_TTL, ttl_period_days=None,

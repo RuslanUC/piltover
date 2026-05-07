@@ -44,7 +44,7 @@ class Update(Model):
     pts: int = fields.BigIntField(db_index=True)
     pts_count: int = fields.IntField(default=0)
     date: datetime = fields.DatetimeField(auto_now_add=True)
-    related_id: int = fields.BigIntField(db_index=True, null=True)
+    related_id: int = fields.BigIntField(db_index=True, null=True, default=None)
     # TODO: probably there is a better way to store multiple updates (right now it is only used for deleted messages,
     #  so maybe create two tables: something like UpdateDeletedMessage and UpdateDeletedMessageId,
     #  related_id will point to UpdateDeletedMessage.id

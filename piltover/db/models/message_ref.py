@@ -11,11 +11,11 @@ from tortoise.functions import Count, Max, Coalesce
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
-from piltover.db.models.utils import NullableFKSetNull
+from piltover.db.models.utils import NullableFKSetNull, NullableFK
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount, \
     MessageReplies as TLMessageReplies, PeerChannel, PeerUser
-from piltover.tl.base import Message as TLMessageBase
+from piltover.tl.base import Message as TLMessageBase, Peer as TLPeerBase
 from piltover.tl.base.internal import MessageToFormatRef
 from piltover.tl.to_format import MessageToFormat, ChannelMessageToFormat
 from piltover.tl.types.internal import ChannelMessageToFormatCommon
@@ -62,6 +62,7 @@ class MessageRef(Model):
     content: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     random_id: int | None = fields.BigIntField(null=True, default=None, db_index=True)
+    random_user: models.User | None = NullableFK("models.User")
     pinned: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
     from_scheduled: bool = fields.BooleanField(default=False)
@@ -72,6 +73,7 @@ class MessageRef(Model):
 
     content_id: int
     peer_id: int
+    random_user_id: int | None
     reply_to_id: int | None
     top_message_id: int | None
     discussion_id: int | None
@@ -97,7 +99,7 @@ class MessageRef(Model):
     class Meta:
         unique_together = (
             ("peer", "content"),
-            ("peer", "random_id"),
+            ("peer", "random_id", "random_user"),
         )
         indexes = (
             ("peer_id", "pinned"),
@@ -400,12 +402,12 @@ class MessageRef(Model):
 
         return results
 
-    async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, Self]:
+    async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, MessageRef]:
         peers = [self.peer]
         if opposite and self.peer.type is not PeerType.CHANNEL:
             peers.extend(await self.peer.get_opposite())
         elif opposite and self.peer.type is PeerType.CHANNEL:
-            peers = [await models.Peer.get_or_none(owner=None, channel_id=self.peer.channel_id, type=PeerType.CHANNEL)]
+            peers = [await models.Peer.get(owner=None, channel_id=self.peer.channel_id, type=PeerType.CHANNEL)]
 
         if self.reply_to_id:
             replies = {
@@ -431,7 +433,7 @@ class MessageRef(Model):
         await models.Dialog.create_or_unhide_bulk(peers)
         return messages
 
-    async def clone_ref_for_peer(self, peer: models.Peer) -> Self:
+    async def clone_ref_for_peer(self, peer: models.Peer) -> MessageRef:
         return await models.MessageRef.create(
             peer=peer,
             content=self.content,
@@ -439,10 +441,8 @@ class MessageRef(Model):
         )
 
     async def forward_for_peers(
-            self, to_peer: models.Peer, peers: Iterable[models.Peer], new_author: models.User | None = None,
-            random_id: int | None = None,
-            # TODO: make required
-            fwd_header: models.MessageFwdHeader | None = None,
+            self, to_peer: models.Peer, peers: Iterable[models.Peer], fwd_header: models.MessageFwdHeader,
+            new_author: models.User | None = None, random_id: int | None = None, random_user_id: int | None = None,
             reply_to_content_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
             is_discussion: bool = False, channel_post: bool | None = None,
@@ -487,7 +487,8 @@ class MessageRef(Model):
                 peer=peer,
                 content=content,
                 pinned=self.pinned if pinned is None else pinned,
-                random_id=random_id if peer == to_peer else None,
+                random_id=random_id if peer == to_peer or peer.type is PeerType.CHANNEL else None,
+                random_user_id=random_user_id if peer == to_peer or peer.type is PeerType.CHANNEL else None,
                 reply_to_id=replies.get(peer.id),
                 is_discussion=is_discussion,
             ))
@@ -514,6 +515,7 @@ class MessageRef(Model):
             to_peer: models.Peer,
             peers: Iterable[models.Peer],
             random_ids: Sequence[int | None],
+            random_user_id: int | None,
             reply_to_content_ids: Sequence[int | None],
             pinned: Sequence[bool],
             is_discussion: Sequence[bool],
@@ -578,16 +580,11 @@ class MessageRef(Model):
 
     @classmethod
     async def create_for_peer(
-            cls, peer: models.Peer, author: models.User | int, random_id: int | None = None,
-            opposite: bool = True, unhide_dialog: bool = True, reply_to: MessageRef | None = None,
-            top_message: MessageRef | None = None,
+            cls, peer: models.Peer, author: models.User | int, *, random_id: int | None = None,
+            random_user_id: int | None = None, opposite: bool = True, unhide_dialog: bool = True,
+            reply_to: MessageRef | None = None, top_message: MessageRef | None = None,
             **message_kwargs,
     ) -> dict[models.Peer, Self]:
-        # TODO: create composite index with random_id, peer (and user so in channels it will work properly?) \
-        #  and rely on database error
-        if random_id is not None and await cls.filter(peer=peer, random_id=random_id).exists():
-            raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
-
         author_kwargs = {}
         if isinstance(author, models.User):
             author_kwargs["author"] = author
@@ -606,7 +603,7 @@ class MessageRef(Model):
         if opposite and peer.type is not PeerType.CHANNEL:
             peers.extend(await peer.get_opposite())
         elif opposite and peer.type is PeerType.CHANNEL:
-            peers = [await models.Peer.get_or_none(owner=None, channel=peer.channel, type=PeerType.CHANNEL)]
+            peers = [await models.Peer.get(owner=None, channel=peer.channel, type=PeerType.CHANNEL)]
 
         if reply_to is not None:
             replies = {
@@ -623,6 +620,7 @@ class MessageRef(Model):
                 peer=to_peer,
                 content=content,
                 random_id=random_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
+                random_user_id=random_user_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
                 reply_to=replies.get(to_peer.id),
                 top_message=top_message,
             )
@@ -890,7 +888,7 @@ class MessageRef(Model):
             f"{self.content.reactions_version}"
         )
 
-    async def _get_recent_repliers(self) -> list[...] | None:
+    async def _get_recent_repliers(self) -> list[TLPeerBase] | None:
         query = Q(reply_to_id=self.discussion_id, top_message_id=self.discussion_id, join_type=Q.OR)
         recent_replies = await MessageRef.filter(query).order_by("-id").limit(5).distinct().values_list(
             "content__author_id", "content__anonymous", "content__send_as_channel_id",
@@ -1071,3 +1069,9 @@ class MessageRef(Model):
 
     def cache_key_replies(self) -> str:
         return f"message-replies:{self.content_id}:{self.content.replies_version}"
+
+    @classmethod
+    async def get_from_random_id(cls, user_id: int, peer: models.Peer, random_id: int) -> MessageRef | None:
+        return await MessageRef.get_or_none(
+            peer.q_this_or_channel(), random_user_id=user_id, random_id=random_id,
+        ).select_related(*cls.PREFETCH_MAYBECACHED)
