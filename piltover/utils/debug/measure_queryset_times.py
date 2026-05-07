@@ -96,7 +96,7 @@ def patch_queryset_for_measurement() -> QueryStats:
             query_stats_all.add(query_stats)
             logger.info(
                 f"{self.func.__name__} made {query_stats.execute_count} ({query_stats.make_query_count}) queries "
-                f"that took {query_stats.execute_count:.2f}ms ({query_stats.make_query_time:.2f}ms)"
+                f"that took {query_stats.execute_time:.2f}ms ({query_stats.make_query_time:.2f}ms)"
             )
 
     _patch_cls_replace_method(RequestHandler, call_methods, real_suffix, _RequestHandler___call__)
@@ -112,7 +112,7 @@ def patch_queryset_for_measurement() -> QueryStats:
             query_stats_all.add(query_stats)
             logger.info(
                 f"_resolve_context_values made {query_stats.execute_count} ({query_stats.make_query_count}) queries "
-                f"that took {query_stats.execute_count:.2f}ms ({query_stats.make_query_time:.2f}ms)"
+                f"that took {query_stats.execute_time:.2f}ms ({query_stats.make_query_time:.2f}ms)"
             )
 
     _patch_cls_replace_method(Client, resolve_ctx_methods, real_suffix, staticmethod(_Client__resolve_context_values))
