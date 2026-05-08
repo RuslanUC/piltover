@@ -23,7 +23,31 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     ctx = request_ctx.get()
 
     peer_query = Peer.query_from_input_user_or_raise(user_id, request.id, ctx.auth_id)
-    peer = await peer_query.select_related("user__username", "user__background_emojis", "user__emoji_status")
+    peer = await peer_query.select_related("user__username", "user__background_emojis", "user__emoji_status").only(
+        "id", "user_has_wallpaper", "user_ttl_period_days", "blocked_at", "type", "user_id",
+
+        "user__id",
+        "user__phone_number",
+        "user__first_name",
+        "user__last_name",
+        "user__lang_code",
+        "user__about",
+        "user__birthday",
+        "user__bot",
+        "user__deleted",
+        "user__read_dates_private",
+        "user__version",
+        "user__accent_color_id",
+        "user__profile_color_id",
+
+        "user__username__username",
+
+        "user__background_emojis__accent_emoji_id",
+        "user__background_emojis__profile_emoji_id",
+
+        "user__emoji_status__emoji_id",
+        "user__emoji_status__until",
+    )
     if peer is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
