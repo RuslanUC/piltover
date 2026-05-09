@@ -1,6 +1,6 @@
 from asyncio import sleep
 from time import time
-from typing import Collection
+from typing import Collection, cast
 
 from loguru import logger
 from tortoise.transactions import in_transaction
@@ -962,17 +962,17 @@ async def block_unblock_user(user_id: int, target: Peer) -> None:
     ), user_id)
 
 
-async def update_chat(chat: Chat) -> Updates | None:
+async def update_chat(chat: Chat) -> Updates:
+    participant_ids = cast(
+        list[int],
+        await User.filter(chatparticipants__chat_id=chat.id, chatparticipants__left=False).values_list("id", flat=True)
+    )
+    ptss = await State.add_pts_bulk(participant_ids, 1)
+
     updates_to_create = []
-
-    chat_tl = await chat.to_tl()
-
-    participants = await User.filter(chatparticipants__chat_id=chat.id, chatparticipants__left=False).only("id")
-    ptss = await State.add_pts_bulk(participants, 1)
-
-    for user, pts in zip(participants, ptss):
+    for user_id, pts in zip(participant_ids, ptss):
         updates_to_create.append(Update(
-            user=user,
+            user_id=user_id,
             update_type=UpdateType.UPDATE_CHAT,
             pts=pts,
             related_id=chat.id,
@@ -980,11 +980,11 @@ async def update_chat(chat: Chat) -> Updates | None:
 
     updates = UpdatesWithDefaults(
         updates=[UpdateChat(chat_id=chat.make_id())],
-        chats=[chat_tl],
+        chats=[await chat.to_tl()],
     )
 
     await Update.bulk_create(updates_to_create)
-    await SessionManager.send(updates, user_id=[user.id for user in participants])
+    await SessionManager.send(updates, user_id=participant_ids)
 
     return updates
 

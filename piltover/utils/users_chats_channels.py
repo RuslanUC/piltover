@@ -28,7 +28,6 @@ class UsersChatsChannels:
         self._channel_ids: set[int] = set()
         self._message_ids: set[int] = set()
         self._message_ref_ids: set[int] = set()
-        self._peer_ids: dict[PeerType, set[int]] = {}
 
     def add_user(self, user_id: int) -> None:
         self._user_ids.add(user_id)
@@ -47,12 +46,12 @@ class UsersChatsChannels:
 
     def add_peer(self, peer: models.Peer) -> None:
         peer_type = peer.type
-        if peer_type is PeerType.SELF:
-            peer_type = PeerType.USER
-
-        if peer_type not in self._peer_ids:
-            self._peer_ids[peer_type] = set()
-        self._peer_ids[peer_type].add(peer.id)
+        if peer_type in (PeerType.SELF, PeerType.USER):
+            self._user_ids.add(peer.user_id)
+        elif peer_type is PeerType.CHAT:
+            self._chat_ids.add(peer.chat_id)
+        elif peer_type is PeerType.CHANNEL:
+            self._channel_ids.add(peer.channel_id)
 
     def add_chat_invite(self, invite: models.ChatInvite) -> None:
         if invite.user_id is not None:
@@ -66,8 +65,7 @@ class UsersChatsChannels:
         if not self._user_ids \
                 and not self._chat_ids \
                 and not self._channel_ids \
-                and not self._message_ids \
-                and not self._peer_ids:
+                and not self._message_ids:
             return None, None, None
 
         users_q = Q()
@@ -92,19 +90,6 @@ class UsersChatsChannels:
             users_q |= Q(id__in=Subquery(base_query.values("user_id")))
             chats_q |= Q(id__in=Subquery(base_query.values("chat_id")))
             channels_q |= Q(id__in=Subquery(base_query.values("channel_id")))
-
-        if PeerType.USER in self._peer_ids:
-            users_q |= Q(id__in=Subquery(
-                models.Peer.filter(id__in=self._peer_ids[PeerType.USER]).values("user_id")
-            ))
-        if PeerType.CHAT in self._peer_ids:
-            chats_q |= Q(id__in=Subquery(
-                models.Peer.filter(id__in=self._peer_ids[PeerType.CHAT]).values("chat_id")
-            ))
-        if PeerType.CHANNEL in self._peer_ids:
-            channels_q |= Q(id__in=Subquery(
-                models.Peer.filter(id__in=self._peer_ids[PeerType.CHANNEL]).values("channel_id")
-            ))
 
         return (
             models.User.filter(users_q) if users_q != _EMPTY else None,

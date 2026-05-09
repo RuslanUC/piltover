@@ -10,11 +10,12 @@ from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType
 from piltover.db.models import UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate, MessageRef, Dialog
 from piltover.enums import ReqHandlerFlags
+from piltover.exceptions import ErrorRpc
 from piltover.tl import UpdateChannelTooLong
+from piltover.tl.base.updates import Difference as TLDifferenceBase, ChannelDifference as TLChannelDifferenceBase
 from piltover.tl.functions.updates import GetState, GetDifference, GetDifference_133, GetChannelDifference
 from piltover.tl.types.updates import State as TLState, Difference, ChannelDifferenceEmpty, DifferenceEmpty, \
     ChannelDifference, DifferenceTooLong, DifferenceSlice, ChannelDifferenceTooLong
-from piltover.tl.base.updates import Difference as TLDifferenceBase, ChannelDifference as TLChannelDifferenceBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -185,20 +186,25 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
 
 @handler.on_request(GetChannelDifference, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_channel_difference(request: GetChannelDifference, user_id: int) -> TLChannelDifferenceBase:
-    peer = await Peer.from_input_peer_raise(
-        user_id, request.channel, message="CHANNEL_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
+    peer_type, peer_channel_id = Peer.type_and_id_from_input_raise(user_id, request.channel)
+    if peer_type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    peer = await Peer.get_or_none(owner_id=user_id, channel_id=peer_channel_id).select_related("channel").only(
+        "id", "channel_id", "channel__pts"
     )
+    if peer is None:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
     server_pts = cast(
         int | None,
         await ChannelUpdate.filter(
-            channel=peer.channel,
+            channel_id=peer.channel_id,
         ).annotate(max_pts=Max("pts")).first().values_list("max_pts", flat=True)
     ) or 0
 
     if server_pts > (request.pts + request.limit):
         dialog, _ = await Dialog.get_or_create(peer=peer, defaults={"visible": False})
-        last_message = await MessageRef.filter(peer.q_this_or_channel()).select_related(
+        last_message = await MessageRef.filter(peer__owner=None, peer__channel_id=peer.channel_id).select_related(
             *MessageRef.PREFETCH_MAYBECACHED,
         ).order_by("-id").first()
         if last_message:
@@ -218,7 +224,7 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
         )
 
     new_updates = await ChannelUpdate.filter(
-        channel=peer.channel, pts__gt=request.pts
+        channel_id=peer.channel_id, pts__gt=request.pts
     ).order_by("pts").limit(request.limit).select_related(*ChannelUpdate.MESSAGE_PREFETCH_MAYBECACHED)
 
     if not new_updates:
@@ -231,7 +237,7 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
             timeout=CHANNEL_UPDATES_TIMEOUT,
         )
 
-    has_more = await ChannelUpdate.filter(channel=peer.channel, pts__gt=new_updates[-1].pts).exists()
+    has_more = await ChannelUpdate.filter(channel_id=peer.channel_id, pts__gt=new_updates[-1].pts).exists()
 
     new_message_ids = {update.message_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE}
     update_by_message_id = {update.message_id: update for update in new_updates if update.message_id is not None}

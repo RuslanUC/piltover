@@ -269,64 +269,68 @@ async def edit_chat_photo(request: EditChatPhoto, user_id: int):
 @handler.on_request(AddChatUser_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(AddChatUser, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def add_chat_user(request: AddChatUser, user_id: int):
-    chat_peer = await Peer.from_chat_id_raise(user_id, request.chat_id)
-    user_peer = await Peer.from_input_peer_raise(user_id, request.user_id)
+    chat = await Chat.get_or_none(peers__owner_id=user_id, id=Chat.norm_id(request.chat_id)).select_related("photo")
+    if chat is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    user_peer_type, user_peer_id = Peer.type_and_id_from_input_raise(user_id, request.user_id)
+    if user_peer_type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    participant = await chat_peer.chat.get_participant_raise(user_id)
-    if not chat_peer.chat.user_has_permission(participant, ChatBannedRights.INVITE_USERS):
+    participant = await chat.get_participant_raise(user_id)
+    if not chat.user_has_permission(participant, ChatBannedRights.INVITE_USERS):
         raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
-    if await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
+    if await Peer.filter(owner_id=user_peer_id, chat_id=chat.id).exists():
         raise ErrorRpc(error_code=400, error_message="USER_ALREADY_PARTICIPANT")
 
-    if await ChatParticipant.filter(chat=chat_peer.chat).count() > APP_CONFIG.basic_group_member_limit:
+    if await ChatParticipant.filter(chat_id=chat.id).count() > APP_CONFIG.basic_group_member_limit:
         raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
-    if not await PrivacyRule.has_access_to(user_id, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):
+    if not await PrivacyRule.has_access_to(user_id, user_peer_id, PrivacyRuleKeyType.CHAT_INVITE):
         raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
     chat_peers = {
         peer.owner_id: peer
-        for peer in await Peer.filter(chat=chat_peer.chat).select_related("chat")
+        for peer in await Peer.filter(chat_id=chat.id)
     }
-    if chat_peer.owner_id not in chat_peers:
-        chat_peers[chat_peer.owner_id] = chat_peer
-    invited_user_id = user_peer.user_id
-    if invited_user_id not in chat_peers:
+    if user_peer_id not in chat_peers:
         async with in_transaction():
-            chat_peers[invited_user_id] = await Peer.create(
-                owner_id=invited_user_id, chat=chat_peer.chat, type=PeerType.CHAT,
+            chat_peers[user_peer_id] = await Peer.create(
+                owner_id=user_peer_id, chat_id=chat.id, type=PeerType.CHAT,
             )
             await ChatParticipant.create(
-                user_id=invited_user_id,
-                chat=chat_peer.chat,
-                chat_channel_id=chat_peer.chat.make_id(),
+                user_id=user_peer_id,
+                chat_id=chat.id,
+                chat_channel_id=chat.make_id(),
                 inviter_id=user_id,
             )
             await ChatInviteRequest.filter(id__in=Subquery(
                 ChatInviteRequest.filter(
-                    user_id=invited_user_id, invite__chat=chat_peer.chat,
+                    user_id=user_peer_id, invite__chat_id=chat.id,
                 ).values_list("id", flat=True)
             )).delete()
-            await Chat.filter(id=chat_peer.chat_id).update(
+            await Chat.filter(id=chat.id).update(
                 participants_count=F("participants_count") + 1,
                 version=F("version") + 1.
             )
-            await chat_peer.chat.refresh_from_db(["participants_count", "version"])
+            await chat.refresh_from_db(["participants_count", "version"])
 
-    updates = await upd.update_chat_participants(chat_peer.chat, list(chat_peers.values()))
+    for chat_peer_ in chat_peers.values():
+        chat_peer_.chat = chat
+
+    updates = await upd.update_chat_participants(chat, list(chat_peers.values()))
 
     if request.fwd_limit > 0:
         limit = min(request.fwd_limit, 100)
         messages_to_forward = await MessageRef.filter(
-            peer=chat_peer, content__type=MessageType.REGULAR
+            peer__owner_id=user_id, peer__chat_id=chat.id, content__type=MessageType.REGULAR
         ).order_by("-id").limit(limit).select_related(*MessageRef.PREFETCH_FIELDS)
         messages = []
         # TODO: do this in bulk?
         for message in messages_to_forward:
-            messages.append(await message.clone_ref_for_peer(chat_peers[invited_user_id]))
+            messages.append(await message.clone_ref_for_peer(chat_peers[user_peer_id]))
 
-        await upd.send_messages({chat_peers[invited_user_id]: messages})
+        await upd.send_messages({chat_peers[user_peer_id]: messages})
 
     user = await User.get(id=user_id).only("id")
     user.bot = False
@@ -334,7 +338,7 @@ async def add_chat_user(request: AddChatUser, user_id: int):
     updates_msg = await send_message_internal(
         user, chat_peers[user_id], None, None, False,
         author=user_id, type=MessageType.SERVICE_CHAT_USER_ADD,
-        extra_info=MessageActionChatAddUser(users=[invited_user_id]).write(),
+        extra_info=MessageActionChatAddUser(users=[user_peer_id]).write(),
     )
 
     if isinstance(updates_msg, Updates):
@@ -349,21 +353,23 @@ async def add_chat_user(request: AddChatUser, user_id: int):
 @handler.on_request(DeleteChatUser, ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
     chat_peer = await Peer.from_chat_id_raise(user_id, request.chat_id)
-    user_peer = await Peer.from_input_peer_raise(user_id, request.user_id)
+    user_peer_type, user_peer_id = Peer.type_and_id_from_input_raise(user_id, request.user_id)
+    if user_peer_type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user_id=user_id)
     if participant is None or not (participant.is_admin or chat_peer.chat.creator_id == user_id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    if not await Peer.filter(owner=user_peer.user, chat=chat_peer.chat).exists():
+    if not await Peer.filter(owner_id=user_peer_id, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     messages = await MessageRef.create_for_peer(
         chat_peer, user_id,
         type=MessageType.SERVICE_CHAT_USER_DEL,
-        extra_info=MessageActionChatDeleteUser(user_id=user_peer.user_id).write(),
+        extra_info=MessageActionChatDeleteUser(user_id=user_peer_id).write(),
     )
-    await ChatParticipant.filter(chat=chat_peer.chat, user=user_peer.user).delete()
+    await ChatParticipant.filter(chat=chat_peer.chat, user_id=user_peer_id).delete()
     await Chat.filter(id=chat_peer.chat_id).update(
         participants_count=F("participants_count") - 1,
         version=F("version") + 1.
@@ -387,22 +393,26 @@ async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
 
 @handler.on_request(EditChatAdmin, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def edit_chat_admin(request: EditChatAdmin, user_id: int) -> bool:
-    chat_peer = await Peer.from_chat_id_raise(user_id, request.chat_id)
-    target_peer = await Peer.query_from_input_user_or_raise(user_id, request.user_id).only("user_id")
+    chat = await Chat.get_or_none(peers__owner_id=user_id, id=Chat.norm_id(request.chat_id)).select_related("photo")
+    if chat is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+    user_peer_type, user_peer_id = Peer.type_and_id_from_input_raise(user_id, request.user_id)
+    if user_peer_type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    if not await Peer.filter(owner_id=target_peer.user_id, chat=chat_peer.chat).exists():
+    if not await Peer.filter(owner_id=user_peer_id, chat=chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
-    if chat_peer.chat.creator_id != user_id:
+    if chat.creator_id != user_id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     participant = await ChatParticipant.get_or_none(
-        chat=chat_peer.chat, user_id=target_peer.user_id,
+        chat=chat, user_id=user_peer_id,
     ).only("id", "admin_rights")
     if participant.is_admin == request.is_admin:
         return True
 
     if request.is_admin:
-        admins_count = await ChatParticipant.filter(chat=chat_peer.chat, admin_rights__gt=0).count()
+        admins_count = await ChatParticipant.filter(chat=chat, admin_rights__gt=0).count()
         if admins_count >= APP_CONFIG.basic_group_admin_limit:
             raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
         participant.admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
@@ -410,21 +420,18 @@ async def edit_chat_admin(request: EditChatAdmin, user_id: int) -> bool:
         participant.admin_rights = ChatAdminRights(0)
 
     await participant.save(update_fields=["admin_rights"])
-    chat_peer.chat.version += 1
-    await chat_peer.chat.save(update_fields=["version"])
+    chat.version += 1
+    await chat.save(update_fields=["version"])
 
-    chat_peers = {peer.owner_id: peer for peer in await Peer.filter(chat=chat_peer.chat)}
-    await upd.update_chat_participants(chat_peer.chat, list(chat_peers.values()))
+    chat_peers = await Peer.filter(chat=chat).only("owner_id")
+    await upd.update_chat_participants(chat, chat_peers)
 
     return True
 
 
 @handler.on_request(ToggleNoForwards, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def toggle_no_forwards(request: ToggleNoForwards, user_id: int) -> Updates:
-    peer = await Peer.from_input_peer_raise(user_id, request.peer)
-    if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
     chat_or_channel = peer.chat_or_channel
 
     if request.enabled == chat_or_channel.no_forwards:
@@ -612,14 +619,14 @@ async def get_common_chats(request: GetCommonChats, user_id: int) -> ChatsBase:
     if Peer.input_is_self(user_id, request.user_id):
         return Chats(chats=[])
 
-    peer = await Peer.from_input_peer_raise(user_id, request.user_id, peer_types=(PeerType.USER, PeerType.SELF))
-    if peer.type is PeerType.SELF:
-        return Chats(chats=[])
+    user_peer_type, user_peer_id = Peer.type_and_id_from_input_raise(user_id, request.user_id)
+    if user_peer_type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     limit = max(1, min(100, request.limit))
 
     query = ChatParticipant.common_chats_query(
-        user_id, peer.user_id, request.max_id if request.max_id > 0 else None,
+        user_id, user_peer_id, request.max_id if request.max_id > 0 else None,
     ).select_related("chat", "chat__photo", "channel", "channel__photo")
 
     chats = []

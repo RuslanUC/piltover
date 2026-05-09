@@ -10,9 +10,9 @@ from piltover.context import request_ctx
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import User, Dialog, Peer, SavedDialog, Chat, Channel, MessageRef
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector, \
-    InputPeerChannel
+    InputPeerChannel, InputDialogPeer
 from piltover.tl.functions.folders import EditPeerFolders
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
@@ -97,20 +97,32 @@ async def get_dialogs_internal(
 
     if offset_peer is not None:
         input_peer = offset_peer
-        offset_peer = peer_message_id = None
+        offset_peer_id_filt = peer_message_id = None
         try:
-            offset_peer = await Peer.from_input_peer_raise(user_id, input_peer)
-            peer_message_id = await MessageRef.filter(
-                peer=offset_peer,
-            ).order_by("-id").first().values_list("id", flat=True)
+            offset_peer_type, offset_peer_id = Peer.type_and_id_from_input_raise(user_id, input_peer)
         except ErrorRpc:
             pass
+        else:
+            offset_peer_id_query = Peer.filter(owner_id=user_id)
+            if offset_peer_type in (PeerType.SELF, PeerType.USER):
+                peer_message_id_query = MessageRef.filter(peer__owner_id=user_id, peer__user_id=offset_peer_id)
+                offset_peer_id_query = offset_peer_id_query.filter(user_id=offset_peer_id)
+            elif offset_peer_type is PeerType.CHAT:
+                peer_message_id_query = MessageRef.filter(peer__owner_id=user_id, peer__chat_id=offset_peer_id)
+                offset_peer_id_query = offset_peer_id_query.filter(chat_id=offset_peer_id)
+            elif offset_peer_type is PeerType.CHANNEL:
+                peer_message_id_query = MessageRef.filter(peer__owner_id__isnull=True, peer__channel_id=offset_peer_id)
+                offset_peer_id_query = offset_peer_id_query.filter(channel_id=offset_peer_id)
+            else:
+                raise Unreachable
+            peer_message_id = await peer_message_id_query.order_by("-id").first().values_list("id", flat=True)
+            offset_peer_id_filt = await offset_peer_id_query.first().values_list("id", flat=True)
 
         peer_message_id = cast(int | None, peer_message_id)
         if peer_message_id is None:
             offset_id = 0
-            if offset_peer is not None:
-                query &= Q(id__lt=offset_peer.id)
+            if offset_peer_id_filt is not None:
+                query &= Q(peer_id__lt=offset_peer_id_filt)
         elif offset_id == 0 or offset_id > peer_message_id:
             offset_id = peer_message_id
 
@@ -276,13 +288,19 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user_id: int):
 
 @handler.on_request(MarkDialogUnread, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def mark_dialog_unread(request: MarkDialogUnread, user_id: int) -> bool:
-    peer = await Peer.from_input_peer_raise(user_id, request.peer.peer)
-    if (dialog := await Dialog.get_or_none(peer=peer, visible=True).select_related("peer")) is None:
+    if not isinstance(request.peer, InputDialogPeer):
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    peer_query = Peer.query_from_input_peer(user_id, request.peer.peer, True, False)
+    if peer_query is None or (peer := await peer_query) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    if (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     if dialog.unread_mark == request.unread:
         return True
 
+    dialog.peer = peer
     dialog.unread_mark = request.unread
     await dialog.save(update_fields=["unread_mark"])
     await upd.update_dialog_unread_mark(user_id, dialog)

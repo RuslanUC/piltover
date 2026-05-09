@@ -236,11 +236,14 @@ async def resolve_phone(request: ResolvePhone, user_id: int) -> ResolvedPeer:
 
 @handler.on_request(AddContact, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def add_contact(request: AddContact, user_id: int) -> Updates:
-    peer = await Peer.from_input_peer_raise(user_id, request.id)
-    if peer.type is not PeerType.USER:
+    peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user_id, request.id)
+    if peer_type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.get_or_none(owner_id=user_id, user_id=peer_user_id).select_related("user")
+    if peer is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    await Contact.update_or_create(owner_id=user_id, target=peer.user, defaults={
+    await Contact.update_or_create(owner_id=user_id, target_id=peer_user_id, defaults={
         "first_name": request.first_name,
         "last_name": request.last_name,
         "known_phone_number": request.phone or None,
@@ -251,7 +254,7 @@ async def add_contact(request: AddContact, user_id: int) -> Updates:
             "allow_all": False,
             "allow_contacts": False,
         })
-        await PrivacyRuleException.update_or_create(rule=rule, user=peer.user, defaults={
+        await PrivacyRuleException.update_or_create(rule=rule, user_id=peer_user_id, defaults={
             "allow": True,
         })
 
@@ -281,9 +284,12 @@ async def delete_contacts(request: DeleteContacts, user_id: int) -> Updates:
 @handler.on_request(Unblock, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(Block_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(Block, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def block_unblock(request: Block, user_id: int) -> bool:
-    peer = await Peer.from_input_peer_raise(user_id, request.id)
-    if peer.type is not PeerType.USER:
+async def block_unblock(request: Block | Block_133 | Unblock | Unblock_133, user_id: int) -> bool:
+    peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user_id, request.id)
+    if peer_type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.get_or_none(owner_id=user_id, user_id=peer_user_id).select_related("user")
+    if peer is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     to_block = isinstance(request, (Block, Block_133))

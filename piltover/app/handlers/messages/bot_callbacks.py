@@ -39,7 +39,6 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -
         # TODO: check if this is correct permission
         if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
-        channel_min_id = 0
         if peer.type is PeerType.CHANNEL \
                 and (channel_min_id := peer.channel.min_id(participant)) is not None \
                 and request.msg_id < channel_min_id:
