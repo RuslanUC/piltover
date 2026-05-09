@@ -536,10 +536,11 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
     if not channel.admin_has_permission(participant, ChatAdminRights.BAN_USERS):
         raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
 
-    target_peer = await Peer.from_input_peer_raise(user_id, request.participant)
-    if target_peer.type is not PeerType.USER:
+    peer_type, target_id = Peer.type_and_id_from_input_raise(user_id, request.participant, "PARTICIPANT_ID_INVALID")
+    if peer_type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
-    target_participant = await channel.get_participant(target_peer.user, allow_left=True)
+
+    target_participant = await channel.get_participant(target_id, allow_left=True)
 
     new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
     banned_for = request.banned_rights.until_date - time()
@@ -560,12 +561,12 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
             or bool(new_banned_rights & ChatBannedRights.VIEW_MESSAGES)
     )
 
-    participant_tl_before = ChannelParticipantLeft(peer=PeerUser(user_id=target_peer.user_id))
+    participant_tl_before = ChannelParticipantLeft(peer=PeerUser(user_id=target_id))
     if target_participant is not None:
         participant_tl_before = target_participant.to_tl_channel_with_creator(user_id, channel.creator_id)
 
     target_participant, created = await ChatParticipant.update_or_create(
-        user=target_peer.user,
+        user_id=target_id,
         channel=channel,
         defaults={
             "banned_rights": new_banned_rights,
@@ -579,7 +580,7 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
 
     if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
         await ChatInviteRequest.filter(id__in=Subquery(
-            ChatInviteRequest.filter(user=target_peer.user, invite__channel=channel).values_list("id", flat=True)
+            ChatInviteRequest.filter(user_id=target_id, invite__channel=channel).values_list("id", flat=True)
         )).delete()
 
     await AdminLogEntry.create(
@@ -591,7 +592,7 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
     )
 
     if was_participant:
-        await upd.update_channel_for_user(channel, target_peer.user)
+        await upd.update_channel_for_user(channel, target_id)
 
     return Updates(
         updates=[UpdateChannel(channel_id=channel.make_id())],
@@ -769,16 +770,16 @@ async def get_participant(request: GetParticipant, user_id: int) -> ChannelParti
     if participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
-    target_peer = await Peer.from_input_peer_raise(user_id, request.participant)
-    if target_peer.type not in (PeerType.USER, PeerType.SELF):
+    target_type, target_id = Peer.type_and_id_from_input_raise(user_id, request.participant, "PARTICIPANT_ID_INVALID")
+    if target_type not in (PeerType.USER, PeerType.SELF):
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
     if not channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS) \
-            and target_peer.type is not PeerType.SELF:
+            and target_type is not PeerType.SELF:
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     target_participant = await ChatParticipant.get_or_none(
-        user=target_peer.user, channel=channel,
+        user_id=target_id, channel=channel,
     ).select_related("user")
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
@@ -851,48 +852,64 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
             not channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
-    added_users = []
+    user_ids = set()
+    for input_user in request.users[:100]:
+        peer_type, peer_id = Peer.type_and_id_from_input_raise(user_id, input_user, "USER_ID_INVALID")
+        if peer_type is not PeerType.USER:
+            raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+        user_ids.add(peer_id)
+
+    peers = {peer.user_id: peer for peer in await Peer.filter(owner_id=user_id, user_id__in=user_ids)}
+    if peers.keys() != user_ids:
+        raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+
+    existing_participants = {
+        participant.user_id: participant
+        for participant in await ChatParticipant.filter(user_id__in=user_ids, channel_id=channel.id).only("id", "left")
+    }
+
+    privacy_rules = await PrivacyRule.has_access_to_bulk(user_ids, user_id, [PrivacyRuleKeyType.CHAT_INVITE])
+
+    added_user_ids = []
     peers_to_create = []
     participants_to_create = []
     participants_to_update = []
 
     for input_user in request.users[:100]:
-        user_peer = await Peer.from_input_peer_raise(user_id, input_user)
-        if user_peer.type is not PeerType.USER:
-            raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
-        existing_participant = await ChatParticipant.get_or_none(user=user_peer.user, channel=channel)
+        _, peer_user_id = Peer.type_and_id_from_input_raise(user_id, input_user)
+        existing_participant = existing_participants.get(peer_user_id)
         if existing_participant and not existing_participant.left:
             continue
-        # TODO: use has_access_to_bulk
-        if not await PrivacyRule.has_access_to(user_id, user_peer.user, PrivacyRuleKeyType.CHAT_INVITE):
+        if not privacy_rules[peer_user_id][PrivacyRuleKeyType.CHAT_INVITE]:
             raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
-        added_users.append(user_peer.user)
-        peers_to_create.append(Peer(owner=user_peer.user, channel=channel, type=PeerType.CHANNEL))
+        added_user_ids.append(peer_user_id)
+        peers_to_create.append(Peer(owner_id=peer_user_id, channel=channel, type=PeerType.CHANNEL))
         if existing_participant is None:
             participants_to_create.append(ChatParticipant(
-                user=user_peer.user, channel=channel, chat_channel_id=channel.make_id(), inviter_id=user_id,
+                user_id=peer_user_id, channel=channel, chat_channel_id=channel.make_id(), inviter_id=user_id,
                 min_message_id=channel.min_available_id,
             ))
         else:
             existing_participant.left = False
             participants_to_update.append(existing_participant)
 
-    await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
+    if peers_to_create:
+        await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
     if participants_to_create:
         await ChatParticipant.bulk_create(participants_to_create, ignore_conflicts=True)
     if participants_to_update:
         await ChatParticipant.bulk_update(participants_to_update, fields=["left"])
     await ChatInviteRequest.filter(id__in=Subquery(
         ChatInviteRequest.filter(
-            user_id__in=[added_user.id for added_user in added_users], invite__channel=channel,
+            user_id__in=added_user_ids, invite__channel=channel,
         ).values_list("id", flat=True)
     )).delete()
 
-    await SessionManager.subscribe_to_channel(channel.id, [added_user.id for added_user in added_users])
+    await SessionManager.subscribe_to_channel(channel.id, added_user_ids)
 
-    for added_user in added_users:
-        await upd.update_channel_for_user(channel, added_user)
+    for added_user_id in added_user_ids:
+        await upd.update_channel_for_user(channel, added_user_id)
 
     return InvitedUsers(
         updates=Updates(
@@ -1061,15 +1078,16 @@ async def edit_creator(request: EditCreator, user_id: int) -> Updates:
 
     await check_password_internal(password, request.password)
 
-    target_peer = await Peer.from_input_peer_raise(user_id, request.user_id)
-    if target_peer.type is not PeerType.USER:
+    peer_type, target_id = Peer.type_and_id_from_input_raise(user_id, request.user_id, "PEER_ID_INVALID")
+    if peer_type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
-    target_participant = await channel.get_participant(target_peer.user)
+
+    target_participant = await channel.get_participant(target_id)
     if target_participant is None:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
     async with in_transaction():
-        channel.creator = target_peer.user
+        channel.creator_id = target_id
         channel.version += 1
         await channel.save(update_fields=["creator_id", "version"])
 
@@ -1079,7 +1097,7 @@ async def edit_creator(request: EditCreator, user_id: int) -> Updates:
 
         await _unlink_channel_maybe(channel)
 
-    return await upd.update_channel(channel, send_to_users=[user_id, target_peer.user.id])
+    return await upd.update_channel(channel, send_to_users=[user_id, target_id])
 
 
 CHANNEL_PRIVATE_ERR = ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
@@ -1666,13 +1684,12 @@ async def delete_participant_history(request: DeleteParticipantHistory, user_id:
     if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
-    target_peer = await Peer.from_input_peer_raise(
-        user_id, request.participant, message="PARTICIPANT_ID_INVALID", code=400,
-        peer_types=(PeerType.SELF, PeerType.USER,)
-    )
+    peer_type, target_id = Peer.type_and_id_from_input_raise(user_id, request.participant, "PARTICIPANT_ID_INVALID")
+    if peer_type not in (PeerType.SELF, PeerType.USER):
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     messages_to_delete = await MessageRef.filter(
-        peer__owner=None, peer__channel=channel, content__author_id=target_peer.user_id,
+        peer__owner=None, peer__channel_id=channel.id, content__author_id=target_id,
     ).order_by("-id").limit(1001).values_list("id", flat=True)
 
     if not messages_to_delete:

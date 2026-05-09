@@ -916,6 +916,7 @@ async def get_default_background_emojis(
     return EmojiList(hash=emojis_hash, document_id=ids)
 
 
+# TODO: test
 @handler.on_request(UpdatePersonalChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_personal_channel(request: UpdatePersonalChannel, user: User) -> bool:
     if isinstance(request.channel, InputChannelEmpty):
@@ -924,17 +925,20 @@ async def update_personal_channel(request: UpdatePersonalChannel, user: User) ->
             await personal_channel.delete()
         return True
 
-    peer = await Peer.from_input_peer_raise(
-        user, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
-    )
+    peer_type, peer_id = Peer.type_and_id_from_input_raise(user.id, request.channel, "CHANNEL_PRIVATE")
+    if peer_type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    peer = await Peer.get_or_none(owner_id=user.id, channel_id=peer_id).only("channel_id", "channel__creator_id")
+    if peer is None:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_PRIVATE")
 
     if peer.channel.creator_id != user.id:
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
 
-    if not await Username.filter(channel=peer.channel).exists():
+    if not await Username.filter(channel_id=peer.channel_id).exists():
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
-    await UserPersonalChannel.update_or_create(user=user, defaults={"channel": peer.channel})
+    await UserPersonalChannel.update_or_create(user=user, defaults={"channel_id": peer.channel_id})
 
     await upd.update_user(user)
     return True

@@ -4,8 +4,7 @@ from tortoise.expressions import Q, Subquery
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, BotInfo, ChatParticipant, MessageRef, \
-    Wallpaper
+from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, ChatParticipant, MessageRef, Wallpaper
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector

@@ -89,6 +89,14 @@ class Peer(Model):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
     @classmethod
+    def type_and_id_from_input_raise(
+            cls, user_id: int, input_peer: InputPeers, error_message: str = "PEER_ID_INVALID", error_code: int = 400,
+    ) -> tuple[PeerType, int]:
+        if (peer_info := cls.type_and_id_from_input(user_id, input_peer)) is not None:
+            return peer_info
+        raise ErrorRpc(error_code=error_code, error_message=error_message)
+
+    @classmethod
     def query_from_input_peer(
             cls, user: models.User | int, input_peer: InputPeers, allow_bot: bool = True,
             allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
