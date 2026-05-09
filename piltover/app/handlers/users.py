@@ -23,7 +23,9 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     ctx = request_ctx.get()
 
     peer_query = Peer.query_from_input_user_or_raise(user_id, request.id, ctx.auth_id)
-    peer = await peer_query.select_related("user__username", "user__background_emojis", "user__emoji_status").only(
+    peer = await peer_query.select_related(
+        "user__username", "user__background_emojis", "user__emoji_status", "user__bot_info"
+    ).only(
         "id", "user_has_wallpaper", "user_ttl_period_days", "blocked_at", "type", "user_id",
 
         "user__id",
@@ -47,6 +49,20 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
 
         "user__emoji_status__emoji_id",
         "user__emoji_status__until",
+
+        "user__bot_info__user_id",
+        "user__bot_info__description",
+        "user__bot_info__description_photo_id",
+        "user__bot_info__privacy_policy_url",
+        "user__bot_info__version",
+
+        "user__bot_info__description_photo__id",
+        "user__bot_info__description_photo__created_at",
+        "user__bot_info__description_photo__photo_sizes",
+        "user__bot_info__description_photo__photo_stripped",
+        "user__bot_info__description_photo__photo_path",
+        "user__bot_info__description_photo__constant_access_hash",
+        "user__bot_info__description_photo__constant_file_ref",
     )
     if peer is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -91,12 +107,11 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
         )
 
     bot_info = None
-    if target_user.bot:
-        bot_info = await BotInfo.get_or_none(user=target_user)
-        if bot_info is None:
+    if target_user.bot is not None:
+        if target_user.bot_info is None:
             bot_info = TLBotInfo()
         else:
-            bot_info = await bot_info.to_tl()
+            bot_info = await target_user.bot_info.to_tl()
 
     birthday = None
     if privacy_rules[PrivacyRuleKeyType.BIRTHDAY]:

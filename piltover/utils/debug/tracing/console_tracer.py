@@ -27,7 +27,7 @@ class ConsoleTracerContext(BaseTracerContext):
         level = _measure_time_level.get()
         hyphens = "-" * level * 2
 
-        logger.opt(depth=2).log(self.loglevel, f"---{hyphens}> running {self.trace_name}...")
+        logger.opt(depth=3).log(self.loglevel, f"---{hyphens}> running {self.trace_name}...")
         self.ctx_token = _measure_time_level.set(level + 1)
 
         self.start = perf_counter()
@@ -40,7 +40,7 @@ class ConsoleTracerContext(BaseTracerContext):
         _measure_time_level.reset(self.ctx_token)
         level = _measure_time_level.get()
         hyphens = "-" * level * 2
-        logger.opt(depth=2).log(self.end_loglevel, f"<---{hyphens} {self.trace_name} took {time_spent_ms:.2f}ms")
+        logger.opt(depth=3).log(self.end_loglevel, f"<---{hyphens} {self.trace_name} took {time_spent_ms:.2f}ms")
         self.time.ms = time_spent_ms
 
 
