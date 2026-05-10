@@ -5,6 +5,7 @@ from tortoise.expressions import Q, Subquery
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, ChatParticipant, MessageRef, Wallpaper
+from piltover.db.models.peer import PeerUserT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
@@ -22,7 +23,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     ctx = request_ctx.get()
 
     peer_query = Peer.query_from_input_user_or_raise(user_id, request.id, ctx.auth_id)
-    peer = await peer_query.select_related(
+    peer: PeerUserT = await peer_query.select_related(
         "user__username", "user__background_emojis", "user__emoji_status", "user__bot_info"
     ).only(
         "id", "user_has_wallpaper", "user_ttl_period_days", "blocked_at", "type", "user_id",
@@ -66,7 +67,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     if peer is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    target_user = cast(User, peer.user)
+    target_user = peer.user
 
     privacy_rules = await PrivacyRule.has_access_to_bulk([target_user], user_id, [
         PrivacyRuleKeyType.ABOUT,

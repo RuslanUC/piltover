@@ -28,7 +28,8 @@ from piltover.session import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, Long, \
     UpdatesTooLong, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
-    EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus
+    EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus, GlobalPrivacySettings_160, \
+    GlobalPrivacySettings_200, InputFile, InputFileBig, WallPaperSettings
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.base import User as TLUserBase, WallPaper as TLWallPaperBase
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
@@ -266,7 +267,8 @@ async def get_global_privacy_settings(user: User) -> GlobalPrivacySettings:
 async def set_global_privacy_settings(request: SetGlobalPrivacySettings, user_id: int) -> GlobalPrivacySettings:
     user = await User.get(id=user_id).only("id", "read_dates_private")
 
-    if user.read_dates_private != request.settings.hide_read_marks:
+    if isinstance(request.settings, (GlobalPrivacySettings, GlobalPrivacySettings_200)) \
+            and user.read_dates_private != request.settings.hide_read_marks:
         await User.filter(id=user.id).update(read_dates_private=request.settings.hide_read_marks)
         user.read_dates_private = request.settings.hide_read_marks
 
@@ -441,15 +443,17 @@ async def update_birthday(request: UpdateBirthday, user: User) -> bool:
 @handler.on_request(ChangeAuthorizationSettings, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def change_auth_settings(request: ChangeAuthorizationSettings, user_id: int) -> bool:
     auth_id = request_ctx.get().auth_id
-    this_auth = await UserAuthorization.get_or_none(id=auth_id)
+    this_auth = await UserAuthorization.get(id=auth_id)
 
     if request.hash == 0:
         auth = this_auth
     else:
         auth_hash_hex = Long.write(request.hash).hex()
         auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex)
-    if auth is None:
-        raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
+        if auth is None:
+            raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
+
+    auth = cast(UserAuthorization, auth)
 
     to_update = []
     if not auth.confirmed and request.confirmed:
@@ -479,7 +483,7 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user_id: in
 @handler.on_request(ResetAuthorization, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def reset_authorization(request: ResetAuthorization, user_id: int) -> bool:
     auth_id = request_ctx.get().auth_id
-    this_auth = await UserAuthorization.get_or_none(id=auth_id)
+    this_auth = await UserAuthorization.get(id=auth_id).only("id", "created_at")
 
     if (this_auth.created_at + timedelta(days=1)) > datetime.now(UTC):
         raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")
@@ -488,6 +492,8 @@ async def reset_authorization(request: ResetAuthorization, user_id: int) -> bool
     auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex).only("id", "key_id")
     if auth is None or auth == this_auth:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
+
+    auth = cast(UserAuthorization, auth)
 
     keys = [auth.key_id]
     if (temp_key_id := await AuthKey.get_temp_id(auth.key_id)) is not None:
@@ -559,7 +565,7 @@ async def send_change_phone_code(request: SendChangePhoneCode, user_id: int) -> 
 async def change_phone(request: ChangePhone, user: User) -> TLUserBase:
     phone_number = _validate_phone(request.phone_number)
     code = await SentCode.get_(phone_number, request.phone_code_hash, PhoneCodePurpose.CHANGE_NUMBER)
-    await SentCode.check_raise_cls(code, request.phone_code)
+    code = await SentCode.check_raise_cls(code, request.phone_code)
     await SentCode.filter(id=code.id).update(used=True)
 
     if await User.filter(phone_number=request.phone_number).exists():
@@ -576,7 +582,7 @@ async def change_phone(request: ChangePhone, user: User) -> TLUserBase:
 def _make_deletion_cancel_hash(user: User, task_id: bytes) -> str:
     return hmac.new(
         APP_CONFIG.hmac_key,
-        Long.write(user.id) + String.write(user.phone_number) + task_id,
+        Long.write(user.id) + String.write(cast(str, user.phone_number)) + task_id,
         hashlib.sha1,
     ).hexdigest()
 
@@ -594,15 +600,19 @@ async def send_confirm_phone_code(request: SendConfirmPhoneCode, user_id: int) -
     if request.hash != check_hash:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
-    return await _create_sent_code(user_id, user.phone_number, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION, False)
+    return await _create_sent_code(
+        user_id, cast(str, user.phone_number), PhoneCodePurpose.CANCEL_ACCOUNT_DELETION, False,
+    )
 
 
 @handler.on_request(ConfirmPhone, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def confirm_phone(request: ConfirmPhone, user_id: int) -> bool:
     user = await User.get(id=user_id).only("id", "phone_number")
 
-    code = await SentCode.get_(user.phone_number, request.phone_code_hash, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION)
-    await SentCode.check_raise_cls(code, request.phone_code)
+    code = await SentCode.get_(
+        cast(str, user.phone_number), request.phone_code_hash, PhoneCodePurpose.CANCEL_ACCOUNT_DELETION,
+    )
+    code = await SentCode.check_raise_cls(code, request.phone_code)
     await SentCode.filter(id=code.id).update(used=True)
 
     await TaskIqScheduledDeleteUser.filter(user=user_id).delete()
@@ -699,6 +709,9 @@ async def get_chat_themes(request: GetChatThemes) -> Themes | ThemesNotModified:
 @handler.on_request(UploadWallPaper_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(UploadWallPaper, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def upload_wallpaper(request: UploadWallPaper | UploadWallPaper_133, user_id: int) -> TLWallPaperBase:
+    if not isinstance(request.file, (InputFile, InputFileBig)):
+        raise ErrorRpc(error_code=400, error_message="WALLPAPER_FILE_INVALID")
+
     attributes = []
     if request.file.name:
         attributes.append(DocumentAttributeFilename(file_name=request.file.name))
@@ -747,7 +760,7 @@ async def get_wallpaper(request: GetWallPaper) -> TLWallPaperBase:
 @handler.on_request(GetMultiWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_multi_wallpapers(request: GetMultiWallPapers, user_id: int) -> TLObjectVector[TLWallPaperBase]:
     if not request.wallpapers:
-        return TLObjectVector()
+        return cast(TLObjectVector[TLWallPaperBase], TLObjectVector())
 
     user = await User.get(id=user_id).only("id")
 
@@ -793,7 +806,7 @@ async def save_wallpaper(request: SaveWallPaper, user_id: int) -> bool:
                 fourth_background_color=request.settings.fourth_background_color,
                 intensity=request.settings.intensity,
                 rotation=request.settings.rotation,
-                emoticon=request.settings.emoticon,
+                emoticon=request.settings.emoticon if isinstance(request.settings, WallPaperSettings) else None,
             )
         await InstalledWallpaper.create(user_id=user_id, wallpaper=wallpaper, settings=settings)
     else:
@@ -809,7 +822,8 @@ async def save_wallpaper(request: SaveWallPaper, user_id: int) -> bool:
                 installed.settings.fourth_background_color = request.settings.fourth_background_color
                 installed.settings.intensity = request.settings.intensity
                 installed.settings.rotation = request.settings.rotation
-                installed.settings.emoticon = request.settings.emoticon
+                if isinstance(request.settings, WallPaperSettings):
+                    installed.settings.emoticon = request.settings.emoticon
             await installed.settings.save()
 
     return True

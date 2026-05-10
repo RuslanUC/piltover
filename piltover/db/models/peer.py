@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TypeVar, Generic, TYPE_CHECKING, overload, Literal
+from typing import TypeVar, Generic, TYPE_CHECKING, Literal, TypeGuard, TypeAlias
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
@@ -18,18 +18,41 @@ from piltover.tl.base import InputUser as InputUserBase, InputPeer as InputPeerB
 InputPeers = InputPeerBase | InputUserBase | InputChannelBase
 InputOnlyPeers = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel
 
+OwnerT = TypeVar("OwnerT", bound="models.User | None")
+UserT = TypeVar("UserT", bound="models.User | None")
+ChatT = TypeVar("ChatT", bound="models.Chat | None")
+ChannelT = TypeVar("ChannelT", bound="models.Channel | None")
+OwnerIdT = TypeVar("OwnerIdT", bound=int | None)
+UserIdT = TypeVar("UserIdT", bound=int | None)
+ChatIdT = TypeVar("ChatIdT", bound=int | None)
+ChannelIdT = TypeVar("ChannelIdT", bound=int | None)
+AnyPeerType = Literal[PeerType.SELF, PeerType.USER, PeerType.CHAT, PeerType.CHANNEL]
+PeerTypeT = TypeVar(
+    "PeerTypeT",
+    bound=AnyPeerType,
+)
 
-class Peer(Model):
+
+PeerSelfT: TypeAlias = "Peer[models.User, models.User, None, None, int, int, None, None, Literal[PeerType.SELF]]"
+PeerUserT: TypeAlias = "Peer[models.User, models.User, None, None, int, int, None, None, Literal[PeerType.USER]]"
+PeerChatT: TypeAlias = "Peer[models.User, None, models.Chat, None, int, None, int, None, Literal[PeerType.CHAT]]"
+PeerChannelT: TypeAlias = "Peer[models.User, None, None, models.Channel, int, None, None, int, Literal[PeerType.CHANNEL]]"  # noqa: E501
+PeerChannelInternalT: TypeAlias = "Peer[None, None, None, models.Channel, None, None, None, int, Literal[PeerType.CHANNEL]]"  # noqa: E501
+PeerChannelAnyT: TypeAlias = "Peer[models.User | None, None, None, models.Channel, int | None, None, None, int, Literal[PeerType.CHANNEL]]"  # noqa: E501
+PeerOwnedT: TypeAlias = "Peer[models.User, models.User | None, models.Chat | None, models.Channel | None, int, int | None, int | None, int | None, AnyPeerType]"  # noqa: E501
+
+
+class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, ChatIdT, ChannelIdT, PeerTypeT]):
     id: int = fields.BigIntField(primary_key=True)
     owner: models.User = fields.ForeignKeyField("models.User", related_name="owner", null=True)
-    type: PeerType = fields.IntEnumField(PeerType, description="")
+    type: PeerTypeT = fields.IntEnumField(PeerType, description="")
     blocked_at: datetime | None = fields.DatetimeField(null=True, default=None)
     user_ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
     user_has_wallpaper: bool = fields.BooleanField(default=False)
 
-    user: models.User | None = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
-    chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)
-    channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
+    user: UserT = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
+    chat: ChatT = fields.ForeignKeyField("models.Chat", null=True, default=None)
+    channel: ChannelT = fields.ForeignKeyField("models.Channel", null=True, default=None)
 
     class Meta:
         unique_together = (
@@ -38,10 +61,78 @@ class Peer(Model):
             ("owner", "channel",),
         )
 
-    owner_id: int
-    user_id: int | None
-    chat_id: int | None
-    channel_id: int | None
+    owner_id: OwnerIdT
+    user_id: UserIdT
+    chat_id: ChatIdT
+    channel_id: ChannelIdT
+
+    # PyCharm cant properly infer None without this
+    if TYPE_CHECKING:
+        @property
+        def type(self) -> PeerTypeT: raise Unreachable
+        @property
+        def owner(self) -> OwnerT: raise Unreachable
+        @property
+        def user(self) -> UserT: raise Unreachable
+        @property
+        def chat(self) -> ChatT: raise Unreachable
+        @property
+        def channel(self) -> ChannelT: raise Unreachable
+        @property
+        def owner_id(self) -> OwnerIdT: raise Unreachable
+        @property
+        def user_id(self) -> UserIdT: raise Unreachable
+        @property
+        def chat_id(self) -> ChatIdT: raise Unreachable
+        @property
+        def channel_id(self) -> ChannelIdT: raise Unreachable
+
+        @type.setter
+        def type(self, value: PeerType) -> None: ...
+        @owner.setter
+        def owner(self, value: models.User | None) -> None: ...
+        @user.setter
+        def user(self, value: models.User | None) -> None: ...
+        @chat.setter
+        def chat(self, value: models.Chat | None) -> None: ...
+        @channel.setter
+        def channel(self, value: models.Channel | None) -> None: ...
+        @owner_id.setter
+        def owner_id(self, value: int | None) -> None: ...
+        @user_id.setter
+        def user_id(self, value: int | None) -> None: ...
+        @chat_id.setter
+        def chat_id(self, value: int | None) -> None: ...
+        @channel_id.setter
+        def channel_id(self, value: int | None) -> None: ...
+
+    @staticmethod
+    def is_self(peer: Peer) -> TypeGuard[PeerSelfT]:
+        return peer.owner_id is not None and peer.user_id is not None and peer.owner_id == peer.user_id
+
+    @staticmethod
+    def is_user(peer: Peer) -> TypeGuard[PeerUserT]:
+        return peer.owner_id is not None and peer.user_id is not None and peer.owner_id != peer.user_id
+
+    @staticmethod
+    def is_chat(peer: Peer) -> TypeGuard[PeerChatT]:
+        return peer.owner_id is not None and peer.chat_id is not None
+
+    @staticmethod
+    def is_channel(peer: Peer) -> TypeGuard[PeerChannelT]:
+        return peer.owner_id is not None and peer.channel_id is not None
+
+    @staticmethod
+    def is_channel_internal(peer: Peer) -> TypeGuard[PeerChannelInternalT]:
+        return peer.owner_id is None and peer.channel_id is not None
+
+    @staticmethod
+    def is_channel_any(peer: Peer) -> TypeGuard[PeerChannelAnyT]:
+        return peer.channel_id is not None
+
+    @staticmethod
+    def is_owned(peer: Peer) -> TypeGuard[PeerOwnedT]:
+        return peer.owner_id is not None
 
     @classmethod
     async def from_chat_id_raise(

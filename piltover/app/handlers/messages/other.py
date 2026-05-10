@@ -2,7 +2,6 @@ from fastrand import xorshift128plus_bytes
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
-from piltover.db.enums import PeerType
 from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -22,9 +21,9 @@ handler = MessageHandler("messages.other")
 async def set_typing(request: SetTyping, user: User):
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
-    if peer.type == PeerType.SELF or (peer.type is PeerType.CHANNEL and not peer.channel.supergroup):
+    if Peer.is_self(peer) or (Peer.is_channel(peer) and not peer.channel.supergroup):
         return True
-    elif peer.type is PeerType.USER:
+    elif Peer.is_user(peer):
         peers = await peer.get_opposite()
         if not peers:
             return True
@@ -36,7 +35,7 @@ async def set_typing(request: SetTyping, user: User):
             ),
             user_id=[other.owner_id for other in peers],
         )
-    elif peer.type is PeerType.CHAT:
+    elif Peer.is_chat(peer):
         peers = await peer.get_opposite()
         if not peers:
             return True
@@ -53,7 +52,7 @@ async def set_typing(request: SetTyping, user: User):
             ),
             user_id=[other.owner_id for other in peers],
         )
-    elif peer.type is PeerType.CHANNEL:
+    elif Peer.is_channel(peer):
         # TODO: support top_msg_id
 
         channel = peer.channel
