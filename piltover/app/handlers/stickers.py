@@ -403,9 +403,11 @@ async def create_sticker_set(request: CreateStickerSet, user_id: int) -> Message
         await stickerset.delete()
         raise
 
+    all_stickers = await stickerset.documents_query()
     stickerset.owner_id = user_id
-    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
-    await stickerset.save(update_fields=["owner_id", "hash"])
+    stickerset.hash = telegram_hash(stickerset.gen_for_hash(all_stickers), 32)
+    stickerset.stickers_count = len(all_stickers)
+    await stickerset.save(update_fields=["owner_id", "hash", "stickers_count"])
 
     await InstalledStickerset.create(set=stickerset, user_id=user_id)
     await upd.new_stickerset(user_id, stickerset)
@@ -609,8 +611,11 @@ async def add_sticker_to_set(request: AddStickerToSet, user_id: int) -> Messages
         is_webm,
     )
 
-    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
-    await stickerset.save(update_fields=["hash"])
+    await Stickerset.filter(id=stickerset.id).update(
+        hash=telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32),
+        stickers_count=F("stickers_count") + 1,
+    )
+    await stickerset.refresh_from_db(["hash", "stickers_count"])
 
     return await stickerset.to_tl_messages()
 
@@ -649,8 +654,11 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user_id: int) -
             stickerset=stickerset, sticker_pos__gt=file.sticker_pos,
         ).update(sticker_pos=F("sticker_pos") - 1)
 
-    stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
-    await stickerset.save(update_fields=["hash"])
+    await Stickerset.filter(id=stickerset.id).update(
+        hash=telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32),
+        stickers_count=F("stickers_count") - 1,
+    )
+    await stickerset.refresh_from_db(["hash", "stickers_count"])
 
     return await stickerset.to_tl_messages()
 

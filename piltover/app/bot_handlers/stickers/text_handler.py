@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from tortoise.transactions import in_transaction
+from tortoise.transactions import in_transaction, F
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
@@ -447,8 +447,12 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
             return await send_bot_message(peer, "File is invalid. Somehow validation failed earlier."), None
 
         await make_sticker_from_file(file, stickerset, count, emoji, False, None, is_static, is_webm)
-        stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
-        await stickerset.save(update_fields=["hash"])
+        all_stickers = await stickerset.documents_query()
+        await Stickerset.filter(id=stickerset.id).update(
+            hash=telegram_hash(stickerset.gen_for_hash(all_stickers), 32),
+            stickers_count=F("stickers_count") + 1,
+        )
+        await stickerset.refresh_from_db(["hash", "stickers_count"])
 
         return None, stickerset
 
@@ -570,8 +574,10 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
 
             await File.bulk_create(files_to_create)
 
-            stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
-            await stickerset.save(update_fields=["owner_id", "hash"])
+            all_stickers = await stickerset.documents_query()
+            stickerset.hash = telegram_hash(stickerset.gen_for_hash(all_stickers), 32)
+            stickerset.stickers_count = len(all_stickers)
+            await stickerset.save(update_fields=["owner_id", "hash", "stickers_count"])
 
             await InstalledStickerset.create(set=stickerset, user_id=owner_id)
 

@@ -56,6 +56,7 @@ class Stickerset(Model):
     deleted: bool = fields.BooleanField(default=False)
     emoji: bool = fields.BooleanField(default=False)
     masks: bool = fields.BooleanField(default=False)
+    stickers_count: int = fields.SmallIntField(default=0)
 
     owner_id: int | None
 
@@ -130,7 +131,7 @@ class Stickerset(Model):
             short_name=self.short_name,
             official=self.official,
             creator_id=self.owner_id or 0,
-            count=await self.documents_query().count(),
+            count=self.stickers_count,
             hash=self.hash,
             masks=self.masks,
             emoji=self.emoji,
