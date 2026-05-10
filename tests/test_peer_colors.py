@@ -1,7 +1,6 @@
 from contextlib import contextmanager, AsyncExitStack
 
 import pytest
-from pyrogram.raw.all import objects as pyrogram_objects
 
 from piltover.app.app import args as app_args
 from piltover.tl.functions.help import GetPeerColors
@@ -13,21 +12,35 @@ from tests.client import TestClient
 
 
 @contextmanager
-def add_peer_colors_to_pyrogram():
-    pyrogram_objects[GetPeerColorsCompat.tlid()] = GetPeerColorsCompat
-    pyrogram_objects[GetPeerProfileColorsCompat.tlid()] = GetPeerProfileColorsCompat
-    pyrogram_objects[PeerColorsCompat.tlid()] = PeerColorsCompat
-    pyrogram_objects[PeerColorsNotModifiedCompat.tlid()] = PeerColorsNotModifiedCompat
-    pyrogram_objects[PeerColorOptionCompat.tlid()] = PeerColorOptionCompat
-    pyrogram_objects[PeerColorOption_167Compat.tlid()] = PeerColorOption_167Compat
-    pyrogram_objects[PeerColorSetCompat.tlid()] = PeerColorSetCompat
-    pyrogram_objects[PeerColorProfileSetCompat.tlid()] = PeerColorProfileSetCompat
+def add_compat_to_pyrogram():
+    from pyrogram.raw.all import objects as pyrogram_objects
+
+    to_add = (
+        GetPeerColorsCompat,
+        GetPeerProfileColorsCompat,
+        PeerColorsCompat,
+        PeerColorsNotModifiedCompat,
+        PeerColorOptionCompat,
+        PeerColorOption_167Compat,
+        PeerColorSetCompat,
+        PeerColorProfileSetCompat,
+    )
+
+    bak = {}
+    for cls in to_add:
+        tlid = cls.tlid()
+        if tlid in pyrogram_objects:
+            bak[tlid] = pyrogram_objects[tlid]
+        pyrogram_objects[tlid] = cls
+
     yield
+
+    pyrogram_objects.update(bak)
 
 
 @pytest.mark.asyncio
 async def test_get_available_peer_colors_empty(exit_stack: AsyncExitStack) -> None:
-    with add_peer_colors_to_pyrogram():
+    with add_compat_to_pyrogram():
         client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
         colors = await client.invoke_p(GetPeerColors(hash=1), with_layer=167)
         assert len(colors.colors) == 7
@@ -47,7 +60,7 @@ profile_files_dir = app_args.peer_colors_dir / "profile"
 @pytest.mark.create_peer_colors
 @pytest.mark.asyncio
 async def test_get_available_peer_accent_colors(exit_stack: AsyncExitStack) -> None:
-    with add_peer_colors_to_pyrogram():
+    with add_compat_to_pyrogram():
         client = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
         colors = await client.invoke_p(GetPeerColors(hash=0), with_layer=167)
         assert len(colors.colors) > 7

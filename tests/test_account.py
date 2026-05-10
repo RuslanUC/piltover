@@ -1,6 +1,6 @@
 import asyncio
 import re
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, contextmanager
 from datetime import timedelta, datetime, UTC
 from io import BytesIO
 from typing import cast, Any
@@ -8,18 +8,45 @@ from typing import cast, Any
 import pytest
 from faker import Faker
 from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified, TtlDaysInvalid, AuthKeyUnregistered, \
-    TwoFaConfirmWait, PasswordHashInvalid
+    TwoFaConfirmWait, PasswordHashInvalid, ChannelInvalid, ChannelPrivate, UserCreator, PeerIdInvalid
 from pyrogram.raw.core import TLRequest
+from pyrogram.raw.functions import InvokeWithLayer
 from pyrogram.raw.functions.account import CheckUsername, SetAccountTTL, GetAccountTTL, GetAuthorizations, \
     DeleteAccount, GetPassword, SendConfirmPhoneCode, ConfirmPhone
+from pyrogram.raw.functions.help import GetConfig
+from pyrogram.raw.functions.users import GetFullUser
 from pyrogram.raw.types import UpdateUserName, UpdateUser, AccountDaysTTL, CodeSettings, UpdateNewMessage, \
-    UpdatesTooLong
+    UpdatesTooLong, MsgsAck, InputChannelEmpty
 from pyrogram.raw.types.auth import SentCode as TLSentCode
-from pyrogram.utils import compute_password_check
+from pyrogram.utils import compute_password_check, get_channel_id
+from piltover.tl import layer as piltover_layer, UserFull
+from pyrogram.raw.all import layer as pyrogram_layer
 
 from piltover.db.models import User, UserPassword, SentCode, PhoneCodePurpose, TaskIqScheduledDeleteUser
+from tests._account_compat import UpdatePersonalChannelCompat, UsersUserFullCompat
 from tests.client import TestClient, InternalPushSession
-from tests.conftest import ClientFactory, ClientFactorySync
+from tests.conftest import ClientFactory, ClientFactorySync, ChannelWithClientsFactory
+
+
+@contextmanager
+def add_compat_to_pyrogram():
+    from pyrogram.raw.all import objects as pyrogram_objects
+
+    to_add = (
+        UpdatePersonalChannelCompat,
+        UsersUserFullCompat,
+    )
+
+    bak = {}
+    for cls in to_add:
+        tlid = cls.tlid()
+        if tlid in pyrogram_objects:
+            bak[tlid] = pyrogram_objects[tlid]
+        pyrogram_objects[tlid] = cls
+
+    yield
+
+    pyrogram_objects.update(bak)
 
 
 @pytest.mark.asyncio
@@ -444,3 +471,108 @@ async def test_internal_push(client_fake: ClientFactorySync, disconnect: bool) -
 
         if not disconnect:
             await client1.stop()
+
+
+@pytest.mark.asyncio
+async def test_update_personal_channel(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    assert await client.set_chat_username(channel.id, "test_channel")
+
+    with add_compat_to_pyrogram():
+        full_user = await client.invoke(InvokeWithLayer(
+            layer=piltover_layer,
+            query=GetFullUser(id=await client.resolve_peer("self")),
+        ))
+    await client.invoke(InvokeWithLayer(layer=pyrogram_layer, query=GetConfig()))
+
+    assert isinstance(full_user, UsersUserFullCompat)
+    assert isinstance(full_user.full_user, UserFull)
+    assert full_user.full_user.personal_channel_id is None
+
+    async with client.expect_updates_m(UpdateUser):
+        await client.invoke(UpdatePersonalChannelCompat(
+            channel=await client.resolve_peer(channel.id),
+        ))
+
+    with add_compat_to_pyrogram():
+        full_user = await client.invoke(InvokeWithLayer(
+            layer=piltover_layer,
+            query=GetFullUser(id=await client.resolve_peer("self")),
+        ))
+    await client.invoke(InvokeWithLayer(layer=pyrogram_layer, query=GetConfig()))
+
+    assert isinstance(full_user, UsersUserFullCompat)
+    assert isinstance(full_user.full_user, UserFull)
+    assert full_user.full_user.personal_channel_id is not None
+    assert get_channel_id(full_user.full_user.personal_channel_id) == channel.id
+
+    async with client.expect_updates_m(UpdateUser):
+        await client.invoke(UpdatePersonalChannelCompat(
+            channel=InputChannelEmpty(),
+        ))
+
+    with add_compat_to_pyrogram():
+        full_user = await client.invoke(InvokeWithLayer(
+            layer=piltover_layer,
+            query=GetFullUser(id=await client.resolve_peer("self")),
+        ))
+    await client.invoke(InvokeWithLayer(layer=pyrogram_layer, query=GetConfig()))
+
+    assert isinstance(full_user, UsersUserFullCompat)
+    assert isinstance(full_user.full_user, UserFull)
+    assert full_user.full_user.personal_channel_id is None
+
+
+@pytest.mark.asyncio
+async def test_update_personal_channel_private_channel(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    with pytest.raises(ChannelInvalid):
+        await client.invoke(UpdatePersonalChannelCompat(
+            channel=await client.resolve_peer(channel.id),
+        ))
+
+
+@pytest.mark.asyncio
+async def test_update_personal_channel_nonexistent_channel(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    input_peer = await client.resolve_peer(channel.id)
+    input_peer.channel_id += 1
+    with pytest.raises(ChannelPrivate):
+        await client.invoke(UpdatePersonalChannelCompat(
+            channel=input_peer,
+        ))
+
+
+@pytest.mark.asyncio
+async def test_update_personal_channel_invalid_access_hash(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    input_peer = await client.resolve_peer(channel.id)
+    input_peer.access_hash += 1
+    with pytest.raises(ChannelPrivate):
+        await client.invoke(UpdatePersonalChannelCompat(
+            channel=input_peer,
+        ))
+
+
+@pytest.mark.asyncio
+async def test_update_personal_channel_not_channel(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    with pytest.raises(PeerIdInvalid):
+        await client.invoke(UpdatePersonalChannelCompat(
+            channel=await client.resolve_peer("self"),
+        ))
+
+
+@pytest.mark.asyncio
+async def test_update_personal_channel_not_creator(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (_, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+
+    with pytest.raises(UserCreator):
+        await client2.invoke(UpdatePersonalChannelCompat(
+            channel=await client2.resolve_peer(channel.id),
+        ))

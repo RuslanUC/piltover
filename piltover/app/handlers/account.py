@@ -21,7 +21,7 @@ from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, Pee
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis, \
-    TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey
+    TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey, Channel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
@@ -916,29 +916,27 @@ async def get_default_background_emojis(
     return EmojiList(hash=emojis_hash, document_id=ids)
 
 
-# TODO: test
 @handler.on_request(UpdatePersonalChannel, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_personal_channel(request: UpdatePersonalChannel, user: User) -> bool:
     if isinstance(request.channel, InputChannelEmpty):
-        personal_channel = await UserPersonalChannel.get_or_none(user=user)
-        if personal_channel is not None:
-            await personal_channel.delete()
+        if await UserPersonalChannel.filter(user=user).delete():
+            await upd.update_user(user)
         return True
 
     peer_type, peer_id = Peer.type_and_id_from_input_raise(user.id, request.channel, "CHANNEL_PRIVATE")
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    peer = await Peer.get_or_none(owner_id=user.id, channel_id=peer_id).only("channel_id", "channel__creator_id")
-    if peer is None:
+    channel = await Channel.get_or_none(id=peer_id, peers__owner_id=user.id).only("id", "creator_id")
+    if channel is None:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_PRIVATE")
 
-    if peer.channel.creator_id != user.id:
+    if channel.creator_id != user.id:
         raise ErrorRpc(error_code=400, error_message="USER_CREATOR")
 
-    if not await Username.filter(channel_id=peer.channel_id).exists():
+    if not await Username.filter(channel_id=channel.id).exists():
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
 
-    await UserPersonalChannel.update_or_create(user=user, defaults={"channel_id": peer.channel_id})
+    await UserPersonalChannel.update_or_create(user=user, defaults={"channel_id": channel.id})
 
     await upd.update_user(user)
     return True
