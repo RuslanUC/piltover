@@ -109,6 +109,7 @@ omit = [
     "*piltover/tl/types/*",
     "*piltover/tl/functions/*",
     "*piltover/tl/all.py",
+    "*piltover/db/migrations/*",
 ]
 
 [tool.tortoise]
