@@ -256,7 +256,7 @@ class Channel(ChatBase):
         return new_pts
 
     @classmethod
-    def from_input(cls, user: models.User | int, input_channel: InputChannel | InputPeerChannel) -> QuerySet[Self]:
+    def from_input(cls, user: models.User | int, input_channel: InputChannel | InputPeerChannel) -> QuerySet[Channel]:
         if not isinstance(input_channel, (InputChannel, InputPeerChannel)):
             return EmptyQuerySet(cls)
 
@@ -272,5 +272,5 @@ class Channel(ChatBase):
     @classmethod
     def get_from_input(
             cls, user: models.User | int, input_channel: InputChannel | InputPeerChannel
-    ) -> QuerySetSingle[Self | None]:
+    ) -> QuerySetSingle[Channel | None]:
         return cls.from_input(user, input_channel).get_or_none()

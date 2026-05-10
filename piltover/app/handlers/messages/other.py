@@ -3,7 +3,7 @@ from fastrand import xorshift128plus_bytes
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
 from piltover.db.enums import PeerType
-from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs
+from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
@@ -67,7 +67,7 @@ async def set_typing(request: SetTyping, user: User):
         await SessionManager.send(
             upd.UpdatesWithDefaults(
                 updates=[UpdateChannelUserTyping(
-                    channel_id=peer.channel_id,
+                    channel_id=Channel.make_id_from(peer.channel_id),
                     from_id=user.to_tl_peer(),
                     action=request.action,
                 )],
@@ -120,11 +120,10 @@ async def set_default_history_ttl(request: SetDefaultHistoryTTL, user_id: int) -
 
 @handler.on_request(SaveDefaultSendAs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def save_default_send_as(request: SaveDefaultSendAs, user_id: int) -> bool:
-    peer = await Peer.from_input_peer_raise(
-        user_id, request.peer, message="PEER_ID_INVALID", code=400, peer_types=(PeerType.CHANNEL,)
-    )
+    group = await Channel.get_from_input(user_id, request.peer)
+    if group is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    group = peer.channel
     if not group.supergroup:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
