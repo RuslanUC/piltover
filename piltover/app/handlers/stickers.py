@@ -3,6 +3,7 @@ import json
 from asyncio import sleep
 from base64 import b85encode
 from time import time
+from typing import cast
 from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
@@ -20,7 +21,7 @@ from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
     InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, MaskCoords, InputDocumentEmpty, \
-    Document, TLObjectVector, InputStickerSetPremiumGifts, StickerSet
+    Document, TLObjectVector, InputStickerSetPremiumGifts, StickerSet, InputStickerSetItem_133
 from piltover.tl.functions.messages import GetMyStickers, GetStickerSet, GetAllStickers, InstallStickerSet, \
     UninstallStickerSet, ReorderStickerSets, GetArchivedStickers, ToggleStickerSets, GetRecentStickers, \
     ClearRecentStickers, SaveRecentSticker, FaveSticker, GetFavedStickers, GetCustomEmojiDocuments, GetEmojiStickers
@@ -179,11 +180,14 @@ async def validate_webm(file: File, is_emoji: bool) -> None:
 
 
 async def _get_sticker_files(
-        stickers: list[InputStickerSetItem], user_id: int, set_type: StickerSetType | None, is_emoji: bool,
+        stickers: list[InputStickerSetItem | InputStickerSetItem_133], user_id: int, set_type: StickerSetType | None,
+        is_emoji: bool,
 ) -> tuple[dict[int, File], StickerSetType]:
     files_q = Q()
     base_q = Q(type__in=[FileType.DOCUMENT_STICKER, FileType.DOCUMENT], mime_type__in=allowed_mimes, stickerset=None)
     ids = set()
+
+    auth_id = cast(int, request_ctx.get().auth_id)
 
     for input_sticker in stickers:
         emoji = input_sticker.emoji.strip()
@@ -202,8 +206,7 @@ async def _get_sticker_files(
                 constant_file_ref=UUID(bytes=input_doc.file_reference),
             )
         else:
-            ctx = request_ctx.get()
-            if not File.check_access_hash(user_id, ctx.auth_id, input_doc.id, input_doc.access_hash):
+            if not File.check_access_hash(user_id, auth_id, input_doc.id, input_doc.access_hash):
                 raise ErrorRpc(error_code=400, error_message="STICKER_FILE_INVALID")
             ids.add(input_doc.id)
 
@@ -379,7 +382,9 @@ async def create_sticker_set(request: CreateStickerSet, user_id: int) -> Message
             raise
 
         thumb_new_file = await _make_stickerset_thumb_from_file(thumb_file)
-        await StickersetThumb.create(set=stickerset, file=thumb_new_file)
+        stickerset._thumb = await StickersetThumb.create(set=stickerset, file=thumb_new_file)
+    else:
+        stickerset._thumb = None
 
     files_to_create = []
     for idx, input_sticker in enumerate(request.stickers):
@@ -461,8 +466,8 @@ async def change_sticker_position(request: ChangeStickerPosition, user_id: int) 
 
 @handler.on_request(RenameStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
 async def rename_stickerset(request: RenameStickerSet, user_id: int) -> MessagesStickerSet:
-    auth_id = request_ctx.get().auth_id
-    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
+    auth_id = cast(int, request_ctx.get().auth_id)
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset, True)
     if stickerset is None or stickerset.owner_id != user_id:
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
@@ -478,7 +483,7 @@ async def rename_stickerset(request: RenameStickerSet, user_id: int) -> Messages
 
 @handler.on_request(DeleteStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_stickerset(request: DeleteStickerSet, user_id: int) -> bool:
-    auth_id = request_ctx.get().auth_id
+    auth_id = cast(int, request_ctx.get().auth_id)
     if (q := Stickerset.from_input_q(user_id, auth_id, request.stickerset)) is None:
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
     stickerset = await Stickerset.get_or_none(q).only("id", "owner_id")
@@ -516,7 +521,9 @@ async def _make_covered_list(sets: list[Stickerset]) -> list[StickerSetCovered |
 async def get_my_stickers(request: GetMyStickers, user_id: int) -> MyStickers:
     limit = max(1, min(50, request.limit))
     id_filter = Q(set__lt=request.offset_id) if request.offset_id else Q()
-    stickersets = await Stickerset.filter(id_filter, owner_id=user_id).order_by("-id").limit(limit)
+    stickersets = await Stickerset.filter(
+        id_filter, owner_id=user_id,
+    ).order_by("-id").limit(limit).select_related("thumb", "thumb__file")
 
     return MyStickers(
         sets=await _make_covered_list(stickersets),
@@ -571,7 +578,7 @@ async def get_stickerset(request: GetStickerSet, user_id: int) -> MessagesSticke
         )
 
     auth_id = request_ctx.get().auth_id
-    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset, True)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
@@ -583,8 +590,8 @@ async def get_stickerset(request: GetStickerSet, user_id: int) -> MessagesSticke
 
 @handler.on_request(AddStickerToSet, ReqHandlerFlags.DONT_FETCH_USER)
 async def add_sticker_to_set(request: AddStickerToSet, user_id: int) -> MessagesStickerSet:
-    auth_id = request_ctx.get().auth_id
-    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
+    auth_id = cast(int, request_ctx.get().auth_id)
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset, True)
     if stickerset is None or stickerset.owner_id != user_id:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
@@ -672,7 +679,7 @@ async def install_stickerset(
         request: InstallStickerSet, user_id: int,
 ) -> StickerSetInstallResultSuccess | StickerSetInstallResultArchive:
     auth_id = request_ctx.get().auth_id
-    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
+    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset, True)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
@@ -699,6 +706,7 @@ async def install_stickerset(
 @handler.on_request(UninstallStickerSet, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def uninstall_stickerset(request: UninstallStickerSet, user_id: int) -> bool:
     auth_id = request_ctx.get().auth_id
+    # TODO: only fetch id
     stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
@@ -805,7 +813,7 @@ async def toggle_sticker_sets(request: ToggleStickerSets, user_id: int) -> bool:
 
 @handler.on_request(SetStickerSetThumb, ReqHandlerFlags.DONT_FETCH_USER)
 async def set_stickerset_thumb(request: SetStickerSetThumb, user_id: int) -> MessagesStickerSet:
-    auth_id = request_ctx.get().auth_id
+    auth_id = cast(int, request_ctx.get().auth_id)
     stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None or stickerset.owner_id != user_id:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
@@ -815,11 +823,13 @@ async def set_stickerset_thumb(request: SetStickerSetThumb, user_id: int) -> Mes
 
     if isinstance(request.thumb, InputDocumentEmpty):
         await StickersetThumb.filter(set=stickerset).delete()
+        stickerset._thumb = None
     elif isinstance(request.thumb, InputDocument):
         thumb_file = await _get_sticker_thumb(request.thumb, user_id, stickerset.type, stickerset.emoji)
         thumb_new_file = await _make_stickerset_thumb_from_file(thumb_file)
-        thumb = await StickersetThumb.create(set=stickerset, file=thumb_new_file)
-        await StickersetThumb.filter(set=stickerset, id__lt=thumb.id).delete()
+        thumb, _ = await StickersetThumb.update_or_create(set=stickerset, defaults={"file_id": thumb_new_file.id})
+        thumb.file = thumb_new_file
+        stickerset._thumb = thumb
     else:
         raise Unreachable
 

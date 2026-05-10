@@ -123,7 +123,7 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
         set_q = Stickerset.from_input_q(user_id, ctx.auth_id, location.stickerset, prefix="stickersetthumbs__set")
         if set_q is None:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
-        q = Q(stickersetthumbs__id=location.thumb_version) | set_q
+        q = Q(id=location.thumb_version) | set_q
     else:
         valid, const = File.is_file_ref_valid(location.file_reference, user_id, location.id)
         if not valid:

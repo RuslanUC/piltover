@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from typing import Generator
+from typing import Generator, cast
 
 from fastrand import xorshift128plus_bytes
 from loguru import logger
@@ -59,6 +59,9 @@ class Stickerset(Model):
 
     owner_id: int | None
 
+    thumb: models.StickersetThumb | QuerySet[models.StickersetThumb] | None
+    _thumb: models.StickersetThumb | None
+
     @classmethod
     def from_input_q(
             cls, user_id: int, auth_id: int, input_set: InputStickerSetBase | None, prefix: str | None = None,
@@ -95,10 +98,15 @@ class Stickerset(Model):
         return None
 
     @classmethod
-    async def from_input(cls, user_id: int, auth_id: int, input_set: InputStickerSetBase | None) -> Stickerset | None:
+    async def from_input(
+            cls, user_id: int, auth_id: int, input_set: InputStickerSetBase | None, with_thumb: bool = False,
+    ) -> Stickerset | None:
         if (q := cls.from_input_q(user_id, auth_id, input_set)) is None:
             return None
-        return await cls.get_or_none(q)
+        query = cls.get_or_none(q)
+        if with_thumb:
+            query = query.select_related("thumb", "thumb__file")
+        return await query
 
     async def to_tl(self) -> TLStickerSetBase:
         cache_key = self.cache_key()
@@ -106,7 +114,14 @@ class Stickerset(Model):
         if cached is not None:
             return cached
 
-        thumb = await models.StickersetThumb.filter(set=self).select_related("file").order_by("-id").first()
+        if self.thumb is None:
+            thumb_version = None
+            thumb_sizes = None
+        elif isinstance(self.thumb, models.StickersetThumb):
+            thumb_version = self.thumb.file_id
+            thumb_sizes = [PhotoSize(type_="s", w=100, h=100, size=self.thumb.file.size)]
+        else:
+            raise ValueError("Stickerset thumb must be prefetched!")
 
         result = StickerSetToFormat(
             id=self.id,
@@ -119,8 +134,8 @@ class Stickerset(Model):
             hash=self.hash,
             masks=self.masks,
             emoji=self.emoji,
-            thumbs=[PhotoSize(type_="s", w=100, h=100, size=thumb.file.size)] if thumb is not None else None,
-            thumb_version=thumb.id if thumb is not None else None,
+            thumbs=thumb_sizes,
+            thumb_version=thumb_version,
         )
 
         await Cache.obj.set(cache_key, result)
@@ -136,8 +151,8 @@ class Stickerset(Model):
 
         for sticker in stickers:
             yield sticker.id
-            yield sticker.sticker_pos
-            yield sticker.sticker_alt
+            yield cast(int, sticker.sticker_pos)
+            yield cast(str, sticker.sticker_alt)
 
     async def to_tl_messages(self) -> MessagesStickerSet:
         cache_key = self.cache_key_messages()

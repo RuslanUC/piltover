@@ -399,6 +399,7 @@ class Session:
                 ).only("type", "user_id", "chat_id", "channel_id")
             })
 
+        # TODO: store list of mentioned users inside serialized message
         if values.channel_messages:
             messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
                 "peer", "peer__channel", "content", "content__media", "content__media__file",
@@ -408,6 +409,7 @@ class Session:
             for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
                 result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
 
+        # TODO: store installation date and archived flag alongside stickersets (and cache those 2 values by user)
         if values.stickersets:
             for installed in await InstalledStickerset.filter(
                     set_id__in=values.stickersets, user_id=self.user_id,
