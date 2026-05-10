@@ -35,20 +35,19 @@ async def update_dialog_filter(request: UpdateDialogFilter, user_id: int) -> boo
     if request.id < 2 or request.id >= (2 ** 15 - 1):
         raise ErrorRpc(error_code=400, error_message="FILTER_ID_INVALID")
 
-    folder = await DialogFolder.get_or_none(owner_id=user_id, id_for_user=request.id)
+    folder_query = DialogFolder.filter(owner_id=user_id, id_for_user=request.id)
 
-    if request.filter is None and folder is None:
-        return True
-    elif request.filter is None and folder is not None:
-        await folder.delete()
-
-        await upd.update_folder(user_id, request.id, None)
+    if request.filter is None:
+        if await folder_query.delete():
+            await upd.update_folder(user_id, request.id, None)
         return True
 
     title = request.filter.title
     title_text = title.text if isinstance(title, TextWithEntities) else title
     if not title_text or len(title_text) > 12:
         raise ErrorRpc(error_code=400, error_message="FILTER_TITLE_EMPTY")
+
+    folder = await folder_query.get_or_none()
 
     if folder is None:
         folder = await DialogFolder.create(

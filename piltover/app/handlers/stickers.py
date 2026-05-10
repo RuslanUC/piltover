@@ -703,13 +703,8 @@ async def uninstall_stickerset(request: UninstallStickerSet, user_id: int) -> bo
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
-    installed = await InstalledStickerset.get_or_none(set=stickerset, user_id=user_id)
-    if installed is None:
-        return True
-
-    await installed.delete()
-
-    await upd.update_stickersets(user_id)
+    if await InstalledStickerset.filter(set=stickerset, user_id=user_id).delete():
+        await upd.update_stickersets(user_id)
 
     return True
 

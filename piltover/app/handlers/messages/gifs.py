@@ -19,9 +19,7 @@ async def save_gif(request: SaveGif, user_id: int) -> bool:
     doc = request.id
 
     if request.unsave:
-        saved_gif = await SavedGif.get_or_none(user_id=user_id, gif_id=doc.id)
-        if saved_gif is not None:
-            await saved_gif.delete()
+        if await SavedGif.filter(user_id=user_id, gif_id=doc.id).delete():
             await upd.update_saved_gifs(user_id)
         return True
 

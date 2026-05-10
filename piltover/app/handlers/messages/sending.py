@@ -1095,8 +1095,7 @@ async def save_draft(request: SaveDraft, user_id: int) -> bool:
         reply_to = await MessageRef.get_or_none(peer.q_this_or_channel(), id=reply_to_message_id)
 
     if not request.message and reply_to is None:
-        if (existing_draft := await MessageDraft.get_or_none(peer=peer)) is not None:
-            await existing_draft.delete()
+        if await MessageDraft.filter(peer=peer).delete():
             await upd.update_draft(user_id, peer, None)
         return True
 

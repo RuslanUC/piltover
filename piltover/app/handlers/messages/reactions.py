@@ -102,7 +102,9 @@ async def send_reaction(request: SendReaction, user_id: int) -> Updates:
     if uniq_reactions > APP_CONFIG.reactions_unique_max:
         raise ErrorRpc(error_code=400, error_message="REACTIONS_TOO_MANY")
 
-    existing_reaction = await MessageReaction.get_or_none(user_id=user_id, message_id=message.content_id)
+    existing_reaction = await MessageReaction.get_or_none(user_id=user_id, message_id=message.content_id).only(
+        "id", "reaction_id", "custom_emoji_id",
+    )
     if existing_reaction is None and reaction is None and custom_reaction is None:
         raise REACTION_NOT_MODIFIED
     if existing_reaction is not None:

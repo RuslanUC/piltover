@@ -485,7 +485,7 @@ async def reset_authorization(request: ResetAuthorization, user_id: int) -> bool
         raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")
 
     auth_hash_hex = Long.write(request.hash).hex()
-    auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex)
+    auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex).only("id", "key_id")
     if auth is None or auth == this_auth:
         raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
@@ -517,10 +517,8 @@ async def reset_password(user_id: int) -> ResetPasswordResult:
 
 @handler.on_request(DeclinePasswordReset, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def decline_password_reset(user_id: int) -> bool:
-    if (reset_request := await UserPasswordReset.get_or_none(user_id=user_id).only("id")) is None:
+    if not await UserPasswordReset.filter(user_id=user_id).delete():
         raise ErrorRpc(error_code=400, error_message="RESET_REQUEST_MISSING")
-
-    await reset_request.delete()
 
     return True
 
@@ -774,10 +772,11 @@ async def save_wallpaper(request: SaveWallPaper, user_id: int) -> bool:
     if wallpaper is None:
         raise ErrorRpc(error_code=400, error_message="WALLPAPER_INVALID")
 
-    installed = await InstalledWallpaper.get_or_none(user_id=user_id, wallpaper=wallpaper).select_related("settings")
     if request.unsave:
-        await installed.delete()
+        await InstalledWallpaper.filter(user_id=user_id, wallpaper=wallpaper).delete()
         return True
+
+    installed = await InstalledWallpaper.get_or_none(user_id=user_id, wallpaper=wallpaper).select_related("settings")
 
     if installed is None:
         if wallpaper.document is not None:
