@@ -148,3 +148,16 @@ APP_CONFIG = "tests/config/app.toml"
 GATEWAY_CONFIG = "tests/config/gateway.toml"
 SYSTEM_CONFIG = "tests/config/system.toml"
 WORKER_CONFIG = "tests/config/worker.toml"
+
+[tool.mypy]
+packages = ["piltover"]
+
+
+[[tool.mypy.overrides]]
+module = [
+    "piltover.tl.types.*",
+    "piltover.tl.base.*",
+    "piltover.tl.functions.*",
+    "piltover.db.migrations.*",
+]
+ignore_errors = true
