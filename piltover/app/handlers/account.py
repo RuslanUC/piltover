@@ -28,7 +28,7 @@ from piltover.session import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, Long, \
     UpdatesTooLong, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
-    EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus, GlobalPrivacySettings_160, \
+    EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus, \
     GlobalPrivacySettings_200, InputFile, InputFileBig, WallPaperSettings
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.base import User as TLUserBase, WallPaper as TLWallPaperBase

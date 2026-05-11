@@ -18,7 +18,7 @@ from piltover.db.models import ChatBase
 from piltover.db.models.utils import NullableFKSetNull
 from piltover.db.utils.awaitable_none_queryset import EmptyQuerySet
 from piltover.tl import ChannelForbidden, Long
-from piltover.tl.base import Chat as TLChatBase
+from piltover.tl.base import Chat as TLChatBase, InputChannel as TLInputChannelBase, InputPeer as TLInputPeerBase
 from piltover.tl.to_format import ChannelToFormat
 from piltover.tl.types import ChatAdminRights as TLChatAdminRights, PeerColor, PeerChannel, InputChannel, \
     InputPeerChannel
@@ -127,12 +127,17 @@ class Channel(ChatBase):
         ]
         channel_ids = [channel.id for channel in processing_channels]
 
+        usernames: dict[int, str | None]
         if len(channel_ids) == 1:
             channel_id = channel_ids[0]
             usernames = {
-                channel_id: await models.Username.filter(
-                    channel_id=channel_id,
-                ).first().values_list("username", flat=True)
+                channel_id: cast(
+                    str | None,
+                    cast(
+                        object,
+                        await models.Username.filter(channel_id=channel_id).first().values_list("username", flat=True)
+                    )
+                )
             }
         else:
             # TODO: dont fetch usernames if already prefetched
@@ -243,7 +248,10 @@ class Channel(ChatBase):
 
     async def add_pts(self, pts_count: int) -> int:
         async with in_transaction():
-            pts = cast(int, await Channel.select_for_update().get(id=self.id).values_list("pts", flat=True))
+            pts = cast(
+                int,
+                cast(object, await Channel.select_for_update().get(id=self.id).values_list("pts", flat=True))
+            )
 
             if pts_count <= 0:
                 self.pts = pts
@@ -256,21 +264,22 @@ class Channel(ChatBase):
         return new_pts
 
     @classmethod
-    def from_input(cls, user: models.User | int, input_channel: InputChannel | InputPeerChannel) -> QuerySet[Channel]:
+    def from_input(
+            cls, user: models.User | int, input_channel: TLInputChannelBase | TLInputPeerBase,
+    ) -> QuerySet[Channel]:
         if not isinstance(input_channel, (InputChannel, InputPeerChannel)):
             return EmptyQuerySet(cls)
 
         user_id = user.id if isinstance(user, models.User) else user
-
-        ctx = request_ctx.get()
+        auth_id = cast(int, request_ctx.get().auth_id)
 
         channel_id = models.Channel.norm_id(input_channel.channel_id)
-        if not models.Channel.check_access_hash(user_id, ctx.auth_id, channel_id, input_channel.access_hash):
+        if not models.Channel.check_access_hash(user_id, auth_id, channel_id, input_channel.access_hash):
             return EmptyQuerySet(cls)
         return cls.filter(id=channel_id, deleted=False)
 
     @classmethod
     def get_from_input(
-            cls, user: models.User | int, input_channel: InputChannel | InputPeerChannel
+            cls, user: models.User | int, input_channel: TLInputChannelBase | TLInputPeerBase
     ) -> QuerySetSingle[Channel | None]:
         return cls.from_input(user, input_channel).get_or_none()

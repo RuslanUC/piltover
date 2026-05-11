@@ -2029,7 +2029,7 @@ async def update_privacy(user: User, rule: PrivacyRule, rules: PrivacyRules) -> 
     return updates
 
 
-async def update_channel_available_messages(channel: Channel, min_id: int) -> Updates | None:
+async def update_channel_available_messages(channel: Channel, min_id: int) -> Updates:
     await ChannelUpdate.create(
         channel=channel,
         type=ChannelUpdateType.UPDATE_MIN_AVAILABLE_ID,

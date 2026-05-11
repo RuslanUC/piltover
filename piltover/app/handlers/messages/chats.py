@@ -20,8 +20,9 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
     MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines, \
-    MessageActionChatEditPhoto, InputPeerSelf, InputUserSelf, InputPeerUserFromMessage
+    MessageActionChatEditPhoto, InputPeerSelf, InputUserSelf, InputPeerUserFromMessage, InputChatUploadedPhoto_133
 from piltover.tl.base.messages import Chats as ChatsBase
+from piltover.tl.base import InputChatPhoto as TLInputChatPhotoBase
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
     EditChatDefaultBannedRights, CreateChat_133, MigrateChat, GetOnlines, GetCommonChats, DeleteChat
@@ -217,7 +218,7 @@ async def edit_chat_about(request: EditChatAbout, user_id: int) -> bool:
 
 
 async def resolve_input_chat_photo(
-        user_id: int, photo: InputChatPhotoEmpty | InputChatPhoto | InputChatUploadedPhoto,
+        user_id: int, photo: TLInputChatPhotoBase,
 ) -> File | None:
     if isinstance(photo, InputChatPhotoEmpty):
         return None
@@ -225,7 +226,7 @@ async def resolve_input_chat_photo(
         if not await Peer.filter(owner_id=user_id, chat__photo_id=photo.id).exists():
             raise ErrorRpc(error_code=400, error_message="PHOTO_INVALID")
         return await File.get_or_none(id=photo.id)
-    elif isinstance(photo, InputChatUploadedPhoto):
+    elif isinstance(photo, (InputChatUploadedPhoto, InputChatUploadedPhoto_133)):
         if photo.file is None:
             raise ErrorRpc(error_code=400, error_message="PHOTO_FILE_MISSING")
         uploaded_file = await UploadingFile.get_or_none(user_id=user_id, file_id=photo.file.id)

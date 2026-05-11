@@ -86,16 +86,22 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     has_scheduled = await MessageRef.filter(peer=peer, content__scheduled_date__not_isnull=True).exists()
     pinned_msg_id = cast(
         int | None,
-        await MessageRef.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True),
+        cast(
+            object,
+            await MessageRef.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True)
+        )
     )
 
     personal_channel = await Channel.get_or_none(userpersonalchannels__user=target_user).only("id", "version")
     if personal_channel is not None:
         personal_channel_msg_id = cast(
             int | None,
-            await MessageRef.filter(
-                peer__owner=None, peer__channel=personal_channel,
-            ).order_by("-id").first().values_list("id", flat=True),
+            cast(
+                object,
+                await MessageRef.filter(
+                    peer__owner=None, peer__channel=personal_channel,
+                ).order_by("-id").first().values_list("id", flat=True)
+            )
         ) or 0
     else:
         personal_channel_msg_id = None

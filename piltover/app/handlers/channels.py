@@ -71,7 +71,7 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
     channel = peer.channel
 
     participant = await channel.get_participant(user_id)
-    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+    if participant is None or not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     request.username = request.username.lower().strip()
@@ -112,9 +112,12 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
     if channel.cached_username is not None and channel.hidden_prehistory:
         channel.min_available_id = cast(
             int | None,
-            await MessageRef.filter(
-                peer__owner=None, peer__channel=channel,
-            ).order_by("-id").first().values_list("id", flat=True)
+            cast(
+                object,
+                await MessageRef.filter(
+                    peer__owner=None, peer__channel=channel,
+                ).order_by("-id").first().values_list("id", flat=True)
+            )
         )
         if channel.min_available_id is not None:
             channel.min_available_id += 1
@@ -192,7 +195,7 @@ async def create_channel(request: CreateChannel, user_id: int) -> Updates:
 
 @handler.on_request(GetChannels, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_channels(request: GetChannels, user_id: int) -> Chats:
-    ctx = request_ctx.get()
+    auth_id = cast(int, request_ctx.get().auth_id)
     channels_q = Q()
 
     for input_channel in request.id:
@@ -205,7 +208,7 @@ async def get_channels(request: GetChannels, user_id: int) -> Chats:
             if input_channel.access_hash == 0:
                 channels_q |= Q(id=channel_id, chatparticipants__user_id=user_id)
             else:
-                if not Channel.check_access_hash(user_id, ctx.auth_id, channel_id, input_channel.access_hash):
+                if not Channel.check_access_hash(user_id, auth_id, channel_id, input_channel.access_hash):
                     continue
                 channels_q |= Q(peers__owner_id=user_id, peers__channel_id=channel_id)
         elif isinstance(input_channel, InputChannelFromMessage):
@@ -272,9 +275,12 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     if channel.hidden_prehistory and participant is not None and participant.min_message_id:
         min_message_id = cast(
             int | None,
-            await MessageRef.filter(
-                peer__owner=None, peer__channel=channel, id__gte=participant.min_message_id,
-            ).order_by("id").first().values_list("id", flat=True)
+            cast(
+                object,
+                await MessageRef.filter(
+                    peer__owner=None, peer__channel=channel, id__gte=participant.min_message_id,
+                ).order_by("id").first().values_list("id", flat=True)
+            )
         )
 
     migrated_from_chat_id = migrated_from_max_id = None
@@ -283,9 +289,12 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
         migrated_from_chat_id = channel.migrated_from_id
         migrated_from_max_id = cast(
             int | None,
-            await MessageRef.filter(
-                peer=chat_peer,
-            ).order_by("-id").first().values_list("id", flat=True)
+            cast(
+                object,
+                await MessageRef.filter(
+                    peer=chat_peer,
+                ).order_by("-id").first().values_list("id", flat=True)
+            )
         ) or 0
 
     channels_to_tl = [channel]
@@ -302,9 +311,15 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
 
     slowmode_next_date = None
     if channel.slowmode_seconds:
-        slowmode_last_date = cast(datetime | None, await SlowmodeLastMessage.get_or_none(
-            channel=channel, user_id=user_id
-        ).values_list("last_message", flat=True))
+        slowmode_last_date = cast(
+            datetime | None,
+            cast(
+                object,
+                await SlowmodeLastMessage.get_or_none(
+                    channel=channel, user_id=user_id
+                ).values_list("last_message", flat=True)
+            )
+        )
         if slowmode_last_date is not None:
             slowmode_next_date = int(slowmode_last_date.timestamp()) + channel.slowmode_seconds
 
@@ -345,7 +360,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
 
             id=channel.make_id(),
             about=channel.description,
+            # TODO: store in Channel model?
             participants_count=await ChatParticipant.filter(channel=channel, left=False).count(),
+            # TODO: cache
             admins_count=await ChatParticipant.filter(channel=channel, admin_rights__gt=0).count(),
             read_inbox_max_id=in_read_max_id,
             read_outbox_max_id=out_read_max_id,
@@ -355,9 +372,12 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
             bot_info=[],
             pinned_msg_id=cast(
                 int | None,
-                await MessageRef.filter(
-                    peer__owner=None, peer__channel=channel, pinned=True,
-                ).order_by("-id").first().values_list("id", flat=True)
+                cast(
+                    object,
+                    await MessageRef.filter(
+                        peer__owner=None, peer__channel=channel, pinned=True,
+                    ).order_by("-id").first().values_list("id", flat=True)
+                )
             ),
             pts=channel.pts,
             exported_invite=await invite.to_tl() if invite is not None else None,
@@ -386,7 +406,7 @@ async def edit_channel_title(request: EditTitle, user_id: int) -> Updates:
     )
 
     participant = await peer.channel.get_participant(user_id)
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+    if participant is None or not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     old_title = peer.channel.name
@@ -424,7 +444,7 @@ async def edit_channel_photo(request: EditPhoto, user_id: int):
     )
 
     participant = await peer.channel.get_participant(user_id)
-    if not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+    if participant is None or not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     channel = peer.channel
@@ -517,7 +537,13 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
     ids = request.id[:100]
     ids_query = Q(id__in=ids, peer__channel=channel) & (Q(peer__owner_id=user_id) | Q(peer__owner=None))
     ids_query = append_channel_min_message_id_to_query_maybe(channel, ids_query, participant, user_id)
-    message_ids: list[int] = await MessageRef.filter(ids_query).values_list("id", flat=True)
+    message_ids = cast(
+        list[int],
+        cast(
+            object,
+            await MessageRef.filter(ids_query).values_list("id", flat=True)
+        )
+    )
 
     if not message_ids:
         return AffectedMessages(pts=channel.pts, pts_count=0)
@@ -807,9 +833,12 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
 
     unread_ids = cast(
         int | None,
-        await MessageRef.filter(
-            id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
-        ).order_by("-id").first().values_list("id", "content_id")
+        cast(
+            object,
+            await MessageRef.filter(
+                id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
+            ).order_by("-id").first().values_list("id", "content_id")
+        )
     )
     if not unread_ids:
         return True
@@ -932,7 +961,7 @@ async def toggle_signatures(request: ToggleSignatures, user_id: int) -> Updates:
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     participant = await channel.get_participant(user_id)
-    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+    if participant is None or not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     channel = channel
@@ -972,7 +1001,7 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user_
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     participant = await channel.get_participant(user_id)
-    if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+    if participant is None or not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     reactions = request.available_reactions
@@ -1128,7 +1157,6 @@ async def join_channel(request: JoinChannel, user_id: int) -> Updates:
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="no linked channel")
         linked_participant = await linked_channel.get_participant(user_id, True)
         if not linked_channel.can_view_messages(linked_participant):
-            logger.warning(f"{linked_participant}, {linked_participant.left}")
             raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE", reason="cant access linked channel")
 
     user = await User.get(id=user_id).only("id")
@@ -1743,12 +1771,12 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user_id: int) ->
         if channel.emojiset_id is None:
             old_stickerset = InputStickerSetEmpty()
         else:
-            old_stickerset = InputStickerSetID(id=channel.emojiset_id, access_hash=channel.emojiset.access_hash)
+            old_stickerset = InputStickerSetID(id=channel.emojiset_id, access_hash=-1)
     else:
         if channel.stickerset_id is None:
             old_stickerset = InputStickerSetEmpty()
         else:
-            old_stickerset = InputStickerSetID(id=channel.stickerset_id, access_hash=channel.stickerset.access_hash)
+            old_stickerset = InputStickerSetID(id=channel.stickerset_id, access_hash=-1)
 
     if isinstance(request.stickerset, InputStickerSetEmpty):
         new_stickerset_tl = InputStickerSetEmpty()
@@ -1759,12 +1787,12 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user_id: int) ->
         if not is_emoji and channel.stickerset_id is None:
             raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
     else:
-        auth_id = request_ctx.get().auth_id
+        auth_id = cast(int, request_ctx.get().auth_id)
         new_stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
         if new_stickerset is None or new_stickerset.official or new_stickerset.emoji != is_emoji:
             raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
-        new_stickerset_tl = InputStickerSetID(id=new_stickerset.id, access_hash=new_stickerset.access_hash)
+        new_stickerset_tl = InputStickerSetID(id=new_stickerset.id, access_hash=-1)
 
         if not is_emoji and channel.stickerset_id == new_stickerset.id:
             raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
