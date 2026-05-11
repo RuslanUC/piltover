@@ -18,6 +18,7 @@ from piltover.tl import InputStickerSetEmpty, InputStickerSetID, InputStickerSet
     StickerPack, InputStickerSetAnimatedEmoji, InputStickerSetDice, InputStickerSetAnimatedEmojiAnimations, \
     InputStickerSetEmojiGenericAnimations, InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons
 from piltover.tl.to_format import StickerSetToFormat
+from piltover.tl.types.internal import StickerSetToFormatCommon, StickerSetToFormatForUser
 from piltover.tl.types.internal_access import AccessHashPayloadStickerset
 from piltover.tl.types.messages import StickerSet as MessagesStickerSet
 from piltover.tl.base import InputStickerSet as InputStickerSetBase, StickerSet as TLStickerSetBase
@@ -109,7 +110,7 @@ class Stickerset(Model):
             query = query.select_related("thumb", "thumb__file")
         return await query
 
-    async def to_tl(self) -> TLStickerSetBase:
+    async def to_tl_info(self) -> StickerSetToFormatCommon:
         cache_key = self.cache_key()
         cached = await Cache.obj.get(cache_key)
         if cached is not None:
@@ -124,7 +125,7 @@ class Stickerset(Model):
         else:
             raise ValueError("Stickerset thumb must be prefetched!")
 
-        result = StickerSetToFormat(
+        result = StickerSetToFormatCommon(
             id=self.id,
             access_hash=-1,
             title=self.title,
@@ -142,6 +143,30 @@ class Stickerset(Model):
         await Cache.obj.set(cache_key, result)
         return result
 
+    async def to_tl_for_user(self, user_id: int) -> StickerSetToFormatForUser:
+        cache_key = self.cache_key_for_user(user_id)
+        cached = await Cache.obj.get(cache_key)
+        if cached is not None:
+            return cached
+
+        info = await models.InstalledStickerset.get_or_none(
+            set_id=self.id, user_id=user_id
+        ).only("installed_at", "archived")
+
+        result = StickerSetToFormatForUser(
+            installed_date=int(info.installed_at.timestamp()) if info is not None else None,
+            archived=info.archived if info is not None else False,
+        )
+
+        await Cache.obj.set(cache_key, result)
+        return result
+
+    async def to_tl(self, user_id: int) -> TLStickerSetBase:
+        return StickerSetToFormat(
+            for_user=await self.to_tl_for_user(user_id),
+            info=await self.to_tl_info(),
+        )
+
     # TODO: also add documents_query_cls that takes stickerset id
     def documents_query(self) -> QuerySet[models.File]:
         return models.File.filter(stickerset=self).order_by("sticker_pos")
@@ -155,7 +180,7 @@ class Stickerset(Model):
             yield cast(int, sticker.sticker_pos)
             yield cast(str, sticker.sticker_alt)
 
-    async def to_tl_messages(self) -> MessagesStickerSet:
+    async def to_tl_messages(self, user_id: int) -> MessagesStickerSet:
         cache_key = self.cache_key_messages()
         cached = await Cache.obj.get(cache_key)
         if cached is not None:
@@ -175,7 +200,7 @@ class Stickerset(Model):
             packs[file.sticker_alt].documents.append(file.id)
 
         result = MessagesStickerSet(
-            set=await self.to_tl(),
+            set=await self.to_tl(user_id),
             packs=list(packs.values()),
             keywords=[],  # TODO: add support for keywords
             documents=documents,
@@ -189,6 +214,9 @@ class Stickerset(Model):
 
     def cache_key_messages(self) -> str:
         return f"stickerset-messages:{self.id}:{self.hash}"
+
+    def cache_key_for_user(self, user_id: int) -> str:
+        return f"stickerset-for-user:{self.id}:{user_id}"
 
     @staticmethod
     def make_access_hash(user: int, auth: int, set_id: int) -> int:

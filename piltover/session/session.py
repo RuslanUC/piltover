@@ -388,6 +388,7 @@ class Session:
                 contacts=contact_ids,
             )
 
+            # TODO: store presences inside UserToFormat
             for presence in await Presence.filter(user_id__in=values.users).only("user_id", "last_seen"):
                 result.presences[presence.user_id] = presence
 
@@ -399,7 +400,8 @@ class Session:
                 ).only("type", "user_id", "chat_id", "channel_id")
             })
 
-        # TODO: store list of mentioned users inside serialized message
+        # TODO: store list of mentioned users inside *ToFormat message
+        # TODO: cache media unread statuses
         if values.channel_messages:
             messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
                 "peer", "peer__channel", "content", "content__media", "content__media__file",
@@ -408,13 +410,6 @@ class Session:
             reactionss = await MessageRef.to_tl_reactions_bulk(messages, self.user_id)
             for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
                 result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
-
-        # TODO: store installation date and archived flag alongside stickersets (and cache those 2 values by user)
-        if values.stickersets:
-            for installed in await InstalledStickerset.filter(
-                    set_id__in=values.stickersets, user_id=self.user_id,
-            ).only("set_id", "installed_date", "archived"):
-                result.stickersets[installed.set_id] = installed
 
         return result
 

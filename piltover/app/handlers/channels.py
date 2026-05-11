@@ -225,7 +225,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
         user_id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
         select_related=(
             "channel__discussion", "channel__photo", "channel__stickerset", "channel__emojiset",
-            "channel__wallpaper", "channel__wallpaper__settings", "channel__wallpaper__document",
+            "channel__stickerset__thumb", "channel__stickerset__thumb__file", "channel__emojiset__thumb",
+            "channel__emojiset__thumb__file", "channel__wallpaper", "channel__wallpaper__settings",
+            "channel__wallpaper__document",
         ),
     )
 
@@ -267,7 +269,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     can_change_info = participant is not None and channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)
 
     min_message_id: int | None = None
-    if channel.hidden_prehistory and participant is not None and cast(ChatParticipant, participant).min_message_id:
+    if channel.hidden_prehistory and participant is not None and participant.min_message_id:
         min_message_id = cast(
             int | None,
             await MessageRef.filter(
@@ -368,8 +370,8 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
             slowmode_seconds=channel.slowmode_seconds,
             slowmode_next_send_date=slowmode_next_date,
             default_send_as=default_send_as,
-            stickerset=await channel.stickerset.to_tl() if channel.stickerset is not None else None,
-            emojiset=await channel.emojiset.to_tl() if channel.emojiset is not None else None,
+            stickerset=await channel.stickerset.to_tl(user_id) if channel.stickerset is not None else None,
+            emojiset=await channel.emojiset.to_tl(user_id) if channel.emojiset is not None else None,
             wallpaper=channel.wallpaper.to_tl() if channel.wallpaper is not None else None,
         ),
         chats=await Channel.to_tl_bulk(channels_to_tl),

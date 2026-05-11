@@ -206,6 +206,8 @@ internal.messageToFormatContent#4e487850 flags:# silent:flags.0?true post:flags.
 internal.messageToFormatServiceContent#76fbc4e5 flags:# from_id:flags.0?Peer date:int action:MessageAction ttl_period:flags.1?int = internal.MessageToFormatContent;
 internal.messageToFormatRef#66b94b3 flags:# out:flags.0?true mentioned:flags.1?true media_unread:flags.2?true from_scheduled:flags.3?true pinned:flags.4?true id:int peer_id:Peer saved_peer_id:flags.5?Peer reply_to:flags.7?MessageReplyHeader = internal.MessageToFormatRef;
 internal.channelMessageToFormatCommon#b2d2c02 flags:# author_id:long id:int channel_id:long from_scheduled:flags.0?true pinned:flags.1?true reply_to:flags.2?MessageReplyHeader = internal.ChannelMessageToFormatCommon;
+internal.stickerSetToFormatCommon#1445ac69 flags:# id:int access_hash:long title:string short_name:flags.0?string official:flags.1?true creator_id:long count:int hash:int masks:flags.2?true emoji:flags.3?true thumbs:flags.4?Vector<PhotoSize> thumb_version:flags.4?int = internal.StickerSetToFormat;
+internal.stickerSetToFormatForUser#b27013c6 flags:# installed_date:flags.0?int archived:flags.1?true = internal.StickerSetToFormatForUser;
 
 wallPaperToFormatInternal#68dda86b flags:# id:long creator_id:long pattern:flags.0?true dark:flags.1?true slug:string document:Document settings:flags.2?WallPaperSettings = WallPaper;
 messageServiceToFormatInternal#efce62cb flags:# author_id:long id:int from_id:flags.0?Peer peer_id:Peer reply_to:flags.1?MessageReplyHeader date:int action:MessageAction ttl_period:flags.2?int = Message;
@@ -220,7 +222,7 @@ phoneCallToFormatInternal#94e4f3ed flags:# id:long access_hash:long date:long ad
 messageToFormatInternal#e0a8fd99 flags:# content:internal.MessageToFormatContent ref:internal.MessageToFormatRef reactions:flags.0?MessageReactions replies:flags.1?MessageReplies = Message;
 channelMessageToFormatInternal#237ed5c2 flags:# content:internal.MessageToFormatContent common:internal.ChannelMessageToFormatCommon replies:flags.1?MessageReplies = Message;
 updateMessageIDToFormatInternal#5157a73d id:int random_id:long target_user:long = Update;
-stickerSetToFormatInternal#1445ac69 flags:# id:int access_hash:long title:string short_name:flags.0?string official:flags.1?true creator_id:long count:int hash:int masks:flags.2?true emoji:flags.3?true thumbs:flags.4?Vector<PhotoSize> thumb_version:flags.4?int = StickerSet;
+stickerSetToFormatInternal#7108bc92 for_user:internal.StickerSetToFormatForUser info:internal.StickerSetToFormat = StickerSet;
 
 // Uploaded files metadata
 

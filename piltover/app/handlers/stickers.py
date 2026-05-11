@@ -412,7 +412,7 @@ async def create_sticker_set(request: CreateStickerSet, user_id: int) -> Message
     await InstalledStickerset.create(set=stickerset, user_id=user_id)
     await upd.new_stickerset(user_id, stickerset)
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 async def _get_sticker_with_set(sticker: InputDocument, user_id: int) -> tuple[File, Stickerset]:
@@ -437,7 +437,7 @@ async def change_sticker_position(request: ChangeStickerPosition, user_id: int) 
     old_pos = request.position
 
     if old_pos == new_pos:
-        return await stickerset.to_tl_messages()
+        return await stickerset.to_tl_messages(user_id)
 
     # if sticker position is, for example, 5, new position is 10 and there is 15 stickers, then we need to:
     #  1) subtract 1 from stickers with positions 6-10 (current_pos + 1, new_pos)
@@ -463,7 +463,7 @@ async def change_sticker_position(request: ChangeStickerPosition, user_id: int) 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 @handler.on_request(RenameStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
@@ -480,7 +480,7 @@ async def rename_stickerset(request: RenameStickerSet, user_id: int) -> Messages
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["title", "hash"])
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 @handler.on_request(DeleteStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
@@ -499,7 +499,7 @@ async def delete_stickerset(request: DeleteStickerSet, user_id: int) -> bool:
     return True
 
 
-async def _make_covered_list(sets: list[Stickerset]) -> list[StickerSetCovered | StickerSetNoCovered]:
+async def _make_covered_list(user_id: int, sets: list[Stickerset]) -> list[StickerSetCovered | StickerSetNoCovered]:
     sets_ids = [sset.id for sset in sets]
     covers = {file.stickerset_id: file for file in await File.filter(stickerset_id__in=sets_ids, sticker_pos=0)}
 
@@ -508,12 +508,12 @@ async def _make_covered_list(sets: list[Stickerset]) -> list[StickerSetCovered |
         if stickerset.id in covers:
             covers[stickerset.id].stickerset = stickerset
             result.append(StickerSetCovered(
-                set=await stickerset.to_tl(),
+                set=await stickerset.to_tl(user_id),
                 cover=covers[stickerset.id].to_tl_document(),
             ))
         else:
             result.append(StickerSetNoCovered(
-                set=await stickerset.to_tl(),
+                set=await stickerset.to_tl(user_id),
             ))
 
     return result
@@ -528,7 +528,7 @@ async def get_my_stickers(request: GetMyStickers, user_id: int) -> MyStickers:
     ).order_by("-id").limit(limit).select_related("thumb", "thumb__file")
 
     return MyStickers(
-        sets=await _make_covered_list(stickersets),
+        sets=await _make_covered_list(user_id, stickersets),
         count=await Stickerset.filter(owner_id=user_id).count(),
     )
 
@@ -551,14 +551,14 @@ async def change_sticker(request: ChangeSticker, user_id: int) -> MessagesSticke
     # TODO: keywords
 
     if not update_fields:
-        return await stickerset.to_tl_messages()
+        return await stickerset.to_tl_messages(user_id)
 
     await file.save(update_fields=update_fields)
 
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 @handler.on_request(GetStickerSet, ReqHandlerFlags.DONT_FETCH_USER)
@@ -579,7 +579,7 @@ async def get_stickerset(request: GetStickerSet, user_id: int) -> MessagesSticke
             documents=[],
         )
 
-    auth_id = request_ctx.get().auth_id
+    auth_id = cast(int, request_ctx.get().auth_id)
     stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset, True)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
@@ -587,7 +587,7 @@ async def get_stickerset(request: GetStickerSet, user_id: int) -> MessagesSticke
     if request.hash == stickerset.hash:
         return StickerSetNotModified()
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 @handler.on_request(AddStickerToSet, ReqHandlerFlags.DONT_FETCH_USER)
@@ -617,7 +617,7 @@ async def add_sticker_to_set(request: AddStickerToSet, user_id: int) -> Messages
     )
     await stickerset.refresh_from_db(["hash", "stickers_count"])
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 @handler.on_request(ReplaceSticker, ReqHandlerFlags.DONT_FETCH_USER)
@@ -641,7 +641,7 @@ async def replace_sticker(request: ReplaceSticker, user_id: int) -> MessagesStic
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(await stickerset.documents_query()), 32)
     await stickerset.save(update_fields=["hash"])
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 @handler.on_request(RemoveStickerFromSet, ReqHandlerFlags.DONT_FETCH_USER)
@@ -660,14 +660,14 @@ async def remove_sticker_from_set(request: RemoveStickerFromSet, user_id: int) -
     )
     await stickerset.refresh_from_db(["hash", "stickers_count"])
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 @handler.on_request(GetAllStickers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_all_stickers(request: GetAllStickers, user_id: int) -> AllStickers | AllStickersNotModified:
     sets = await InstalledStickerset.filter(user_id=user_id, archived=False, set__deleted=False, set__emoji=False)\
         .order_by("pos", "-installed_at")\
-        .select_related("set")
+        .select_related("set", "set__thumb", "set__thumb__file")
     sets_hash = telegram_hash((stickerset.set.id for stickerset in sets), 64)
 
     if request.hash != 0 and sets_hash == request.hash:
@@ -676,7 +676,7 @@ async def get_all_stickers(request: GetAllStickers, user_id: int) -> AllStickers
     return AllStickers(
         hash=sets_hash,
         sets=[
-            await stickerset.set.to_tl()
+            await stickerset.set.to_tl(user_id)
             for stickerset in sets
         ]
     )
@@ -686,7 +686,7 @@ async def get_all_stickers(request: GetAllStickers, user_id: int) -> AllStickers
 async def install_stickerset(
         request: InstallStickerSet, user_id: int,
 ) -> StickerSetInstallResultSuccess | StickerSetInstallResultArchive:
-    auth_id = request_ctx.get().auth_id
+    auth_id = cast(int, request_ctx.get().auth_id)
     stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset, True)
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
@@ -705,7 +705,7 @@ async def install_stickerset(
 
     if installed.archived:
         return StickerSetInstallResultArchive(
-            sets=await _make_covered_list([stickerset]),
+            sets=await _make_covered_list(user_id, [stickerset]),
         )
 
     return StickerSetInstallResultSuccess()
@@ -713,7 +713,7 @@ async def install_stickerset(
 
 @handler.on_request(UninstallStickerSet, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def uninstall_stickerset(request: UninstallStickerSet, user_id: int) -> bool:
-    auth_id = request_ctx.get().auth_id
+    auth_id = cast(int, request_ctx.get().auth_id)
     # TODO: only fetch id
     stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
     if stickerset is None:
@@ -768,7 +768,7 @@ async def get_archived_stickers(request: GetArchivedStickers, user_id: int) -> A
 
     return ArchivedStickers(
         count=await InstalledStickerset.filter(user_id=user_id, archived=True, set__deleted=False).count(),
-        sets=await _make_covered_list([installed.set for installed in installed_sets])
+        sets=await _make_covered_list(user_id, [installed.set for installed in installed_sets])
     )
 
 
@@ -841,7 +841,7 @@ async def set_stickerset_thumb(request: SetStickerSetThumb, user_id: int) -> Mes
     else:
         raise Unreachable
 
-    return await stickerset.to_tl_messages()
+    return await stickerset.to_tl_messages(user_id)
 
 
 @handler.on_request(GetRecentStickers, ReqHandlerFlags.DONT_FETCH_USER)
@@ -974,7 +974,7 @@ async def get_emoji_stickers(request: GetEmojiStickers, user_id: int) -> AllStic
     return AllStickers(
         hash=sets_hash,
         sets=[
-            await stickerset.set.to_tl()
+            await stickerset.set.to_tl(user_id)
             for stickerset in sets
         ]
     )
