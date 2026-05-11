@@ -16,7 +16,7 @@ class BaseOncePubSub(ABC):
         ...
 
     @overload
-    async def listen(self, topic: str, timeout: float) -> bytes:
+    async def listen(self, topic: str, timeout: float | None) -> bytes:
         ...
 
     @overload

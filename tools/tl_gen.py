@@ -162,9 +162,9 @@ def get_type_hint(
         if dont_use_base_when_only_one_constructor \
                 and base_type in types_to_constructors \
                 and len(types_to_constructors[base_type]) == 1:
-            type_ = f"types.{types_to_constructors[base_type][0]}"
+            type_ = f"tl.types.{types_to_constructors[base_type][0]}"
         else:
-            type_ = f"base.{base_type}"
+            type_ = f"tl.base.{base_type}"
 
         return f"{type_} | None" if is_flag else type_
 
@@ -548,7 +548,7 @@ def start():
 
             type_name = get_real_type_from_type_and_subtype(type_name_, subtype_name)
             if type_name == "TLObject" and len(types_to_constructors[field.type()]) == 1:
-                type_name = f"types.{types_to_constructors[field.type()][0]}"
+                type_name = f"tl.types.{types_to_constructors[field.type()][0]}"
 
             if field.is_flag:
                 flag_var = f"flags{field.flag_num}"
@@ -627,7 +627,7 @@ def start():
             f"from __future__ import annotations",
             f"from io import BytesIO",
             f"from ..primitives import *",
-            f"from .. import types",
+            f"from piltover import tl",
             f"from ..tl_object import TLObject",
         ]
 
@@ -638,16 +638,10 @@ def start():
 
         if c.section == "types":
             imports.extend((
-                f"from typing import TYPE_CHECKING",
-                f"if TYPE_CHECKING:",
-                f"    from .. import base",
-                f"    from piltover.context import NeedContextValuesContext",
-                f"",
-            ))
-        else:
-            imports.extend((
-                f"from .. import base",
-                f"",
+                "from typing import TYPE_CHECKING",
+                "if TYPE_CHECKING:",
+                "    from piltover.context import NeedContextValuesContext",
+                ""
             ))
 
         base_cls = "TLObject"
@@ -704,7 +698,7 @@ def start():
             f"",
         ]
 
-        file_name = f"{c.namespace}.py" if c.namespace else "__init__.py"
+        file_name = f"{c.namespace}.py" if c.namespace else "_root.py"
         out_path = DESTINATION_PATH / c.section / file_name
         if not DRY_RUN:
             out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -719,11 +713,8 @@ def start():
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
         d[c.namespace].append(c.name)
 
-    with open(DESTINATION_PATH / "types" / "__init__.py", "a") as f:
-        f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
-
     for namespace, types in namespaces_to_types.items():
-        file_name = f"{namespace}.py" if namespace else "__init__.py"
+        file_name = f"{namespace}.py" if namespace else "_root.py"
         base_file = DESTINATION_PATH / "base" / file_name
         if not DRY_RUN:
             base_file.parent.mkdir(parents=True, exist_ok=True)
@@ -731,11 +722,6 @@ def start():
         with open(base_file, "w") as f:
             f.write(f"{WARNING}\n\n")
             f.write("from piltover import tl\n\n")
-
-            if not namespace:
-                for import_namespace in namespaces_to_types.keys():
-                    if import_namespace:
-                        f.write(f"from . import {import_namespace}\n")
 
             f.write("\n")
 
@@ -757,33 +743,42 @@ def start():
 
                 f.write("\n")
 
+    with open(DESTINATION_PATH / "types" / "__init__.py", "a") as f:
+        f.write(f"from ._root import *\n")
+        f.write(f"from . import {', '.join(filter(bool, namespaces_to_constructors))}\n")
+
     with open(DESTINATION_PATH / "functions" / "__init__.py", "a") as f:
-        f.write(f"\nfrom . import {', '.join(filter(bool, namespaces_to_functions))}\n")
+        f.write(f"from ._root import *\n")
+        f.write(f"from . import {', '.join(filter(bool, namespaces_to_functions))}\n")
+
+    with open(DESTINATION_PATH / "base" / "__init__.py", "a") as f:
+        f.write(f"from ._root import *\n")
+        f.write(f"from . import {', '.join(filter(bool, namespaces_to_types))}\n")
 
     with open(DESTINATION_PATH / "all.py", "w") as f:
         f.write(WARNING + "\n\n")
         f.write(f"from . import core_types, primitives, types, functions, to_format\n\n")
         f.write(f"min_layer = {min(all_layers)}\n")
         f.write(f"layer = {layer}\n\n")
-        f.write("objects = {")
+        f.write("objects = {\n")
 
         for c in combinators:
             id_int = int(c.id[2:], 16)
             if id_int in REPLACE_CONSTRUCTORS:
-                f.write(f"\n    {c.id}: {REPLACE_CONSTRUCTORS[id_int]},")
+                f.write(f"    {c.id}: {REPLACE_CONSTRUCTORS[id_int]},\n")
             else:
-                f.write(f"\n    {c.id}: {c.section}.{c.qualname},")
+                f.write(f"    {c.id}: {c.section}.{c.qualname},\n")
 
-        f.write(f"\n    0x5bb8e511: core_types.Message,")
-        f.write(f"\n    0x73f1f8dc: core_types.MsgContainer,")
-        f.write(f"\n    0xf35c6d01: core_types.RpcResult,")
-        f.write(f"\n    0x3072cfa1: core_types.GzipPacked,")
-        f.write(f"\n    0xae500895: core_types.FutureSalts,")
-        f.write(f"\n    0x997275b5: primitives.BoolTrue,")
-        f.write(f"\n    0xbc799737: primitives.BoolFalse,")
+        f.write(f"    0x5bb8e511: core_types.Message,\n")
+        f.write(f"    0x73f1f8dc: core_types.MsgContainer,\n")
+        f.write(f"    0xf35c6d01: core_types.RpcResult,\n")
+        f.write(f"    0x3072cfa1: core_types.GzipPacked,\n")
+        f.write(f"    0xae500895: core_types.FutureSalts,\n")
+        f.write(f"    0x997275b5: primitives.BoolTrue,\n")
+        f.write(f"    0xbc799737: primitives.BoolFalse,\n")
         # TODO: vectors
 
-        f.write("\n}\n")
+        f.write("}\n")
 
 
 if "__main__" == __name__:

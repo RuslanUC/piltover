@@ -46,7 +46,7 @@ from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAva
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers, \
-    AffectedHistory
+    AffectedHistory, MessagesSlice
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -458,7 +458,7 @@ async def edit_channel_photo(request: EditPhoto, user_id: int):
 
 @handler.on_request(GetMessages_40, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(GetMessages, ReqHandlerFlags.DONT_FETCH_USER)
-async def get_messages(request: GetMessages, user_id: int) -> Messages:
+async def get_messages(request: GetMessages, user_id: int) -> Messages | MessagesSlice:
     channel = await Channel.get_from_input(user_id, request.channel)
     if channel is None:
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")

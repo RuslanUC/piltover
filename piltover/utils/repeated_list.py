@@ -7,7 +7,7 @@ _T_co = TypeVar("_T_co", covariant=True)
 class RepeatedListIterator(Iterator[_T_co], Generic[_T_co]):
     __slots__ = ("_collection", "_repeat_times", "_pos")
 
-    def __init__(self, collection: _T_co, repeat_times: int) -> None:
+    def __init__(self, collection: Sequence[_T_co], repeat_times: int) -> None:
         self._collection = collection
         self._repeat_times = repeat_times
         self._pos = 0

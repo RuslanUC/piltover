@@ -61,7 +61,7 @@ class MessageContent(Model):
     internal_random_id: UUID | None = fields.UUIDField(null=True, default=None, unique=True)
 
     peer_id: int
-    author_id: int | None
+    author_id: int
     media_id: int | None
     fwd_header_id: int | None
     post_info_id: int | None

@@ -76,7 +76,7 @@ def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | Non
     elif isinstance(filter_, InputMessagesFilterChatPhotos):
         return Q(content__type=MessageType.SERVICE_CHAT_EDIT_PHOTO)
     elif isinstance(filter_, InputMessagesFilterMyMentions):
-        if not isinstance(peer, Peer) or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
+        if peer is None or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
             return Q(id=0)
 
         if peer.type is PeerType.CHAT:
@@ -116,7 +116,9 @@ async def get_messages_query_internal(
         query = Q(peer__owner=peer.id)
 
     has_filter = False
-    if filter_ is not None and (filter_query := message_filter_to_query(filter_, peer)) is not None:
+    if filter_ is not None \
+            and isinstance(peer, Peer) \
+            and (filter_query := message_filter_to_query(filter_, peer)) is not None:
         query &= filter_query
         has_filter = True
 
@@ -375,11 +377,12 @@ async def format_messages_internal(
         )
 
     if query is None:
-        query = Q(peer=peer)
+        q = Q(peer=peer)
         if saved_peer is not None:
-            query &= Q(content__fwd_header__saved_peer=saved_peer)
-        query = append_channel_min_message_id_to_query_maybe(peer, query)
-    messages_count = await MessageRef.filter(query).count()
+            q &= Q(content__fwd_header__saved_peer=saved_peer)
+        q = append_channel_min_message_id_to_query_maybe(peer, q)
+        query = MessageRef.filter(q)
+    messages_count = await query.count()
 
     if messages_count <= len(messages_tl) and not offset_id:
         return Messages(
@@ -389,7 +392,7 @@ async def format_messages_internal(
         )
 
     if offset_id:
-        offset_id_offset = await MessageRef.filter(query & Q(id__gte=offset_id)).count()
+        offset_id_offset = await query.filter(id__gte=offset_id).count()
     else:
         offset_id_offset = 0
 
@@ -405,7 +408,7 @@ async def format_messages_internal(
 
 
 @handler.on_request(GetHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_history(request: GetHistory, user_id: int) -> Messages:
+async def get_history(request: GetHistory, user_id: int) -> Messages | MessagesSlice:
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
 
     messages = await get_messages_internal(
@@ -418,7 +421,7 @@ async def get_history(request: GetHistory, user_id: int) -> Messages:
 
 
 @handler.on_request(GetMessages, ReqHandlerFlags.DONT_FETCH_USER)
-async def get_messages(request: GetMessages, user_id: int) -> Messages:
+async def get_messages(request: GetMessages, user_id: int) -> Messages | MessagesSlice:
     ids = []
     reply_ids = []
 
@@ -454,7 +457,7 @@ async def get_messages(request: GetMessages, user_id: int) -> Messages:
 
 
 @handler.on_request(GetMessages_57, ReqHandlerFlags.DONT_FETCH_USER)
-async def get_messages_57(request: GetMessages_57, user_id: int) -> Messages:
+async def get_messages_57(request: GetMessages_57, user_id: int) -> Messages | MessagesSlice:
     return await format_messages_internal(
         user_id,
         await MessageRef.filter(
@@ -532,7 +535,7 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
 
 
 @handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def messages_search(request: Search, user_id: int) -> Messages:
+async def messages_search(request: Search, user_id: int) -> Messages | MessagesSlice:
     saved_peer = None
 
     if isinstance(request.peer, InputPeerEmpty):
@@ -579,7 +582,7 @@ async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[
             count = 0
         counters.append(SearchCounter(filter=filt, count=count))
 
-    return counters
+    return cast(TLObjectVector[SearchCounter], counters)
 
 
 @handler.on_request(GetAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -812,7 +815,7 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
     else:
         raise Unreachable
 
-    ref_ids = await ref_ids_query.values_list("id", flat=True)
+    ref_ids = cast(list[int], cast(object, await ref_ids_query.values_list("id", flat=True)))
     pts_count = len(ref_ids)
 
     if peer.type is PeerType.CHANNEL:
@@ -846,9 +849,15 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
                 and ref.content.media.file.type in READABLE_FILE_TYPES
         )
     }
-    unread_reaction_ids = await MessageContent.filter(
-        id__in=content_ids, author_id=user_id, author_reactions_unread=True,
-    ).values_list("id", flat=True)
+    unread_reaction_ids = cast(
+        list[int],
+        cast(
+            object,
+            await MessageContent.filter(
+                id__in=content_ids, author_id=user_id, author_reactions_unread=True,
+            ).values_list("id", flat=True)
+        )
+    )
 
     for read_media in await MessageMediaRead.filter(user_id=user_id, message_id__in=list(refs_with_media)):
         del refs_with_media[read_media.message_id]
@@ -940,7 +949,7 @@ async def set_history_ttl(request: SetHistoryTTL, user_id: int) -> Updates:
                 and (participant is None or not (participant.is_admin or peer.chat.creator_id == user_id)):
             raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
         elif peer.type is PeerType.CHANNEL \
-                and not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
+                and (participant is None or not peer.channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)):
             raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
         old_value = peer.chat_or_channel.ttl_period_days

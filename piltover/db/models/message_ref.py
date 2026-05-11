@@ -12,7 +12,7 @@ from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
 from piltover.db.models.utils import NullableFKSetNull, NullableFK
-from piltover.exceptions import ErrorRpc, Unreachable
+from piltover.exceptions import Unreachable
 from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount, \
     MessageReplies as TLMessageReplies, PeerChannel, PeerUser
 from piltover.tl.base import Message as TLMessageBase, Peer as TLPeerBase
@@ -151,7 +151,7 @@ class MessageRef(Model):
             reply_to=self.make_reply_to_header(),
             mentioned=mentioned,
             media_unread=media_unread,
-            from_scheduled=self.from_scheduled or self.content.scheduled_date,
+            from_scheduled=self.from_scheduled or self.content.scheduled_date is not None,
         )
 
     async def to_tl_ref(self, user_id: int) -> MessageToFormatRef:
@@ -190,7 +190,7 @@ class MessageRef(Model):
             author_id=self.content.author_id,
             id=self.id,
             channel_id=self.peer.channel_id,
-            from_scheduled=self.from_scheduled or self.content.scheduled_date,
+            from_scheduled=self.from_scheduled or self.content.scheduled_date is not None,
             pinned=self.pinned,
             reply_to=self.make_reply_to_header(),
         )
@@ -210,7 +210,7 @@ class MessageRef(Model):
         )
 
     @classmethod
-    async def to_tl_ref_bulk(cls, refs: list[models.MessageRef], user_id: int) -> list[TLMessageBase]:
+    async def to_tl_ref_bulk(cls, refs: list[models.MessageRef], user_id: int) -> list[MessageToFormatRef]:
         if not refs:
             return []
 
@@ -584,7 +584,7 @@ class MessageRef(Model):
             random_user_id: int | None = None, opposite: bool = True, unhide_dialog: bool = True,
             reply_to: MessageRef | None = None, top_message: MessageRef | None = None,
             **message_kwargs,
-    ) -> dict[models.Peer, Self]:
+    ) -> dict[models.Peer, MessageRef]:
         author_kwargs = {}
         if isinstance(author, models.User):
             author_kwargs["author"] = author
@@ -645,7 +645,7 @@ class MessageRef(Model):
 
         return messages
 
-    async def get_for_user(self, for_user: models.User) -> Self | None:
+    async def get_for_user(self, for_user: models.User) -> MessageRef | None:
         if self.peer.type is PeerType.CHANNEL:
             return self
 
@@ -946,7 +946,10 @@ class MessageRef(Model):
 
             discussion_channel_id = cast(
                 int | None,
-                await models.MessageRef.get(id=self.discussion_id).values_list("peer__channel_id", flat=True)
+                cast(
+                    object,
+                    await models.MessageRef.get(id=self.discussion_id).values_list("peer__channel_id", flat=True)
+                )
             )
 
             recent_repliers = None
@@ -1012,7 +1015,7 @@ class MessageRef(Model):
             )
         }
 
-        discussion_channel_ids = {
+        discussion_channel_ids: dict[int, int] = {
             msg_id: channel_id
             for msg_id, channel_id in await models.MessageRef.filter(
                 id__in=channel_ids_to_get,

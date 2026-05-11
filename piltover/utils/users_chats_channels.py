@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from tortoise.expressions import Q, Subquery
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.tl import User as TLUser, Chat as TLChat, Channel as TLChannel
+from piltover.tl.base import User as TLUserBase, Chat as TLChatBase
 
 
 _EMPTY = Q()
@@ -22,7 +22,7 @@ CHANNEL_SELECT_RELATED = ("photo",)
 
 
 class UsersChatsChannels:
-    def __init__(self):
+    def __init__(self) -> None:
         self._user_ids: set[int] = set()
         self._chat_ids: set[int] = set()
         self._channel_ids: set[int] = set()
@@ -101,9 +101,9 @@ class UsersChatsChannels:
         users_q, chats_q, channels_q = self._query()
 
         return (
-            await users_q.values_list("id", flat=True) if users_q else [],
-            await chats_q.values_list("id", flat=True) if chats_q else [],
-            await channels_q.values_list("id", flat=True) if channels_q else [],
+            cast(list[int], cast(object, await users_q.values_list("id", flat=True))) if users_q else [],
+            cast(list[int], cast(object, await chats_q.values_list("id", flat=True))) if chats_q else [],
+            cast(list[int], cast(object, await channels_q.values_list("id", flat=True))) if channels_q else [],
         )
 
     async def resolve_nontl(
@@ -119,7 +119,7 @@ class UsersChatsChannels:
 
     async def resolve(
             self, fetch_users: bool = True, fetch_chats: bool = True, fetch_channels: bool = True,
-    ) -> tuple[list[TLUser], list[TLChat], list[TLChannel]]:
+    ) -> tuple[list[TLUserBase], list[TLChatBase], list[TLChatBase]]:
         users, chats, channels = await self.resolve_nontl(fetch_users, fetch_chats, fetch_channels)
 
         return (
