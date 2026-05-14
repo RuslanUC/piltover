@@ -218,7 +218,7 @@ async def get_channels(request: GetChannels, user_id: int) -> Chats:
         return Chats(chats=[])
 
     return Chats(
-        chats=await Channel.to_tl_bulk(await Channel.filter(channels_q)),
+        chats=await Channel.to_tl_bulk_maybecached(await Channel.filter(channels_q).only("id", "version")),
     )
 
 
@@ -229,7 +229,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     # TODO: use ".only()"
-    peer = await Peer.get_or_none(owner_id=user_id, channel_id=peer_channel_id).prefetch_related(
+    peer = await Peer.get_or_none(
+        owner_id=user_id, channel_id=peer_channel_id, channel__deleted=False,
+    ).prefetch_related(
         "channel", "channel__discussion", "channel__photo", "channel__stickerset", "channel__emojiset",
         "channel__stickerset__thumb", "channel__stickerset__thumb__file", "channel__emojiset__thumb",
         "channel__emojiset__thumb__file", "channel__wallpaper", "channel__wallpaper__settings",

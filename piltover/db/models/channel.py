@@ -17,6 +17,7 @@ from piltover.db import models
 from piltover.db.models import ChatBase
 from piltover.db.models.utils import NullableFKSetNull
 from piltover.db.utils.awaitable_none_queryset import EmptyQuerySet
+from piltover.exceptions import Unreachable
 from piltover.tl import ChannelForbidden, Long
 from piltover.tl.base import Chat as TLChatBase, InputChannel as TLInputChannelBase, InputPeer as TLInputPeerBase
 from piltover.tl.to_format import ChannelToFormat
@@ -226,6 +227,39 @@ class Channel(ChatBase):
 
         await self.refresh_from_db()
         return await self.to_tl()
+
+    @classmethod
+    async def to_tl_bulk_maybecached(cls, channels: list[models.Channel]) -> list[TLChatBase]:
+        if not channels:
+            return []
+
+        result = await Cache.obj.multi_get([channel.cache_key() for channel in channels])
+
+        non_cached = [channel for channel, cached in zip(channels, result) if cached is None]
+        if not non_cached:
+            return result
+
+        non_cached_by_ids = {channel.id: channel for channel in non_cached}
+
+        objs = await Channel.filter(id__in=list(non_cached_by_ids.keys()))
+        if len(non_cached_by_ids) != len(objs):
+            raise Unreachable
+
+        for obj in objs:
+            channel = non_cached_by_ids[obj.id]
+            for field in Channel._meta.db_fields:
+                setattr(channel, field, getattr(obj, field, None))
+
+        tl_channels = {
+            tl_channel.id: tl_channel
+            for tl_channel in await Channel.to_tl_bulk(non_cached)
+        }
+
+        for idx, (channel, cached) in enumerate(zip(channels, result)):
+            if cached is None:
+                result[idx] = tl_channels[channel.id]
+
+        return result
 
     def min_id(self, participant: models.ChatParticipant | None) -> int | None:
         min_available_id_force = self.min_available_id_force or 0
