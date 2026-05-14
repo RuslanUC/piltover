@@ -453,8 +453,6 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user_id: in
         if auth is None:
             raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
 
-    auth = cast(UserAuthorization, auth)
-
     to_update = []
     if not auth.confirmed and request.confirmed:
         if auth == this_auth or this_auth.created_at > auth.created_at:
@@ -918,9 +916,15 @@ async def update_color(request: UpdateColor, user: User) -> bool:
 async def get_default_background_emojis(
         request: GetDefaultBackgroundEmojis, user_id: int,
 ) -> EmojiList | EmojiListNotModified:
-    ids = await File.filter(
-        stickerset__installedstickersets__user_id=user_id,
-    ).order_by("-stickerset__installedstickersets__installed_at", "id").values_list("id", flat=True)
+    ids = cast(
+        list[int],
+        cast(
+            object,
+            await File.filter(
+                stickerset__installedstickersets__user_id=user_id,
+            ).order_by("-stickerset__installedstickersets__installed_at", "id").values_list("id", flat=True)
+        )
+    )
 
     emojis_hash = telegram_hash(ids, 64)
     if emojis_hash == request.hash:

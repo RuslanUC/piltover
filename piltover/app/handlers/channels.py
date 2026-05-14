@@ -1,5 +1,5 @@
 from datetime import datetime, UTC
-from time import time
+from time import time, perf_counter
 from typing import cast
 
 from loguru import logger
@@ -224,15 +224,19 @@ async def get_channels(request: GetChannels, user_id: int) -> Chats:
 
 @handler.on_request(GetFullChannel, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesChatFull:
-    peer = await Peer.from_input_peer_raise(
-        user_id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
-        select_related=(
-            "channel__discussion", "channel__photo", "channel__stickerset", "channel__emojiset",
-            "channel__stickerset__thumb", "channel__stickerset__thumb__file", "channel__emojiset__thumb",
-            "channel__emojiset__thumb__file", "channel__wallpaper", "channel__wallpaper__settings",
-            "channel__wallpaper__document",
-        ),
+    peer_type, peer_channel_id = Peer.type_and_id_from_input_raise(user_id, request.channel, "CHANNEL_PRIVATE")
+    if peer_type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    # TODO: use ".only()"
+    peer = await Peer.get_or_none(owner_id=user_id, channel_id=peer_channel_id).prefetch_related(
+        "channel", "channel__discussion", "channel__photo", "channel__stickerset", "channel__emojiset",
+        "channel__stickerset__thumb", "channel__stickerset__thumb__file", "channel__emojiset__thumb",
+        "channel__emojiset__thumb__file", "channel__wallpaper", "channel__wallpaper__settings",
+        "channel__wallpaper__document",
     )
+    if peer is None:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_PRIVATE")
 
     channel = peer.channel
 
