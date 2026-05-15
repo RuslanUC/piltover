@@ -67,8 +67,9 @@ class ChatParticipant(Model):
 
     @property
     def is_admin(self) -> bool:
-        return cast(int, self.admin_rights.value) > 0
+        return self.admin_rights.value > 0
 
+    # TODO: remove this method
     async def to_tl(
             self, chat_creator_id: int | None = None
     ) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:

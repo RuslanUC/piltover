@@ -1,10 +1,10 @@
 from datetime import datetime, UTC
-from time import time, perf_counter
+from time import time
 from typing import cast
 
-from loguru import logger
 from tortoise.expressions import Q, Subquery, RawSQL, F
 from tortoise.functions import Max
+from tortoise.query_utils import Prefetch
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -20,7 +20,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
     Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent, \
-    ReadHistoryChunk, DefaultSendAs, Stickerset
+    ReadHistoryChunk, DefaultSendAs, Stickerset, StickersetThumb
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -196,9 +196,11 @@ async def create_channel(request: CreateChannel, user_id: int) -> Updates:
 @handler.on_request(GetChannels, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_channels(request: GetChannels, user_id: int) -> Chats:
     auth_id = cast(int, request_ctx.get().auth_id)
-    channels_q = Q()
 
-    for input_channel in request.id:
+    channel_peers = set()
+    channel_participants = set()
+
+    for input_channel in request.id[:100]:
         if not isinstance(input_channel, (InputChannel, InputChannelFromMessage)):
             continue
 
@@ -206,16 +208,22 @@ async def get_channels(request: GetChannels, user_id: int) -> Chats:
 
         if isinstance(input_channel, InputChannel):
             if input_channel.access_hash == 0:
-                channels_q |= Q(id=channel_id, chatparticipants__user_id=user_id)
+                channel_participants.add(channel_id)
             else:
                 if not Channel.check_access_hash(user_id, auth_id, channel_id, input_channel.access_hash):
                     continue
-                channels_q |= Q(peers__owner_id=user_id, peers__channel_id=channel_id)
+                channel_peers.add(channel_id)
         elif isinstance(input_channel, InputChannelFromMessage):
             ...  # TODO: support channels from message
 
-    if not channels_q.children:
+    if not channel_peers and not channel_participants:
         return Chats(chats=[])
+
+    channels_q = Q(join_type=Q.OR)
+    if channel_participants:
+        channels_q.children = *channels_q.children, Q(id__in=channel_participants, chatparticipants__user_id=user_id)
+    if channel_peers:
+        channels_q.children = *channels_q.children, Q(peers__owner_id=user_id, peers__channel_id__in=channel_peers)
 
     return Chats(
         chats=await Channel.to_tl_bulk_maybecached(await Channel.filter(channels_q).only("id", "version")),
@@ -228,14 +236,23 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    # TODO: use ".only()"
     peer = await Peer.get_or_none(
         owner_id=user_id, channel_id=peer_channel_id, channel__deleted=False,
     ).prefetch_related(
-        "channel", "channel__discussion", "channel__photo", "channel__stickerset", "channel__emojiset",
-        "channel__stickerset__thumb", "channel__stickerset__thumb__file", "channel__emojiset__thumb",
-        "channel__emojiset__thumb__file", "channel__wallpaper", "channel__wallpaper__settings",
-        "channel__wallpaper__document",
+        "channel",
+        "channel__stickerset", "channel__emojiset",
+        "channel__wallpaper", "channel__wallpaper__settings", "channel__wallpaper__document",
+
+        Prefetch("channel__photo", queryset=File.filter().only(
+            "id", "created_at", "photo_sizes", "photo_stripped", "photo_path", "constant_access_hash",
+            "constant_file_ref",
+        )),
+        Prefetch("channel__discussion", queryset=Channel.filter().only("id", "version")),
+        Prefetch("channel__discussion_channel", queryset=Channel.filter().only("id", "version")),
+        Prefetch("channel__stickerset__thumb", queryset=StickersetThumb.filter().only("id", "file_id")),
+        Prefetch("channel__stickerset__thumb__file", queryset=File.filter().only("id", "size")),
+        Prefetch("channel__emojiset__thumb", queryset=StickersetThumb.filter().only("id", "file_id")),
+        Prefetch("channel__emojiset__thumb__file", queryset=File.filter().only("id", "size")),
     )
     if peer is None:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_PRIVATE")
@@ -291,14 +308,15 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
 
     migrated_from_chat_id = migrated_from_max_id = None
     if channel.migrated_from_id is not None \
-            and (chat_peer := await Peer.get_or_none(owner_id=user_id, chat_id=channel.migrated_from_id)) is not None:
+            and await Peer.filter(owner_id=user_id, chat_id=channel.migrated_from_id).exists():
         migrated_from_chat_id = channel.migrated_from_id
         migrated_from_max_id = cast(
             int | None,
             cast(
                 object,
                 await MessageRef.filter(
-                    peer=chat_peer,
+                    peer__owner_id=user_id,
+                    peer__chat_id=channel.migrated_from_id,
                 ).order_by("-id").first().values_list("id", flat=True)
             )
         ) or 0
@@ -309,10 +327,13 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     if channel.discussion_id:
         linked_chat = channel.discussion
     elif channel.is_discussion:
-        linked_chat = await Channel.get_or_none(discussion=channel).select_related("photo")
+        linked_chat = channel.discussion_channel
 
     if linked_chat is not None:
-        await Peer.get_or_create(owner_id=user_id, type=PeerType.CHANNEL, channel=linked_chat)
+        await Peer.bulk_create(
+            [Peer(owner_id=user_id, type=PeerType.CHANNEL, channel=linked_chat)],
+            ignore_conflicts=True,
+        )
         channels_to_tl.append(linked_chat)
 
     slowmode_next_date = None
@@ -400,7 +421,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
             emojiset=await channel.emojiset.to_tl(user_id) if channel.emojiset is not None else None,
             wallpaper=channel.wallpaper.to_tl() if channel.wallpaper is not None else None,
         ),
-        chats=await Channel.to_tl_bulk(channels_to_tl),
+        chats=await Channel.to_tl_bulk_maybecached(channels_to_tl),
         users=[],
     )
 

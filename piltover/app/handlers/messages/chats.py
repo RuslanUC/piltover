@@ -2,6 +2,7 @@ from datetime import datetime, UTC, timedelta
 from typing import cast
 
 from tortoise.expressions import Subquery, F
+from tortoise.query_utils import Prefetch
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
@@ -132,17 +133,26 @@ async def get_chats(request: GetChats, user_id: int) -> Chats:
 
 @handler.on_request(GetFullChat, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_full_chat(request: GetFullChat, user_id: int) -> MessagesChatFull:
-    peer = await Peer.from_chat_id_raise(user_id, request.chat_id, allow_migrated=True, select_related=("chat__photo",))
+    chat_id = Chat.norm_id(request.chat_id)
+    if (participant := await ChatParticipant.get_or_none(user_id=user_id, chat_id=chat_id)) is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
 
-    chat = peer.chat
+    chat = await Chat.get_or_none(id=chat_id, deleted=False).select_related("photo").prefetch_related(
+        Prefetch("chatparticipants", queryset=ChatParticipant.filter().only(
+            "chat_id", "user_id", "admin_rights", "inviter_id", "invited_at",
+        )),
+        Prefetch("migrated_to", queryset=Channel.filter().only("id")),
+    )
+    if chat is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+
     photo = PhotoEmpty(id=0)
     if chat.photo_id:
         photo = chat.photo.to_tl_photo()
 
     invite = None
-    participant = await ChatParticipant.get_or_none(chat=chat, user_id=user_id)
     if chat.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
-        invite = await ChatInvite.get_or_create_permanent(user_id, peer.chat_or_channel)
+        invite = await ChatInvite.get_or_create_permanent(user_id, chat)
 
     return MessagesChatFull(
         full_chat=ChatFull(
@@ -154,7 +164,7 @@ async def get_full_chat(request: GetFullChat, user_id: int) -> MessagesChatFull:
                 chat_id=chat.make_id(),
                 participants=[
                     participant.to_tl_chat_with_creator(chat.creator_id)
-                    for participant in await ChatParticipant.filter(chat=chat)
+                    for participant in chat.chatparticipants
                 ],
                 version=chat.version,
             ),

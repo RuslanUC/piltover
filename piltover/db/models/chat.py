@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tortoise import fields
+from tortoise.queryset import QuerySet
 
 from piltover.cache import Cache
 from piltover.db import models
@@ -35,6 +36,7 @@ class Chat(ChatBase):
     participants_count: int = fields.SmallIntField()
 
     chatparticipants: fields.ReverseRelation[models.ChatParticipant]
+    migrated_to: QuerySet[models.Channel] | models.Channel | None
 
     def make_id(self) -> int:
         return self.make_id_from(self.id)
@@ -73,7 +75,12 @@ class Chat(ChatBase):
 
         migrated_to_id = None
         if self.migrated:
-            migrated_to_id = await models.Channel.get_or_none(migrated_from=self).values_list("id", flat=True)
+            if isinstance(self.migrated_to, models.Channel):
+                migrated_to_id = self.migrated_to.id
+            elif self.migrated_to is None:
+                migrated_to_id = 0
+            else:
+                migrated_to_id = await models.Channel.get_or_none(migrated_from=self).values_list("id", flat=True) or 0
 
         if self.photo is not None:
             self.photo = await self.photo

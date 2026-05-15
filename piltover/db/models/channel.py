@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from collections import defaultdict
 from enum import auto, Enum
 from typing import cast, Self
 
@@ -67,10 +68,10 @@ class Channel(ChatBase):
     hidden_prehistory: bool = fields.BooleanField(default=False)
     min_available_id: int | None = fields.BigIntField(null=True, default=None)
     min_available_id_force: int | None = fields.BigIntField(null=True, default=None)
-    migrated_from: models.Chat | None = fields.OneToOneField("models.Chat", null=True, default=None)
+    migrated_from: models.Chat | None = fields.OneToOneField("models.Chat", null=True, default=None, related_name="migrated_to")
     join_to_send: bool = fields.BooleanField(default=True)
     join_request: bool = fields.BooleanField(default=False)
-    discussion: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
+    discussion: models.Channel | None = fields.OneToOneField("models.Channel", null=True, default=None, related_name="discussion_channel")
     is_discussion: bool = fields.BooleanField(default=False)
     accent_emoji: models.File | None = NullableFKSetNullR("models.File", "channel_accent_emoji")
     profile_emoji: models.File | None = NullableFKSetNullR("models.File", "channel_profile_emoji")
@@ -91,6 +92,8 @@ class Channel(ChatBase):
     wallpaper_id: int | None
 
     cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
+
+    discussion_channel: fields.ReverseRelation[Channel] | Channel | None
 
     def make_id(self) -> int:
         return self.make_id_from(self.id)
@@ -239,16 +242,19 @@ class Channel(ChatBase):
         if not non_cached:
             return result
 
-        non_cached_by_ids = {channel.id: channel for channel in non_cached}
+        non_cached_by_ids: dict[int, list[Channel]] = defaultdict(list)
+        for channel in non_cached:
+            non_cached_by_ids[channel.id].append(channel)
 
         objs = await Channel.filter(id__in=list(non_cached_by_ids.keys()))
         if len(non_cached_by_ids) != len(objs):
             raise Unreachable
 
         for obj in objs:
-            channel = non_cached_by_ids[obj.id]
+            channels_ = non_cached_by_ids[obj.id]
             for field in Channel._meta.db_fields:
-                setattr(channel, field, getattr(obj, field, None))
+                for channel in channels_:
+                    setattr(channel, field, getattr(obj, field, None))
 
         tl_channels = {
             tl_channel.id: tl_channel
