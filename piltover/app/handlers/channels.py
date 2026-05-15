@@ -64,18 +64,19 @@ async def check_username(request: CheckUsername) -> bool:
 
 @handler.on_request(UpdateUsername, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def update_username(request: UpdateUsername, user_id: int) -> bool:
-    peer = await Peer.from_input_peer_raise(
-        user_id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,),
-    )
-
-    channel = peer.channel
+    peer_type, peer_channel_id = Peer.type_and_id_from_input_raise(user_id, request.channel, "CHANNEL_PRIVATE")
+    if peer_type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    channel = await Channel.get_or_none(id=peer_channel_id, deleted=False).select_related("username")
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     participant = await channel.get_participant(user_id)
     if participant is None or not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     request.username = request.username.lower().strip()
-    current_username = await channel.get_username()
+    current_username = cast(Username | None, channel.username)
     if (not request.username and current_username is None) \
             or (current_username is not None and current_username.username == request.username):
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED")
@@ -93,15 +94,15 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
         if not request.username:
             await current_username.delete()
             await UserPersonalChannel.filter(channel=channel).delete()
-            channel.cached_username = None
+            channel._username = None
         else:
             current_username.username = request.username
             await current_username.save(update_fields=["username"])
     else:
-        channel.cached_username = await Username.create(channel=channel, username=request.username)
+        channel._username = await Username.create(channel=channel, username=request.username)
 
     await AdminLogEntry.create(
-        channel=peer.channel,
+        channel=channel,
         user_id=user_id,
         action=AdminLogEntryAction.CHANGE_USERNAME,
         prev=old_username.encode("utf8"),
@@ -109,7 +110,7 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
         searchable=f"{old_username}\n{new_username}",
     )
 
-    if channel.cached_username is not None and channel.hidden_prehistory:
+    if channel.username is not None and channel.hidden_prehistory:
         channel.min_available_id = cast(
             int | None,
             cast(
@@ -124,10 +125,10 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
         channel.hidden_prehistory = False
         await channel.save(update_fields=["min_available_id", "hidden_prehistory"])
 
-    await Channel.filter(id=peer.channel.id).update(version=F("version") + 1)
-    await peer.channel.refresh_from_db(["version"])
+    await Channel.filter(id=channel.id).update(version=F("version") + 1)
+    await channel.refresh_from_db(["version"])
 
-    await upd.update_channel(peer.channel)
+    await upd.update_channel(channel)
     return True
 
 
@@ -155,6 +156,8 @@ async def _add_user_to_channel(channel: Channel, user_id: int) -> ChatParticipan
             "admin_rights": ChatAdminRights.from_tl(CREATOR_RIGHTS) if user_is_creator else ChatAdminRights.NONE,
         },
     )
+    if user_is_creator:
+        await channel.sync_admins_count(False)
     await Dialog.create_or_unhide(peer_for_user)
     await SessionManager.subscribe_to_channel(channel.id, [user_id])
 
@@ -248,7 +251,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
             "constant_file_ref",
         )),
         Prefetch("channel__discussion", queryset=Channel.filter().only("id", "version")),
-        Prefetch("channel__discussion_channel", queryset=Channel.filter().only("id", "version")),
+        Prefetch("channel__discussion_channel", queryset=Channel.filter().only("id", "version", "discussion_id")),
         Prefetch("channel__stickerset__thumb", queryset=StickersetThumb.filter().only("id", "file_id")),
         Prefetch("channel__stickerset__thumb__file", queryset=File.filter().only("id", "size")),
         Prefetch("channel__emojiset__thumb", queryset=StickersetThumb.filter().only("id", "file_id")),
@@ -358,7 +361,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     if channel.supergroup:
         default_send_as_channel = await DefaultSendAs.get_or_none(
             user_id=user_id, group_id=channel.id,
-        ).select_related("channel")
+        ).select_related("channel").only("channel__id", "channel__version")
         if default_send_as_channel is not None:
             default_send_as = PeerChannel(channel_id=default_send_as_channel.channel.make_id())
             channels_to_tl.append(default_send_as_channel.channel)
@@ -387,10 +390,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
 
             id=channel.make_id(),
             about=channel.description,
-            # TODO: store in Channel model?
+            # TODO: use channel.participants_count
             participants_count=await ChatParticipant.filter(channel=channel, left=False).count(),
-            # TODO: cache
-            admins_count=await ChatParticipant.filter(channel=channel, admin_rights__gt=0).count(),
+            admins_count=channel.admins_count,
             read_inbox_max_id=in_read_max_id,
             read_outbox_max_id=out_read_max_id,
             unread_count=unread_count,
@@ -630,8 +632,11 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
             "inviter_id": 0,
             "invited_at": datetime.now(UTC),
             "chat_channel_id": channel.make_id(),
+            "admin_rights": ChatAdminRights.NONE,
         },
     )
+    if not created:
+        await channel.sync_admins_count(False)
 
     if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
         await ChatInviteRequest.filter(id__in=Subquery(
@@ -681,10 +686,10 @@ async def edit_admin(request: EditAdmin, user_id: int) -> Updates:
 
     new_admin_rights = ChatAdminRights.from_tl(request.admin_rights)
 
-    if new_admin_rights > 0 and not target_participant.is_admin:
-        admins_count = await ChatParticipant.filter(channel=channel, admin_rights__gt=0).count()
-        if admins_count >= APP_CONFIG.channel_admin_limit:
-            raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
+    if new_admin_rights > 0 \
+            and not target_participant.is_admin \
+            and channel.admins_count >= APP_CONFIG.channel_admin_limit:
+        raise ErrorRpc(error_code=400, error_message="USERS_TOO_MUCH")
 
     if target_peer.user_id == creator_id:
         new_admin_rights |= ChatAdminRights.from_tl(CREATOR_RIGHTS)
@@ -710,6 +715,7 @@ async def edit_admin(request: EditAdmin, user_id: int) -> Updates:
         update_fields.append("promoted_by_id")
 
     await target_participant.save(update_fields=update_fields)
+    await channel.sync_admins_count(False)
 
     await AdminLogEntry.create(
         channel=channel,
@@ -1152,6 +1158,7 @@ async def edit_creator(request: EditCreator, user_id: int) -> Updates:
         participant.admin_rights = ChatAdminRights(0)
         target_participant.admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
         await ChatParticipant.bulk_update([participant, target_participant], fields=["admin_rights"])
+        await channel.sync_admins_count(False)
 
         await _unlink_channel_maybe(channel)
 

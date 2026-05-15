@@ -37,6 +37,8 @@ class ChatBase(Model):
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     ttl_period_days: int = fields.SmallIntField(default=0)
     deleted: bool = fields.BooleanField(default=False)
+    # TODO: maybe sync this value once in a while
+    participants_count: int = fields.IntField(default=0)
 
     creator_id: int
     photo_id: int

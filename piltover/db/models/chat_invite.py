@@ -3,6 +3,7 @@ from __future__ import annotations
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from datetime import datetime
 from os import urandom
+from typing import cast
 
 from tortoise import Model, fields
 from tortoise.expressions import Q
@@ -71,30 +72,24 @@ class ChatInvite(Model):
     @property
     def chat_or_channel(self) -> models.ChatBase:
         if self.chat_id is not None:
-            return self.chat
+            return cast(models.Chat, self.chat)
         if self.channel_id is not None:
-            return self.channel
+            return cast(models.Channel, self.channel)
 
         raise NotImplementedError
 
     @classmethod
-    async def get_or_create_permanent(
-            cls, user: models.User | int, chat_or_channel: models.ChatBase, request: bool = False,
-            limit: int | None = None, title: str | None = None, force_create: bool = False,
-    ) -> ChatInvite:
+    async def get_or_create_permanent(cls, user: models.User | int, chat_or_channel: models.ChatBase) -> ChatInvite:
         user_id = user.id if isinstance(user, models.User) else user
 
-        if not force_create:
-            invite = await cls.filter(
-                **models.Chat.or_channel(chat_or_channel), user_id=user_id, revoked=False, expires_at__isnull=True
-            ).first()
-            if invite is not None:
-                return invite
+        invite = await cls.filter(
+            **models.Chat.or_channel(chat_or_channel), user_id=user_id, revoked=False, expires_at__isnull=True
+        ).first()
+        if invite is not None:
+            return invite
 
         return await ChatInvite.create(
             **models.Chat.or_channel(chat_or_channel),
             user_id=user_id,
-            request_needed=request,
-            usage_limit=limit if not request else None,
-            title=title,
+            title=None,
         )

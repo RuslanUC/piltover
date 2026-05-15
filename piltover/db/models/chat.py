@@ -32,8 +32,6 @@ DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
 
 class Chat(ChatBase):
     migrated: bool = fields.BooleanField(default=False)
-    # TODO: maybe sync this value once in a while
-    participants_count: int = fields.SmallIntField()
 
     chatparticipants: fields.ReverseRelation[models.ChatParticipant]
     migrated_to: QuerySet[models.Channel] | models.Channel | None

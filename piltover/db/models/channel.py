@@ -7,6 +7,7 @@ from enum import auto, Enum
 from typing import cast, Self
 
 from tortoise import fields
+from tortoise.expressions import Subquery, F, RawSQL
 from tortoise.models import MODEL
 from tortoise.queryset import QuerySet, QuerySetSingle
 from tortoise.transactions import in_transaction
@@ -80,6 +81,7 @@ class Channel(ChatBase):
     stickerset: models.Stickerset | None = NullableFKSetNullR("models.Stickerset", "channel_stickers")
     emojiset: models.Stickerset | None = NullableFKSetNullR("models.Stickerset", "channel_emojis")
     wallpaper: models.Wallpaper | None = NullableFKSetNull("models.Wallpaper")
+    admins_count: int = fields.SmallIntField(default=0)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -91,9 +93,8 @@ class Channel(ChatBase):
     emojiset_id: int | None
     wallpaper_id: int | None
 
-    cached_username: models.Username | None | _UsernameMissing = _USERNAME_MISSING
-
     discussion_channel: fields.ReverseRelation[Channel] | Channel | None
+    username: models.Username | QuerySet[models.Username] | None
 
     def make_id(self) -> int:
         return self.make_id_from(self.id)
@@ -101,12 +102,6 @@ class Channel(ChatBase):
     @classmethod
     def make_id_from(cls, in_id: int) -> int:
         return in_id * 2 + 1
-
-    async def get_username(self) -> models.Username | None:
-        if self.cached_username is _USERNAME_MISSING:
-            self.cached_username = await models.Username.get_or_none(channel=self)
-
-        return self.cached_username
 
     async def to_tl(self) -> TLChatBase:
         return (await self.to_tl_bulk([self]))[0]
@@ -323,3 +318,12 @@ class Channel(ChatBase):
             cls, user: models.User | int, input_channel: TLInputChannelBase | TLInputPeerBase
     ) -> QuerySetSingle[Channel | None]:
         return cls.from_input(user, input_channel).get_or_none()
+
+    async def sync_admins_count(self, refresh: bool) -> None:
+        async with in_transaction():
+            admins_count = await Channel.filter(id=self.id).select_for_update().annotate(
+                admins_count_new=Subquery(models.ChatParticipant.filter(channel_id=self.id, admin_rights__gt=0).count())
+            ).first().values_list("admins_count_new", flat=True)
+            await Channel.filter(id=self.id).update(admins_count=admins_count)
+            if refresh:
+                await self.refresh_from_db(["admins_count"])
