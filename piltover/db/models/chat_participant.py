@@ -69,16 +69,6 @@ class ChatParticipant(Model):
     def is_admin(self) -> bool:
         return self.admin_rights.value > 0
 
-    # TODO: remove this method
-    async def to_tl(
-            self, chat_creator_id: int | None = None
-    ) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:
-        if chat_creator_id is None:
-            self.chat = await self.chat
-            chat_creator_id = self.chat.creator_id
-
-        return self.to_tl_chat_with_creator(chat_creator_id)
-
     def to_tl_chat_with_creator(
             self, chat_creator_id: int,
     ) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:
@@ -92,13 +82,6 @@ class ChatParticipant(Model):
         return TLChatParticipant(
             user_id=self.user_id, inviter_id=self.inviter_id, date=int(self.invited_at.timestamp()),
         )
-
-    async def to_tl_channel(self, user: models.User | int, creator_id: int | None = None) -> ChannelParticipants:
-        if creator_id is None:
-            self.channel = await self.channel
-            creator_id = self.channel.creator_id
-
-        return self.to_tl_channel_with_creator(user, creator_id)
 
     def to_tl_channel_with_creator(self, user: models.User | int, creator_id: int) -> ChannelParticipants:
         user_id = user.id if isinstance(user, models.User) else user

@@ -840,7 +840,7 @@ async def get_participant(request: GetParticipant, user_id: int) -> ChannelParti
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     return ChannelParticipant(
-        participant=await target_participant.to_tl_channel(user_id),
+        participant=target_participant.to_tl_channel_with_creator(user_id, channel.creator_id),
         chats=[await channel.to_tl()],
         users=[await target_participant.user.to_tl()],
     )
