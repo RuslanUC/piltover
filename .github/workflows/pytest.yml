@@ -14,32 +14,28 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv and set the Python version
+        uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "poetry"
 
       - name: Install dependencies
-        run: poetry install --no-root --no-interaction --all-extras
+        run: uv sync --locked --all-groups --all-extras --dev
 
       - name: Generate tl
-        run: poetry run python tools/tl_gen.py
+        run: uv run python tools/tl_gen.py
 
       - name: Run tests
         run: |
-          poetry run pytest --cov-append --cov-report=xml --cov=piltover/app --cov=piltover/db --cov=piltover/layer_converter --cov=piltover/utils --cov=piltover/*.py tests
+          uv run pytest --cov-append --cov-report=xml --cov=piltover/app --cov=piltover/db --cov=piltover/layer_converter --cov=piltover/utils --cov=piltover/*.py tests
         env:
           LOGURU_LEVEL: WARNING
 
       - name: Print coverage report
         run: |
-          poetry run coverage report
+          uv run coverage report
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
