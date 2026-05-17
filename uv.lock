@@ -1619,7 +1619,7 @@ dev = [
 ]
 test = [
     { name = "faker", specifier = ">=40.18.0" },
-    { name = "pyrogram", git = "https://github.com/RuslanUC/pyrogram-exp.git?rev=piltover" },
+    { name = "pyrogram", git = "https://github.com/RuslanUC/pyrogram-exp.git?rev=24024e6f6fcf7645163fe9890009e4e644f8f66c" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
@@ -2004,7 +2004,7 @@ wheels = [
 [[package]]
 name = "pyrogram"
 version = "2.0.106"
-source = { git = "https://github.com/RuslanUC/pyrogram-exp.git?rev=piltover#f7ab00c22411ca93809a7fb813baed2526e167cc" }
+source = { git = "https://github.com/RuslanUC/pyrogram-exp.git?rev=24024e6f6fcf7645163fe9890009e4e644f8f66c#24024e6f6fcf7645163fe9890009e4e644f8f66c" }
 dependencies = [
     { name = "pyaes" },
     { name = "pysocks" },
