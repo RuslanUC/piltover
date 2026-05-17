@@ -22,7 +22,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --locked --all-groups --all-extras --dev
+        run: |
+          uv sync --locked --all-groups --all-extras --dev
+          uv add git+https://github.com/RuslanUC/pyrogram-exp.git@piltover
 
       - name: Generate tl
         run: uv run python tools/tl_gen.py
