@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync -v --locked --all-groups --all-extras --dev
+          uv sync -v --locked --all-groups --all-extras --dev --no-cache
           uv add --group test git+https://github.com/RuslanUC/pyrogram-exp.git@piltover
 
       - name: Generate tl
