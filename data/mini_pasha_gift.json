@@ -1,0 +1,15 @@
+{
+  "base_file_id": 1,
+  "variant_file_ids": [
+    2,
+    3,
+    4,
+    5
+  ],
+  "craft_file_ids": [
+    6,
+    7,
+    8,
+    9
+  ]
+}
