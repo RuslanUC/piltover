@@ -20,6 +20,9 @@ jobs:
         uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          restore-cache: true
+          save-cache: true
 
       - name: Install dependencies
         run: |
