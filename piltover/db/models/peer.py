@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TypeVar, Generic, TYPE_CHECKING, Literal, TypeGuard, TypeAlias
+from typing import TypeVar, Generic, TYPE_CHECKING, Literal, TypeGuard, TypeAlias, cast
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
@@ -197,7 +197,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
 
         user_id = user.id if isinstance(user, models.User) else user
 
-        ctx = request_ctx.get()
+        auth_id = cast(int, request_ctx.get().auth_id)
 
         if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user_id):
@@ -208,7 +208,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
         if isinstance(input_peer, (InputPeerUser, InputUser)):
             if peer_types is not None and PeerType.USER not in peer_types:
                 return None
-            if not models.User.check_access_hash(user_id, ctx.auth_id, input_peer.user_id, input_peer.access_hash):
+            if not models.User.check_access_hash(user_id, auth_id, input_peer.user_id, input_peer.access_hash):
                 return None
             query = Q(owner_id=user_id, user_id=input_peer.user_id)
             if not allow_bot:
@@ -228,7 +228,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
             if peer_types is not None and PeerType.CHANNEL not in peer_types:
                 return None
             channel_id = models.Channel.norm_id(input_peer.channel_id)
-            if not models.Channel.check_access_hash(user_id, ctx.auth_id, channel_id, input_peer.access_hash):
+            if not models.Channel.check_access_hash(user_id, auth_id, channel_id, input_peer.access_hash):
                 return None
             return Peer.get_or_none(owner_id=user_id, channel_id=channel_id, channel__deleted=False)
 
@@ -238,7 +238,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
     async def from_input_peer(
             cls, user: models.User | int, input_peer: InputPeers, allow_bot: bool = True,
             allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
-            select_related: tuple[str, ...] | None = None,
+            select_related: tuple[str, ...] | None = None, select_user_username: bool = False,
     ) -> Peer | None:
         query = cls.query_from_input_peer(user, input_peer, allow_bot, allow_migrated_chat, peer_types)
         if query is None:
@@ -251,16 +251,13 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
 
         if isinstance(input_peer, (InputPeerSelf, InputUserSelf)) \
                 or (isinstance(input_peer, (InputPeerUser, InputUser)) and input_peer.user_id == user_id):
-            if isinstance(user, models.User):
-                peer = await query
-                peer.user = user
-            else:
-                peer = await query.select_related("user")
-            return peer
+            return await query.select_related("user")
 
         if isinstance(input_peer, (InputPeerUser, InputUser)):
             if peer_types is not None and PeerType.USER not in peer_types:
                 return None
+            if select_user_username:
+                select_related = *select_related, "user__username"
             return await query.select_related("owner", "user", *select_related)
 
         if isinstance(input_peer, InputPeerChat):
@@ -279,10 +276,11 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
     async def from_input_peer_raise(
             cls, user: models.User | int, peer: InputPeers, message: str = "PEER_ID_INVALID", code: int = 400,
             allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
-            select_related: tuple[str, ...] | None = None,
+            select_related: tuple[str, ...] | None = None, select_user_username: bool = False,
     ) -> Peer:
         peer_ = await Peer.from_input_peer(
             user, peer, allow_migrated_chat=allow_migrated_chat, peer_types=peer_types, select_related=select_related,
+            select_user_username=select_user_username,
         )
         if peer_ is not None:
             return peer_
