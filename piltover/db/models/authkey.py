@@ -19,7 +19,7 @@ class AuthKey(Model):
 
     @classmethod
     async def get_temp_ids_bulk(cls, key_ids: list[int]) -> list[int]:
-        return await TempAuthKey.filter(perm_key_id__in=key_ids).values_list("id", flat=True)
+        return cast(list[int], await TempAuthKey.filter(perm_key_id__in=key_ids).values_list("id", flat=True))
 
     @classmethod
     async def get_auth_data(cls, key_id: int) -> AuthData | None:

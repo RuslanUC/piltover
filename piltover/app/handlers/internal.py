@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, UTC
+from typing import cast
 
 from loguru import logger
 from tortoise.transactions import in_transaction
@@ -8,7 +9,9 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
 from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards
 from piltover.db.enums import PeerType
-from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft
+from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
+    TaskIqScheduledMessage
+from piltover.db.models.peer import PeerChannelInternalT
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import TLObject
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
@@ -36,7 +39,7 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
             logger.warning(f"Scheduled message {request.message_id} does not exist?")
             return TaggedBool(value=False)
 
-        task = scheduled.taskiqscheduledmessages
+        task = cast(TaskIqScheduledMessage, scheduled.taskiqscheduledmessages)
 
         messages = await scheduled.send_scheduled(task.opposite)
         await scheduled.delete()
@@ -63,18 +66,18 @@ async def delete_scheduled_message(request: DeleteScheduledMessage) -> TLObject:
     async with in_transaction():
         to_delete = await MessageRef.select_for_update(
             skip_locked=True, no_key=True,
-        ).filter(content_id=request.message_id).select_related("peer", "peer__owner", "peer__channel")
+        ).filter(content_id=request.message_id).select_related("peer", "peer__channel")
 
         all_ids = []
-        regular_messages = defaultdict(list)
-        channel_messages = defaultdict(list)
+        regular_messages: dict[User | int, list[int]] = defaultdict(list)
+        channel_messages: dict[Channel, list[int]] = defaultdict(list)
 
         for message in to_delete:
             all_ids.append(message.id)
             if message.peer.type is PeerType.CHANNEL:
-                channel_messages[message.peer.channel_id].append(message.id)
+                channel_messages[message.peer.channel].append(message.id)
             else:
-                regular_messages[message.peer.owner].append(message.id)
+                regular_messages[message.peer.owner_id].append(message.id)
 
         await MessageContent.filter(id=request.message_id).delete()
 
@@ -97,12 +100,15 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
         message = await MessageRef.select_for_update().get_or_none(id=request.message_id).select_related(
             *MessageRef.PREFETCH_FIELDS, "peer__channel", "content__author", "content__send_as_channel",
         )
-        if message is None or not message.peer.channel.discussion_id:
+        if message is None or not (discussion_channel_id := message.peer.channel.discussion_id):
             return TaggedBool(value=False)
 
-        discussion_peer = await Peer.get_or_none(
-            owner=None, channel_id=message.peer.channel.discussion_id,
+        discussion_peer: PeerChannelInternalT | None = await Peer.get_or_none(
+            owner=None, channel_id=discussion_channel_id,
         ).select_related("channel")
+        if discussion_peer is None:
+            logger.warning(f"Internal channel ({discussion_channel_id}) peer does not exist")
+            return TaggedBool(value=False)
 
         discussion_message, = await message.forward_for_peers(
             to_peer=discussion_peer,
@@ -155,6 +161,7 @@ async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
 
     peer_type = PeerType(request.peer_type)
 
+    peer_users: list[User]
     if peer_type is PeerType.USER:
         if request.peer_user == 777000:
             return TaggedBool(value=True)
@@ -162,20 +169,22 @@ async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
                 owner_id=request.peer_user, user_id=request.peer_owner, blocked_at__not_isnull=True
         ).exists():
             return TaggedBool(value=True)
-        peers = [await User.get(id=request.peer_user).only("id")]
+        peer_users = [await User.get(id=request.peer_user).only("id")]
     elif peer_type is PeerType.CHAT:
-        peers = await User.filter(chatparticipants__chat_id=request.peer_chat, id__not=request.peer_owner).only("id")
+        peer_users = await User.filter(
+            chatparticipants__chat_id=request.peer_chat, id__not=request.peer_owner
+        ).only("id")
     else:
         return TaggedBool(value=False)
 
-    await upd.update_status(user, presence, peers)
+    await upd.update_status(user, presence, peer_users)
     return TaggedBool(value=True)
 
 
 @handler.on_request(ClearDraft, ReqHandlerFlags.INTERNAL)
 async def clear_draft(request: ClearDraft) -> TLObject:
     if await MessageDraft.filter(peer_id=request.peer_id).delete():
-        peer = await Peer.get(id=request.peer_id)
+        peer: Peer = await Peer.get(id=request.peer_id)
         await upd.update_draft(peer.owner_id, peer, None)
         return TaggedBool(value=True)
 

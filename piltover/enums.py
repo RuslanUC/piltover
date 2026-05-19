@@ -2,6 +2,7 @@ from enum import IntFlag
 
 
 class ReqHandlerFlags(IntFlag):
+    NONE = 0
     AUTH_NOT_REQUIRED = 1 << 0
     ALLOW_MFA_PENDING = 1 << 1
     BOT_NOT_ALLOWED = 1 << 2

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from tortoise import fields
 from tortoise.queryset import QuerySet
 
@@ -78,7 +80,11 @@ class Chat(ChatBase):
             elif self.migrated_to is None:
                 migrated_to_id = 0
             else:
-                migrated_to_id = await models.Channel.get_or_none(migrated_from=self).values_list("id", flat=True) or 0
+                migrated_to_id = cast(
+                    int | None, cast(
+                        object, await models.Channel.get_or_none(migrated_from=self).values_list("id", flat=True)
+                    )
+                ) or 0
 
         if self.photo is not None:
             self.photo = await self.photo
@@ -89,7 +95,7 @@ class Chat(ChatBase):
         return result
 
     @classmethod
-    async def to_tl_bulk(cls, chats: list[models.Chat]) -> list[TLChat | ChatForbidden]:
+    async def to_tl_bulk(cls, chats: list[models.Chat]) -> list[TLChatBase]:
         if not chats:
             return []
 

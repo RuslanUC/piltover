@@ -1,8 +1,10 @@
 from contextvars import ContextVar, Token
 from time import perf_counter
+from typing import cast
 
 import aiozipkin
 
+from piltover.exceptions import Unreachable
 from piltover.utils.debug.tracing import BaseTracer, TraceTime, BaseTracerContext
 
 
@@ -21,22 +23,27 @@ class ZipkinTracerContext(BaseTracerContext):
         self.ctx_token: Token | None = None
 
     def __enter__(self) -> TraceTime:
-        if _parent_span.get() is None:
+        parent_span = _parent_span.get()
+        if parent_span is None:
             self.span = self.zipkin.new_trace(sampled=True)
         else:
-            self.span = _parent_span.get().new_child()
+            self.span = parent_span.new_child()
 
-        self.ctx_token = _parent_span.set(self.span)
+        span = cast(aiozipkin.SpanAbc, self.span)
+        self.ctx_token = _parent_span.set(span)
 
-        self.span.name(self.trace_name)
-        self.span.kind(aiozipkin.SERVER)
-        self.span.start()
+        span.name(self.trace_name)
+        span.kind(aiozipkin.SERVER)
+        span.start()
 
         self.start = perf_counter()
         self.time = TraceTime()
         return self.time
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self.ctx_token is None or self.span is None:
+            raise Unreachable
+
         self.span.finish(exception=exc_val)
         end = perf_counter()
         _parent_span.reset(self.ctx_token)

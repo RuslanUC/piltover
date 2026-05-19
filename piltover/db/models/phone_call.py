@@ -9,7 +9,7 @@ from tortoise import fields, Model
 
 from piltover.db import models
 from piltover.db.enums import CallDiscardReason, CALL_DISCARD_REASON_TO_TL
-from piltover.exceptions import InvalidConstructorException
+from piltover.exceptions import InvalidConstructorException, ErrorRpc
 from piltover.tl import Long, PhoneCallDiscarded, PhoneCallProtocol, PhoneCallDiscardReasonDisconnect, PhoneConnection
 from piltover.tl.base import PhoneCall as TLPhoneCallBase
 from piltover.tl.to_format import PhoneCallToFormat
@@ -47,6 +47,11 @@ class PhoneCall(Model):
         except InvalidConstructorException as e:
             logger.opt(exception=e).error("Failed to read phone call protocol")
             return None
+
+    def protocol_tl_raise(self) -> PhoneCallProtocol:
+        if (protocol := self.protocol_tl()) is not None:
+            return protocol
+        raise ErrorRpc(error_code=500, error_message="PROTOCOL_INVALID")
 
     def other_user_id(self, current: int) -> int:
         return self.to_user_id if current == self.from_user_id else self.from_user_id

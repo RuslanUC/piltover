@@ -1,4 +1,4 @@
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from typing import overload, TypeVar, NoReturn, Iterator, Generic, Any
 
 _T_co = TypeVar("_T_co", covariant=True)
@@ -18,7 +18,7 @@ class SingleElementListIterator(Iterator[_T_co], Generic[_T_co]):
         return self._item
 
 
-class SingleElementList(Collection[_T_co], Generic[_T_co]):
+class SingleElementList(Sequence[_T_co], Generic[_T_co]):
     __slots__ = ("_item", "_len",)
 
     def __init__(self, item: _T_co, length: int = 1) -> None:

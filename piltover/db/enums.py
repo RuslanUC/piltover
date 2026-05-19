@@ -10,7 +10,7 @@ from piltover.tl import ChatBannedRights as TLChatBannedRights, Int, ChatAdminRi
     PrivacyKeyPhoneNumber, PrivacyKeyAddedByPhone, PrivacyKeyVoiceMessages, PrivacyKeyAbout, PrivacyKeyBirthday, \
     PhoneCallDiscardReasonMissed, PhoneCallDiscardReasonDisconnect, PhoneCallDiscardReasonHangup, \
     PhoneCallDiscardReasonBusy, InputPrivacyKeyNoPaidMessages, InputPrivacyKeyStarGiftsAutoSave
-from piltover.tl.base import InputPrivacyKey, PrivacyKey
+from piltover.tl.base import InputPrivacyKey, PrivacyKey, PhoneCallDiscardReason as TLPhoneCallDiscardReasonBase
 
 
 class PrivacyRuleKeyType(IntEnum):
@@ -520,14 +520,14 @@ class CallDiscardReason(IntEnum):
     BUSY = 3
 
 
-CALL_DISCARD_REASON_TO_TL = {
+CALL_DISCARD_REASON_TO_TL: dict[CallDiscardReason, TLPhoneCallDiscardReasonBase] = {
     CallDiscardReason.MISSED: PhoneCallDiscardReasonMissed(),
     CallDiscardReason.DISCONNECT: PhoneCallDiscardReasonDisconnect(),
     CallDiscardReason.HANGUP: PhoneCallDiscardReasonHangup(),
     CallDiscardReason.BUSY: PhoneCallDiscardReasonBusy(),
 }
 
-CALL_DISCARD_REASON_FROM_TL = {
+CALL_DISCARD_REASON_FROM_TL: dict[type[TLPhoneCallDiscardReasonBase], CallDiscardReason] = {
     PhoneCallDiscardReasonMissed: CallDiscardReason.MISSED,
     PhoneCallDiscardReasonDisconnect: CallDiscardReason.DISCONNECT,
     PhoneCallDiscardReasonHangup: CallDiscardReason.HANGUP,

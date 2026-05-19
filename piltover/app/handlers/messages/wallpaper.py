@@ -32,11 +32,10 @@ async def _get_wallpaper(request: SetChatWallPaper, user_id: int, peer: Peer) ->
             id=request.id, content__type=MessageType.SERVICE_CHAT_UPDATE_WALLPAPER
         ).select_related("content")
         if peer.type is PeerType.CHANNEL:
-            message_q = message_q.get_or_none(peer__owner_id=None, peer__channel_id=peer.channel_id)
+            service_message = await message_q.get_or_none(peer__owner_id=None, peer__channel_id=peer.channel_id)
         else:
-            message_q = message_q.get_or_none(peer=peer)
-        service_message = await message_q
-        if service_message is None:
+            service_message = await message_q.get_or_none(peer=peer)
+        if service_message is None or service_message.content.extra_info is None:
             raise ErrorRpc(error_code=400, error_message="WALLPAPER_NOT_FOUND")
 
         try:

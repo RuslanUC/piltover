@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from typing import cast
 
 from tortoise.expressions import Q, Subquery, F
 
@@ -17,7 +18,8 @@ from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, 
     GetMessagesReactions, GetUnreadReactions, ReadReactions, GetRecentReactions, ClearRecentReactions, \
     GetMessageReactionsList
 from piltover.tl.types.messages import AvailableReactions, Messages, AffectedHistory, Reactions, ReactionsNotModified, \
-    AvailableReactionsNotModified, MessageReactionsList
+    AvailableReactionsNotModified, MessageReactionsList, MessagesSlice
+from piltover.tl.base import MessagePeerReaction as TLMessagePeerReactionBase
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.reactions")
@@ -25,7 +27,7 @@ handler = MessageHandler("messages.reactions")
 
 @handler.on_request(GetAvailableReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_available_reactions(request: GetAvailableReactions) -> AvailableReactions | AvailableReactionsNotModified:
-    ids = await Reaction.all().order_by("id").values_list("id", flat=True)
+    ids = cast(list[int], await Reaction.all().order_by("id").values_list("id", flat=True))
 
     reactions_hash = telegram_hash(ids, 32)
     if reactions_hash == request.hash:
@@ -122,7 +124,7 @@ async def send_reaction(request: SendReaction, user_id: int) -> Updates:
             ).values_list("id", flat=True)
             await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
-    author_reactions_unread = F("author_reactions_unread")
+    author_reactions_unread: F | bool = F("author_reactions_unread")
 
     if reaction is not None or custom_reaction is not None:
         await MessageReaction.create(
@@ -203,7 +205,7 @@ async def get_messages_reactions(request: GetMessagesReactions, user_id: int) ->
 
 
 @handler.on_request(GetUnreadReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_unread_reactions(request: GetUnreadReactions, user_id: int) -> Messages:
+async def get_unread_reactions(request: GetUnreadReactions, user_id: int) -> Messages | MessagesSlice:
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     query = await get_messages_query_internal(
@@ -253,7 +255,10 @@ async def read_reactions(request: ReadReactions, user_id: int) -> AffectedHistor
 @handler.on_request(GetRecentReactions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_recent_reactions(request: GetRecentReactions, user_id: int) -> Reactions | ReactionsNotModified:
     limit = min(50, max(1, request.limit))
-    ids = await RecentReaction.filter(user_id=user_id).limit(limit).order_by("-used_at").values_list("id", flat=True)
+    ids = cast(
+        list[int],
+        await RecentReaction.filter(user_id=user_id).limit(limit).order_by("-used_at").values_list("id", flat=True)
+    )
 
     reactions_hash = telegram_hash(ids, 64)
 
@@ -343,7 +348,7 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user_id: 
         next_offset = str(reactions.pop().id)
 
     users = {}
-    peer_reactions = []
+    peer_reactions: list[TLMessagePeerReactionBase] = []
     for reaction in reactions:
         users[reaction.user_id] = reaction.user
         peer_reactions.append(reaction.to_tl_peer_reaction(user_id, is_unread))

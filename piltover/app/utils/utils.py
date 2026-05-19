@@ -8,7 +8,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import ExitStack
 from hashlib import md5
 from io import BytesIO
-from typing import Iterable, Literal
+from typing import Iterable, Literal, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -31,9 +31,10 @@ from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEn
     InputUserFromMessage, ReplyKeyboardHide, ReplyKeyboardForceReply, ReplyKeyboardMarkup, ReplyInlineMarkup, \
     KeyboardButtonUrl, KeyboardButtonCallback, InputKeyboardButtonUserProfile, KeyboardButtonCopy, \
     KeyboardButtonRequestPhone, KeyboardButtonRequestPoll, InputKeyboardButtonRequestPeer, KeyboardButton, \
-    KeyboardButtonUserProfile, KeyboardButtonRow, KeyboardButtonRequestPeer, MessageEntityCustomEmoji
+    KeyboardButtonUserProfile, KeyboardButtonRow, KeyboardButtonRequestPeer, MessageEntityCustomEmoji, \
+    InputCheckPasswordSRP
 from piltover.tl.base import InputCheckPasswordSRP as InputCheckPasswordSRPBase, InputUser as InputUserBase, \
-    MessageEntity as MessageEntityBase, ReplyMarkup
+    MessageEntity as TLMessageEntityBase, ReplyMarkup
 from piltover.tl.types.storage import FileJpeg, FileGif, FilePng, FilePdf, FileMp3, FileMov, FileMp4, FileWebp
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import sha256d, itob, btoi
@@ -219,21 +220,21 @@ async def generate_stripped(
 
 
 def _extract_video_metadata(location: str) -> tuple[int, bool, bool, Image | None]:
-    exit_stack = ExitStack()
-    # TODO: might be url (e.g. s3) in the future
-    file = exit_stack.enter_context(open(location, "rb"))
-    container = exit_stack.enter_context(av.open(file, options={"probesize": "16k", "analyzeduration": "200000"}))
+    with ExitStack() as exit_stack:
+        # TODO: might be url (e.g. s3) in the future
+        file = exit_stack.enter_context(open(location, "rb"))
+        container = exit_stack.enter_context(av.open(file, options={"probesize": "16k", "analyzeduration": "200000"}))
 
-    has_audio = any(s.type == "audio" for s in container.streams)
-    has_video = any(s.type == "video" for s in container.streams)
-    duration = container.duration // av.time_base if container.duration else None
-    for stream in container.streams.video:
-        for packet in container.demux(stream):
-            frame: VideoFrame
-            for frame in packet.decode():
-                return duration, has_video, has_audio, frame.to_image()
+        has_audio = any(s.type == "audio" for s in container.streams)
+        has_video = any(s.type == "video" for s in container.streams)
+        duration = container.duration // av.time_base if container.duration else None
+        for stream in container.streams.video:
+            for packet in container.demux(stream):
+                frame: VideoFrame
+                for frame in packet.decode():
+                    return duration, has_video, has_audio, frame.to_image()
 
-    return duration, has_video, has_audio, None
+        return duration, has_video, has_audio, None
 
 
 async def extract_video_metadata(location: str) -> tuple[int, bool, bool, Image | None]:
@@ -241,19 +242,19 @@ async def extract_video_metadata(location: str) -> tuple[int, bool, bool, Image 
 
 
 def _extract_video_metadata_for_sticker(location: str) -> tuple[int, bool, bool, bool, int, int, int]:
-    exit_stack = ExitStack()
-    # TODO: might be url (e.g. s3) in the future
-    file = exit_stack.enter_context(open(location, "rb"))
-    container = exit_stack.enter_context(av.open(file, options={"probesize": "16k", "analyzeduration": "200000"}))
+    with ExitStack() as exit_stack:
+        # TODO: might be url (e.g. s3) in the future
+        file = exit_stack.enter_context(open(location, "rb"))
+        container = exit_stack.enter_context(av.open(file, options={"probesize": "16k", "analyzeduration": "200000"}))
 
-    has_audio = any(s.type == "audio" for s in container.streams)
-    has_video = any(s.type == "video" for s in container.streams)
-    duration = container.duration // av.time_base if container.duration else None
-    for stream in container.streams.video:
-        is_vp9 = stream.codec.name == "vp9"
-        return duration, has_video, has_audio, is_vp9, stream.width, stream.height, int(stream.average_rate)
+        has_audio = any(s.type == "audio" for s in container.streams)
+        has_video = any(s.type == "video" for s in container.streams)
+        duration = container.duration // av.time_base if container.duration else None
+        for stream in container.streams.video:
+            is_vp9 = stream.codec.name == "vp9"
+            return duration, has_video, has_audio, is_vp9, stream.width, stream.height, int(stream.average_rate)
 
-    return duration, has_video, has_audio, False, -1, -1, -1
+        return duration, has_video, has_audio, False, -1, -1, -1
 
 
 async def extract_video_metadata_for_sticker(
@@ -264,12 +265,12 @@ async def extract_video_metadata_for_sticker(
     )
 
 
-async def check_password_internal(password: UserPassword, check: InputCheckPasswordSRPBase) -> None:
-    if password.password is not None and isinstance(check, InputCheckPasswordEmpty):
-        raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
-
+async def check_password_internal(password: UserPassword, check: InputCheckPasswordSRPBase | None) -> None:
     if password.password is None:
         return
+
+    if check is None or not isinstance(check, InputCheckPasswordSRP):
+        raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
 
     if (sess := await password.get_session()).id != check.srp_id:
         raise ErrorRpc(error_code=400, error_message="SRP_ID_INVALID")
@@ -299,7 +300,7 @@ VALID_ENTITIES = (
 )
 
 
-async def _validate_message_entities(text: str, entities: list[MessageEntityBase], user_id: int) -> list[dict]:
+async def _validate_message_entities(text: str, entities: list[TLMessageEntityBase], user_id: int) -> list[dict]:
     if not entities:
         return []
     if len(entities) > 1024:
@@ -352,12 +353,12 @@ async def _validate_message_entities(text: str, entities: list[MessageEntityBase
         result.append(entity.to_dict() | {"_": entity.tlid()})
 
     if fetch_users:
-        ctx = request_ctx.get()
+        auth_id = cast(int, request_ctx.get().auth_id)
         got_users = {user_id}
         users_ids = []
         for input_user, _ in fetch_users:
             if isinstance(input_user, InputUser):
-                if not User.check_access_hash(user_id, ctx.auth_id, input_user.user_id, input_user.access_hash):
+                if not User.check_access_hash(user_id, auth_id, input_user.user_id, input_user.access_hash):
                     continue
                 users_ids.append(input_user.user_id)
             # TODO: InputUserFromMessage
@@ -425,7 +426,7 @@ def _check_entity_inside_entity(entities: list[dict], u16start: int, u16end: int
 
 
 def _insert_entity_maybe(
-        tlid: int, entities: list[MessageEntityBase], span: tuple[int, int], u8_to_u16: dict[int, int],
+        tlid: int, entities: list[dict], span: tuple[int, int], u8_to_u16: dict[int, int],
 ) -> None:
     u16start, u16end, length = _span_to_offset_length(span, u8_to_u16)
     if _check_entity_inside_entity(entities, u16start, u16end):
@@ -440,12 +441,15 @@ def _insert_entity_maybe(
 
 
 async def process_message_entities(
-        text: str | None, entities: list[MessageEntityBase], user_id: int,
+        text: str | None, entities_to_check: list[TLMessageEntityBase] | None, user_id: int,
 ) -> list[dict] | None:
     if not text:
         return None
 
-    entities = await _validate_message_entities(text, entities, user_id)
+    if entities_to_check:
+        entities = await _validate_message_entities(text, entities_to_check, user_id)
+    else:
+        entities = []
 
     # TODO: calculate this properly:
     #  dont use utf16 at all,

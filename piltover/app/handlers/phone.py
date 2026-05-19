@@ -1,6 +1,7 @@
 import hashlib
 import json
 from datetime import datetime, UTC
+from typing import cast
 
 from loguru import logger
 from tortoise.expressions import Q
@@ -138,11 +139,12 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
     if not await PrivacyRule.has_access_to(user, peer.user, PrivacyRuleKeyType.PHONE_CALL):
         raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
-    ctx = request_ctx.get()
-    this_auth = await UserAuthorization.get(user=user, id=ctx.auth_id)
-    target_authorizations = await UserAuthorization.filter(
-        user=peer.user, allow_call_requests=True
-    ).values_list("id", flat=True)
+    auth_id = cast(int, request_ctx.get().auth_id)
+    this_auth = await UserAuthorization.get(user=user, id=auth_id)
+    target_authorizations = cast(
+        list[int],
+        await UserAuthorization.filter(user=peer.user, allow_call_requests=True).values_list("id", flat=True)
+    )
 
     # TODO: save random_id
     call = await PhoneCall.create(
@@ -159,7 +161,7 @@ async def request_call(request: RequestCall | RequestCall_133, user: User) -> Ph
 
     # TODO: send service message if discard_reason is not None
 
-    await upd.phone_call_update(user.id, call, [ctx.auth_id])
+    await upd.phone_call_update(user.id, call, [auth_id])
     await upd.phone_call_update(peer.user_id, call, target_authorizations)
 
     return PhonePhoneCall(
@@ -182,9 +184,9 @@ async def discard_call(request: DiscardCall, user_id: int) -> Updates:
         raise ErrorRpc(error_code=400, error_message="CALL_PEER_INVALID")
 
     if call.to_sess_id is None:
-        target_authorizations = await UserAuthorization.filter(
-            user=call.to_user, allow_call_requests=True,
-        ).values_list("id")
+        target_authorizations = cast(
+            list[int], await UserAuthorization.filter(user=call.to_user, allow_call_requests=True).values_list("id")
+        )
         if user_id == call.from_user_id:
             reason = CallDiscardReason.MISSED
         else:
@@ -205,6 +207,7 @@ async def discard_call(request: DiscardCall, user_id: int) -> Updates:
     user.bot = False
 
     other_user = call.other_user(user)
+    peer: Peer
     peer, _ = await Peer.get_or_create(owner_id=user, user=other_user, defaults={"type": PeerType.USER})
     peer.user = other_user
     await send_message_internal(
@@ -238,12 +241,12 @@ async def accept_call(request: AcceptCall, user: User) -> PhonePhoneCall:
     ctx = request_ctx.get()
     call.to_sess = await UserAuthorization.get(user=user, id=ctx.auth_id)
     call.g_b = request.g_b
-    call.protocol = _merge_protocols(call.protocol_tl(), request.protocol).write()
+    call.protocol = _merge_protocols(call.protocol_tl_raise(), request.protocol).write()
     await call.save(update_fields=["to_sess_id", "g_b", "protocol"])
 
-    target_authorizations = await UserAuthorization.filter(
-        user=call.to_user, allow_call_requests=True,
-    ).values_list("id")
+    target_authorizations = cast(
+        list[int], await UserAuthorization.filter(user=call.to_user, allow_call_requests=True).values_list("id")
+    )
 
     await upd.phone_call_update(user.id, call, target_authorizations)
     await upd.phone_call_update(call.from_user_id, call, [call.from_sess_id])
@@ -279,12 +282,12 @@ async def confirm_call(request: ConfirmCall, user: User) -> PhonePhoneCall:
 
     call.g_a = request.g_a
     call.key_fp = request.key_fingerprint
-    call.protocol = _merge_protocols(call.protocol_tl(), request.protocol, True).write()
+    call.protocol = _merge_protocols(call.protocol_tl_raise(), request.protocol, True).write()
     call.started_at = datetime.now(UTC)
     await call.save(update_fields=["g_a", "key_fp", "protocol", "started_at"])
 
     await upd.phone_call_update(user.id, call, [call.from_sess_id])
-    await upd.phone_call_update(call.to_user_id, call, [call.to_sess_id])
+    await upd.phone_call_update(call.to_user_id, call, [cast(int, call.to_sess_id)])
 
     # TODO: add connections to call
 
@@ -317,6 +320,9 @@ async def send_signaling_data(request: SendSignalingData, user: User) -> bool:
         session_id = call.to_sess_id
     else:
         session_id = call.from_sess_id
+
+    if session_id is None:
+        return True
 
     await upd.phone_signaling_update(session_id, call.id, request.data)
     return True

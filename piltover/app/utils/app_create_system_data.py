@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from time import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 from fastrand import xorshift128plus_bytes
@@ -712,10 +712,10 @@ async def _create_emoji_groups(groups_dir: Path) -> None:
     }
 
     logger.info("Creating (or updating) emoji groups...")
-    for group_type, cat in type_name_to_category.items():
-        info_file = groups_dir / f"{group_type}.json"
+    for group_type_name, cat in type_name_to_category.items():
+        info_file = groups_dir / f"{group_type_name}.json"
         if not info_file.exists():
-            logger.warning(f"Emoji group file for \"{group_type}\" does not exist, skipping")
+            logger.warning(f"Emoji group file for \"{group_type_name}\" does not exist, skipping")
             continue
 
         with open(info_file) as f:
@@ -725,9 +725,9 @@ async def _create_emoji_groups(groups_dir: Path) -> None:
         created_group_ids = []
 
         for idx, group in enumerate(groups):
-            fake_orig_id = telegram_hash([group_type, cat.value, group["_"], group["title"]], 64)
+            fake_orig_id = telegram_hash([group_type_name, cat.value, group["_"], group["title"]], 64)
             checksum = telegram_hash([
-                group_type, idx, group["title"], group.get("icon_emoji_id", 0), *group.get("emoticons", ["NONE"]),
+                group_type_name, idx, group["title"], group.get("icon_emoji_id", 0), *group.get("emoticons", ["NONE"]),
             ], 64)
 
             icon_emoji = None
@@ -754,11 +754,13 @@ async def _create_emoji_groups(groups_dir: Path) -> None:
             )
             if not created and system_obj.our_emoji_group_id is not None and system_obj.checksum == checksum:
                 logger.info(f"Emoji group \"{group['title']}\" is up-to-date")
-                emoji_group = await system_obj.our_emoji_group
+                await system_obj.fetch_related("our_emoji_group")
+                emoji_group = cast(EmojiGroup, system_obj.our_emoji_group)
             elif not created and system_obj.our_emoji_group_id is not None:
-                emoji_group = await system_obj.our_emoji_group
+                await system_obj.fetch_related("our_emoji_group")
+                emoji_group = cast(EmojiGroup, system_obj.our_emoji_group)
                 emoji_group.name = group["title"]
-                emoji_group.icon_emoji = icon_emoji
+                emoji_group.icon_emoji = cast(File, icon_emoji)
                 emoji_group.category = cat
                 emoji_group.type = group_type
                 emoji_group.emoticons = EmojiGroup.pack_emoticons(group["emoticons"]) if "emoticons" in group else None
@@ -809,13 +811,15 @@ async def create_system_data(
             ("system", "System info"),
         ])
 
-    if countries_list and args.auth_countries_file.exists():
+    auth_countries_file = cast(Path, args.auth_countries_file)
+
+    if countries_list and auth_countries_file.exists():
         logger.info("Creating auth countries...")
 
         import json
         from piltover.db.models import AuthCountry, AuthCountryCode
 
-        with open(args.auth_countries_file) as f:
+        with open(auth_countries_file) as f:
             countries = json.load(f)
 
         for country in countries:
@@ -836,13 +840,16 @@ async def create_system_data(
         await _create_chat_themes(args)
 
     if peer_colors:
+        assert args.peer_colors_dir is not None
         await _create_peer_colors(args.peer_colors_dir)
 
     if languages:
+        assert args.languages_dir is not None
         await _create_languages(args.languages_dir)
 
     if system_stickersets:
         await _create_system_stickers(args)
 
     if emoji_groups:
+        assert args.emoji_groups_dir is not None
         await _create_emoji_groups(args.emoji_groups_dir)

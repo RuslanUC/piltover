@@ -47,6 +47,8 @@ from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAva
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers, \
     AffectedHistory, MessagesSlice
+from piltover.tl.base import InputStickerSet as TLInputStickerSetBase, ChatReactions as TLChatReactionsBase, \
+    Reaction as TLReactionBase, ChannelParticipant as TLChannelParticipantBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -138,7 +140,7 @@ async def _create_channel(
     channel = await Channel.create(
         creator_id=creator_id, name=title, description=description, channel=is_channel, supergroup=is_supergroup,
     )
-    peer_channel = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL)
+    peer_channel: Peer = await Peer.create(owner=None, channel=channel, type=PeerType.CHANNEL)
 
     return channel, peer_channel
 
@@ -146,6 +148,7 @@ async def _create_channel(
 async def _add_user_to_channel(channel: Channel, user_id: int) -> ChatParticipant:
     user_is_creator = channel.creator_id == user_id
 
+    peer_for_user: Peer
     peer_for_user, _ = await Peer.get_or_create(owner_id=user_id, channel=channel, type=PeerType.CHANNEL)
     participant, _ = await ChatParticipant.update_or_create(
         channel=channel,
@@ -239,7 +242,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    peer = await Peer.get_or_none(
+    peer: Peer | None = await Peer.get_or_none(
         owner_id=user_id, channel_id=peer_channel_id, channel__deleted=False,
     ).prefetch_related(
         "channel",
@@ -279,11 +282,14 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
         peer, True, True,
     )
 
+    available_reactions: TLChatReactionsBase
     if channel.all_reactions:
         available_reactions = ChatReactionsAll(allow_custom=channel.all_reactions_custom)
     else:
-        some = await Reaction.filter(availablechannelreactions__channel=channel)
-        some = [ReactionEmoji(emoticon=reaction.reaction) for reaction in some]
+        some: list[TLReactionBase] = [
+            ReactionEmoji(emoticon=reaction.reaction)
+            for reaction in await Reaction.filter(availablechannelreactions__channel=channel)
+        ]
         if some:
             available_reactions = ChatReactionsSome(reactions=some)
         else:
@@ -618,7 +624,7 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
             or bool(new_banned_rights & ChatBannedRights.VIEW_MESSAGES)
     )
 
-    participant_tl_before = ChannelParticipantLeft(peer=PeerUser(user_id=target_id))
+    participant_tl_before: TLChannelParticipantBase = ChannelParticipantLeft(peer=PeerUser(user_id=target_id))
     if target_participant is not None:
         participant_tl_before = target_participant.to_tl_channel_with_creator(user_id, channel.creator_id)
 
@@ -797,10 +803,10 @@ async def get_participants(request: GetParticipants, user_id: int) -> ChannelPar
     limit = max(min(request.limit, 100), 1)
     participants = await query.select_related("user").limit(limit).offset(request.offset)
 
-    participants_tl = []
-    users_to_tl = []
+    participants_tl: list[TLChannelParticipantBase] = []
+    users_to_tl: list[User] = []
 
-    peers_to_create = []
+    peers_to_create: list[Peer] = []
 
     for participant in participants:
         if participant.user_id != user_id:
@@ -865,7 +871,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         return True
 
     unread_ids = cast(
-        int | None,
+        tuple[int, int] | None,
         cast(
             object,
             await MessageRef.filter(
@@ -904,7 +910,6 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
     return True
 
 
-@handler.on_request(InviteToChannel_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(InviteToChannel, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUsers:
     channel = await Channel.get_from_input(user_id, request.channel)
@@ -923,8 +928,11 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
             raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
         user_ids.add(peer_id)
 
-    peers = {peer.user_id: peer for peer in await Peer.filter(owner_id=user_id, user_id__in=user_ids)}
-    if peers.keys() != user_ids:
+    peer_user_ids = set(cast(
+        list[int],
+        await Peer.filter(owner_id=user_id, user_id__in=user_ids).values_list("user_id", flat=True)
+    ))
+    if peer_user_ids != user_ids:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
     existing_participants = {
@@ -934,10 +942,10 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
 
     privacy_rules = await PrivacyRule.has_access_to_bulk(user_ids, user_id, [PrivacyRuleKeyType.CHAT_INVITE])
 
-    added_user_ids = []
-    peers_to_create = []
-    participants_to_create = []
-    participants_to_update = []
+    added_user_ids: list[int] = []
+    peers_to_create: list[Peer] = []
+    participants_to_create: list[ChatParticipant] = []
+    participants_to_update: list[ChatParticipant] = []
 
     for input_user in request.users[:100]:
         _, peer_user_id = Peer.type_and_id_from_input_raise(user_id, input_user)
@@ -985,6 +993,12 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
         ),
         missing_invitees=[],
     )
+
+
+@handler.on_request(InviteToChannel_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def invite_to_channel_133(request: InviteToChannel_133, user_id: int) -> Updates:
+    result = await invite_to_channel(InviteToChannel(channel=request.channel, users=request.users), user_id)
+    return cast(Updates, result.updates)
 
 
 @handler.on_request(ToggleSignatures, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
@@ -1057,10 +1071,10 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user_
 
         reactions_emoticons = []
 
-        for reaction in reactions.reactions:
-            if isinstance(reaction, ReactionEmoji):
-                reactions_emoticons.append(Reaction.reaction_to_uuid(reaction.emoticon))
-            elif isinstance(reaction, ReactionCustomEmoji):
+        for tl_reaction in reactions.reactions:
+            if isinstance(tl_reaction, ReactionEmoji):
+                reactions_emoticons.append(Reaction.reaction_to_uuid(tl_reaction.emoticon))
+            elif isinstance(tl_reaction, ReactionCustomEmoji):
                 # TODO: allow custom reactions
                 raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")
 
@@ -1634,7 +1648,7 @@ async def toggle_slowmode(request: ToggleSlowMode, user_id: int) -> Updates:
     new_seconds = request.seconds or None
     if channel.slowmode_seconds == request.seconds:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
-    if new_seconds < 0 or new_seconds > 60 * 60:
+    if new_seconds is not None and (new_seconds < 0 or new_seconds > 60 * 60):
         raise ErrorRpc(error_code=400, error_message="SECONDS_INVALID")
 
     participant = await channel.get_participant_raise(user_id)
@@ -1724,9 +1738,12 @@ async def delete_history(request: DeleteHistory, user_id: int) -> Updates:
     if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
-    message_ids = await MessageRef.filter(
-        peer__owner=None, peer__channel=channel, id__lte=request.max_id,
-    ).order_by("-id").limit(APP_CONFIG.channel_delete_history_min_id_threshold + 1).values_list("id", flat=True)
+    message_ids = cast(
+        list[int],
+        await MessageRef.filter(
+            peer__owner=None, peer__channel=channel, id__lte=request.max_id,
+        ).order_by("-id").limit(APP_CONFIG.channel_delete_history_min_id_threshold + 1).values_list("id", flat=True)
+    )
     if len(message_ids) > APP_CONFIG.channel_delete_history_min_id_threshold:
         channel.min_available_id = channel.min_available_id_force = message_ids[0]
         await channel.save(update_fields=["min_available_id", "min_available_id_force"])
@@ -1752,16 +1769,19 @@ async def delete_participant_history(request: DeleteParticipantHistory, user_id:
     if peer_type not in (PeerType.SELF, PeerType.USER):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    messages_to_delete = await MessageRef.filter(
-        peer__owner=None, peer__channel_id=channel.id, content__author_id=target_id,
-    ).order_by("-id").limit(1001).values_list("id", flat=True)
+    messages_to_delete = cast(
+        list[int],
+        await MessageRef.filter(
+            peer__owner=None, peer__channel_id=channel.id, content__author_id=target_id,
+        ).order_by("-id").limit(1001).values_list("id", flat=True),
+    )
 
     if not messages_to_delete:
         return AffectedHistory(pts=channel.pts, pts_count=0, offset=0)
 
     offset_id = 0
     if len(messages_to_delete) > 1000:
-        offset_id = messages_to_delete.pop(-1)
+        offset_id = messages_to_delete.pop()
 
     await MessageRef.filter(id__in=messages_to_delete).delete()
 
@@ -1801,6 +1821,7 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user_id: int) ->
     if not channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
+    old_stickerset: TLInputStickerSetBase
     if is_emoji:
         if channel.emojiset_id is None:
             old_stickerset = InputStickerSetEmpty()
@@ -1812,6 +1833,7 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user_id: int) ->
         else:
             old_stickerset = InputStickerSetID(id=channel.stickerset_id, access_hash=-1)
 
+    new_stickerset_tl: TLInputStickerSetBase
     if isinstance(request.stickerset, InputStickerSetEmpty):
         new_stickerset_tl = InputStickerSetEmpty()
         new_stickerset = None

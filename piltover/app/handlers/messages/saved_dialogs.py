@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from typing import cast
 
 from tortoise.expressions import Q
 
@@ -7,11 +8,13 @@ from piltover.app.handlers.messages.history import get_messages_internal, format
 import piltover.app.utils.updates_manager as upd
 from piltover.db.enums import PeerType
 from piltover.db.models import User, SavedDialog, Peer, State, MessageRef
+from piltover.db.models.peer import PeerSelfT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
+from piltover.tl import InputDialogPeer
 from piltover.tl.functions.messages import GetSavedDialogs, GetSavedHistory, DeleteSavedHistory, \
     GetPinnedSavedDialogs, ToggleSavedDialogPin, ReorderPinnedSavedDialogs
-from piltover.tl.types.messages import SavedDialogs, Messages, AffectedHistory
+from piltover.tl.types.messages import SavedDialogs, Messages, AffectedHistory, MessagesSlice
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.saved_dialogs")
@@ -27,10 +30,8 @@ async def get_saved_dialogs(request: GetSavedDialogs, user_id: int) -> SavedDial
 
 
 @handler.on_request(GetSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages:
-    self_peer = await Peer.get(owner_id=user_id, type=PeerType.SELF)
-    if self_peer is None:
-        return Messages(messages=[], chats=[], users=[])
+async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages | MessagesSlice:
+    self_peer: PeerSelfT = await Peer.get(owner_id=user_id, type=PeerType.SELF)
 
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
@@ -47,10 +48,7 @@ async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages:
 
 @handler.on_request(DeleteSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_saved_history(request: DeleteSavedHistory, user_id: int) -> AffectedHistory:
-    self_peer = await Peer.get(owner_id=user_id, type=PeerType.SELF)
-    if self_peer is None:
-        updates_state, _ = await State.get_or_create(user_id=user_id)
-        return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
+    self_peer: PeerSelfT = await Peer.get(owner_id=user_id, type=PeerType.SELF)
 
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     query = Q(peer=self_peer, content__fwd_header__saved_peer=peer)
@@ -61,7 +59,7 @@ async def delete_saved_history(request: DeleteSavedHistory, user_id: int) -> Aff
     if request.min_date:
         query &= Q(content__date__gt=datetime.fromtimestamp(request.min_date, UTC))
 
-    ids = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", flat=True)
+    ids = cast(list[int], await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", flat=True))
     if not ids:
         updates_state = await State.get(user_id=user_id)
         return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
@@ -109,14 +107,19 @@ async def toggle_saved_dialog_pin(request: ToggleSavedDialogPin, user_id: int) -
 
 @handler.on_request(ReorderPinnedSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user: User):
-    pinned_now = await SavedDialog.filter(
-        peer__owner=user, pinned_index__not_isnull=True,
-    ).select_related("peer", "peer__user")
-    pinned_now = {dialog.peer: dialog for dialog in pinned_now}
+    pinned_now = {
+        dialog.peer: dialog
+        for dialog in await SavedDialog.filter(
+            peer__owner=user, pinned_index__not_isnull=True,
+        ).select_related("peer", "peer__user")
+    }
     pinned_after = []
     to_unpin: dict = pinned_now.copy() if request.force else {}
 
     for dialog_peer in request.order:
+        if not isinstance(dialog_peer, InputDialogPeer):
+            continue
+
         if (peer := await Peer.from_input_peer(user, dialog_peer.peer)) is None:
             continue
 
@@ -130,7 +133,7 @@ async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user:
         to_unpin.pop(peer, None)
 
     if not request.force:
-        pinned_after.extend(sorted(pinned_now.values(), key=lambda d: d.pinned_index))
+        pinned_after.extend(sorted(pinned_now.values(), key=lambda d: d.pinned_index or 0))
 
     if to_unpin:
         unpin_ids = [dialog.id for dialog in to_unpin.values()]

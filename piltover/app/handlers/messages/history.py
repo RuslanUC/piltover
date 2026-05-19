@@ -29,7 +29,7 @@ from piltover.tl import Updates, InputPeerUser, InputPeerSelf, UpdateDraftMessag
     InputMessagesFilterRoundVoice, InputMessagesFilterUrl, InputMessagesFilterChatPhotos, InputMessagesFilterRoundVideo, \
     InputMessagesFilterContacts, InputMessagesFilterGeo, SearchResultPosition, Int, InputMessagesFilterPhoneCalls, \
     ReadParticipantDate, InputPeerEmpty
-from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDate
+from piltover.tl.base import MessagesFilter as MessagesFilterBase, OutboxReadDate, Update as TLUpdateBase
 from piltover.tl.functions.messages import GetHistory, ReadHistory, GetSearchCounters, Search, GetAllDrafts, \
     SearchGlobal, GetMessages, GetMessagesViews, GetSearchResultsCalendar, GetOutboxReadDate, GetMessages_57, \
     GetUnreadMentions_133, GetUnreadMentions, ReadMentions, ReadMentions_133, GetSearchResultsCalendar_134, \
@@ -538,21 +538,19 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
 async def messages_search(request: Search, user_id: int) -> Messages | MessagesSlice:
     saved_peer = None
 
-    if isinstance(request.peer, InputPeerEmpty):
-        peer = None
-    else:
+    peer: Peer | User
+    if not isinstance(request.peer, InputPeerEmpty):
         peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
         if peer.type is PeerType.SELF and request.saved_peer_id:
             saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
+    else:
+        peer = await User.get(id=user_id).only("id")
 
     from_user_id = None
     if isinstance(request.from_id, InputPeerUser):
         from_user_id = request.from_id.user_id
     elif isinstance(request.from_id, InputPeerSelf):
         from_user_id = user_id
-
-    if peer is None:
-        peer = await User.get(id=user_id).only("id")
 
     messages = await get_messages_internal(
         peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, from_user_id,
@@ -573,7 +571,7 @@ async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[
 
     base_query = append_channel_min_message_id_to_query_maybe(peer, base_query)
 
-    counters = TLObjectVector()
+    counters = cast(TLObjectVector[SearchCounter], TLObjectVector())
 
     for filt in request.filters:
         if (filter_query := message_filter_to_query(filt, peer)) is not None:
@@ -582,14 +580,14 @@ async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[
             count = 0
         counters.append(SearchCounter(filter=filt, count=count))
 
-    return cast(TLObjectVector[SearchCounter], counters)
+    return counters
 
 
 @handler.on_request(GetAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_all_drafts(user: User):
+async def get_all_drafts(user: User) -> Updates:
     ucc = UsersChatsChannels()
 
-    updates = []
+    updates: list[TLUpdateBase] = []
     drafts = await MessageDraft.filter(peer__owner=user).select_related("peer").order_by("-date").limit(250)
     for draft in drafts:
         updates.append(UpdateDraftMessage(peer=draft.peer.to_tl(), draft=draft.to_tl()))
@@ -662,12 +660,12 @@ async def get_messages_views(request: GetMessagesViews, user_id: int) -> Message
     views = []
 
     for message_id in request.id:
-        if message_id not in messages or not messages[message_id].content.post_info:
+        if message_id not in messages or not (post_info := messages[message_id].content.post_info):
             views.append(MessageViews())
             continue
 
         views.append(MessageViews(
-            views=messages[message_id].content.post_info.views,
+            views=post_info.views,
             replies=replies_by_id.get(message_id, None),
         ))
 
@@ -692,16 +690,16 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user_id
     if (filter_query := message_filter_to_query(request.filter, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
 
-    query = Q(peer=peer) & filter_query
+    query_q = Q(peer=peer) & filter_query
     if saved_peer is not None:
-        query &= Q(content__fwd_header__saved_peer=saved_peer)
+        query_q &= Q(content__fwd_header__saved_peer=saved_peer)
 
-    count = await MessageRef.filter(query).count()
+    count = await MessageRef.filter(query_q).count()
     min_msg_id, min_date = await MessageRef.filter(peer=peer).order_by("id").first().values_list("id", "content__date")
     offset_id_offset = None
     if request.offset_id:
-        offset_id_offset = await MessageRef.filter(query, id__gte=request.offset_id).count()
-        query &= Q(id__lt=request.offset_id)
+        offset_id_offset = await MessageRef.filter(query_q, id__gte=request.offset_id).count()
+        query_q &= Q(id__lt=request.offset_id)
 
     dialect = connections.get("default").capabilities.dialect
     if not DatetimeToUnix.is_supported(dialect):
@@ -714,7 +712,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user_id
             max_msg_id=Max("id"),
             msg_count=Count("id"),
         ).filter(
-            query & Q(msg_count__gte=1)
+            query_q & Q(msg_count__gte=1)
         ).group_by("day").order_by("-day").limit(100).values_list("day", "min_msg_id", "max_msg_id", "msg_count")
 
         periods = await query
@@ -940,6 +938,7 @@ async def set_history_ttl(request: SetHistoryTTL, user_id: int) -> Updates:
     elif peer.type is PeerType.USER:
         if peer.user_ttl_period_days == ttl_days:
             raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+        opp_peer: Peer
         opp_peer, _ = await Peer.get_or_create(type=PeerType.USER, owner_id=peer.user_id, user_id=peer.owner_id)
         peer.user_ttl_period_days = opp_peer.user_ttl_period_days = ttl_days
         await Peer.bulk_update([peer, opp_peer], fields=["user_ttl_period_days"])
@@ -1108,7 +1107,7 @@ async def get_discussion_message(request: GetDiscussionMessage, user_id: int) ->
 
 
 @handler.on_request(GetReplies, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_replies(request: GetReplies, user_id: int) -> Messages:
+async def get_replies(request: GetReplies, user_id: int) -> Messages | MessagesSlice:
     peer = await Peer.from_input_peer_raise(user_id, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
 
     messages = await get_messages_internal(
@@ -1122,7 +1121,7 @@ async def get_replies(request: GetReplies, user_id: int) -> Messages:
 
 
 @handler.on_request(GetMessageReadParticipants, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_message_read_participants(request: GetMessageReadParticipants, user_id: User) -> list[ReadParticipantDate]:
+async def get_message_read_participants(request: GetMessageReadParticipants, user_id: int) -> list[ReadParticipantDate]:
     peer = await Peer.from_input_peer_raise(
         user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL)
     )
@@ -1148,14 +1147,17 @@ async def get_message_read_participants(request: GetMessageReadParticipants, use
     else:
         raise Unreachable
 
-    read_dates = await ReadHistoryChunk.filter(
-        peer_q, peer__owner__read_dates_private=False, read_content_id__gte=message.content_id,
-    ).group_by("peer__owner_id").annotate(read_at=Min("read_at")).limit(50).values_list("peer__owner_id", "read_at")
+    read_dates = cast(
+        list[tuple[int, datetime]],
+        await ReadHistoryChunk.filter(
+            peer_q, peer__owner__read_dates_private=False, read_content_id__gte=message.content_id,
+        ).group_by("peer__owner_id").annotate(read_at=Min("read_at")).limit(50).values_list("peer__owner_id", "read_at")
+    )
 
-    result = TLObjectVector()
-    for user_id, read_at in read_dates:
+    result = cast(TLObjectVector[ReadParticipantDate], TLObjectVector())
+    for read_user_id, read_at in read_dates:
         result.append(ReadParticipantDate(
-            user_id=user_id,
+            user_id=read_user_id,
             date=int(read_at.timestamp()),
         ))
 

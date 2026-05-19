@@ -2,7 +2,7 @@ from array import array
 from collections import defaultdict
 from datetime import datetime, UTC, timedelta
 from time import time
-from typing import cast
+from typing import cast, Sequence
 from uuid import UUID
 
 from fastrand import xorshift128plusrandint
@@ -19,7 +19,7 @@ from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
-    SlowmodeLastMessage, MessageRef, MessageContent, ReadState, Username
+    SlowmodeLastMessage, MessageRef, MessageContent, ReadState, Username, MessageFwdHeader
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -29,7 +29,8 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
     GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
     DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
-    InputChannelEmpty, InputPeerSelf, InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage
+    InputChannelEmpty, InputPeerSelf, InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage, \
+    InputDocument, InputPhoto
 from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
     ClearDraft
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
@@ -39,6 +40,7 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
     SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
     SendInlineBotResult, SendMultiMedia_176, UnpinAllMessages, StartBot
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
+from piltover.tl.base import InputPeer as TLInputPeerBase, InputMedia as TLInputMediaBase
 from piltover.utils import SingleElementList
 from piltover.utils.debug import measure_time
 from piltover.utils.snowflake import Snowflake
@@ -46,8 +48,6 @@ from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.sending")
 
-InputMedia = InputMediaUploadedPhoto | InputMediaUploadedDocument | InputMediaPhoto | InputMediaDocument \
-             | InputMediaPoll | InputMediaDice
 DocOrPhotoMedia = (
     InputMediaUploadedDocument, InputMediaUploadedDocument_133, InputMediaUploadedPhoto, InputMediaPhoto,
     InputMediaDocument, InputMediaDocument_133,
@@ -441,8 +441,8 @@ async def _update_channel_slowmode_maybe(channel: Channel, user_id: int) -> None
     })
 
 
-async def process_send_as(send_as: InputPeerChannel | InputChannel, user: User | int) -> int | None:
-    if send_as is None or isinstance(send_as, (InputPeerEmpty, InputChannelEmpty, InputPeerSelf)):
+async def process_send_as(send_as: TLInputPeerBase | None, user: User | int) -> int | None:
+    if send_as is None or not isinstance(send_as, (InputPeerChannel, InputChannel)):
         return None
 
     user_id = user.id if isinstance(user, User) else user
@@ -786,7 +786,7 @@ async def _get_input_media_file(
     )
 
 
-async def _process_media(user: User, media: InputMedia) -> MessageMedia:
+async def _process_media(user: User, media: TLInputMediaBase) -> MessageMedia:
     if not isinstance(media, (*DocOrPhotoMedia, InputMediaPoll, InputMediaContact, InputMediaGeoPoint, InputMediaDice)):
         raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
@@ -851,7 +851,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
             raise ErrorRpc(error_code=400, error_message="QUIZ_MULTIPLE_INVALID")
         if media.poll.quiz and not media.correct_answers:
             raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWERS_EMPTY")
-        if media.poll.quiz and len(media.correct_answers) > 1:
+        if media.poll.quiz and len(cast(list[bytes], media.correct_answers)) > 1:
             raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWERS_TOO_MUCH")
         if not poll_question_text or len(poll_question_text) > 255:
             raise ErrorRpc(error_code=400, error_message="POLL_QUESTION_INVALID")
@@ -860,7 +860,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
         if media.poll.quiz and media.solution is not None \
                 and (len(media.solution) > 200 or media.solution.count("\n") > 2):
             raise ErrorRpc(error_code=400, error_message="POLL_ANSWERS_INVALID")
-        answers = set()
+        answers: set[bytes] = set()
         for answer in media.poll.answers:
             if answer.option in answers:
                 raise ErrorRpc(error_code=400, error_message="POLL_OPTION_DUPLICATE")
@@ -871,10 +871,13 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
                 answer_text = answer.text
             if not answer.option or len(answer.option) > 100 or not answer_text or len(answer_text) > 100:
                 raise ErrorRpc(error_code=400, error_message="POLL_ANSWER_INVALID")
-        if media.poll.quiz and media.correct_answers[0] not in answers:
-            raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWER_INVALID")
 
-        correct_option = media.correct_answers[0] if media.poll.quiz else None
+        correct_option: bytes | None = None
+        if media.poll.quiz:
+            correct_answers = cast(list[bytes], media.correct_answers)
+            if correct_answers[0] not in answers:
+                raise ErrorRpc(error_code=400, error_message="QUIZ_CORRECT_ANSWER_INVALID")
+            correct_option = correct_answers[0]
 
         ends_at = None
         if media.poll.close_period and 5 < media.poll.close_period <= 600:
@@ -885,17 +888,14 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
                 ends_at = datetime.fromtimestamp(media.poll.close_date, UTC)
 
         # TODO: process question entities
-        question_entities = []
         if isinstance(media.poll.question, TextWithEntities):
             question_text = media.poll.question.text
         else:
             question_text = media.poll.question
 
         solution_text = None
-        solution_entities = None
         if media.poll.quiz:
             # TODO: process solution entities
-            solution_entities = []
             if isinstance(media.solution, TextWithEntities):
                 solution_text = media.solution.text
             else:
@@ -907,9 +907,9 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
                 public_voters=media.poll.public_voters,
                 multiple_choices=media.poll.multiple_choice,
                 question=question_text,
-                question_entities=question_entities,
+                question_entities=[],
                 solution=solution_text,
-                solution_entities=solution_entities,
+                solution_entities=[],
                 ends_at=ends_at,
             )
             await PollAnswer.bulk_create([
@@ -930,7 +930,7 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
 
         if media.phone_number == user.phone_number:
             contact_user_id = user.id
-        elif (contact_id := await contact_query) is not None:
+        elif (contact_id := cast(int | None, cast(object, await contact_query))) is not None:
             contact_user_id = contact_id
 
         static_data = MessageMediaContact(
@@ -968,14 +968,14 @@ async def _process_media(user: User, media: InputMedia) -> MessageMedia:
     )
 
 
-async def _get_input_media_banned_rights(user_id: int, media: InputMedia) -> ChatBannedRights:
+async def _get_input_media_banned_rights(user_id: int, media: TLInputMediaBase) -> ChatBannedRights:
     if isinstance(media, (InputMediaPhoto, InputMediaUploadedPhoto)):
         return ChatBannedRights.SEND_PHOTOS
     if isinstance(media, InputMediaPoll):
         return ChatBannedRights.SEND_POLLS
     if isinstance(media, InputMediaDice):
         return ChatBannedRights.SEND_PLAIN
-    if isinstance(media, (InputMediaUploadedDocument, InputMediaDocument_133)):
+    if isinstance(media, InputMediaUploadedDocument):
         for attr in media.attributes:
             if isinstance(attr, DocumentAttributeAnimated):
                 return ChatBannedRights.SEND_GIFS
@@ -1138,7 +1138,7 @@ async def forward_messages(
         raise ErrorRpc(error_code=406, error_message="CHAT_FORWARDS_RESTRICTED")
 
     to_peer = await Peer.from_input_peer_raise(user, request.to_peer, message="PEER_ID_INVALID")
-    to_participant = None
+    to_participant: ChatParticipant | None = None
     if to_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = to_peer.chat_or_channel
         to_participant = await chat_or_channel.get_participant(user)
@@ -1146,7 +1146,9 @@ async def forward_messages(
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
     if to_peer.type is PeerType.CHANNEL:
         await _check_channel_slowmode(to_peer.channel, to_participant, user.id)
-        if to_peer.channel.slowmode_seconds is not None and not to_participant.is_admin and len(request.id) > 1:
+        if to_peer.channel.slowmode_seconds is not None \
+                and (to_participant is None or not to_participant.is_admin) \
+                and len(request.id) > 1:
             raise ErrorRpc(error_code=400, error_message="SLOWMODE_MULTI_MSGS_DISABLED")
 
     _check_disallow_send_to_bot(user, to_peer)
@@ -1171,7 +1173,7 @@ async def forward_messages(
     ).select_related(*MessageRef.PREFETCH_MAYBECACHED)
     
     for existing_message in existing_by_random_id:
-        src_id = id_by_random_id.pop(existing_message.random_id)
+        src_id = id_by_random_id.pop(cast(int, existing_message.random_id))
         del random_ids[src_id]
 
     src_messages_query = Q(from_peer.q_this_or_channel(), id__in=list(random_ids), content__type=MessageType.REGULAR)
@@ -1198,7 +1200,7 @@ async def forward_messages(
     for message in messages:
         if message.content.no_forwards:
             raise ErrorRpc(error_code=406, error_message="CHAT_FORWARDS_RESTRICTED")
-        if message.content.media_id is None:
+        if message.content.media_id is None or message.content.media is None:
             check_can_send_plain = True
         else:
             if (banned_rights := message.content.media.to_chat_banned_right()) is not None:
@@ -1213,6 +1215,7 @@ async def forward_messages(
             # TODO: send correct error message
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
+    peers: list[Peer]
     if to_peer.type is PeerType.CHANNEL:
         to_peer = await Peer.get(owner=None, channel=to_peer.channel).select_related("channel")
         peers = [to_peer]
@@ -1229,6 +1232,7 @@ async def forward_messages(
         is_anonymous = False
     send_as_channel_id = await process_send_as(request.send_as, user)
 
+    fwd_headers: Sequence[MessageFwdHeader | None]
     if request.drop_author:
         fwd_headers = SingleElementList(None, len(messages))
     else:
@@ -1368,6 +1372,8 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         media_id = single_media.media.id
+        if not isinstance(media_id, (InputDocument, InputPhoto)):
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         valid, const = File.is_file_ref_valid(media_id.file_reference, user_id, media_id.id)
         if not valid:
@@ -1377,12 +1383,14 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
             file_ref = media_id.file_reference[12:]
             media_q &= Q(file__constant_access_hash=media_id.access_hash, file__constant_file_ref=UUID(bytes=file_ref))
         else:
-            ctx = request_ctx.get()
-            if not File.check_access_hash(user_id, ctx.auth_id, media_id.id, media_id.access_hash):
+            auth_id = cast(int, request_ctx.get().auth_id)
+            if not File.check_access_hash(user_id, auth_id, media_id.id, media_id.access_hash):
                 raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         # TODO: dont do this in a loop
         media = await MessageMedia.get_or_none(media_q).select_related("file", "poll")
+        if media is None:
+            raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
         messages.append((
             single_media.message,
@@ -1441,7 +1449,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
         query &= Q(date__lte=datetime.fromtimestamp(request.max_date, UTC))
 
     content_ids: list[int] = []
-    messages: defaultdict[int, list[int]] = defaultdict(list)
+    messages: dict[int, list[int]] = defaultdict(list)
     offset_id = 0
 
     messages_to_delete = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", "content_id")
@@ -1489,7 +1497,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
 
 @handler.on_request(ClearAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def clear_all_drafts(user_id: int) -> bool:
-    peers = await Peer.filter(owner_id=user_id, messagedrafts__id__not_isnull=True).limit(500)
+    peers: list[Peer] = await Peer.filter(owner_id=user_id, messagedrafts__id__not_isnull=True).limit(500)
     await MessageDraft.filter(peer_id__in=[peer.id for peer in peers]).delete()
     await upd.update_drafts(user_id, peers, SingleElementList(None, len(peers)))
 
@@ -1560,8 +1568,8 @@ async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> 
     if not item.send_message_text and not media:
         raise ErrorRpc(error_code=400, error_message="MEDIA_EMPTY")
 
-    via_bot = item.result.query.bot
-    if request.hide_via and via_bot.system:
+    via_bot: User | None = item.result.query.bot
+    if request.hide_via and cast(User, via_bot).system:
         via_bot = None
 
     return await send_message_internal(

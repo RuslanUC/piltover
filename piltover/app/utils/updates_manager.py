@@ -376,7 +376,7 @@ async def send_messages_channel(
     return result
 
 
-async def delete_messages(user: User | int | None, messages: dict[User | int, list[int]]) -> int:
+async def delete_messages(user: User | int | None, messages: dict[User | int, list[int]] | dict[int, list[int]]) -> int:
     current_user_id = user.id if isinstance(user, User) else user
 
     updates_to_create = []
@@ -899,7 +899,9 @@ async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
     return updates
 
 
-async def update_status(user: User, status: Presence, peers: list[Peer | User | int]) -> None:
+async def update_status(
+        user: User, status: Presence, peers: list[Peer | User | int] | list[Peer] | list[User] | list[int],
+) -> None:
     user_tl = await user.to_tl()
 
     for peer in peers:
@@ -1807,7 +1809,7 @@ async def update_history_ttl(peer: Peer, ttl_days: int) -> Updates:
     return result
 
 
-async def migrate_chat(chat: Chat, channel: Channel, user_ids: list[int]) -> Updates | None:
+async def migrate_chat(chat: Chat, channel: Channel, user_ids: list[int]) -> Updates:
     updates_to_create = []
 
     chats_and_channels = [await chat.to_tl(), await channel.to_tl()]

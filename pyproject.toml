@@ -67,6 +67,7 @@ dev = [
     "py-spy>=0.4.2",
     "pyinstrument>=5.1.2",
     "tqdm>=4.67.3",
+    "types-aiofiles>=25.1.0.20260518",
     "websockets>=16.0",
     "yappi>=1.7.6",
 ]

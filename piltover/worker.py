@@ -3,7 +3,7 @@ from __future__ import annotations
 from inspect import getfullargspec
 from io import BytesIO
 from pathlib import Path
-from typing import Awaitable, Callable, Any, TypeVar
+from typing import Callable, Any, TypeVar, cast, Protocol, ParamSpec, Awaitable
 
 from loguru import logger
 from taskiq import InMemoryBroker, TaskiqEvents, AsyncTaskiqTask
@@ -39,12 +39,40 @@ from piltover.tl import TLObject, RpcError, TLRequest, layer
 from piltover.tl.core_types import RpcResult
 from piltover.utils import get_public_key_fingerprint
 
-T = TypeVar("T")
-HandlerResult = Awaitable[T | None]
-HandlerFunc = (Callable[[], HandlerResult] |
-               Callable[[TLRequest[T]], HandlerResult] |
-               Callable[[User], HandlerResult] |
-               Callable[[TLRequest[T], User], HandlerResult])
+T = TypeVar("T", covariant=True)
+RequestT = TypeVar("RequestT", bound=TLRequest, contravariant=True)
+P = ParamSpec("P")
+
+
+class HandlerFunc(Protocol[T]):
+    """
+    @overload
+    async def __call__(self) -> T:
+        ...
+
+    @overload
+    async def __call__(self, request: RequestT) -> T:
+        ...
+
+    @overload
+    async def __call__(self, user: User) -> T:
+        ...
+
+    @overload
+    async def __call__(self, request: RequestT, user: User) -> T:
+        ...
+
+    @overload
+    async def __call__(self, user_id: int) -> T:
+        ...
+
+    @overload
+    async def __call__(self, request: RequestT, user_id: int) -> T:
+        ...
+    """
+
+    async def __call__(self, *args, **kwargs) -> T:
+        ...
 
 
 class RequestHandler:
@@ -54,7 +82,7 @@ class RequestHandler:
         "has_user_id_arg", "dont_fetch_user", "prefetch_username",
     )
 
-    def __init__(self, func: HandlerFunc, flags: int):
+    def __init__(self, func: HandlerFunc[Any], flags: int):
         self.func = func
         self.flags = flags
         func_args = set(getfullargspec(func).args)
@@ -97,9 +125,9 @@ class MessageHandler:
         self.request_handlers: dict[int, RequestHandler] = {}
 
     def on_request(
-            self, typ: type[TLRequest[T]], flags: ReqHandlerFlags = 0,
-    ) -> Callable[[HandlerFunc[T]], HandlerFunc[T]]:
-        def decorator(func: HandlerFunc[T]):
+            self, typ: type[TLRequest[T]], flags: ReqHandlerFlags = ReqHandlerFlags.NONE,
+    ) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
+        def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
             if typ.tlid() in self.request_handlers:
                 logger.warning("Overriding existing handler for {name} ({tlid:x})", name=typ.tlname(), tlid=typ.tlid())
 
@@ -112,7 +140,7 @@ class MessageHandler:
 
     def register_handler(self, handler: MessageHandler, clear: bool = True):
         if handler.registered:
-            raise RuntimeError(f"Handler {handler} already registered!")
+            raise RuntimeError(f"Handler {handler.name!r} already registered!")
 
         for new_handler_id in handler.request_handlers:
             if new_handler_id in self.request_handlers:
@@ -227,18 +255,20 @@ class Worker(MessageHandler):
 
         logger.trace("Got request: {call!r}", call=call)
 
+        req_message_id = cast(int, call.message_id)
+
         if not (handler := self.request_handlers.get(call.obj.tlid())) or handler.is_internal:
             logger.warning("No handler found for obj: {obj}", obj=call.obj)
-            return self._err_response(call.message_id, 500, "NOT_IMPLEMENTED")
+            return self._err_response(req_message_id, 500, "NOT_IMPLEMENTED")
         if handler.is_internal:
             logger.warning("Client tried to execute internal request: {call!r}", call=call)
-            return self._err_response(call.message_id, 500, "NOT_IMPLEMENTED")
+            return self._err_response(req_message_id, 500, "NOT_IMPLEMENTED")
 
         # TODO: send this error from gateway
         if call.is_bot and handler.bots_not_allowed:
-            return self._err_response(call.message_id, 400, "BOT_METHOD_INVALID")
+            return self._err_response(req_message_id, 400, "BOT_METHOD_INVALID")
         elif not call.is_bot and handler.users_not_allowed:
-            return self._err_response(call.message_id, 400, "USER_BOT_REQUIRED")
+            return self._err_response(req_message_id, 400, "USER_BOT_REQUIRED")
 
         user = None
         if (handler.auth_required or handler.has_user_arg) and not handler.dont_fetch_user:
@@ -246,19 +276,19 @@ class Worker(MessageHandler):
                 with measure_time(".get_user(...)"):
                     user = await self.get_user(call, handler.allow_mfa_pending, handler.prefetch_username)
             except ErrorRpc as e:
-                return self._err_response(call.message_id, e.error_code, e.error_message)
+                return self._err_response(req_message_id, e.error_code, e.error_message)
 
             if user is None and handler.auth_required:
-                return self._err_response(call.message_id, 401, "AUTH_KEY_UNREGISTERED")
+                return self._err_response(req_message_id, 401, "AUTH_KEY_UNREGISTERED")
         elif handler.dont_fetch_user and handler.auth_required:
             if not call.user_id:
-                return self._err_response(call.message_id, 401, "AUTH_KEY_UNREGISTERED")
+                return self._err_response(req_message_id, 401, "AUTH_KEY_UNREGISTERED")
             if call.mfa_pending and not handler.allow_mfa_pending:
-                return self._err_response(call.message_id, 401, "SESSION_PASSWORD_NEEDED")
+                return self._err_response(req_message_id, 401, "SESSION_PASSWORD_NEEDED")
 
         ctx_token = request_ctx.set(RequestContext(
-            call.auth_key_id, call.perm_auth_key_id, call.message_id, call.session_id, call.obj, call.layer,
-            call.auth_id, call.user_id, self, self._storage,
+            cast(int, call.auth_key_id), call.perm_auth_key_id, req_message_id, cast(int, call.session_id), call.obj,
+            call.layer, call.auth_id, call.user_id, self, self._storage,
         ))
 
         try:
@@ -280,7 +310,7 @@ class Worker(MessageHandler):
             result = RpcError(error_code=500, error_message="NOT_IMPLEMENTED")
 
         result_obj = RpcResult(
-            req_msg_id=call.message_id,
+            req_msg_id=req_message_id,
             result=result,
         )
 

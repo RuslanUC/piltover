@@ -1,6 +1,7 @@
 from asyncio import sleep
 from datetime import timedelta, datetime, UTC
 from io import BytesIO
+from typing import cast
 
 from loguru import logger
 from tortoise.expressions import Q
@@ -93,7 +94,7 @@ async def get_bot_callback_answer(request: GetBotCallbackAnswer, user_id: int) -
 
         topic = f"bot-callback-query/{query.id}"
         await pubsub.listen(topic, None)
-        await upd.bot_callback_query(message_for_bot.content.author_id, query)
+        await upd.bot_callback_query(cast(MessageRef, message_for_bot).content.author_id, query)
 
         result = await pubsub.listen(topic, 15)
         if result is None:
@@ -214,13 +215,13 @@ async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> 
         await pubsub.listen(topic, None)
         await upd.bot_inline_query(bot.user, inline_query)
 
-        result = await pubsub.listen(topic, 15)
-        if result is None:
+        inline_result = await pubsub.listen(topic, 15)
+        if inline_result is None:
             await inline_query.delete()
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
 
         try:
-            results = BotResults.read(BytesIO(result))
+            results = BotResults.read(BytesIO(inline_result))
         except InvalidConstructorException as e:
             logger.opt(exception=e).warning("Failed to read bot inline answer")
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
@@ -248,7 +249,7 @@ async def set_inline_bot_results(request: SetInlineBotResults, user_id: int) -> 
         if query is None:
             raise ErrorRpc(error_code=400, error_message="QUERY_ID_INVALID")
 
-        result_items = []
+        result_items: list[InlineQueryResultItem] = []
         for result in request.results:
             if not isinstance(result, (InputBotInlineResult, InputBotInlineResultPhoto, InputBotInlineResultDocument)):
                 raise ErrorRpc(error_code=400, error_message="RESULT_TYPE_INVALID")
@@ -340,7 +341,7 @@ async def set_inline_bot_results(request: SetInlineBotResults, user_id: int) -> 
 
         if cache_time:
             async with in_transaction():
-                query = await InlineQueryResult.create(
+                await InlineQueryResult.create(
                     query=query,
                     next_offset=request.next_offset[:64] if request.next_offset is not None else None,
                     cache_time=cache_time,

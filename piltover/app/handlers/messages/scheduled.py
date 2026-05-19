@@ -1,4 +1,5 @@
 from time import time
+from typing import cast
 
 from tortoise.transactions import in_transaction
 
@@ -6,7 +7,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages import sending
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import MessageType, PeerType
-from piltover.db.models import Peer, MessageRef, MessageContent
+from piltover.db.models import Peer, MessageRef, MessageContent, TaskIqScheduledMessage
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Updates
 from piltover.tl.functions.messages import GetScheduledHistory, GetScheduledMessages, SendScheduledMessages, \
@@ -41,7 +42,7 @@ async def get_scheduled_history(request: GetScheduledHistory, user_id: int) -> M
     message_ids = await MessageRef.filter(
         peer=peer, content__type=MessageType.SCHEDULED,
     ).order_by("content__scheduled_date").values_list("id", flat=True)
-    messages_hash = telegram_hash(message_ids, 64)
+    messages_hash = telegram_hash(cast(list[int], message_ids), 64)
 
     if messages_hash == request.hash:
         return MessagesNotModified(count=len(message_ids))
@@ -83,7 +84,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
         )
 
         for scheduled in scheduled_messages:
-            task = scheduled.taskiqscheduledmessages
+            task = cast(TaskIqScheduledMessage, scheduled.taskiqscheduledmessages)
             messages = await scheduled.send_scheduled(task.opposite)
             msg_updates = await sending.send_created_messages_internal(
                 messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
