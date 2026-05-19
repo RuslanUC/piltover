@@ -45,6 +45,9 @@ class State(Model):
 
     @classmethod
     async def add_pts_bulk(cls, users: list[models.User | int], pts_counts: Collection[int] | int) -> list[int]:
+        if not users:
+            return []
+
         user_ids = [(user.id if isinstance(user, models.User) else user) for user in users]
 
         if not isinstance(pts_counts, Collection):

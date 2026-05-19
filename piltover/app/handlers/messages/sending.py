@@ -1128,8 +1128,6 @@ async def forward_messages(
 ) -> Updates:
     from_peer = None
 
-    # TODO: return already existing messages with random_id from request.random_ids
-
     if isinstance(request.from_peer, InputPeerEmpty):
         first_msg = await MessageRef.get_or_none(peer__owner=user, id=request.id[-1]).select_related(
             "peer", "peer__chat", "peer__channel",
@@ -1171,13 +1169,23 @@ async def forward_messages(
     random_id = request.random_id[:100]
     if 0 in random_id:
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
-    if await MessageRef.filter(peer=to_peer, id__in=random_id).exists():
+    if len(set(random_id)) != len(random_id):
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
-    src_messages_query = Q(from_peer.q_this_or_channel(), id__in=request.id[:100], content__type=MessageType.REGULAR)
+    ids = request.id[:100]
+    random_ids = dict(zip(ids, random_id))
+    id_by_random_id = dict(zip(random_id, ids))
+    existing_by_random_id = await MessageRef.filter(
+        to_peer.q_this_or_channel(), random_user=user, random_id__in=random_id,
+    ).select_related(*MessageRef.PREFETCH_MAYBECACHED)
+    
+    for existing_message in existing_by_random_id:
+        src_id = id_by_random_id.pop(existing_message.random_id)
+        del random_ids[src_id]
+
+    src_messages_query = Q(from_peer.q_this_or_channel(), id__in=list(random_ids), content__type=MessageType.REGULAR)
     src_messages_query = append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query, from_participant)
 
-    random_ids = dict(zip(request.id[:100], random_id))
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
         *MessageRef.PREFETCH_FIELDS, "reply_to", "content__author", "content__send_as_channel",
         "content__fwd_header__from_user", "content__fwd_header__from_chat", "content__fwd_header__from_channel",
@@ -1186,6 +1194,12 @@ async def forward_messages(
     media_group_ids[None] = None
 
     if not messages:
+        if existing_by_random_id:
+            if to_peer.type is PeerType.CHANNEL:
+                return await upd.send_messages_channel([], to_peer.channel, existing_by_random_id, user.id)
+            if (update := await upd.send_messages({}, user, existing_by_random_id)) is None:
+                raise Unreachable
+            return update
         raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
 
     check_can_send_plain = False
@@ -1209,7 +1223,7 @@ async def forward_messages(
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
     if to_peer.type is PeerType.CHANNEL:
-        to_peer = await Peer.get_or_none(owner=None, channel=to_peer.channel).select_related("channel")
+        to_peer = await Peer.get(owner=None, channel=to_peer.channel).select_related("channel")
         peers = [to_peer]
     else:
         peers = [to_peer, *(await to_peer.get_opposite())]
@@ -1277,13 +1291,15 @@ async def forward_messages(
     if to_peer.type is PeerType.CHANNEL:
         if len(result) != 1:
             raise RuntimeError("`result` contains multiple peers, but should contain only one - channel peer")
-        return await upd.send_messages_channel(next(iter(result.values())), to_peer.channel)
+        return await upd.send_messages_channel(
+            next(iter(result.values())), to_peer.channel, existing_by_random_id, user.id,
+        )
 
     if not user.bot:
         presence = await Presence.update_to_now(user)
         await upd.update_status(user, presence, peers[1:])
 
-    if (update := await upd.send_messages(result, user)) is None:
+    if (update := await upd.send_messages(result, user, existing_by_random_id)) is None:
         raise Unreachable
 
     if to_peer.type is PeerType.CHANNEL:

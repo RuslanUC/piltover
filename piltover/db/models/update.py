@@ -467,7 +467,7 @@ class Update(Model):
                 if query is None:
                     return None
 
-                ucc.add_message_ref(query.message_id)
+                ucc.add_message(query.message.content_id)
 
                 return UpdateBotCallbackQuery(
                     query_id=query.id,

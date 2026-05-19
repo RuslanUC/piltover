@@ -1,6 +1,7 @@
 from contextlib import AsyncExitStack
 from datetime import timedelta, datetime, UTC
 from io import BytesIO
+from os import urandom
 from time import time
 
 import pytest
@@ -11,7 +12,7 @@ from pyrogram.errors import NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft, GetMessagesViews, \
-    SendMessage
+    SendMessage, ForwardMessages
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty, Updates, \
@@ -22,7 +23,7 @@ from tortoise.expressions import F, Subquery
 
 from piltover.db.enums import PeerType
 from piltover.db.models import MessageRef, Peer, User, MessageContent
-from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
+from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, Long
 from tests.client import TestClient
 from tests.conftest import ClientFactory, ChannelWithClientsFactory
 
@@ -1489,4 +1490,73 @@ async def test_message_random_id_duplicate_in_channel(channel_with_clients: Chan
 
     messages = [message async for message in client.get_chat_history(channel.id)]
     assert len(messages) == 1
+
+
+@pytest.mark.parametrize(
+    ("peer_id", "update_cls",),
+    [
+        ("self", UpdateNewMessage),
+        (None, UpdateNewChannelMessage),
+    ],
+    ids=(
+        "in private chat",
+        "in supergroup",
+    ),
+)
+@pytest.mark.asyncio
+async def test_forward_messages_random_id_duplicate(
+        client_with_auth: ClientFactory, channel_with_clients: ChannelWithClientsFactory,
+        peer_id: str | int | None, update_cls: type[UpdateNewMessage] | type[UpdateNewChannelMessage],
+) -> None:
+    if peer_id is not None:
+        client = await client_with_auth(run=True)
+    else:
+        channel, (client,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+        peer_id = channel.id
+
+    random1_id = int.from_bytes(urandom(4), "little", signed=False)
+    random2_id = int.from_bytes(urandom(4), "little", signed=False)
+    random3_id = int.from_bytes(urandom(4), "little", signed=False)
+
+    to_peer = await client.resolve_peer(peer_id)
+
+    updates1 = await client.invoke(SendMessage(
+        peer=to_peer,
+        message=f"test 123456 1 {random1_id}",
+        random_id=random1_id,
+    ))
+    assert isinstance(updates1, Updates)
+    assert isinstance(updates1.updates[0], UpdateMessageID)
+    new_message_update = updates1.updates[1]
+    assert isinstance(new_message_update, update_cls)
+    message1_id = new_message_update.message.id
+
+    updates2 = await client.invoke(SendMessage(
+        peer=to_peer,
+        message=f"test 123456 2 {random2_id}",
+        random_id=random2_id,
+    ))
+    assert isinstance(updates2, Updates)
+    assert isinstance(updates2.updates[0], UpdateMessageID)
+    new_message_update = updates2.updates[1]
+    assert isinstance(new_message_update, update_cls)
+    message2_id = new_message_update.message.id
+
+    fwd_updates = await client.invoke(ForwardMessages(
+        from_peer=to_peer,
+        id=[message1_id, message2_id],
+        random_id=[random1_id, random3_id],
+        to_peer=to_peer,
+    ))
+    assert isinstance(fwd_updates, Updates)
+    new_message_updates = [update for update in fwd_updates.updates if isinstance(update, update_cls)]
+    new_message_updates.sort(key=lambda u: u.message.id)
+
+    assert new_message_updates[0].pts_count == 0
+    assert new_message_updates[0].message.id == message1_id
+    assert new_message_updates[1].pts_count > 0
+    assert new_message_updates[1].message.id > message2_id
+
+    messages_count = await client.get_chat_history_count(peer_id)
+    assert messages_count == 3
 

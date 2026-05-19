@@ -6,7 +6,7 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.context import request_ctx
-from piltover.db.enums import SecretUpdateType, FileType
+from piltover.db.enums import SecretUpdateType, FileType, PeerType
 from piltover.db.models import Peer, EncryptedChat, UserAuthorization, SecretUpdate, EncryptedFile, UploadingFile, File, \
     User
 from piltover.enums import ReqHandlerFlags
@@ -42,14 +42,15 @@ async def request_encryption(request: RequestEncryption, user: User):
     if not _check_g_a_or_b(request.g_a):
         raise ErrorRpc(error_code=400, error_message="DH_G_A_INVALID")
 
-    try:
-        peer = await Peer.from_input_peer(user, request.user_id, False)
-    except ErrorRpc as e:
-        if e.error_message != "USER_ID_INVALID":
-            logger.opt(exception=e).debug(f"Overriding rpc error from {e.error_message} to USER_ID_INVALID")
+    peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user.id, request.user_id, "USER_ID_INVALID")
+    if peer_type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
-    if not await UserAuthorization.filter(user=peer.user, allow_encrypted_requests=True).exists():
+    other_user = await User.get_or_none(id=peer_user_id, deleted=False, bot=False)
+    if other_user is None:
+        raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+
+    if not await UserAuthorization.filter(user=other_user, allow_encrypted_requests=True).exists():
         return EncryptedChatDiscarded(id=0)
 
     # TODO: if chat with target user already exists, what do we do? discard?
@@ -58,14 +59,14 @@ async def request_encryption(request: RequestEncryption, user: User):
     chat = await EncryptedChat.create(
         from_user=user,
         from_sess=await UserAuthorization.get_or_none(id=ctx.auth_id, user_id=ctx.user_id),
-        to_user=peer.user,
+        to_user=other_user,
         to_sess=None,
         dh_version=CURRENT_DH_VERSION,
         g_a=request.g_a,
         g_b=b"",
     )
 
-    await upd.encryption_update(peer.user_id, chat)
+    await upd.encryption_update(other_user.id, chat)
 
     return chat.to_tl()
 

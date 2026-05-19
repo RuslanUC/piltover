@@ -188,8 +188,12 @@ async def send_message_channel(user_id: int, channel: Channel, message: MessageR
     )
 
 
-async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | None = None) -> Updates | None:
+async def send_messages(
+        messages: dict[Peer, list[MessageRef]], user: User | None = None,
+        prepend_existing: list[MessageRef] | None = None,
+) -> Updates | None:
     result_update = None
+    result_pts = None
 
     ucc = UsersChatsChannels()
     for message in next(iter(messages.values())):
@@ -259,62 +263,115 @@ async def send_messages(messages: dict[Peer, list[MessageRef]], user: User | Non
         await SessionManager.send(updates, target_user_id)
         if user is not None and target_user_id == user.id:
             result_update = updates
+            result_pts = new_pts
 
     if updates_to_create:
         await Update.bulk_create(updates_to_create)
 
     await SessionManager.send_internal_push(list(peer_by_user_id))
 
+    if prepend_existing and user:
+        if result_update is None:
+            result_update = UpdatesWithDefaults(updates=[])
+        if result_pts is None:
+            result_pts = await State.add_pts(user.id, 0)
+
+        for ref in prepend_existing:
+            ucc.add_message(ref.content_id)
+        users, chats, channels = await ucc.resolve()
+        messages_to_add = await MessageRef.to_tl_bulk_maybecached(prepend_existing, user.id)
+        old_result = result_update
+        result_update = UpdatesWithDefaults(
+            updates=[],
+            users=users,
+            chats=[*chats, *channels],
+        )
+        for message, tl_message in zip(prepend_existing, messages_to_add):
+            result_update.updates.append(UpdateMessageID(id=message.id, random_id=cast(int, message.random_id)))
+            result_update.updates.append(UpdateNewMessage(
+                message=tl_message,
+                pts=result_pts,
+                pts_count=0,
+            ))
+        result_update.updates.extend(old_result.updates)
+
     return result_update
 
 
-async def send_messages_channel(messages: list[MessageRef], channel: Channel) -> Updates:
+async def send_messages_channel(
+        messages: list[MessageRef], channel: Channel,
+        prepend_existing: list[MessageRef] | None = None, prepend_user_id: int | None = None,
+) -> Updates:
     update_pts = []
     updates_to_create = []
 
     ucc = UsersChatsChannels()
 
-    async with in_transaction():
-        new_pts = await channel.add_pts(len(messages))
-        start_pts = new_pts - len(messages)
+    if messages:
+        async with in_transaction():
+            new_pts = await channel.add_pts(len(messages))
+            start_pts = new_pts - len(messages)
 
-        for num, message in enumerate(messages, start=1):
-            this_pts = start_pts + num
-            update_pts.append(this_pts)
-            ucc.add_message(message.content_id)
+            for num, message in enumerate(messages, start=1):
+                this_pts = start_pts + num
+                update_pts.append(this_pts)
+                ucc.add_message(message.content_id)
 
-            updates_to_create.append(ChannelUpdate(
-                channel=channel,
-                type=ChannelUpdateType.NEW_MESSAGE,
-                message=message,
-                pts=this_pts,
+                updates_to_create.append(ChannelUpdate(
+                    channel=channel,
+                    type=ChannelUpdateType.NEW_MESSAGE,
+                    message=message,
+                    pts=this_pts,
+                    pts_count=1,
+                ))
+
+            await ChannelUpdate.bulk_create(updates_to_create)
+
+        users, chats, channels = await ucc.resolve()
+        chats_and_channels = [*chats, *channels]
+
+        generic_messages = await MessageRef.to_tl_channel_bulk(messages)
+
+        updates = []
+        for generic_message, message, pts in zip(generic_messages, messages, update_pts):
+            if message.random_id:
+                updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
+            updates.append(UpdateNewChannelMessage(
+                message=generic_message,
+                pts=pts,
                 pts_count=1,
             ))
 
-        await ChannelUpdate.bulk_create(updates_to_create)
+        result = UpdatesWithDefaults(
+            updates=updates,
+            users=users,
+            chats=chats_and_channels,
+        )
 
-    users, chats, channels = await ucc.resolve()
-    chats_and_channels = [*chats, *channels]
+        if result.updates:
+            await SessionManager.send(result, channel_id=channel.id)
+    else:
+        result = UpdatesWithDefaults(updates=[])
 
-    generic_messages = await MessageRef.to_tl_channel_bulk(messages)
-
-    updates = []
-    for generic_message, message, pts in zip(generic_messages, messages, update_pts):
-        if message.random_id:
-            updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
-        updates.append(UpdateNewChannelMessage(
-            message=generic_message,
-            pts=pts,
-            pts_count=1,
-        ))
-
-    result = UpdatesWithDefaults(
-        updates=updates,
-        users=users,
-        chats=chats_and_channels,
-    )
-
-    await SessionManager.send(result, channel_id=channel.id)
+    if prepend_existing and prepend_user_id:
+        for ref in prepend_existing:
+            ucc.add_message(ref.content_id)
+        users, chats, channels = await ucc.resolve()
+        messages_to_add = await MessageRef.to_tl_bulk_maybecached(prepend_existing, prepend_user_id)
+        old_result = result
+        result = UpdatesWithDefaults(
+            updates=[],
+            users=users,
+            chats=[*chats, *channels],
+        )
+        for message, tl_message in zip(prepend_existing, messages_to_add):
+            result.updates.append(UpdateMessageID(id=message.id, random_id=cast(int, message.random_id)))
+            result.updates.append(UpdateNewChannelMessage(
+                message=tl_message,
+                pts=new_pts,
+                pts_count=0,
+            ))
+        result.updates.extend(old_result.updates)
 
     return result
 
