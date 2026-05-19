@@ -377,7 +377,7 @@ async def format_messages_internal(
         )
 
     if query is None:
-        q = Q(peer=peer)
+        q = peer.q_this_or_channel()
         if saved_peer is not None:
             q &= Q(content__fwd_header__saved_peer=saved_peer)
         q = append_channel_min_message_id_to_query_maybe(peer, q)
