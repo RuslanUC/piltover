@@ -116,7 +116,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
 
 
 @handler.on_request(DeletePhotos, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def delete_photos(request: DeletePhotos, user: User):
+async def delete_photos(request: DeletePhotos, user: User) -> list[int]:
     deleted = LongVector()
 
     ids = [photo.id for photo in request.id if isinstance(photo, InputPhoto)]

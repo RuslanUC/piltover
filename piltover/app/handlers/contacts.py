@@ -3,8 +3,10 @@ from base64 import urlsafe_b64encode, urlsafe_b64decode
 from datetime import date, timedelta, datetime, UTC
 from hashlib import sha256
 from time import time
+from typing import cast
 
 from tortoise.expressions import Q, Subquery
+from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
 from piltover.config import APP_CONFIG
@@ -21,6 +23,7 @@ from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, 
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken, GetContactIDs
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, \
     BlockedSlice, ImportedContacts
+from piltover.tl.base import User as TLUserBase, Peer as TLPeerBase
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("contacts")
@@ -31,11 +34,11 @@ async def get_contacts(user_id: int):
     contacts = await Contact.filter(owner_id=user_id, target_id__not_isnull=True).select_related("target")
 
     contacts_tl = []
-    users_to_tl = []
+    users_to_tl: list[User] = []
 
     for contact in contacts:
-        contacts_tl.append(TLContact(user_id=contact.target.id, mutual=False))
-        users_to_tl.append(contact.target)
+        contacts_tl.append(TLContact(user_id=cast(int, contact.target_id), mutual=False))
+        users_to_tl.append(cast(User, contact.target))
 
     return Contacts(
         contacts=contacts_tl,
@@ -45,6 +48,7 @@ async def get_contacts(user_id: int):
 
 
 async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPeer:
+    peer: Peer
     if resolved.user_id == user_id:
         peer = await Peer.get(owner_id=user_id, user_id=user_id, type=PeerType.SELF)
     elif resolved.user is not None:
@@ -52,7 +56,7 @@ async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPee
     elif resolved.channel is not None:
         peer, _ = await Peer.get_or_create(owner_id=user_id, channel=resolved.channel, type=PeerType.CHANNEL)
     else:  # pragma: no cover
-        raise RuntimeError("Unreachable")
+        raise Unreachable
 
     await Dialog.get_or_create_hidden(peer)
 
@@ -64,6 +68,7 @@ async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPee
 
 
 async def _format_resolved_peer_by_phone(user_id: int, resolved: User) -> ResolvedPeer:
+    peer: Peer
     if resolved.id == user_id:
         peer = await Peer.get(owner_id=user_id, user_id=user_id, type=PeerType.SELF)
     else:
@@ -89,14 +94,14 @@ async def resolve_username(request: ResolveUsername, user_id: int) -> ResolvedPe
 @handler.on_request(GetBlocked, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_blocked(request: GetBlocked, user_id: int) -> Blocked | BlockedSlice:
     limit = max(min(request.limit, 1), 100)
-    blocked_query = Peer.filter(
+    blocked_query: QuerySet[Peer] = Peer.filter(
         owner_id=user_id, type=PeerType.USER, blocked_at__not_isnull=True,
     ).select_related("user").order_by("-id")
     blocked_peers = await blocked_query.limit(limit).offset(request.offset)
     count = await blocked_query.count()
 
     peers_blocked = [
-        PeerBlocked(peer_id=peer.to_tl(), date=int(peer.blocked_at.timestamp()))
+        PeerBlocked(peer_id=peer.to_tl(), date=int(cast(datetime, peer.blocked_at).timestamp()))
         for peer in blocked_peers
     ]
     users = await User.to_tl_bulk(tuple(blocked.user for blocked in blocked_peers))
@@ -126,26 +131,30 @@ async def contacts_search(request: Search, user_id: int) -> Found:
         username__contains=request.q.lower(),
     ).select_related("user", "channel").limit(limit)
 
-    peers = []
+    peers: list[TLPeerBase] = []
     users = []
     channels = []
 
     for result in results:
         if result.user is not None:
-            peers.append(PeerUser(user_id=result.user_id))
+            peers.append(PeerUser(user_id=cast(int, result.user_id)))
             users.append(result.user)
         elif result.channel is not None:
-            peers.append(PeerChannel(channel_id=Channel.make_id_from(result.channel_id)))
+            peers.append(PeerChannel(channel_id=Channel.make_id_from(cast(int, result.channel_id))))
             channels.append(result.channel)
         else:
             raise Unreachable
 
     users_by_id = {result_user.id: result_user for result_user in users}
     channels_by_id = {result_channel.id: result_channel for result_channel in channels}
-    for existing_peer in await Peer.filter(
-        Q(join_type=Q.OR, user_id__in=list(users_by_id.keys()), channel_id__in=list(channels_by_id.keys())),
-        owner_id=user_id,
-    ):
+    existing_peers = cast(
+        list[Peer],
+        await Peer.filter(
+            Q(join_type=Q.OR, user_id__in=list(users_by_id.keys()), channel_id__in=list(channels_by_id.keys())),
+            owner_id=user_id,
+        ).only("type", "user_id", "channel_id")
+    )
+    for existing_peer in existing_peers:
         if existing_peer.type is PeerType.USER:
             del users_by_id[existing_peer.user_id]
         else:
@@ -196,7 +205,7 @@ async def get_statuses(user_id: int) -> list[ContactStatus]:
 async def get_birthdays(user_id: int) -> ContactBirthdays:
     yesterday = date.today() - timedelta(days=1)
     tomorrow = date.today() + timedelta(days=1)
-    birthday_peers = await Peer.filter(
+    birthday_peers: list[Peer] = await Peer.filter(
         owner_id=user_id, user__birthday__gte=yesterday, user__birthday__lte=tomorrow
     ).select_related("user")
 
@@ -239,7 +248,7 @@ async def add_contact(request: AddContact, user_id: int) -> Updates:
     peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user_id, request.id)
     if peer_type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    peer = await Peer.get_or_none(owner_id=user_id, user_id=peer_user_id).select_related("user")
+    peer: Peer | None = await Peer.get_or_none(owner_id=user_id, user_id=peer_user_id).select_related("user")
     if peer is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -266,10 +275,10 @@ async def delete_contacts(request: DeleteContacts, user_id: int) -> Updates:
     ctx = request_ctx.get()
     user_to_fetch_ids = set()
     for peer_id in request.id:
-        if Peer.input_is_self(user_id, peer_id):
+        peer_info = Peer.type_and_id_from_input(user_id, peer_id)
+        if peer_info is None or peer_info[0] is not PeerType.USER:
             continue
-        if User.check_access_hash(user_id, ctx.auth_id, peer_id.user_id, peer_id.access_hash):
-            user_to_fetch_ids.add(peer_id.user_id)
+        user_to_fetch_ids.add(peer_info[1])
 
     contacts = await Contact.filter(owner_id=user_id, target_id__in=user_to_fetch_ids).values_list("id", "target_id")
     contact_ids = {contact_id for contact_id, _ in contacts}
@@ -288,7 +297,7 @@ async def block_unblock(request: Block | Block_133 | Unblock | Unblock_133, user
     peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user_id, request.id)
     if peer_type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    peer = await Peer.get_or_none(owner_id=user_id, user_id=peer_user_id).select_related("user")
+    peer: Peer | None = await Peer.get_or_none(owner_id=user_id, user_id=peer_user_id).select_related("user")
     if peer is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -389,7 +398,7 @@ async def export_contact_token(user_id: int) -> ExportedContactToken:
 
 
 @handler.on_request(ImportContactToken, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def import_contact_token(request: ImportContactToken, user_id: int) -> TLUser:
+async def import_contact_token(request: ImportContactToken, user_id: int) -> TLUserBase:
     try:
         token_bytes = urlsafe_b64decode(request.token)
     except ValueError:
@@ -420,9 +429,10 @@ async def import_contact_token(request: ImportContactToken, user_id: int) -> TLU
 
 @handler.on_request(GetContactIDs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_contact_ids(user_id: int) -> list[int]:
-    contact_ids = await Contact.filter(
-        owner_id=user_id, target_id__not_isnull=True,
-    ).values_list("target_id", flat=True)
+    contact_ids = cast(
+        list[int],
+        await Contact.filter(owner_id=user_id, target_id__not_isnull=True).values_list("target_id", flat=True)
+    )
     return LongVector(contact_ids)
 
 

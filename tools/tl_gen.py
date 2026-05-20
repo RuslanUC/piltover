@@ -650,7 +650,7 @@ def start():
             if not c.typespace and c.type == "X":
                 result_type = "TLObject"
             else:
-                result_type = get_type_hint(f"{c.typespace}.{c.type}" if c.typespace else c.type, -1, False, True)
+                result_type = get_type_hint(f"{c.typespace}.{c.type}" if c.typespace else c.type, -1, True, True)
             base_cls = f"TLRequest[{result_type}]"
 
         result = [
