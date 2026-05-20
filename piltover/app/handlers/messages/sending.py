@@ -704,7 +704,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
     if peer.type is PeerType.SELF:
         peers_q = Q(peer_id=peer.id)
-    if peer.type is PeerType.USER:
+    elif peer.type is PeerType.USER:
         peers_q = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id) | Q(peer_id=peer.id)
     elif peer.type is PeerType.CHAT:
         peers_q = Q(peer__chat_id=peer.chat_id)
