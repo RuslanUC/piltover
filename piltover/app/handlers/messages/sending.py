@@ -29,7 +29,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     LongVector, DocumentAttributeFilename, InputMediaContact, MessageMediaContact, InputMediaGeoPoint, MessageMediaGeo, \
     GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
     DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
-    InputChannelEmpty, InputPeerSelf, InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage, \
+    InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage, \
     InputDocument, InputPhoto, InputFile, InputFileBig
 from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
     ClearDraft

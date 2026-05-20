@@ -131,6 +131,7 @@ WORKER_CONFIG = "tests/config/worker.toml"
 
 [tool.mypy]
 packages = ["piltover"]
+mypy_path = ["data/mypy_stubs"]
 
 [[tool.mypy.overrides]]
 module = [
