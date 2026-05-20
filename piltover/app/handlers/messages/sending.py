@@ -30,7 +30,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
     DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
     InputChannelEmpty, InputPeerSelf, InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage, \
-    InputDocument, InputPhoto
+    InputDocument, InputPhoto, InputFile, InputFileBig
 from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
     ClearDraft
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
@@ -77,7 +77,7 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
         query |= Q(id__in=list(mentioned_user_ids))
 
     return set(
-        await User.filter(id__not=author_id).filter(query).values_list("id", flat=True)
+        cast(list[int], await User.filter(id__not=author_id).filter(query).values_list("id", flat=True))
     )
 
 
@@ -96,14 +96,14 @@ async def send_created_messages_internal(
         ))
 
     if opposite and peer.type is PeerType.CHAT and mentioned_user_ids:
-        message = next(iter(messages.values())).content
+        message_content = next(iter(messages.values())).content
         mentioned_users = await User.filter(owner__chat_id=peer.chat_id, id__in=mentioned_user_ids).only("id")
         unread_mentions_to_create = []
         for mentioned_user in mentioned_users:
             unread_mentions_to_create.append(MessageMention(
                 user=mentioned_user,
                 chat=peer.chat,
-                message=message,
+                message=message_content,
             ))
 
         if unread_mentions_to_create:
@@ -113,13 +113,13 @@ async def send_created_messages_internal(
         await ctx.worker.call_internal(ClearDraft(peer_id=peer.id))
 
     ttl_tasks = []
-    for message in messages.values():
-        if message.content.ttl_period_days:
+    for message_ref in messages.values():
+        if message_ref.content.ttl_period_days:
             ttl_tasks.append(TaskIqScheduledDeleteMessage(
-                message=message.content,
+                message=message_ref.content,
                 scheduled_for=(
-                        int(message.content.date.timestamp())
-                        + message.content.ttl_period_days * MessageContent.TTL_MULT
+                        int(message_ref.content.date.timestamp())
+                        + message_ref.content.ttl_period_days * MessageContent.TTL_MULT
                 ),
             ))
 
@@ -131,7 +131,7 @@ async def send_created_messages_internal(
             logger.warning(f"Got {len(messages)} messages after creating message with channel peer!")
             return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
 
-        message = next(iter(messages.values()))
+        message_ref = next(iter(messages.values()))
 
         if mentioned_user_ids:
             mentioned_users = await User.filter(
@@ -142,27 +142,27 @@ async def send_created_messages_internal(
                 unread_mentions_to_create.append(MessageMention(
                     user=mentioned_user,
                     channel=peer.channel,
-                    message=message.content
+                    message=message_ref.content
                 ))
 
             if unread_mentions_to_create:
                 await MessageMention.bulk_create(unread_mentions_to_create)
 
-        if message.content.type is MessageType.REGULAR \
-                and message.peer.owner_id is None \
+        if message_ref.content.type is MessageType.REGULAR \
+                and message_ref.peer.owner_id is None \
                 and peer.channel.discussion_id \
                 and ctx is not None:
-            logger.debug(f"Creating task create_discussion({message.id})...")
-            await ctx.worker.call_internal(CreateDiscussionThread(message_id=message.id))
+            logger.debug(f"Creating task create_discussion({message_ref.id})...")
+            await ctx.worker.call_internal(CreateDiscussionThread(message_id=message_ref.id))
 
-        return await upd.send_message_channel(user.id, peer.channel, message)
+        return await upd.send_message_channel(user.id, peer.channel, message_ref)
 
     if (update := await upd.send_message(user.id, messages)) is None:
         raise Unreachable
 
     if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS and ctx is not None:
-        message = messages[peer]
-        await ctx.worker.call_internal(ProcessMessageToBuiltinBot(messageref_id=message.id))
+        message_ref = messages[peer]
+        await ctx.worker.call_internal(ProcessMessageToBuiltinBot(messageref_id=message_ref.id))
 
     return update
 
@@ -348,7 +348,7 @@ def _resolve_reply_id(
 
 async def _make_channel_post_info_many(
         peer: Peer, user: User, participant: ChatParticipant | None, count: int,
-) -> tuple[bool, list[ChannelPostInfo | None], str | None]:
+) -> tuple[bool, list[ChannelPostInfo] | list[None], str | None]:
     if peer.type is not PeerType.CHANNEL or not peer.channel.channel:
         return False, [None] * count, None
 
@@ -576,7 +576,9 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
 
     if not request.revoke:
         messages = {
-            user_id: await MessageRef.filter(id__in=ids, peer__owner_id=user_id).values_list("id", flat=True),
+            user_id: cast(
+                list[int], await MessageRef.filter(id__in=ids, peer__owner_id=user_id).values_list("id", flat=True)
+            ),
         }
     else:
         all_messages = await MessageRef.filter(content_id__in=Subquery(
@@ -641,27 +643,27 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     elif content.media_id is not None and new_has_media and not isinstance(request.media, DocOrPhotoMedia):
         raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
     elif content.media_id is not None and request.media \
-            and content.media.type not in (MediaType.DOCUMENT, MediaType.PHOTO):
+            and content.media is not None and content.media.type not in (MediaType.DOCUMENT, MediaType.PHOTO):
         raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
 
-    media = None
+    media: MessageMedia | None = None
     if new_has_media:
-        media = await _process_media(user, request.media)
-        if media.id == content.media_id or media.file_id == content.media.file_id:
+        new_media = media = await _process_media(user, cast(TLInputMediaBase, request.media))
+        if new_media.id == content.media_id or new_media.file_id == cast(MessageMedia, content.media).file_id:
             raise ErrorRpc(error_code=400, error_message="MEDIA_NEW_INVALID")
 
     # For some reason PyCharm keeps complaining about request.message "Expected type 'Sized', got 'Message' instead"
     message_text = cast(str | None, request.message)
 
-    if request.message is not None \
+    if message_text is not None \
             and len(message_text) > APP_CONFIG.max_message_length \
             and not content.media_id:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_TOO_LONG")
-    elif request.message is not None and len(message_text) > APP_CONFIG.max_caption_length and content.media_id:
+    elif message_text is not None and len(message_text) > APP_CONFIG.max_caption_length and content.media_id:
         raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
     if content.author_id != user.id:
         raise ErrorRpc(error_code=403, error_message="MESSAGE_AUTHOR_REQUIRED")
-    if content.message == request.message:
+    if content.message == message_text:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_NOT_MODIFIED")
 
     entities = None
@@ -670,9 +672,9 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
     reply_markup = content.reply_markup
     if user.bot and request.reply_markup is not None:
-        reply_markup = await process_reply_markup(reply_markup, user)
-        if reply_markup is not None:
-            reply_markup = reply_markup.write()
+        new_reply_markup = await process_reply_markup(request.reply_markup, user)
+        if new_reply_markup is not None:
+            reply_markup = new_reply_markup.write()
 
     if message_text is not None:
         content.message = message_text
@@ -690,9 +692,9 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     editing_schedule_date = content.scheduled_date is not None and request.schedule_date is not None
 
     if editing_schedule_date:
-        if request.schedule_date < time() - 30:
+        if cast(int, request.schedule_date) < int(time() - 30):
             raise ErrorRpc(error_code=400, error_message="SCHEDULE_DATE_INVALID")
-        content.scheduled_date = datetime.fromtimestamp(request.schedule_date, UTC)
+        content.scheduled_date = datetime.fromtimestamp(cast(int, request.schedule_date), UTC)
 
     await content.save(update_fields=[
         "message", "entities", "media_id", "edit_date", "edit_hide", "reply_markup", "scheduled_date", "version",
@@ -700,7 +702,6 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     if editing_schedule_date:
         await TaskIqScheduledMessage.filter(message=message).update(scheduled_time=request.schedule_date)
 
-    peers_q = None
     if peer.type is PeerType.SELF:
         peers_q = Q(peer_id=peer.id)
     if peer.type is PeerType.USER:
@@ -711,6 +712,8 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         peers_q = Q(peer_id=peer.id)
     elif peer.type is PeerType.CHANNEL:
         peers_q = Q(peer__owner=None, peer__channel_id=peer.channel_id)
+    else:
+        raise Unreachable
 
     refs = await MessageRef.filter(peers_q, content_id=content.id).select_related(*MessageRef.PREFETCH_FIELDS)
     messages = {
@@ -776,6 +779,8 @@ async def _get_media_thumb(
 async def _get_input_media_file(
         user_id: int, media: InputMediaPhoto | InputMediaDocument | InputMediaDocument_133,
 ) -> File | None:
+    if not isinstance(media.id, (InputPhoto, InputDocument)):
+        return None
     file_type = FileType.PHOTO if isinstance(media, InputMediaPhoto) else None
     if isinstance(media, InputMediaPhoto):
         add_query = Q(mime_type__startswith="image/")
@@ -827,10 +832,12 @@ async def _process_media(user: User, media: TLInputMediaBase) -> MessageMedia:
             file_type = FileType.DOCUMENT
             thumb_bytes = await _get_media_thumb(user.id, media)
 
-        if media.file.name:
+        if isinstance(media.file, (InputFile, InputFileBig)) and media.file.name:
             attributes.insert(0, DocumentAttributeFilename(file_name=media.file.name))
         with measure_time("finalize_upload"):
-            file = await uploaded_file.finalize_upload(storage, mime, attributes, file_type, thumb_bytes=thumb_bytes)
+            file = await uploaded_file.finalize_upload(
+                storage, mime or "application/octet-stream", attributes, file_type, thumb_bytes=thumb_bytes
+            )
     elif isinstance(media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
         file = await _get_input_media_file(user.id, media)
         if file is None:
