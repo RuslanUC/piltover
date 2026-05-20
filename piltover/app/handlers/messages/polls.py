@@ -11,6 +11,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import Long, PeerUser, MessagePeerVoteInputOption, MessagePeerVote, Updates
 from piltover.tl.functions.messages import GetPollResults, SendVote, GetPollVotes
 from piltover.tl.types.messages import VotesList
+from piltover.tl.base import MessagePeerVote as TLMessagePeerVoteBase
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.polls")
@@ -71,18 +72,18 @@ async def get_poll_votes(request: GetPollVotes, user_id: int) -> VotesList:
         return VotesList(count=total_count, votes=[], chats=[], users=[], next_offset="")
 
     users_to_tl = {}
-    votes_tl = []
+    votes_tl: list[TLMessagePeerVoteBase] = []
 
     for vote in votes:
-        peer = PeerUser(user_id=vote.user.id)
+        vote_peer = PeerUser(user_id=vote.user.id)
         vote_date = int(vote.voted_at.timestamp())
 
         users_to_tl[vote.user.id] = vote.user
 
         if request.option:
-            votes_tl.append(MessagePeerVoteInputOption(peer=peer, date=vote_date))
+            votes_tl.append(MessagePeerVoteInputOption(peer=vote_peer, date=vote_date))
         else:
-            votes_tl.append(MessagePeerVote(peer=peer, date=vote_date, option=vote.answer.option))
+            votes_tl.append(MessagePeerVote(peer=vote_peer, date=vote_date, option=vote.answer.option))
 
     has_more = await PollVote.filter(query & Q(id__lt=votes[-1].id)).exists()
 
