@@ -314,7 +314,7 @@ async def reset_authorizations(user: User) -> bool:
     auths = await UserAuthorization.filter(user=user, id__not=auth_id)
 
     keys = [auth.key_id for auth in auths]
-    temp_keys_ids = await TempAuthKey.filter(perm_key_id__in=keys).values_list("id", flat=True)
+    temp_keys_ids = cast(list[int], await TempAuthKey.filter(perm_key_id__in=keys).values_list("id", flat=True))
     keys.extend(temp_keys_ids)
 
     await UserAuthorization.filter(id__in=[auth.id for auth in auths]).delete()
