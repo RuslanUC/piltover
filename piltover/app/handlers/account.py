@@ -76,7 +76,7 @@ async def check_username(request: CheckUsername) -> bool:
 async def update_username(request: UpdateUsername, user: User) -> TLUserBase:
     request.username = request.username.lower().strip()
     if (not request.username and user.username is None) \
-            or (user.username is not None and user.username.username == request.username):
+            or (user.username is not None and cast(Username, user.username).username == request.username):
         raise ErrorRpc(error_code=400, error_message="USERNAME_NOT_MODIFIED")
 
     if request.username:
@@ -89,8 +89,9 @@ async def update_username(request: UpdateUsername, user: User) -> TLUserBase:
         if user.username is None:
             user._username = await Username.create(user=user, username=request.username)
         elif user.username is not None and request.username:
-            user.username.username = request.username
-            await user.username.save(update_fields=["username"])
+            username = cast(Username, user.username)
+            username.username = request.username
+            await username.save(update_fields=["username"])
         elif user.username is not None and not request.username:
             await user.username.delete()
             user._username = None
@@ -105,8 +106,10 @@ async def update_username(request: UpdateUsername, user: User) -> TLUserBase:
 @handler.on_request(GetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_authorizations(user_id: int) -> Authorizations:
     current_key_id = request_ctx.get().perm_auth_key_id
-    authorizations = await UserAuthorization.filter(user_id=user_id).all()
-    authorizations = [auth.to_tl(current=auth.key_id == current_key_id) for auth in authorizations]
+    authorizations = [
+        auth.to_tl(current=auth.key_id == current_key_id)
+        for auth in await UserAuthorization.filter(user_id=user_id)
+    ]
 
     return Authorizations(authorization_ttl_days=15, authorizations=authorizations)
 
@@ -272,7 +275,7 @@ async def set_global_privacy_settings(request: SetGlobalPrivacySettings, user_id
         await User.filter(id=user.id).update(read_dates_private=request.settings.hide_read_marks)
         user.read_dates_private = request.settings.hide_read_marks
 
-    return await get_global_privacy_settings(user)
+    return cast(GlobalPrivacySettings, await get_global_privacy_settings(user))
 
 
 @handler.on_request(GetContentSettings, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
@@ -449,9 +452,10 @@ async def change_auth_settings(request: ChangeAuthorizationSettings, user_id: in
         auth = this_auth
     else:
         auth_hash_hex = Long.write(request.hash).hex()
-        auth = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex)
-        if auth is None:
+        auth_maybe = await UserAuthorization.get_or_none(user_id=user_id, hash__startswith=auth_hash_hex)
+        if auth_maybe is None:
             raise ErrorRpc(error_code=400, error_message="HASH_INVALID")
+        auth = auth_maybe
 
     to_update = []
     if not auth.confirmed and request.confirmed:
@@ -686,7 +690,7 @@ async def delete_account(request: DeleteAccount, user_id: int) -> bool:
 @handler.on_request(GetChatThemes, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_chat_themes(request: GetChatThemes) -> Themes | ThemesNotModified:
     query = Theme.filter(creator=None).order_by("id")
-    ids = await query.values_list("id", flat=True)
+    ids = cast(list[int], await query.values_list("id", flat=True))
 
     themes_hash = telegram_hash(ids, 64)
     if themes_hash == request.hash:
@@ -842,7 +846,7 @@ async def install_wallpaper(request: InstallWallPaper, user_id: int) -> bool:
 @handler.on_request(GetWallPapers, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_wallpapers(request: GetWallPapers, user_id: int) -> WallPapers | WallPapersNotModified:
     query = InstalledWallpaper.filter(user_id=user_id).order_by("id")
-    ids = await query.values_list("id", flat=True)
+    ids = cast(list[int], await query.values_list("id", flat=True))
 
     wallpapers_hash = telegram_hash(ids, 64)
     if wallpapers_hash == request.hash:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from piltover.auth_data import AuthData
 from piltover.context import NeedContextValuesContext
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 class SessionManager:
     sessions: dict[tuple[int, int], Session] = {}
-    broker: BaseMessageBroker | None = None
+    broker: BaseMessageBroker = None  # type: ignore[assignment]
 
     @classmethod
     def set_broker(cls, broker: BaseMessageBroker) -> None:
@@ -24,7 +24,7 @@ class SessionManager:
 
     @classmethod
     def get_or_create(cls, session_id: int, client: Client, auth_data: AuthData) -> tuple[Session, bool]:
-        uniq_id = auth_data.auth_key_id, session_id
+        uniq_id = cast(int, auth_data.auth_key_id), session_id
 
         if uniq_id in cls.sessions:
             return cls.sessions[uniq_id], False
@@ -34,7 +34,7 @@ class SessionManager:
 
     @classmethod
     def cleanup(cls, session: Session) -> None:
-        uniq_id = session.auth_data.auth_key_id, session.session_id
+        uniq_id = cast(int, cast(AuthData, session.auth_data).auth_key_id), session.session_id
         if uniq_id in cls.sessions:
             del cls.sessions[uniq_id]
 
@@ -67,7 +67,8 @@ class SessionManager:
         )
 
         ctx = NeedContextValuesContext()
-        obj.check_for_ctx_values(ctx)
+        if isinstance(obj, TLObject):
+            obj.check_for_ctx_values(ctx)
 
         if ctx.any():
             if isinstance(obj, ObjectWithLayerRequirement):
@@ -77,16 +78,16 @@ class SessionManager:
                 for field_ in obj.fields:
                     field_.field = f"obj.{field_.field}"
             else:
-                obj = ctx.to_tl(obj)
+                obj = ctx.to_tl(cast(TLObject, obj))
 
         if is_short:
             message = MessageToUsersShort(
-                user=user_id,
-                key_id=key_id,
-                channel_id=channel_id,
-                auth_id=auth_id,
-                ignore_auth_id=ignore_auth_id,
-                obj=obj,
+                user=cast(int, user_id),
+                key_id=cast(int, key_id),
+                channel_id=cast(int, channel_id),
+                auth_id=cast(int, auth_id),
+                ignore_auth_id=cast(int, ignore_auth_id),
+                obj=cast(TLObject, obj),
                 min_layer=min_layer,
             )
         else:
@@ -96,7 +97,7 @@ class SessionManager:
                 channel_ids=[channel_id] if isinstance(channel_id, int) else channel_id,
                 auth_ids=[auth_id] if isinstance(auth_id, int) else auth_id,
                 ignore_auth_id=[ignore_auth_id] if isinstance(ignore_auth_id, int) else ignore_auth_id,
-                obj=obj,
+                obj=cast(TLObject, obj),
                 min_layer=min_layer,
             )
 

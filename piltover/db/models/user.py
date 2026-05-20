@@ -59,6 +59,8 @@ class User(Model):
     emoji_status: models.UserEmojiStatus | QuerySet[models.UserEmojiStatus] | None
     bot_info: models.BotInfo | QuerySet[models.BotInfo] | None
 
+    _username: models.Username | None
+
     cached_username: models.Username | None | _Missing = _MISSING
 
     _CACHE_VERSION = 1

@@ -48,7 +48,7 @@ from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, 
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers, \
     AffectedHistory, MessagesSlice
 from piltover.tl.base import InputStickerSet as TLInputStickerSetBase, ChatReactions as TLChatReactionsBase, \
-    Reaction as TLReactionBase, ChannelParticipant as TLChannelParticipantBase
+    Reaction as TLReactionBase, ChannelParticipant as TLChannelParticipantBase, Updates as TLUpdatesBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -1030,7 +1030,7 @@ async def toggle_signatures(request: ToggleSignatures, user_id: int) -> Updates:
 
 
 @handler.on_request(ToggleSignatures_133, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def toggle_signatures_136(request: ToggleSignatures_133, user_id: int) -> Updates:
+async def toggle_signatures_136(request: ToggleSignatures_133, user_id: int) -> TLUpdatesBase:
     return await toggle_signatures(ToggleSignatures(
         signatures_enabled=request.enabled,
         profiles_enabled=False,

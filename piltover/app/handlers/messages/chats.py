@@ -687,7 +687,7 @@ async def get_common_chats(request: GetCommonChats, user_id: int) -> ChatsBase:
 
 
 @handler.on_request(DeleteChat, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def delete_chat(request: DeleteChat, user_id: int) -> Updates:
+async def delete_chat(request: DeleteChat, user_id: int) -> bool:
     peer = await Peer.from_chat_id_raise(user_id, request.chat_id, allow_migrated=True)
     if peer.chat.creator_id != user_id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
@@ -695,4 +695,5 @@ async def delete_chat(request: DeleteChat, user_id: int) -> Updates:
     await Chat.filter(id=peer.chat_id).update(version=F("version") + 1, deleted=True)
     await peer.chat.refresh_from_db(["version", "deleted"])
 
-    return await upd.update_chat(peer.chat)
+    await upd.update_chat(peer.chat)
+    return True
