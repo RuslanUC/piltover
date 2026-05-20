@@ -19,7 +19,7 @@ from piltover.tl.functions.folders import EditPeerFolders
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
 from piltover.tl.types.messages import PeerDialogs, Dialogs, DialogsSlice
-from piltover.tl.base import InputPeer as TLInputPeerBase, Chat as TLChatBase
+from piltover.tl.base import InputPeer as TLInputPeerBase, Chat as TLChatBase, DialogPeer as TLDialogPeerBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -337,7 +337,7 @@ async def mark_dialog_unread(request: MarkDialogUnread, user_id: int) -> bool:
 
 
 @handler.on_request(GetDialogUnreadMarks, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def get_dialog_unread_marks(user_id: int) -> TLObjectVector[DialogPeer]:
+async def get_dialog_unread_marks(user_id: int) -> TLObjectVector[TLDialogPeerBase]:
     peers: list[PeerOwnedT] = await Peer.filter(owner_id=user_id, dialogs__unread_mark=True, dialogs__visible=True)
 
     return TLObjectVector([

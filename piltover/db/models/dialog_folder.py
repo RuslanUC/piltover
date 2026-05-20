@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+from pyrogram.raw.types import DialogFilterDefault
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
-from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import PeerType
-from piltover.tl import DialogFilter, InputPeerSelf, InputPeerUser, InputPeerChat, InputPeerChannel, TextWithEntities
-
-InputPeer = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel
+from piltover.exceptions import Unreachable
+from piltover.tl import DialogFilter, TextWithEntities, DialogFilterChatlist, DialogFilterChatlist_158, \
+    DialogFilterChatlist_176
+from piltover.tl.base import DialogFilter as TLDialogFilterBase, InputPeer as TLInputPeerBase
 
 
 class DialogFolder(Model):
@@ -62,7 +63,12 @@ class DialogFolder(Model):
             exclude_peers=[peer.to_input_peer(self_is_user=True) for peer in self.exclude_peers],
         )
 
-    def get_difference(self, tl_filter: DialogFilter) -> list[str]:
+    def get_difference(self, tl_filter: TLDialogFilterBase) -> list[str]:
+        if isinstance(tl_filter, (
+                DialogFilterDefault, DialogFilterChatlist, DialogFilterChatlist_158, DialogFilterChatlist_176
+        )):
+            raise Unreachable
+
         updated_fields = []
         for slot in tl_filter.__slots__:
             if not hasattr(self, slot):
@@ -75,31 +81,32 @@ class DialogFolder(Model):
 
         return updated_fields
 
-    async def _fetch_peers(self, input_peers: list[InputPeer]) -> list[models.Peer]:
+    async def _fetch_peers(self, input_peers: list[TLInputPeerBase]) -> list[models.Peer]:
         if not input_peers:
             return []
 
-        ctx = request_ctx.get()
-        query = Q()
-        for input_peer in input_peers:
-            if isinstance(input_peer, InputPeerSelf) \
-                    or (isinstance(input_peer, InputPeerUser) and input_peer.user_id == self.owner_id):
-                query |= Q(owner_id=self.owner_id, type=PeerType.SELF)
-            elif isinstance(input_peer, InputPeerUser):
-                if models.User.check_access_hash(
-                        self.owner_id, ctx.auth_id, input_peer.user_id, input_peer.access_hash
-                ):
-                    query |= Q(owner_id=self.owner_id, user_id=input_peer.user_id, type=PeerType.USER)
-            elif isinstance(input_peer, InputPeerChat):
-                query |= Q(
-                    owner_id=self.owner_id, chat_id=models.Chat.norm_id(input_peer.chat_id), type=PeerType.CHAT
-                )
-            elif isinstance(input_peer, InputPeerChannel):
-                channel_id = models.Channel.norm_id(input_peer.channel_id)
-                if models.Channel.check_access_hash(self.owner_id, ctx.auth_id, channel_id, input_peer.access_hash):
-                    query |= Q(owner_id=self.owner_id, channel_id=channel_id, type=PeerType.CHANNEL)
+        user_ids: set[int] = set()
+        chat_ids: set[int] = set()
+        channel_ids: set[int] = set()
 
-        return await models.Peer.filter(query)
+        for input_peer in input_peers:
+            peer_info = models.Peer.type_and_id_from_input(self.owner_id, input_peer)
+            if peer_info is None:
+                continue
+
+            peer_type, peer_id = peer_info
+            if peer_type in (PeerType.SELF, PeerType.USER):
+                user_ids.add(peer_id)
+            elif peer_type is PeerType.CHAT:
+                chat_ids.add(peer_id)
+            elif peer_type is PeerType.CHANNEL:
+                channel_ids.add(peer_id)
+
+        if not user_ids and not chat_ids and not channel_ids:
+            return []
+
+        peers_query = Q(user_id__in=user_ids, chat_id__in=chat_ids, channel_id__in=channel_ids, join_type=Q.OR)
+        return await models.Peer.filter(peers_query, owner_id=self.owner_id)
 
     @staticmethod
     def _diff_peers(
@@ -114,7 +121,7 @@ class DialogFolder(Model):
         return to_delete, to_add
 
     async def _diff_update_peers(
-            self, new_list: list[InputPeer], relation: fields.ManyToManyRelation[models.Peer],
+            self, new_list: list[TLInputPeerBase], relation: fields.ManyToManyRelation[models.Peer],
     ) -> None:
         peer: models.Peer
 
@@ -129,7 +136,12 @@ class DialogFolder(Model):
         else:
             await relation.clear()
 
-    async def fill_from_tl(self, tl_filter: DialogFilter) -> None:
+    async def fill_from_tl(self, tl_filter: TLDialogFilterBase) -> None:
+        if isinstance(tl_filter, (
+                DialogFilterDefault, DialogFilterChatlist, DialogFilterChatlist_158, DialogFilterChatlist_176
+        )):
+            raise Unreachable
+
         self.name = tl_filter.title.text if isinstance(tl_filter.title, TextWithEntities) else tl_filter.title
         self.contacts = tl_filter.contacts
         self.non_contacts = tl_filter.non_contacts
