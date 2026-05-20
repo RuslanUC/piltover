@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from typing import cast
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash
@@ -7,6 +8,7 @@ from piltover.db.enums import FileType
 from piltover.db.models import SavedGif, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
+from piltover.tl import InputDocument
 from piltover.tl.functions.messages import SaveGif, GetSavedGifs
 from piltover.tl.types.messages import SavedGifs, SavedGifsNotModified
 from piltover.worker import MessageHandler
@@ -17,6 +19,8 @@ handler = MessageHandler("messages.gifs")
 @handler.on_request(SaveGif, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def save_gif(request: SaveGif, user_id: int) -> bool:
     doc = request.id
+    if not isinstance(doc, InputDocument):
+        raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
     if request.unsave:
         if await SavedGif.filter(user_id=user_id, gif_id=doc.id).delete():
@@ -40,7 +44,7 @@ async def get_saved_gifs(request: GetSavedGifs, user_id: int) -> SavedGifs | Sav
     query = SavedGif.filter(
         user_id=user_id
     ).order_by("-last_access").limit(APP_CONFIG.saved_gifs_limit)
-    ids = await query.values_list("id", flat=True)
+    ids = cast(list[int], await query.values_list("id", flat=True))
 
     gifs_hash = telegram_hash(ids, 64)
     if gifs_hash and request.hash and gifs_hash == request.hash:
