@@ -8,7 +8,7 @@ from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector
-from piltover.tl.base import InputUser as TLInputUserBase
+from piltover.tl.base import InputUser as TLInputUserBase, Photo as TLPhotoBase
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto, PhotosSlice
 from piltover.worker import MessageHandler
@@ -26,7 +26,7 @@ async def get_user_photos(request: GetUserPhotos, user_id: int) -> Photos | Phot
     limit = min(100, max(request.limit, 1))
     photos_query = UserPhoto.filter(user=peer.user, fallback=False).select_related("file")
 
-    photos = []
+    photos: list[UserPhoto] = []
     if request.offset < 0:
         photos_query_neg = photos_query
         if request.max_id:
@@ -43,7 +43,7 @@ async def get_user_photos(request: GetUserPhotos, user_id: int) -> Photos | Phot
         photos.extend(await photos_query.limit(limit).order_by("-id"))
 
     photos_total = await UserPhoto.filter(user=peer.user, fallback=False).count()
-    photos_tl = [photo.to_tl() for photo in photos]
+    photos_tl: list[TLPhotoBase] = [photo.to_tl() for photo in photos]
     users_tl = [await peer.user.to_tl()]
 
     if photos_total >= len(photos):

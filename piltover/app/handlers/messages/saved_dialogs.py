@@ -14,7 +14,7 @@ from piltover.exceptions import ErrorRpc
 from piltover.tl import InputDialogPeer
 from piltover.tl.functions.messages import GetSavedDialogs, GetSavedHistory, DeleteSavedHistory, \
     GetPinnedSavedDialogs, ToggleSavedDialogPin, ReorderPinnedSavedDialogs
-from piltover.tl.types.messages import SavedDialogs, Messages, AffectedHistory, MessagesSlice
+from piltover.tl.types.messages import SavedDialogs, Messages, AffectedHistory, MessagesSlice, SavedDialogsSlice
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.saved_dialogs")
@@ -22,10 +22,9 @@ handler = MessageHandler("messages.saved_dialogs")
 
 @handler.on_request(GetSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_saved_dialogs(request: GetSavedDialogs, user_id: int) -> SavedDialogs:
-    return SavedDialogs(
-        **(await get_dialogs_internal(
-            SavedDialog, user_id, request.offset_id, request.offset_date, request.limit, request.offset_peer
-        ))
+    return await get_dialogs_internal(
+        SavedDialog, SavedDialogs, SavedDialogsSlice, user_id, request.offset_id, request.offset_date,
+        request.limit, request.offset_peer
     )
 
 
@@ -80,9 +79,7 @@ async def get_pinned_saved_dialogs(user_id: int) -> SavedDialogs:
         peer__owner_id=user_id, pinned_index__not_isnull=True,
     ).select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
 
-    return SavedDialogs(
-        **(await format_dialogs(SavedDialog, user_id, dialogs))
-    )
+    return await format_dialogs(SavedDialog, SavedDialogs, SavedDialogsSlice, user_id, dialogs)
 
 
 @handler.on_request(ToggleSavedDialogPin, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
@@ -120,11 +117,13 @@ async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user:
         if not isinstance(dialog_peer, InputDialogPeer):
             continue
 
+        # TODO: move out of the loop
         if (peer := await Peer.from_input_peer(user, dialog_peer.peer)) is None:
             continue
 
         dialog = pinned_now.get(peer, None)
         if dialog is None:
+            # TODO: move out of the loop
             dialog = await SavedDialog.get_or_none(peer=peer).select_related("peer", "peer__user")
         if not dialog:
             continue

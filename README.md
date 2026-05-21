@@ -49,6 +49,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [ ] Mentions, reactions read states are still sometimes wrong. Why? Caching probably, idk? 
 - [ ] Support S3 as a storage backend
 - [ ] Its probably not a bad idea to move `State.pts` to `User` model?
+- [ ] Add registration/authorization through Telegram
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 

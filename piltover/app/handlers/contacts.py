@@ -17,7 +17,7 @@ from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, 
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
-    ExportedContactToken, Long, User as TLUser, TLObjectVector, PeerUser, ContactStatus, PeerChannel, LongVector
+    ExportedContactToken, Long, TLObjectVector, PeerUser, ContactStatus, PeerChannel, LongVector
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
     ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken, GetContactIDs

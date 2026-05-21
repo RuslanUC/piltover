@@ -58,6 +58,7 @@ class User(Model):
     background_emojis: models.UserBackgroundEmojis | QuerySet[models.UserBackgroundEmojis] | None
     emoji_status: models.UserEmojiStatus | QuerySet[models.UserEmojiStatus] | None
     bot_info: models.BotInfo | QuerySet[models.BotInfo] | None
+    presence: models.Presence | QuerySet[models.Presence] | None
 
     _username: models.Username | None
 
