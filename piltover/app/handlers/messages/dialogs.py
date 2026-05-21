@@ -437,16 +437,23 @@ async def mark_dialog_unread(request: MarkDialogUnread, user_id: int) -> bool:
     if not isinstance(request.peer, InputDialogPeer):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    peer_query = Peer.query_from_input_peer(user_id, request.peer.peer, True, False)
-    if peer_query is None or (peer := await peer_query) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    if (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
+    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, request.peer.peer, "PEER_ID_INVALID")
+    if peer_type in (PeerType.SELF, PeerType.USER):
+        peer_q = Q(peer__user_id=peer_target_id)
+    elif peer_type is PeerType.CHAT:
+        peer_q = Q(peer__chat_id=peer_target_id)
+    elif peer_type is PeerType.CHANNEL:
+        peer_q = Q(peer__channel_id=peer_target_id)
+    else:
+        raise Unreachable
+
+    dialog = await Dialog.get_or_none(peer_q, peer__owner_id=user_id, visible=True).select_related("peer")
+    if dialog is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     if dialog.unread_mark == request.unread:
         return True
 
-    dialog.peer = peer
     dialog.unread_mark = request.unread
     await dialog.save(update_fields=["unread_mark"])
     await upd.update_dialog_unread_mark(user_id, dialog)

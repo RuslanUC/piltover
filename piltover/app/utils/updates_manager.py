@@ -1054,9 +1054,8 @@ async def update_dialog_unread_mark(user_id: int, dialog: Dialog) -> None:
         user_id=user_id,
         update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK,
         pts=pts,
-        related_id=dialog.id,
-        peer=dialog.peer,
-        dialog=dialog,
+        peer_id=dialog.peer_id,
+        dialog_id=dialog.id,
     )
 
     ucc = UsersChatsChannels()
