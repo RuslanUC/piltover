@@ -311,11 +311,21 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user_id: int):
     if not isinstance(request.peer, InputDialogPeer):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    if (peer := await Peer.from_input_peer(user_id, request.peer.peer)) is None \
-            or (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
+    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, request.peer.peer, "PEER_HISTORY_EMPTY")
+    if peer_type in (PeerType.SELF, PeerType.USER):
+        peer_q = Q(peer__user_id=peer_target_id)
+    elif peer_type is PeerType.CHAT:
+        peer_q = Q(peer__chat_id=peer_target_id)
+    elif peer_type is PeerType.CHANNEL:
+        peer_q = Q(peer__channel_id=peer_target_id)
+    else:
+        raise Unreachable
+
+    dialog = await Dialog.get_or_none(peer_q, peer__owner_id=user_id, visible=True).select_related("peer")
+    if dialog is None:
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
 
-    if bool(dialog.pinned_index) == request.pinned:
+    if (dialog.pinned_index is not None) == request.pinned:
         return True
 
     if request.pinned:
@@ -324,52 +334,86 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user_id: int):
             cast(
                 object,
                 await Dialog.filter(
-                    peer=peer, folder_id=dialog.folder_id, visible=True,
+                    peer__owner=user_id, folder_id=dialog.folder_id, visible=True,
                 ).annotate(max_pinned_index=Max("pinned_index")).first().values_list("max_pinned_index", flat=True)
             )
         )
-        dialog.pinned_index = (max_index or -1) + 1
-        if dialog.pinned_index > 10:
+        pinned_index = (max_index or -1) + 1
+        if pinned_index > 10:
             raise ErrorRpc(error_code=400, error_message="PINNED_DIALOGS_TOO_MUCH")
+        dialog.pinned_index = pinned_index
     else:
         dialog.pinned_index = None
 
     await dialog.save(update_fields=["pinned_index"])
-    await upd.pin_dialog(user_id, peer, dialog)
+    await upd.pin_dialog(user_id, dialog.peer, dialog)
 
     return True
 
 
 @handler.on_request(ReorderPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user_id: int):
+    base_dialog_query = Dialog.filter(
+        peer__owner_id=user_id, folder_id=DialogFolderId(request.folder_id), visible=True,
+    ).select_related("peer")
+
     pinned_now = {
-        dialog.peer: dialog
-        for dialog in await Dialog.filter(
-            peer__owner_id=user_id, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id),
-            visible=True
-        ).select_related("peer")
+        (dialog.peer.tup()): dialog
+        for dialog in await base_dialog_query.filter(pinned_index__not_isnull=True)
     }
     pinned_after = []
     to_unpin: dict = pinned_now.copy() if request.force else {}
-    folder_id = DialogFolderId(request.folder_id)
+
+    dialogs_by_peers = pinned_now.copy()
+
+    peer_user_ids: set[int] = set()
+    peer_chat_ids: set[int] = set()
+    peer_channel_ids: set[int] = set()
 
     for dialog_peer in request.order:
         if not isinstance(dialog_peer, InputDialogPeer):
             continue
 
-        # TODO: move out of the loop
-        if (peer := await Peer.from_input_peer(user_id, dialog_peer.peer)) is None:
+        peer_info = Peer.type_and_id_from_input(user_id, dialog_peer.peer)
+        if peer_info is None:
             continue
 
-        dialog = pinned_now.get(peer, None)
-        if dialog is None:
-            # TODO: move out of the loop
-            dialog = await Dialog.get_or_none(peer=peer, folder_id=folder_id, visible=True).select_related("peer")
+        peer_type, peer_target_id = peer_info
+        if peer_info in dialogs_by_peers:
+            continue
+        elif peer_type in (PeerType.SELF, PeerType.USER):
+            peer_user_ids.add(peer_target_id)
+        elif peer_type is PeerType.CHAT:
+            peer_chat_ids.add(peer_target_id)
+        elif peer_type is PeerType.CHANNEL:
+            peer_channel_ids.add(peer_target_id)
+        else:
+            raise Unreachable
+
+    if peer_user_ids or peer_chat_ids or peer_channel_ids:
+        peers_q = Q(
+            peer__user_id__in=peer_user_ids,
+            peer__chat_id__in=peer_chat_ids,
+            peer__channel_id__in=peer_channel_ids,
+            join_type=Q.OR
+        )
+        for dialog in await base_dialog_query.filter(peers_q):
+            dialogs_by_peers[(dialog.peer.tup())] = dialog
+
+    for dialog_peer in request.order:
+        if not isinstance(dialog_peer, InputDialogPeer):
+            continue
+
+        peer_info = Peer.type_and_id_from_input(user_id, dialog_peer.peer)
+        if peer_info is None:
+            continue
+
+        dialog = dialogs_by_peers.get(peer_info, None)
         if not dialog:
             continue
 
         pinned_after.append(dialog)
-        to_unpin.pop(peer, None)
+        to_unpin.pop(peer_info, None)
 
     if not request.force:
         pinned_after.extend(sorted(pinned_now.values(), key=lambda d: d.pinned_index or 0))
@@ -378,8 +422,7 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user_id: int):
         unpin_ids = [dialog.id for dialog in to_unpin.values()]
         await Dialog.filter(id__in=unpin_ids).update(pinned_index=None)
 
-    pinned_after.reverse()
-    for idx, dialog in enumerate(pinned_after):
+    for idx, dialog in enumerate(reversed(pinned_after)):
         dialog.pinned_index = idx
 
     if pinned_after:

@@ -402,3 +402,6 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
             return peer_query.get(user_id=input_user.user_id)
         else:
             raise ErrorRpc(error_code=400, error_message=error_message)
+
+    def tup(self) -> tuple[PeerType, int]:
+        return self.type, self.target_id_raw()
