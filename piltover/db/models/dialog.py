@@ -11,9 +11,12 @@ from tortoise.transactions import in_transaction
 
 from piltover.db import models
 from piltover.db.enums import DialogFolderId, PeerType
+from piltover.db.utils.awaitable_none_queryset import EmptyQuerySet
 from piltover.exceptions import Unreachable
 from piltover.tl import PeerNotifySettings
 from piltover.tl.types import Dialog as TLDialog
+from piltover.tl.base import InputUser as TLInputUserBase, InputPeer as TLInputPeerBase, \
+    InputChannel as TLInputChannelBase
 
 
 class Dialog(Model):
@@ -184,3 +187,54 @@ class Dialog(Model):
                 await cls.bulk_create(to_create)
             if to_update:
                 await cls.bulk_update(to_update, fields=["visible"])
+
+    @classmethod
+    def get_from_input_peer(
+            cls, user_id: int, input_peer: TLInputPeerBase | TLInputUserBase | TLInputChannelBase,
+            error_message: str = "PEER_ID_INVALID",
+    ) -> QuerySet[Dialog]:
+        peer_type, peer_target_id = models.Peer.type_and_id_from_input_raise(user_id, input_peer, error_message)
+        if peer_type in (PeerType.SELF, PeerType.USER):
+            peer_q = Q(peer__user_id=peer_target_id)
+        elif peer_type is PeerType.CHAT:
+            peer_q = Q(peer__chat_id=peer_target_id)
+        elif peer_type is PeerType.CHANNEL:
+            peer_q = Q(peer__channel_id=peer_target_id)
+        else:
+            raise Unreachable
+
+        return Dialog.filter(peer_q, peer__owner_id=user_id, visible=True)
+
+    @classmethod
+    def get_from_input_peer_many(
+            cls, user_id: int, input_peers: list[TLInputPeerBase | TLInputUserBase | TLInputChannelBase]
+    ) -> QuerySet[Dialog]:
+        peer_user_ids: set[int] = set()
+        peer_chat_ids: set[int] = set()
+        peer_channel_ids: set[int] = set()
+
+        for input_peer in input_peers:
+            peer_info = models.Peer.type_and_id_from_input(user_id, input_peer)
+            if peer_info is None:
+                continue
+
+            peer_type, peer_target_id = peer_info
+            if peer_type in (PeerType.SELF, PeerType.USER):
+                peer_user_ids.add(peer_target_id)
+            elif peer_type is PeerType.CHAT:
+                peer_chat_ids.add(peer_target_id)
+            elif peer_type is PeerType.CHANNEL:
+                peer_channel_ids.add(peer_target_id)
+            else:
+                raise Unreachable
+
+        if peer_user_ids or peer_chat_ids or peer_channel_ids:
+            peers_q = Q(
+                peer__user_id__in=peer_user_ids,
+                peer__chat_id__in=peer_chat_ids,
+                peer__channel_id__in=peer_channel_ids,
+                join_type=Q.OR
+            )
+            return Dialog.filter(peers_q, peer__owner_id=user_id, visible=True)
+
+        return EmptyQuerySet(cls)

@@ -311,17 +311,9 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user_id: int):
     if not isinstance(request.peer, InputDialogPeer):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, request.peer.peer, "PEER_HISTORY_EMPTY")
-    if peer_type in (PeerType.SELF, PeerType.USER):
-        peer_q = Q(peer__user_id=peer_target_id)
-    elif peer_type is PeerType.CHAT:
-        peer_q = Q(peer__chat_id=peer_target_id)
-    elif peer_type is PeerType.CHANNEL:
-        peer_q = Q(peer__channel_id=peer_target_id)
-    else:
-        raise Unreachable
-
-    dialog = await Dialog.get_or_none(peer_q, peer__owner_id=user_id, visible=True).select_related("peer")
+    dialog = await Dialog.get_from_input_peer(
+        user_id, request.peer.peer, "PEER_HISTORY_EMPTY"
+    ).get_or_none().select_related("peer")
     if dialog is None:
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
 
@@ -366,39 +358,20 @@ async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user_id: int):
 
     dialogs_by_peers = pinned_now.copy()
 
-    peer_user_ids: set[int] = set()
-    peer_chat_ids: set[int] = set()
-    peer_channel_ids: set[int] = set()
+    input_peers_to_fetch = []
 
     for dialog_peer in request.order:
         if not isinstance(dialog_peer, InputDialogPeer):
             continue
 
         peer_info = Peer.type_and_id_from_input(user_id, dialog_peer.peer)
-        if peer_info is None:
+        if peer_info is None or peer_info in dialogs_by_peers:
             continue
 
-        peer_type, peer_target_id = peer_info
-        if peer_info in dialogs_by_peers:
-            continue
-        elif peer_type in (PeerType.SELF, PeerType.USER):
-            peer_user_ids.add(peer_target_id)
-        elif peer_type is PeerType.CHAT:
-            peer_chat_ids.add(peer_target_id)
-        elif peer_type is PeerType.CHANNEL:
-            peer_channel_ids.add(peer_target_id)
-        else:
-            raise Unreachable
+        input_peers_to_fetch.append(dialog_peer.peer)
 
-    if peer_user_ids or peer_chat_ids or peer_channel_ids:
-        peers_q = Q(
-            peer__user_id__in=peer_user_ids,
-            peer__chat_id__in=peer_chat_ids,
-            peer__channel_id__in=peer_channel_ids,
-            join_type=Q.OR
-        )
-        for dialog in await base_dialog_query.filter(peers_q):
-            dialogs_by_peers[(dialog.peer.tup())] = dialog
+    for dialog in await Dialog.get_from_input_peer_many(user_id, input_peers_to_fetch).select_related("peer"):
+        dialogs_by_peers[(dialog.peer.tup())] = dialog
 
     for dialog_peer in request.order:
         if not isinstance(dialog_peer, InputDialogPeer):
@@ -437,17 +410,7 @@ async def mark_dialog_unread(request: MarkDialogUnread, user_id: int) -> bool:
     if not isinstance(request.peer, InputDialogPeer):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, request.peer.peer, "PEER_ID_INVALID")
-    if peer_type in (PeerType.SELF, PeerType.USER):
-        peer_q = Q(peer__user_id=peer_target_id)
-    elif peer_type is PeerType.CHAT:
-        peer_q = Q(peer__chat_id=peer_target_id)
-    elif peer_type is PeerType.CHANNEL:
-        peer_q = Q(peer__channel_id=peer_target_id)
-    else:
-        raise Unreachable
-
-    dialog = await Dialog.get_or_none(peer_q, peer__owner_id=user_id, visible=True).select_related("peer")
+    dialog = await Dialog.get_from_input_peer(user_id, request.peer.peer).get_or_none().select_related("peer")
     if dialog is None:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
@@ -473,20 +436,29 @@ async def get_dialog_unread_marks(user_id: int) -> TLObjectVector[TLDialogPeerBa
 
 @handler.on_request(EditPeerFolders, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def edit_peer_folders(request: EditPeerFolders, user_id: int) -> Updates:
-    updated_dialogs = []
-
     for folder_peer in request.folder_peers:
         if folder_peer.folder_id not in DialogFolderId._value2member_map_:
             raise ErrorRpc(error_code=400, error_message="FOLDER_ID_INVALID")
-        if (peer := await Peer.from_input_peer(user_id, folder_peer.peer)) is None \
-                or (dialog := await Dialog.get_or_none(peer=peer, visible=True)) is None:
+
+    dialogs = {
+        dialog.peer.tup(): dialog
+        for dialog in await Dialog.get_from_input_peer_many(
+            user_id, [folder_peer.peer for folder_peer in request.folder_peers],
+        ).select_related("peer")
+    }
+
+    updated_dialogs = []
+
+    for folder_peer in request.folder_peers:
+        peer_info = Peer.type_and_id_from_input(user_id, folder_peer.peer)
+        if peer_info is None or peer_info not in dialogs:
             continue
 
+        dialog = dialogs[peer_info]
         new_folder_id = DialogFolderId(folder_peer.folder_id)
         if dialog.folder_id == new_folder_id:
             continue
 
-        dialog.peer = peer
         dialog.folder_id = new_folder_id
         updated_dialogs.append(dialog)
 
