@@ -30,7 +30,7 @@ class Dialog(Model):
 
     peer_id: int
 
-    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef]:
+    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef | None]:
         return models.MessageRef.filter(self.peer.q_this_or_channel()).select_related(
             *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
         ).order_by("-id").first()
@@ -39,17 +39,27 @@ class Dialog(Model):
     def top_message_query_bulk(
             cls, _: int, dialogs: list[Dialog], prefetch: bool = True,
     ) -> QuerySet[models.MessageRef]:
-        peers_q = []
+        if not dialogs:
+            return models.MessageRef.filter(id=0)
+
+        peer_ids = []
+        channel_ids = []
         for dialog in dialogs:
             if dialog.peer.type is PeerType.CHANNEL:
-                peers_q.append(Q(peer__owner=None, peer__channel_id=dialog.peer.channel_id))
+                channel_ids.append(dialog.peer.channel_id)
             else:
-                peers_q.append(Q(peer_id=dialog.peer_id))
+                peer_ids.append(dialog.peer_id)
+
+        peers_subquery_q = Q()
+        if peer_ids:
+            peers_subquery_q |= Q(peer_id__in=peer_ids)
+        if channel_ids:
+            peers_subquery_q |= Q(peer__owner=None, peer__channel_id__in=channel_ids)
 
         return models.MessageRef.filter(
             id__in=Subquery(
                 models.MessageRef.filter(
-                    Q(*peers_q, join_type=Q.OR)
+                    peers_subquery_q
                 ).group_by("peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
@@ -84,7 +94,7 @@ class Dialog(Model):
             pinned=self.pinned_index is not None,
             unread_mark=self.unread_mark,
             peer=self.peer.to_tl(),
-            top_message=cast(int | None, top_message) or 0,
+            top_message=cast(int | None, cast(object, top_message)) or 0,
             draft=draft,
             read_inbox_max_id=in_read_max_id,
             read_outbox_max_id=out_read_max_id,

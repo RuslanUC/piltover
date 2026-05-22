@@ -103,6 +103,7 @@ class MessageRef(Model):
         )
         indexes = (
             ("peer_id", "pinned"),
+            ("peer_id", "id")
         )
 
     def __repr__(self) -> str:

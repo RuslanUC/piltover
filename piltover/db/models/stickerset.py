@@ -53,7 +53,7 @@ class Stickerset(Model):
     official: bool = fields.BooleanField(default=False)
     hash: int = fields.IntField(default=0)
     type: StickerSetType = fields.IntEnumField(StickerSetType, description="")
-    official_type: StickerSetOfficialType | None = fields.IntEnumField(StickerSetOfficialType, null=True, default=None, description="")
+    official_type: StickerSetOfficialType | None = fields.IntEnumField(StickerSetOfficialType, null=True, default=None, db_index=True, description="")
     deleted: bool = fields.BooleanField(default=False)
     emoji: bool = fields.BooleanField(default=False)
     masks: bool = fields.BooleanField(default=False)

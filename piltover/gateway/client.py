@@ -223,7 +223,7 @@ class Client:
                     obj=TLObject.read(BytesIO(decrypted.data)),
                 )
             except (struct.error, ValueError, InvalidConstructorException) as e:
-                logger.opt(exception=e).error(f"Failed to read object. Raw data: {decrypted.data}")
+                logger.opt(exception=e).error("Failed to read object. Raw data: {raw_data}", raw_data=decrypted.data)
                 constructor = e.constructor if isinstance(e, InvalidConstructorException) else 0
                 await session.enqueue(
                     RpcResult(
@@ -251,7 +251,11 @@ class Client:
                 )
 
             logger.debug(
-                f"Received from {session.session_id} ({session.auth_data.auth_key_id} {session.user_id}): {message}"
+                "Received from {session_id} ({auth_key_id} {user_id}): {message}",
+                session_id=session.session_id,
+                auth_key_id=session.auth_data.auth_key_id,
+                user_id=session.user_id,
+                message=message,
             )
             asyncio.create_task(self.handle_encrypted_message(message, session))
         elif isinstance(packet, UnencryptedMessagePacket):
@@ -272,7 +276,7 @@ class Client:
                 if packet is not None:
                     decoded = TLObject.read(BytesIO(packet.message_data))
 
-            logger.debug(decoded)
+            logger.debug("{decoded}", decoded=decoded)
             await self.handle_unencrypted_message(decoded)
 
     async def _get_auth_data(self, auth_key_id: int) -> AuthData:

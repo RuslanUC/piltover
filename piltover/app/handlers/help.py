@@ -3,6 +3,7 @@ import ctypes
 from time import time
 
 from piltover.app.utils.utils import telegram_hash
+from piltover.cache import Cache
 from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.db.models import AuthCountry, UserReactionsSettings, PeerColorOption
 from piltover.enums import ReqHandlerFlags
@@ -17,7 +18,6 @@ from piltover.tl.types.help import CountriesList, PromoDataEmpty, PremiumPromo, 
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("help")
-CACHED_COUNTRIES_LIST: tuple[CountriesList | None, int] = (None, 0)
 
 
 @handler.on_request(GetConfig, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.DONT_FETCH_USER)
@@ -340,10 +340,8 @@ async def get_app_config(request: GetAppConfig):
 
 @handler.on_request(GetCountriesList, ReqHandlerFlags.AUTH_NOT_REQUIRED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_countries_list(request: GetCountriesList) -> CountriesList | CountriesListNotModified:
-    global CACHED_COUNTRIES_LIST
-    countries, cache_time = CACHED_COUNTRIES_LIST
-
-    if time() - cache_time > 60 * 60 * 12:
+    countries = await Cache.obj.get("cached-countries")
+    if countries is None:
         countries = CountriesList(countries=[], hash=0)
 
         country: AuthCountry
@@ -357,7 +355,8 @@ async def get_countries_list(request: GetCountriesList) -> CountriesList | Count
             countries.hash += country.get_internal_hash()
 
         countries.hash = ctypes.c_int32(countries.hash & ((2 << 32 - 1) - 1)).value
-        CACHED_COUNTRIES_LIST = countries, time()
+
+        await Cache.obj.set("cached-countries", countries, ttl=60 * 60 * 12)
 
     if request.hash == countries.hash and countries.hash != 0:
         return CountriesListNotModified()
