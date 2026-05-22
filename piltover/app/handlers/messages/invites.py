@@ -277,11 +277,28 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         else:
             min_message_id = chat_or_channel.min_available_id
 
+    peer_type: PeerType
+    peer_chat: Chat | None
+    peer_channel: Channel | None
+    channel_peer_id: int | None
+    if isinstance(chat_or_channel, Channel):
+        peer_type = PeerType.CHANNEL
+        peer_chat = None
+        peer_channel = chat_or_channel
+        channel_peer = await Peer.get(owner_id__isnull=True, channel_id=chat_or_channel.id).only("id")
+        channel_peer_id = channel_peer.id
+    elif isinstance(chat_or_channel, Chat):
+        peer_type = PeerType.CHAT
+        peer_chat = chat_or_channel
+        peer_channel = None
+        channel_peer_id = None
+    else:
+        raise Unreachable
+
     async with in_transaction():
         new_peer: Peer
         new_peer, _ = await Peer.get_or_create(
-            owner_id=user.id, type=PeerType.CHAT if isinstance(chat_or_channel, Chat) else PeerType.CHANNEL,
-            **Chat.or_channel(chat_or_channel),
+            owner_id=user.id, type=peer_type, chat=peer_chat, channel=peer_channel, channel_peer_id=channel_peer_id,
         )
         await ChatParticipant.update_or_create(user_id=user.id, **Chat.or_channel(chat_or_channel), defaults={
             "inviter_id": from_invite.user_id if from_invite is not None else 0,

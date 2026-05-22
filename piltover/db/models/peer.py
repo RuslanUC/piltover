@@ -371,8 +371,8 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
 
     def q_this_or_channel(self) -> Q:
         if self.type is PeerType.CHANNEL:
-            return Q(peer__owner=None, peer__channel_id=self.channel_id)
-        return Q(peer=self)
+            return Q(peer_id=self.channel_peer_id)
+        return Q(peer_id=self.id)
 
     def __repr__(self) -> str:
         if self.type in (PeerType.SELF, PeerType.USER):

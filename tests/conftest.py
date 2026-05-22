@@ -17,7 +17,7 @@ from pyrogram.types import Chat
 from pyrogram.utils import get_channel_id
 from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
-from tortoise import connections
+from tortoise import connections, Model
 from tortoise.backends.sqlite import SqliteClient
 
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
@@ -403,7 +403,7 @@ async def test_channel(faker: Faker) -> ChannelFactory:
         owner = await User.get(phone_number=client.phone_number).only("id")
         owner.bot = False
         channel, peer_channel = await _create_channel(owner.id, name, "", not supergroup, supergroup)
-        await _add_user_to_channel(channel, owner.id)
+        await _add_user_to_channel(channel, peer_channel, owner.id)
 
         if create_service_message:
             await send_message_internal(
@@ -421,7 +421,7 @@ async def test_channel(faker: Faker) -> ChannelFactory:
 async def channel_with_clients(
         client_with_auth: ClientFactory, test_channel: ChannelFactory,
 ) -> ChannelWithClientsFactory:
-    from piltover.db.models import User, Channel
+    from piltover.db.models import User, Channel, Peer
     from piltover.app.handlers.channels import _add_user_to_channel
 
     async def _create_clients_and_channel(
@@ -431,13 +431,14 @@ async def channel_with_clients(
         owner = await client_with_auth(owner_phone, run=clients_run)
         channel_id = await test_channel(owner, supergroup, name, create_service_message)
         channel = await Channel.get(id=Channel.norm_id(channel_id))
+        channel_peer = await Peer.get(owner_id__isnull=True, channel_id=channel.id)
 
         clients = [owner]
 
         for _ in range(num_clients - 1):
             client = await client_with_auth(run=clients_run)
             user = await User.get(phone_number=client.phone_number)
-            await _add_user_to_channel(channel, user.id)
+            await _add_user_to_channel(channel, channel_peer, user.id)
             clients.append(client)
 
         if resolve_channel:

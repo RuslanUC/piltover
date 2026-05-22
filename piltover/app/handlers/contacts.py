@@ -54,7 +54,13 @@ async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPee
     elif resolved.user is not None:
         peer, _ = await Peer.get_or_create(owner_id=user_id, user=resolved.user, type=PeerType.USER)
     elif resolved.channel is not None:
-        peer, _ = await Peer.get_or_create(owner_id=user_id, channel=resolved.channel, type=PeerType.CHANNEL)
+        channel_peer = await Peer.get(owner_id__isnull=True, channel_id=resolved.channel_id).only("id")
+        peer, _ = await Peer.get_or_create(
+            owner_id=user_id,
+            channel=resolved.channel,
+            type=PeerType.CHANNEL,
+            channel_peer_id=channel_peer.id,
+        )
     else:  # pragma: no cover
         raise Unreachable
 
@@ -160,16 +166,32 @@ async def contacts_search(request: Search, user_id: int) -> Found:
         else:
             del channels_by_id[existing_peer.channel_id]
 
-    await Peer.bulk_create([
-        *(
-            Peer(owner_id=user_id, type=PeerType.USER, user=result_user)
-            for result_user in users_by_id.values()
-        ),
-        *(
-            Peer(owner_id=user_id, type=PeerType.CHANNEL, channel=result_channel)
-            for result_channel in channels_by_id.values()
-        ),
-    ])
+    if channels_by_id:
+        internal_channel_peers = {
+            peer.channel_id: peer.id
+            for peer in await Peer.filter(
+                owner_id__isnull=True, channel_id__in=list(channels_by_id.keys()),
+            ).only("id", "channel_id")
+        }
+    else:
+        internal_channel_peers = {}
+
+    if users_by_id and channels_by_id:
+        await Peer.bulk_create([
+            *(
+                Peer(owner_id=user_id, type=PeerType.USER, user=result_user)
+                for result_user in users_by_id.values()
+            ),
+            *(
+                Peer(
+                    owner_id=user_id,
+                    type=PeerType.CHANNEL,
+                    channel=result_channel,
+                    channel_peer_id=internal_channel_peers[result_channel.id],
+                )
+                for result_channel in channels_by_id.values()
+            ),
+        ])
 
     return Found(
         my_results=[],

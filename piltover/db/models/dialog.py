@@ -43,23 +43,16 @@ class Dialog(Model):
             return models.MessageRef.filter(id=0)
 
         peer_ids = []
-        channel_ids = []
         for dialog in dialogs:
-            if dialog.peer.type is PeerType.CHANNEL:
-                channel_ids.append(dialog.peer.channel_id)
+            if models.Peer.is_channel(dialog.peer):
+                peer_ids.append(dialog.peer.channel_peer_id)
             else:
                 peer_ids.append(dialog.peer_id)
-
-        peers_subquery_q = Q()
-        if peer_ids:
-            peers_subquery_q |= Q(peer_id__in=peer_ids)
-        if channel_ids:
-            peers_subquery_q |= Q(peer__owner=None, peer__channel_id__in=channel_ids)
 
         return models.MessageRef.filter(
             id__in=Subquery(
                 models.MessageRef.filter(
-                    peers_subquery_q
+                    Q(peer_id__in=peer_ids)
                 ).group_by("peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(

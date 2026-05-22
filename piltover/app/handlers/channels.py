@@ -145,11 +145,13 @@ async def _create_channel(
     return channel, peer_channel
 
 
-async def _add_user_to_channel(channel: Channel, user_id: int) -> ChatParticipant:
+async def _add_user_to_channel(channel: Channel, peer_channel: Peer, user_id: int) -> ChatParticipant:
     user_is_creator = channel.creator_id == user_id
 
     peer_for_user: Peer
-    peer_for_user, _ = await Peer.get_or_create(owner_id=user_id, channel=channel, type=PeerType.CHANNEL)
+    peer_for_user, _ = await Peer.get_or_create(
+        owner_id=user_id, channel=channel, type=PeerType.CHANNEL, channel_peer_id=peer_channel.id,
+    )
     participant, _ = await ChatParticipant.update_or_create(
         channel=channel,
         user_id=user_id,
@@ -183,7 +185,7 @@ async def create_channel(request: CreateChannel, user_id: int) -> Updates:
 
     async with in_transaction():
         channel, peer_channel = await _create_channel(user_id, title, description, request.broadcast, request.megagroup)
-        await _add_user_to_channel(channel, user_id)
+        await _add_user_to_channel(channel, peer_channel, user_id)
 
     user = await User.get(id=user_id).only("id")
     user.bot = False
@@ -339,8 +341,16 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
         linked_chat = channel.discussion_channel
 
     if linked_chat is not None:
+        linked_chat_peer = await Peer.get(owner_id__isnull=True, channel_id=linked_chat.id).only("id")
         await Peer.bulk_create(
-            [Peer(owner_id=user_id, type=PeerType.CHANNEL, channel=linked_chat)],
+            [
+                Peer(
+                    owner_id=user_id,
+                    type=PeerType.CHANNEL,
+                    channel=linked_chat,
+                    channel_peer_id=linked_chat_peer.id,
+                )
+            ],
             ignore_conflicts=True,
         )
         channels_to_tl.append(linked_chat)
@@ -912,9 +922,11 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
 
 @handler.on_request(InviteToChannel, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUsers:
-    channel = await Channel.get_from_input(user_id, request.channel)
-    if channel is None:
+    peer_type, peer_channel_id = Peer.type_and_id_from_input_raise(user_id, request.channel, "CHANNEL_PRIVATE")
+    if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+    peer_with_channel = await Peer.get(owner_id__isnull=True, channel_id=peer_channel_id).select_related("channel")
+    channel = cast(Channel, peer_with_channel.channel)
 
     participant = await channel.get_participant_raise(user_id)
     if not channel.user_has_permission(participant, ChatBannedRights.INVITE_USERS) and \
@@ -956,7 +968,12 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
             raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
         added_user_ids.append(peer_user_id)
-        peers_to_create.append(Peer(owner_id=peer_user_id, channel=channel, type=PeerType.CHANNEL))
+        peers_to_create.append(Peer(
+            owner_id=peer_user_id,
+            channel=channel,
+            type=PeerType.CHANNEL,
+            channel_peer_id=peer_with_channel.id,
+        ))
         if existing_participant is None:
             participants_to_create.append(ChatParticipant(
                 user_id=peer_user_id, channel=channel, chat_channel_id=channel.make_id(), inviter_id=user_id,

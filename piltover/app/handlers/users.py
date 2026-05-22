@@ -107,8 +107,16 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
         personal_channel_msg_id = None
 
     if personal_channel is not None:
+        personal_channel_peer = await Peer.get(owner_id__isnull=True, channel_id=personal_channel.id).only("id")
         await Peer.bulk_create(
-            [Peer(owner_id=user_id, type=PeerType.CHANNEL, channel_id=personal_channel.id)],
+            [
+                Peer(
+                    owner_id=user_id,
+                    type=PeerType.CHANNEL,
+                    channel_id=personal_channel.id,
+                    channel_peer_id=personal_channel_peer.id,
+                )
+            ],
             ignore_conflicts=True,
         )
 

@@ -558,11 +558,18 @@ async def migrate_chat(request: MigrateChat, user_id: int) -> Updates:
             photo=chat.photo,
         )
 
-        peers_to_create: list[PeerChannelAnyT] = [Peer(owner=None, type=PeerType.CHANNEL, channel=channel)]
+        channel_peer = await Peer.create(owner=None, type=PeerType.CHANNEL, channel=channel)
+
+        peers_to_create: list[PeerChannelAnyT] = []
         participants_to_create = []
 
         for participant in participants:
-            peers_to_create.append(Peer(owner_id=participant.user_id, type=PeerType.CHANNEL, channel=channel))
+            peers_to_create.append(Peer(
+                owner_id=participant.user_id,
+                type=PeerType.CHANNEL,
+                channel=channel,
+                channel_peer_id=channel_peer.id,
+            ))
             if chat.creator_id == participant.user_id:
                 admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
             else:
