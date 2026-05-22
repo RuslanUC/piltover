@@ -245,40 +245,41 @@ async def get_dialogs(request: GetDialogs, user_id: int) -> Dialogs | DialogsSli
 
 @handler.on_request(GetPeerDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_peer_dialogs(request: GetPeerDialogs, user_id: int) -> PeerDialogs:
-    auth_id = cast(int, request_ctx.get().auth_id)
-    query = Q(peer__owner_id=user_id)
-
-    peers_query = None
+    peer_user_ids = set()
+    peer_chat_ids = set()
+    peer_channel_ids = set()
     for peer_dialog in request.peers:
         if not isinstance(peer_dialog, InputDialogPeer):
             continue
 
-        peer = peer_dialog.peer
-
-        # TODO: use Peer.type_and_id_from_input
-        if isinstance(peer, InputPeerSelf):
-            add_to_query = Q(peer__type=PeerType.SELF, peer__user=None)
-        elif isinstance(peer, InputPeerUser):
-            if not User.check_access_hash(user_id, auth_id, peer.user_id, peer.access_hash):
-                continue
-            add_to_query = Q(peer__type=PeerType.USER, peer__user_id=peer.user_id)
-        elif isinstance(peer, InputPeerChat):
-            add_to_query = Q(peer__type=PeerType.CHAT, peer__chat_id=Chat.norm_id(peer.chat_id))
-        elif isinstance(peer, InputPeerChannel):
-            channel_id = Channel.norm_id(peer.channel_id)
-            if not Channel.check_access_hash(user_id, auth_id, channel_id, peer.access_hash):
-                continue
-            add_to_query = Q(peer__type=PeerType.CHANNEL, peer__channel_id=channel_id)
-        else:
+        peer_info = Peer.type_and_id_from_input(user_id, peer_dialog.peer)
+        if peer_info is None:
             continue
 
-        peers_query = add_to_query if peers_query is None else peers_query | add_to_query
+        peer_type, peer_target_id = peer_info
+        if peer_type in (PeerType.SELF, PeerType.USER):
+            peer_user_ids.add(peer_target_id)
+        elif peer_type is PeerType.CHAT:
+            peer_chat_ids.add(peer_target_id)
+        elif peer_type is PeerType.CHANNEL:
+            peer_channel_ids.add(peer_target_id)
+        else:
+            raise Unreachable
 
-    if peers_query is None:
+    if not peer_user_ids and not peer_chat_ids and not peer_channel_ids:
         return PeerDialogs(dialogs=[], messages=[], chats=[], users=[], state=await get_state_internal(user_id))
 
-    query &= peers_query
-    dialogs = await Dialog.filter(query).select_related("peer", "peer__user", "peer__chat")
+    peers_query = Q()
+    if peer_user_ids:
+        peers_query |= Q(peer__user_id__in=peer_user_ids)
+    if peer_chat_ids:
+        peers_query |= Q(peer__chat_id__in=peer_chat_ids)
+    if peer_channel_ids:
+        peers_query |= Q(peer__channel_id__in=peer_channel_ids)
+
+    dialogs = await Dialog.filter(
+        peers_query, peer__owner_id=user_id
+    ).select_related("peer", "peer__user", "peer__chat")
 
     dialogs_tl = await format_dialogs(Dialog, Dialogs, DialogsSlice, user_id, dialogs)
     return PeerDialogs(

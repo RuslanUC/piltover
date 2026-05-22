@@ -70,13 +70,14 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
 
-    await UserAuthorization.filter(key_id=session.auth_data.perm_auth_key_id).update(
-        active_at=datetime.now(UTC),
-        device_model=request.obj.device_model,
-        system_version=request.obj.system_version,
-        app_version=request.obj.app_version,
-        ip=client.peername[0],
-    )
+    if session.auth_id:
+        await UserAuthorization.filter(key_id=session.auth_id).update(
+            active_at=datetime.now(UTC),
+            device_model=request.obj.device_model,
+            system_version=request.obj.system_version,
+            app_version=request.obj.app_version,
+            ip=client.peername[0],
+        )
 
     if not session.no_updates:
         ...  # TODO: subscribe user to updates manually

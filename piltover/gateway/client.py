@@ -146,9 +146,6 @@ class Client:
         ))
 
     async def _kiq(self, obj: TLObject, session: Session, message_id: int | None = None) -> AsyncTaskiqTask:
-        with measure_time("session.refresh_auth_maybe()"):
-            await session.refresh_auth_maybe()
-
         # TODO: dont do .write.hex(), RpcResponse somehow doesn't need encoding it manually, check how exactly
         call_rpc = CallRpc(
             obj=obj,
@@ -180,6 +177,9 @@ class Client:
             logger.opt(exception=e).warning(f"Error while processing {obj.tlname()}")
 
     async def handle_encrypted_message(self, req_message: Message, session: Session) -> None:
+        with measure_time("session.refresh_auth_maybe()"):
+            await session.refresh_auth_maybe()
+
         if isinstance(req_message.obj, MsgContainer):
             await asyncio.gather(*[
                 self.propagate(msg, session)
@@ -435,6 +435,7 @@ class Client:
             raise Disconnection(result.transport_error or None)
         if result.refresh_auth:
             await session.refresh_auth_maybe(True)
+            await session.fetch_layer()
 
         return result.obj
 
