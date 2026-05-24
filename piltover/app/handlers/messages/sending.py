@@ -110,7 +110,7 @@ async def send_created_messages_internal(
             await MessageMention.bulk_create(unread_mentions_to_create)
 
     if clear_draft and ctx is not None:
-        await ctx.worker.call_internal(ClearDraft(peer_id=peer.id))
+        await ctx.worker.call_internal(ClearDraft(user_id=user.id, peer_id=peer.id))
 
     ttl_tasks = []
     for message_ref in messages.values():
@@ -273,7 +273,7 @@ async def send_message_internal(
 
     updates = await send_created_messages_internal(messages, opposite, peer, user, clear_draft, mentioned_user_ids)
 
-    _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(peer, True, True, True)
+    _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True, True)
     if not unread_count:
         if peer.type is PeerType.CHANNEL:
             message = next(iter(messages.values()))
@@ -1093,7 +1093,7 @@ async def save_draft(request: SaveDraft, user_id: int) -> bool:
         reply_to = await MessageRef.get_or_none(peer.q_this_or_channel(), id=reply_to_message_id)
 
     if not request.message and reply_to is None:
-        if await MessageDraft.filter(peer=peer).delete():
+        if await MessageDraft.filter(user_id=user_id, peer=peer).delete():
             await upd.update_draft(user_id, peer, None)
         return True
 
@@ -1101,8 +1101,9 @@ async def save_draft(request: SaveDraft, user_id: int) -> bool:
 
     # TODO: media
 
-    await Dialog.create_or_unhide(peer)
+    await Dialog.create_or_unhide(user_id, await peer.channel_peer if peer.type is PeerType.CHANNEL else peer)
     draft, _ = await MessageDraft.update_or_create(
+        user_id=user_id,
         peer=peer,
         defaults={
             "message": request.message,
@@ -1288,7 +1289,7 @@ async def forward_messages(
     await Dialog.create_or_unhide_bulk(peers)
 
     if to_peer.type is PeerType.SELF:
-        await SavedDialog.get_or_create(peer=from_peer)
+        await SavedDialog.get_or_create(owner_id=to_peer.owner_id, peer=from_peer)
 
     if to_peer.type is PeerType.CHANNEL:
         if len(result) != 1:
@@ -1493,7 +1494,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
 
     if not offset_id:
         # TODO: delete for other users if request.revoke
-        await Dialog.filter(peer=peer).update(visible=False)
+        await Dialog.filter(owner_id=user_id, peer=peer).update(visible=False)
         if peer.type == PeerType.CHAT:
             await ChatParticipant.filter(chat=peer.chat, user_id=user_id).delete()
             await peer.delete()
@@ -1505,7 +1506,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
 @handler.on_request(ClearAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def clear_all_drafts(user_id: int) -> bool:
     peers: list[Peer] = await Peer.filter(owner_id=user_id, messagedrafts__id__not_isnull=True).limit(500)
-    await MessageDraft.filter(peer_id__in=[peer.id for peer in peers]).delete()
+    await MessageDraft.filter(user_id=user_id, peer_id__in=[peer.id for peer in peers]).delete()
     await upd.update_drafts(user_id, peers, SingleElementList(None, len(peers)))
 
     return True

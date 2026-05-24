@@ -116,7 +116,7 @@ class Update(Model):
 
             case UpdateType.DIALOG_PIN_REORDER:
                 dialogs = await models.Dialog.filter(
-                    peer__owner_id=user_id, pinned_index__not_isnull=True, visible=True,
+                    owner_id=user_id, pinned_index__not_isnull=True, visible=True,
                 ).select_related("peer")
 
                 for dialog in dialogs:
@@ -299,8 +299,8 @@ class Update(Model):
                 folder_peers = []
 
                 dialog: models.Dialog
-                async for dialog in models.Dialog.filter(
-                        peer_id__in=self.related_ids, visible=True,
+                for dialog in await models.Dialog.filter(
+                        owner_id=user_id, peer_id__in=self.related_ids, visible=True,
                 ).select_related("peer"):
                     folder_peers.append(FolderPeer(peer=dialog.peer.to_tl(), folder_id=dialog.folder_id.value))
                     ucc.add_peer(dialog.peer)
@@ -541,7 +541,7 @@ class Update(Model):
 
             case UpdateType.SAVED_DIALOG_PIN:
                 saved_dialog = await models.SavedDialog.get_or_none(
-                    peer__owner_id=user_id, peer_id=self.related_id,
+                    owner_id=user_id, peer_id=self.related_id,
                 ).select_related("peer")
                 if saved_dialog is None:
                     return None
@@ -555,7 +555,7 @@ class Update(Model):
 
             case UpdateType.SAVED_DIALOG_PIN_REORDER:
                 dialogs = await models.SavedDialog.filter(
-                    peer__owner_id=user_id, pinned_index__not_isnull=True,
+                    owner_id=user_id, pinned_index__not_isnull=True,
                 ).select_related("peer")
 
                 for dialog in dialogs:

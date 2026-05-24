@@ -251,4 +251,4 @@ internal.delete_scheduled_message#acd1c8f0 message_id:long = Bool;
 internal.create_discussion_thread#6bdac34b message_id:long = Bool;
 internal.process_message_to_builtin_bot#820fd380 messageref_id:long = Bool;
 internal.update_status_for_peers#ed609074 peer_type:int peer_owner:long peer_user:long peer_chat:long = Bool;
-internal.clear_draft#b8b19f5d peer_id:long = Bool;
+internal.clear_draft#b8b19f5d user_id:long peer_id:long = Bool;

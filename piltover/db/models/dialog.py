@@ -26,12 +26,19 @@ class Dialog(Model):
     folder_id: DialogFolderId = fields.IntEnumField(DialogFolderId, default=DialogFolderId.ALL, description="")
     visible: bool = fields.BooleanField(default=True)
 
-    peer: models.Peer = fields.OneToOneField("models.Peer")
+    owner: models.User = fields.ForeignKeyField("models.User")
+    peer: models.Peer = fields.ForeignKeyField("models.Peer")
 
+    owner_id: int
     peer_id: int
 
+    class Meta:
+        unique_together = (
+            ("owner_id", "peer_id"),
+        )
+
     def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef | None]:
-        return models.MessageRef.filter(self.peer.q_this_or_channel()).select_related(
+        return models.MessageRef.filter(peer_id=self.peer_id).select_related(
             *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
         ).order_by("-id").first()
 
@@ -42,17 +49,10 @@ class Dialog(Model):
         if not dialogs:
             return models.MessageRef.filter(id=0)
 
-        peer_ids = []
-        for dialog in dialogs:
-            if models.Peer.is_channel(dialog.peer):
-                peer_ids.append(dialog.peer.channel_peer_id)
-            else:
-                peer_ids.append(dialog.peer_id)
-
         return models.MessageRef.filter(
             id__in=Subquery(
                 models.MessageRef.filter(
-                    Q(peer_id__in=peer_ids)
+                    peer_id__in=[dialog.peer_id for dialog in dialogs]
                 ).group_by("peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
@@ -73,14 +73,14 @@ class Dialog(Model):
 
     async def to_tl(self, pts: int | None = None) -> TLDialog:
         in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = \
-            await models.ReadState.get_in_out_ids_and_unread(self.peer)
+            await models.ReadState.get_in_out_ids_and_unread(self.owner_id, self.peer)
 
         logger.trace(
-            f"Max read outbox message id is {out_read_max_id} for peer {self.peer.id} for user {self.peer.owner_id}"
+            f"Max read outbox message id is {out_read_max_id} for peer {self.peer_id} for user {self.owner_id}"
         )
 
         top_message = await self.top_message_query(False).values_list("id", flat=True)
-        draft = await models.MessageDraft.get_or_none(peer=self.peer)
+        draft = await models.MessageDraft.get_or_none(user_id=self.owner_id, peer_id=self.peer_id)
         draft = draft.to_tl() if draft else None
 
         return TLDialog(
@@ -109,11 +109,13 @@ class Dialog(Model):
         if not dialogs:
             return []
 
-        user_id = next(iter(dialogs)).peer.owner_id
+        user_id = next(iter(dialogs)).owner_id
 
         drafts = {
             draft.peer_id: draft
-            for draft in await models.MessageDraft.filter(peer_id__in=[dialog.peer_id for dialog in dialogs])
+            for draft in await models.MessageDraft.filter(
+                user_id=user_id, peer_id__in=[dialog.peer_id for dialog in dialogs]
+            )
         }
 
         read_states = await models.ReadState.get_in_out_ids_and_unread_bulk(
@@ -154,23 +156,25 @@ class Dialog(Model):
         return tl
 
     @classmethod
-    async def create_or_unhide(cls, peer: models.Peer) -> Dialog:
-        dialog, _ = await cls.update_or_create(peer=peer, defaults={"visible": True})
+    async def create_or_unhide(cls, user_id: int, peer: models.Peer) -> Dialog:
+        dialog, _ = await cls.update_or_create(owner_id=user_id, peer=peer, defaults={"visible": True})
         return dialog
 
     @classmethod
-    async def hide(cls, peer: models.Peer) -> Dialog:
-        dialog, _ = await cls.update_or_create(peer=peer, defaults={"visible": False})
+    async def hide(cls, user_id: int, peer: models.Peer) -> Dialog:
+        dialog, _ = await cls.update_or_create(owner_id=user_id, peer=peer, defaults={"visible": False})
         return dialog
 
     @classmethod
-    async def get_or_create_hidden(cls, peer: models.Peer) -> Dialog:
-        dialog, _ = await cls.get_or_create(peer=peer, defaults={"visible": False})
+    async def get_or_create_hidden(cls, user_id: int, peer: models.Peer) -> Dialog:
+        dialog, _ = await cls.get_or_create(owner_id=user_id, peer=peer, defaults={"visible": False})
         return dialog
 
     @classmethod
     async def create_or_unhide_bulk(cls, peers: Iterable[models.Peer]) -> None:
         valid_peers = [peer for peer in peers if peer.owner_id is not None]
+        peer_owner_ids = [peer.owner_id for peer in valid_peers]
+        peer_ids = [peer.id for peer in valid_peers]
 
         if not valid_peers:
             return
@@ -178,10 +182,14 @@ class Dialog(Model):
         async with in_transaction():
             existing = {
                 dialog.peer_id: dialog
-                for dialog in await cls.select_for_update().filter(peer_id__in=[peer.id for peer in valid_peers])
+                for dialog in await cls.select_for_update().filter(owner_id__in=peer_owner_ids, peer_id__in=peer_ids)
             }
 
-            to_create = [cls(peer=peer, visible=True) for peer in valid_peers if peer.id not in existing]
+            to_create = [
+                cls(owner_id=peer.owner_id, peer=peer, visible=True)
+                for peer in valid_peers
+                if peer.id not in existing
+            ]
             to_update = [dialog for dialog in existing.values() if not dialog.visible]
             for dialog in to_update:
                 dialog.visible = True
@@ -206,7 +214,7 @@ class Dialog(Model):
         else:
             raise Unreachable
 
-        return Dialog.filter(peer_q, peer__owner_id=user_id, visible=True)
+        return Dialog.filter(peer_q, owner_id=user_id, visible=True)
 
     @classmethod
     def get_from_input_peer_many(
@@ -238,6 +246,6 @@ class Dialog(Model):
                 peer__channel_id__in=peer_channel_ids,
                 join_type=Q.OR
             )
-            return Dialog.filter(peers_q, peer__owner_id=user_id, visible=True)
+            return Dialog.filter(peers_q, owner_id=user_id, visible=True)
 
         return EmptyQuerySet(cls)

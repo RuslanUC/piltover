@@ -2030,11 +2030,11 @@ async def pin_saved_dialog(user_id: int, dialog: SavedDialog) -> None:
     await SessionManager.send(updates, user_id)
 
 
-async def reorder_pinned_saved_dialogs(user: User, dialogs: list[SavedDialog]) -> None:
-    new_pts = await State.add_pts(user, 1)
+async def reorder_pinned_saved_dialogs(user_id: int, dialogs: list[SavedDialog]) -> None:
+    new_pts = await State.add_pts(user_id, 1)
 
     await Update.create(
-        user=user,
+        user_id=user_id,
         update_type=UpdateType.SAVED_DIALOG_PIN_REORDER,
         pts=new_pts,
         related_id=None,
@@ -2049,15 +2049,12 @@ async def reorder_pinned_saved_dialogs(user: User, dialogs: list[SavedDialog]) -
                 ],
             )
         ],
-        users=[
-            await user.to_tl(),
-            *await User.to_tl_bulk([dialog.peer.user for dialog in dialogs if dialog.peer.type is PeerType.USER]),
-        ],
+        users=await User.to_tl_bulk([dialog.peer.user for dialog in dialogs if dialog.peer.type is PeerType.USER]),
         # TODO: chats and channels
         chats=[],
     )
 
-    await SessionManager.send(updates, user.id)
+    await SessionManager.send(updates, user_id)
 
 
 async def update_privacy(user: User, rule: PrivacyRule, rules: PrivacyRules) -> Updates:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from tortoise import fields, Model
 from tortoise.expressions import Subquery
 from tortoise.functions import Max
@@ -14,13 +16,20 @@ from piltover.tl.types import SavedDialog as TLSavedDialog
 class SavedDialog(Model):
     id: int = fields.BigIntField(primary_key=True)
     pinned_index: int | None = fields.SmallIntField(null=True, default=None)
-    peer: models.Peer = fields.OneToOneField("models.Peer")
+    owner: models.User = fields.ForeignKeyField("models.User")
+    peer: models.Peer = fields.ForeignKeyField("models.Peer")
 
+    owner_id: int
     peer_id: int
+
+    class Meta:
+        unique_together = (
+            ("owner_id", "peer_id"),
+        )
 
     def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef | None]:
         query = models.MessageRef.filter(
-            peer__owner_id=self.peer.owner_id, peer__type=PeerType.SELF, content__fwd_header__saved_peer=self.peer,
+            peer__owner_id=self.owner_id, peer__user_id=self.owner_id, content__fwd_header__saved_peer=self.peer,
         ).order_by("-id").first()
         if prefetch:
             return query.select_related(*models.MessageRef.PREFETCH_FIELDS)
@@ -34,7 +43,8 @@ class SavedDialog(Model):
         return models.MessageRef.filter(
             id__in=Subquery(
                 models.MessageRef.filter(
-                    peer__owner_id=user_id, peer__type=PeerType.SELF, content__fwd_header__saved_peer_id__in=peer_ids,
+                    peer__owner_id=user_id, peer__user_id=user_id,
+                    content__fwd_header__saved_peer_id__in=peer_ids,
                 ).group_by("content__fwd_header__saved_peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
@@ -54,12 +64,15 @@ class SavedDialog(Model):
         return self.peer.type, peer_id
 
     async def to_tl(self) -> TLSavedDialog:
-        top_message_id = await self.top_message_query(False).values_list("id", flat=True) or 0
+        top_message_id = cast(
+            int | None,
+            cast(object, await self.top_message_query(False).values_list("id", flat=True))
+        )
 
         return TLSavedDialog(
             pinned=False,
             peer=self.peer.to_tl(),
-            top_message=top_message_id,
+            top_message=top_message_id or 0,
         )
 
     @classmethod

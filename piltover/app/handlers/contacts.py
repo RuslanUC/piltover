@@ -49,22 +49,23 @@ async def get_contacts(user_id: int):
 
 async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPeer:
     peer: Peer
+    channel_peer: Peer | None = None
     if resolved.user_id == user_id:
         peer = await Peer.get(owner_id=user_id, user_id=user_id, type=PeerType.SELF)
     elif resolved.user is not None:
         peer, _ = await Peer.get_or_create(owner_id=user_id, user=resolved.user, type=PeerType.USER)
     elif resolved.channel is not None:
-        channel_peer = await Peer.get(owner_id__isnull=True, channel_id=resolved.channel_id).only("id")
+        channel_peer = await Peer.get(owner_id__isnull=True, channel_id=resolved.channel_id)
         peer, _ = await Peer.get_or_create(
             owner_id=user_id,
             channel=resolved.channel,
             type=PeerType.CHANNEL,
-            channel_peer_id=channel_peer.id,
+            channel_peer=channel_peer,
         )
     else:  # pragma: no cover
         raise Unreachable
 
-    await Dialog.get_or_create_hidden(peer)
+    await Dialog.get_or_create_hidden(user_id, channel_peer if channel_peer is not None else peer)
 
     return ResolvedPeer(
         peer=peer.to_tl(),

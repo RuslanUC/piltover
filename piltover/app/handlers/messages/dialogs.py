@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
 from typing import cast, TypeVar, overload, Literal
 
+from loguru import logger
 from tortoise.expressions import Q
 from tortoise.functions import Max
 from tortoise.queryset import QuerySet
@@ -163,7 +164,7 @@ async def get_dialogs_internal(
 
     prefix = f"{model._meta.db_table}s"
 
-    query_filters: dict = {f"{prefix}__peer__owner_id": user_id}
+    query_filters: dict = {f"{prefix}__owner_id": user_id}
     query = Q(**query_filters)
 
     if offset_peer is not None:
@@ -174,28 +175,34 @@ async def get_dialogs_internal(
         except ErrorRpc:
             pass
         else:
-            offset_peer_id_query: QuerySet[Peer] = Peer.filter(owner_id=user_id)
+            offset_peer_id_query: QuerySet[Peer] = Peer.filter()
             if offset_peer_type in (PeerType.SELF, PeerType.USER):
-                peer_message_id_query = MessageRef.filter(peer__owner_id=user_id, peer__user_id=offset_peer_id)
                 offset_peer_id_query = offset_peer_id_query.filter(user_id=offset_peer_id)
             elif offset_peer_type is PeerType.CHAT:
-                peer_message_id_query = MessageRef.filter(peer__owner_id=user_id, peer__chat_id=offset_peer_id)
                 offset_peer_id_query = offset_peer_id_query.filter(chat_id=offset_peer_id)
             elif offset_peer_type is PeerType.CHANNEL:
-                peer_message_id_query = MessageRef.filter(peer__owner_id__isnull=True, peer__channel_id=offset_peer_id)
                 offset_peer_id_query = offset_peer_id_query.filter(channel_id=offset_peer_id)
             else:
                 raise Unreachable
-            peer_message_id = cast(
-                int | None, cast(
-                    object, await peer_message_id_query.order_by("-id").first().values_list("id", flat=True)
-                )
-            )
+            if offset_peer_type is PeerType.CHANNEL:
+                offset_peer_id_query = offset_peer_id_query.filter(owner_id__isnull=True)
+            else:
+                offset_peer_id_query = offset_peer_id_query.filter(owner_id=user_id)
             offset_peer_id_filt = cast(
                 int | None, cast(
                     object, await offset_peer_id_query.first().values_list("id", flat=True)
                 )
             )
+            if offset_peer_id_filt is None:
+                peer_message_id = None
+            else:
+                peer_message_id = cast(
+                    int | None, cast(
+                        object, await MessageRef.filter(
+                            peer_id=offset_peer_id_filt
+                        ).order_by("-id").first().values_list("id", flat=True)
+                    )
+                )
 
         if peer_message_id is None:
             offset_id = 0
@@ -223,7 +230,7 @@ async def get_dialogs_internal(
     #  Dialogs.annotate(last_message_id=Subquery(Message.filter(peer=F("peer")).order_by("-id").first().values_list("id", flat=True)))
     peers_with_dialogs_query: QuerySet[Peer] = Peer.annotate(last_message_id=Max("messagerefs__id"), **date_annotation)\
         .filter(query).limit(limit).order_by("-last_message_id", "-id")\
-        .select_related("user", "chat", prefix)
+        .select_related(prefix)
 
     dialogs: list[DialogT] = []
 
@@ -278,8 +285,8 @@ async def get_peer_dialogs(request: GetPeerDialogs, user_id: int) -> PeerDialogs
         peers_query |= Q(peer__channel_id__in=peer_channel_ids)
 
     dialogs = await Dialog.filter(
-        peers_query, peer__owner_id=user_id
-    ).select_related("peer", "peer__user", "peer__chat")
+        peers_query, owner_id=user_id
+    ).select_related("peer")
 
     dialogs_tl = await format_dialogs(Dialog, Dialogs, DialogsSlice, user_id, dialogs)
     return PeerDialogs(
@@ -294,8 +301,8 @@ async def get_peer_dialogs(request: GetPeerDialogs, user_id: int) -> PeerDialogs
 @handler.on_request(GetPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_pinned_dialogs(request: GetPinnedDialogs, user_id: int) -> PeerDialogs:
     dialogs = await Dialog.filter(
-        peer__owner_id=user_id, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True
-    ).select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
+        owner_id=user_id, pinned_index__not_isnull=True, folder_id=DialogFolderId(request.folder_id), visible=True,
+    ).select_related("peer").order_by("-pinned_index")
 
     dialogs_tl = await format_dialogs(Dialog, Dialogs, DialogsSlice, user_id, dialogs)
     return PeerDialogs(
@@ -327,7 +334,7 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user_id: int):
             cast(
                 object,
                 await Dialog.filter(
-                    peer__owner=user_id, folder_id=dialog.folder_id, visible=True,
+                    owner=user_id, folder_id=dialog.folder_id, visible=True,
                 ).annotate(max_pinned_index=Max("pinned_index")).first().values_list("max_pinned_index", flat=True)
             )
         )
@@ -347,7 +354,7 @@ async def toggle_dialog_pin(request: ToggleDialogPin, user_id: int):
 @handler.on_request(ReorderPinnedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def reorder_pinned_dialogs(request: ReorderPinnedDialogs, user_id: int):
     base_dialog_query = Dialog.filter(
-        peer__owner_id=user_id, folder_id=DialogFolderId(request.folder_id), visible=True,
+        owner_id=user_id, folder_id=DialogFolderId(request.folder_id), visible=True,
     ).select_related("peer")
 
     pinned_now = {
@@ -427,7 +434,9 @@ async def mark_dialog_unread(request: MarkDialogUnread, user_id: int) -> bool:
 
 @handler.on_request(GetDialogUnreadMarks, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_dialog_unread_marks(user_id: int) -> TLObjectVector[TLDialogPeerBase]:
-    peers: list[PeerOwnedT] = await Peer.filter(owner_id=user_id, dialogs__unread_mark=True, dialogs__visible=True)
+    peers: list[PeerOwnedT] = await Peer.filter(
+        dialogs__owner_id=user_id, dialogs__unread_mark=True, dialogs__visible=True,
+    )
 
     return TLObjectVector([
         DialogPeer(peer=peer.to_tl())

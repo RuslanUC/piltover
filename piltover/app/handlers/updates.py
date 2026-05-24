@@ -203,7 +203,9 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
     ) or 0
 
     if server_pts > (request.pts + request.limit):
-        dialog, _ = await Dialog.get_or_create(peer=peer, defaults={"visible": False})
+        dialog, _ = await Dialog.get_or_create(
+            owner_id=user_id, peer_id=peer.channel_peer_id, defaults={"visible": False}
+        )
         last_message = await MessageRef.filter(peer__owner=None, peer__channel_id=peer.channel_id).select_related(
             *MessageRef.PREFETCH_MAYBECACHED,
         ).order_by("-id").first()

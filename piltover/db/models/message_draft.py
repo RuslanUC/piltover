@@ -13,15 +13,20 @@ class MessageDraft(Model):
     id: int = fields.BigIntField(primary_key=True)
     message: str = fields.TextField()
     date: datetime = fields.DatetimeField(auto_now_add=True)
-    peer: models.Peer = fields.OneToOneField("models.Peer")
+    user: models.User = fields.ForeignKeyField("models.User")
+    peer: models.Peer = fields.ForeignKeyField("models.Peer")
     reply_to: models.MessageRef | None = NullableFKSetNull("models.MessageRef")
     no_webpage: bool = fields.BooleanField(default=False)
     invert_media: bool = fields.BooleanField(default=False)
     # TODO: use tl for entities
     entities: list[dict] | None = fields.JSONField(null=True, default=None)
 
+    user_id: int
     peer_id: int
     reply_to_id: int | None
+
+    # TODO: add unique index for user-peer
+    # TODO: add index for user-date
 
     def to_tl(self) -> DraftMessage:
         entities = []

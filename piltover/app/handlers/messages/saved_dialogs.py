@@ -30,7 +30,7 @@ async def get_saved_dialogs(request: GetSavedDialogs, user_id: int) -> SavedDial
 
 @handler.on_request(GetSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages | MessagesSlice:
-    self_peer: PeerSelfT = await Peer.get(owner_id=user_id, type=PeerType.SELF)
+    self_peer: PeerSelfT = await Peer.get(owner_id=user_id, user_id=user_id)
 
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
@@ -47,7 +47,7 @@ async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages 
 
 @handler.on_request(DeleteSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_saved_history(request: DeleteSavedHistory, user_id: int) -> AffectedHistory:
-    self_peer: PeerSelfT = await Peer.get(owner_id=user_id, type=PeerType.SELF)
+    self_peer: PeerSelfT = await Peer.get(owner_id=user_id, user_id=user_id)
 
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     query = Q(peer=self_peer, content__fwd_header__saved_peer=peer)
@@ -76,23 +76,29 @@ async def delete_saved_history(request: DeleteSavedHistory, user_id: int) -> Aff
 @handler.on_request(GetPinnedSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_pinned_saved_dialogs(user_id: int) -> SavedDialogs:
     dialogs = await SavedDialog.filter(
-        peer__owner_id=user_id, pinned_index__not_isnull=True,
-    ).select_related("peer", "peer__user", "peer__chat").order_by("-pinned_index")
+        owner_id=user_id, pinned_index__not_isnull=True,
+    ).select_related("peer").order_by("-pinned_index")
 
     return await format_dialogs(SavedDialog, SavedDialogs, SavedDialogsSlice, user_id, dialogs)
 
 
 @handler.on_request(ToggleSavedDialogPin, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def toggle_saved_dialog_pin(request: ToggleSavedDialogPin, user_id: int) -> bool:
-    if (dialog := await SavedDialog.get_or_none(peer__owner_id=user_id).select_related("peer")) is None:
+    if not isinstance(request.peer, InputDialogPeer):
         raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
+
+    peer = await Peer.from_input_peer_raise(user_id, request.peer.peer)
+    if (dialog := await SavedDialog.get_or_none(owner_id=user_id, peer=peer)) is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_HISTORY_EMPTY")
+
+    dialog.peer = peer
 
     if bool(dialog.pinned_index) == request.pinned:
         return True
 
     if request.pinned:
         # TODO: set pinned index to Max("pinned_index") + 1 instead of whatever this is
-        dialog.pinned_index = await SavedDialog.filter(peer__owner_id=user_id, pinned_index__not_isnull=True).count()
+        dialog.pinned_index = await SavedDialog.filter(owner_id=user_id, pinned_index__not_isnull=True).count()
     else:
         dialog.pinned_index = None
 
@@ -102,12 +108,12 @@ async def toggle_saved_dialog_pin(request: ToggleSavedDialogPin, user_id: int) -
     return True
 
 
-@handler.on_request(ReorderPinnedSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user: User):
+@handler.on_request(ReorderPinnedSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user_id: int):
     pinned_now = {
         dialog.peer: dialog
         for dialog in await SavedDialog.filter(
-            peer__owner=user, pinned_index__not_isnull=True,
+            owner_id=user_id, pinned_index__not_isnull=True,
         ).select_related("peer", "peer__user")
     }
     pinned_after = []
@@ -118,13 +124,13 @@ async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user:
             continue
 
         # TODO: move out of the loop
-        if (peer := await Peer.from_input_peer(user, dialog_peer.peer)) is None:
+        if (peer := await Peer.from_input_peer(user_id, dialog_peer.peer)) is None:
             continue
 
         dialog = pinned_now.get(peer, None)
         if dialog is None:
             # TODO: move out of the loop
-            dialog = await SavedDialog.get_or_none(peer=peer).select_related("peer", "peer__user")
+            dialog = await SavedDialog.get_or_none(owner_id=user_id, peer=peer).select_related("peer", "peer__user")
         if not dialog:
             continue
 
@@ -144,6 +150,6 @@ async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user:
 
     if pinned_after:
         await SavedDialog.bulk_update(pinned_after, fields=["pinned_index"])
-    await upd.reorder_pinned_saved_dialogs(user, pinned_after)
+    await upd.reorder_pinned_saved_dialogs(user_id, pinned_after)
 
     return True

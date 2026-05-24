@@ -183,7 +183,7 @@ async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
 
 @handler.on_request(ClearDraft, ReqHandlerFlags.INTERNAL)
 async def clear_draft(request: ClearDraft) -> TLObject:
-    if await MessageDraft.filter(peer_id=request.peer_id).delete():
+    if await MessageDraft.filter(user_id=request.user_id, peer_id=request.peer_id).delete():
         peer: Peer = await Peer.get(id=request.peer_id)
         await upd.update_draft(peer.owner_id, peer, None)
         return TaggedBool(value=True)

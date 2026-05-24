@@ -583,12 +583,12 @@ async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[
     return counters
 
 
-@handler.on_request(GetAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED)
-async def get_all_drafts(user: User) -> Updates:
+@handler.on_request(GetAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_all_drafts(user_id: int) -> Updates:
     ucc = UsersChatsChannels()
 
     updates: list[TLUpdateBase] = []
-    drafts = await MessageDraft.filter(peer__owner=user).select_related("peer").order_by("-date").limit(250)
+    drafts = await MessageDraft.filter(user_id=user_id).select_related("peer").order_by("-date").limit(250)
     for draft in drafts:
         updates.append(UpdateDraftMessage(peer=draft.peer.to_tl(), draft=draft.to_tl()))
         ucc.add_peer(draft.peer)

@@ -163,7 +163,7 @@ async def _add_user_to_channel(channel: Channel, peer_channel: Peer, user_id: in
     )
     if user_is_creator:
         await channel.sync_admins_count(False)
-    await Dialog.create_or_unhide(peer_for_user)
+    await Dialog.create_or_unhide(user_id, peer_channel)
     await SessionManager.subscribe_to_channel(channel.id, [user_id])
 
     return participant
@@ -281,7 +281,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
     in_read_max_id, out_read_max_id, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(
-        peer, True, True,
+        user_id, peer, True, True,
     )
 
     available_reactions: TLChatReactionsBase
@@ -1247,7 +1247,7 @@ async def leave_channel(request: LeaveChannel, user_id: int) -> Updates:
         participant.left = True
         await participant.save(update_fields=["left"])
         await ChatInvite.filter(channel=peer.channel, user_id=user_id).update(revoked=True)
-        await Dialog.hide(peer)
+        await Dialog.hide(user_id, await peer.channel_peer)
         await MessageContent.filter(id__in=Subquery(
             MessageRef.filter(
                 peer__channel=peer.channel, peer__owner_id=user_id, content__type=MessageType.SCHEDULED,

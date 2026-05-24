@@ -591,8 +591,8 @@ async def migrate_chat(request: MigrateChat, user_id: int) -> Updates:
         new_peers: list[PeerChannelT] = await Peer.filter(channel=channel, owner_id__not_isnull=True)
 
         dialogs_to_create = []
-        for new_peer in new_peers:
-            dialogs_to_create.append(Dialog(peer=new_peer, visible=True))
+        for participant in participants:
+            dialogs_to_create.append(Dialog(owner_id=participant.user_id, peer=channel_peer, visible=True))
 
         await Chat.filter(id=chat.id).update(migrated=True, version=F("version") + 1)
         await chat.refresh_from_db(["migrated", "version"])
