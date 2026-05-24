@@ -106,20 +106,6 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     else:
         personal_channel_msg_id = None
 
-    if personal_channel is not None:
-        personal_channel_peer = await Peer.get(owner_id__isnull=True, channel_id=personal_channel.id).only("id")
-        await Peer.bulk_create(
-            [
-                Peer(
-                    owner_id=user_id,
-                    type=PeerType.CHANNEL,
-                    channel_id=personal_channel.id,
-                    channel_peer_id=personal_channel_peer.id,
-                )
-            ],
-            ignore_conflicts=True,
-        )
-
     bot_info = None
     if target_user.bot is not None:
         if target_user.bot_info is None:
@@ -180,7 +166,7 @@ _InputUsersInclMessage = (*_InputUsers, InputUserFromMessage, InputPeerUserFromM
 
 @handler.on_request(GetUsers, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_users(request: GetUsers, user_id: int):
-    ctx = request_ctx.get()
+    auth_id = cast(int, request_ctx.get().auth_id)
 
     user_ids = set()
     contact_ids = set()
@@ -190,14 +176,12 @@ async def get_users(request: GetUsers, user_id: int):
             contact_ids.add(peer.user_id)
             continue
 
-        is_self = isinstance(peer, _InputUsersSelf) \
-                  or (isinstance(peer, _InputUsersInclMessage) and peer.user_id == user_id)
-        if is_self and user_id not in user_ids:
+        if Peer.input_is_self(user_id, peer) and user_id not in user_ids:
             user_ids.add(user_id)
             continue
 
         if isinstance(peer, _InputUsers):
-            if not User.check_access_hash(user_id, ctx.auth_id, peer.user_id, peer.access_hash):
+            if not User.check_access_hash(user_id, auth_id, peer.user_id, peer.access_hash):
                 continue
             user_ids.add(peer.user_id)
 

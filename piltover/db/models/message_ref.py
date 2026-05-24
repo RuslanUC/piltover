@@ -121,7 +121,7 @@ class MessageRef(Model):
         for message_type in types:
             types_query |= Q(content__type=message_type)
 
-        query = peer.q_this_or_channel() & types_query & Q(id=id_)
+        query = Q(id=id_, peer=peer) & types_query
         query = append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.get_or_none(query).select_related(
@@ -133,7 +133,7 @@ class MessageRef(Model):
     async def get_many(
             cls, ids: list[int], peer: models.Peer, prefetch_all: bool = False, prefetch_fields: tuple[str, ...] = ()
                        ) -> list[Self]:
-        query = peer.q_this_or_channel() & Q(id__in=ids, content__type=MessageType.REGULAR)
+        query = Q(id__in=ids, peer=peer, content__type=MessageType.REGULAR)
         query = append_channel_min_message_id_to_query_maybe(peer, query)
 
         return await cls.filter(query).select_related(
@@ -407,8 +407,6 @@ class MessageRef(Model):
         peers = [self.peer]
         if opposite and self.peer.type is not PeerType.CHANNEL:
             peers.extend(await self.peer.get_opposite())
-        elif opposite and self.peer.type is PeerType.CHANNEL:
-            peers = [await models.Peer.get(owner=None, channel_id=self.peer.channel_id, type=PeerType.CHANNEL)]
 
         if self.reply_to_id:
             replies = {
@@ -603,8 +601,6 @@ class MessageRef(Model):
         peers = [peer]
         if opposite and peer.type is not PeerType.CHANNEL:
             peers.extend(await peer.get_opposite())
-        elif opposite and peer.type is PeerType.CHANNEL:
-            peers = [await models.Peer.get(owner=None, channel=peer.channel, type=PeerType.CHANNEL)]
 
         if reply_to is not None:
             replies = {
@@ -1077,5 +1073,5 @@ class MessageRef(Model):
     @classmethod
     async def get_from_random_id(cls, user_id: int, peer: models.Peer, random_id: int) -> MessageRef | None:
         return await MessageRef.get_or_none(
-            peer.q_this_or_channel(), random_user_id=user_id, random_id=random_id,
+            peer=peer, random_user_id=user_id, random_id=random_id,
         ).select_related(*cls.PREFETCH_MAYBECACHED)

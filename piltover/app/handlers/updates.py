@@ -189,7 +189,7 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
     peer_type, peer_channel_id = Peer.type_and_id_from_input_raise(user_id, request.channel)
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
-    peer = await Peer.get_or_none(owner_id=user_id, channel_id=peer_channel_id).select_related("channel").only(
+    peer = await Peer.get_or_none(channel_id=peer_channel_id).select_related("channel").only(
         "id", "channel_id", "channel__pts"
     )
     if peer is None:
@@ -204,7 +204,7 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
 
     if server_pts > (request.pts + request.limit):
         dialog, _ = await Dialog.get_or_create(
-            owner_id=user_id, peer_id=peer.channel_peer_id, defaults={"visible": False}
+            owner_id=user_id, peer=peer, defaults={"visible": False}
         )
         last_message = await MessageRef.filter(peer__owner=None, peer__channel_id=peer.channel_id).select_related(
             *MessageRef.PREFETCH_MAYBECACHED,

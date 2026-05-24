@@ -135,7 +135,7 @@ async def send_created_messages_internal(
 
         if mentioned_user_ids:
             mentioned_users = await User.filter(
-                id__in=mentioned_user_ids, owner__channel_id=peer.channel_id,
+                id__in=mentioned_user_ids, chatparticipants__channel_id=peer.channel_id,
             ).only("id")
             unread_mentions_to_create = []
             for mentioned_user in mentioned_users:
@@ -196,7 +196,7 @@ async def send_message_internal(
     reply_to_top = None
     if reply_to_message_id:
         reply_to = await MessageRef.get_or_none(
-            peer.q_this_or_channel(), id=reply_to_message_id,
+            peer=peer, id=reply_to_message_id,
         ).select_related("content", "reply_to", "top_message")
         if reply_to is None:
             raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
@@ -275,16 +275,14 @@ async def send_message_internal(
 
     _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True, True)
     if not unread_count:
-        read_state_peer_id = peer.id
         if peer.type is PeerType.CHANNEL:
-            read_state_peer_id = peer.channel_peer_id
             message = next(iter(messages.values()))
             readstate_updates = await upd.update_read_history_inbox_channel(user.id, peer.channel_id, message.id, 0)
         else:
             message = messages[peer]
             _, readstate_updates = await upd.update_read_history_inbox(peer, message.id, 0)
 
-        await ReadState.update_or_create(owner_id=user.id, peer_id=read_state_peer_id, defaults={
+        await ReadState.update_or_create(owner_id=user.id, peer_id=peer.id, defaults={
             "last_message_id": message.id,
         })
 
@@ -710,10 +708,8 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
         peers_q = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id) | Q(peer_id=peer.id)
     elif peer.type is PeerType.CHAT:
         peers_q = Q(peer__chat_id=peer.chat_id)
-    elif peer.type is PeerType.CHANNEL and content.type is MessageType.SCHEDULED:
-        peers_q = Q(peer_id=peer.id)
     elif peer.type is PeerType.CHANNEL:
-        peers_q = Q(peer__owner=None, peer__channel_id=peer.channel_id)
+        peers_q = Q(peer=peer)
     else:
         raise Unreachable
 
@@ -1092,7 +1088,7 @@ async def save_draft(request: SaveDraft, user_id: int) -> bool:
     reply_to_message_id = _resolve_reply_id(request)
     reply_to = None
     if reply_to_message_id:
-        reply_to = await MessageRef.get_or_none(peer.q_this_or_channel(), id=reply_to_message_id)
+        reply_to = await MessageRef.get_or_none(peer=peer, id=reply_to_message_id)
 
     if not request.message and reply_to is None:
         if await MessageDraft.filter(user_id=user_id, peer=peer).delete():
@@ -1179,14 +1175,14 @@ async def forward_messages(
     random_ids = dict(zip(ids, random_id))
     id_by_random_id = dict(zip(random_id, ids))
     existing_by_random_id = await MessageRef.filter(
-        to_peer.q_this_or_channel(), random_user=user, random_id__in=random_id,
+        peer=to_peer, random_user=user, random_id__in=random_id,
     ).select_related(*MessageRef.PREFETCH_MAYBECACHED)
     
     for existing_message in existing_by_random_id:
         src_id = id_by_random_id.pop(cast(int, existing_message.random_id))
         del random_ids[src_id]
 
-    src_messages_query = Q(from_peer.q_this_or_channel(), id__in=list(random_ids), content__type=MessageType.REGULAR)
+    src_messages_query = Q(peer=from_peer, id__in=list(random_ids), content__type=MessageType.REGULAR)
     src_messages_query = append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query, from_participant)
 
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
@@ -1507,8 +1503,10 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
 
 @handler.on_request(ClearAllDrafts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def clear_all_drafts(user_id: int) -> bool:
-    peers: list[Peer] = await Peer.filter(owner_id=user_id, messagedrafts__id__not_isnull=True).limit(500)
-    await MessageDraft.filter(user_id=user_id, peer_id__in=[peer.id for peer in peers]).delete()
+    drafts = await MessageDraft.filter(user_id=user_id).limit(500).select_related("peer")
+    draft_ids = [draft.id for draft in drafts]
+    peers = [draft.peer for draft in drafts]
+    await MessageDraft.filter(id__in=draft_ids).delete()
     await upd.update_drafts(user_id, peers, SingleElementList(None, len(peers)))
 
     return True
@@ -1611,7 +1609,7 @@ async def unpin_all_messages(request: UnpinAllMessages, user_id: int) -> Affecte
     elif peer.type is PeerType.CHAT:
         peer_query = Q(peer__chat_id=peer.chat_id)
     elif peer.type is PeerType.CHANNEL:
-        peer_query = Q(peer__owner=None, peer__channel_id=peer.channel_id)
+        peer_query = Q(peer=peer)
         peer_query = append_channel_min_message_id_to_query_maybe(peer, peer_query, participant)
     else:
         raise Unreachable

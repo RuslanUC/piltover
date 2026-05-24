@@ -11,7 +11,7 @@ from piltover.app.handlers.messages.sending import send_created_messages_interna
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
     TaskIqScheduledMessage
-from piltover.db.models.peer import PeerChannelInternalT
+from piltover.db.models.peer import PeerChannelT
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import TLObject
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
@@ -103,7 +103,7 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
         if message is None or not (discussion_channel_id := message.peer.channel.discussion_id):
             return TaggedBool(value=False)
 
-        discussion_peer: PeerChannelInternalT | None = await Peer.get_or_none(
+        discussion_peer: PeerChannelT | None = await Peer.get_or_none(
             owner=None, channel_id=discussion_channel_id,
         ).select_related("channel")
         if discussion_peer is None:
@@ -185,7 +185,7 @@ async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
 async def clear_draft(request: ClearDraft) -> TLObject:
     if await MessageDraft.filter(user_id=request.user_id, peer_id=request.peer_id).delete():
         peer: Peer = await Peer.get(id=request.peer_id)
-        await upd.update_draft(peer.owner_id, peer, None)
+        await upd.update_draft(request.user_id, peer, None)
         return TaggedBool(value=True)
 
     return TaggedBool(value=False)

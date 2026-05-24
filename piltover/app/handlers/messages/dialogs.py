@@ -100,7 +100,7 @@ async def format_dialogs(
     if not allow_slicing:
         return result
 
-    dialogs_query = model.filter(peer__owner_id=user_id)
+    dialogs_query = model.filter(owner_id=user_id)
     if folder_id is not None and issubclass(model, Dialog):
         dialogs_query = dialogs_query.filter(folder_id=DialogFolderId(folder_id))
     count = await dialogs_query.count()
@@ -284,11 +284,9 @@ async def get_peer_dialogs(request: GetPeerDialogs, user_id: int) -> PeerDialogs
     if peer_channel_ids:
         peers_query |= Q(peer__channel_id__in=peer_channel_ids)
 
-    dialogs = await Dialog.filter(
-        peers_query, owner_id=user_id
-    ).select_related("peer")
-
+    dialogs = await Dialog.filter(peers_query, owner_id=user_id).select_related("peer")
     dialogs_tl = await format_dialogs(Dialog, Dialogs, DialogsSlice, user_id, dialogs)
+
     return PeerDialogs(
         dialogs=dialogs_tl.dialogs,
         messages=dialogs_tl.messages,

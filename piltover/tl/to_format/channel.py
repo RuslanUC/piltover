@@ -18,11 +18,11 @@ class ChannelToFormat(types.ChannelToFormatInternal):
     def _write(self) -> bytes:
         from piltover.db.models import Channel
         from piltover.db.models.channel import CREATOR_RIGHTS
-        from piltover.db.enums import PeerType, ChatAdminRights, ChatBannedRights
+        from piltover.db.enums import ChatAdminRights, ChatBannedRights
 
         ctx = serialization_ctx.get()
 
-        if ctx.values is None or (PeerType.CHANNEL, self.id) not in ctx.values.peers:
+        if ctx.values is None:
             return LayerConverter.downgrade(
                 obj=self._forbidden(0),
                 to_layer=ctx.layer,

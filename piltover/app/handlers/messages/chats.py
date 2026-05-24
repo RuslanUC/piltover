@@ -14,7 +14,7 @@ from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBan
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, PrivacyRule, \
     ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry, MessageRef, MessageContent
 from piltover.db.models.channel import CREATOR_RIGHTS
-from piltover.db.models.peer import PeerChatT, PeerChannelT, PeerChannelAnyT
+from piltover.db.models.peer import PeerChatT, PeerChannelT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session import SessionManager
@@ -22,7 +22,7 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
     ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
     MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines, \
-    MessageActionChatEditPhoto, InputPeerSelf, InputUserSelf, InputPeerUserFromMessage, InputChatUploadedPhoto_133
+    MessageActionChatEditPhoto, InputPeerUserFromMessage, InputChatUploadedPhoto_133
 from piltover.tl.base.messages import Chats as ChatsBase
 from piltover.tl.base import InputChatPhoto as TLInputChatPhotoBase, Photo as TLPhotoBase
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
@@ -560,16 +560,9 @@ async def migrate_chat(request: MigrateChat, user_id: int) -> Updates:
 
         channel_peer = await Peer.create(owner=None, type=PeerType.CHANNEL, channel=channel)
 
-        peers_to_create: list[PeerChannelAnyT] = []
         participants_to_create = []
 
         for participant in participants:
-            peers_to_create.append(Peer(
-                owner_id=participant.user_id,
-                type=PeerType.CHANNEL,
-                channel=channel,
-                channel_peer_id=channel_peer.id,
-            ))
             if chat.creator_id == participant.user_id:
                 admin_rights = ChatAdminRights.from_tl(CREATOR_RIGHTS)
             else:
@@ -586,9 +579,6 @@ async def migrate_chat(request: MigrateChat, user_id: int) -> Updates:
                 admin_rank=participant.admin_rank,
                 promoted_by_id=participant.promoted_by_id,
             ))
-
-        await Peer.bulk_create(peers_to_create)
-        new_peers: list[PeerChannelT] = await Peer.filter(channel=channel, owner_id__not_isnull=True)
 
         dialogs_to_create = []
         for participant in participants:
@@ -613,7 +603,7 @@ async def migrate_chat(request: MigrateChat, user_id: int) -> Updates:
             Dialog.filter(peer__chat=chat).values_list("id", flat=True)
         )).update(visible=False)
 
-    await SessionManager.subscribe_to_channel(channel.id, [new_peer.owner_id for new_peer in new_peers])
+    await SessionManager.subscribe_to_channel(channel.id, [participant.user_id for participant in participants])
 
     user_ids = [participant.user_id for participant in participants]
     updates = await upd.migrate_chat(chat, channel, user_ids)
@@ -628,9 +618,8 @@ async def migrate_chat(request: MigrateChat, user_id: int) -> Updates:
     )
     updates.updates.extend(msg_updates.updates)
 
-    peer_channel: PeerChannelT = await Peer.get(owner_id=user_id, channel=channel).select_related("channel")
     msg_updates = await send_message_internal(
-        user, peer_channel, None, None, False, unhide_dialog=False,
+        user, channel_peer, None, None, False, unhide_dialog=False,
         author=user_id, type=MessageType.SERVICE_CHAT_MIGRATE_FROM,
         extra_info=MessageActionChannelMigrateFrom(title=chat.name, chat_id=chat.make_id()).write(),
     )

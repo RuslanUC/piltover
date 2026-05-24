@@ -35,7 +35,8 @@ async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages 
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     messages = await get_messages_internal(
-        self_peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, saved_peer=peer
+        user_id, self_peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset,
+        saved_peer=peer,
     )
     if not messages:
         return Messages(messages=[], chats=[], users=[])

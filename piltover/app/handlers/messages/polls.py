@@ -20,11 +20,9 @@ handler = MessageHandler("messages.polls")
 @handler.on_request(GetPollResults, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_poll_results(request: GetPollResults, user_id: int) -> Updates:
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
+    query = Q(peer=peer)
     if peer.type is PeerType.CHANNEL:
-        query = Q(peer_id=peer.channel_peer_id)
         query = append_channel_min_message_id_to_query_maybe(peer, query)
-    else:
-        query = Q(peer=peer)
 
     message = await MessageRef.get_or_none(query & Q(id=request.msg_id)).select_related(
         "content__media", "content__media__poll"
@@ -99,11 +97,9 @@ async def get_poll_votes(request: GetPollVotes, user_id: int) -> VotesList:
 @handler.on_request(SendVote, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def send_vote(request: SendVote, user_id: int) -> Updates:
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
+    query = Q(peer=peer)
     if peer.type is PeerType.CHANNEL:
-        query = Q(peer_id=peer.channel_peer_id)
         query = append_channel_min_message_id_to_query_maybe(peer, query)
-    else:
-        query = Q(peer=peer)
 
     message = await MessageRef.get_or_none(query, id=request.msg_id).select_related(
         "content__media", "content__media__poll",

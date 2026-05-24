@@ -135,18 +135,18 @@ class ReadState(Model):
                 out_last_ids = await models.ReadState.filter(
                     peer__channel_id__in=channel_ids, owner_id__not=user_id,
                 ).group_by(
-                    "peer__channel_id",
+                    "peer_id",
                 ).annotate(
                     last_id=Max("last_message_id"),
                 ).values_list(
-                    "last_id", "peer__channel_id",
+                    "last_id", "peer_id",
                 )
                 query_parts = []
-                for ref_id, channel_id in out_last_ids:
-                    query_parts.append(Q(peer__channel_id=channel_id, id__lte=ref_id))
+                for ref_id, peer_id in out_last_ids:
+                    query_parts.append(Q(peer_id=peer_id, id__lte=ref_id))
                 if query_parts:
                     our_ids = await models.MessageRef.filter(
-                        Q(*query_parts, join_type=Q.OR), content__author_id=user_id, peer__owner_id__isnull=True,
+                        Q(*query_parts, join_type=Q.OR), content__author_id=user_id,
                     ).values_list("peer__channel_id", "id")
                 else:
                     our_ids = []
@@ -204,7 +204,7 @@ class ReadState(Model):
     ) -> tuple[int, int, int, int, int]:
         in_read_state, _ = await models.ReadState.get_or_create(owner_id=user_id, peer=peer)
         unread_count = await models.MessageRef.filter(
-            peer.q_this_or_channel(), id__gt=in_read_state.last_message_id, content__author_id__not=user_id,
+            peer=peer, id__gt=in_read_state.last_message_id, content__author_id__not=user_id,
         ).count()
         if no_reactions:
             unread_reactions_count = 0

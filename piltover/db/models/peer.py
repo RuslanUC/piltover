@@ -22,12 +22,10 @@ OwnerT = TypeVar("OwnerT", bound="models.User | None")
 UserT = TypeVar("UserT", bound="models.User | None")
 ChatT = TypeVar("ChatT", bound="models.Chat | None")
 ChannelT = TypeVar("ChannelT", bound="models.Channel | None")
-ChannelPeerT = TypeVar("ChannelPeerT", bound="models.Peer | None")
 OwnerIdT = TypeVar("OwnerIdT", bound=int | None)
 UserIdT = TypeVar("UserIdT", bound=int | None)
 ChatIdT = TypeVar("ChatIdT", bound=int | None)
 ChannelIdT = TypeVar("ChannelIdT", bound=int | None)
-ChannelPeerIdT = TypeVar("ChannelPeerIdT", bound=int | None)
 AnyPeerType = Literal[PeerType.SELF, PeerType.USER, PeerType.CHAT, PeerType.CHANNEL]
 PeerTypeT = TypeVar(
     "PeerTypeT",
@@ -35,16 +33,14 @@ PeerTypeT = TypeVar(
 )
 
 
-PeerSelfT: TypeAlias = "Peer[models.User, models.User, None, None, None, int, int, None, None, None, Literal[PeerType.SELF]]"  # noqa: E501
-PeerUserT: TypeAlias = "Peer[models.User, models.User, None, None, None, int, int, None, None, None, Literal[PeerType.USER]]"  # noqa: E501
-PeerChatT: TypeAlias = "Peer[models.User, None, models.Chat, None, None, int, None, int, None, None, Literal[PeerType.CHAT]]"  # noqa: E501
-PeerChannelT: TypeAlias = "Peer[models.User, None, None, models.Channel, PeerChannelInternalT, int, None, None, int, int, Literal[PeerType.CHANNEL]]"  # noqa: E501
-PeerChannelInternalT: TypeAlias = "Peer[None, None, None, models.Channel, None, None, None, None, int, None, Literal[PeerType.CHANNEL]]"  # noqa: E501
-PeerChannelAnyT: TypeAlias = "Peer[models.User | None, None, None, models.Channel, PeerChannelInternalT | None, int | None, None, None, int, int | None, Literal[PeerType.CHANNEL]]"  # noqa: E501
-PeerOwnedT: TypeAlias = "Peer[models.User, models.User | None, models.Chat | None, models.Channel | None, PeerChannelInternalT | None, int, int | None, int | None, int | None, int | None, AnyPeerType]"  # noqa: E501
+PeerSelfT: TypeAlias = "Peer[models.User, models.User, None, None, int, int, None, None, Literal[PeerType.SELF]]"  # noqa: E501
+PeerUserT: TypeAlias = "Peer[models.User, models.User, None, None, int, int, None, None, Literal[PeerType.USER]]"  # noqa: E501
+PeerChatT: TypeAlias = "Peer[models.User, None, models.Chat, None, int, None, int, None, Literal[PeerType.CHAT]]"  # noqa: E501
+PeerChannelT: TypeAlias = "Peer[None, None, None, models.Channel, None, None, None, int, Literal[PeerType.CHANNEL]]"  # noqa: E501
+PeerOwnedT: TypeAlias = "Peer[models.User, models.User | None, models.Chat | None, models.Channel | None, int, int | None, int | None, int | None, AnyPeerType]"  # noqa: E501
 
 
-class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT, UserIdT, ChatIdT, ChannelIdT, ChannelPeerIdT, PeerTypeT]):
+class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, ChatIdT, ChannelIdT, PeerTypeT]):
     id: int = fields.BigIntField(primary_key=True)
     owner: models.User = fields.ForeignKeyField("models.User", related_name="owner", null=True)
     type: PeerTypeT = fields.IntEnumField(PeerType, description="")
@@ -54,21 +50,18 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
 
     user: UserT = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
     chat: ChatT = fields.ForeignKeyField("models.Chat", null=True, default=None)
-    channel: ChannelT = fields.ForeignKeyField("models.Channel", null=True, default=None)
-    channel_peer: Peer | None = fields.ForeignKeyField("models.Peer", null=True, default=None)
+    channel: ChannelT = fields.OneToOneField("models.Channel", null=True, default=None)
 
     class Meta:
         unique_together = (
             ("owner", "user",),
             ("owner", "chat",),
-            ("owner", "channel",),
         )
 
     owner_id: OwnerIdT
     user_id: UserIdT
     chat_id: ChatIdT
     channel_id: ChannelIdT
-    channel_peer_id: int | None
 
     # PyCharm cant properly infer None without this
     if TYPE_CHECKING:
@@ -83,8 +76,6 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
         @property
         def channel(self) -> ChannelT: raise Unreachable
         @property
-        def channel_peer(self) -> ChannelPeerT: raise Unreachable
-        @property
         def owner_id(self) -> OwnerIdT: raise Unreachable
         @property
         def user_id(self) -> UserIdT: raise Unreachable
@@ -92,8 +83,6 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
         def chat_id(self) -> ChatIdT: raise Unreachable
         @property
         def channel_id(self) -> ChannelIdT: raise Unreachable
-        @property
-        def channel_peer_id(self) -> ChannelPeerIdT: raise Unreachable
 
         @type.setter
         def type(self, value: PeerType) -> None: ...
@@ -105,8 +94,6 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
         def chat(self, value: models.Chat | None) -> None: ...
         @channel.setter
         def channel(self, value: models.Channel | None) -> None: ...
-        @channel_peer.setter
-        def channel_peer(self, value: models.Peer | None) -> None: ...
         @owner_id.setter
         def owner_id(self, value: int | None) -> None: ...
         @user_id.setter
@@ -115,8 +102,6 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
         def chat_id(self, value: int | None) -> None: ...
         @channel_id.setter
         def channel_id(self, value: int | None) -> None: ...
-        @channel_peer_id.setter
-        def channel_peer_id(self, value: int | None) -> None: ...
 
     @staticmethod
     def is_self(peer: Peer) -> TypeGuard[PeerSelfT]:
@@ -132,15 +117,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
 
     @staticmethod
     def is_channel(peer: Peer) -> TypeGuard[PeerChannelT]:
-        return peer.owner_id is not None and peer.channel_id is not None
-
-    @staticmethod
-    def is_channel_internal(peer: Peer) -> TypeGuard[PeerChannelInternalT]:
         return peer.owner_id is None and peer.channel_id is not None
-
-    @staticmethod
-    def is_channel_any(peer: Peer) -> TypeGuard[PeerChannelAnyT]:
-        return peer.channel_id is not None
 
     @staticmethod
     def is_owned(peer: Peer) -> TypeGuard[PeerOwnedT]:
@@ -242,7 +219,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
             channel_id = models.Channel.norm_id(input_peer.channel_id)
             if not models.Channel.check_access_hash(user_id, auth_id, channel_id, input_peer.access_hash):
                 return None
-            return Peer.get_or_none(owner_id=user_id, channel_id=channel_id, channel__deleted=False)
+            return Peer.get_or_none(channel_id=channel_id, channel__deleted=False)
 
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
@@ -369,11 +346,6 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
 
         raise RuntimeError(f".chat_or_channel called on peer with type {self.type}")
 
-    def q_this_or_channel(self) -> Q:
-        if self.type is PeerType.CHANNEL:
-            return Q(peer_id=self.channel_peer_id)
-        return Q(peer_id=self.id)
-
     def __repr__(self) -> str:
         if self.type in (PeerType.SELF, PeerType.USER):
             peer_id = f"user_id={self.user_id}"
@@ -387,11 +359,10 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, ChannelPeerT, OwnerIdT
         return f"{self.__class__.__name__}(id={self.id!r}, owner_id={self.owner_id!r}, type={self.type!r}, {peer_id})"
 
     @staticmethod
-    def input_is_self(user: models.User | int, input_peer: InputUserBase | InputPeerBase) -> bool:
+    def input_is_self(user_id: int, input_peer: InputUserBase | InputPeerBase) -> bool:
         if isinstance(input_peer, (InputUserSelf, InputPeerSelf)):
             return True
         if isinstance(input_peer, (InputPeerUser, InputUser, InputUserFromMessage)):
-            user_id = user if isinstance(user, int) else user.id
             return input_peer.user_id == user_id
         return False
 

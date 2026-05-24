@@ -277,28 +277,14 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         else:
             min_message_id = chat_or_channel.min_available_id
 
-    peer_type: PeerType
-    peer_chat: Chat | None
-    peer_channel: Channel | None
-    channel_peer: Peer | None
-    if isinstance(chat_or_channel, Channel):
-        peer_type = PeerType.CHANNEL
-        peer_chat = None
-        peer_channel = chat_or_channel
-        channel_peer = await Peer.get(owner_id__isnull=True, channel_id=chat_or_channel.id).only("id")
-    elif isinstance(chat_or_channel, Chat):
-        peer_type = PeerType.CHAT
-        peer_chat = chat_or_channel
-        peer_channel = None
-        channel_peer = None
-    else:
-        raise Unreachable
-
     async with in_transaction():
-        new_peer: Peer
-        new_peer, _ = await Peer.get_or_create(
-            owner_id=user.id, type=peer_type, chat=peer_chat, channel=peer_channel, channel_peer=channel_peer,
-        )
+        if isinstance(chat_or_channel, Chat):
+            chat_peer, _ = await Peer.get_or_create(owner_id=user.id, type=PeerType.CHAT, chat=chat_or_channel)
+        elif isinstance(chat_or_channel, Channel):
+            chat_peer = await Peer.get(channel_id=chat_or_channel.id).only("id")
+        else:
+            raise Unreachable
+
         await ChatParticipant.update_or_create(user_id=user.id, **Chat.or_channel(chat_or_channel), defaults={
             "inviter_id": from_invite.user_id if from_invite is not None else 0,
             "invite": from_invite,
@@ -311,7 +297,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
                 Chat.query(chat_or_channel, "invite") & Q(user_id=user.id)
             ).values_list("id", flat=True)
         )).delete()
-        await Dialog.create_or_unhide(user.id, channel_peer)
+        await Dialog.create_or_unhide(user.id, chat_peer)
         if isinstance(chat_or_channel, Channel):
             await AdminLogEntry.create(
                 channel=chat_or_channel,
@@ -329,7 +315,7 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
     chat_peers = {
         peer.owner_id: peer
         for peer in cast(
-            list[Peer], await Peer.filter(Chat.query(chat_or_channel)).select_related("chat", "channel")
+            list[Peer], await Peer.filter(chat=chat_or_channel).select_related("chat", "channel")
         )
     }
 
@@ -510,7 +496,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
         peer.owner_id: peer
         for peer in cast(
             list[Peer], await Peer.filter(
-                owner_id__in=[user.id, *requested_users], type=peer_type, **Chat.or_channel(chat),
+                owner_id__in=[user.id, *requested_users], type=peer_type, chat=chat,
             )
         )
     }

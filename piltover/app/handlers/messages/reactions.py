@@ -209,7 +209,7 @@ async def get_unread_reactions(request: GetUnreadReactions, user_id: int) -> Mes
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     query = await get_messages_query_internal(
-        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, user_id,
+        user_id, peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, user_id,
         unread_reactions=True,
     )
 
@@ -227,14 +227,9 @@ async def get_unread_reactions(request: GetUnreadReactions, user_id: int) -> Mes
 async def read_reactions(request: ReadReactions, user_id: int) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
-    if peer.type is PeerType.CHANNEL:
-        peer_query = Q(messagerefs__peer__owner_id=user_id, messagerefs__peer__channel_id=peer.channel_id)
-    else:
-        peer_query = Q(messagerefs__peer=peer)
-
     await MessageContent.filter(
         id__in=Subquery(
-            MessageContent.filter(peer_query, author_reactions_unread=True, author_id=user_id).values("id")
+            MessageContent.filter(messagerefs__peer=peer, author_reactions_unread=True, author_id=user_id).values("id")
         )
     ).update(
         reactions_version=F("reactions_version") + 1,

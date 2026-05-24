@@ -44,7 +44,7 @@ from piltover.worker import MessageHandler
 handler = MessageHandler("messages.history")
 
 
-def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | None) -> Q | None:
+def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | None, user_id: int) -> Q | None:
     if isinstance(filter_, InputMessagesFilterPinned):
         return Q(pinned=True)
     elif isinstance(filter_, InputMessagesFilterDocument):
@@ -87,7 +87,7 @@ def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | Non
             raise Unreachable
 
         return Q(content_id__in=Subquery(
-            MessageMention.filter(peer_q, user_id=peer.owner_id).values_list("message_id", flat=True)
+            MessageMention.filter(peer_q, user_id=user_id).values_list("message_id", flat=True)
         ))
     elif isinstance(filter_, InputMessagesFilterContacts):
         return Q(content__media__type=MediaType.CONTACT)
@@ -105,20 +105,20 @@ def message_filter_to_query(filter_: MessagesFilterBase | None, peer: Peer | Non
 # `peer` is Peer if fetching messages between current user (peer.owner) and peer
 # `peer` is User if fetching messages globally (such as global search)
 async def get_messages_query_internal(
-        peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
+        user_id: int, peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, unread_reactions: bool = False,
         only_mentions: bool = False, reply_to_id: int | None = None,
 ) -> QuerySet[MessageRef]:
     if isinstance(peer, Peer):
-        query = peer.q_this_or_channel()
+        query = Q(peer_id=peer.id)
     else:
         query = Q(peer__owner=peer.id)
 
     has_filter = False
     if filter_ is not None \
             and isinstance(peer, Peer) \
-            and (filter_query := message_filter_to_query(filter_, peer)) is not None:
+            and (filter_query := message_filter_to_query(filter_, peer, user_id)) is not None:
         query &= filter_query
         has_filter = True
 
@@ -147,7 +147,6 @@ async def get_messages_query_internal(
         query &= Q(content__fwd_header__saved_peer=saved_peer)
 
     if unread_reactions:
-        user_id = peer.owner_id if isinstance(peer, Peer) else peer.id
         query &= Q(content__author_reactions_unread=True, content__author_id__not=user_id)
 
     if only_mentions:
@@ -160,7 +159,7 @@ async def get_messages_query_internal(
                 raise Unreachable
 
             query &= Q(content_id__in=Subquery(
-                MessageMention.filter(peer_q, user_id=peer.owner_id, read=False).values("message_id")
+                MessageMention.filter(peer_q, user_id=user_id, read=False).values("message_id")
             ))
         else:
             # TODO: return EmptyQuerySet instead
@@ -179,7 +178,7 @@ async def get_messages_query_internal(
             query &= Q(id__gte=channel.min_available_id)
         query &= Q(id__gte=Coalesce(
             Subquery(
-                ChatParticipant.get_or_none(user_id=peer.owner_id, channel=channel).values("min_message_id")
+                ChatParticipant.get_or_none(user_id=user_id, channel=channel).values("min_message_id")
             ),
             0,
         ))
@@ -292,7 +291,7 @@ async def get_messages_query_internal(
 
     after_offset_limit = min(abs(add_offset), limit)
     message_ids_after_offset = await MessageRef.filter(
-        query & Q(id__gte=offset_id)
+        query, id__gte=offset_id
     ).limit(after_offset_limit).order_by("id").values_list("id", flat=True)
 
     if len(message_ids_after_offset) >= limit:
@@ -313,14 +312,14 @@ async def get_messages_query_internal(
 
 
 async def get_messages_internal(
-        peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
+        user_id: int, peer: Peer | User, max_id: int, min_id: int, offset_id: int, limit: int, add_offset: int,
         from_user_id: int | None = None, min_date: int | None = None, max_date: int | None = None, q: str | None = None,
         filter_: MessagesFilterBase | None = None, saved_peer: Peer | None = None, unread_reactions: bool = False,
         reply_to_id: int | None = None,
 ) -> list[MessageRef]:
     query = await get_messages_query_internal(
-        peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_, saved_peer,
-        unread_reactions, reply_to_id=reply_to_id,
+        user_id, peer, max_id, min_id, offset_id, limit, add_offset, from_user_id, min_date, max_date, q, filter_,
+        saved_peer, unread_reactions, reply_to_id=reply_to_id,
     )
     return await query
 
@@ -377,7 +376,7 @@ async def format_messages_internal(
         )
 
     if query is None:
-        q = peer.q_this_or_channel()
+        q = Q(peer_id=peer.id)
         if saved_peer is not None:
             q &= Q(content__fwd_header__saved_peer=saved_peer)
         q = append_channel_min_message_id_to_query_maybe(peer, q)
@@ -412,7 +411,7 @@ async def get_history(request: GetHistory, user_id: int) -> Messages | MessagesS
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
 
     messages = await get_messages_internal(
-        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset
+        user_id, peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset
     )
     if not messages:
         return Messages(messages=[], chats=[], users=[])
@@ -481,11 +480,11 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
             pts_count=0,
         )
 
+    query = MessageRef.filter(peer=peer)
+
     max_id = request.max_id
-    if max_id == 0:
-        query = MessageRef.filter(peer.q_this_or_channel())
-    else:
-        query = MessageRef.filter(peer.q_this_or_channel(), id__lte=request.max_id)
+    if max_id:
+        query = query.filter(id__lte=request.max_id)
 
     max_id, content_id = await query.order_by("-id").first().values_list("id", "content_id")
     logger.debug(f"Actual max_id is {max_id} (content id is {content_id})")
@@ -503,7 +502,7 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     read_state.last_message_id = max_id
     await read_state.save(update_fields=["last_message_id"])
 
-    await ReadHistoryChunk.create(peer=peer, read_content_id=content_id)
+    await ReadHistoryChunk.create(user_id=user_id, peer=peer, read_content_id=content_id)
 
     logger.info(f"Set last read message id to {max_id} for peer {peer.id} of user {user_id}")
 
@@ -553,8 +552,8 @@ async def messages_search(request: Search, user_id: int) -> Messages | MessagesS
         from_user_id = user_id
 
     messages = await get_messages_internal(
-        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, from_user_id,
-        request.min_date, request.max_date, request.q, request.filter, saved_peer,
+        user_id, peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset,
+        from_user_id, request.min_date, request.max_date, request.q, request.filter, saved_peer,
     )
 
     return await format_messages_internal(user_id, messages)
@@ -564,7 +563,7 @@ async def messages_search(request: Search, user_id: int) -> Messages | MessagesS
 async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[SearchCounter]:
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
 
-    base_query = peer.q_this_or_channel()
+    base_query = Q(peer=peer)
     if peer.type is PeerType.SELF and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
         base_query &= Q(content__fwd_header__saved_peer=saved_peer)
@@ -574,7 +573,7 @@ async def get_search_counters(request: GetSearchCounters, user_id: int) -> list[
     counters = cast(TLObjectVector[SearchCounter], TLObjectVector())
 
     for filt in request.filters:
-        if (filter_query := message_filter_to_query(filt, peer)) is not None:
+        if (filter_query := message_filter_to_query(filt, peer, user_id)) is not None:
             count = await MessageRef.filter(base_query & filter_query).count()
         else:
             count = 0
@@ -612,7 +611,7 @@ async def search_global(request: SearchGlobal, user_id: int):
 
     # TODO: offset_peer, offset_rate ?
     messages = await get_messages_internal(
-        user, 0, 0, request.offset_id, limit, 0, 0,
+        user_id, user, 0, 0, request.offset_id, limit, 0, 0,
         request.min_date, request.max_date, request.q, request.filter
     )
 
@@ -625,8 +624,7 @@ async def get_messages_views(request: GetMessagesViews, user_id: int) -> Message
 
     request.id = request.id[:100]
 
-    query = Q(id__in=request.id, content__post_info_id__not_isnull=True)
-    query &= peer.q_this_or_channel()
+    query = Q(id__in=request.id, content__post_info_id__not_isnull=True, peer=peer)
 
     refs = await MessageRef.filter(query).select_related("content", "content__post_info")
     content_ids = [ref.content_id for ref in refs]
@@ -687,7 +685,7 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user_id
     if peer.type is PeerType.SELF and not isinstance(request, GetSearchResultsCalendar_134) and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
 
-    if (filter_query := message_filter_to_query(request.filter, peer)) is None:
+    if (filter_query := message_filter_to_query(request.filter, peer, user_id)) is None:
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
 
     query_q = Q(peer=peer) & filter_query
@@ -759,7 +757,8 @@ async def get_unread_mentions(request: GetUnreadMentions, user_id: int) -> Messa
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
 
     query = await get_messages_query_internal(
-        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset, only_mentions=True,
+        user_id, peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset,
+        only_mentions=True,
     )
     messages = await query
 
@@ -1032,7 +1031,7 @@ async def get_search_results_positions(request: GetSearchResultsPositions, user_
     if peer.type is PeerType.SELF and not isinstance(request, GetSearchResultsPositions_134) and request.saved_peer_id:
         saved_peer = await Peer.from_input_peer_raise(user_id, request.saved_peer_id)
 
-    if (filter_query := message_filter_to_query(request.filter, peer)) is None:
+    if (filter_query := message_filter_to_query(request.filter, peer, user_id)) is None:
         raise ErrorRpc(error_code=400, error_message="FILTER_NOT_SUPPORTED")
 
     query = Q(peer=peer) & filter_query
@@ -1111,7 +1110,7 @@ async def get_replies(request: GetReplies, user_id: int) -> Messages | MessagesS
     peer = await Peer.from_input_peer_raise(user_id, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
 
     messages = await get_messages_internal(
-        peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset,
+        user_id, peer, request.max_id, request.min_id, request.offset_id, request.limit, request.add_offset,
         reply_to_id=request.msg_id,
     )
     if not messages:
@@ -1136,22 +1135,22 @@ async def get_message_read_participants(request: GetMessageReadParticipants, use
     if await query.count() > 100:
         raise ErrorRpc(error_code=400, error_message="CHAT_TOO_BIG")
 
-    message = await MessageRef.get_or_none(peer.q_this_or_channel(), id=request.msg_id, content__author_id=user_id)
+    message = await MessageRef.get_or_none(peer=peer, id=request.msg_id, content__author_id=user_id)
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
 
     if peer.type is PeerType.CHAT:
-        peer_q = Q(peer__chat=peer.chat, peer__owner_id__not=peer.owner_id)
+        peer_q = Q(peer__chat=peer.chat)
     elif peer.type is PeerType.CHANNEL:
-        peer_q = Q(peer__channel=peer.channel, peer__owner_id__not=peer.owner_id)
+        peer_q = Q(peer=peer)
     else:
         raise Unreachable
 
     read_dates = cast(
         list[tuple[int, datetime]],
         await ReadHistoryChunk.filter(
-            peer_q, peer__owner__read_dates_private=False, read_content_id__gte=message.content_id,
-        ).group_by("peer__owner_id").annotate(read_at=Min("read_at")).limit(50).values_list("peer__owner_id", "read_at")
+            peer_q, user_id__not=user_id, user__read_dates_private=False, read_content_id__gte=message.content_id,
+        ).group_by("user_id").annotate(read_at=Min("read_at")).limit(50).values_list("user_id", "read_at")
     )
 
     result = cast(TLObjectVector[ReadParticipantDate], TLObjectVector())
@@ -1169,9 +1168,7 @@ async def read_discussion(request: ReadDiscussion, user_id: int) -> bool:
     peer = await Peer.from_input_peer_raise(user_id, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
     # TODO: check if user has access to messages
 
-    discussion_query = peer.q_this_or_channel() & Q(
-        id=request.msg_id, content__type=MessageType.REGULAR, is_discussion=True,
-    )
+    discussion_query = Q(id=request.msg_id, content__type=MessageType.REGULAR, is_discussion=True, peer=peer)
     discussion_query = append_channel_min_message_id_to_query_maybe(peer, discussion_query)
     message = await MessageRef.get_or_none(discussion_query)
     if message is None:

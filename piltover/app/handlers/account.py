@@ -947,7 +947,7 @@ async def update_personal_channel(request: UpdatePersonalChannel, user: User) ->
     peer_type, peer_id = Peer.type_and_id_from_input_raise(user.id, request.channel, "CHANNEL_PRIVATE")
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    channel = await Channel.get_or_none(id=peer_id, peers__owner_id=user.id).only("id", "creator_id")
+    channel = await Channel.get_or_none(id=peer_id).only("id", "creator_id")
     if channel is None:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_PRIVATE")
 

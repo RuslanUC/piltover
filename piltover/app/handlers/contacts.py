@@ -49,23 +49,16 @@ async def get_contacts(user_id: int):
 
 async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPeer:
     peer: Peer
-    channel_peer: Peer | None = None
     if resolved.user_id == user_id:
         peer = await Peer.get(owner_id=user_id, user_id=user_id, type=PeerType.SELF)
     elif resolved.user is not None:
         peer, _ = await Peer.get_or_create(owner_id=user_id, user=resolved.user, type=PeerType.USER)
     elif resolved.channel is not None:
-        channel_peer = await Peer.get(owner_id__isnull=True, channel_id=resolved.channel_id)
-        peer, _ = await Peer.get_or_create(
-            owner_id=user_id,
-            channel=resolved.channel,
-            type=PeerType.CHANNEL,
-            channel_peer=channel_peer,
-        )
+        peer = await Peer.get(channel_id=resolved.channel_id)
     else:  # pragma: no cover
         raise Unreachable
 
-    await Dialog.get_or_create_hidden(user_id, channel_peer if channel_peer is not None else peer)
+    await Dialog.get_or_create_hidden(user_id, peer)
 
     return ResolvedPeer(
         peer=peer.to_tl(),
@@ -154,44 +147,20 @@ async def contacts_search(request: Search, user_id: int) -> Found:
 
     users_by_id = {result_user.id: result_user for result_user in users}
     channels_by_id = {result_channel.id: result_channel for result_channel in channels}
-    existing_peers = cast(
-        list[Peer],
-        await Peer.filter(
-            Q(join_type=Q.OR, user_id__in=list(users_by_id.keys()), channel_id__in=list(channels_by_id.keys())),
-            owner_id=user_id,
-        ).only("type", "user_id", "channel_id")
-    )
+    existing_peers: list[Peer] = await Peer.filter(
+        Q(owner_id=user_id, user_id__in=list(users_by_id.keys())) | Q(channel_id__in=list(channels_by_id.keys())),
+    ).only("type", "user_id", "channel_id")
+
     for existing_peer in existing_peers:
         if existing_peer.type is PeerType.USER:
             del users_by_id[existing_peer.user_id]
         else:
             del channels_by_id[existing_peer.channel_id]
 
-    if channels_by_id:
-        internal_channel_peers = {
-            peer.channel_id: peer.id
-            for peer in await Peer.filter(
-                owner_id__isnull=True, channel_id__in=list(channels_by_id.keys()),
-            ).only("id", "channel_id")
-        }
-    else:
-        internal_channel_peers = {}
-
-    if users_by_id and channels_by_id:
+    if users_by_id:
         await Peer.bulk_create([
-            *(
-                Peer(owner_id=user_id, type=PeerType.USER, user=result_user)
-                for result_user in users_by_id.values()
-            ),
-            *(
-                Peer(
-                    owner_id=user_id,
-                    type=PeerType.CHANNEL,
-                    channel=result_channel,
-                    channel_peer_id=internal_channel_peers[result_channel.id],
-                )
-                for result_channel in channels_by_id.values()
-            ),
+            Peer(owner_id=user_id, type=PeerType.USER, user=result_user)
+            for result_user in users_by_id.values()
         ])
 
     return Found(
@@ -295,7 +264,6 @@ async def add_contact(request: AddContact, user_id: int) -> Updates:
 
 @handler.on_request(DeleteContacts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_contacts(request: DeleteContacts, user_id: int) -> Updates:
-    ctx = request_ctx.get()
     user_to_fetch_ids = set()
     for peer_id in request.id:
         peer_info = Peer.type_and_id_from_input(user_id, peer_id)

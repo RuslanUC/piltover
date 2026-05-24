@@ -148,10 +148,6 @@ async def _create_channel(
 async def _add_user_to_channel(channel: Channel, peer_channel: Peer, user_id: int) -> ChatParticipant:
     user_is_creator = channel.creator_id == user_id
 
-    peer_for_user: Peer
-    peer_for_user, _ = await Peer.get_or_create(
-        owner_id=user_id, channel=channel, type=PeerType.CHANNEL, channel_peer_id=peer_channel.id,
-    )
     participant, _ = await ChatParticipant.update_or_create(
         channel=channel,
         user_id=user_id,
@@ -231,7 +227,7 @@ async def get_channels(request: GetChannels, user_id: int) -> Chats:
     if channel_participants:
         channels_q.children = *channels_q.children, Q(id__in=channel_participants, chatparticipants__user_id=user_id)
     if channel_peers:
-        channels_q.children = *channels_q.children, Q(peers__owner_id=user_id, peers__channel_id__in=channel_peers)
+        channels_q.children = *channels_q.children, Q(id__in=channel_peers)
 
     return Chats(
         chats=await Channel.to_tl_bulk_maybecached(await Channel.filter(channels_q).only("id", "version")),
@@ -245,7 +241,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     peer: Peer | None = await Peer.get_or_none(
-        owner_id=user_id, channel_id=peer_channel_id, channel__deleted=False,
+        channel_id=peer_channel_id, channel__deleted=False,
     ).prefetch_related(
         "channel",
         "channel__stickerset", "channel__emojiset",
@@ -300,7 +296,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     has_scheduled = False
     if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
         has_scheduled = await MessageRef.filter(
-            peer__owner_id=user_id, peer__channel=channel, content__scheduled_date__not_isnull=True,
+            peer__channel=channel, content__scheduled_date__not_isnull=True,
         ).exists()
 
     can_change_info = participant is not None and channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)
@@ -341,18 +337,6 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
         linked_chat = channel.discussion_channel
 
     if linked_chat is not None:
-        linked_chat_peer = await Peer.get(owner_id__isnull=True, channel_id=linked_chat.id).only("id")
-        await Peer.bulk_create(
-            [
-                Peer(
-                    owner_id=user_id,
-                    type=PeerType.CHANNEL,
-                    channel=linked_chat,
-                    channel_peer_id=linked_chat_peer.id,
-                )
-            ],
-            ignore_conflicts=True,
-        )
         channels_to_tl.append(linked_chat)
 
     slowmode_next_date = None
@@ -580,7 +564,7 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
         raise ErrorRpc(error_code=403, error_message="MESSAGE_DELETE_FORBIDDEN")
 
     ids = request.id[:100]
-    ids_query = Q(id__in=ids, peer__channel=channel) & (Q(peer__owner_id=user_id) | Q(peer__owner=None))
+    ids_query = Q(id__in=ids, peer__channel=channel)
     ids_query = append_channel_min_message_id_to_query_maybe(channel, ids_query, participant, user_id)
     message_ids = cast(
         list[int],
@@ -876,7 +860,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         user_id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
-    read_state, created = await ReadState.get_or_create(owner_id=user_id, peer_id=peer.channel_peer_id)
+    read_state, created = await ReadState.get_or_create(owner_id=user_id, peer=peer)
     if request.max_id <= read_state.last_message_id:
         return True
 
@@ -900,7 +884,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
     read_state.last_message_id = unread_max_id
     await read_state.save(update_fields=["last_message_id"])
 
-    await ReadHistoryChunk.create(peer=peer, read_content_id=content_id)
+    await ReadHistoryChunk.create(user_id=user_id, peer=peer, read_content_id=content_id)
 
     await upd.update_read_history_inbox_channel(user_id, peer.channel_id, unread_max_id, unread_count)
 
@@ -925,7 +909,7 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
     peer_type, peer_channel_id = Peer.type_and_id_from_input_raise(user_id, request.channel, "CHANNEL_PRIVATE")
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
-    peer_with_channel = await Peer.get(owner_id__isnull=True, channel_id=peer_channel_id).select_related("channel")
+    peer_with_channel = await Peer.get(channel_id=peer_channel_id).select_related("channel")
     channel = cast(Channel, peer_with_channel.channel)
 
     participant = await channel.get_participant_raise(user_id)
@@ -955,7 +939,6 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
     privacy_rules = await PrivacyRule.has_access_to_bulk(user_ids, user_id, [PrivacyRuleKeyType.CHAT_INVITE])
 
     added_user_ids: list[int] = []
-    peers_to_create: list[Peer] = []
     participants_to_create: list[ChatParticipant] = []
     participants_to_update: list[ChatParticipant] = []
 
@@ -968,12 +951,6 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
             raise ErrorRpc(error_code=403, error_message="USER_PRIVACY_RESTRICTED")
 
         added_user_ids.append(peer_user_id)
-        peers_to_create.append(Peer(
-            owner_id=peer_user_id,
-            channel=channel,
-            type=PeerType.CHANNEL,
-            channel_peer_id=peer_with_channel.id,
-        ))
         if existing_participant is None:
             participants_to_create.append(ChatParticipant(
                 user_id=peer_user_id, channel=channel, chat_channel_id=channel.make_id(), inviter_id=user_id,
@@ -983,8 +960,6 @@ async def invite_to_channel(request: InviteToChannel, user_id: int) -> InvitedUs
             existing_participant.left = False
             participants_to_update.append(existing_participant)
 
-    if peers_to_create:
-        await Peer.bulk_create(peers_to_create, ignore_conflicts=True)
     if participants_to_create:
         await ChatParticipant.bulk_create(participants_to_create, ignore_conflicts=True)
     if participants_to_update:
@@ -1247,10 +1222,10 @@ async def leave_channel(request: LeaveChannel, user_id: int) -> Updates:
         participant.left = True
         await participant.save(update_fields=["left"])
         await ChatInvite.filter(channel=peer.channel, user_id=user_id).update(revoked=True)
-        await Dialog.hide(user_id, await peer.channel_peer)
+        await Dialog.hide(user_id, await peer)
         await MessageContent.filter(id__in=Subquery(
             MessageRef.filter(
-                peer__channel=peer.channel, peer__owner_id=user_id, content__type=MessageType.SCHEDULED,
+                peer__channel=peer.channel, content__type=MessageType.SCHEDULED,
             ).values_list("content_id", flat=True)
         )).delete()
         await AdminLogEntry.create(

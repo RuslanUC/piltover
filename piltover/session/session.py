@@ -348,12 +348,14 @@ class Session:
         peers_q = Q()
 
         if values.chat_participants or values.channel_participants:
+            participants_q = Q()
             if values.chat_participants:
+                participants_q |= Q(chat_id__in=values.chat_participants)
                 peers_q |= Q(chat_id__in=values.chat_participants)
             if values.channel_participants:
-                peers_q |= Q(channel_id__in=values.channel_participants)
+                participants_q |= Q(channel_id__in=values.channel_participants)
 
-            participants = await ChatParticipant.filter(peers_q, user_id=self.user_id).only(
+            participants = await ChatParticipant.filter(participants_q, user_id=self.user_id).only(
                 "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at", "left",
             )
             for participant in participants:
