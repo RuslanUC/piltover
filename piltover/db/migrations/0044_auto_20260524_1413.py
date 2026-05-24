@@ -1,7 +1,5 @@
-from tortoise import fields
 from tortoise import migrations
 from tortoise.backends.base.schema_generator import BaseSchemaGenerator
-from tortoise.fields.base import OnDelete
 from tortoise.migrations import operations as ops
 
 
@@ -21,22 +19,22 @@ class Migration(migrations.Migration):
     operations = [
         ops.RunSQL(f"ALTER TABLE dialog DROP FOREIGN KEY {dialog_fk_name}"),
         ops.RunSQL("ALTER TABLE dialog DROP INDEX peer_id"),
-        ops.RunSQL("ALTER TABLE dialog ADD INDEX peer_id (peer_id)"),
+        ops.RunSQL("ALTER TABLE dialog ADD INDEX {dialog_fk_name} (peer_id)"),
         ops.RunSQL(f"ALTER TABLE dialog ADD CONSTRAINT {dialog_fk_name} FOREIGN KEY (peer_id) REFERENCES peer(id) ON DELETE CASCADE"),
 
         ops.RunSQL(f"ALTER TABLE messagedraft DROP FOREIGN KEY {draft_fk_name}"),
         ops.RunSQL("ALTER TABLE messagedraft DROP INDEX peer_id"),
-        ops.RunSQL("ALTER TABLE messagedraft ADD INDEX peer(peer_id)"),
+        ops.RunSQL("ALTER TABLE messagedraft ADD INDEX {draft_fk_name} (peer_id)"),
         ops.RunSQL(f"ALTER TABLE messagedraft ADD CONSTRAINT {draft_fk_name} FOREIGN KEY (peer_id) REFERENCES peer(id) ON DELETE CASCADE"),
 
         ops.RunSQL(f"ALTER TABLE readstate DROP FOREIGN KEY {readstate_fk_name}"),
         ops.RunSQL("ALTER TABLE readstate DROP INDEX peer_id"),
-        ops.RunSQL("ALTER TABLE readstate ADD INDEX peer(peer_id)"),
+        ops.RunSQL("ALTER TABLE readstate ADD INDEX {readstate_fk_name} (peer_id)"),
         ops.RunSQL(f"ALTER TABLE readstate ADD CONSTRAINT {readstate_fk_name} FOREIGN KEY (peer_id) REFERENCES peer(id) ON DELETE CASCADE"),
 
         ops.RunSQL(f"ALTER TABLE saveddialog DROP FOREIGN KEY {saveddialog_fk_name}"),
         ops.RunSQL("ALTER TABLE saveddialog DROP INDEX peer_id"),
-        ops.RunSQL("ALTER TABLE saveddialog ADD INDEX peer(peer_id)"),
+        ops.RunSQL("ALTER TABLE saveddialog ADD INDEX {saveddialog_fk_name} (peer_id)"),
         ops.RunSQL(f"ALTER TABLE saveddialog ADD CONSTRAINT {saveddialog_fk_name} FOREIGN KEY (peer_id) REFERENCES peer(id) ON DELETE CASCADE"),
 
         # ops.AlterField(
