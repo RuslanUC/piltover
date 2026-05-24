@@ -876,7 +876,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         user_id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
-    read_state, created = await ReadState.get_or_create(peer=peer)
+    read_state, created = await ReadState.get_or_create(owner_id=user_id, peer_id=peer.channel_peer_id)
     if request.max_id <= read_state.last_message_id:
         return True
 

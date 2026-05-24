@@ -275,14 +275,16 @@ async def send_message_internal(
 
     _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True, True)
     if not unread_count:
+        read_state_peer_id = peer.id
         if peer.type is PeerType.CHANNEL:
+            read_state_peer_id = peer.channel_peer_id
             message = next(iter(messages.values()))
             readstate_updates = await upd.update_read_history_inbox_channel(user.id, peer.channel_id, message.id, 0)
         else:
             message = messages[peer]
             _, readstate_updates = await upd.update_read_history_inbox(peer, message.id, 0)
 
-        await ReadState.update_or_create(peer=peer, defaults={
+        await ReadState.update_or_create(owner_id=user.id, peer_id=read_state_peer_id, defaults={
             "last_message_id": message.id,
         })
 

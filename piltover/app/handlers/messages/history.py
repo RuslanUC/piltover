@@ -471,7 +471,7 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     peer = await Peer.from_input_peer_raise(
         user_id, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
     )
-    read_state, created = await ReadState.get_or_create(peer=peer)
+    read_state, created = await ReadState.get_or_create(owner_id=user_id, peer=peer)
     state, _ = await State.get_or_create(user_id=user_id)
 
     if request.max_id and request.max_id <= read_state.last_message_id:
