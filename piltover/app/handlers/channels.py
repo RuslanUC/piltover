@@ -563,8 +563,10 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
     if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
         raise ErrorRpc(error_code=403, error_message="MESSAGE_DELETE_FORBIDDEN")
 
+    peer = await Peer.get(channel=channel).only("id")
+
     ids = request.id[:100]
-    ids_query = Q(id__in=ids, peer__channel=channel)
+    ids_query = Q(id__in=ids, peer=peer)
     ids_query = append_channel_min_message_id_to_query_maybe(channel, ids_query, participant, user_id)
     message_ids = cast(
         list[int],
@@ -577,7 +579,10 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
     if not message_ids:
         return AffectedMessages(pts=channel.pts, pts_count=0)
 
-    await MessageRef.filter(id__in=message_ids).delete()
+    async with in_transaction():
+        await MessageRef.filter(id__in=message_ids).delete()
+        await peer.sync_last_message()
+
     _, pts = await upd.delete_messages_channel(channel, message_ids)
 
     return AffectedMessages(pts=pts, pts_count=len(message_ids))
@@ -1730,10 +1735,12 @@ async def delete_history(request: DeleteHistory, user_id: int) -> Updates:
     if not channel.admin_has_permission(participant, ChatAdminRights.DELETE_MESSAGES):
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
+    peer = await Peer.get(channel=channel).only("id")
+
     message_ids = cast(
         list[int],
         await MessageRef.filter(
-            peer__owner=None, peer__channel=channel, id__lte=request.max_id,
+            peer=peer, id__lte=request.max_id,
         ).order_by("-id").limit(APP_CONFIG.channel_delete_history_min_id_threshold + 1).values_list("id", flat=True)
     )
     if len(message_ids) > APP_CONFIG.channel_delete_history_min_id_threshold:
@@ -1742,7 +1749,9 @@ async def delete_history(request: DeleteHistory, user_id: int) -> Updates:
         return await upd.update_channel_available_messages(channel, new_min_available_id)
 
     message_ids.pop(0)
-    await MessageRef.filter(id__in=message_ids).delete()
+    async with in_transaction():
+        await MessageRef.filter(id__in=message_ids).delete()
+        await peer.sync_last_message()
     updates, _ = await upd.delete_messages_channel(channel, message_ids)
     return updates
 
@@ -1761,10 +1770,12 @@ async def delete_participant_history(request: DeleteParticipantHistory, user_id:
     if peer_type not in (PeerType.SELF, PeerType.USER):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
+    peer = await Peer.get(channel=channel).only("id")
+
     messages_to_delete = cast(
         list[int],
         await MessageRef.filter(
-            peer__owner=None, peer__channel_id=channel.id, content__author_id=target_id,
+            peer=peer, content__author_id=target_id,
         ).order_by("-id").limit(1001).values_list("id", flat=True),
     )
 
@@ -1775,7 +1786,9 @@ async def delete_participant_history(request: DeleteParticipantHistory, user_id:
     if len(messages_to_delete) > 1000:
         offset_id = messages_to_delete.pop()
 
-    await MessageRef.filter(id__in=messages_to_delete).delete()
+    async with in_transaction():
+        await MessageRef.filter(id__in=messages_to_delete).delete()
+        await peer.sync_last_message()
 
     _, new_pts = await upd.delete_messages_channel(channel, messages_to_delete)
     return AffectedHistory(

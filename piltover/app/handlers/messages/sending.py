@@ -600,7 +600,10 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
             pts_count=0,
         )
 
-    await MessageRef.filter(id__in=all_ids).delete()
+    peer_ids = cast(list[int], await MessageRef.filter(id__in=all_ids).values_list("peer_id", flat=True))
+    async with in_transaction():
+        await MessageRef.filter(id__in=all_ids).delete()
+        await Peer.sync_last_message_bulk(peer_ids)
     pts = await upd.delete_messages(user_id, messages)
 
     return AffectedMessages(pts=pts, pts_count=len(all_ids))

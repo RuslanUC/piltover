@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TypeVar, Generic, TYPE_CHECKING, Literal, TypeGuard, TypeAlias, cast
 
-from tortoise import fields, Model
+from pypika_tortoise import Parameter, Dialects
+from tortoise import fields, Model, Tortoise
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySetSingle
 
@@ -32,12 +33,33 @@ PeerTypeT = TypeVar(
     bound=AnyPeerType,
 )
 
-
 PeerSelfT: TypeAlias = "Peer[models.User, models.User, None, None, int, int, None, None, Literal[PeerType.SELF]]"  # noqa: E501
 PeerUserT: TypeAlias = "Peer[models.User, models.User, None, None, int, int, None, None, Literal[PeerType.USER]]"  # noqa: E501
 PeerChatT: TypeAlias = "Peer[models.User, None, models.Chat, None, int, None, int, None, Literal[PeerType.CHAT]]"  # noqa: E501
 PeerChannelT: TypeAlias = "Peer[None, None, None, models.Channel, None, None, None, int, Literal[PeerType.CHANNEL]]"  # noqa: E501
 PeerOwnedT: TypeAlias = "Peer[models.User, models.User | None, models.Chat | None, models.Channel | None, int, int | None, int | None, int | None, AnyPeerType]"  # noqa: E501
+
+_LAST_MESSAGE_SYNC_SQL = """
+UPDATE peer
+SET
+    last_message_id = (
+        SELECT m.id
+        FROM messageref m
+        INNER JOIN messagecontent mc ON m.content_id = mc.id
+        WHERE m.peer_id = peer.id
+        ORDER BY m.id DESC
+        LIMIT 1
+    ),
+    last_message_date = (
+        SELECT mc.date
+        FROM messageref m
+        INNER JOIN messagecontent mc ON m.content_id = mc.id
+        WHERE m.peer_id = peer.id
+        ORDER BY m.id DESC
+        LIMIT 1
+    )
+WHERE {where_condition};
+"""
 
 
 class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, ChatIdT, ChannelIdT, PeerTypeT]):
@@ -47,6 +69,8 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
     blocked_at: datetime | None = fields.DatetimeField(null=True, default=None)
     user_ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
     user_has_wallpaper: bool = fields.BooleanField(default=False)
+    last_message_id: int | None = fields.BigIntField(null=True, default=None, db_index=True)
+    last_message_date: datetime | None = fields.DatetimeField(null=True, default=None, db_index=True)
 
     user: UserT = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
     chat: ChatT = fields.ForeignKeyField("models.Chat", null=True, default=None)
@@ -388,3 +412,26 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
 
     def tup(self) -> tuple[PeerType, int]:
         return self.type, self.target_id_raw()
+
+    async def sync_last_message(self) -> None:
+        await self.sync_last_message_bulk([self])
+
+    @classmethod
+    async def sync_last_message_bulk(cls, peers: list[Peer | int]) -> None:
+        if not peers:
+            return
+
+        peer_ids = [(peer.id if isinstance(peer, Peer) else peer) for peer in peers]
+
+        conn = Tortoise.get_connection("default")
+        dialect = Dialects(conn.capabilities.dialect)
+        placeholder_factory = Parameter.IDX_PLACEHOLDERS[dialect]
+        placeholders = [placeholder_factory(i + 1) for i in range(len(peer_ids))]
+
+        if len(peer_ids) == 1:
+            where_condition = f"peer.id = {placeholders[0]}"
+        else:
+            where_condition = f"peer.id IN ({','.join(placeholders)})"
+
+        sql = _LAST_MESSAGE_SYNC_SQL.format(where_condition=where_condition)
+        await conn.execute_query(sql, peer_ids)

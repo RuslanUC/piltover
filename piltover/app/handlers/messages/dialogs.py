@@ -166,46 +166,32 @@ async def get_dialogs_internal(
     query = Q(**query_filters)
 
     if offset_peer is not None:
-        input_peer = offset_peer
-        offset_peer_id_filt = peer_message_id = None
+        offset_peer_: Peer | None = None
+        peer_message_id: int | None = None
         try:
-            offset_peer_type, offset_peer_id = Peer.type_and_id_from_input_raise(user_id, input_peer)
+            offset_peer_type, offset_peer_id = Peer.type_and_id_from_input_raise(user_id, offset_peer)
         except ErrorRpc:
             pass
         else:
-            offset_peer_id_query: QuerySet[Peer] = Peer.filter()
+            offset_peer_query: QuerySet[Peer] = Peer.filter()
             if offset_peer_type in (PeerType.SELF, PeerType.USER):
-                offset_peer_id_query = offset_peer_id_query.filter(user_id=offset_peer_id)
+                offset_peer_query = offset_peer_query.filter(user_id=offset_peer_id)
             elif offset_peer_type is PeerType.CHAT:
-                offset_peer_id_query = offset_peer_id_query.filter(chat_id=offset_peer_id)
+                offset_peer_query = offset_peer_query.filter(chat_id=offset_peer_id)
             elif offset_peer_type is PeerType.CHANNEL:
-                offset_peer_id_query = offset_peer_id_query.filter(channel_id=offset_peer_id)
+                offset_peer_query = offset_peer_query.filter(channel_id=offset_peer_id)
             else:
                 raise Unreachable
-            if offset_peer_type is PeerType.CHANNEL:
-                offset_peer_id_query = offset_peer_id_query.filter(owner_id__isnull=True)
-            else:
-                offset_peer_id_query = offset_peer_id_query.filter(owner_id=user_id)
-            offset_peer_id_filt = cast(
-                int | None, cast(
-                    object, await offset_peer_id_query.first().values_list("id", flat=True)
-                )
-            )
-            if offset_peer_id_filt is None:
-                peer_message_id = None
-            else:
-                peer_message_id = cast(
-                    int | None, cast(
-                        object, await MessageRef.filter(
-                            peer_id=offset_peer_id_filt
-                        ).order_by("-id").first().values_list("id", flat=True)
-                    )
-                )
+            if offset_peer_type is not PeerType.CHANNEL:
+                offset_peer_query = offset_peer_query.filter(owner_id=user_id)
+            offset_peer_ = await offset_peer_query.get_or_none().only("id", "last_message_id")
+            if offset_peer_ is not None:
+                peer_message_id = offset_peer_.last_message_id
 
         if peer_message_id is None:
             offset_id = 0
-            if offset_peer_id_filt is not None:
-                query &= Q(peer_id__lt=offset_peer_id_filt)
+            if offset_peer_ is not None:
+                query &= Q(peer_id__lt=offset_peer_.id)
         elif offset_id == 0 or offset_id > peer_message_id:
             offset_id = peer_message_id
 
@@ -214,9 +200,7 @@ async def get_dialogs_internal(
     if exclude_pinned:
         query_filters = {f"{prefix}__pinned_index__isnull": True}
         query &= Q(**query_filters)
-    date_annotation = {}
     if offset_date:
-        date_annotation["last_message_date"] = Max("messagerefs__content__date")
         query &= Q(last_message_date__lt=datetime.fromtimestamp(offset_date, UTC))
     if folder_id is not None and issubclass(model, Dialog):
         query &= Q(dialogs__folder_id=DialogFolderId(folder_id))
@@ -226,8 +210,7 @@ async def get_dialogs_internal(
     # Doing it this way because, as far as i know, in Tortoise you cant reference outer-value from inner query
     #  and e.g. do something like
     #  Dialogs.annotate(last_message_id=Subquery(Message.filter(peer=F("peer")).order_by("-id").first().values_list("id", flat=True)))
-    peers_with_dialogs_query: QuerySet[Peer] = Peer.annotate(last_message_id=Max("messagerefs__id"), **date_annotation)\
-        .filter(query).limit(limit).order_by("-last_message_id", "-id")\
+    peers_with_dialogs_query: QuerySet[Peer] = Peer.filter(query).limit(limit).order_by("-last_message_id", "-id")\
         .select_related(prefix)
 
     dialogs: list[DialogT] = []

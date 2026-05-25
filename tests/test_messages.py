@@ -363,6 +363,7 @@ async def test_delete_history() -> None:
             MessageRef(peer=peer, content=content)
             for content in await MessageContent.filter(author=user)
         ])
+        await peer.sync_last_message()
 
         assert await client.get_chat_history_count("me") == 1500
 

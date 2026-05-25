@@ -348,10 +348,15 @@ async def add_chat_user(request: AddChatUser, user_id: int) -> InvitedUsers:
             peer__owner_id=user_id, peer__chat_id=chat.id, content__type=MessageType.REGULAR
         ).order_by("-id").limit(limit).select_related(*MessageRef.PREFETCH_FIELDS)
         messages = []
-        # TODO: do this in bulk?
-        for message in messages_to_forward:
-            messages.append(await message.clone_ref_for_peer(chat_peers[user_peer_id]))
-
+        async with in_transaction():
+            # TODO: do this in bulk?
+            for message in messages_to_forward:
+                messages.append(await MessageRef.create(
+                    peer=chat_peers[user_peer_id],
+                    content=message.content,
+                    pinned=message.pinned,
+                ))
+            await chat_peers[user_peer_id].sync_last_message()
         await upd.send_messages({chat_peers[user_peer_id]: messages})
 
     user = await User.get(id=user_id).only("id")

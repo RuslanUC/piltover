@@ -7,6 +7,7 @@ from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q, Subquery
 from tortoise.functions import Count, Max, Coalesce
+from tortoise.transactions import in_transaction
 
 from piltover.cache import Cache
 from piltover.db import models
@@ -418,29 +419,25 @@ class MessageRef(Model):
 
         messages: dict[models.Peer, MessageRef] = {}
 
-        content = await self.content.clone_scheduled()
+        async with in_transaction():
+            content = await self.content.clone_scheduled()
 
-        for to_peer in peers:
-            # TODO: probably create in bulk too?
-            messages[to_peer] = await MessageRef.create(
-                peer=to_peer,
-                content=content,
-                from_scheduled=to_peer == self.peer,
-                reply_to=replies.get(to_peer.id),
-            )
+            for to_peer in peers:
+                # TODO: probably create in bulk too?
+                messages[to_peer] = await MessageRef.create(
+                    peer=to_peer,
+                    content=content,
+                    from_scheduled=to_peer == self.peer,
+                    reply_to=replies.get(to_peer.id),
+                )
 
-        await models.Dialog.create_or_unhide_bulk(peers)
+            await models.Peer.sync_last_message_bulk(peers)
+            await models.Dialog.create_or_unhide_bulk(peers)
+
         return messages
 
-    async def clone_ref_for_peer(self, peer: models.Peer) -> MessageRef:
-        return await models.MessageRef.create(
-            peer=peer,
-            content=self.content,
-            pinned=self.pinned,
-        )
-
     async def forward_for_peers(
-            self, to_peer: models.Peer, peers: Iterable[models.Peer], fwd_header: models.MessageFwdHeader,
+            self, to_peer: models.Peer, peers: list[models.Peer], fwd_header: models.MessageFwdHeader,
             new_author: models.User | None = None, random_id: int | None = None, random_user_id: int | None = None,
             reply_to_content_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
@@ -492,7 +489,9 @@ class MessageRef(Model):
                 is_discussion=is_discussion,
             ))
 
-        await MessageRef.bulk_create(messages)
+        async with in_transaction():
+            await MessageRef.bulk_create(messages)
+            await models.Peer.sync_last_message_bulk(peers)
 
         ref_ids_by_peer_ids = {
             peer_id: ref_id
@@ -512,7 +511,7 @@ class MessageRef(Model):
             cls,
             new_contents: list[models.MessageContent],
             to_peer: models.Peer,
-            peers: Iterable[models.Peer],
+            peers: list[models.Peer],
             random_ids: Sequence[int | None],
             random_user_id: int | None,
             reply_to_content_ids: Sequence[int | None],
@@ -531,10 +530,13 @@ class MessageRef(Model):
                     content=content,
                     pinned=pinned_,
                     random_id=random_id if peer == to_peer else None,
+                    random_user_id=random_user_id if peer == to_peer else None,
                     is_discussion=is_discussion,
                 ))
 
-        await MessageRef.bulk_create(messages)
+        async with in_transaction():
+            await MessageRef.bulk_create(messages)
+            await models.Peer.sync_last_message_bulk(peers)
 
         ref_ids_by_peer_ids = {
             (peer_id, content_id): ref_id
@@ -625,7 +627,9 @@ class MessageRef(Model):
         ]
 
         if refs_to_create:
-            await cls.bulk_create(refs_to_create)
+            async with in_transaction():
+                await cls.bulk_create(refs_to_create)
+                await models.Peer.sync_last_message_bulk(peers)
 
         refs = await cls.filter(content=content)
 
