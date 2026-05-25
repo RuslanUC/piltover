@@ -2,26 +2,18 @@ from __future__ import annotations
 
 from typing import cast
 
-from tortoise import fields, Model
 from tortoise.expressions import Subquery
 from tortoise.functions import Max
 from tortoise.queryset import QuerySetSingle, QuerySet
 
 from piltover.db import models
 from piltover.db.enums import PeerType
+from piltover.db.models.dialog_base import DialogBase
 from piltover.exceptions import Unreachable
 from piltover.tl.types import SavedDialog as TLSavedDialog
 
 
-class SavedDialog(Model):
-    id: int = fields.BigIntField(primary_key=True)
-    pinned_index: int | None = fields.SmallIntField(null=True, default=None)
-    owner: models.User = fields.ForeignKeyField("models.User")
-    peer: models.Peer = fields.ForeignKeyField("models.Peer")
-
-    owner_id: int
-    peer_id: int
-
+class SavedDialog(DialogBase):
     class Meta:
         unique_together = (
             ("owner_id", "peer_id"),

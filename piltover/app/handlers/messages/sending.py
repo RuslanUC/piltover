@@ -1133,8 +1133,9 @@ async def forward_messages(
             raise ErrorRpc(error_code=400, error_message="MESSAGE_IDS_EMPTY")
         from_peer = first_msg.peer
 
-    if from_peer is None and (from_peer := await Peer.from_input_peer(user, request.from_peer)) is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    if from_peer is None:
+        from_peer = await Peer.from_input_peer_raise(user, request.from_peer)
+
     from_participant = None
     if from_peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         from_participant = await from_peer.chat_or_channel.get_participant(user)

@@ -3,11 +3,10 @@ from typing import cast
 
 from tortoise.expressions import Q
 
+import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.dialogs import get_dialogs_internal, format_dialogs
 from piltover.app.handlers.messages.history import get_messages_internal, format_messages_internal
-import piltover.app.utils.updates_manager as upd
-from piltover.db.enums import PeerType
-from piltover.db.models import User, SavedDialog, Peer, State, MessageRef
+from piltover.db.models import SavedDialog, Peer, State, MessageRef
 from piltover.db.models.peer import PeerSelfT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -111,32 +110,46 @@ async def toggle_saved_dialog_pin(request: ToggleSavedDialogPin, user_id: int) -
 
 @handler.on_request(ReorderPinnedSavedDialogs, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user_id: int):
+    base_dialog_query = SavedDialog.filter(owner_id=user_id).select_related("peer")
+
     pinned_now = {
-        dialog.peer: dialog
-        for dialog in await SavedDialog.filter(
-            owner_id=user_id, pinned_index__not_isnull=True,
-        ).select_related("peer", "peer__user")
+        (dialog.peer.tup()): dialog
+        for dialog in await base_dialog_query.filter(pinned_index__not_isnull=True)
     }
     pinned_after = []
     to_unpin: dict = pinned_now.copy() if request.force else {}
+
+    dialogs_by_peers = pinned_now.copy()
+
+    input_peers_to_fetch = []
 
     for dialog_peer in request.order:
         if not isinstance(dialog_peer, InputDialogPeer):
             continue
 
-        # TODO: move out of the loop
-        if (peer := await Peer.from_input_peer(user_id, dialog_peer.peer)) is None:
+        peer_info = Peer.type_and_id_from_input(user_id, dialog_peer.peer)
+        if peer_info is None or peer_info in dialogs_by_peers:
             continue
 
-        dialog = pinned_now.get(peer, None)
-        if dialog is None:
-            # TODO: move out of the loop
-            dialog = await SavedDialog.get_or_none(owner_id=user_id, peer=peer).select_related("peer", "peer__user")
+        input_peers_to_fetch.append(dialog_peer.peer)
+
+    for dialog in await SavedDialog.get_from_input_peer_many(user_id, input_peers_to_fetch).select_related("peer"):
+        dialogs_by_peers[(dialog.peer.tup())] = dialog
+
+    for dialog_peer in request.order:
+        if not isinstance(dialog_peer, InputDialogPeer):
+            continue
+
+        peer_info = Peer.type_and_id_from_input(user_id, dialog_peer.peer)
+        if peer_info is None:
+            continue
+
+        dialog = dialogs_by_peers.get(peer_info, None)
         if not dialog:
             continue
 
         pinned_after.append(dialog)
-        to_unpin.pop(peer, None)
+        to_unpin.pop(peer_info, None)
 
     if not request.force:
         pinned_after.extend(sorted(pinned_now.values(), key=lambda d: d.pinned_index or 0))
@@ -145,8 +158,7 @@ async def reorder_pinned_saved_dialogs(request: ReorderPinnedSavedDialogs, user_
         unpin_ids = [dialog.id for dialog in to_unpin.values()]
         await SavedDialog.filter(id__in=unpin_ids).update(pinned_index=None)
 
-    pinned_after.reverse()
-    for idx, dialog in enumerate(pinned_after):
+    for idx, dialog in enumerate(reversed(pinned_after)):
         dialog.pinned_index = idx
 
     if pinned_after:

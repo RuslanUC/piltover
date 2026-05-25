@@ -1,26 +1,24 @@
 from datetime import datetime, UTC
 from typing import cast, TypeVar, overload, Literal
 
-from loguru import logger
 from tortoise.expressions import Q
 from tortoise.functions import Max
 from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.updates import get_state_internal
-from piltover.context import request_ctx
 from piltover.db.enums import PeerType, DialogFolderId
-from piltover.db.models import User, Dialog, Peer, SavedDialog, Chat, Channel, MessageRef
+from piltover.db.models import Dialog, Peer, SavedDialog, MessageRef
 from piltover.db.models.peer import PeerOwnedT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.tl import InputPeerUser, InputPeerSelf, InputPeerChat, DialogPeer, Updates, TLObjectVector, \
-    InputPeerChannel, InputDialogPeer
+from piltover.tl import DialogPeer, Updates, TLObjectVector, \
+    InputDialogPeer
+from piltover.tl.base import InputPeer as TLInputPeerBase, Chat as TLChatBase, DialogPeer as TLDialogPeerBase
 from piltover.tl.functions.folders import EditPeerFolders
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
     ToggleDialogPin, MarkDialogUnread, GetDialogUnreadMarks
 from piltover.tl.types.messages import PeerDialogs, Dialogs, DialogsSlice, SavedDialogs, SavedDialogsSlice
-from piltover.tl.base import InputPeer as TLInputPeerBase, Chat as TLChatBase, DialogPeer as TLDialogPeerBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
