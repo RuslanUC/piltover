@@ -1,7 +1,7 @@
 from datetime import datetime, UTC
 from typing import cast
 
-from tortoise.expressions import Q, Subquery, F
+from tortoise.expressions import Subquery, F
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
@@ -78,7 +78,6 @@ async def send_reaction(request: SendReaction, user_id: int) -> Updates:
         # TODO: check if this is correct permission
         if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN", reason="can't view messages")
-        channel_min_id = 0
         if peer.type is PeerType.CHANNEL \
                 and (channel_min_id := peer.channel.min_id(participant)) is not None \
                 and request.msg_id < channel_min_id:

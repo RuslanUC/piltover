@@ -5,7 +5,6 @@ from typing import cast, Iterable
 from loguru import logger
 from tortoise import fields
 from tortoise.expressions import Subquery
-from tortoise.functions import Max
 from tortoise.queryset import QuerySetSingle, QuerySet
 from tortoise.transactions import in_transaction
 
@@ -41,12 +40,9 @@ class Dialog(DialogBase):
         if not dialogs:
             return models.MessageRef.filter(id=0)
 
+        # TODO: dont use subquery and use dialogs[...].peer.last_message_id directly?
         return models.MessageRef.filter(
-            id__in=Subquery(
-                models.MessageRef.filter(
-                    peer_id__in=[dialog.peer_id for dialog in dialogs]
-                ).group_by("peer_id").annotate(max_id=Max("id")).values("max_id")
-            )
+            id__in=Subquery(models.Peer.filter(id__in=[dialog.peer_id for dialog in dialogs]).values("last_message_id"))
         ).select_related(
             *(models.MessageRef.PREFETCH_MAYBECACHED if prefetch else ()), "peer__channel"
         )

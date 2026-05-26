@@ -65,7 +65,10 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
 
     server_pts = cast(
         int | None,
-        await Update.filter(user_id=user_id).annotate(max_pts=Max("pts")).first().values_list("max_pts", flat=True)
+        cast(
+            object,
+            await Update.filter(user_id=user_id).order_by("-pts").first().values_list("pts", flat=True)
+        )
     ) or 0
 
     if request.pts_total_limit is not None:
@@ -197,9 +200,12 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
 
     server_pts = cast(
         int | None,
-        await ChannelUpdate.filter(
-            channel_id=peer.channel_id,
-        ).annotate(max_pts=Max("pts")).first().values_list("max_pts", flat=True)
+        cast(
+            object,
+            await ChannelUpdate.filter(
+                channel_id=peer.channel_id,
+            ).order_by("-pts").first().values_list("pts", flat=True)
+        )
     ) or 0
 
     if server_pts > (request.pts + request.limit):
