@@ -431,6 +431,11 @@ async def get_invite_text():  # pragma: no cover
 async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> PeerColors | PeerColorsNotModified:
     is_profile = isinstance(request, GetPeerProfileColors)
 
+    cache_key = f"peer-colors:{'profile' if is_profile else 'regular'}"
+    cached_peer_colors = await Cache.obj.get(cache_key)
+    if cached_peer_colors is not None:
+        return cached_peer_colors
+
     builtin_colors_num = 6
 
     ids = await PeerColorOption.filter(is_profile=is_profile).order_by("id").values_list("id", flat=True)
@@ -446,17 +451,17 @@ async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> Peer
 
     colors = [
         color.to_tl()
-        for color in await PeerColorOption.filter(is_profile=is_profile).order_by("id")
+        for color in await PeerColorOption.filter(id__in=ids).order_by("id")
     ]
 
     for color_id in range(builtin_colors_num + 1):
         if color_id not in ids_set:
             colors.append(TLPeerColorOption(color_id=color_id))
 
-    return PeerColors(
-        hash=colors_hash,
-        colors=colors,
-    )
+    result = PeerColors(hash=colors_hash, colors=colors)
+    await Cache.obj.set(cache_key, result, ttl=60 * 60 * 12)
+
+    return result
 
 
 @handler.on_request(DismissSuggestion, ReqHandlerFlags.BOT_NOT_ALLOWED)
