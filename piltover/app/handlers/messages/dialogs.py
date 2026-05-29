@@ -61,16 +61,15 @@ async def format_dialogs(
     if dialogs:
         ucc = UsersChatsChannels()
 
-        dialog_by_peer: dict[tuple[PeerType, int], tuple[DialogT, MessageRef | None]] = {}
+        dialog_by_peer: dict[int, tuple[DialogT, MessageRef | None]] = {}
         for dialog in dialogs:
-            dialog_by_peer[dialog.peer_key()] = (dialog, None)
+            dialog_by_peer[dialog.peer_id] = (dialog, None)
 
         messages = await model.top_message_query_bulk(user_id, dialogs)
         for message_ref in messages:
             ucc.add_message(message_ref.content_id)
-            peer_key = message_ref.peer_key()
-            dialog, _ = dialog_by_peer[peer_key]
-            dialog_by_peer[peer_key] = dialog, message_ref
+            dialog, _ = dialog_by_peer[message_ref.peer_id]
+            dialog_by_peer[message_ref.peer_id] = dialog, message_ref
 
         for dialog, message in dialog_by_peer.values():
             if message is not None:

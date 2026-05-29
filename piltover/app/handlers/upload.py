@@ -101,26 +101,28 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
 
     location = request.location
     ctx = request_ctx.get()
+    auth_id = cast(int, ctx.auth_id)
 
     if isinstance(location, InputPeerPhotoFileLocation):
         peer_info = Peer.type_and_id_from_input(user_id, location.peer)
         if peer_info is None:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         peer_type, peer_id = peer_info
+        q = Q(id=location.photo_id)
         if peer_type in (PeerType.SELF, PeerType.USER):
-            q = Q(userphotos__file_id=location.photo_id, userphotos__user_id=peer_id)
+            q &= Q(userphotos__user_id=peer_id)
         elif peer_type is PeerType.CHAT:
-            q = Q(chats__photo_id=location.photo_id, chats__id=peer_id)
+            q &= Q(chats__id=peer_id)
         elif peer_type is PeerType.CHANNEL:
-            q = Q(channels__photo_id=location.photo_id, channels__id=peer_id)
+            q &= Q(channels__id=peer_id)
         else:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
     elif isinstance(location, InputEncryptedFileLocation):
-        if not File.check_access_hash(user_id, ctx.auth_id, location.id, location.access_hash):
+        if not File.check_access_hash(user_id, auth_id, location.id, location.access_hash):
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         q = Q(id=location.id, type=FileType.ENCRYPTED)
     elif isinstance(location, InputStickerSetThumb):
-        set_q = Stickerset.from_input_q(user_id, ctx.auth_id, location.stickerset, prefix="stickersetthumbs__set")
+        set_q = Stickerset.from_input_q(user_id, auth_id, location.stickerset, prefix="stickersetthumbs__set")
         if set_q is None:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         q = Q(id=location.thumb_version) | set_q
@@ -137,7 +139,7 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
                 constant_file_ref=UUID(bytes=location.file_reference[12:]),
             )
         else:
-            if not File.check_access_hash(user_id, ctx.auth_id, location.id, location.access_hash):
+            if not File.check_access_hash(user_id, auth_id, location.id, location.access_hash):
                 raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
             q = Q(id=location.id, type__not=FileType.ENCRYPTED)
 
@@ -153,7 +155,7 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
 
     document_thumb = isinstance(location, InputDocumentFileLocation) and location.thumb_size
 
-    storage = request_ctx.get().storage
+    storage = ctx.storage
     component = storage.documents
 
     suffix = None

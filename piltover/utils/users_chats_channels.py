@@ -76,10 +76,10 @@ class UsersChatsChannels:
             channels_q |= Q(id__in=self._channel_ids)
 
         if self._message_ids is not None:
-            base_query = models.MessageRelated.filter(message_id__in=self._message_ids)
-            users_q |= Q(id__in=Subquery(base_query.values("user_id")))
-            chats_q |= Q(id__in=Subquery(base_query.values("chat_id")))
-            channels_q |= Q(id__in=Subquery(base_query.values("channel_id")))
+            messagerelated_q = Q(messagerelateds__message_id__in=self._message_ids)
+            users_q |= messagerelated_q
+            chats_q |= messagerelated_q
+            channels_q |= messagerelated_q
 
         return (
             models.User.filter(users_q) if users_q != _EMPTY else None,

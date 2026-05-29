@@ -4,7 +4,7 @@ from typing import Self, TypeVar
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
-from tortoise.queryset import QuerySetSingle, QuerySet
+from tortoise.queryset import QuerySet
 
 from piltover.db import models
 from piltover.db.enums import PeerType
@@ -27,9 +27,6 @@ class DialogBase(Model):
 
     class Meta:
         abstract = True
-
-    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef | None]:
-        raise NotImplementedError
 
     @classmethod
     def top_message_query_bulk(

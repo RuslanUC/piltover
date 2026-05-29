@@ -434,7 +434,7 @@ async def get_peer_colors(request: GetPeerColors | GetPeerProfileColors) -> Peer
     cache_key = f"peer-colors:{'profile' if is_profile else 'regular'}"
     cached_peer_colors = await Cache.obj.get(cache_key)
     if cached_peer_colors is not None:
-        if cached_peer_colors.hash == request.hash:
+        if cached_peer_colors.hash == request.hash and cached_peer_colors.hash != 0:
             return PeerColorsNotModified()
         return cached_peer_colors
 

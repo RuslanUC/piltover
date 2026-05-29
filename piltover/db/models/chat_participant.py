@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import cast
 
 from tortoise import fields, Model
 from tortoise.expressions import Subquery
@@ -43,8 +42,8 @@ class ChatParticipant(Model):
 
     class Meta:
         unique_together = (
-            ("user", "chat",),
-            ("user", "channel",),
+            ("user", "chat"),
+            ("user", "channel"),
         )
 
     @property

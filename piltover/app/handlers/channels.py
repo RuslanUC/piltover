@@ -296,7 +296,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     has_scheduled = False
     if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
         has_scheduled = await MessageRef.filter(
-            peer__channel=channel, content__scheduled_date__not_isnull=True,
+            peer=peer, content__author_id=user_id, content__scheduled_date__not_isnull=True,
         ).exists()
 
     can_change_info = participant is not None and channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)

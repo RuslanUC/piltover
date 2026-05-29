@@ -58,18 +58,16 @@ class ReadState(Model):
 
         unread_reactions_by_peer = {}
         if not no_reactions:
-            unread_reactions_counts = await models.MessageContent.filter(
-                messagerefs__peer_id__in=[peer.id for peer in peers],
-                messagereactions__user_id__not=user_id,
-                author_id=user_id,
-                author_reactions_unread=True,
+            unread_reactions_counts = await models.MessageReaction.filter(
+                user_id__not=user_id,
+                message__author_id=user_id,
+                message__author_reactions_unread=True,
+                message__messagerefs__peer_id__in=[peer.id for peer in peers],
             ).group_by(
-                "messagerefs__peer_id",
+                "message__messagerefs__peer_id",
             ).annotate(
-                count=Count("id"),
-            ).values_list(
-                "messagerefs__peer_id", "count",
-            )
+                count=Count("message_id"),
+            ).values_list("message__messagerefs__peer_id", "count")
             unread_reactions_by_peer: dict[int, int] = dict(unread_reactions_counts)
 
         out_read_max_ids = {}

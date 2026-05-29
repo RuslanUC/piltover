@@ -5,7 +5,7 @@ from typing import cast, Iterable
 from loguru import logger
 from tortoise import fields
 from tortoise.expressions import Subquery
-from tortoise.queryset import QuerySetSingle, QuerySet
+from tortoise.queryset import QuerySet
 from tortoise.transactions import in_transaction
 
 from piltover.db import models
@@ -27,11 +27,9 @@ class Dialog(DialogBase):
         unique_together = (
             ("owner_id", "peer_id"),
         )
-
-    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef | None]:
-        return models.MessageRef.filter(peer_id=self.peer_id).select_related(
-            *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
-        ).order_by("-id").first()
+        indexes = (
+            ("owner_id", "folder_id", "pinned_index", "visible"),
+        )
 
     @classmethod
     def top_message_query_bulk(
@@ -44,7 +42,7 @@ class Dialog(DialogBase):
         return models.MessageRef.filter(
             id__in=Subquery(models.Peer.filter(id__in=[dialog.peer_id for dialog in dialogs]).values("last_message_id"))
         ).select_related(
-            *(models.MessageRef.PREFETCH_MAYBECACHED if prefetch else ()), "peer__channel"
+            *(models.MessageRef.PREFETCH_MAYBECACHED if prefetch else ()),
         )
 
     def peer_key(self) -> tuple[PeerType, int]:
@@ -67,7 +65,9 @@ class Dialog(DialogBase):
             f"Max read outbox message id is {out_read_max_id} for peer {self.peer_id} for user {self.owner_id}"
         )
 
-        top_message = await self.top_message_query(False).values_list("id", flat=True)
+        top_message_id = await models.MessageRef.filter(
+            peer_id=self.peer_id
+        ).order_by("-id").first().values_list("id", flat=True)
         draft = await models.MessageDraft.get_or_none(user_id=self.owner_id, peer_id=self.peer_id)
         draft = draft.to_tl() if draft else None
 
@@ -75,7 +75,7 @@ class Dialog(DialogBase):
             pinned=self.pinned_index is not None,
             unread_mark=self.unread_mark,
             peer=self.peer.to_tl(),
-            top_message=cast(int | None, cast(object, top_message)) or 0,
+            top_message=cast(int | None, cast(object, top_message_id)) or 0,
             draft=draft,
             read_inbox_max_id=in_read_max_id,
             read_outbox_max_id=out_read_max_id,
@@ -92,7 +92,7 @@ class Dialog(DialogBase):
 
     @classmethod
     async def to_tl_bulk(
-            cls, dialogs: list[Dialog], messages: dict[tuple[PeerType, int], tuple[Dialog, models.MessageRef | None]],
+            cls, dialogs: list[Dialog], messages: dict[int, tuple[Dialog, models.MessageRef | None]],
     ) -> list[TLDialog]:
         if not dialogs:
             return []
@@ -113,9 +113,9 @@ class Dialog(DialogBase):
         tl = []
         for dialog, read_state in zip(dialogs, read_states):
             top_message = 0
-            peer_key = dialog.peer_key()
-            if peer_key in messages and messages[peer_key][1] is not None:
-                top_message = messages[peer_key][1].id
+            peer_id = dialog.peer_id
+            if peer_id in messages and (peer_message := messages[peer_id][1]) is not None:
+                top_message = peer_message.id
 
             draft = None
             if dialog.peer_id in drafts:

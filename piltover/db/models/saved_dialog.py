@@ -4,7 +4,7 @@ from typing import cast
 
 from tortoise.expressions import Subquery
 from tortoise.functions import Max
-from tortoise.queryset import QuerySetSingle, QuerySet
+from tortoise.queryset import QuerySet
 
 from piltover.db import models
 from piltover.db.enums import PeerType
@@ -18,14 +18,6 @@ class SavedDialog(DialogBase):
         unique_together = (
             ("owner_id", "peer_id"),
         )
-
-    def top_message_query(self, prefetch: bool = True) -> QuerySetSingle[models.MessageRef | None]:
-        query = models.MessageRef.filter(
-            peer__owner_id=self.owner_id, peer__user_id=self.owner_id, content__fwd_header__saved_peer=self.peer,
-        ).order_by("-id").first()
-        if prefetch:
-            return query.select_related(*models.MessageRef.PREFETCH_FIELDS)
-        return query
 
     @classmethod
     def top_message_query_bulk(
@@ -58,7 +50,13 @@ class SavedDialog(DialogBase):
     async def to_tl(self) -> TLSavedDialog:
         top_message_id = cast(
             int | None,
-            cast(object, await self.top_message_query(False).values_list("id", flat=True))
+            cast(
+                object,
+                await models.MessageRef.filter(
+                    peer__owner_id=self.owner_id, peer__user_id=self.owner_id,
+                    content__fwd_header__saved_peer=self.peer,
+                ).order_by("-id").first().values_list("id", flat=True)
+            )
         )
 
         return TLSavedDialog(
@@ -70,14 +68,14 @@ class SavedDialog(DialogBase):
     @classmethod
     async def to_tl_bulk(
             cls, dialogs: list[SavedDialog],
-            messages: dict[tuple[PeerType, int], tuple[SavedDialog, models.MessageRef | None]],
+            messages: dict[int, tuple[SavedDialog, models.MessageRef | None]],
     ) -> list[TLSavedDialog]:
         tl = []
         for dialog in dialogs:
             top_message = 0
-            peer_key = dialog.peer_key()
-            if peer_key in messages and messages[peer_key][1] is not None:
-                top_message = messages[peer_key][1].id
+            peer_id = dialog.peer_id
+            if peer_id in messages and (peer_message := messages[peer_id][1]) is not None:
+                top_message = peer_message.id
 
             tl.append(TLSavedDialog(
                 pinned=False,
