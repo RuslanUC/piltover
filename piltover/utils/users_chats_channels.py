@@ -75,7 +75,7 @@ class UsersChatsChannels:
         if self._channel_ids:
             channels_q |= Q(id__in=self._channel_ids)
 
-        if self._message_ids is not None:
+        if self._message_ids:
             messagerelated_q = Q(messagerelateds__message_id__in=self._message_ids)
             users_q |= messagerelated_q
             chats_q |= messagerelated_q

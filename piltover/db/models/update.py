@@ -72,6 +72,11 @@ class Update(Model):
     authorization_id: int | None
     stickerset_id: int | None
 
+    class Meta:
+        indexes = (
+            ("user_id", "pts"),
+        )
+
     MESSAGE_PREFETCH_MAYBECACHED = ("message", "message__peer", "message__content", "message__peer__channel")
 
     # TODO: add to_tl_bulk

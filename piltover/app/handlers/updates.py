@@ -67,7 +67,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
         int | None,
         cast(
             object,
-            await Update.filter(user_id=user_id).order_by("-pts").first().values_list("pts", flat=True)
+            await Update.filter(user_id=user_id).annotate(max_pts=Max("pts")).first().values_list("max_pts", flat=True)
         )
     ) or 0
 

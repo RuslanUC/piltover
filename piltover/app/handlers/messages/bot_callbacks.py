@@ -158,7 +158,7 @@ async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> 
         if query_peer_query is None:
             raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
         peer = await query_peer_query.select_related("user", "channel").only(
-            "type", "user_id", "user__bot", "channel__channel", "channel__supergroup"
+            "type", "user_id", "user__id", "user__bot", "channel__channel", "channel__supergroup"
         )
         if peer is None:
             raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
