@@ -34,6 +34,7 @@ handler = MessageHandler("messages.invites")
 
 @handler.on_request(GetExportedChatInvites, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_exported_chat_invites(request: GetExportedChatInvites, user_id: int) -> ExportedChatInvites:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -43,9 +44,13 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user_id: in
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     query = Chat.query(peer.chat_or_channel) & Q(revoked=request.revoked)
-    if isinstance(request.admin_id, (InputUser, InputUserSelf)):
-        admin_peer = await Peer.from_input_peer_raise(user_id, request.admin_id, "ADMIN_ID_INVALID")
-        query &= Q(user=admin_peer.user)
+    admin_peer_info = Peer.type_and_id_from_input(user_id, request.admin_id)
+    if admin_peer_info is not None:
+        admin_peer_type, admin_peer_id = admin_peer_info
+        if admin_peer_type in (PeerType.SELF, PeerType.USER):
+            query &= Q(user_id=admin_peer_id)
+        else:
+            raise ErrorRpc(error_code=400, error_message="ADMIN_ID_INVALID")
 
     if request.offset_date:
         query &= Q(updated_at__lt=datetime.fromtimestamp(request.offset_date, UTC))
@@ -70,11 +75,14 @@ async def get_exported_chat_invites(request: GetExportedChatInvites, user_id: in
 @handler.on_request(ExportChatInvite_134, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(ExportChatInvite, ReqHandlerFlags.DONT_FETCH_USER)
 async def export_chat_invite(request: ExportChatInvite, user_id: int) -> ChatInviteExported:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     participant = await peer.chat_or_channel.get_participant(user_id)
+    if participant is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
     if isinstance(peer.chat_or_channel, Chat) \
             and not peer.chat.user_has_permission(participant, ChatBannedRights.INVITE_USERS):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
@@ -106,6 +114,7 @@ async def export_chat_invite(request: ExportChatInvite, user_id: int) -> ChatInv
 
 @handler.on_request(GetAdminsWithInvites, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_admins_with_invites(request: GetAdminsWithInvites, user_id: int) -> ChatAdminsWithInvites:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -147,6 +156,7 @@ async def get_admins_with_invites(request: GetAdminsWithInvites, user_id: int) -
 
 @handler.on_request(GetChatInviteImporters, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_chat_invite_importers(request: GetChatInviteImporters, user_id: int) -> ChatInviteImporters:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -379,6 +389,7 @@ async def check_chat_invite(request: CheckChatInvite, user_id: int) -> TLChatInv
 
 @handler.on_request(GetExportedChatInvite, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_exported_chat_invite(request: GetExportedChatInvite, user_id: int) -> ExportedChatInvite:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -407,18 +418,21 @@ async def get_exported_chat_invite(request: GetExportedChatInvite, user_id: int)
 
 @handler.on_request(DeleteRevokedExportedChatInvites, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_revoked_exported_chat_invites(request: DeleteRevokedExportedChatInvites, user_id: int) -> bool:
-    peer = await Peer.from_input_peer_raise(user_id, request.peer)
-    if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    # TODO: dont fetch peer, only chat or channel
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
     participant = await peer.chat_or_channel.get_participant_raise(user_id, "CHAT_ADMIN_REQUIRED")
     if not peer.chat_or_channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     query = Chat.query(peer.chat_or_channel) & Q(revoked=True)
-    if isinstance(request.admin_id, (InputUser, InputUserSelf)):
-        admin_peer = await Peer.from_input_peer_raise(user_id, request.admin_id, "ADMIN_ID_INVALID")
-        query &= Q(user=admin_peer.user)
+    admin_peer_info = Peer.type_and_id_from_input(user_id, request.admin_id)
+    if admin_peer_info is not None:
+        admin_peer_type, admin_peer_id = admin_peer_info
+        if admin_peer_type in (PeerType.SELF, PeerType.USER):
+            query &= Q(user_id=admin_peer_id)
+        else:
+            raise ErrorRpc(error_code=400, error_message="ADMIN_ID_INVALID")
 
     await ChatInvite.filter(query).delete()
     return True
@@ -520,6 +534,7 @@ async def add_requested_users_to_chat(user: User, chat: ChatBase, requests: list
 
 @handler.on_request(HideChatJoinRequest, ReqHandlerFlags.DONT_FETCH_USER)
 async def hide_chat_join_request(request: HideChatJoinRequest, user_id: int) -> Updates:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -551,6 +566,7 @@ async def hide_chat_join_request(request: HideChatJoinRequest, user_id: int) -> 
 
 @handler.on_request(HideAllChatJoinRequests, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user_id: int) -> Updates:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
@@ -587,6 +603,7 @@ async def hide_all_chat_join_requests(request: HideAllChatJoinRequests, user_id:
 
 @handler.on_request(EditExportedChatInvite, ReqHandlerFlags.DONT_FETCH_USER)
 async def edit_exported_chat_invite(request: EditExportedChatInvite, user_id: int) -> ExportedChatInvite:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, allow_migrated_chat=True)
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")

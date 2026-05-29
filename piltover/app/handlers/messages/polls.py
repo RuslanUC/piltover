@@ -24,7 +24,7 @@ async def get_poll_results(request: GetPollResults, user_id: int) -> Updates:
     if peer.type is PeerType.CHANNEL:
         query = append_channel_min_message_id_to_query_maybe(peer, query)
 
-    message = await MessageRef.get_or_none(query & Q(id=request.msg_id)).select_related(
+    message = await MessageRef.get_or_none(query, id=request.msg_id).select_related(
         "content__media", "content__media__poll"
     ).prefetch_related("media__poll__answers")
     if message is None or message.content.media is None or message.content.media.poll is None:

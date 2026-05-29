@@ -19,6 +19,7 @@ handler = MessageHandler("messages.other")
 
 @handler.on_request(SetTyping)
 async def set_typing(request: SetTyping, user: User):
+    # TODO: dont fetch peer?
     peer = await Peer.from_input_peer_raise(user, request.peer)
 
     if Peer.is_self(peer) or (Peer.is_channel(peer) and not peer.channel.supergroup):

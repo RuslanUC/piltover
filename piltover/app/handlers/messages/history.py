@@ -16,7 +16,7 @@ from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAd
     READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
     ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent, \
-    MessageUniqueView
+    MessageUniqueView, Channel
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -1064,16 +1064,24 @@ async def get_search_results_positions(request: GetSearchResultsPositions, user_
 
 @handler.on_request(GetDiscussionMessage, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_discussion_message(request: GetDiscussionMessage, user_id: int) -> DiscussionMessage:
-    peer = await Peer.from_input_peer_raise(user_id, request.peer, "CHANNEL_PRIVATE", peer_types=(PeerType.CHANNEL,))
+    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, request.peer)
+    if peer_type is not PeerType.CHANNEL:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    message = await MessageRef.get_(request.msg_id, peer)
+    channel = await Channel.get_or_none(id=peer_target_id, deleted=False)
+    if channel is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    message_query = Q(id=request.msg_id, peer__channel_id=peer_target_id, content__type=MessageType.REGULAR)
+    message_query = append_channel_min_message_id_to_query_maybe(channel, message_query)
+    message = await MessageRef.get_or_none(message_query).only("discussion_id")
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
 
     if message.discussion_id is None:
         raise ErrorRpc(error_code=400, error_message="MSG_ID_INVALID")
 
-    discussion_message = await MessageRef.get(id=message.discussion_id).select_related(*MessageRef.PREFETCH_FIELDS)
+    discussion_message = await MessageRef.get(id=message.discussion_id).select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
     ucc = UsersChatsChannels()
     ucc.add_message(discussion_message.content_id)
@@ -1088,14 +1096,16 @@ async def get_discussion_message(request: GetDiscussionMessage, user_id: int) ->
     else:
         total, max_id = 0, None
 
-    read_state = await DiscussionReadState.get_or_none(user_id=user_id, discussion_message_id=discussion_message.id)
+    read_state = await DiscussionReadState.get_or_none(
+        user_id=user_id, discussion_message_id=discussion_message.id
+    ).only("last_message_id")
     if read_state is None:
         unread_count = total
     else:
         unread_count = await MessageRef.filter(replies_query, id__gt=read_state.last_message_id).count()
 
     return DiscussionMessage(
-        messages=[await discussion_message.to_tl(user_id)],
+        messages=[await discussion_message.to_tl_maybecached(user_id)],
         max_id=max_id,
         read_inbox_max_id=read_state.last_message_id if read_state is not None else None,
         read_outbox_max_id=None,
@@ -1121,9 +1131,7 @@ async def get_replies(request: GetReplies, user_id: int) -> Messages | MessagesS
 
 @handler.on_request(GetMessageReadParticipants, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_message_read_participants(request: GetMessageReadParticipants, user_id: int) -> list[ReadParticipantDate]:
-    peer = await Peer.from_input_peer_raise(
-        user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL)
-    )
+    peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
     if peer.type is PeerType.CHAT:
         query = ChatParticipant.filter(chat_id=peer.chat_id)

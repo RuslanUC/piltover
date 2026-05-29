@@ -47,10 +47,8 @@ async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages 
 
 @handler.on_request(DeleteSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_saved_history(request: DeleteSavedHistory, user_id: int) -> AffectedHistory:
-    self_peer: PeerSelfT = await Peer.get(owner_id=user_id, user_id=user_id)
-
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
-    query = Q(peer=self_peer, content__fwd_header__saved_peer=peer)
+    query = Q(peer__owner_id=user_id, peer__user_id=user_id, content__fwd_header__saved_peer=peer)
     if request.max_id:
         query &= Q(id__lte=request.max_id)
     if request.max_date:

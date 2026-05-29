@@ -248,7 +248,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
         raise ErrorRpc(error_code=400, error_message="PEER_ID_NOT_SUPPORTED")
 
     @classmethod
-    async def from_input_peer(
+    async def _from_input_peer(
             cls, user: models.User | int, input_peer: InputPeers, allow_bot: bool = True,
             allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
             select_related: tuple[str, ...] | None = None, select_user_username: bool = False,
@@ -291,7 +291,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
             allow_migrated_chat: bool = False, peer_types: tuple[PeerType, ...] | None = None,
             select_related: tuple[str, ...] | None = None, select_user_username: bool = False,
     ) -> Peer:
-        peer_ = await Peer.from_input_peer(
+        peer_ = await cls._from_input_peer(
             user, peer, allow_migrated_chat=allow_migrated_chat, peer_types=peer_types, select_related=select_related,
             select_user_username=select_user_username,
         )

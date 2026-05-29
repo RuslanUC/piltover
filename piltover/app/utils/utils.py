@@ -573,6 +573,7 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
             elif isinstance(button, InputKeyboardButtonUserProfile):
                 if not is_inline:
                     raise ErrorRpc(error_code=400, error_message="BUTTON_TYPE_INVALID")
+                # TODO: dont fetch peer?
                 peer = await Peer.from_input_peer_raise(user, button.user_id, "BUTTON_USER_INVALID")
                 if peer.type not in (PeerType.USER, PeerType.SELF):
                     raise ErrorRpc(error_code=400, error_message="BUTTON_USER_INVALID")

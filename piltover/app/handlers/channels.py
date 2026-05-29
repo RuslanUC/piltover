@@ -874,7 +874,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         cast(
             object,
             await MessageRef.filter(
-                id__lte=request.max_id, peer__owner=None, peer__channel=peer.channel,
+                id__lte=request.max_id, peer__owner=None, peer=peer,
             ).order_by("-id").first().values_list("id", "content_id")
         )
     )
@@ -883,7 +883,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
 
     unread_max_id, content_id = unread_ids
 
-    unread_count = await MessageRef.filter(peer__owner=None, peer__channel=peer.channel, id__gt=unread_max_id).count()
+    unread_count = await MessageRef.filter(peer__owner=None, peer=peer, id__gt=unread_max_id).count()
 
     prev_last_id = read_state.last_message_id
     read_state.last_message_id = unread_max_id
@@ -896,7 +896,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
     read_messages_by_user_ids = {
         user_id: max_id
         for user_id, max_id in await MessageRef.filter(
-            peer__owner=None, peer__channel=peer.channel, id__gt=prev_last_id, id__lte=unread_max_id,
+            peer__owner=None, peer=peer, id__gt=prev_last_id, id__lte=unread_max_id,
         ).group_by("content__author_id").annotate(max_id=Max("id")).values_list("content__author_id", "max_id")
     }
     if read_messages_by_user_ids:
@@ -1227,10 +1227,10 @@ async def leave_channel(request: LeaveChannel, user_id: int) -> Updates:
         participant.left = True
         await participant.save(update_fields=["left"])
         await ChatInvite.filter(channel=peer.channel, user_id=user_id).update(revoked=True)
-        await Dialog.hide(user_id, await peer)
+        await Dialog.hide(user_id, peer)
         await MessageContent.filter(id__in=Subquery(
             MessageRef.filter(
-                peer__channel=peer.channel, content__type=MessageType.SCHEDULED,
+                peer=peer, content__author_id=user_id, content__type=MessageType.SCHEDULED,
             ).values_list("content_id", flat=True)
         )).delete()
         await AdminLogEntry.create(

@@ -1,16 +1,17 @@
 from datetime import datetime, UTC
 from typing import cast
 
-from tortoise.expressions import Subquery, F
+from tortoise.expressions import Subquery, F, Q
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
 from piltover.app.utils.utils import telegram_hash
 from piltover.config import APP_CONFIG
 from piltover.cache import Cache
-from piltover.db.enums import PeerType, FileType
+from piltover.db.enums import PeerType, FileType, MessageType
 from piltover.db.models import Reaction, User, Peer, MessageReaction, State, RecentReaction, UserReactionsSettings, \
     MessageRef, AvailableChannelReaction, File, MessageContent
+from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates, ReactionEmpty
@@ -299,7 +300,12 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user_id: 
     if not can_see_list:
         raise ErrorRpc(error_code=400, error_message="BROADCAST_FORBIDDEN")
 
-    if (message := await MessageRef.get_(request.id, peer)) is None:
+    message_query = Q(id=request.id, peer=peer, content__type=MessageType.REGULAR)
+    message_query = append_channel_min_message_id_to_query_maybe(peer, message_query)
+    message = await MessageRef.get_or_none(message_query).select_related("content").only(
+        "content_id", "content__author_id", "content__author_reactions_unread"
+    )
+    if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if message.content.author_id == user_id:

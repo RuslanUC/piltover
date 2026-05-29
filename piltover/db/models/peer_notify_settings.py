@@ -80,6 +80,7 @@ class PeerNotifySettings(Model):
             user_id: int, notify_peer: BaseInputNotifyPeer,
     ) -> tuple[models.Peer | None, NotifySettingsNotPeerType | None]:
         if isinstance(notify_peer, InputNotifyPeer):
+            # TODO: just fetch peer, dont prefetch users/chat/channel
             peer = await models.Peer.from_input_peer_raise(user_id, notify_peer.peer)
             return peer, None
         elif isinstance(notify_peer, InputNotifyUsers):

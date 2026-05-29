@@ -14,7 +14,7 @@ from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBan
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, PrivacyRule, \
     ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry, MessageRef, MessageContent
 from piltover.db.models.channel import CREATOR_RIGHTS
-from piltover.db.models.peer import PeerChatT, PeerChannelT
+from piltover.db.models.peer import PeerChatT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session import SessionManager
@@ -23,8 +23,8 @@ from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates
     MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines, \
     MessageActionChatEditPhoto, InputPeerUserFromMessage, InputChatUploadedPhoto_133
-from piltover.tl.base.messages import Chats as ChatsBase
 from piltover.tl.base import InputChatPhoto as TLInputChatPhotoBase, Photo as TLPhotoBase
+from piltover.tl.base.messages import Chats as ChatsBase
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
     EditChatAbout, EditChatPhoto, AddChatUser, DeleteChatUser, AddChatUser_133, EditChatAdmin, ToggleNoForwards, \
     EditChatDefaultBannedRights, CreateChat_133, MigrateChat, GetOnlines, GetCommonChats, DeleteChat
@@ -211,6 +211,7 @@ async def edit_chat_title(request: EditChatTitle, user_id: int) -> Updates:
 
 @handler.on_request(EditChatAbout, ReqHandlerFlags.DONT_FETCH_USER)
 async def edit_chat_about(request: EditChatAbout, user_id: int) -> bool:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
     participant = await peer.chat_or_channel.get_participant(user_id)
@@ -469,6 +470,7 @@ async def edit_chat_admin(request: EditChatAdmin, user_id: int) -> bool:
 
 @handler.on_request(ToggleNoForwards, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def toggle_no_forwards(request: ToggleNoForwards, user_id: int) -> Updates:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
     chat_or_channel = peer.chat_or_channel
 
@@ -503,6 +505,7 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
     if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
         raise ErrorRpc(error_code=406, error_message="BANNED_RIGHTS_INVALID")
 
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
     participant = await peer.chat_or_channel.get_participant(user_id)
@@ -635,6 +638,7 @@ async def migrate_chat(request: MigrateChat, user_id: int) -> Updates:
 
 @handler.on_request(GetOnlines, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_onlines(request: GetOnlines, user_id: int) -> ChatOnlines:
+    # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
     onlines = await Presence.filter(

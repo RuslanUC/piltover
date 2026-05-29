@@ -13,7 +13,7 @@ from piltover.app.utils.utils import check_password_internal, process_message_en
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, InlineQueryPeer, FileType, InlineQueryResultType
 from piltover.db.models import Peer, UserPassword, CallbackQuery, InlineQuery, File, InlineQueryResultItem, \
-    MessageRef
+    MessageRef, User
 from piltover.db.models.inline_query_result import InlineQueryResult
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, InvalidConstructorException
@@ -144,17 +144,27 @@ async def set_bot_callback_answer(request: SetBotCallbackAnswer, user_id: int) -
 
 @handler.on_request(GetInlineBotResults, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> BotResults:
-    bot = await Peer.from_input_peer_raise(user_id, request.bot)
-    if bot.type is not PeerType.USER or not bot.user.bot:
+    peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user_id, request.bot, "BOT_INVALID")
+    if peer_type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="BOT_INVALID")
+    bot = await User.get(id=peer_user_id)
+    if not bot.bot:
         raise ErrorRpc(error_code=400, error_message="BOT_INVALID")
 
     if isinstance(request.peer, InputPeerEmpty):
         query_peer = None
     else:
-        peer = await Peer.from_input_peer_raise(user_id, request.peer)
+        query_peer_query = Peer.query_from_input_peer(user_id, request.peer)
+        if query_peer_query is None:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+        peer = await query_peer_query.select_related("user", "channel").only(
+            "type", "user_id", "user__bot", "channel__channel", "channel__supergroup"
+        )
+        if peer is None:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
         if peer.type is PeerType.SELF:
             query_peer = InlineQueryPeer.USER
-        elif peer.type is PeerType.USER and peer.user.bot and peer.user_id == bot.user_id:
+        elif peer.type is PeerType.USER and peer.user.bot and peer.user_id == bot.id:
             query_peer = InlineQueryPeer.SAME_BOT
         elif peer.type is PeerType.USER and peer.user.bot:
             query_peer = InlineQueryPeer.BOT
@@ -183,13 +193,13 @@ async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> 
 
     inline_query = InlineQuery(
         user_id=user_id,
-        bot=bot.user,
+        bot=bot,
         query=request.query[:128],
         offset=request.offset[:64],
         inline_peer=query_peer,
     )
 
-    if bot.user.system:
+    if bot.system:
         resp = await process_inline_query(inline_query)
         if resp is None:
             raise ErrorRpc(error_code=400, error_message="BOT_RESPONSE_TIMEOUT")
@@ -213,7 +223,7 @@ async def get_inline_bot_results(request: GetInlineBotResults, user_id: int) -> 
 
         topic = f"bot-inline-query/{inline_query.id}"
         await pubsub.listen(topic, None)
-        await upd.bot_inline_query(bot.user, inline_query)
+        await upd.bot_inline_query(bot, inline_query)
 
         inline_result = await pubsub.listen(topic, 15)
         if inline_result is None:

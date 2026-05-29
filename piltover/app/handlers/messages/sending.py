@@ -531,14 +531,19 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
 
     await _check_bot_blocked(user, peer)
 
-    if (message := await MessageRef.get_(request.id, peer)) is None:
+    message_query = Q(id=request.id, peer=peer, content__type=MessageType.REGULAR)
+    message_query = append_channel_min_message_id_to_query_maybe(peer, message_query)
+    message = await MessageRef.get_or_none(message_query).only("id", "content_id", "pinned")
+    if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if peer.type is PeerType.CHANNEL:
         await MessageRef.filter(id=message.id).update(pinned=not request.unpin, version=F("version") + 1)
-        await message.refresh_from_db(["pinned", "version"])
+        await message.refresh_from_db(["pinned"])
         _, _, result = await upd.pin_channel_messages(peer.channel, [message])
     else:
+        # TODO: pm_oneside
+
         if peer.type is PeerType.SELF:
             peer_query = Q(peer=peer)
         elif peer.type is PeerType.USER:
@@ -554,7 +559,10 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
 
         messages = {
             message.peer: [message]
-            for message in await MessageRef.filter(id__in=ids).select_related("peer")
+            for message in await MessageRef.filter(id__in=ids).select_related("peer").only(
+                "id", "pinned", "peer__id", "peer__type", "peer__owner_id", "peer__user_id", "peer__chat_id",
+                "peer__channel_id",
+            )
         }
 
         _, _, result = await upd.pin_messages(user_id, messages)
@@ -1540,7 +1548,7 @@ async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> 
         if peer.type is PeerType.CHANNEL:
             await _check_channel_slowmode(peer.channel, participant, user_id)
 
-    user = await User.get(id=user_id).only("id", "first_name")
+    user = await User.get(id=user_id).only("id", "first_name", "bot")
 
     _check_disallow_send_to_bot(user, peer)
     _check_we_blocked_user(peer)

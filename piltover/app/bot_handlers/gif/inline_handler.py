@@ -52,7 +52,7 @@ def _empty(inline_query: InlineQuery) -> tuple[InlineQueryResult, list]:
 async def _get_or_download_gif(
         tenor_id: str, client: AsyncClient, url: str, storage: BaseStorage, width: int, height: int, duration: float,
 ) -> File:
-    gif_file = await File.get_or_none(gifbotfile__tenor_id=tenor_id)
+    gif_file = await File.get_or_none(gifbotfiles__tenor_id=tenor_id)
     if gif_file is not None:
         return gif_file
 
