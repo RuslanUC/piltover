@@ -10,7 +10,6 @@ from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
 from piltover.config import APP_CONFIG
-from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, Channel, PrivacyRuleException, \
     PrivacyRule

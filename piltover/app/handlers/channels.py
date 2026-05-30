@@ -118,7 +118,7 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
             cast(
                 object,
                 await MessageRef.filter(
-                    peer__owner=None, peer__channel=channel,
+                    peer__channel=channel,
                 ).order_by("-id").first().values_list("id", flat=True)
             )
         )
@@ -307,8 +307,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
             int | None,
             cast(
                 object,
+                # TODO: use Min("id") instead of .order_by("id").first() ?
                 await MessageRef.filter(
-                    peer__owner=None, peer__channel=channel, id__gte=participant.min_message_id,
+                    peer=peer, id__gte=participant.min_message_id,
                 ).order_by("id").first().values_list("id", flat=True)
             )
         )
@@ -403,8 +404,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
                 int | None,
                 cast(
                     object,
+                    # TODO: use Max("id") instead of .order_by("id").first() ?
                     await MessageRef.filter(
-                        peer__owner=None, peer__channel=channel, pinned=True,
+                        peer=peer, pinned=True,
                     ).order_by("-id").first().values_list("id", flat=True)
                 )
             ),
@@ -774,7 +776,7 @@ async def get_participants(request: GetParticipants, user_id: int) -> ChannelPar
         if filt.top_msg_id:
             query = query.filter(user_id__in=Subquery(
                 MessageRef.filter(
-                    peer__owner=None, peer__channel=channel, content__reply_to_id=filt.top_msg_id,
+                    peer__channel=channel, content__reply_to_id=filt.top_msg_id,
                 ).distinct().values_list("content__author_id", flat=True)
             ))
     elif isinstance(filt, ChannelParticipantsBanned):
@@ -1275,9 +1277,13 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user_id: in
 
     channel.min_available_id = cast(
         int | None,
-        await MessageRef.filter(
-            peer__owner=None, peer__channel=channel,
-        ).order_by("-id").first().values_list("id", flat=True)
+        cast(
+            object,
+            # TODO: use Max("id") instead of .order_by("id").first() ?
+            await MessageRef.filter(
+                peer__channel=channel,
+            ).order_by("-id").first().values_list("id", flat=True)
+        )
     )
     if channel.min_available_id is not None:
         channel.min_available_id += 1
@@ -1698,7 +1704,7 @@ async def read_message_contents(request: ReadMessageContents, user_id: int) -> b
         return True
 
     valid_refs = await MessageRef.filter(
-        peer__owner=None, peer__channel=channel, id__in=request.id[:100],
+        peer__channel=channel, id__in=request.id[:100],
     ).select_related("content", "content__media", "content__media__file")
 
     message_ids = await read_message_contents_internal(user_id, valid_refs)
@@ -1720,9 +1726,13 @@ async def delete_history(request: DeleteHistory, user_id: int) -> Updates:
 
     new_min_available_id = cast(
         int | None,
-        await MessageRef.filter(
-            peer__owner=None, peer__channel=channel, id__lte=request.max_id,
-        ).order_by("-id").first().values_list("id", flat=True),
+        cast(
+            object,
+            # TODO: use Max("id") instead of .order_by("-id").first() ?
+            await MessageRef.filter(
+                peer__channel=channel, id__lte=request.max_id,
+            ).order_by("-id").first().values_list("id", flat=True),
+        )
     ) or 0
 
     if not request.for_everyone:

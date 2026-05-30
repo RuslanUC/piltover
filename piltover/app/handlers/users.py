@@ -98,8 +98,9 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
             int | None,
             cast(
                 object,
+                # TODO: use Max("id") instead of .order_by("-id").first() ?
                 await MessageRef.filter(
-                    peer__owner=None, peer__channel=personal_channel,
+                    peer__channel=personal_channel,
                 ).order_by("-id").first().values_list("id", flat=True)
             )
         ) or 0

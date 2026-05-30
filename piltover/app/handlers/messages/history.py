@@ -797,9 +797,7 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
 
     inval_cache_query = MessageRef.filter(content_id__in=mentioned_ids)
     if peer.type is PeerType.CHANNEL:
-        inval_cache_refs = await inval_cache_query.filter(
-            peer__owner=None, peer__channel_id=peer.channel_id,
-        ).only("id", "version")
+        inval_cache_refs = await inval_cache_query.filter(peer=peer).only("id", "version")
         for ref in inval_cache_refs:
             await Cache.obj.delete(ref.cache_key(user_id))
     else:
@@ -808,7 +806,7 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
     if peer.type is PeerType.CHAT:
         ref_ids_query = MessageRef.filter(peer=peer, content_id__in=mentioned_ids)
     elif peer.type is PeerType.CHANNEL:
-        ref_ids_query = MessageRef.filter(peer__owner=None, peer__channel_id=peer.channel_id)
+        ref_ids_query = MessageRef.filter(peer=peer)
     else:
         raise Unreachable
 

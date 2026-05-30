@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from tortoise.expressions import Q, Subquery
+from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.db import models

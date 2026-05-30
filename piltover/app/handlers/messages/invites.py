@@ -279,9 +279,13 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
         if chat_or_channel.hidden_prehistory:
             min_message_id = cast(
                 int | None,
-                await MessageRef.filter(
-                    peer__owner=None, peer__channel=chat_or_channel,
-                ).order_by("-id").first().values_list("id", flat=True)
+                cast(
+                    object,
+                    # TODO: use Max("id") instead of .order_by("-id").first() ?
+                    await MessageRef.filter(
+                        peer__channel=chat_or_channel,
+                    ).order_by("-id").first().values_list("id", flat=True)
+                )
             )
             min_message_id = (min_message_id + 1) if min_message_id is not None else None
         else:

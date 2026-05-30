@@ -631,9 +631,9 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     _check_we_blocked_user(peer)
 
     if peer.type is PeerType.CHANNEL:
-        query = Q(id=request.id, peer__channel=peer.channel) & (
-                Q(peer__owner=None, content__type=MessageType.REGULAR)
-                | Q(peer__owner=user, content__type=MessageType.SCHEDULED)
+        query = Q(id=request.id, peer=peer) & (
+            Q(content__type=MessageType.REGULAR)
+            | Q(content__author_id=user.id, content__type=MessageType.SCHEDULED)
         )
         query = append_channel_min_message_id_to_query_maybe(peer, query)
         message = await MessageRef.get_or_none(query).select_related(*MessageRef.PREFETCH_FIELDS)

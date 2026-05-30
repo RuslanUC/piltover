@@ -40,7 +40,7 @@ async def get_scheduled_history(request: GetScheduledHistory, user_id: int) -> M
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     message_ids = await MessageRef.filter(
-        peer=peer, content__type=MessageType.SCHEDULED,
+        peer=peer, content__author_id=user_id, content__type=MessageType.SCHEDULED,
     ).order_by("content__scheduled_date").values_list("id", flat=True)
     messages_hash = telegram_hash(cast(list[int], message_ids), 64)
 
@@ -59,7 +59,7 @@ async def get_scheduled_messages(request: GetScheduledMessages, user_id: int) ->
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
     messages = await MessageRef.filter(
-        peer=peer, content__type=MessageType.SCHEDULED, id__in=request.id,
+        peer=peer, content__author_id=user_id, content__type=MessageType.SCHEDULED, id__in=request.id,
     ).order_by("content__scheduled_date").select_related(*MessageRef.PREFETCH_FIELDS)
 
     return await _format_messages(user_id, messages)
@@ -115,7 +115,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
 async def delete_scheduled_messages(request: DeleteScheduledMessages, user_id: int) -> Updates:
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
     messages = await MessageRef.filter(
-        peer=peer, id__in=request.id, content__type=MessageType.SCHEDULED,
+        peer=peer, id__in=request.id, content__author_id=user_id, content__type=MessageType.SCHEDULED,
     ).values_list("id", "content_id")
 
     ids = []
