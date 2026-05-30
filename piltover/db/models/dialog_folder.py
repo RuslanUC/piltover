@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pyrogram.raw.types import DialogFilterDefault
 from tortoise import fields, Model
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
@@ -9,7 +8,7 @@ from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.exceptions import Unreachable
 from piltover.tl import DialogFilter, TextWithEntities, DialogFilterChatlist, DialogFilterChatlist_158, \
-    DialogFilterChatlist_176
+    DialogFilterChatlist_176, DialogFilterDefault
 from piltover.tl.base import DialogFilter as TLDialogFilterBase, InputPeer as TLInputPeerBase
 
 
