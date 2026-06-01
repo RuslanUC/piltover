@@ -17,7 +17,7 @@ from piltover.cache import Cache
 from piltover.context import ContextValues, SerializationContext
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
-    Peer, MessageRef, InstalledStickerset
+    Peer, MessageRef
 from piltover.exceptions import Unreachable
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification

@@ -13,7 +13,7 @@ from piltover.app.handlers.stickers import validate_png_webp, check_stickerset_s
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.utils import telegram_hash
 from piltover.db.enums import StickersBotState, MediaType, StickerSetType, FileType
-from piltover.db.models import Peer, Stickerset, File, InstalledStickerset, MessageRef, MessageContent, User
+from piltover.db.models import Peer, Stickerset, File, InstalledStickerset, MessageRef, MessageContent
 from piltover.db.models.stickers_state import StickersBotUserState
 from piltover.exceptions import ErrorRpc
 from piltover.tl import ReplyKeyboardMarkup, ReplyKeyboardHide

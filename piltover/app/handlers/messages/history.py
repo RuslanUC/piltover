@@ -113,7 +113,7 @@ async def get_messages_query_internal(
     if isinstance(peer, Peer):
         query = Q(peer_id=peer.id)
     else:
-        query = Q(peer__owner=peer.id)
+        query = Q(peer__owner_id=peer.id)
 
     has_filter = False
     if filter_ is not None \

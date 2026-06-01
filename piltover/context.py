@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from piltover.worker import Worker
     from piltover.storage import BaseStorage
     from piltover.db.enums import PeerType, PrivacyRuleKeyType
-    from piltover.db.models import ChatParticipant, Contact, Presence, Peer, InstalledStickerset
+    from piltover.db.models import ChatParticipant, Contact, Presence, Peer
     from piltover.tl.base import MessageReactions
 
 T = TypeVar("T")

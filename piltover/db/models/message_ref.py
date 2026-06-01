@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TypeVar, Self, Iterable, cast, Sequence
+from typing import TypeVar, Self, cast, Sequence
 
 from loguru import logger
 from tortoise import fields, Model

@@ -1,6 +1,6 @@
 from tortoise.expressions import Q
 
-from piltover.db.models import User, Peer, Stickerset, MessageRef
+from piltover.db.models import Peer, Stickerset, MessageRef
 from piltover.tl import KeyboardButtonRow, KeyboardButton, ReplyInlineMarkup, ReplyKeyboardMarkup, ReplyKeyboardHide
 
 

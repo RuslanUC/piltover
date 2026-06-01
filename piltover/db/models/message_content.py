@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, UTC
 from io import BytesIO
 from os import environ
-from typing import Iterable, Self, Annotated, Sequence
+from typing import Iterable, Self, Sequence
 from uuid import uuid4, UUID
 
 from loguru import logger
@@ -19,14 +19,10 @@ from piltover.tl import objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, MessageMedia as MessageMediaBase, \
     MessageEntity as MessageEntityBase
 from piltover.tl.base.internal import MessageToFormatContent as MessageToFormatContentBase
-from piltover.tl.to_format import MessageServiceToFormat
 from piltover.tl.types import PeerUser, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionEmpty, \
     MessageEntityMentionName, PeerChannel
 from piltover.tl.types.internal import MessageToFormatContent, MessageToFormatServiceContent
-
-MessageIdRef = Annotated[int, "Ref id"]
-MessageIdContent = Annotated[int, "Content id"]
 
 
 class MessageContent(Model):
@@ -78,33 +74,6 @@ class MessageContent(Model):
 
     def is_service(self) -> bool:
         return self.type not in (MessageType.REGULAR, MessageType.SCHEDULED)
-
-    def to_tl_service(self, ref: models.MessageRef) -> MessageServiceToFormat:
-        action = TLObject.read(BytesIO(self.extra_info))
-        if not isinstance(action, MessageActionInst):
-            logger.error(
-                f"Expected service message action to "
-                f"be any of this types: {MessageActionInst}, got {action=!r}"
-            )
-            action = MessageActionEmpty()
-
-        # NOTE: this is first step to making messages cachable for not-defined amount of time for all users.
-        #  But we need to keep in mind that:
-        #   1. Messages should be cached based on `internal_id` not actual message `id`
-        #    (or whole id system should be reworked and rewritten).
-        #   2. Fields such as `peer_id` or `reply_to` are NOT cachable based in internal id in private chats:
-        #    `peer_id` can be specified as PeerPrivate(user1_id=..., user2_id=...),
-        #    but `reply_to` is unknown for user users for private chats in this method.
-        return MessageServiceToFormat(
-            id=ref.id,
-            peer_id=ref.peer.to_tl(),
-            date=int(self.date.timestamp()),
-            action=action,
-            author_id=self.author_id,
-            reply_to=ref.make_reply_to_header(),
-            from_id=PeerUser(user_id=self.author_id) if not (self.channel_post or self.anonymous) else None,
-            ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
-        )
 
     def _make_from_id(self) -> PeerUser | PeerChannel | None:
         if self.send_as_channel_id is not None:

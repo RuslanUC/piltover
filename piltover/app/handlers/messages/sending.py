@@ -507,11 +507,17 @@ async def send_message(request: SendMessage, user_id: int):
 
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
-        author=user, text=request.message, scheduled_date=request.schedule_date,
+        author=user,
+        text=request.message,
+        scheduled_date=request.schedule_date,
         entities=await process_message_entities(request.message, request.entities, user_id),
-        channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
+        channel_post=is_channel_post,
+        post_info=post_info,
+        post_author=post_signature,
+        anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel_id=send_as_channel_id,
+        no_forwards=_resolve_noforwards(peer, user, request.noforwards),
+        send_as_channel_id=send_as_channel_id,
     )
 
 
@@ -788,7 +794,8 @@ async def _get_media_thumb(
 async def _get_input_media_file(
         user_id: int, media: InputMediaPhoto | InputMediaDocument | InputMediaDocument_133,
 ) -> File | None:
-    if not isinstance(media.id, (InputPhoto, InputDocument)):
+    media_id = media.id
+    if not isinstance(media_id, (InputPhoto, InputDocument)):
         return None
     file_type = FileType.PHOTO if isinstance(media, InputMediaPhoto) else None
     if isinstance(media, InputMediaPhoto):
@@ -796,7 +803,7 @@ async def _get_input_media_file(
     else:
         add_query = Q(type__not=FileType.PHOTO)
     return await File.from_input(
-        user_id, media.id.id, media.id.access_hash, media.id.file_reference, file_type, add_query=add_query,
+        user_id, media_id.id, media_id.access_hash, media_id.file_reference, file_type, add_query=add_query,
     )
 
 
@@ -1110,7 +1117,7 @@ async def save_draft(request: SaveDraft, user_id: int) -> bool:
 
     # TODO: media
 
-    await Dialog.create_or_unhide(user_id, await peer.channel_peer if peer.type is PeerType.CHANNEL else peer)
+    await Dialog.create_or_unhide(user_id, peer)
     draft, _ = await MessageDraft.update_or_create(
         user_id=user_id,
         peer=peer,

@@ -4,7 +4,6 @@ from typing import cast, Iterable
 
 from loguru import logger
 from tortoise import fields
-from tortoise.expressions import Subquery
 from tortoise.queryset import QuerySet
 from tortoise.transactions import in_transaction
 
@@ -38,9 +37,8 @@ class Dialog(DialogBase):
         if not dialogs:
             return models.MessageRef.filter(id=0)
 
-        # TODO: dont use subquery and use dialogs[...].peer.last_message_id directly?
         return models.MessageRef.filter(
-            id__in=Subquery(models.Peer.filter(id__in=[dialog.peer_id for dialog in dialogs]).values("last_message_id"))
+            id__in=[dialog.peer.last_message_id for dialog in dialogs if dialog.peer.last_message_id is not None]
         ).select_related(
             *(models.MessageRef.PREFETCH_MAYBECACHED if prefetch else ()),
         )

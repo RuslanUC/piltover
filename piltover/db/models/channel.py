@@ -4,16 +4,16 @@ import hashlib
 import hmac
 from collections import defaultdict
 from enum import auto, Enum
-from typing import cast, Self
+from typing import cast
 
 from tortoise import fields
-from tortoise.expressions import Subquery, F, RawSQL
+from tortoise.expressions import Subquery
 from tortoise.models import MODEL
 from tortoise.queryset import QuerySet, QuerySetSingle
 from tortoise.transactions import in_transaction
 
-from piltover.config import APP_CONFIG
 from piltover.cache import Cache
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.models import ChatBase

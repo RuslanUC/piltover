@@ -11,7 +11,7 @@ from piltover.db.models.chat_base import ChatBase
 from piltover.tl import ChatForbidden
 from piltover.tl.base import Chat as TLChatBase
 from piltover.tl.to_format import ChatToFormat
-from piltover.tl.types import Chat as TLChat, ChatAdminRights, PeerChat
+from piltover.tl.types import ChatAdminRights, PeerChat
 
 DEFAULT_ADMIN_RIGHTS = ChatAdminRights(
     change_info=True,

@@ -23,7 +23,7 @@ from piltover.db.enums import PeerType, PrivacyRuleKeyType, FileType
 from piltover.db.models import UserPassword, User, Peer, PrivacyRule, File
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.storage.base import BaseStorage, StorageType
-from piltover.tl import InputCheckPasswordEmpty, MessageEntityHashtag, MessageEntityMention, \
+from piltover.tl import MessageEntityHashtag, MessageEntityMention, \
     MessageEntityBotCommand, MessageEntityUrl, MessageEntityEmail, MessageEntityBold, \
     MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl, MessageEntityMentionName, \
     MessageEntityPhone, MessageEntityCashtag, MessageEntityUnderline, MessageEntityStrike, MessageEntitySpoiler, \

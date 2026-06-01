@@ -6,7 +6,6 @@ from datetime import date
 from enum import auto, Enum
 from typing import Iterable, Self, cast
 
-from loguru import logger
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
 from tortoise.queryset import QuerySet
