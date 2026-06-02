@@ -23,7 +23,8 @@ class AutoDowngrader(BaseDowngrader[TBase], Generic[TBase, TTarget]):
 
     @classmethod
     def downgrade(cls, from_obj: TBase) -> TTarget:
-        # TODO: if base type is same as target type, just return from_obj
-        kwargs = {k: v for k, v in from_obj.to_dict().items() if k not in cls.REMOVE_FIELDS}
+        if cls.BASE_TYPE is cls.TARGET_TYPE:
+            return from_obj
 
+        kwargs = {k: v for k, v in from_obj.to_dict().items() if k not in cls.REMOVE_FIELDS}
         return cls.TARGET_TYPE(**kwargs)
