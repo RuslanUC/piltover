@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 class TLObject(ABC):
     __tl_id__: int
     __tl_name__: str
+    __tl_layer__: int
 
     @classmethod
     def tlid(cls) -> int:
@@ -23,6 +24,10 @@ class TLObject(ABC):
     @classmethod
     def tlname(cls) -> str:
         return cls.__tl_name__
+
+    @classmethod
+    def tllayer(cls) -> int:
+        return cls.__tl_layer__
 
     @abstractmethod
     def serialize(self) -> bytes: ...

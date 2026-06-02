@@ -4,20 +4,20 @@ from piltover.tl import ChatInviteExported, ChatInviteExported_134, ChatInviteEx
 
 class ChatInviteExportedDowngradeTo133(AutoDowngrader):
     BASE_TYPE = ChatInviteExported
-    TARGET_LAYER = 133
     TARGET_TYPE = ChatInviteExported_133
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"subscription_expired", "subscription_pricing", "request_needed", "requested", "title"}
 
 
 class ChatInviteExportedDowngradeTo134(AutoDowngrader):
     BASE_TYPE = ChatInviteExported
-    TARGET_LAYER = 134
     TARGET_TYPE = ChatInviteExported_134
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"subscription_expired", "subscription_pricing"}
 
 
 class ChatInviteExportedDontDowngrade(AutoDowngrader):
     BASE_TYPE = ChatInviteExported
-    TARGET_LAYER = 201
     TARGET_TYPE = ChatInviteExported
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

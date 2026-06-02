@@ -19,7 +19,11 @@ class LayerConverter:
 
     @classmethod
     def register_for_downgrade(cls, downgrader: type[conv.BaseDowngrader]) -> None:
-        logger.trace(f"Registered downgrader for type {downgrader.BASE_TYPE.tlname()}, layer {downgrader.TARGET_LAYER}")
+        logger.trace(
+            "Registered downgrader for type {target_type}, layer {target_layer}",
+            target_type=downgrader.BASE_TYPE.tlname(),
+            target_layer=downgrader.TARGET_LAYER,
+        )
         cls._down[downgrader.BASE_TYPE][downgrader.TARGET_LAYER] = downgrader.downgrade
 
     @classmethod
@@ -27,19 +31,9 @@ class LayerConverter:
         if not vec:
             return vec, False
 
-        vec_cls = vec.__class__
-        # TODO: remove completely? we dont have any nested vectors, right?
-        # if isinstance(vec[0], list):
-        #     downgraded = False
-        #     result = vec_cls()
-        #     for item in vec:
-        #         new_item, item_downgraded = cls._try_downgrade_list(item, to_layer)
-        #         result.append(new_item)
-        #         downgraded = downgraded or item_downgraded
-        #     return result, downgraded
         if isinstance(vec[0], TLObject):
             downgraded = False
-            result = vec_cls()
+            result = vec.__class__()
             for item in vec:
                 new_item, item_downgraded = cls._downgrade(item, to_layer)
                 result.append(new_item)

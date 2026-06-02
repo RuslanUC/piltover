@@ -5,8 +5,8 @@ from piltover.tl import MessageMediaDocument, MessageMediaDocument_133, MessageM
 
 class MessageMediaDocumentDowngradeTo133(AutoDowngrader):
     BASE_TYPE = MessageMediaDocument
-    TARGET_LAYER = 133
     TARGET_TYPE = MessageMediaDocument_133
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "nopremium", "spoiler", "video", "round", "voice", "alt_documents", "video_cover", "video_timestamp",
     }
@@ -14,20 +14,20 @@ class MessageMediaDocumentDowngradeTo133(AutoDowngrader):
 
 class MessageMediaDocumentDowngradeTo160(AutoDowngrader):
     BASE_TYPE = MessageMediaDocument
-    TARGET_LAYER = 160
     TARGET_TYPE = MessageMediaDocument_160
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"video", "round", "voice", "alt_documents", "video_cover", "video_timestamp"}
 
 
 class MessageMediaDocumentDowngradeTo189(AutoDowngrader):
     BASE_TYPE = MessageMediaDocument
-    TARGET_LAYER = 189
     TARGET_TYPE = MessageMediaDocument_189
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"video_cover", "video_timestamp"}
 
 
 class MessageMediaDocumentDontDowngrade(AutoDowngrader):
     BASE_TYPE = MessageMediaDocument
-    TARGET_LAYER = 201
     TARGET_TYPE = MessageMediaDocument
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

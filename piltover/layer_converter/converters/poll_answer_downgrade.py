@@ -16,6 +16,6 @@ class PollAnswerDowngradeTo133(BaseDowngrader):
 
 class PollAnswerDontDowngrade(AutoDowngrader):
     BASE_TYPE = PollAnswer
-    TARGET_LAYER = 201
     TARGET_TYPE = PollAnswer
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

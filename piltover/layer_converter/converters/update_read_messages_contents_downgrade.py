@@ -5,19 +5,12 @@ from piltover.tl import UpdateReadMessagesContents, UpdateReadMessagesContents_1
 class UpdateReadMessagesContentsDowngradeTo133(AutoDowngrader):
     BASE_TYPE = UpdateReadMessagesContents
     TARGET_TYPE = UpdateReadMessagesContents_133
-    TARGET_LAYER = 133
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"date"}
-
-
-class UpdateReadMessagesContentsDontDowngrade163(AutoDowngrader):
-    BASE_TYPE = UpdateReadMessagesContents
-    TARGET_TYPE = UpdateReadMessagesContents
-    TARGET_LAYER = 163
-    REMOVE_FIELDS = set()
 
 
 class UpdateReadMessagesContentsDontDowngrade(AutoDowngrader):
     BASE_TYPE = UpdateReadMessagesContents
     TARGET_TYPE = UpdateReadMessagesContents
-    TARGET_LAYER = 201
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

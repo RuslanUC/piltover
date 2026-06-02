@@ -77,7 +77,7 @@ namespaces_to_types: dict[str, list[str]] = defaultdict(list)
 class Combinator:
     __slots__ = (
         "section", "qualname", "namespace", "name", "id", "args", "qualtype", "typespace", "type", "fields", "layer",
-        "fields_for_check",
+        "fields_for_check", "min_layer",
     )
 
     def __init__(
@@ -95,6 +95,7 @@ class Combinator:
         self.type = type_
         self.fields: list[Field] = []
         self.layer = 0
+        self.min_layer = 0
         self.fields_for_check: list[Field] | None = None
 
 
@@ -271,6 +272,9 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
 
     assert layer is not None
 
+    for combinator in combinators:
+        combinator.min_layer = layer
+
     all_layers.add(layer)
     return combinators, layer
 
@@ -293,6 +297,8 @@ def parse_old_schemas(combinators_base: list[Combinator]) -> dict[int, dict[str,
         for c in parsed:
             name = f"{c.qualname}#{c.id}"
             if name in schema_base:
+                obj_base = schema_base[name]
+                obj_base.min_layer = min(obj_base.min_layer, layer)
                 continue
             c.layer = layer
             schemas[layer][name] = c
@@ -659,6 +665,7 @@ def start():
             f"class {c.name}({base_cls}):",
             f"    __tl_id__ = {c.id}",
             f"    __tl_name__ = \"{c.section}.{c.qualname}\"",
+            f"    __tl_layer__ = {c.layer if c.layer else c.min_layer}",
             f"",
             f"    __slots__ = ({', '.join(slots)})",
             *(

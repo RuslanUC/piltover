@@ -8,8 +8,8 @@ from piltover.tl import UserFull, UserFull_135, UserFull_140, UserFull_144, User
 
 class UserFullDowngradeTo135(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 135
     TARGET_TYPE = UserFull_135
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "voice_messages_forbidden", "translations_disabled", "stories_pinned_available", "blocked_my_stories_from",
         "wallpaper_overridden", "contact_require_premium", "read_dates_private", "personal_photo", "fallback_photo",
@@ -23,8 +23,8 @@ class UserFullDowngradeTo135(AutoDowngrader):
 
 class UserFullDowngradeTo140(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 140
     TARGET_TYPE = UserFull_140
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "voice_messages_forbidden", "translations_disabled", "stories_pinned_available", "blocked_my_stories_from",
         "wallpaper_overridden", "contact_require_premium", "read_dates_private", "personal_photo", "fallback_photo",
@@ -38,8 +38,8 @@ class UserFullDowngradeTo140(AutoDowngrader):
 
 class UserFullDowngradeTo144(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 144
     TARGET_TYPE = UserFull_144
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "translations_disabled", "stories_pinned_available", "blocked_my_stories_from", "wallpaper_overridden",
         "contact_require_premium", "read_dates_private", "personal_photo", "fallback_photo", "wallpaper", "stories",
@@ -52,8 +52,8 @@ class UserFullDowngradeTo144(AutoDowngrader):
 
 class UserFullDowngradeTo151(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 151
     TARGET_TYPE = UserFull_151
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "stories_pinned_available", "blocked_my_stories_from", "wallpaper_overridden", "contact_require_premium",
         "read_dates_private", "wallpaper", "stories", "business_work_hours", "business_location",
@@ -66,8 +66,8 @@ class UserFullDowngradeTo151(AutoDowngrader):
 
 class UserFullDowngradeTo158(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 158
     TARGET_TYPE = UserFull_158
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "stories_pinned_available", "blocked_my_stories_from", "wallpaper_overridden", "contact_require_premium",
         "read_dates_private", "stories", "business_work_hours", "business_location", "business_greeting_message",
@@ -79,8 +79,8 @@ class UserFullDowngradeTo158(AutoDowngrader):
 
 class UserFullDowngradeTo160(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 160
     TARGET_TYPE = UserFull_160
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "blocked_my_stories_from", "wallpaper_overridden", "contact_require_premium", "read_dates_private",
         "business_work_hours", "business_location", "business_greeting_message", "business_away_message",
@@ -92,8 +92,8 @@ class UserFullDowngradeTo160(AutoDowngrader):
 
 class UserFullDowngradeTo164(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 164
     TARGET_TYPE = UserFull_164
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "wallpaper_overridden", "contact_require_premium", "read_dates_private", "business_work_hours",
         "business_location", "business_greeting_message", "business_away_message", "business_intro", "birthday",
@@ -105,8 +105,8 @@ class UserFullDowngradeTo164(AutoDowngrader):
 
 class UserFullDowngradeTo176(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 176
     TARGET_TYPE = UserFull_176
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "business_intro", "birthday", "personal_channel_id", "personal_channel_message", "sponsored_enabled",
         "can_view_revenue", "bot_can_manage_emoji_status", "stargifts_count", "starref_program", "bot_verification",
@@ -116,8 +116,8 @@ class UserFullDowngradeTo176(AutoDowngrader):
 
 class UserFullDowngradeTo177(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 177
     TARGET_TYPE = UserFull_177
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "sponsored_enabled", "can_view_revenue", "bot_can_manage_emoji_status", "stargifts_count", "starref_program",
         "bot_verification", "send_paid_messages_stars", "display_gifts_button", "disallowed_gifts",
@@ -126,8 +126,8 @@ class UserFullDowngradeTo177(AutoDowngrader):
 
 class UserFullDowngradeTo189(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 189
     TARGET_TYPE = UserFull_189
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "can_view_revenue", "bot_can_manage_emoji_status", "starref_program", "bot_verification",
         "send_paid_messages_stars", "display_gifts_button", "disallowed_gifts",
@@ -136,27 +136,27 @@ class UserFullDowngradeTo189(AutoDowngrader):
 
 class UserFullDowngradeTo195(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 195
     TARGET_TYPE = UserFull_195
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"bot_verification", "send_paid_messages_stars", "display_gifts_button", "disallowed_gifts"}
 
 
 class UserFullDowngradeTo196(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 196
     TARGET_TYPE = UserFull_196
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"send_paid_messages_stars", "display_gifts_button", "disallowed_gifts"}
 
 
 class UserFullDowngradeTo200(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 200
     TARGET_TYPE = UserFull_200
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"display_gifts_button", "disallowed_gifts"}
 
 
 class UserFullDontDowngrade(AutoDowngrader):
     BASE_TYPE = UserFull
-    TARGET_LAYER = 201
     TARGET_TYPE = UserFull
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

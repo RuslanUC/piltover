@@ -4,8 +4,8 @@ from piltover.tl import PeerNotifySettings, PeerNotifySettings_133, PeerNotifySe
 
 class PeerNotifySettingsDowngradeTo133(AutoDowngrader):
     BASE_TYPE = PeerNotifySettings
-    TARGET_LAYER = 133
     TARGET_TYPE = PeerNotifySettings_133
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "ios_sound", "android_sound", "other_sound", "stories_muted", "stories_hide_sender", "stories_ios_sound",
         "stories_android_sound", "stories_other_sound",
@@ -14,22 +14,15 @@ class PeerNotifySettingsDowngradeTo133(AutoDowngrader):
 
 class PeerNotifySettingsDowngradeTo140(AutoDowngrader):
     BASE_TYPE = PeerNotifySettings
-    TARGET_LAYER = 140
     TARGET_TYPE = PeerNotifySettings_140
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "stories_muted", "stories_hide_sender", "stories_ios_sound", "stories_android_sound", "stories_other_sound",
     }
 
 
-class PeerNotifySettingsDontDowngrade160(AutoDowngrader):
-    BASE_TYPE = PeerNotifySettings
-    TARGET_LAYER = 160
-    TARGET_TYPE = PeerNotifySettings
-    REMOVE_FIELDS = set()
-
-
 class PeerNotifySettingsDontDowngrade(AutoDowngrader):
     BASE_TYPE = PeerNotifySettings
-    TARGET_LAYER = 201
     TARGET_TYPE = PeerNotifySettings
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

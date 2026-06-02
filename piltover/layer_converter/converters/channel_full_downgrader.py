@@ -6,8 +6,8 @@ from piltover.tl import ChannelFull_136, ChannelFull, ChannelFull_140, ChannelFu
 
 class ChannelFullDowngradeTo133(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 133
     TARGET_TYPE = ChannelFull_133
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "can_delete_channel", "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
         "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "paid_media_allowed",
@@ -19,8 +19,8 @@ class ChannelFullDowngradeTo133(AutoDowngrader):
 
 class ChannelFullDowngradeTo134(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 134
     TARGET_TYPE = ChannelFull_134
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "can_delete_channel", "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
         "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "paid_media_allowed",
@@ -32,8 +32,8 @@ class ChannelFullDowngradeTo134(AutoDowngrader):
 
 class ChannelFullDowngradeTo135(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 135
     TARGET_TYPE = ChannelFull_135
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "can_delete_channel", "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
         "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "paid_media_allowed",
@@ -45,8 +45,8 @@ class ChannelFullDowngradeTo135(AutoDowngrader):
 
 class ChannelFullDowngradeTo136(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 136
     TARGET_TYPE = ChannelFull_136
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "can_delete_channel", "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
         "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "stories", "wallpaper", "boosts_applied",
@@ -58,8 +58,8 @@ class ChannelFullDowngradeTo136(AutoDowngrader):
 
 class ChannelFullDowngradeTo140(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 140
     TARGET_TYPE = ChannelFull_140
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
         "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "stories", "wallpaper", "boosts_applied",
@@ -71,8 +71,8 @@ class ChannelFullDowngradeTo140(AutoDowngrader):
 
 class ChannelFullDowngradeTo145(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 145
     TARGET_TYPE = ChannelFull_145
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "antispam", "participants_hidden", "translations_disabled", "stories_pinned_available",
         "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "stories", "wallpaper", "boosts_applied",
@@ -84,8 +84,8 @@ class ChannelFullDowngradeTo145(AutoDowngrader):
 
 class ChannelFullDowngradeTo164(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 164
     TARGET_TYPE = ChannelFull_164
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "view_forum_as_messages", "restricted_sponsored", "can_view_revenue", "wallpaper", "boosts_applied",
         "boosts_unrestrict", "emojiset", "paid_media_allowed", "can_view_stars_revenue",
@@ -96,8 +96,8 @@ class ChannelFullDowngradeTo164(AutoDowngrader):
 
 class ChannelFullDowngradeTo168(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 168
     TARGET_TYPE = ChannelFull_168
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "restricted_sponsored", "can_view_revenue", "boosts_applied", "boosts_unrestrict", "emojiset",
         "paid_media_allowed", "can_view_stars_revenue", "paid_reactions_available", "stargifts_available",
@@ -107,8 +107,8 @@ class ChannelFullDowngradeTo168(AutoDowngrader):
 
 class ChannelFullDowngradeTo174(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 174
     TARGET_TYPE = ChannelFull_174
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "restricted_sponsored", "can_view_revenue", "paid_media_allowed", "can_view_stars_revenue",
         "paid_reactions_available", "stargifts_available", "paid_messages_available", "reactions_limit",
@@ -118,8 +118,8 @@ class ChannelFullDowngradeTo174(AutoDowngrader):
 
 class ChannelFullDowngradeTo179(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 179
     TARGET_TYPE = ChannelFull_179
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "paid_media_allowed", "can_view_stars_revenue", "paid_reactions_available", "stargifts_available",
         "paid_messages_available", "bot_verification", "stargifts_count",
@@ -128,8 +128,8 @@ class ChannelFullDowngradeTo179(AutoDowngrader):
 
 class ChannelFullDowngradeTo196(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 196
     TARGET_TYPE = ChannelFull_196
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "stargifts_available", "paid_messages_available", "stargifts_count",
     }
@@ -137,6 +137,6 @@ class ChannelFullDowngradeTo196(AutoDowngrader):
 
 class ChannelFullDontDowngrade(AutoDowngrader):
     BASE_TYPE = ChannelFull
-    TARGET_LAYER = 201
     TARGET_TYPE = ChannelFull
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

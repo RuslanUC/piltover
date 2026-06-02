@@ -10,7 +10,7 @@ class StarsStatusDowngradeTo181(BaseDowngrader):
     def downgrade(cls, from_obj: StarsStatus) -> StarsStatus_181:
         return StarsStatus_181(
             balance=from_obj.balance.amount,
-            history=from_obj.history,
+            history=from_obj.history if from_obj.history is not None else [],
             next_offset=from_obj.next_offset,
             chats=from_obj.chats,
             users=from_obj.users,
@@ -35,15 +35,8 @@ class StarsStatusDowngradeTo186(BaseDowngrader):
         )
 
 
-class StarsStatusDontDowngrade195(AutoDowngrader):
-    BASE_TYPE = StarsStatus
-    TARGET_TYPE = StarsStatus
-    TARGET_LAYER = 195
-    REMOVE_FIELDS = set()
-
-
 class StarsStatusDontDowngrade(AutoDowngrader):
     BASE_TYPE = StarsStatus
     TARGET_TYPE = StarsStatus
-    TARGET_LAYER = 201
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

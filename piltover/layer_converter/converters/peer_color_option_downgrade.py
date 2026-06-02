@@ -4,27 +4,20 @@ from piltover.tl.types.help import PeerColorOption, PeerColorOption_168, PeerCol
 
 class PeerColorOptionDowngradeTo167(AutoDowngrader):
     BASE_TYPE = PeerColorOption
-    TARGET_LAYER = 167
     TARGET_TYPE = PeerColorOption_167
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"channel_min_level", "group_min_level"}
 
 
 class PeerColorOptionDowngradeTo168(AutoDowngrader):
     BASE_TYPE = PeerColorOption
-    TARGET_LAYER = 168
     TARGET_TYPE = PeerColorOption_168
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"group_min_level"}
-
-
-class PeerColorOptionDontDowngrade174(AutoDowngrader):
-    BASE_TYPE = PeerColorOption
-    TARGET_LAYER = 174
-    TARGET_TYPE = PeerColorOption
-    REMOVE_FIELDS = set()
 
 
 class PeerColorOptionDontDowngrade(AutoDowngrader):
     BASE_TYPE = PeerColorOption
-    TARGET_LAYER = 201
     TARGET_TYPE = PeerColorOption
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

@@ -5,7 +5,7 @@ from piltover.tl import DialogFilter, DialogFilter_133, DialogFilter_176
 class DialogFilterDowngradeTo133(AutoDowngrader):
     BASE_TYPE = DialogFilter
     TARGET_TYPE = DialogFilter_133
-    TARGET_LAYER = 133
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"color", "title_noanimate"}
 
     @classmethod
@@ -18,7 +18,7 @@ class DialogFilterDowngradeTo133(AutoDowngrader):
 class DialogFilterDowngradeTo176(AutoDowngrader):
     BASE_TYPE = DialogFilter
     TARGET_TYPE = DialogFilter_176
-    TARGET_LAYER = 176
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"title_noanimate"}
 
     @classmethod
@@ -28,15 +28,8 @@ class DialogFilterDowngradeTo176(AutoDowngrader):
         return target
 
 
-class DialogFilterDontDowngrade196(AutoDowngrader):
-    BASE_TYPE = DialogFilter
-    TARGET_TYPE = DialogFilter
-    TARGET_LAYER = 196
-    REMOVE_FIELDS = set()
-
-
 class DialogFilterDontDowngrade(AutoDowngrader):
     BASE_TYPE = DialogFilter
     TARGET_TYPE = DialogFilter
-    TARGET_LAYER = 201
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()

@@ -4,8 +4,8 @@ from piltover.tl import User, User_133, User_160, User_148, User_145, User_166, 
 
 class UserDowngradeTo133(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 133
     TARGET_TYPE = User_133
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "bot_attach_menu", "premium", "attach_menu_enabled", "bot_can_edit", "close_friend", "stories_hidden",
         "stories_unavailable", "contact_require_premium", "bot_business", "emoji_status", "usernames", "stories_max_id",
@@ -16,8 +16,8 @@ class UserDowngradeTo133(AutoDowngrader):
 
 class UserDowngradeTo145(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 145
     TARGET_TYPE = User_145
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "bot_can_edit", "close_friend", "stories_hidden", "stories_unavailable", "contact_require_premium",
         "bot_business", "usernames", "stories_max_id", "color", "profile_color", "bot_has_main_app", "bot_active_users",
@@ -27,8 +27,8 @@ class UserDowngradeTo145(AutoDowngrader):
 
 class UserDowngradeTo148(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 148
     TARGET_TYPE = User_148
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "close_friend", "stories_hidden", "stories_unavailable", "contact_require_premium", "bot_business",
         "stories_max_id", "color", "profile_color", "bot_has_main_app", "bot_active_users", "bot_verification_icon",
@@ -38,8 +38,8 @@ class UserDowngradeTo148(AutoDowngrader):
 
 class UserDowngradeTo160(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 160
     TARGET_TYPE = User_160
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "contact_require_premium", "bot_business", "color", "profile_color", "bot_has_main_app", "bot_active_users",
         "bot_verification_icon", "send_paid_messages_stars",
@@ -48,8 +48,8 @@ class UserDowngradeTo160(AutoDowngrader):
 
 class UserDowngradeTo166(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 166
     TARGET_TYPE = User_166
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "contact_require_premium", "bot_business", "profile_color", "bot_has_main_app", "bot_active_users",
         "bot_verification_icon", "send_paid_messages_stars",
@@ -58,8 +58,8 @@ class UserDowngradeTo166(AutoDowngrader):
 
 class UserDowngradeTo167(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 167
     TARGET_TYPE = User_167
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {
         "contact_require_premium", "bot_business", "bot_has_main_app", "bot_active_users", "bot_verification_icon",
         "send_paid_messages_stars",
@@ -68,27 +68,20 @@ class UserDowngradeTo167(AutoDowngrader):
 
 class UserDowngradeTo185(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 185
     TARGET_TYPE = User_185
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"bot_verification_icon", "send_paid_messages_stars"}
 
 
 class UserDowngradeTo196(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 196
     TARGET_TYPE = User_196
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = {"send_paid_messages_stars"}
-
-
-class UserDontDowngrade200(AutoDowngrader):
-    BASE_TYPE = User
-    TARGET_LAYER = 200
-    TARGET_TYPE = User
-    REMOVE_FIELDS = set()
 
 
 class UserDontDowngrade(AutoDowngrader):
     BASE_TYPE = User
-    TARGET_LAYER = 201
     TARGET_TYPE = User
+    TARGET_LAYER = TARGET_TYPE.tllayer()
     REMOVE_FIELDS = set()
