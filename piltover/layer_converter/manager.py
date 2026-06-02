@@ -28,14 +28,15 @@ class LayerConverter:
             return vec, False
 
         vec_cls = vec.__class__
-        if isinstance(vec[0], list):
-            downgraded = False
-            result = vec_cls()
-            for item in vec:
-                new_item, item_downgraded = cls._try_downgrade_list(item, to_layer)
-                result.append(new_item)
-                downgraded = downgraded or item_downgraded
-            return result, downgraded
+        # TODO: remove completely? we dont have any nested vectors, right?
+        # if isinstance(vec[0], list):
+        #     downgraded = False
+        #     result = vec_cls()
+        #     for item in vec:
+        #         new_item, item_downgraded = cls._try_downgrade_list(item, to_layer)
+        #         result.append(new_item)
+        #         downgraded = downgraded or item_downgraded
+        #     return result, downgraded
         if isinstance(vec[0], TLObject):
             downgraded = False
             result = vec_cls()

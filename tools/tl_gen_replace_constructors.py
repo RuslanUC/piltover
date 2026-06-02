@@ -16,4 +16,3 @@ REPLACE_CONSTRUCTORS = {
 }
 
 BASE_CLASSES_NEED_CONTEXT = {"Chat", "User", "Message", "PollResults"}
-

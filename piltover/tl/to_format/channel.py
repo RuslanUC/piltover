@@ -59,7 +59,7 @@ class ChannelToFormat(types.ChannelToFormatInternal):
             obj=types.Channel(
                 id=Channel.make_id_from(self.id),
                 title=self.title,
-                photo=self.photo,
+                photo=self.photo if self.photo else types.ChatPhotoEmpty(),
                 date=date,
                 creator=self.creator_id == ctx.user_id,
                 left=participant is None or participant.left,

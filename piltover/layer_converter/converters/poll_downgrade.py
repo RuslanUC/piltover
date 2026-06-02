@@ -15,8 +15,7 @@ class PollDowngradeTo133(BaseDowngrader):
             multiple_choice=from_obj.multiple_choice,
             quiz=from_obj.quiz,
             question=from_obj.question.text,
-            # NOTE: Ignoring type because LayerConverter will downgrade all downgradable Poll_136 fields
-            answers=from_obj.answers,  # type: ignore
+            answers=from_obj.answers,
             close_period=from_obj.close_period,
             close_date=from_obj.close_date,
         )
