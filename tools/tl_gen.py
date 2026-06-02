@@ -23,7 +23,7 @@ import shutil
 from collections import defaultdict
 from io import StringIO
 from pathlib import Path
-from typing import Literal, TextIO
+from typing import Literal, TextIO, Any
 
 from tqdm import tqdm
 
@@ -98,14 +98,80 @@ class Combinator:
         self.min_layer = 0
         self.fields_for_check: list[Field] | None = None
 
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(id={self.id}, section={self.section!r}, qualname={self.qualname!r})"
 
-def snake(s: str):
+
+class Field:
+    _COUNTER = 0
+
+    __slots__ = ("position", "name", "flag_bit", "flag_num", "full_type",)
+
+    def __init__(self, name: str, flag_bit: int | None = None, flag_num: int | None = None, type_: str | None = None):
+        self.position = self.__class__._COUNTER
+        self.__class__._COUNTER += 1
+        self.name = name
+        self.flag_bit = flag_bit
+        self.flag_num = flag_num
+        self.full_type = type_
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Field):
+            return False
+        return (
+                self.name == other.name
+                and self.flag_bit == other.flag_bit
+                and self.flag_num == other.flag_num
+                and self.full_type == other.full_type
+        )
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(name={self.name!r}, type={self.full_type!r})"
+
+    def type(self) -> str:
+        return self.full_type if "?" not in self.full_type else self.full_type.split("?", 1)[1]
+
+    @property
+    def is_flag(self) -> bool:
+        return self.full_type == "#"
+
+    @property
+    def is_optional(self) -> bool:
+        return self.flag_bit is not None and not self.is_flag
+
+    @property
+    def is_vector(self) -> bool:
+        return self.type().lower().startswith("vector<")
+
+    @property
+    def write(self) -> bool:
+        return self.type() != "true"
+
+    @property
+    def actual_type(self) -> str:
+        if self.is_vector:
+            return self.type()[7:-1]
+        return self.type()
+
+
+class CombinatorDiff:
+    __slots__ = ("base", "old", "deleted", "added", "modified",)
+
+    def __init__(self, base: Combinator, old: Combinator, deleted: set[str], added: set[str], modified: list[tuple[Field, Field]]) -> None:
+        self.base = base
+        self.old = old
+        self.deleted = deleted
+        self.added = added
+        self.modified = modified
+
+
+def snake(s: str) -> str:
     # https://stackoverflow.com/q/1175208
     s = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", s)
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
 
 
-def camel(s: str):
+def camel(s: str) -> str:
     return "".join([i[0].upper() + i[1:] for i in s.split("_")])
 
 
@@ -177,21 +243,6 @@ def is_tl_object(field_type: str) -> bool:
     return True
 
 
-def sort_args(args):
-    """Put flags at the end"""
-    args = args.copy()
-    flags = [i for i in args if FLAGS_RE.match(i[1])]
-
-    for i in flags:
-        args.remove(i)
-
-    for i in args[:]:
-        if re.match(r"flags\d?", i[0]) and i[1] == "#":
-            args.remove(i)
-
-    return args + flags
-
-
 def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Combinator], int]:
     combinators = []
     layer: int | None = None
@@ -214,27 +265,6 @@ def parse_schema(schema: list[str], layer_: int | None = None) -> tuple[list[Com
         if combinator_match:
             # noinspection PyShadowingBuiltins
             qualname, tlid, qualtype = combinator_match.groups()
-
-            """
-            crc_check_match = COMBINATOR_FOR_CRC_RE.match(line)
-            if crc_check_match:
-                crc_check_name = crc_check_match.group("name").strip()
-                crc_check_fields = crc_check_match.group("fields").strip()
-                crc_check_typename = crc_check_match.group("typename").strip()
-                if crc_check_fields:
-                    to_check = f"{crc_check_name} {crc_check_fields} = {crc_check_typename}"
-                else:
-                    to_check = f"{crc_check_name} = {crc_check_typename}"
-
-                expected_crc = zlib.crc32(to_check.encode("utf8"))
-                if int(tlid, 16) != expected_crc:
-                    print(
-                        f"CRC32 mismatch for constructor \"{qualname}#{tlid}\": "
-                        f"expected tl id to be {hex(expected_crc)[2:]}"
-                    )
-            else:
-                print(f"WHAT {line!r}")
-            """
 
             namespace, name = qualname.split(".") if "." in qualname else ("", qualname)
             name = camel(name)
@@ -331,48 +361,6 @@ def parse_old_objects(combinators_base: list[Combinator]) -> list[Combinator]:
 
 def indent(lines: list[str], spaces: int) -> list[str]:
     return [" " * spaces + line for line in lines]
-
-
-class Field:
-    _COUNTER = 0
-
-    __slots__ = ("position", "name", "flag_bit", "flag_num", "full_type",)
-
-    def __init__(
-            self, name: str, flag_bit: int | None = None, flag_num: int | None = None,
-            type_: str | None = None,
-    ):
-        self.position = self.__class__._COUNTER
-        self.__class__._COUNTER += 1
-        self.name = name
-        self.flag_bit = flag_bit
-        self.flag_num = flag_num
-        self.full_type = type_
-
-    def type(self) -> str:
-        return self.full_type if "?" not in self.full_type else self.full_type.split("?", 1)[1]
-
-    @property
-    def is_flag(self) -> bool:
-        return self.full_type == "#"
-
-    @property
-    def is_optional(self) -> bool:
-        return self.flag_bit is not None and not self.is_flag
-
-    @property
-    def is_vector(self) -> bool:
-        return self.type().lower().startswith("vector<")
-
-    @property
-    def write(self) -> bool:
-        return self.type() != "true"
-
-    @property
-    def actual_type(self) -> str:
-        if self.is_vector:
-            return self.type()[7:-1]
-        return self.type()
 
 
 def get_real_type_from_type_and_subtype(type_name: str, subtype_name: str | None) -> str:
@@ -473,6 +461,37 @@ def start():
                 arg_type = arg_type.split("?", 1)[1]
 
             field.full_type = arg_type
+
+    """
+    combinator_by_qualname = defaultdict(list)
+    for combinator in combinators:
+        if combinator.section != "types":
+            continue
+        qualname = combinator.qualname
+        if combinator.layer > 0 and qualname.endswith(str(combinator.layer)):
+            qualname, *_ = qualname.rpartition("_")
+        combinator_by_qualname[qualname].append(combinator)
+
+    for to_remove in [qualname for qualname in combinator_by_qualname if len(combinator_by_qualname[qualname]) == 1]:
+        del combinator_by_qualname[to_remove]
+
+    diff = []
+    for older_combinators in combinator_by_qualname.values():
+        older_combinators.sort(key=lambda c: -c.layer)
+        base = older_combinators.pop()
+        older_combinators.reverse()
+        for older_combinator in older_combinators:
+            base_fields = {field.name: field for field in base.fields}
+            old_fields = {field.name: field for field in older_combinator.fields}
+            added_fields = base_fields.keys() - old_fields.keys()
+            deleted_fields = old_fields.keys() - base_fields.keys()
+            modified_fields = [
+                (base_fields[field_name], old_fields[field_name])
+                for field_name in (base_fields.keys() & old_fields.keys())
+                if base_fields[field_name] != old_fields[field_name]
+            ]
+            diff.append(CombinatorDiff(base, older_combinator, added_fields, deleted_fields, modified_fields))
+    """
 
     for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
         slots = [f"\"{field.name}\"" for field in c.fields if not field.is_flag]
