@@ -8,6 +8,7 @@ from typing import Callable, TypeVar, cast
 from loguru import logger
 
 from piltover.tl import TLObject
+from piltover.tl import all as tl_all
 
 
 T = TypeVar("T", bound=TLObject)
@@ -95,6 +96,8 @@ class LayerConverter:
 
     @classmethod
     def downgrade(cls, obj: TLObject, to_layer: int) -> TLObject:
+        if to_layer == tl_all.layer:
+            return obj
         return cls._downgrade(obj, to_layer)[0]
 
 

@@ -72,6 +72,8 @@ async def set_channel_wallpaper(request: SetChatWallPaper, user: User, peer: Pee
     channel.version += 1
     await channel.save(update_fields=["wallpaper_id", "version"])
 
+    # TODO: create admin log event (ChannelAdminLogEventActionChangeWallpaper)
+
     updates = await upd.update_channel(channel)
     if create_svc_message:
         # channel_peer = await Peer.get(owner=None, channel_id=peer.channel_id)
