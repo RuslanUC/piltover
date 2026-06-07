@@ -29,19 +29,16 @@ class LayerConverter:
 
     @classmethod
     def _try_downgrade_list(cls, vec: list[TAny], to_layer: int) -> tuple[list[TAny], bool]:
-        if not vec:
+        if not vec or not isinstance(vec[0], TLObject):
             return vec, False
 
-        if isinstance(vec[0], TLObject):
-            downgraded = False
-            result = vec.__class__()
-            for item in vec:
-                new_item, item_downgraded = cls._downgrade(item, to_layer)
-                result.append(new_item)
-                downgraded = downgraded or item_downgraded
-            return result, downgraded
-
-        return vec, False
+        downgraded = False
+        result = vec.__class__()
+        for item in vec:
+            new_item, item_downgraded = cls._downgrade(item, to_layer)
+            result.append(new_item)
+            downgraded = downgraded or item_downgraded
+        return result, downgraded
 
     @classmethod
     def _downgrade(cls, obj: TLObject, to_layer: int) -> tuple[TLObject, bool]:

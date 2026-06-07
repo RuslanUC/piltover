@@ -5,7 +5,7 @@ import struct
 import time
 from asyncio import Event
 from io import BytesIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast, Any
 
 from loguru import logger
 from lru import LRU
@@ -29,12 +29,16 @@ from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
 from piltover.utils.debug import measure_time
+from ..db.models import AuthKey
 
 if TYPE_CHECKING:
     from .server import Gateway
 
 
-_check_req_pq_tlid = (Int.write(ReqPq.tlid(), False), Int.write(ReqPqMulti.tlid(), False))
+_check_req_pq_tlid = (
+    Int.write(ReqPq.tlid(), False),
+    Int.write(ReqPqMulti.tlid(), False),
+)
 
 
 class Client:
@@ -58,12 +62,12 @@ class Client:
         self.write_lock = asyncio.Lock()
 
         self.active_sessions = LRU(4, callback=self._session_evicted)
-        self.active_keys = LRU(8)
+        self.active_keys = cast(LRU[int, bytes], LRU(8))
 
         self.message_available = Event()
 
     @staticmethod
-    def _session_evicted(_: ..., session: Session) -> None:
+    def _session_evicted(_: Any, session: Session) -> None:
         session.disconnect()
 
     def _get_cached_session(self, auth_key_id: int, session_id: int) -> Session | None:
@@ -197,7 +201,7 @@ class Client:
                 auth_key = self.active_keys[packet.auth_key_id]
             else:
                 auth_data = await self._get_auth_data(packet.auth_key_id)
-                self.active_keys[packet.auth_key_id] = auth_key = auth_data.auth_key
+                self.active_keys[packet.auth_key_id] = auth_key = cast(bytes, auth_data.auth_key)
 
             decrypted = await self.decrypt(packet, auth_key)
 
@@ -267,7 +271,7 @@ class Client:
                 packet: UnencryptedMessagePacket | None = None
                 while isinstance(peeked, UnencryptedMessagePacket) and peeked.message_data[:4] in _check_req_pq_tlid:
                     logger.debug("Skipping reqPQ: {req_pq}", req_pq=decoded)
-                    packet = self.conn.next_event()
+                    packet = cast(UnencryptedMessagePacket, self.conn.next_event())
                     peeked = self.conn.peek_packet()
                     if peeked is TransportEvent.DISCONNECT:
                         raise Disconnection
@@ -280,7 +284,8 @@ class Client:
             await self.handle_unencrypted_message(decoded)
 
     async def _get_auth_data(self, auth_key_id: int) -> AuthData:
-        data = await self.server.get_auth_data(auth_key_id)
+        logger.debug("Requested auth key: {auth_key_id}", auth_key_id=auth_key_id)
+        data = await AuthKey.get_auth_data(auth_key_id)
         if data is None:
             logger.info(f"Client ({self.peername}) sent unknown auth_key_id {auth_key_id}, disconnecting with 404")
             raise Disconnection(404)

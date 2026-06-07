@@ -4,7 +4,7 @@ import asyncio
 import base64
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 from taskiq import TaskiqEvents, AsyncBroker
@@ -24,8 +24,6 @@ except ImportError:
 from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 
-from piltover.auth_data import AuthData
-from piltover.db.models import AuthKey
 from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
 
@@ -66,7 +64,7 @@ class Gateway:
             salt_key = os.urandom(32)
             logger.info(f"Salt key is None, generating new one: {base64.b64encode(salt_key).decode('latin1')}")
 
-        self.salt_key = salt_key
+        self.salt_key = cast(bytes, salt_key)
 
         self.worker: Worker | None
         self.broker: AsyncBroker | None
@@ -106,8 +104,3 @@ class Gateway:
         server = await asyncio.start_server(self.accept_client, self.host, self.port)
         async with server:
             await server.serve_forever()
-
-    @staticmethod
-    async def get_auth_data(auth_key_id: int) -> AuthData | None:
-        logger.debug("Requested auth key: {auth_key_id}", auth_key_id=auth_key_id)
-        return await AuthKey.get_auth_data(auth_key_id)

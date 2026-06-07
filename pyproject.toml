@@ -84,6 +84,9 @@ test = [
     "tg-secret>=0.1.3",
 ]
 
+[tool.uv]
+default-groups = "all"
+
 [tool.coverage.run]
 data_file = "coverage.coverage"
 omit = [
