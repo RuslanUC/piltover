@@ -62,7 +62,7 @@ class Client:
         self.write_lock = asyncio.Lock()
 
         self.active_sessions = LRU(4, callback=self._session_evicted)
-        self.active_keys = cast(LRU[int, bytes], LRU(8))
+        self.active_keys = cast("LRU[int, bytes]", LRU(8))
 
         self.message_available = Event()
 
