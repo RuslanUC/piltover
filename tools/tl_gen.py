@@ -475,14 +475,18 @@ def start():
     for to_remove in [qualname for qualname in combinator_by_qualname if len(combinator_by_qualname[qualname]) == 1]:
         del combinator_by_qualname[to_remove]
 
-    diff = []
+    diff_by_base = {}
     for older_combinators in combinator_by_qualname.values():
-        older_combinators.sort(key=lambda c: -c.layer)
-        base = older_combinators.pop()
-        older_combinators.reverse()
-        for older_combinator in older_combinators:
-            base_fields = {field.name: field for field in base.fields}
-            old_fields = {field.name: field for field in older_combinator.fields}
+        older_combinators.sort(key=lambda c: (c.layer or layer))
+        base = older_combinators[-1]
+        if older_combinators:
+            diff_by_base[base] = []
+        for i in range(len(older_combinators) - 1):
+            diff_prev = older_combinators[i]
+            diff_next = older_combinators[i + 1]
+
+            base_fields = {field.name: field for field in diff_next.fields}
+            old_fields = {field.name: field for field in diff_prev.fields}
             added_fields = base_fields.keys() - old_fields.keys()
             deleted_fields = old_fields.keys() - base_fields.keys()
             modified_fields = [
@@ -490,7 +494,9 @@ def start():
                 for field_name in (base_fields.keys() & old_fields.keys())
                 if base_fields[field_name] != old_fields[field_name]
             ]
-            diff.append(CombinatorDiff(base, older_combinator, added_fields, deleted_fields, modified_fields))
+            diff_by_base[base].append(CombinatorDiff(
+                diff_next, diff_prev, added_fields, deleted_fields, modified_fields,
+            ))
     """
 
     for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
@@ -783,9 +789,9 @@ def start():
 
     with open(DESTINATION_PATH / "all.py", "w") as f:
         f.write(WARNING + "\n\n")
-        f.write(f"from . import core_types, primitives, types, functions, to_format\n\n")
-        f.write(f"min_layer = {min(all_layers)}\n")
-        f.write(f"layer = {layer}\n\n")
+        f.write(f"from . import core_types, primitives, types, functions, to_format\n")
+        f.write(f"# noinspection PyUnresolvedReferences\n")
+        f.write(f"from .layer_info import min_layer, layer\n\n")
         f.write("objects = {\n")
 
         for c in combinators:
@@ -805,6 +811,11 @@ def start():
         # TODO: vectors
 
         f.write("}\n")
+
+    with open(DESTINATION_PATH / "layer_info.py", "w") as f:
+        f.write(WARNING + "\n\n")
+        f.write(f"min_layer = {min(all_layers)}\n")
+        f.write(f"layer = {layer}\n\n")
 
 
 if "__main__" == __name__:

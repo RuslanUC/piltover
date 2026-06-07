@@ -14,6 +14,7 @@ package.json
 /piltover/tl/functions
 /piltover/tl/types
 /piltover/tl/all.py
+/piltover/tl/layer_info.py
 /piltover/tl.zip
 
 /coverage.*
