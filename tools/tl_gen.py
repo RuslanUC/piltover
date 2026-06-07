@@ -105,7 +105,7 @@ class Combinator:
 class Field:
     _COUNTER = 0
 
-    __slots__ = ("position", "name", "flag_bit", "flag_num", "full_type",)
+    __slots__ = ("position", "name", "flag_bit", "flag_num", "full_type", "min_layer", "max_layer",)
 
     def __init__(self, name: str, flag_bit: int | None = None, flag_num: int | None = None, type_: str | None = None):
         self.position = self.__class__._COUNTER
@@ -114,6 +114,8 @@ class Field:
         self.flag_bit = flag_bit
         self.flag_num = flag_num
         self.full_type = type_
+        self.min_layer: int | None = None
+        self.max_layer: int | None = None
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Field):
@@ -155,14 +157,13 @@ class Field:
 
 
 class CombinatorDiff:
-    __slots__ = ("base", "old", "deleted", "added", "modified",)
+    __slots__ = ("base", "old", "deleted", "added",)
 
-    def __init__(self, base: Combinator, old: Combinator, deleted: set[str], added: set[str], modified: list[tuple[Field, Field]]) -> None:
+    def __init__(self, base: Combinator, old: Combinator, deleted: list[Field], added: list[Field]) -> None:
         self.base = base
         self.old = old
         self.deleted = deleted
         self.added = added
-        self.modified = modified
 
 
 def snake(s: str) -> str:
@@ -482,21 +483,21 @@ def start():
         if older_combinators:
             diff_by_base[base] = []
         for i in range(len(older_combinators) - 1):
-            diff_prev = older_combinators[i]
-            diff_next = older_combinators[i + 1]
+            diff_old = older_combinators[i]
+            diff_new = older_combinators[i + 1]
 
-            base_fields = {field.name: field for field in diff_next.fields}
-            old_fields = {field.name: field for field in diff_prev.fields}
-            added_fields = base_fields.keys() - old_fields.keys()
-            deleted_fields = old_fields.keys() - base_fields.keys()
-            modified_fields = [
-                (base_fields[field_name], old_fields[field_name])
-                for field_name in (base_fields.keys() & old_fields.keys())
-                if base_fields[field_name] != old_fields[field_name]
-            ]
-            diff_by_base[base].append(CombinatorDiff(
-                diff_next, diff_prev, added_fields, deleted_fields, modified_fields,
-            ))
+            new_fields = {field.name: field for field in diff_new.fields}
+            old_fields = {field.name: field for field in diff_old.fields}
+            added_field_names = new_fields.keys() - old_fields.keys()
+            added_fields = [new_fields[field_name] for field_name in added_field_names]
+            deleted_field_names = old_fields.keys() - new_fields.keys()
+            deleted_fields = [old_fields[field_name] for field_name in deleted_field_names]
+            for field_name in (new_fields.keys() & old_fields.keys()):
+                if new_fields[field_name] == old_fields[field_name]:
+                    continue
+                added_fields.append(new_fields[field_name])
+                deleted_fields.append(old_fields[field_name])
+            diff_by_base[base].append(CombinatorDiff(diff_new, diff_old, deleted_fields, added_fields))
     """
 
     for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
