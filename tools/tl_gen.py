@@ -1044,6 +1044,7 @@ def start():
                     f.write(f"    # Note that field type is {field.tl_type}\n")
                     f.write(f"    raise NotImplementedError\n")
 
+                # TODO: maybe generate simple converters automatically? like TextWithEntities -> string or optional primitive field
                 for field in fields_to_downgrade.values():
                     f.write("\n\n")
 
