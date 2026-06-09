@@ -107,15 +107,18 @@ class Field:
 
     __slots__ = ("position", "name", "flag_bit", "flag_num", "full_type", "min_layer", "max_layer",)
 
-    def __init__(self, name: str, flag_bit: int | None = None, flag_num: int | None = None, type_: str | None = None):
+    def __init__(
+            self, name: str, flag_bit: int | None = None, flag_num: int | None = None, type_: str | None = None,
+            min_layer: int | None = None, max_layer: int | None = None
+    ) -> None:
         self.position = self.__class__._COUNTER
         self.__class__._COUNTER += 1
         self.name = name
         self.flag_bit = flag_bit
         self.flag_num = flag_num
         self.full_type = type_
-        self.min_layer: int | None = None
-        self.max_layer: int | None = None
+        self.min_layer = min_layer
+        self.max_layer = max_layer
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Field):
@@ -164,6 +167,12 @@ class CombinatorDiff:
         self.old = old
         self.deleted = deleted
         self.added = added
+
+    def __repr__(self) -> str:
+        type_name = self.base.qualname
+        if self.base.layer and type_name.endswith(f"_{self.base.layer}"):
+            type_name, *_ = type_name.rpartition("_")
+        return f"{self.__class__.__name__}(type={type_name!r}, from_layer={self.old.layer}, to_layer={self.base.layer})"
 
 
 def snake(s: str) -> str:
@@ -463,7 +472,7 @@ def start():
 
             field.full_type = arg_type
 
-    """
+    # """
     combinator_by_qualname = defaultdict(list)
     for combinator in combinators:
         if combinator.section != "types":
@@ -476,6 +485,7 @@ def start():
     for to_remove in [qualname for qualname in combinator_by_qualname if len(combinator_by_qualname[qualname]) == 1]:
         del combinator_by_qualname[to_remove]
 
+    """
     diff_by_base = {}
     for older_combinators in combinator_by_qualname.values():
         older_combinators.sort(key=lambda c: (c.layer or layer))
@@ -497,10 +507,16 @@ def start():
                     continue
                 added_fields.append(new_fields[field_name])
                 deleted_fields.append(old_fields[field_name])
+            for field in added_fields:
+                assert field.min_layer is None
+                field.min_layer = diff_new.layer or layer
+            for field in deleted_fields:
+                assert field.max_layer is None
+                field.max_layer = diff_old.layer or layer
             diff_by_base[base].append(CombinatorDiff(diff_new, diff_old, deleted_fields, added_fields))
     """
 
-    for c in tqdm(combinators, desc="Writing combinators", total=len(combinators)):
+    for c in tqdm(combinators, desc="Writing combinators"):
         slots = [f"\"{field.name}\"" for field in c.fields if not field.is_flag]
         slots.append("")  # For trailing comma
 
@@ -657,6 +673,7 @@ def start():
 
         imports = [
             f"from __future__ import annotations",
+            f"import bisect",
             f"from io import BytesIO",
             f"from ..primitives import *",
             f"from piltover import tl",
@@ -665,6 +682,7 @@ def start():
 
         if c.section == "types":
             imports.append(f"from .. import placeholders as tl_placeholders")
+            imports.append(f"from ..layer_info import layer as tl_base_layer")
 
         imports.append(f"")
 
@@ -745,6 +763,278 @@ def start():
 
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
         d[c.namespace].append(c.name)
+
+    for older_combinators in tqdm(combinator_by_qualname.values(), desc="Writing downgradable combinators", total=len(combinator_by_qualname)):
+        if len(older_combinators) == 1:
+            continue
+
+        older_combinators.sort(key=lambda c_: (c_.layer or layer))
+        oldest = older_combinators[0]
+        base = older_combinators[-1]
+
+        all_fields = []
+
+        for field in oldest.fields:
+            all_fields.append(Field(
+                name=field.name,
+                flag_bit=field.flag_bit,
+                flag_num=field.flag_num,
+                type_=field.full_type,
+                min_layer=oldest.layer,
+                max_layer=oldest.layer,
+            ))
+
+        for combinator in older_combinators[1:]:
+            i = j = 0
+            while i < len(all_fields) and j < len(combinator.fields):
+                base_field = all_fields[i]
+                new_field = combinator.fields[j]
+                if base_field.name == new_field.name:
+                    while i + 1 < len(all_fields) and all_fields[i + 1].name == new_field.name:
+                        i += 1
+                        base_field = all_fields[i]
+
+                    if base_field == new_field:
+                        base_field.max_layer = combinator.layer or layer
+                        j += 1
+                    i += 1
+                else:
+                    if i > 0 and all_fields[i - 1].name == new_field.name:
+                        all_fields[i - 1].max_layer = combinator.min_layer
+                    all_fields.insert(i, Field(
+                        name=new_field.name,
+                        flag_bit=new_field.flag_bit,
+                        flag_num=new_field.flag_num,
+                        type_=new_field.full_type,
+                        min_layer=combinator.min_layer,
+                        max_layer=combinator.layer or layer,
+                    ))
+                    i += 1
+                    j += 1
+
+            for i_ in range(i, len(all_fields)):
+                all_fields[i_].max_layer = combinator.min_layer
+            for j_ in range(j, len(combinator.fields)):
+                new_field = combinator.fields[j_]
+                all_fields.insert(i, Field(
+                    name=new_field.name,
+                    flag_bit=new_field.flag_bit,
+                    flag_num=new_field.flag_num,
+                    type_=new_field.full_type,
+                    min_layer=combinator.min_layer,
+                    max_layer=combinator.layer or layer,
+                ))
+
+        placeholders = PLACEHOLDERS.get(int(base.id[2:], 16), {})
+
+        serialize_body = []
+
+        base_field_names = set(field.name for field in base.fields)
+
+        # TODO: flags checking
+        """
+        fields_by_name = {
+            field.name: field
+            for field in c.fields
+        }
+        
+        fields_by_flag = defaultdict(list)
+        for field in c.fields:
+            if field.flag_num is None or field.flag_bit is None:
+                continue
+            fields_by_flag[(field.flag_num, field.flag_bit)].append(field.name)
+
+        for same_flag_fields in fields_by_flag.values():
+            if len(same_flag_fields) < 2:
+                continue
+            fields_empty = [
+                (
+                    f"self.{field_name} is False" if fields_by_name[field_name].type() == "true"
+                    else f"self.{field_name} is None"
+                )
+                for field_name in same_flag_fields
+            ]
+            fields_not_empty = [
+                (
+                    f"self.{field_name} is True" if fields_by_name[field_name].type() == "true"
+                    else f"self.{field_name} is not None"
+                )
+                for field_name in same_flag_fields
+            ]
+            serialize_body.append(f"_flags_fields_empty = ({', '.join(fields_empty)})")
+            serialize_body.append(f"_flags_fields_not_empty = ({', '.join(fields_not_empty)})")
+            serialize_body.append(f"if not (all(_flags_fields_empty) or all(_flags_fields_not_empty)):")
+            serialize_body.append(
+                f"    raise ValueError("
+                f"\"Some of the optional fields are empty and some are not empty: {', '.join(same_flag_fields)}\""
+                f")"
+            )
+        """
+
+        nonexistent_fields = set()
+        #fields_to_downgrate = set()
+
+        for field in all_fields:
+            tmp_ = field.type().split("Vector<")
+
+            subtype_name = None
+            if field.is_vector:
+                type_name_ = "list"
+                tmp_ = tmp_[1].split(">")[0]
+                if is_tl_object(tmp_):
+                    subtype_name = "TLObject"
+                else:
+                    subtype_name = get_type_hint(tmp_, base.layer)
+            else:
+                tmp_ = tmp_[0]
+                if is_tl_object(field.type()):
+                    type_name_ = "TLObject"
+                else:
+                    type_name_ = get_type_hint(tmp_, base.layer)
+
+            type_name = get_real_type_from_type_and_subtype(type_name_, subtype_name)
+            if type_name == "TLObject" and len(types_to_constructors[field.type()]) == 1:
+                type_name = f"tl.types.{types_to_constructors[field.type()][0]}"
+
+            add_indent = ""
+            if field.write:
+                has_min_layer = field.min_layer > older_combinators[0].min_layer
+                has_max_layer = field.max_layer < (older_combinators[-1].layer or layer)
+
+                add_indent = " " * 4
+                if has_min_layer and has_max_layer:
+                    serialize_body.append(f"if {field.min_layer} <= target_layer < {field.max_layer}:")
+                elif has_min_layer:
+                    serialize_body.append(f"if target_layer >= {field.min_layer}:")
+                elif has_max_layer:
+                    serialize_body.append(f"if target_layer < {field.max_layer}:")
+                else:
+                    add_indent = ""
+
+            field_var_name = f"self.{field.name}"
+            if field.name not in base_field_names:
+                assert not field.is_flag
+                field_var_name = f"_{field.name}_fallback"
+                nonexistent_fields.add(field_var_name)
+            else:
+                ...  # TODO: if field is not equal to field with same field in base layer - downgrade it
+
+            if field.is_flag:
+                flag_var = f"flags{field.flag_num}"
+                serialize_body.append(f"{add_indent}{flag_var} = 0")
+                for ffield in all_fields:
+                    if not ffield.is_optional or ffield.flag_num != field.flag_num \
+                            or ffield.min_layer < field.min_layer or ffield.min_layer > field.max_layer:
+                        continue
+                    empty_condition = "" if ffield.type().lower().startswith("vector") or not ffield.write else " is not None"
+
+                    ffield_has_min_layer = ffield.min_layer > older_combinators[0].min_layer
+                    ffield_has_max_layer = ffield.max_layer < (older_combinators[-1].layer or layer)
+
+                    ffield_add_indent = " " * 4
+                    if ffield_has_min_layer and ffield_has_max_layer:
+                        serialize_body.append(f"{add_indent}if {ffield.min_layer} <= target_layer < {ffield.max_layer}:")
+                    elif ffield_has_min_layer:
+                        serialize_body.append(f"{add_indent}if target_layer >= {ffield.min_layer}:")
+                    elif ffield_has_max_layer:
+                        serialize_body.append(f"{add_indent}if target_layer < {ffield.max_layer}:")
+                    else:
+                        ffield_add_indent = ""
+
+                    ffield_var_name = f"self.{ffield.name}"
+                    if ffield.name not in base_field_names:
+                        ffield_var_name = f"_{ffield.name}_fallback"
+                    serialize_body.append(f"{add_indent}{ffield_add_indent}if {ffield_var_name}{empty_condition}: {flag_var} |= (1 << {ffield.flag_bit})")
+                serialize_body.append(f"{add_indent}result += Int.write({flag_var})")
+                continue
+
+            if field.name in placeholders:
+                name_with_ns = snake(base.qualname.replace(".", "_"))
+                field_var_name_old = field_var_name
+                field_var_name = f"_{field.name}_replaced"
+                for idx, (check, suffix) in enumerate(placeholders[field.name].items()):
+                    if not idx:
+                        serialize_body.append(f"{add_indent}if {check}:")
+                    else:
+                        serialize_body.append(f"{add_indent}elif {check}:")
+                    serialize_body.append(
+                        f"    {add_indent}{field_var_name} = tl_placeholders.{name_with_ns}_fill_{field.name}{suffix}(self)"
+                    )
+                serialize_body.append(f"{add_indent}else:")
+                serialize_body.append(f"    {add_indent}{field_var_name} = {field_var_name_old}")
+
+            if field.is_optional:
+                if field.write:
+                    empty_condition = ""
+                    fields_with_this_flag = len([
+                        1 for f in all_fields if f.flag_num == field.flag_num and f.flag_bit == field.flag_bit
+                    ])
+                    if fields_with_this_flag > 1 or not field.is_vector:
+                        empty_condition = " is not None"
+
+                    serialize_body.append(f"{add_indent}if {field_var_name}{empty_condition}:")
+                    if type_name == "TLObject":
+                        serialize_body.append(f"    {add_indent}result += {field_var_name}.write()")
+                    else:
+                        serialize_body.append(f"    {add_indent}result += {type_name}.write({field_var_name})")
+
+                continue
+
+            if type_name == "TLObject":
+                serialize_body.append(f"{add_indent}result += {field_var_name}.write()")
+            else:
+                serialize_body.append(f"{add_indent}result += {type_name}.write({field_var_name})")
+
+        result = [
+            f"",
+            f"",
+            f"class _{base.name}Downgradable({base.name}):",
+            f"    __tl_ids__ = (",
+            *indent(
+                [
+                    f"({c_.min_layer}, {c_.id}),"
+                    for c_ in older_combinators
+                ],
+                spaces=8,
+            ),
+            f"    )",
+            f"",
+            f"    __slots__ = ()",
+            f"",
+            f"    def write(self, target_layer: int = tl_base_layer) -> bytes:",
+            f"        if target_layer >= self.__tl_layer__:",
+            f"            return super().write()",
+            f"",
+            f"        layer_idx = bisect.bisect_left(self.__tl_ids__, target_layer, key=lambda e: e[0])",
+            f"        if layer_idx == 0 and target_layer < self.__tl_ids__[0][0]:",
+            f"            raise RuntimeError(",
+            f"                f\"Client wants layer {{target_layer}} for object {{self.__class__.__name__!r}}, \"",
+            f"                f\"but minimum available is {{self.__tl_ids__[0][0]}}\"",
+            f"            )",
+            f"",
+            *indent(
+                [
+                    f"_{field_name}_fallback = ...  # TODO: get fallback value for field"
+                    for field_name in nonexistent_fields
+                ] + ([""] if nonexistent_fields else []),
+                spaces=8
+            ),
+            f"        result = Int.write(self.__tl_ids__[layer_idx][1], False)",
+            *indent(
+                [
+                    *serialize_body,
+                    f"return result",
+                ] if serialize_body else [
+                    "return b\"\""
+                ],
+                8
+            ),
+            f"",
+        ]
+
+        file_name = f"{base.namespace}.py" if base.namespace else "_root.py"
+        with open(DESTINATION_PATH / base.section / file_name, "a") as f:
+            f.write("\n".join(result))
 
     for namespace, types in namespaces_to_types.items():
         file_name = f"{namespace}.py" if namespace else "_root.py"
