@@ -472,50 +472,6 @@ def start():
 
             field.full_type = arg_type
 
-    # """
-    combinator_by_qualname = defaultdict(list)
-    for combinator in combinators:
-        if combinator.section != "types":
-            continue
-        qualname = combinator.qualname
-        if combinator.layer > 0 and qualname.endswith(str(combinator.layer)):
-            qualname, *_ = qualname.rpartition("_")
-        combinator_by_qualname[qualname].append(combinator)
-
-    for to_remove in [qualname for qualname in combinator_by_qualname if len(combinator_by_qualname[qualname]) == 1]:
-        del combinator_by_qualname[to_remove]
-
-    """
-    diff_by_base = {}
-    for older_combinators in combinator_by_qualname.values():
-        older_combinators.sort(key=lambda c: (c.layer or layer))
-        base = older_combinators[-1]
-        if older_combinators:
-            diff_by_base[base] = []
-        for i in range(len(older_combinators) - 1):
-            diff_old = older_combinators[i]
-            diff_new = older_combinators[i + 1]
-
-            new_fields = {field.name: field for field in diff_new.fields}
-            old_fields = {field.name: field for field in diff_old.fields}
-            added_field_names = new_fields.keys() - old_fields.keys()
-            added_fields = [new_fields[field_name] for field_name in added_field_names]
-            deleted_field_names = old_fields.keys() - new_fields.keys()
-            deleted_fields = [old_fields[field_name] for field_name in deleted_field_names]
-            for field_name in (new_fields.keys() & old_fields.keys()):
-                if new_fields[field_name] == old_fields[field_name]:
-                    continue
-                added_fields.append(new_fields[field_name])
-                deleted_fields.append(old_fields[field_name])
-            for field in added_fields:
-                assert field.min_layer is None
-                field.min_layer = diff_new.layer or layer
-            for field in deleted_fields:
-                assert field.max_layer is None
-                field.max_layer = diff_old.layer or layer
-            diff_by_base[base].append(CombinatorDiff(diff_new, diff_old, deleted_fields, added_fields))
-    """
-
     for c in tqdm(combinators, desc="Writing combinators"):
         slots = [f"\"{field.name}\"" for field in c.fields if not field.is_flag]
         slots.append("")  # For trailing comma
@@ -764,10 +720,17 @@ def start():
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
         d[c.namespace].append(c.name)
 
-    for older_combinators in tqdm(combinator_by_qualname.values(), desc="Writing downgradable combinators", total=len(combinator_by_qualname)):
-        if len(older_combinators) == 1:
+    combinator_by_qualname = defaultdict(list)
+    for combinator in combinators:
+        if combinator.section != "types":
             continue
+        qualname = combinator.qualname
+        if combinator.layer > 0 and qualname.endswith(str(combinator.layer)):
+            qualname, *_ = qualname.rpartition("_")
+        combinator_by_qualname[qualname].append(combinator)
 
+    combinator_by_qualname = {k: v for k, v in combinator_by_qualname.items() if len(v) > 1}
+    for older_combinators in tqdm(combinator_by_qualname.values(), desc="Writing downgradable combinators", total=len(combinator_by_qualname)):
         older_combinators.sort(key=lambda c_: (c_.layer or layer))
         oldest = older_combinators[0]
         base = older_combinators[-1]
@@ -829,7 +792,7 @@ def start():
 
         serialize_body = []
 
-        base_field_names = set(field.name for field in base.fields)
+        base_fields = {field.name: field for field in base.fields}
 
         # TODO: flags checking
         """
@@ -872,9 +835,24 @@ def start():
         """
 
         nonexistent_fields = set()
-        #fields_to_downgrate = set()
+        fields_to_downgrade = set()
 
+        field_var_names = []
         for field in all_fields:
+            if field.name not in base_fields:
+                assert not field.is_flag
+                name = f"_{field.name}_fallback_{field.min_layer}"
+                field_var_names.append(name)
+                nonexistent_fields.add(name)
+            elif field != base_fields[field.name]:
+                assert not field.is_flag
+                name = f"_{field.name}_downgrade_{field.min_layer}"
+                field_var_names.append(name)
+                fields_to_downgrade.add(name)
+            else:
+                field_var_names.append(f"self.{field.name}")
+
+        for field, field_var_name in zip(all_fields, field_var_names):
             tmp_ = field.type().split("Vector<")
 
             subtype_name = None
@@ -911,18 +889,10 @@ def start():
                 else:
                     add_indent = ""
 
-            field_var_name = f"self.{field.name}"
-            if field.name not in base_field_names:
-                assert not field.is_flag
-                field_var_name = f"_{field.name}_fallback"
-                nonexistent_fields.add(field_var_name)
-            else:
-                ...  # TODO: if field is not equal to field with same field in base layer - downgrade it
-
             if field.is_flag:
                 flag_var = f"flags{field.flag_num}"
                 serialize_body.append(f"{add_indent}{flag_var} = 0")
-                for ffield in all_fields:
+                for ffield, ffield_var_name in zip(all_fields, field_var_names):
                     if not ffield.is_optional or ffield.flag_num != field.flag_num \
                             or ffield.min_layer < field.min_layer or ffield.min_layer > field.max_layer:
                         continue
@@ -941,9 +911,6 @@ def start():
                     else:
                         ffield_add_indent = ""
 
-                    ffield_var_name = f"self.{ffield.name}"
-                    if ffield.name not in base_field_names:
-                        ffield_var_name = f"_{ffield.name}_fallback"
                     serialize_body.append(f"{add_indent}{ffield_add_indent}if {ffield_var_name}{empty_condition}: {flag_var} |= (1 << {ffield.flag_bit})")
                 serialize_body.append(f"{add_indent}result += Int.write({flag_var})")
                 continue
@@ -992,7 +959,7 @@ def start():
             f"    __tl_ids__ = (",
             *indent(
                 [
-                    f"({c_.min_layer}, {c_.id}),"
+                    f"({c_.name}.__tl_layer__, {c_.name}.__tl_id__),"
                     for c_ in older_combinators
                 ],
                 spaces=8,
@@ -1005,18 +972,25 @@ def start():
             f"        if target_layer >= self.__tl_layer__:",
             f"            return super().write()",
             f"",
-            f"        layer_idx = bisect.bisect_left(self.__tl_ids__, target_layer, key=lambda e: e[0])",
-            f"        if layer_idx == 0 and target_layer < self.__tl_ids__[0][0]:",
+            f"        if target_layer < self.__tl_ids__[0][0]:",
             f"            raise RuntimeError(",
             f"                f\"Client wants layer {{target_layer}} for object {{self.__class__.__name__!r}}, \"",
             f"                f\"but minimum available is {{self.__tl_ids__[0][0]}}\"",
             f"            )",
             f"",
+            f"        layer_idx = bisect.bisect_left(self.__tl_ids__, target_layer, key=lambda e: e[0])",
+            f"",
             *indent(
                 [
-                    f"_{field_name}_fallback = ...  # TODO: get fallback value for field"
+                    f"{field_name} = ...  # TODO: get fallback value for field"
                     for field_name in nonexistent_fields
                 ] + ([""] if nonexistent_fields else []),
+                spaces=8
+            ),*indent(
+                [
+                    f"{field_name} = ...  # TODO: get downgrade value for field"
+                    for field_name in fields_to_downgrade
+                ] + ([""] if fields_to_downgrade else []),
                 spaces=8
             ),
             f"        result = Int.write(self.__tl_ids__[layer_idx][1], False)",
