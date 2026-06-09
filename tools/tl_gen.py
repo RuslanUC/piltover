@@ -978,9 +978,18 @@ def start():
             f"",
             f"    __slots__ = ()",
             f"",
+            # TODO: accept serialization context instead of just layer
             f"    def write(self, target_layer: int = tl_base_layer) -> bytes:",
             f"        if target_layer >= self.__tl_layer__:",
             f"            return super().write()",
+            # TODO: add converter hooks
+            #  e.g. something like placeholders that checks layer and then completely replaces current .write with custom one
+            #  for example InvitedUsers may have ("177" and "convert_invited_users_to_updates" are customizable values here):
+            #  ... if target_layer < 177:
+            #  ...     return tl.layer_converters.invited_users.convert_invited_users_to_updates(self, layer)
+            #  and then tl.layer_converters.invited_users.convert_invited_users_to_updates is like this:
+            #  ... def convert_invited_users_to_updates(obj: InvitedUsers, layer: int) -> bytes:
+            #  ...     return obj.updates.write()
             f"",
             f"        if target_layer < self.__tl_ids__[0][0]:",
             f"            raise RuntimeError(",
@@ -992,14 +1001,16 @@ def start():
             f"",
             *indent(
                 [
-                    f"{field_name} = tl.layer_converters.{base_name_snake}.get_{field.name}_fallback_for_{field.min_layer}(self)"
+                    # TODO: pass serialization context instead of just layer, when will be added
+                    f"{field_name} = tl.layer_converters.{base_name_snake}.get_{field.name}_fallback_for_{field.min_layer}(self, target_layer)"
                     for field_name, field in nonexistent_fields.items()
                 ] + ([""] if nonexistent_fields else []),
                 spaces=8
             ),
             *indent(
                 [
-                    f"{field_name} = tl.layer_converters.{base_name_snake}.downgrade_{field.name}_for_{field.min_layer}(self)"
+                    # TODO: pass serialization context instead of just layer, when will be added
+                    f"{field_name} = tl.layer_converters.{base_name_snake}.downgrade_{field.name}_for_{field.min_layer}(self, target_layer)"
                     for field_name, field in fields_to_downgrade.items()
                 ] + ([""] if fields_to_downgrade else []),
                 spaces=8
@@ -1039,7 +1050,8 @@ def start():
                         force_optional=field.is_optional and field.type() != "true",
                     )
 
-                    f.write(f"def get_{field.name}_fallback_for_{field.min_layer}(obj: {cls_name_type}) -> {field_type}:\n")
+                    # TODO: accept serialization context instead of just layer
+                    f.write(f"def get_{field.name}_fallback_for_{field.min_layer}(obj: {cls_name_type}, layer: int) -> {field_type}:\n")
                     f.write(f"    # TODO: Layer converter implementation of field \"{field.name}\" fallback will go here\n")
                     f.write(f"    # Note that field type is {field.tl_type}\n")
                     f.write(f"    raise NotImplementedError\n")
@@ -1053,7 +1065,8 @@ def start():
                         force_optional=field.is_optional and field.type() != "true",
                     )
 
-                    f.write(f"def downgrade_{field.name}_for_{field.min_layer}(obj: {cls_name_type}) -> {field_type}:\n")
+                    # TODO: accept serialization context instead of just layer
+                    f.write(f"def downgrade_{field.name}_for_{field.min_layer}(obj: {cls_name_type}, layer: int) -> {field_type}:\n")
                     f.write(f"    # TODO: Layer converter implementation of field \"{field.name}\" downgrade will go here\n")
                     f.write(f"    # Note that field type needs to be {field.tl_type}, but now it's {base_fields[field.name].tl_type}\n")
                     f.write(f"    raise NotImplementedError\n")
