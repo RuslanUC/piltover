@@ -23,7 +23,7 @@ import shutil
 from collections import defaultdict
 from io import StringIO
 from pathlib import Path
-from typing import Literal, TextIO, Any
+from typing import Literal, TextIO, Any, cast
 
 from tqdm import tqdm
 
@@ -116,7 +116,7 @@ class Field:
         self.name = name
         self.flag_bit = flag_bit
         self.flag_num = flag_num
-        self.full_type = type_
+        self.full_type = cast(str, type_)
         self.min_layer = min_layer
         self.max_layer = max_layer
 
@@ -157,6 +157,14 @@ class Field:
         if self.is_vector:
             return self.type()[7:-1]
         return self.type()
+
+    @property
+    def tl_type(self) -> str:
+        if self.is_flag:
+            return "#"
+        if self.flag_bit is None:
+            return self.full_type
+        return f"flags{self.flag_num if self.flag_num > 1 else ''}.{self.flag_bit}?{self.full_type}"
 
 
 class CombinatorDiff:
@@ -793,6 +801,7 @@ def start():
         serialize_body = []
 
         base_fields = {field.name: field for field in base.fields}
+        base_name_snake = snake(base.qualname.replace(".", "_"))
 
         # TODO: flags checking
         """
@@ -834,8 +843,8 @@ def start():
             )
         """
 
-        nonexistent_fields = set()
-        fields_to_downgrade = set()
+        nonexistent_fields: dict[str, Field] = {}
+        fields_to_downgrade: dict[str, Field] = {}
 
         field_var_names = []
         for field in all_fields:
@@ -843,12 +852,12 @@ def start():
                 assert not field.is_flag
                 name = f"_{field.name}_fallback_{field.min_layer}"
                 field_var_names.append(name)
-                nonexistent_fields.add(name)
+                nonexistent_fields[name] = field
             elif field != base_fields[field.name]:
                 assert not field.is_flag
                 name = f"_{field.name}_downgrade_{field.min_layer}"
                 field_var_names.append(name)
-                fields_to_downgrade.add(name)
+                fields_to_downgrade[name] = field
             else:
                 field_var_names.append(f"self.{field.name}")
 
@@ -916,7 +925,6 @@ def start():
                 continue
 
             if field.name in placeholders:
-                name_with_ns = snake(base.qualname.replace(".", "_"))
                 field_var_name_old = field_var_name
                 field_var_name = f"_{field.name}_replaced"
                 for idx, (check, suffix) in enumerate(placeholders[field.name].items()):
@@ -925,7 +933,7 @@ def start():
                     else:
                         serialize_body.append(f"{add_indent}elif {check}:")
                     serialize_body.append(
-                        f"    {add_indent}{field_var_name} = tl_placeholders.{name_with_ns}_fill_{field.name}{suffix}(self)"
+                        f"    {add_indent}{field_var_name} = tl_placeholders.{base_name_snake}_fill_{field.name}{suffix}(self)"
                     )
                 serialize_body.append(f"{add_indent}else:")
                 serialize_body.append(f"    {add_indent}{field_var_name} = {field_var_name_old}")
@@ -952,10 +960,12 @@ def start():
             else:
                 serialize_body.append(f"{add_indent}result += {type_name}.write({field_var_name})")
 
+        downgradable_cls_name = f"_{base.name}Downgradable"
+
         result = [
             f"",
             f"",
-            f"class _{base.name}Downgradable({base.name}):",
+            f"class {downgradable_cls_name}({base.name}):",
             f"    __tl_ids__ = (",
             *indent(
                 [
@@ -982,14 +992,15 @@ def start():
             f"",
             *indent(
                 [
-                    f"{field_name} = ...  # TODO: get fallback value for field"
-                    for field_name in nonexistent_fields
+                    f"{field_name} = tl.layer_converters.{base_name_snake}.get_{field.name}_fallback_for_{field.min_layer}(self)"
+                    for field_name, field in nonexistent_fields.items()
                 ] + ([""] if nonexistent_fields else []),
                 spaces=8
-            ),*indent(
+            ),
+            *indent(
                 [
-                    f"{field_name} = ...  # TODO: get downgrade value for field"
-                    for field_name in fields_to_downgrade
+                    f"{field_name} = tl.layer_converters.{base_name_snake}.downgrade_{field.name}_for_{field.min_layer}(self)"
+                    for field_name, field in fields_to_downgrade.items()
                 ] + ([""] if fields_to_downgrade else []),
                 spaces=8
             ),
@@ -1006,9 +1017,45 @@ def start():
             f"",
         ]
 
-        file_name = f"{base.namespace}.py" if base.namespace else "_root.py"
-        with open(DESTINATION_PATH / base.section / file_name, "a") as f:
+        submodule_name = base.namespace if base.namespace else "_root"
+        with open(DESTINATION_PATH / base.section / f"{submodule_name}.py", "a") as f:
             f.write("\n".join(result))
+
+        converter_path = DESTINATION_PATH / "layer_converters" / f"{base_name_snake}.py"
+        if (nonexistent_fields or fields_to_downgrade) and not converter_path.exists():
+            with open(converter_path, "a") as f:
+                cls_name_type = f"tl.types.{submodule_name}.{downgradable_cls_name}"
+
+                f.write("from __future__ import annotations\n")
+                f.write("from typing import TYPE_CHECKING\n")
+                f.write("if TYPE_CHECKING:\n")
+                f.write(f"    from piltover import tl\n")
+
+                for field in nonexistent_fields.values():
+                    f.write("\n\n")
+
+                    field_type = get_type_hint(
+                        field.full_type, field.min_layer, True, True,
+                        force_optional=field.is_optional and field.type() != "true",
+                    )
+
+                    f.write(f"def get_{field.name}_fallback_for_{field.min_layer}(obj: {cls_name_type}) -> {field_type}:\n")
+                    f.write(f"    # TODO: Layer converter implementation of field \"{field.name}\" fallback will go here\n")
+                    f.write(f"    # Note that field type is {field.tl_type}\n")
+                    f.write(f"    raise NotImplementedError\n")
+
+                for field in fields_to_downgrade.values():
+                    f.write("\n\n")
+
+                    field_type = get_type_hint(
+                        field.full_type, field.min_layer, True, True,
+                        force_optional=field.is_optional and field.type() != "true",
+                    )
+
+                    f.write(f"def downgrade_{field.name}_for_{field.min_layer}(obj: {cls_name_type}) -> {field_type}:\n")
+                    f.write(f"    # TODO: Layer converter implementation of field \"{field.name}\" downgrade will go here\n")
+                    f.write(f"    # Note that field type needs to be {field.tl_type}, but now it's {base_fields[field.name].tl_type}\n")
+                    f.write(f"    raise NotImplementedError\n")
 
     for namespace, types in namespaces_to_types.items():
         file_name = f"{namespace}.py" if namespace else "_root.py"
