@@ -29,6 +29,7 @@ from tqdm import tqdm
 
 from tl_gen_placeholders import PLACEHOLDERS
 from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS, BASE_CLASSES_NEED_CONTEXT
+from tools.tl_gen_write_hooks import WRITE_HOOKS, WriteHookRunCode
 
 DRY_RUN = False
 HOME_PATH = Path("./tools")
@@ -744,7 +745,7 @@ def start():
             qualname, *_ = qualname.rpartition("_")
         combinator_by_qualname[qualname].append(combinator)
 
-    combinator_by_qualname = {k: v for k, v in combinator_by_qualname.items() if len(v) > 1}
+    combinator_by_qualname = {k: v for k, v in combinator_by_qualname.items() if len(v) > 1 or k in WRITE_HOOKS}
     for older_combinators in tqdm(combinator_by_qualname.values(), desc="Writing downgradable combinators", total=len(combinator_by_qualname)):
         older_combinators.sort(key=lambda c_: (c_.layer or layer))
         oldest = older_combinators[0]
@@ -802,6 +803,9 @@ def start():
                     min_layer=combinator.min_layer,
                     max_layer=combinator.layer or layer,
                 ))
+
+        if oldest is base:
+            all_fields.clear()
 
         placeholders = PLACEHOLDERS.get(int(base.id[2:], 16), {})
 
@@ -975,6 +979,14 @@ def start():
 
         downgradable_cls_name = f"_{base.name}Downgradable"
 
+        write_hooks_body = []
+        for hook in WRITE_HOOKS.get(base.qualname, ()):
+            if isinstance(hook, WriteHookRunCode):
+                if write_hooks_body:
+                    write_hooks_body.append("")
+                write_hooks_body.append(f"if {hook.condition}:")
+                write_hooks_body.extend(indent(hook.code, 4))
+
         result = [
             f"",
             f"",
@@ -992,51 +1004,57 @@ def start():
             f"    __slots__ = ()",
             f"",
             f"    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:",
-            f"        if ctx.layer >= self.__tl_layer__:",
+            f"        if ctx.dont_format:",
             f"            return super().write(ctx)",
-            # TODO: add converter hooks
-            #  e.g. something like placeholders that checks layer and then completely replaces current .write with custom one
-            #  for example InvitedUsers may have ("177" and "convert_invited_users_to_updates" are customizable values here):
-            #  ... if ctx.layer < 177:
-            #  ...     return tl.layer_converters.invited_users.convert_invited_users_to_updates(self, ctx)
-            #  and then tl.layer_converters.invited_users.convert_invited_users_to_updates is like this:
-            #  ... def convert_invited_users_to_updates(obj: InvitedUsers, ctx: SerializationContext) -> bytes:
-            #  ...     return obj.updates.write()
-            f"",
-            f"        if ctx.layer < self.__tl_ids__[0][0]:",
-            f"            raise RuntimeError(",
-            f"                f\"Client wants layer {{ctx.layer}} for object {{self.__class__.__name__!r}}, \"",
-            f"                f\"but minimum available is {{self.__tl_ids__[0][0]}}\"",
-            f"            )",
-            f"",
-            f"        layer_idx = bisect.bisect_left(self.__tl_ids__, ctx.layer, key=lambda e: e[0])",
-            f"",
             *indent(
-                [
-                    f"{field_name} = tl.layer_converters.{base_name_snake}.get_{field.name}_fallback_for_{field.min_layer}(self, ctx)"
-                    for field_name, field in nonexistent_fields.items()
-                ] + ([""] if nonexistent_fields else []),
-                spaces=8
+                ([""] if write_hooks_body else []) +
+                write_hooks_body
+                +([""] if write_hooks_body else []),
+                spaces=8,
             ),
-            *indent(
-                [
-                    f"{field_name} = tl.layer_converters.{base_name_snake}.downgrade_{field.name}_for_{field.min_layer}(self, ctx)"
-                    for field_name, field in fields_to_downgrade.items()
-                ] + ([""] if fields_to_downgrade else []),
-                spaces=8
-            ),
-            f"        result = Int.write(self.__tl_ids__[layer_idx][1], False)",
-            *indent(
-                [
-                    *serialize_body,
-                    f"return result",
-                ] if serialize_body else [
-                    "return b\"\""
-                ],
-                8
-            ),
-            f"",
         ]
+
+        if oldest is base:
+            result.append("        return super().write(ctx)")
+        else:
+            result.extend((
+                f"        if ctx.layer >= self.__tl_layer__:",
+                f"            return super().write(ctx)",
+                f"",
+                f"        if ctx.layer < self.__tl_ids__[0][0]:",
+                f"            raise RuntimeError(",
+                f"                f\"Client wants layer {{ctx.layer}} for object {{self.__class__.__name__!r}}, \"",
+                f"                f\"but minimum available is {{self.__tl_ids__[0][0]}}\"",
+                f"            )",
+                f"",
+                f"        layer_idx = bisect.bisect_left(self.__tl_ids__, ctx.layer, key=lambda e: e[0])",
+                f"",
+                *indent(
+                    [
+                        f"{field_name} = tl.layer_converters.{base_name_snake}.get_{field.name}_fallback_for_{field.min_layer}(self, ctx)"
+                        for field_name, field in nonexistent_fields.items()
+                    ] + ([""] if nonexistent_fields else []),
+                    spaces=8
+                ),
+                *indent(
+                    [
+                        f"{field_name} = tl.layer_converters.{base_name_snake}.downgrade_{field.name}_for_{field.min_layer}(self, ctx)"
+                        for field_name, field in fields_to_downgrade.items()
+                    ] + ([""] if fields_to_downgrade else []),
+                    spaces=8
+                ),
+                f"        result = Int.write(self.__tl_ids__[layer_idx][1], False)",
+                *indent(
+                    [
+                        *serialize_body,
+                        f"return result",
+                    ] if serialize_body else [
+                        "return b\"\""
+                    ],
+                    8
+                ),
+                f"",
+            ))
 
         submodule_name = base.namespace if base.namespace else "_root"
         with open(DESTINATION_PATH / base.section / f"{submodule_name}.py", "a") as f:
