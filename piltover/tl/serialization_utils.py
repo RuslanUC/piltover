@@ -4,6 +4,7 @@ from io import BytesIO
 from typing import Any, TypeVar
 
 from . import primitives
+from .serialization_context import SerializationContext, EMPTY_SERIALIZATION_CONTEXT
 
 T = TypeVar("T")
 
@@ -27,14 +28,14 @@ if sys.byteorder != "little":
 
 class SerializationUtils:
     @staticmethod
-    def write(value: Any) -> bytes:
+    def write(value: Any, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         from . import TLObject
 
         if isinstance(value, int) and not isinstance(value, (bool, primitives.Int)):
             raise TypeError("SerializationUtils got raw int which is not supported. Use one of primitives.Int* types.")
 
         if isinstance(value, primitives.Int):
-            return value.write()
+            return value.__class__.write(value)
         elif isinstance(value, float):
             return primitives.Float.write(value)
         elif isinstance(value, bool):
@@ -44,12 +45,14 @@ class SerializationUtils:
         elif isinstance(value, str):
             return primitives.String.write(value)
         elif isinstance(value, TLObject):
-            return value.write()
+            return value.write(ctx)
         elif isinstance(value, list) and not isinstance(value, primitives.Vector):
             if not value:
                 return primitives.EMPTY_VECTOR
             raise TypeError(f"Writing raw lists is not supported. Use primitives.Vector* types.")
         elif isinstance(value, primitives.Vector):
+            if isinstance(value, primitives.TLObjectVector):
+                return value.write(ctx)
             return value.write()
         elif isinstance(value, array):
             return primitives.VECTOR + primitives.Int.write(len(value)) + value.tobytes()

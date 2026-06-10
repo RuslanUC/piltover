@@ -1,11 +1,10 @@
-from piltover.context import serialization_ctx
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
+from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
 
 class MessageServiceToFormat(types.MessageServiceToFormatInternal):
-    def _write(self) -> bytes:
-        ctx = serialization_ctx.get()
+    def _write(self, ctx: SerializationContext) -> bytes:
         return LayerConverter.downgrade(
             obj=types.MessageService(
                 id=self.id,
@@ -20,10 +19,9 @@ class MessageServiceToFormat(types.MessageServiceToFormatInternal):
                 ttl_period=self.ttl_period,
             ),
             to_layer=ctx.layer,
-        ).write()
+        ).write(ctx)
 
-    def write(self) -> bytes:
-        ctx = serialization_ctx.get()
-        if ctx is None or ctx.dont_format:
-            return super().write()
-        return self._write()
+    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        if ctx.dont_format:
+            return super().write(ctx)
+        return self._write(ctx)

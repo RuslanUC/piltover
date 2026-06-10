@@ -10,7 +10,7 @@ from piltover.tl import primitives
 from piltover.utils.utils import classinstancemethod
 
 if TYPE_CHECKING:
-    from piltover.tl import TLObject, TObj
+    from piltover.tl import TLObject, TObj, SerializationContext
 
 
 T = TypeVar("T")
@@ -132,8 +132,8 @@ class TLObjectVector(Vector["TObj"]):
 
     # noinspection PyMethodParameters
     @classinstancemethod
-    def write(cls: type[TLObjectVector], self: list[TLObject]) -> bytes:
+    def write(cls: type[TLObjectVector], self: list[TLObject], ctx: SerializationContext) -> bytes:
         result = cls.header(len(self))
         for element in self:
-            result += element.write()
+            result += element.write(ctx)
         return result

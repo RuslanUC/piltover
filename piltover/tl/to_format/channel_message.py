@@ -1,7 +1,8 @@
-from piltover.context import serialization_ctx, NeedContextValuesContext
+from piltover.context import NeedContextValuesContext
 from piltover.exceptions import Unreachable
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
+from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
 
 class ChannelMessageToFormat(types.ChannelMessageToFormatInternal):
@@ -9,10 +10,8 @@ class ChannelMessageToFormat(types.ChannelMessageToFormatInternal):
     def id(self) -> int:
         return self.common.id
 
-    def _write(self) -> bytes:
+    def _write(self, ctx: SerializationContext) -> bytes:
         from piltover.db import models
-
-        ctx = serialization_ctx.get()
 
         peer = types.PeerChannel(channel_id=models.Channel.make_id_from(self.common.channel_id))
 
@@ -70,13 +69,12 @@ class ChannelMessageToFormat(types.ChannelMessageToFormatInternal):
         else:
             raise Unreachable
 
-        return LayerConverter.downgrade(obj=message, to_layer=ctx.layer).write()
+        return LayerConverter.downgrade(obj=message, to_layer=ctx.layer).write(ctx)
 
-    def write(self) -> bytes:
-        ctx = serialization_ctx.get()
-        if ctx is None or ctx.dont_format:
-            return super().write()
-        return self._write()
+    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        if ctx.dont_format:
+            return super().write(ctx)
+        return self._write(ctx)
 
     def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
         values.channel_messages.add(self.common.id)

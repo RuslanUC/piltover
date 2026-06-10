@@ -4,10 +4,8 @@ from io import BytesIO
 from time import time
 from typing import TYPE_CHECKING
 
-from piltover.context import serialization_ctx
-
 if TYPE_CHECKING:
-    from piltover.tl import types
+    from piltover.tl import types, SerializationContext
 
     FileTypes = types.InputPhoto | types.InputEncryptedFileLocation | types.InputDocumentFileLocation \
                 | types.InputSecureFileLocation | types.InputPhotoFileLocation | types.Photo | types.EncryptedFile \
@@ -16,20 +14,18 @@ if TYPE_CHECKING:
                    | types.Document | types.Document_133
 
 
-def file_fill_access_hash_calc(obj: FileTypes) -> int:
-    ctx = serialization_ctx.get()
-    if ctx is None:
+def file_fill_access_hash_calc(obj: FileTypes, ctx: SerializationContext) -> int:
+    if ctx.dont_format:
         return obj.access_hash
 
     from piltover.db.models import File
     return File.make_access_hash(ctx.user_id, ctx.auth_id, obj.id)
 
 
-def file_fill_file_reference_calc(obj: FileTypesRef) -> bytes:
+def file_fill_file_reference_calc(obj: FileTypesRef, ctx: SerializationContext) -> bytes:
     from piltover.tl.types.internal_access import FileReferencePayload
 
-    ctx = serialization_ctx.get()
-    if ctx is None:
+    if ctx.dont_format:
         return obj.file_reference
 
     payload = FileReferencePayload.read(BytesIO(obj.file_reference))

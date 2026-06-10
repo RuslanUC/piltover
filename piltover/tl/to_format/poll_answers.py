@@ -1,12 +1,10 @@
-from piltover.context import serialization_ctx
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
+from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
 
 class PollAnswerVotersToFormat(types.PollAnswerVotersToFormatInternal):
-    def _write(self) -> bytes:
-        ctx = serialization_ctx.get()
-
+    def _write(self, ctx: SerializationContext) -> bytes:
         chosen = (
                 ctx.values is not None
                 and self.poll_id in ctx.values.poll_answers
@@ -21,10 +19,9 @@ class PollAnswerVotersToFormat(types.PollAnswerVotersToFormatInternal):
                 voters=self.voters,
             ),
             to_layer=ctx.layer,
-        ).write()
+        ).write(ctx)
 
-    def write(self) -> bytes:
-        ctx = serialization_ctx.get()
-        if ctx is None or ctx.dont_format:
-            return super().write()
-        return self._write()
+    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        if ctx.dont_format:
+            return super().write(ctx)
+        return self._write(ctx)

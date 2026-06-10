@@ -14,7 +14,6 @@ from tortoise.expressions import F, Q
 import piltover
 from piltover.auth_data import AuthData
 from piltover.cache import Cache
-from piltover.context import ContextValues, SerializationContext
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
     Peer, MessageRef
@@ -25,6 +24,7 @@ from piltover.tl.core_types import TLObject, Message, MsgContainer
 from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues
 from piltover.tl.utils import is_content_related, is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
+from piltover.tl.serialization_context import SerializationContext, ContextValues
 
 if TYPE_CHECKING:
     from piltover.gateway import Client
@@ -165,11 +165,14 @@ class Session:
         logger.debug(f"SerializationContext: {self.user_id=}, {self.auth_id=}")
 
         with measure_time("<serialize message>"):
-            with SerializationContext(
-                    auth_id=self.auth_id, user_id=self.user_id, layer=self.layer, values=context_values,
-            ).use():
-                # TODO: serialize in a different thread
-                self.message_queue.put_nowait((message.message_id, message.seq_no, message.obj.write()))
+            ctx = SerializationContext(
+                auth_id=self.auth_id,
+                user_id=self.user_id,
+                layer=self.layer,
+                values=context_values,
+            )
+            # TODO: serialize in a different thread
+            self.message_queue.put_nowait((message.message_id, message.seq_no, message.obj.write(ctx)))
 
         if self.message_available is not None:
             self.message_available.set()

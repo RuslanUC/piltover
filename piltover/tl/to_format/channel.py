@@ -1,8 +1,9 @@
 from io import BytesIO
 
-from piltover.context import serialization_ctx, NeedContextValuesContext
+from piltover.context import NeedContextValuesContext
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
+from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
 
 class ChannelToFormat(types.ChannelToFormatInternal):
@@ -15,18 +16,16 @@ class ChannelToFormat(types.ChannelToFormatInternal):
             title=self.title,
         )
 
-    def _write(self) -> bytes:
+    def _write(self, ctx: SerializationContext) -> bytes:
         from piltover.db.models import Channel
         from piltover.db.models.channel import CREATOR_RIGHTS
         from piltover.db.enums import ChatAdminRights, ChatBannedRights
-
-        ctx = serialization_ctx.get()
 
         if ctx.values is None:
             return LayerConverter.downgrade(
                 obj=self._forbidden(0),
                 to_layer=ctx.layer,
-            ).write()
+            ).write(ctx)
 
         participant = ctx.values.channel_participants.get(self.id) if ctx.values is not None else None
 
@@ -34,13 +33,13 @@ class ChannelToFormat(types.ChannelToFormatInternal):
             return LayerConverter.downgrade(
                 obj=self._forbidden(-1),
                 to_layer=ctx.layer,
-            ).write()
+            ).write(ctx)
 
         if participant is None and not (self.nojoin_allow_view or self.username is not None):
             return LayerConverter.downgrade(
                 obj=self._forbidden(-1),
                 to_layer=ctx.layer,
-            ).write()
+            ).write(ctx)
 
         admin_rights = None
         if self.creator_id == ctx.user_id:
@@ -85,13 +84,12 @@ class ChannelToFormat(types.ChannelToFormatInternal):
                 profile_color=self.profile_color,
             ),
             to_layer=ctx.layer,
-        ).write()
+        ).write(ctx)
 
-    def write(self) -> bytes:
-        ctx = serialization_ctx.get()
-        if ctx is None or ctx.dont_format:
-            return super().write()
-        return self._write()
+    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        if ctx.dont_format:
+            return super().write(ctx)
+        return self._write(ctx)
 
     def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
         values.channel_participants.add(self.id)

@@ -1,16 +1,15 @@
 from time import time
 
-from piltover.context import serialization_ctx, NeedContextValuesContext
+from piltover.context import NeedContextValuesContext
 from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
+from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
 
 class UserToFormat(types.UserToFormatInternal):
-    def _write(self) -> bytes:
+    def _write(self, ctx: SerializationContext) -> bytes:
         from piltover.db.enums import PeerType, PrivacyRuleKeyType
         from piltover.db.models.presence import EMPTY as PRESENCE_EMPTY
-
-        ctx = serialization_ctx.get()
 
         if self.id == ctx.user_id:
             peer_exists = True
@@ -79,13 +78,12 @@ class UserToFormat(types.UserToFormatInternal):
                 premium=not self.bot,
             ),
             to_layer=ctx.layer,
-        ).write()
+        ).write(ctx)
 
-    def write(self) -> bytes:
-        ctx = serialization_ctx.get()
-        if ctx is None or ctx.dont_format:
-            return super().write()
-        return self._write()
+    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        if ctx.dont_format:
+            return super().write(ctx)
+        return self._write(ctx)
 
     def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
         values.users.add(self.id)

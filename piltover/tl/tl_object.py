@@ -7,6 +7,7 @@ from typing import Generic, TypeVar, Self, TYPE_CHECKING
 import piltover.tl as tl
 from piltover.exceptions import Error, InvalidConstructorException, UnknownConstructorException
 from .primitives import Int
+from .serialization_context import SerializationContext, EMPTY_SERIALIZATION_CONTEXT
 
 if TYPE_CHECKING:
     from piltover.context import NeedContextValuesContext
@@ -30,7 +31,7 @@ class TLObject(ABC):
         return cls.__tl_layer__
 
     @abstractmethod
-    def serialize(self) -> bytes: ...
+    def serialize(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes: ...
 
     @classmethod
     @abstractmethod
@@ -58,8 +59,8 @@ class TLObject(ABC):
 
         return obj
 
-    def write(self) -> bytes:
-        return Int.write(self.__tl_id__, False) + self.serialize()
+    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        return Int.write(self.__tl_id__, False) + self.serialize(ctx)
 
     def to_dict(self) -> dict:
         return {slot: getattr(self, slot) for slot in self.__slots__}

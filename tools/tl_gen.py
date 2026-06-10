@@ -585,7 +585,7 @@ def start():
                     else:
                         serialize_body.append(f"elif {check}:")
                     serialize_body.append(
-                        f"    {write_var_name} = tl_placeholders.{name_with_ns}_fill_{field.name}{suffix}(self)"
+                        f"    {write_var_name} = tl_placeholders.{name_with_ns}_fill_{field.name}{suffix}(self, ctx)"
                     )
                 serialize_body.append(f"else:")
                 serialize_body.append(f"    {write_var_name} = self.{field.name}")
@@ -601,9 +601,12 @@ def start():
 
                     serialize_body.append(f"if {write_var_name}{empty_condition}:")
                     if type_name == "TLObject":
-                        serialize_body.append(f"    result += {write_var_name}.write()")
+                        serialize_body.append(f"    result += {write_var_name}.write(ctx)")
                     else:
-                        serialize_body.append(f"    result += {type_name}.write({write_var_name})")
+                        ctx_arg_maybe = ""
+                        if type_name == "TLObjectVector":
+                            ctx_arg_maybe = ", ctx"
+                        serialize_body.append(f"    result += {type_name}.write({write_var_name}{ctx_arg_maybe})")
                     deserialize_body.append(
                         f"{field.name} = {type_name}.read(stream) "
                         f"if (flags{field.flag_num} & (1 << {field.flag_bit})) == (1 << {field.flag_bit}) else None"
@@ -616,9 +619,12 @@ def start():
                 continue
 
             if type_name == "TLObject":
-                serialize_body.append(f"result += {write_var_name}.write()")
+                serialize_body.append(f"result += {write_var_name}.write(ctx)")
             else:
-                serialize_body.append(f"result += {type_name}.write({write_var_name})")
+                ctx_arg_maybe = ""
+                if type_name == "TLObjectVector":
+                    ctx_arg_maybe = ", ctx"
+                serialize_body.append(f"result += {type_name}.write({write_var_name}{ctx_arg_maybe})")
             deserialize_body.append(f"{field.name} = {type_name}.read(stream)")
 
         to_check_body = []
@@ -642,6 +648,7 @@ def start():
             f"from ..primitives import *",
             f"from piltover import tl",
             f"from ..tl_object import TLObject",
+            f"from ..serialization_context import SerializationContext, EMPTY_SERIALIZATION_CONTEXT",
         ]
 
         if c.section == "types":
@@ -687,7 +694,7 @@ def start():
                 ] if init_args else []
             ),
             f"",
-            f"    def serialize(self) -> bytes:",
+            f"    def serialize(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:",
             *indent(
                 [
                     f"result = b\"\"",
@@ -890,11 +897,11 @@ def start():
 
                 add_indent = " " * 4
                 if has_min_layer and has_max_layer:
-                    serialize_body.append(f"if {field.min_layer} <= target_layer < {field.max_layer}:")
+                    serialize_body.append(f"if {field.min_layer} <= ctx.layer < {field.max_layer}:")
                 elif has_min_layer:
-                    serialize_body.append(f"if target_layer >= {field.min_layer}:")
+                    serialize_body.append(f"if ctx.layer >= {field.min_layer}:")
                 elif has_max_layer:
-                    serialize_body.append(f"if target_layer < {field.max_layer}:")
+                    serialize_body.append(f"if ctx.layer < {field.max_layer}:")
                 else:
                     add_indent = ""
 
@@ -912,11 +919,11 @@ def start():
 
                     ffield_add_indent = " " * 4
                     if ffield_has_min_layer and ffield_has_max_layer:
-                        serialize_body.append(f"{add_indent}if {ffield.min_layer} <= target_layer < {ffield.max_layer}:")
+                        serialize_body.append(f"{add_indent}if {ffield.min_layer} <= ctx.layer < {ffield.max_layer}:")
                     elif ffield_has_min_layer:
-                        serialize_body.append(f"{add_indent}if target_layer >= {ffield.min_layer}:")
+                        serialize_body.append(f"{add_indent}if ctx.layer >= {ffield.min_layer}:")
                     elif ffield_has_max_layer:
-                        serialize_body.append(f"{add_indent}if target_layer < {ffield.max_layer}:")
+                        serialize_body.append(f"{add_indent}if ctx.layer < {ffield.max_layer}:")
                     else:
                         ffield_add_indent = ""
 
@@ -933,7 +940,7 @@ def start():
                     else:
                         serialize_body.append(f"{add_indent}elif {check}:")
                     serialize_body.append(
-                        f"    {add_indent}{field_var_name} = tl_placeholders.{base_name_snake}_fill_{field.name}{suffix}(self)"
+                        f"    {add_indent}{field_var_name} = tl_placeholders.{base_name_snake}_fill_{field.name}{suffix}(self, ctx)"
                     )
                 serialize_body.append(f"{add_indent}else:")
                 serialize_body.append(f"    {add_indent}{field_var_name} = {field_var_name_old}")
@@ -949,16 +956,22 @@ def start():
 
                     serialize_body.append(f"{add_indent}if {field_var_name}{empty_condition}:")
                     if type_name == "TLObject":
-                        serialize_body.append(f"    {add_indent}result += {field_var_name}.write()")
+                        serialize_body.append(f"    {add_indent}result += {field_var_name}.write(ctx)")
                     else:
-                        serialize_body.append(f"    {add_indent}result += {type_name}.write({field_var_name})")
+                        ctx_arg_maybe = ""
+                        if type_name == "TLObjectVector":
+                            ctx_arg_maybe = ", ctx"
+                        serialize_body.append(f"    {add_indent}result += {type_name}.write({field_var_name}{ctx_arg_maybe})")
 
                 continue
 
             if type_name == "TLObject":
-                serialize_body.append(f"{add_indent}result += {field_var_name}.write()")
+                serialize_body.append(f"{add_indent}result += {field_var_name}.write(ctx)")
             else:
-                serialize_body.append(f"{add_indent}result += {type_name}.write({field_var_name})")
+                ctx_arg_maybe = ""
+                if type_name == "TLObjectVector":
+                    ctx_arg_maybe = ", ctx"
+                serialize_body.append(f"{add_indent}result += {type_name}.write({field_var_name}{ctx_arg_maybe})")
 
         downgradable_cls_name = f"_{base.name}Downgradable"
 
@@ -978,39 +991,36 @@ def start():
             f"",
             f"    __slots__ = ()",
             f"",
-            # TODO: accept serialization context instead of just layer
-            f"    def write(self, target_layer: int = tl_base_layer) -> bytes:",
-            f"        if target_layer >= self.__tl_layer__:",
-            f"            return super().write()",
+            f"    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:",
+            f"        if ctx.layer >= self.__tl_layer__:",
+            f"            return super().write(ctx)",
             # TODO: add converter hooks
             #  e.g. something like placeholders that checks layer and then completely replaces current .write with custom one
             #  for example InvitedUsers may have ("177" and "convert_invited_users_to_updates" are customizable values here):
-            #  ... if target_layer < 177:
-            #  ...     return tl.layer_converters.invited_users.convert_invited_users_to_updates(self, layer)
+            #  ... if ctx.layer < 177:
+            #  ...     return tl.layer_converters.invited_users.convert_invited_users_to_updates(self, ctx)
             #  and then tl.layer_converters.invited_users.convert_invited_users_to_updates is like this:
-            #  ... def convert_invited_users_to_updates(obj: InvitedUsers, layer: int) -> bytes:
+            #  ... def convert_invited_users_to_updates(obj: InvitedUsers, ctx: SerializationContext) -> bytes:
             #  ...     return obj.updates.write()
             f"",
-            f"        if target_layer < self.__tl_ids__[0][0]:",
+            f"        if ctx.layer < self.__tl_ids__[0][0]:",
             f"            raise RuntimeError(",
-            f"                f\"Client wants layer {{target_layer}} for object {{self.__class__.__name__!r}}, \"",
+            f"                f\"Client wants layer {{ctx.layer}} for object {{self.__class__.__name__!r}}, \"",
             f"                f\"but minimum available is {{self.__tl_ids__[0][0]}}\"",
             f"            )",
             f"",
-            f"        layer_idx = bisect.bisect_left(self.__tl_ids__, target_layer, key=lambda e: e[0])",
+            f"        layer_idx = bisect.bisect_left(self.__tl_ids__, ctx.layer, key=lambda e: e[0])",
             f"",
             *indent(
                 [
-                    # TODO: pass serialization context instead of just layer, when will be added
-                    f"{field_name} = tl.layer_converters.{base_name_snake}.get_{field.name}_fallback_for_{field.min_layer}(self, target_layer)"
+                    f"{field_name} = tl.layer_converters.{base_name_snake}.get_{field.name}_fallback_for_{field.min_layer}(self, ctx)"
                     for field_name, field in nonexistent_fields.items()
                 ] + ([""] if nonexistent_fields else []),
                 spaces=8
             ),
             *indent(
                 [
-                    # TODO: pass serialization context instead of just layer, when will be added
-                    f"{field_name} = tl.layer_converters.{base_name_snake}.downgrade_{field.name}_for_{field.min_layer}(self, target_layer)"
+                    f"{field_name} = tl.layer_converters.{base_name_snake}.downgrade_{field.name}_for_{field.min_layer}(self, ctx)"
                     for field_name, field in fields_to_downgrade.items()
                 ] + ([""] if fields_to_downgrade else []),
                 spaces=8
@@ -1033,7 +1043,7 @@ def start():
             f.write("\n".join(result))
 
         converter_path = DESTINATION_PATH / "layer_converters" / f"{base_name_snake}.py"
-        if (nonexistent_fields or fields_to_downgrade) and not converter_path.exists():
+        if (nonexistent_fields or fields_to_downgrade) and not converter_path.exists() and False:
             with open(converter_path, "a") as f:
                 cls_name_type = f"tl.types.{submodule_name}.{downgradable_cls_name}"
 
@@ -1041,6 +1051,7 @@ def start():
                 f.write("from typing import TYPE_CHECKING\n")
                 f.write("if TYPE_CHECKING:\n")
                 f.write(f"    from piltover import tl\n")
+                f.write(f"    from piltover.tl.serialization_context import SerializationContext\n")
 
                 for field in nonexistent_fields.values():
                     f.write("\n\n")
@@ -1051,7 +1062,7 @@ def start():
                     )
 
                     # TODO: accept serialization context instead of just layer
-                    f.write(f"def get_{field.name}_fallback_for_{field.min_layer}(obj: {cls_name_type}, layer: int) -> {field_type}:\n")
+                    f.write(f"def get_{field.name}_fallback_for_{field.min_layer}(obj: {cls_name_type}, ctx: SerializationContext) -> {field_type}:\n")
                     f.write(f"    # TODO: Layer converter implementation of field \"{field.name}\" fallback will go here\n")
                     f.write(f"    # Note that field type is {field.tl_type}\n")
                     f.write(f"    raise NotImplementedError\n")
@@ -1066,7 +1077,7 @@ def start():
                     )
 
                     # TODO: accept serialization context instead of just layer
-                    f.write(f"def downgrade_{field.name}_for_{field.min_layer}(obj: {cls_name_type}, layer: int) -> {field_type}:\n")
+                    f.write(f"def downgrade_{field.name}_for_{field.min_layer}(obj: {cls_name_type}, ctx: SerializationContext) -> {field_type}:\n")
                     f.write(f"    # TODO: Layer converter implementation of field \"{field.name}\" downgrade will go here\n")
                     f.write(f"    # Note that field type needs to be {field.tl_type}, but now it's {base_fields[field.name].tl_type}\n")
                     f.write(f"    raise NotImplementedError\n")

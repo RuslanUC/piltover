@@ -7,6 +7,7 @@ from typing import TypeVar, Generic, TYPE_CHECKING
 
 from . import TLObject, Int, Long, Bytes
 from .serialization_utils import SerializationUtils
+from .serialization_context import SerializationContext, EMPTY_SERIALIZATION_CONTEXT
 
 if TYPE_CHECKING:
     from .types import FutureSalt
@@ -36,16 +37,16 @@ class Message(TLObject, Generic[T]):
 
         return Message(message_id=msg_id, seq_no=seq_no, obj=body)
 
-    def serialize(self) -> bytes:
-        body = self.obj.write()
+    def serialize(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        body = self.obj.write(ctx)
         return Long.write(self.message_id) + Int.write(self.seq_no) + Int.write(len(body)) + body
 
     @classmethod
     def read(cls, stream: BytesIO, strict_type: bool = False) -> TLObject:
         return Message.deserialize(stream)
 
-    def write(self) -> bytes:
-        return self.serialize()
+    def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        return self.serialize(ctx)
 
 
 class MsgContainer(TLObject):
@@ -67,10 +68,10 @@ class MsgContainer(TLObject):
 
         return MsgContainer(messages=result)
 
-    def serialize(self) -> bytes:
+    def serialize(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         result = Int.write(len(self.messages))
         for message in self.messages:
-            result += message.serialize()
+            result += message.serialize(ctx)
         return result
 
 
@@ -91,8 +92,8 @@ class RpcResult(TLObject):
 
         return RpcResult(req_msg_id=req_msg_id, result=result)
 
-    def serialize(self) -> bytes:
-        return Long.write(self.req_msg_id) + SerializationUtils.write(self.result)
+    def serialize(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        return Long.write(self.req_msg_id) + SerializationUtils.write(self.result, ctx)
 
     def check_for_ctx_values(self, values: NeedContextValuesContext) -> None:
         if isinstance(self.result, Iterable):
@@ -120,7 +121,7 @@ class GzipPacked(TLObject):
 
         return TLObject.read(decompressed_stream)
 
-    def serialize(self) -> bytes:
+    def serialize(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         return Bytes.write(self.packed_data)
 
 
@@ -150,12 +151,12 @@ class FutureSalts(TLObject):
 
         return FutureSalts(req_msg_id=req_msg_id, now=now, salts=salts)
 
-    def serialize(self) -> bytes:
+    def serialize(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         result = Long.write(self.req_msg_id)
         result += Int.write(self.now)
         result += Int.write(len(self.salts))
 
         for salt in self.salts:
-            result += salt.serialize()
+            result += salt.serialize(ctx)
 
         return result
