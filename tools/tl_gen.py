@@ -31,7 +31,7 @@ from tl_gen_placeholders import PLACEHOLDERS
 from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS, BASE_CLASSES_NEED_CONTEXT
 from tools.tl_gen_write_hooks import WRITE_HOOKS, WriteHookRunCode
 
-DRY_RUN = False
+DRY_RUN = True
 HOME_PATH = Path("./tools")
 DESTINATION_PATH = Path("piltover/tl")
 
@@ -460,6 +460,21 @@ def start():
         if c.type not in namespaces_to_types[c.namespace]:
             namespaces_to_types[c.namespace].append(c.type)
 
+    combinator_by_qualname = defaultdict(list)
+    for combinator in combinators:
+        if combinator.section != "types":
+            continue
+        qualname = combinator.qualname
+        if combinator.layer > 0 and qualname.endswith(str(combinator.layer)):
+            qualname, *_ = qualname.rpartition("_")
+        combinator_by_qualname[qualname].append(combinator)
+
+    combinators_to_replace = {
+        k: sorted(v, key=lambda c_: (c_.layer or layer))
+        for k, v in combinator_by_qualname.items()
+        if len(v) > 1 or k in WRITE_HOOKS
+    }
+
     for c in tqdm(combinators, desc="Processing combinators", total=len(combinators)):
         c.fields = []
         flag_num = 1
@@ -675,10 +690,17 @@ def start():
                 result_type = get_type_hint(f"{c.typespace}.{c.type}" if c.typespace else c.type, -1, True, True)
             base_cls = f"TLRequest[{result_type}]"
 
+        cls_name = c.name
+        base_qualname = c.qualname.split("_")[0]
+        if c.section == "types" \
+                and base_qualname in combinators_to_replace \
+                and c is combinators_to_replace[base_qualname][-1]:
+            cls_name += "Base"
+
         result = [
             f"",
             f"",
-            f"class {c.name}({base_cls}):",
+            f"class {cls_name}({base_cls}):",
             f"    __tl_id__ = {c.id}",
             f"    __tl_name__ = \"{c.section}.{c.qualname}\"",
             f"    __tl_layer__ = {c.layer if c.layer else c.min_layer}",
@@ -736,18 +758,7 @@ def start():
         d = namespaces_to_constructors if c.section == "types" else namespaces_to_functions
         d[c.namespace].append(c.name)
 
-    combinator_by_qualname = defaultdict(list)
-    for combinator in combinators:
-        if combinator.section != "types":
-            continue
-        qualname = combinator.qualname
-        if combinator.layer > 0 and qualname.endswith(str(combinator.layer)):
-            qualname, *_ = qualname.rpartition("_")
-        combinator_by_qualname[qualname].append(combinator)
-
-    combinator_by_qualname = {k: v for k, v in combinator_by_qualname.items() if len(v) > 1 or k in WRITE_HOOKS}
-    for older_combinators in tqdm(combinator_by_qualname.values(), desc="Writing downgradable combinators", total=len(combinator_by_qualname)):
-        older_combinators.sort(key=lambda c_: (c_.layer or layer))
+    for older_combinators in tqdm(combinators_to_replace.values(), desc="Writing downgradable combinators", total=len(combinators_to_replace)):
         oldest = older_combinators[0]
         base = older_combinators[-1]
 
@@ -977,7 +988,7 @@ def start():
                     ctx_arg_maybe = ", ctx"
                 serialize_body.append(f"{add_indent}result += {type_name}.write({field_var_name}{ctx_arg_maybe})")
 
-        downgradable_cls_name = f"_{base.name}Downgradable"
+        downgradable_cls_name = base.name
 
         write_hooks_body = []
         for hook in WRITE_HOOKS.get(base.qualname, ()):
@@ -990,11 +1001,11 @@ def start():
         result = [
             f"",
             f"",
-            f"class {downgradable_cls_name}({base.name}):",
+            f"class {downgradable_cls_name}({base.name}Base):",
             f"    __tl_ids__ = (",
             *indent(
                 [
-                    f"({c_.name}.__tl_layer__, {c_.name}.__tl_id__),"
+                    f"({c_.name}{'Base' if c_ is base else ''}.__tl_layer__, {c_.name}{'Base' if c_ is base else ''}.__tl_id__),"
                     for c_ in older_combinators
                 ],
                 spaces=8,
