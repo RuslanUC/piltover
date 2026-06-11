@@ -29,7 +29,7 @@ from tqdm import tqdm
 
 from tl_gen_placeholders import PLACEHOLDERS
 from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS, BASE_CLASSES_NEED_CONTEXT
-from tools.tl_gen_write_hooks import WRITE_HOOKS, WriteHookRunCode
+from tl_gen_write_hooks import WRITE_HOOKS, WriteHookRunCode
 
 DRY_RUN = False
 HOME_PATH = Path("./tools")
