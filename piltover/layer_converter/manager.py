@@ -93,9 +93,7 @@ class LayerConverter:
 
     @classmethod
     def downgrade(cls, obj: TLObject, to_layer: int) -> TLObject:
-        if to_layer == tl_all.layer:
-            return obj
-        return cls._downgrade(obj, to_layer)[0]
+        return obj
 
 
 import piltover.layer_converter.converters as conv
