@@ -380,7 +380,9 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
         else:
             raise Unreachable
 
-        return f"{self.__class__.__name__}(id={self.id!r}, owner_id={self.owner_id!r}, type={self.type!r}, {peer_id})"
+        id_maybe = f"id={self.id!r}, " if hasattr(self, "id") else ""
+        owner_id_maybe = f"owner_id={self.owner_id!r}, " if hasattr(self, "owner_id") else ""
+        return f"{self.__class__.__name__}({id_maybe}{owner_id_maybe}type={self.type!r}, {peer_id})"
 
     @staticmethod
     def input_is_self(user_id: int, input_peer: InputUserBase | InputPeerBase) -> bool:

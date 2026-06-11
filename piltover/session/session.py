@@ -161,7 +161,16 @@ class Session:
             "Queueing message {message_id} to {session_id}: {message!r}",
             message_id=message.message_id, session_id=self.session_id, message=message,
         )
-        logger.debug(f"SerializationContext: {self.user_id=}, {self.auth_id=}")
+        logger.debug(
+            (
+                "SerializationContext: "
+                "user_id={user_id}, "
+                "auth_id={auth_id}, "
+                "layer={layer}, "
+                "context_values={context_values}"
+            ),
+            user_id=self.user_id, auth_id=self.auth_id, layer=self.layer, context_values=context_values,
+        )
 
         with measure_time("<serialize message>"):
             ctx = SerializationContext(

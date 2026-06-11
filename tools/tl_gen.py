@@ -536,8 +536,6 @@ def start():
             field.full_type = arg_type
 
     for c in tqdm(combinators, desc="Writing combinators"):
-        # break
-
         slots = [f"\"{field.name}\"" for field in c.fields if not field.is_flag]
         slots.append("")  # For trailing comma
 
@@ -837,9 +835,17 @@ def start():
             for old_field, new_field in zip(existing_fields_order, new_fields_order):
                 if old_field.name != new_field.name:
                     continue
-                if old_field == new_field and old_field.max_layer == prev_layer:
-                    this_layer_fields.append(old_field)
-                    old_field.max_layer = c_layer
+                if old_field != new_field or old_field.max_layer != prev_layer:
+                    continue
+                this_layer_fields.append(old_field)
+                old_field.max_layer = c_layer
+                for idx, (_, added_field, _) in enumerate(added_fields):
+                    if added_field is new_field:
+                        remove_idx = idx
+                        break
+                else:
+                    raise RuntimeError
+                del added_fields[remove_idx]
 
             while added_fields:
                 idx = 0
@@ -891,6 +897,17 @@ def start():
                     old_field.max_layer = combinator.min_layer - 1
 
             prev_layer_fields = this_layer_fields
+
+            this_layer_fields_to_check = [field for field in all_fields if field.max_layer == c_layer]
+            fields_cnt_expected = len(combinator.fields)
+            fields_cnt_actual = len(combinator.fields)
+            if fields_cnt_actual != fields_cnt_expected:
+                raise RuntimeError(f"Fields count mismatch: expected {fields_cnt_expected}, got {fields_cnt_actual}")
+            else:
+                for field_actual, field_expected in zip(this_layer_fields_to_check, combinator.fields):
+                    if field_actual == field_expected:
+                        continue
+                    raise RuntimeError(f"Field mismatch: expected {field_expected}, got {field_actual}")
 
         if oldest is base:
             all_fields.clear()
@@ -1041,7 +1058,13 @@ def start():
                 if field.write:
                     empty_condition = ""
                     fields_with_this_flag = len([
-                        1 for f in all_fields if f.flag_num == field.flag_num and f.flag_bit == field.flag_bit
+                        1
+                        for f in all_fields
+                        if (
+                                f.flag_num == field.flag_num
+                                and f.flag_bit == field.flag_bit
+                                and field.min_layer <= f.min_layer <= field.max_layer
+                        )
                     ])
                     if fields_with_this_flag > 1 or not field.is_vector:
                         empty_condition = " is not None"

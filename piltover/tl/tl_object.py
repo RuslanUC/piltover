@@ -67,10 +67,10 @@ class TLObject(ABC):
 
     def __repr__(self) -> str:
         fields = []
-        slots = []
+        slots = set()
 
         for cls in self.__class__.mro():
-            slots.extend(getattr(cls, "__slots__", ()))
+            slots.update(getattr(cls, "__slots__", ()))
 
         for slot in slots:
             value = getattr(self, slot)

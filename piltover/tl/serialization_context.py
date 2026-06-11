@@ -26,6 +26,10 @@ class ContextValues:
         self.presences: dict[int, Presence] = {}
         self.channel_messages: dict[int, tuple[MessageReactions, bool, bool]] = {}
 
+    def __repr__(self) -> str:
+        fields = [f"{key}={getattr(self, key)!r}" for key in self.__slots__ if getattr(self, key)]
+        return f"{self.__class__.__name__}({', '.join(fields)})"
+
 
 _EMPTY_CONTEXT_VALUES = ContextValues()
 
