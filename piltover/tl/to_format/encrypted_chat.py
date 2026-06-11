@@ -1,5 +1,4 @@
 from piltover.exceptions import Unreachable
-from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
 from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
@@ -43,10 +42,7 @@ class EncryptedChatToFormat(types.EncryptedChatToFormatInternal):
         else:
             raise Unreachable
 
-        return LayerConverter.downgrade(
-            obj=chat,
-            to_layer=ctx.layer,
-        ).write(ctx)
+        return chat.write(ctx)
 
     def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         if ctx.dont_format:

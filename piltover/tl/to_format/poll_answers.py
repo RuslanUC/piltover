@@ -1,4 +1,3 @@
-from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
 from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
@@ -11,14 +10,11 @@ class PollAnswerVotersToFormat(types.PollAnswerVotersToFormatInternal):
                 and self.id in ctx.values.poll_answers[self.poll_id]
         )
 
-        return LayerConverter.downgrade(
-            obj=types.PollAnswerVoters(
-                chosen=chosen,
-                correct=self.correct and chosen,
-                option=self.option,
-                voters=self.voters,
-            ),
-            to_layer=ctx.layer,
+        return types.PollAnswerVoters(
+            chosen=chosen,
+            correct=self.correct and chosen,
+            option=self.option,
+            voters=self.voters,
         ).write(ctx)
 
     def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:

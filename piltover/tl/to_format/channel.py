@@ -1,7 +1,6 @@
 from io import BytesIO
 
 from piltover.context import NeedContextValuesContext
-from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
 from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
@@ -22,24 +21,15 @@ class ChannelToFormat(types.ChannelToFormatInternal):
         from piltover.db.enums import ChatAdminRights, ChatBannedRights
 
         if ctx.values is None:
-            return LayerConverter.downgrade(
-                obj=self._forbidden(0),
-                to_layer=ctx.layer,
-            ).write(ctx)
+            return self._forbidden(0).write(ctx)
 
         participant = ctx.values.channel_participants.get(self.id) if ctx.values is not None else None
 
         if participant is not None and participant.banned_rights & ChatBannedRights.VIEW_MESSAGES:
-            return LayerConverter.downgrade(
-                obj=self._forbidden(-1),
-                to_layer=ctx.layer,
-            ).write(ctx)
+            return self._forbidden(-1).write(ctx)
 
         if participant is None and not (self.nojoin_allow_view or self.username is not None):
-            return LayerConverter.downgrade(
-                obj=self._forbidden(-1),
-                to_layer=ctx.layer,
-            ).write(ctx)
+            return self._forbidden(-1).write(ctx)
 
         admin_rights = None
         if self.creator_id == ctx.user_id:
@@ -54,36 +44,33 @@ class ChannelToFormat(types.ChannelToFormatInternal):
         if participant is not None and not participant.left:
             date = int(participant.invited_at.timestamp())
 
-        return LayerConverter.downgrade(
-            obj=types.Channel(
-                id=Channel.make_id_from(self.id),
-                title=self.title,
-                photo=self.photo if self.photo else types.ChatPhotoEmpty(),
-                date=date,
-                creator=self.creator_id == ctx.user_id,
-                left=participant is None or participant.left,
-                broadcast=self.broadcast,
-                megagroup=self.megagroup,
-                signatures=self.signatures,
-                has_link=self.has_link,
-                slowmode_enabled=self.slowmode_enabled,
-                noforwards=self.noforwards,
-                join_to_send=self.join_to_send,
-                join_request=self.join_request,
-                stories_hidden=False,
-                stories_hidden_min=True,
-                stories_unavailable=True,
-                access_hash=-1,
-                restriction_reason=None,
-                admin_rights=admin_rights,
-                username=self.username,
-                usernames=[],
-                default_banned_rights=self.default_banned_rights,
-                banned_rights=participant.banned_rights.to_tl() if participant is not None else None,
-                color=self.color,
-                profile_color=self.profile_color,
-            ),
-            to_layer=ctx.layer,
+        return types.Channel(
+            id=Channel.make_id_from(self.id),
+            title=self.title,
+            photo=self.photo if self.photo else types.ChatPhotoEmpty(),
+            date=date,
+            creator=self.creator_id == ctx.user_id,
+            left=participant is None or participant.left,
+            broadcast=self.broadcast,
+            megagroup=self.megagroup,
+            signatures=self.signatures,
+            has_link=self.has_link,
+            slowmode_enabled=self.slowmode_enabled,
+            noforwards=self.noforwards,
+            join_to_send=self.join_to_send,
+            join_request=self.join_request,
+            stories_hidden=False,
+            stories_hidden_min=True,
+            stories_unavailable=True,
+            access_hash=-1,
+            restriction_reason=None,
+            admin_rights=admin_rights,
+            username=self.username,
+            usernames=[],
+            default_banned_rights=self.default_banned_rights,
+            banned_rights=participant.banned_rights.to_tl() if participant is not None else None,
+            color=self.color,
+            profile_color=self.profile_color,
         ).write(ctx)
 
     def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:

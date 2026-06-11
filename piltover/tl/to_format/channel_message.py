@@ -1,6 +1,5 @@
 from piltover.context import NeedContextValuesContext
 from piltover.exceptions import Unreachable
-from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
 from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
@@ -69,7 +68,7 @@ class ChannelMessageToFormat(types.ChannelMessageToFormatInternal):
         else:
             raise Unreachable
 
-        return LayerConverter.downgrade(obj=message, to_layer=ctx.layer).write(ctx)
+        return message.write(ctx)
 
     def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         if ctx.dont_format:

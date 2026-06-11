@@ -1,7 +1,6 @@
 from time import time
 
 from piltover.context import NeedContextValuesContext
-from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import types
 from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
@@ -52,32 +51,29 @@ class UserToFormat(types.UserToFormatInternal):
                 and emoji_status.until < time():
             emoji_status = None
 
-        return LayerConverter.downgrade(
-            obj=types.User(
-                id=self.id,
-                first_name=self.first_name if contact is None or not contact.first_name else contact.first_name,
-                last_name=self.last_name if contact is None or not contact.last_name else contact.last_name,
-                username=self.username,
-                phone=phone_number,
-                lang_code=self.lang_code,
-                is_self=self.id == ctx.user_id,
-                photo=photo,
-                access_hash=-1 if peer_exists else 0,
-                status=presence,
-                contact=is_contact,
-                bot=self.bot,
-                bot_info_version=self.bot_info_version,
-                color=self.color,
-                profile_color=self.profile_color,
-                mutual_contact=is_contact and current_is_contact,
-                emoji_status=emoji_status,
+        return types.User(
+            id=self.id,
+            first_name=self.first_name if contact is None or not contact.first_name else contact.first_name,
+            last_name=self.last_name if contact is None or not contact.last_name else contact.last_name,
+            username=self.username,
+            phone=phone_number,
+            lang_code=self.lang_code,
+            is_self=self.id == ctx.user_id,
+            photo=photo,
+            access_hash=-1 if peer_exists else 0,
+            status=presence,
+            contact=is_contact,
+            bot=self.bot,
+            bot_info_version=self.bot_info_version,
+            color=self.color,
+            profile_color=self.profile_color,
+            mutual_contact=is_contact and current_is_contact,
+            emoji_status=emoji_status,
 
-                # TODO: this is True only because custom emojis are not available (like at all, missing in emoji list)
-                #  for non-premium users.
-                #  Need to figure out how official telegram allows custom emojis to be visible to non-premium users.
-                premium=not self.bot,
-            ),
-            to_layer=ctx.layer,
+            # TODO: this is True only because custom emojis are not available (like at all, missing in emoji list)
+            #  for non-premium users.
+            #  Need to figure out how official telegram allows custom emojis to be visible to non-premium users.
+            premium=not self.bot,
         ).write(ctx)
 
     def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:

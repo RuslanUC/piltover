@@ -18,7 +18,6 @@ from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
     Peer, MessageRef
 from piltover.exceptions import Unreachable
-from piltover.layer_converter.manager import LayerConverter
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
 from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues
@@ -310,16 +309,10 @@ class Session:
         return ret
 
     def pack_message(self, obj: TLObject, in_reply: bool) -> Message:
-        try:
-            downgraded_maybe = LayerConverter.downgrade(obj, self.layer)
-        except Exception as e:
-            logger.opt(exception=e).error("Failed to downgrade object")
-            raise
-
         return Message(
             message_id=self.msg_id(in_reply=in_reply),
             seq_no=self.get_outgoing_seq_no(obj),
-            obj=downgraded_maybe,
+            obj=obj,
         )
 
     def pack_container(self, objects: list[tuple[TLObject, bool]]) -> Message:
