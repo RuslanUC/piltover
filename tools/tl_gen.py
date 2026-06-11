@@ -167,6 +167,16 @@ class Field:
             return self.full_type
         return f"flags{self.flag_num if self.flag_num > 1 else ''}.{self.flag_bit}?{self.full_type}"
 
+    def copy_for_layer(self, min_layer: int, max_layer: int) -> Field:
+        return Field(
+            name=self.name,
+            flag_bit=self.flag_bit,
+            flag_num=self.flag_num,
+            type_=self.full_type,
+            min_layer=min_layer,
+            max_layer=max_layer,
+        )
+
 
 class CombinatorDiff:
     __slots__ = ("base", "old", "deleted", "added",)
@@ -432,15 +442,29 @@ def resolve_fields_for_check(c: Combinator) -> list[Field]:
     return c.fields_for_check
 
 
-def find_field_in_fields_maybe(fields: list[Field], name: str) -> tuple[Field, int] | None:
-    for ridx, field in enumerate(reversed(fields)):
+def find_field_in_fields_maybe(
+        fields: list[Field], name: str | None, layer: int | None = None,
+) -> tuple[Field, int, int] | None:
+    if name is None:
+        return None
+
+    for right_idx, field in enumerate(fields):
         if field.name != name:
             continue
-        return field, len(fields) - ridx - 1
+        if layer is not None and field.max_layer != layer:
+            continue
+
+        left_idx = right_idx
+
+        while left_idx >= 0 and fields[left_idx].name == name:
+            left_idx -= 1
+
+        return field, right_idx, left_idx
 
     return None
 
-def find_field_in_fields(fields: list[Field], name: str) -> tuple[Field, int]:
+
+def find_field_in_fields(fields: list[Field], name: str | None) -> tuple[Field, int, int]:
     found = find_field_in_fields_maybe(fields, name)
     if found is None:
         raise ValueError(f"Expected field \"{name}\" to be in the list, but didn't found it")
@@ -512,6 +536,8 @@ def start():
             field.full_type = arg_type
 
     for c in tqdm(combinators, desc="Writing combinators"):
+        # break
+
         slots = [f"\"{field.name}\"" for field in c.fields if not field.is_flag]
         slots.append("")  # For trailing comma
 
@@ -789,113 +815,82 @@ def start():
                 max_layer=oldest.layer,
             ))
 
+        prev_layer_fields = all_fields
+
         for i in range(1, len(older_combinators)):
+            this_layer_fields = []
             combinator = older_combinators[i]
             c_layer = combinator.layer or layer
             prev_layer = older_combinators[i - 1].layer
-            common_fields = {field.name for field in all_fields} & {field.name for field in combinator.fields}
-            existing_fields_order = [field.name for field in all_fields if field.name in common_fields and field.max_layer == prev_layer]
-            new_fields_order = [field.name for field in combinator.fields if field.name in common_fields]
-            assert existing_fields_order == new_fields_order, f"fields order changed in {combinator}: {existing_fields_order} != {new_fields_order}"
+            common_fields = {field.name for field in all_fields if field.max_layer == prev_layer} & {field.name for field in combinator.fields}
+            existing_fields_order = [field for field in all_fields if field.name in common_fields and field.max_layer == prev_layer]
+            new_fields_order = [field for field in combinator.fields if field.name in common_fields]
 
-            new_fields = combinator.fields.copy()
             added_fields = []
-            left = None
-            while new_fields:
-                new_field = new_fields.pop(0)
-                right = new_fields[0] if new_fields else None
-                if new_field.name in common_fields:
-                    old_field, old_field_idx = find_field_in_fields(all_fields, new_field.name)
-                    if old_field == new_field and old_field.max_layer == prev_layer:
-                        old_field.max_layer = c_layer
-                    else:
-                        if old_field.max_layer == prev_layer:
-                            old_field.max_layer = c_layer - 1
-                        all_fields.insert(
-                            old_field_idx + 1,
-                            Field(
-                                name=new_field.name,
-                                flag_bit=new_field.flag_bit,
-                                flag_num=new_field.flag_num,
-                                type_=new_field.full_type,
-                                min_layer=combinator.min_layer,
-                                max_layer=c_layer,
-                            )
-                        )
-                else:
-                    added_fields.append((
-                        left.name if left is not None else None,
-                        new_field,
-                        right.name if right is not None else None,
-                    ))
-                left = new_field
+            for idx, field in enumerate(combinator.fields):
+                added_fields.append((
+                    combinator.fields[idx - 1].name if idx > 0 else None,
+                    field,
+                    combinator.fields[idx + 1].name if idx + 1 < len(combinator.fields) else None,
+                ))
+
+            for old_field, new_field in zip(existing_fields_order, new_fields_order):
+                if old_field.name != new_field.name:
+                    continue
+                if old_field == new_field and old_field.max_layer == prev_layer:
+                    this_layer_fields.append(old_field)
+                    old_field.max_layer = c_layer
 
             while added_fields:
                 idx = 0
                 added = False
                 while idx < len(added_fields):
                     left_name, added_field, right_name = added_fields[idx]
-                    assert left_name is not None or right_name is not None
-                    if left_name is not None:
-                        left_found = find_field_in_fields_maybe(all_fields, left_name)
-                        if left_found is not None:
-                            left_field, left_idx = left_found
-                            if left_field.max_layer == (combinator.layer or layer):
-                                all_fields.insert(
-                                    left_idx + 1,
-                                    Field(
-                                        name=added_field.name,
-                                        flag_bit=added_field.flag_bit,
-                                        flag_num=added_field.flag_num,
-                                        type_=added_field.full_type,
-                                        min_layer=combinator.min_layer,
-                                        max_layer=combinator.layer or layer,
-                                    )
-                                )
-                                del added_fields[idx]
-                                added = True
-                                continue
-                    if right_name is not None:
-                        right_found = find_field_in_fields_maybe(all_fields, right_name)
-                        if right_found is not None:
-                            right_field, right_idx = right_found
-                            if right_field.max_layer == (combinator.layer or layer):
-                                while right_idx >= 0 and all_fields[right_idx].name == right_name:
-                                    right_idx -= 1
-                                all_fields.insert(
-                                    right_idx + 1,
-                                    Field(
-                                        name=added_field.name,
-                                        flag_bit=added_field.flag_bit,
-                                        flag_num=added_field.flag_num,
-                                        type_=added_field.full_type,
-                                        min_layer=combinator.min_layer,
-                                        max_layer=combinator.layer or layer,
-                                    )
-                                )
-                                del added_fields[idx]
-                                added = True
-                                continue
-                    if right_name is None and not added:
-                        assert idx == len(added_fields) - 1
-                        all_fields.append(Field(
-                                name=added_field.name,
-                                flag_bit=added_field.flag_bit,
-                                flag_num=added_field.flag_num,
-                                type_=added_field.full_type,
-                                min_layer=combinator.min_layer,
-                                max_layer=combinator.layer or layer,
-                            ))
-                        del added_fields[idx]
+                    current_found = find_field_in_fields_maybe(all_fields, added_field.name)
+                    if current_found is not None and current_found[0].max_layer == c_layer:
                         added = True
+                        del added_fields[idx]
+                        continue
+                    if current_found is None and left_name is None and right_name is None:
+                        assert len(added_fields) == 1
+                        added = True
+                        all_fields.append(added_field.copy_for_layer(combinator.min_layer, c_layer))
+                        this_layer_fields.append(all_fields[-1])
+                        del added_fields[idx]
+                        continue
+                    left_found = find_field_in_fields_maybe(all_fields, left_name, c_layer)
+                    right_found = find_field_in_fields_maybe(all_fields, right_name, c_layer)
+                    if left_found is not None:
+                        _, right_idx, _ = left_found
+                        all_fields.insert(right_idx + 1, added_field.copy_for_layer(combinator.min_layer, c_layer))
+                        this_layer_fields.append(all_fields[right_idx + 1])
+                        added = True
+                        del added_fields[idx]
+                        continue
+                    if right_found is not None:
+                        _, _, left_idx = right_found
+                        all_fields.insert(left_idx + 1, added_field.copy_for_layer(combinator.min_layer, c_layer))
+                        this_layer_fields.append(all_fields[left_idx + 1])
+                        added = True
+                        del added_fields[idx]
                         continue
                     idx += 1
                 if not added:
+                    if added_fields[0][0] is None \
+                            and added_fields[-1][2] is None \
+                            and len(added_fields) == len(combinator.fields):
+                        for _, added_field, _ in added_fields:
+                            all_fields.append(added_field.copy_for_layer(combinator.min_layer, c_layer))
+                            this_layer_fields.append(all_fields[-1])
+                        added_fields.clear()
+                        continue
                     raise RuntimeError(f"cant figure out where to insert those fields: {added_fields}")
 
-            for field in all_fields:
-                if field.max_layer != c_layer and field.max_layer == prev_layer:
-                    field.max_layer = c_layer - 1
+            for old_field in prev_layer_fields:
+                if old_field.max_layer != c_layer:
+                    old_field.max_layer = combinator.min_layer - 1
+
+            prev_layer_fields = this_layer_fields
 
         if oldest is base:
             all_fields.clear()
@@ -1120,7 +1115,7 @@ def start():
                 f"                f\"but minimum available is {{self.__tl_ids__[0][0]}}\"",
                 f"            )",
                 f"",
-                f"        layer_idx = bisect.bisect_left(self.__tl_ids__, ctx.layer, key=lambda e: e[0])",
+                f"        layer_idx = bisect.bisect_right(self.__tl_ids__, ctx.layer, key=lambda e: e[0]) - 1",
                 f"",
                 *indent(
                     [
