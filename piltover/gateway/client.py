@@ -146,12 +146,12 @@ class Client:
         logger.debug(obj)
         await self._write_packet(UnencryptedMessagePacket(
             self.empty_session.msg_id(in_reply=True),
-            obj.write(),
+            await obj.write_in_worker(),
         ))
 
     async def _kiq(self, obj: TLObject, session: Session, message_id: int | None = None) -> AsyncTaskiqTask:
         # TODO: dont do .write.hex(), RpcResponse somehow doesn't need encoding it manually, check how exactly
-        call_rpc = CallRpc(
+        call_rpc = (await CallRpc(
             obj=obj,
             layer=session.layer,
             auth_key_id=session.auth_data.auth_key_id,
@@ -162,7 +162,7 @@ class Client:
             user_id=session.user_id,
             is_bot=session.is_bot,
             mfa_pending=session.mfa_pending,
-        ).write().hex()
+        ).write_in_worker()).hex()
 
         with measure_time(".kiq()"):
             return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
@@ -224,7 +224,7 @@ class Client:
                 message = Message(
                     message_id=decrypted.message_id,
                     seq_no=decrypted.seq_no,
-                    obj=TLObject.read(BytesIO(decrypted.data)),
+                    obj=await TLObject.read_in_worker(BytesIO(decrypted.data)),
                 )
             except (struct.error, ValueError, InvalidConstructorException) as e:
                 logger.opt(exception=e).error("Failed to read object. Raw data: {raw_data}", raw_data=decrypted.data)
@@ -263,7 +263,7 @@ class Client:
             )
             asyncio.create_task(self.handle_encrypted_message(message, session))
         elif isinstance(packet, UnencryptedMessagePacket):
-            decoded = TLObject.read(BytesIO(packet.message_data))
+            decoded = await TLObject.read_in_worker(BytesIO(packet.message_data))
             if isinstance(decoded, (ReqPq, ReqPqMulti)):
                 peeked = self.conn.peek_packet()
                 if peeked is TransportEvent.DISCONNECT:
@@ -278,7 +278,7 @@ class Client:
                     await asyncio.sleep(0)
 
                 if packet is not None:
-                    decoded = TLObject.read(BytesIO(packet.message_data))
+                    decoded = await TLObject.read_in_worker(BytesIO(packet.message_data))
 
             logger.debug("{decoded}", decoded=decoded)
             await self.handle_unencrypted_message(decoded)

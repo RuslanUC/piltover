@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from abc import abstractmethod, ABC
 from io import BytesIO
 from typing import Generic, TypeVar, Self, TYPE_CHECKING
@@ -8,6 +9,7 @@ import piltover.tl as tl
 from piltover.exceptions import Error, InvalidConstructorException, UnknownConstructorException
 from .primitives import Int
 from .serialization_context import SerializationContext, EMPTY_SERIALIZATION_CONTEXT
+from .tl_worker import TL_WORKER
 
 if TYPE_CHECKING:
     from piltover.context import NeedContextValuesContext
@@ -61,6 +63,15 @@ class TLObject(ABC):
 
     def write(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
         return Int.write(self.__tl_id__, False) + self.serialize(ctx)
+
+    @classmethod
+    async def read_in_worker(cls, stream: BytesIO, strict_type: bool = False) -> Self:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(TL_WORKER, cls.read, stream, strict_type)
+
+    async def write_in_worker(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(TL_WORKER, self.write, ctx)
 
     def to_dict(self) -> dict:
         return {slot: getattr(self, slot) for slot in self.__slots__}

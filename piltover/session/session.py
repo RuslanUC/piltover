@@ -180,7 +180,7 @@ class Session:
                 values=context_values,
             )
             # TODO: serialize in a different thread
-            self.message_queue.put_nowait((message.message_id, message.seq_no, message.obj.write(ctx)))
+            self.message_queue.put_nowait((message.message_id, message.seq_no, await message.obj.write_in_worker(ctx)))
 
         if self.message_available is not None:
             self.message_available.set()
