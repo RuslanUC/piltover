@@ -9,6 +9,7 @@ import pytest
 from faker import Faker
 from pyrogram.errors import UsernameInvalid, UsernameOccupied, UsernameNotModified, TtlDaysInvalid, AuthKeyUnregistered, \
     TwoFaConfirmWait, PasswordHashInvalid, ChannelInvalid, ChannelPrivate, UserCreator, PeerIdInvalid
+from pyrogram.raw.all import layer as pyrogram_layer
 from pyrogram.raw.core import TLRequest
 from pyrogram.raw.functions import InvokeWithLayer
 from pyrogram.raw.functions.account import CheckUsername, SetAccountTTL, GetAccountTTL, GetAuthorizations, \
@@ -16,13 +17,13 @@ from pyrogram.raw.functions.account import CheckUsername, SetAccountTTL, GetAcco
 from pyrogram.raw.functions.help import GetConfig
 from pyrogram.raw.functions.users import GetFullUser
 from pyrogram.raw.types import UpdateUserName, UpdateUser, AccountDaysTTL, CodeSettings, UpdateNewMessage, \
-    UpdatesTooLong, MsgsAck, InputChannelEmpty
+    UpdatesTooLong, InputChannelEmpty
 from pyrogram.raw.types.auth import SentCode as TLSentCode
 from pyrogram.utils import compute_password_check, get_channel_id
-from piltover.tl import layer as piltover_layer, UserFull
-from pyrogram.raw.all import layer as pyrogram_layer
 
 from piltover.db.models import User, UserPassword, SentCode, PhoneCodePurpose, TaskIqScheduledDeleteUser
+from piltover.tl.layer_info import layer as piltover_layer
+from piltover.tl.types import UserFull
 from tests._account_compat import UpdatePersonalChannelCompat, UsersUserFullCompat
 from tests.client import TestClient, InternalPushSession
 from tests.conftest import ClientFactory, ClientFactorySync, ChannelWithClientsFactory

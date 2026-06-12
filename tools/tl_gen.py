@@ -1275,8 +1275,6 @@ def start():
     with open(DESTINATION_PATH / "all.py", "w") as f:
         f.write(WARNING + "\n\n")
         f.write(f"from . import core_types, primitives, types, functions, to_format\n")
-        f.write(f"# noinspection PyUnresolvedReferences\n")
-        f.write(f"from .layer_info import min_layer, layer\n\n")
         f.write("objects = {\n")
 
         for c in combinators:

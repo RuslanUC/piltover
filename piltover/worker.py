@@ -35,7 +35,8 @@ from piltover.context import RequestContext, request_ctx, NeedContextValuesConte
 from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import TLObject, RpcError, TLRequest, layer
+from piltover.tl import TLObject, RpcError, TLRequest
+from piltover.tl.layer_info import layer
 from piltover.tl.core_types import RpcResult
 from piltover.utils import get_public_key_fingerprint
 

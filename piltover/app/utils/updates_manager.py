@@ -20,13 +20,14 @@ from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHi
     UpdateEditChannelMessage, Long, UpdateDeleteChannelMessages, UpdateFolderPeers, FolderPeer, \
     UpdateChatDefaultBannedRights, UpdateReadChannelInbox, Username as TLUsername, UpdateMessagePoll, \
     UpdateDialogFilterOrder, UpdateDialogFilter, UpdateMessageReactions, UpdateEncryption, UpdateEncryptedChatTyping, \
-    UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, layer, UpdateNewStickerSet, UpdateStickerSets, \
+    UpdateConfig, UpdateRecentReactions, UpdateNewAuthorization, UpdateNewStickerSet, UpdateStickerSets, \
     UpdateStickerSetsOrder, base, UpdatePeerWallpaper, UpdateReadMessagesContents, UpdateNewScheduledMessage, \
     UpdateDeleteScheduledMessages, UpdatePeerHistoryTTL, UpdateDeleteMessages, UpdateBotCallbackQuery, \
     UpdateUserPhone, UpdateNotifySettings, UpdateSavedGifs, UpdateBotInlineQuery, UpdateRecentStickers, \
     UpdateFavedStickers, UpdateSavedDialogPinned, UpdatePinnedSavedDialogs, UpdatePrivacy, \
     UpdateChannelReadMessagesContents, UpdateChannelAvailableMessages, UpdatePhoneCall, UpdatePhoneCallSignalingData, \
     UpdateReadChannelOutbox, UpdatePinnedChannelMessages, UpdateUserEmojiStatus, EmojiStatusEmpty, PeerChat
+from piltover.tl.layer_info import layer
 from piltover.tl.to_format import ChannelMessageToFormat
 from piltover.tl.to_format.update_message_id import UpdateMessageIDToFormat
 from piltover.tl.types.account import PrivacyRules
