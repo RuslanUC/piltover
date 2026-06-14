@@ -6,6 +6,7 @@ from io import BytesIO
 from time import time
 from typing import TYPE_CHECKING, cast
 
+import sympy
 import tgcrypto
 from loguru import logger
 
@@ -15,7 +16,7 @@ from piltover.exceptions import Disconnection
 from piltover.tl import MsgsAck, ReqPqMulti, ReqPq, ReqDHParams, SetClientDHParams, ResPQ, PQInnerData, PQInnerDataDc, \
     PQInnerDataTemp, PQInnerDataTempDc, ServerDHInnerData, ServerDHParamsOk, ClientDHInnerData, DhGenOk, Int256, Long, \
     Int128, TLObject
-from piltover.utils import generate_large_prime, gen_safe_prime
+from piltover.utils import gen_safe_prime
 from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 
 if TYPE_CHECKING:
@@ -23,25 +24,24 @@ if TYPE_CHECKING:
 
 
 async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
-    p = generate_large_prime(31)
-    q = generate_large_prime(31)
-
-    if p > q:
-        p, q = q, p
-
-    client.gen_auth_data = GenAuthData()
-    client.gen_auth_data.p, client.gen_auth_data.q = p, q
+    num_bits = 31
+    p = sympy.randprime(2 ** (num_bits - 1), 2 ** num_bits - 1)
+    q = sympy.randprime(2 ** (num_bits - 1), 2 ** num_bits - 1)
 
     if p == -1 or q == -1 or q == p:
         raise Disconnection(404)
 
-    pq = client.gen_auth_data.p * client.gen_auth_data.q
+    if p > q:
+        p, q = q, p
 
-    client.gen_auth_data.server_nonce = Int128.read_bytes(secrets.token_bytes(128 // 8))
+    data = GenAuthData(p, q, Int128.read_bytes(secrets.token_bytes(128 // 8)))
+    client.gen_auth_data = data
+
+    pq = data.p * data.q
 
     await client.send_unencrypted(ResPQ(
         nonce=req_pq_multi.nonce,
-        server_nonce=client.gen_auth_data.server_nonce,
+        server_nonce=data.server_nonce,
         pq=pq.to_bytes(64 // 8, "big"),
         server_public_key_fingerprints=[client.server.fingerprint_signed],
     ))

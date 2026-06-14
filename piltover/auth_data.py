@@ -21,12 +21,12 @@ class GenAuthData(AuthData):
         "expires_in",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, p: int, q: int, server_nonce: int) -> None:
         super().__init__()
 
-        self.p: int | None = None
-        self.q: int | None = None
-        self.server_nonce: int | None = None
+        self.p = p
+        self.q = q
+        self.server_nonce = server_nonce
         self.new_nonce: bytes | None = None
         self.server_nonce_bytes: bytes | None = None
         self.tmp_aes_key: bytes | None = None
