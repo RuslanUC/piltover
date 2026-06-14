@@ -100,7 +100,8 @@ class Gateway:
         await client.worker()
 
     async def serve(self):
+        loop = asyncio.get_running_loop()
         await self.broker.startup()
-        server = await asyncio.start_server(self.accept_client, self.host, self.port)
+        server = await loop.create_server(lambda: Client(self), self.host, self.port)
         async with server:
             await server.serve_forever()

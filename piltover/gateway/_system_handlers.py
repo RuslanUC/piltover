@@ -27,8 +27,13 @@ async def ping(_1: Client, request: Message[Ping], _2: Session) -> Pong:
 
 
 async def ping_delay_disconnect(client: Client, request: Message[PingDelayDisconnect], _: Session) -> Pong:
-    if client.disconnect_timeout is not None and request.obj.disconnect_delay > 0:
-        client.disconnect_timeout.reschedule(get_running_loop().time() + request.obj.disconnect_delay)
+    if client.disconnect_timeout_handle is not None:
+        client.disconnect_timeout_handle.cancel()
+
+    if request.obj.disconnect_delay > 0:
+        client.disconnect_timeout_handle = client.loop.call_later(
+            request.obj.disconnect_delay, client.timeout_disconnect,
+        )
 
     return Pong(msg_id=request.message_id, ping_id=request.obj.ping_id)
 

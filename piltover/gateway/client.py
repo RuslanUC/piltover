@@ -41,25 +41,26 @@ _check_req_pq_tlid = (
 )
 
 
-class Client:
+class Client(asyncio.Protocol):
     __slots__ = (
-        "server", "reader", "writer", "conn", "peername", "gen_auth_data", "empty_session", "disconnect_timeout",
-        "write_lock", "active_sessions", "active_keys", "message_available", "loop", "tasks",
+        "server", "conn", "peername", "gen_auth_data", "empty_session", "disconnect_timeout_handle",
+        "process_lock", "active_sessions", "active_keys", "message_available", "loop", "tasks", "transport",
     )
 
-    def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    def __init__(self, server: Gateway):
+        t0 = time.perf_counter()
+
         self.server = server
 
-        self.reader = reader
-        self.writer = writer
+        self.transport: asyncio.BaseTransport | None = None
         self.conn = Connection(role=ConnectionRole.SERVER)
-        self.peername: tuple[str, int] = writer.get_extra_info("peername")
+        self.peername: tuple[str, int] | None = None
 
         self.gen_auth_data: GenAuthData | None = None
         self.empty_session = Session(0)
 
-        self.disconnect_timeout: asyncio.Timeout | None = None
-        self.write_lock = asyncio.Lock()
+        self.disconnect_timeout_handle: asyncio.TimerHandle | None = None
+        self.process_lock = asyncio.Lock()
 
         self.active_sessions = LRU(4, callback=self._session_evicted)
         self.active_keys = cast("LRU[int, bytes]", LRU(8))
@@ -68,14 +69,86 @@ class Client:
         self.loop = asyncio.get_running_loop()
         self.tasks = set()
 
+        dt = time.perf_counter() - t0
+        print("init", dt)
+
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        self.transport = transport
+        self.peername = transport.get_extra_info("peername")
+        logger.info("Client connected: {addr}", addr=self.peername)
+
+        task = self.loop.create_task(self._worker_loop_send())
+        task.add_done_callback(self.send_loop_done)
+        self.tasks.add(task)
+
+    def data_received(self, data: bytes) -> None:
+        self.conn.data_received(data)
+        if not self.conn.has_packet():
+            return
+        if self.conn.peek_packet() is TransportEvent.DISCONNECT:
+            self.close_transport()
+            return
+
+        task = self.loop.create_task(self._process_received())
+        task.add_done_callback(self.tasks.discard)
+        self.tasks.add(task)
+
+    def connection_lost(self, exc: BaseException) -> None:
+        self.transport = None
+
+        logger.info("Client disconnected: {addr}", addr=self.peername)
+
+        for session in self.active_sessions.values():
+            logger.info(f"Session {session.session_id} removed")
+            session.disconnect()
+
+        self.active_sessions.clear()
+
+    def close_transport(self) -> None:
+        if self.transport is not None:
+            self.transport.close()
+
+    def timeout_disconnect(self) -> None:
+        logger.debug("Client disconnected because of expired timeout")
+        self.close_transport()
+
+    def send_loop_done(self, task: asyncio.Task) -> None:
+        logger.debug("Send loop stopped, disconnecting")
+        self.tasks.discard(task)
+        self.close_transport()
+
+    async def _process_received(self) -> None:
+        async with self.process_lock:
+            await self._process_received_locked()
+
+    async def _process_received_locked(self) -> None:
+        while self.conn.has_packet():
+            packet = self.conn.next_event()
+            if packet is TransportEvent.DISCONNECT or self.transport is None:
+                self.close_transport()
+                return
+
+            if not isinstance(packet, MessagePacket):
+                await asyncio.sleep(0)
+                continue
+
+            try:
+                await self._process_packet(packet)
+            except Disconnection as err:
+                if err.transport_error is not None:
+                    await self._write_packet(ErrorPacket(err.transport_error), ignore_errors=True)
+                self.close_transport()
+            except Exception as e:
+                logger.opt(exception=e).error("Error occurred while processing packet")
+                self.close_transport()
+
     @staticmethod
     def _session_evicted(_: Any, session: Session) -> None:
         session.disconnect()
 
     def _get_cached_session(self, auth_key_id: int, session_id: int) -> Session | None:
         uniq_id = (auth_key_id, session_id)
-        if uniq_id in self.active_sessions:
-            return self.active_sessions[uniq_id]
+        return self.active_sessions.get(uniq_id, None)
 
     def _get_session(self, session_id: int, auth_data: AuthData) -> tuple[Session, bool]:
         if (cached := self._get_cached_session(auth_data.auth_key_id, session_id)) is not None:
@@ -87,116 +160,7 @@ class Client:
         self.active_sessions[session.uniq_id()] = session
         return session, created
 
-    async def read_packet(self) -> MessagePacket | None:
-        packet = self.conn.next_event()
-        if packet is TransportEvent.DISCONNECT:
-            raise Disconnection
-        if isinstance(packet, MessagePacket):
-            return packet
-
-        recv = await self.reader.read(32 * 1024)
-        if not recv:
-            raise Disconnection
-
-        self.conn.data_received(recv)
-        packet = self.conn.next_event()
-        if packet is TransportEvent.DISCONNECT:
-            raise Disconnection
-        if not isinstance(packet, MessagePacket):
-            return None
-
-        return packet
-
-    async def _write_packet(self, packet: BasePacket, ignore_errors: bool = False) -> None:
-        to_send = self.conn.send(packet)
-        try:
-            async with self.write_lock:
-                self.writer.write(to_send)
-                await self.writer.drain()
-        except ConnectionResetError:
-            if ignore_errors:
-                return
-            raise Disconnection
-        except Exception as e:
-            if ignore_errors:
-                return
-            raise Disconnection from e
-
-    async def _write_message(
-            self, message_id: int, seq_no: int, data: bytes, session: Session,
-    ) -> None:
-        if not session.auth_data or session.auth_data.auth_key is None:
-            raise Unreachable("Trying to send encrypted response, but auth_key is empty")
-
-        logger.debug(f"Sending message {message_id} to {session.session_id}")
-
-        session.update_salts_maybe(self.server.salt_key)
-
-        decrypted = DecryptedMessagePacket(
-            salt=session.salt_now.salt,
-            session_id=session.session_id,
-            message_id=message_id,
-            seq_no=seq_no,
-            data=data,
-        )
-
-        encrypted = decrypted.encrypt(session.auth_data.auth_key, ConnectionRole.SERVER)
-
-        await self._write_packet(encrypted)
-
-    async def send_unencrypted(self, obj: TLObject) -> None:
-        logger.debug(obj)
-        await self._write_packet(UnencryptedMessagePacket(
-            self.empty_session.msg_id(in_reply=True),
-            obj.write(),
-        ))
-
-    async def _kiq(self, obj: TLObject, session: Session, message_id: int | None = None) -> AsyncTaskiqTask:
-        # TODO: dont do .write.hex(), RpcResponse somehow doesn't need encoding it manually, check how exactly
-        call_rpc = CallRpc(
-            obj=obj,
-            layer=session.layer,
-            auth_key_id=session.auth_data.auth_key_id,
-            perm_auth_key_id=session.auth_data.perm_auth_key_id,
-            session_id=session.session_id,
-            message_id=message_id,
-            auth_id=session.auth_id,
-            user_id=session.user_id,
-            is_bot=session.is_bot,
-            mfa_pending=session.mfa_pending,
-        ).write().hex()
-
-        with measure_time(".kiq()"):
-            return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
-
-    async def handle_unencrypted_message(self, obj: TLObject) -> None:
-        # TODO: move it to worker (and add db models to save auth key generation state)
-        if obj.tlid() not in KEYGEN_HANDLERS:
-            return
-
-        try:
-            await KEYGEN_HANDLERS[obj.tlid()](self, obj)
-        except Disconnection as d:
-            logger.opt(exception=d).warning(f"Requested disconnection while processing {obj.tlname()}")
-            raise
-        except Exception as e:
-            logger.opt(exception=e).warning(f"Error while processing {obj.tlname()}")
-
-    async def handle_encrypted_message(self, req_message: Message, session: Session) -> None:
-        with measure_time("session.refresh_auth_maybe()"):
-            await session.refresh_auth_maybe()
-
-        if isinstance(req_message.obj, MsgContainer):
-            await asyncio.gather(*[
-                self.propagate(msg, session)
-                for msg in req_message.obj.messages
-            ])
-        else:
-            await self.propagate(req_message, session)
-
-    async def recv(self):
-        packet = await self.read_packet()
-
+    async def _process_packet(self, packet: MessagePacket) -> None:
         if isinstance(packet, EncryptedMessagePacket):
             auth_data = None
             if packet.auth_key_id in self.active_keys:
@@ -287,6 +251,91 @@ class Client:
             logger.debug("{decoded}", decoded=decoded)
             await self.handle_unencrypted_message(decoded)
 
+    async def _write_packet(self, packet: BasePacket, ignore_errors: bool = False) -> None:
+        to_send = self.conn.send(packet)
+        try:
+            self.transport.write(to_send)
+        except ConnectionResetError:
+            if ignore_errors:
+                return
+            raise Disconnection
+        except Exception as e:
+            if ignore_errors:
+                return
+            raise Disconnection from e
+
+    async def _write_message(
+            self, message_id: int, seq_no: int, data: bytes, session: Session,
+    ) -> None:
+        if not session.auth_data or session.auth_data.auth_key is None:
+            raise Unreachable("Trying to send encrypted response, but auth_key is empty")
+
+        logger.debug(f"Sending message {message_id} to {session.session_id}")
+
+        session.update_salts_maybe(self.server.salt_key)
+
+        decrypted = DecryptedMessagePacket(
+            salt=session.salt_now.salt,
+            session_id=session.session_id,
+            message_id=message_id,
+            seq_no=seq_no,
+            data=data,
+        )
+
+        encrypted = decrypted.encrypt(session.auth_data.auth_key, ConnectionRole.SERVER)
+
+        await self._write_packet(encrypted)
+
+    async def send_unencrypted(self, obj: TLObject) -> None:
+        logger.debug(obj)
+        await self._write_packet(UnencryptedMessagePacket(
+            self.empty_session.msg_id(in_reply=True),
+            obj.write(),
+        ))
+
+    async def _kiq(self, obj: TLObject, session: Session, message_id: int | None = None) -> AsyncTaskiqTask:
+        # TODO: dont do .write.hex(), RpcResponse somehow doesn't need encoding it manually, check how exactly
+        call_rpc = CallRpc(
+            obj=obj,
+            layer=session.layer,
+            auth_key_id=session.auth_data.auth_key_id,
+            perm_auth_key_id=session.auth_data.perm_auth_key_id,
+            session_id=session.session_id,
+            message_id=message_id,
+            auth_id=session.auth_id,
+            user_id=session.user_id,
+            is_bot=session.is_bot,
+            mfa_pending=session.mfa_pending,
+        ).write().hex()
+
+        with measure_time(".kiq()"):
+            return await AsyncKicker(task_name=f"handle_tl_rpc", broker=self.server.broker, labels={}).kiq(call_rpc)
+
+    async def handle_unencrypted_message(self, obj: TLObject) -> None:
+        # TODO: move it to worker (and add db models to save auth key generation state)
+        if obj.tlid() not in KEYGEN_HANDLERS:
+            return
+
+        try:
+            await KEYGEN_HANDLERS[obj.tlid()](self, obj)
+        except Disconnection as d:
+            logger.opt(exception=d).warning(f"Requested disconnection while processing {obj.tlname()}")
+            raise
+        except Exception as e:
+            logger.opt(exception=e).warning(f"Error while processing {obj.tlname()}")
+
+    async def handle_encrypted_message(self, req_message: Message, session: Session) -> None:
+        with measure_time("session.refresh_auth_maybe()"):
+            await session.refresh_auth_maybe()
+
+        if isinstance(req_message.obj, MsgContainer):
+            await asyncio.gather(*[
+                self.propagate(msg, session)
+                for msg in req_message.obj.messages
+            ])
+        else:
+            await self.propagate(req_message, session)
+
     async def _get_auth_data(self, auth_key_id: int) -> AuthData:
         logger.debug("Requested auth key: {auth_key_id}", auth_key_id=auth_key_id)
         data = await AuthKey.get_auth_data(auth_key_id)
@@ -308,16 +357,6 @@ class Client:
             logger.info("Failed to decrypt encrypted packet, disconnecting with 404")
             raise Disconnection(404)
 
-    async def _worker_loop_recv(self) -> None:
-        while True:
-            try:
-                await self.recv()
-            except Disconnection:
-                raise
-            except Exception as e:
-                logger.opt(exception=e).error("An error occurred in recv loop")
-                raise
-
     async def _worker_loop_send(self) -> None:
         while True:
             try:
@@ -335,52 +374,6 @@ class Client:
 
             if not sent and not any(not sess.message_queue.empty() for sess in self.active_sessions.values()):
                 self.message_available.clear()
-
-    async def _timer_task(self) -> None:
-        try:
-            async with self.disconnect_timeout:
-                await asyncio.get_running_loop().create_future()
-        except TimeoutError:
-            ...
-
-    @logger.catch
-    async def worker(self):
-        logger.debug("Client connected: {addr}", addr=self.peername)
-
-        loop = asyncio.get_running_loop()
-        self.disconnect_timeout = asyncio.timeout(None)
-
-        done, pending = await asyncio.wait(
-            [
-                loop.create_task(self._timer_task()),
-                loop.create_task(self._worker_loop_recv()),
-                loop.create_task(self._worker_loop_send()),
-            ],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        try:
-            for task in pending:
-                task.cancel()
-
-            for task in done:
-                await task
-        except Disconnection as err:
-            if err.transport_error is not None:
-                await self._write_packet(ErrorPacket(err.transport_error), ignore_errors=True)
-        except TimeoutError:
-            logger.debug("Client disconnected because of expired timeout")
-        finally:
-            logger.info("Client disconnected")
-
-            self.writer.close()
-            await self.writer.wait_closed()
-
-            for session in self.active_sessions.values():
-                logger.info(f"Session {session.session_id} removed")
-                session.disconnect()
-
-            self.active_sessions.clear()
 
     async def _wait_result_with_ack(
             self, task: AsyncTaskiqTask[str], message_id: int, session: Session, method_name: str,
