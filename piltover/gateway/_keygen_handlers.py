@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
+from concurrent.futures.thread import ThreadPoolExecutor
 from io import BytesIO
 from time import time
 from typing import TYPE_CHECKING, cast
@@ -25,9 +27,10 @@ if TYPE_CHECKING:
 prime_bits = 31
 last_prime = gmpy2.prev_prime(2 ** prime_bits - 1)
 sys_rng = secrets.SystemRandom()
+executor = ThreadPoolExecutor(max_workers=max(2, (os.cpu_count() or 0) // 2), thread_name_prefix="KeyGen")
 
 
-async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
+def _req_pq_sync() -> GenAuthData:
     p: int = gmpy2.next_prime(sys_rng.randrange(2 ** (prime_bits - 1), last_prime - 1))
     q: int = gmpy2.next_prime(sys_rng.randrange(2 ** (prime_bits - 1), last_prime - 1))
 
@@ -37,9 +40,13 @@ async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
     if p > q:
         p, q = q, p
 
-    data = GenAuthData(p, q, Int128.read_bytes(sys_rng.randbytes(128 // 8)))
-    client.gen_auth_data = data
+    return GenAuthData(p, q, Int128.read_bytes(sys_rng.randbytes(128 // 8)))
 
+
+async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
+    data = await client.loop.run_in_executor(executor, _req_pq_sync)
+
+    client.gen_auth_data = data
     pq = data.p * data.q
 
     await client.send_unencrypted(ResPQ(
@@ -50,9 +57,7 @@ async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
     ))
 
 
-async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
-    # TODO: move everything (except client.send_unencrypted) to worker thread?
-
+def _req_dh_params_sync(client: Client, req_dh_params: ReqDHParams) -> tuple[int, int, bytes]:
     if not isinstance(client.gen_auth_data, GenAuthData):
         raise Disconnection(404)
 
@@ -150,16 +155,22 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
         auth_data.tmp_aes_iv,
     )
 
+    return p_q_inner_data.nonce, auth_data.server_nonce, encrypted_answer
+
+
+async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
+    nonce, server_nonce, encrypted_answer = await client.loop.run_in_executor(
+        executor, _req_dh_params_sync, client, req_dh_params,
+    )
+
     await client.send_unencrypted(ServerDHParamsOk(
-        nonce=p_q_inner_data.nonce,
-        server_nonce=auth_data.server_nonce,
+        nonce=nonce,
+        server_nonce=server_nonce,
         encrypted_answer=encrypted_answer,
     ))
 
 
-async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDHParams):
-    auth_data = client.gen_auth_data
-
+def _set_client_dh_params_sync(auth_data: GenAuthData, set_client_DH_params: SetClientDHParams) -> tuple[ClientDHInnerData, bytes]:
     if not isinstance(auth_data, GenAuthData) \
             or auth_data.tmp_aes_key is None \
             or auth_data.server_nonce != set_client_DH_params.server_nonce:
@@ -187,6 +198,16 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
     ).to_bytes(256, "big")
 
     auth_key_digest = hashlib.sha1(auth_key).digest()
+    return client_DH_inner_data, auth_key_digest
+
+
+async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDHParams):
+    auth_data = client.gen_auth_data
+
+    client_DH_inner_data, auth_key_digest = await client.loop.run_in_executor(
+        executor, _set_client_dh_params_sync, auth_data, set_client_DH_params,
+    )
+
     auth_key_hash = auth_key_digest[-8:]
     auth_key_aux_hash = auth_key_digest[:8]
 
