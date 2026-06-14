@@ -6,7 +6,7 @@ from io import BytesIO
 from time import time
 from typing import TYPE_CHECKING, cast
 
-import sympy
+import gmpy2
 import tgcrypto
 from loguru import logger
 
@@ -22,11 +22,14 @@ from piltover.utils.rsa_utils import rsa_decrypt, rsa_pad_inverse
 if TYPE_CHECKING:
     from piltover.gateway import Client
 
+prime_bits = 31
+last_prime = gmpy2.prev_prime(2 ** prime_bits - 1)
+sys_rng = secrets.SystemRandom()
+
 
 async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
-    num_bits = 31
-    p = sympy.randprime(2 ** (num_bits - 1), 2 ** num_bits - 1)
-    q = sympy.randprime(2 ** (num_bits - 1), 2 ** num_bits - 1)
+    p: int = gmpy2.next_prime(sys_rng.randrange(2 ** (prime_bits - 1), last_prime - 1))
+    q: int = gmpy2.next_prime(sys_rng.randrange(2 ** (prime_bits - 1), last_prime - 1))
 
     if p == -1 or q == -1 or q == p:
         raise Disconnection(404)
@@ -34,7 +37,7 @@ async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
     if p > q:
         p, q = q, p
 
-    data = GenAuthData(p, q, Int128.read_bytes(secrets.token_bytes(128 // 8)))
+    data = GenAuthData(p, q, Int128.read_bytes(sys_rng.randbytes(128 // 8)))
     client.gen_auth_data = data
 
     pq = data.p * data.q
@@ -48,6 +51,8 @@ async def req_pq(client: Client, req_pq_multi: ReqPqMulti | ReqPq) -> None:
 
 
 async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
+    # TODO: move everything (except client.send_unencrypted) to worker thread?
+
     if not isinstance(client.gen_auth_data, GenAuthData):
         raise Disconnection(404)
 
@@ -109,8 +114,8 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
 
     logger.info("Prime successfully generated")
 
-    auth_data.a = int.from_bytes(secrets.token_bytes(256), "big")
-    g_a = pow(g, auth_data.a, dh_prime)
+    auth_data.a = int.from_bytes(sys_rng.randbytes(256), "big")
+    g_a: int = gmpy2.powmod(g, auth_data.a, dh_prime)
 
     if g <= 1 or g >= dh_prime - 1 \
             or g_a <= 1 or g_a >= dh_prime - 1 \
@@ -129,7 +134,7 @@ async def req_dh_params_handler(client: Client, req_dh_params: ReqDHParams):
     auth_data.server_nonce_bytes = server_nonce_bytes = Int128.write(auth_data.server_nonce)
 
     answer_with_hash = hashlib.sha1(answer).digest() + answer
-    answer_with_hash += secrets.token_bytes(-len(answer_with_hash) % 16)
+    answer_with_hash += sys_rng.randbytes(-len(answer_with_hash) % 16)
     auth_data.tmp_aes_key = (
             hashlib.sha1(new_nonce + server_nonce_bytes).digest()
             + hashlib.sha1(server_nonce_bytes + new_nonce).digest()[:12]
@@ -175,7 +180,7 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
 
     dh_prime, _ = gen_safe_prime(2048)
 
-    auth_data.auth_key = auth_key = pow(
+    auth_data.auth_key = auth_key = gmpy2.powmod(
         int.from_bytes(client_DH_inner_data.g_b, "big"),
         auth_data.a,
         dh_prime,
@@ -189,7 +194,7 @@ async def set_client_dh_params(client: Client, set_client_DH_params: SetClientDH
         nonce=client_DH_inner_data.nonce,
         server_nonce=auth_data.server_nonce,
         new_nonce_hash1=Int128.read_bytes(
-            hashlib.sha1(auth_data.new_nonce + bytes([1]) + auth_key_aux_hash).digest()[-16:]
+            hashlib.sha1(auth_data.new_nonce + b"\x01" + auth_key_aux_hash).digest()[-16:]
         )
     ))
 

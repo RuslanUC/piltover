@@ -1,5 +1,6 @@
 from hashlib import sha256
 
+import gmpy2
 import tgcrypto
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey, RSAPrivateKey
 
@@ -30,7 +31,7 @@ def rsa_decrypt(data: bytes, public_key: RSAPublicKey, private_key: RSAPrivateKe
     private = private_key.private_numbers()
     public = public_key.public_numbers()
 
-    return pow(
+    return gmpy2.powmod(
         int.from_bytes(data, "big", signed=False),
         private.d,
         public.n,
