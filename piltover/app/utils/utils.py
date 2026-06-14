@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import av
+import gmpy2
 from PIL.Image import Image, open as img_open
 from av import VideoFrame
 from loguru import logger
@@ -278,7 +279,7 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
     p, g = gen_safe_prime()
 
     u = sha256d(check.A + sess.pub_B())
-    s_b = pow(btoi(check.A) * pow(btoi(password.password), btoi(u), p), btoi(sess.priv_b), p)
+    s_b = gmpy2.powmod(btoi(check.A) * gmpy2.powmod(btoi(password.password), btoi(u), p), btoi(sess.priv_b), p)
     k_b = sha256d(itob(s_b))
 
     M2 = sha256d(

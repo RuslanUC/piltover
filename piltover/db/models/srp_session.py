@@ -3,6 +3,7 @@ from __future__ import annotations
 from os import urandom
 from time import time
 
+import gmpy2
 from tortoise import fields, Model
 
 from piltover.db import models
@@ -26,5 +27,5 @@ class SrpSession(Model):
 
     def pub_B(self) -> bytes:
         p, g = gen_safe_prime()
-        k_v: int = (SRP_K * btoi(self.password.password)) % p
-        return itob((k_v + (pow(g, btoi(self.priv_b), p))) % p)
+        k_v: int = SRP_K * btoi(self.password.password)
+        return itob((k_v + (gmpy2.powmod(g, btoi(self.priv_b), p))) % p)
