@@ -34,6 +34,8 @@ class BaseMessageBroker(ABC):
         self.subscribed_channels: dict[int, set[Session]] = {}
         self.internal_push_users: dict[int, set[Session]] = {}
 
+        self._tasks = set()
+
     def _cleanup(self) -> None:
         self.subscribed_users.clear()
         self.subscribed_sessions.clear()
@@ -293,4 +295,6 @@ class BaseMessageBroker(ABC):
 
     async def process_message(self, message: MessageInternal) -> None:
         loop = asyncio.get_running_loop()
-        loop.create_task(self._process_message(message))
+        task = loop.create_task(self._process_message(message))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)

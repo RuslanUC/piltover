@@ -1,5 +1,4 @@
 from .gen_primes import gen_safe_prime
 from .rsa_pairs import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, Keys
-from .utils import background
 from .single_element_list import SingleElementList, SingleElementListIterator
 from .repeated_list import RepeatedList, RepeatedListIterator

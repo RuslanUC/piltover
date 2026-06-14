@@ -25,7 +25,7 @@ from piltover.message_brokers.base_broker import BrokerType
 from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
 
 from piltover.session import SessionManager
-from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, background, Keys
+from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, Keys
 
 if TYPE_CHECKING:
     from piltover.worker import Worker
@@ -97,7 +97,7 @@ class Gateway:
     @logger.catch
     async def accept_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         client = Client(server=self, reader=reader, writer=writer)
-        background(client.worker())
+        await client.worker()
 
     async def serve(self):
         await self.broker.startup()

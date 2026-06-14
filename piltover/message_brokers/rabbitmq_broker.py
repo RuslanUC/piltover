@@ -48,6 +48,7 @@ class RabbitMqMessageBroker(BaseMessageBroker):
 
         if self._listen_task:
             self._listen_task.cancel()
+            await self._listen_task
 
         await super().shutdown()
 

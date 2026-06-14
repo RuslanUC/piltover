@@ -19,6 +19,9 @@ class InMemoryMessageBroker(BaseMessageBroker):
     async def shutdown(self) -> None:
         await self._messages.put(None)
         self._messages = None
+        if self._listen_task is not None:
+            await self._listen_task
+            self._listen_task = None
         await super().shutdown()
 
     async def send(self, message: MessageInternal) -> None:

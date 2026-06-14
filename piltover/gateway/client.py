@@ -44,7 +44,7 @@ _check_req_pq_tlid = (
 class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "gen_auth_data", "empty_session", "disconnect_timeout",
-        "write_lock", "active_sessions", "active_keys", "message_available",
+        "write_lock", "active_sessions", "active_keys", "message_available", "loop", "tasks",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -65,6 +65,8 @@ class Client:
         self.active_keys = cast("LRU[int, bytes]", LRU(8))
 
         self.message_available = Event()
+        self.loop = asyncio.get_running_loop()
+        self.tasks = set()
 
     @staticmethod
     def _session_evicted(_: Any, session: Session) -> None:
@@ -261,7 +263,9 @@ class Client:
                 user_id=session.user_id,
                 message=message,
             )
-            asyncio.create_task(self.handle_encrypted_message(message, session))
+            task = self.loop.create_task(self.handle_encrypted_message(message, session))
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.discard)
         elif isinstance(packet, UnencryptedMessagePacket):
             decoded = TLObject.read(BytesIO(packet.message_data))
             if isinstance(decoded, (ReqPq, ReqPqMulti)):

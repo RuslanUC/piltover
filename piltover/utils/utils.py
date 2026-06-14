@@ -1,14 +1,7 @@
-import asyncio
-from typing import TypeVar, Coroutine, Callable, Awaitable
+from typing import TypeVar, Callable, Awaitable
 
 T = TypeVar("T")
 TAdd = TypeVar("TAdd")
-
-
-def background(coro: Coroutine[None, None, T]) -> asyncio.Task[T]:
-    loop = asyncio.get_running_loop()
-    task = loop.create_task(coro)
-    return task
 
 
 class classinstancemethod:
