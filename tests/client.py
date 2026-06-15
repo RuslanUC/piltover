@@ -67,6 +67,7 @@ class _TCP(TCP):
         self.loop = asyncio.get_event_loop()
 
         self.proxy = {}
+        self.task = None
 
     async def connect(self: TCP, _: tuple[str, int]) -> None:
         logger.trace("Using socket pair for connection")
@@ -89,7 +90,7 @@ class _TCP(TCP):
 
         server_writer.get_extra_info = _fake_get_extra_info
 
-        await gateway.accept_client(server_reader, server_writer)
+        self.task = self.loop.create_task(gateway.accept_client(server_reader, server_writer))
 
 
 if not USE_REAL_TCP_FOR_TESTING:

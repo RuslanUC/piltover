@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from tortoise.expressions import Q
+from tortoise.expressions import Q, Subquery
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
@@ -76,10 +76,11 @@ class UsersChatsChannels:
             channels_q |= Q(id__in=self._channel_ids)
 
         if self._message_ids:
-            messagerelated_q = Q(messagerelateds__message_id__in=self._message_ids)
-            users_q |= messagerelated_q
-            chats_q |= messagerelated_q
-            channels_q |= messagerelated_q
+            # TODO: there's probably a better solution
+            base_messagerelated_query = models.MessageRelated.filter(message_id__in=self._message_ids).distinct()
+            users_q |= Q(id__in=Subquery(base_messagerelated_query.values("user_id")))
+            chats_q |= Q(id__in=Subquery(base_messagerelated_query.values("chat_id")))
+            channels_q |= Q(id__in=Subquery(base_messagerelated_query.values("channel_id")))
 
         return (
             models.User.filter(users_q) if users_q != _EMPTY else None,
