@@ -16,7 +16,7 @@ from piltover.auth_data import AuthData
 from piltover.cache import Cache
 from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
-    Peer, MessageRef
+    MessageRef
 from piltover.exceptions import Unreachable
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
@@ -350,13 +350,10 @@ class Session:
                     result.poll_answers[poll_id] = set()
                 result.poll_answers[poll_id].add(answer_id)
 
-        peers_q = Q()
-
         if values.chat_participants or values.channel_participants:
             participants_q = Q()
             if values.chat_participants:
                 participants_q |= Q(chat_id__in=values.chat_participants)
-                peers_q |= Q(chat_id__in=values.chat_participants)
             if values.channel_participants:
                 participants_q |= Q(channel_id__in=values.channel_participants)
 
@@ -372,8 +369,6 @@ class Session:
                     raise Unreachable
 
         if values.users:
-            peers_q |= Q(user_id__in=values.users)
-
             contact_ids = set()
             for contact in await Contact.filter(
                 Q(owner_id=self.user_id, target_id__in=values.users)
@@ -394,18 +389,6 @@ class Session:
                 ],
                 contacts=contact_ids,
             )
-
-            # TODO: store presences inside UserToFormat
-            for presence in await Presence.filter(user_id__in=values.users).only("user_id", "last_seen"):
-                result.presences[presence.user_id] = presence
-
-        if peers_q.children:
-            result.peers.update({
-                (peer.type, peer.target_id_raw()): peer
-                for peer in await Peer.filter(
-                    peers_q, owner_id=self.user_id,
-                ).only("type", "user_id", "chat_id", "channel_id")
-            })
 
         # TODO: store list of mentioned users inside *ToFormat message
         # TODO: cache media unread statuses

@@ -29,7 +29,7 @@ _MISSING = _PresenceMissing.MISSING
 
 class Presence(Model):
     id: int = fields.BigIntField(primary_key=True)
-    user: models.User = fields.OneToOneField("models.User")
+    user: models.User = fields.OneToOneField("models.User", related_name="presence")
     status: UserStatus = fields.IntEnumField(UserStatus, default=UserStatus.OFFLINE, description="")
     last_seen: datetime = fields.DatetimeField(default_add=True)
 
@@ -58,13 +58,17 @@ class Presence(Model):
         return self.to_tl_noprivacycheck(has_access)
 
     def to_tl_noprivacycheck(self, has_access: bool) -> TLUserStatus:
+        return self.to_tl_from_last_seen(int(self.last_seen.timestamp()), has_access)
+
+    @classmethod
+    def to_tl_from_last_seen(cls, last_seen: int, has_access: bool) -> TLUserStatus:
         now = datetime.now(UTC)
-        delta = now - self.last_seen
+        delta = now - datetime.fromtimestamp(last_seen, UTC)
         if delta < timedelta(seconds=30):
             return UserStatusOnline(expires=int(time() + 30))
 
         if has_access:
-            return UserStatusOffline(was_online=int(self.last_seen.timestamp()))
+            return UserStatusOffline(was_online=last_seen)
 
         if delta <= timedelta(days=3):
             return RECENTLY

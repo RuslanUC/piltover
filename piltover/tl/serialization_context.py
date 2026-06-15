@@ -5,25 +5,22 @@ from typing import TYPE_CHECKING
 from .layer_info import layer as tl_base_layer
 
 if TYPE_CHECKING:
-    from piltover.db.enums import PeerType, PrivacyRuleKeyType
-    from piltover.db.models import ChatParticipant, Contact, Presence, Peer
+    from piltover.db.enums import PrivacyRuleKeyType
+    from piltover.db.models import ChatParticipant, Contact
     from piltover.tl.base import MessageReactions
 
 
 class ContextValues:
     __slots__ = (
-        "poll_answers", "chat_participants", "channel_participants", "peers", "contacts", "privacyrules", "presences",
-        "channel_messages",
+        "poll_answers", "chat_participants", "channel_participants", "contacts", "privacyrules", "channel_messages",
     )
 
     def __init__(self) -> None:
         self.poll_answers: dict[int, set[int]] = {}
         self.chat_participants: dict[int, ChatParticipant] = {}
         self.channel_participants: dict[int, ChatParticipant] = {}
-        self.peers: dict[tuple[PeerType, int], Peer] = {}
         self.contacts: dict[tuple[int, int], Contact] = {}
         self.privacyrules: dict[int, dict[PrivacyRuleKeyType, bool]] = {}
-        self.presences: dict[int, Presence] = {}
         self.channel_messages: dict[int, tuple[MessageReactions, bool, bool]] = {}
 
     def __repr__(self) -> str:

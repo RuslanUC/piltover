@@ -7,13 +7,8 @@ from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, Seria
 
 class UserToFormat(types.UserToFormatInternal):
     def _write(self, ctx: SerializationContext) -> bytes:
-        from piltover.db.enums import PeerType, PrivacyRuleKeyType
-        from piltover.db.models.presence import EMPTY as PRESENCE_EMPTY
-
-        if self.id == ctx.user_id:
-            peer_exists = True
-        else:
-            peer_exists = ctx.values is not None and (PeerType.USER, self.id) in ctx.values.peers
+        from piltover.db.enums import PrivacyRuleKeyType
+        from piltover.db.models.presence import Presence, EMPTY as PRESENCE_EMPTY
 
         presence = PRESENCE_EMPTY
         has_access_to_phone = False
@@ -29,8 +24,8 @@ class UserToFormat(types.UserToFormatInternal):
                 has_access_to_photo = rules[PrivacyRuleKeyType.PROFILE_PHOTO]
                 has_access_to_status = rules[PrivacyRuleKeyType.STATUS_TIMESTAMP]
 
-            if self.id in ctx.values.presences:
-                presence = ctx.values.presences[self.id].to_tl_noprivacycheck(has_access_to_status)
+            if self.last_seen is not None:
+                presence = Presence.to_tl_from_last_seen(self.last_seen, has_access_to_status)
         else:
             contact = None
             current_is_contact = False
@@ -60,7 +55,7 @@ class UserToFormat(types.UserToFormatInternal):
             lang_code=self.lang_code,
             is_self=self.id == ctx.user_id,
             photo=photo,
-            access_hash=-1 if peer_exists else 0,
+            access_hash=-1,
             status=presence,
             contact=is_contact,
             bot=self.bot,

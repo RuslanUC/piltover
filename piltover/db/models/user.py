@@ -77,6 +77,10 @@ class User(Model):
     def emoji_status_prefetched(self) -> bool:
         return self.emoji_status is None or isinstance(self.emoji_status, models.UserEmojiStatus)
 
+    @property
+    def presence_prefetched(self) -> bool:
+        return self.presence is None or isinstance(self.presence, models.Presence)
+
     def _cache_key(self) -> str:
         return f"user:{self.id}:{self.version}:{self._CACHE_VERSION}"
 
@@ -123,7 +127,20 @@ class User(Model):
                 deleted=True,
             )
 
-        if (cached := await Cache.obj.get(self._cache_key())) is not None:
+        cache_key = self._cache_key()
+
+        presence_last_seen = None
+        if not self.bot:
+            if self.presence is None or isinstance(self.presence, models.Presence):
+                presence_last_seen = int(self.presence.last_seen.timestamp()) if self.presence else None
+            else:
+                presence = await models.Presence.get_or_none(user_id=self.id).only("last_seen")
+                presence_last_seen = int(presence.last_seen.timestamp()) if presence else None
+
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            if cached.last_seen != presence_last_seen:
+                cached.last_seen = presence_last_seen
+                await Cache.obj.set(cache_key, cached)
             return cached
 
         # TODO: min (https://core.telegram.org/api/min)
@@ -183,9 +200,10 @@ class User(Model):
             color=color,
             profile_color=profile_color,
             emoji_status=emoji_status.to_tl() if emoji_status is not None else None,
+            last_seen=presence_last_seen,
         )
 
-        await Cache.obj.set(self._cache_key(), result)
+        await Cache.obj.set(cache_key, result)
         return result
 
     @classmethod
@@ -286,6 +304,23 @@ class User(Model):
         else:
             emoji_statuses = {}
 
+        if user_ids:
+            presences = {
+                presence.user_id: presence
+                for presence in await models.Presence.filter(
+                    user_id__in=[
+                        user.id
+                        for user in users
+                        if not user.bot and not user.presence_prefetched
+                    ],
+                ).only("user_id", "last_seen")
+            }
+            for user in users:
+                if user.presence_prefetched:
+                    presences[user.id] = cast(models.Presence, user.presence)
+        else:
+            presences = {}
+
         tl = []
         to_cache = []
 
@@ -310,6 +345,7 @@ class User(Model):
                 )
 
             emoji_status = emoji_statuses.get(user.id)
+            presence = presences.get(user.id)
 
             tl.append(UserToFormat(
                 id=user.id,
@@ -324,6 +360,7 @@ class User(Model):
                 color=color,
                 profile_color=profile_color,
                 emoji_status=emoji_status.to_tl() if emoji_status is not None else None,
+                last_seen=int(presence.last_seen.timestamp()) if presence is not None else None,
             ))
 
             to_cache.append((user.id, tl[-1]))
