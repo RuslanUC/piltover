@@ -74,7 +74,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
 
     user: UserT = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
     chat: ChatT = fields.ForeignKeyField("models.Chat", null=True, default=None)
-    channel: ChannelT = fields.OneToOneField("models.Channel", null=True, default=None)
+    channel: ChannelT = fields.OneToOneField("models.Channel", null=True, default=None, related_name="peer")
 
     class Meta:
         unique_together = (

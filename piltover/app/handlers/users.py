@@ -1,6 +1,7 @@
 from typing import cast
 
 from tortoise.expressions import Q, Subquery
+from tortoise.functions import Max
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
@@ -83,25 +84,29 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     else:
         wallpaper = None
 
+    # TODO: add is_scheduled field and index peer-is_scheduled ?
     has_scheduled = await MessageRef.filter(peer=peer, content__scheduled_date__not_isnull=True).exists()
     pinned_msg_id = cast(
         int | None,
         cast(
             object,
-            await MessageRef.filter(peer=peer, pinned=True).order_by("-id").first().values_list("id", flat=True)
+            await MessageRef.filter(
+                peer=peer, pinned=True,
+            ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
         )
     )
 
-    personal_channel = await Channel.get_or_none(userpersonalchannels__user=target_user).only("id", "version")
+    personal_channel = await Channel.get_or_none(
+        userpersonalchannels__user=target_user,
+    ).select_related("peer").only("id", "version", "peer__id")
     if personal_channel is not None:
         personal_channel_msg_id = cast(
             int | None,
             cast(
                 object,
-                # TODO: use Max("id") instead of .order_by("-id").first() ?
                 await MessageRef.filter(
-                    peer__channel=personal_channel,
-                ).order_by("-id").first().values_list("id", flat=True)
+                    peer_id=personal_channel.peer.id,
+                ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
             )
         ) or 0
     else:

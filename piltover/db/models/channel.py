@@ -95,6 +95,7 @@ class Channel(ChatBase):
 
     discussion_channel: fields.ReverseRelation[Channel] | Channel | None
     username: models.Username | QuerySet[models.Username] | None
+    peer: models.Peer | QuerySet[models.Peer] | None
 
     def make_id(self) -> int:
         return self.make_id_from(self.id)
