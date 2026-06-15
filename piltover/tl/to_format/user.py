@@ -15,20 +15,16 @@ class UserToFormat(types.UserToFormatInternal):
         has_access_to_photo = False
         has_access_to_status = False
 
-        if ctx.values is not None:
-            contact = ctx.values.contacts.get((ctx.user_id, self.id), None)
-            current_is_contact = (self.id, ctx.user_id) in ctx.values.contacts
-            if self.id in ctx.values.privacyrules:
-                rules = ctx.values.privacyrules[self.id]
-                has_access_to_phone = rules[PrivacyRuleKeyType.PHONE_NUMBER]
-                has_access_to_photo = rules[PrivacyRuleKeyType.PROFILE_PHOTO]
-                has_access_to_status = rules[PrivacyRuleKeyType.STATUS_TIMESTAMP]
+        contact = ctx.values.contacts.get((ctx.user_id, self.id), None)
+        current_is_contact = (self.id, ctx.user_id) in ctx.values.contacts
+        if self.id in ctx.values.privacyrules:
+            rules = ctx.values.privacyrules[self.id]
+            has_access_to_phone = rules[PrivacyRuleKeyType.PHONE_NUMBER]
+            has_access_to_photo = rules[PrivacyRuleKeyType.PROFILE_PHOTO]
+            has_access_to_status = rules[PrivacyRuleKeyType.STATUS_TIMESTAMP]
 
-            if self.last_seen is not None:
-                presence = Presence.to_tl_from_last_seen(self.last_seen, has_access_to_status)
-        else:
-            contact = None
-            current_is_contact = False
+        if self.last_seen is not None:
+            presence = Presence.to_tl_from_last_seen(self.last_seen, has_access_to_status)
 
         is_contact = contact is not None
 

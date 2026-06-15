@@ -22,3 +22,7 @@ class Contact(Model):
             ("owner", "target"),
             ("owner", "phone_number"),
         )
+
+    @classmethod
+    def cache_key_internal(cls, user_id: int, target_id: int) -> str:
+        return f"contact:{user_id}:{target_id}"

@@ -68,6 +68,14 @@ class ChatParticipant(Model):
     def is_admin(self) -> bool:
         return self.admin_rights.value > 0
 
+    @classmethod
+    def cache_key_chat_internal(cls, user_id: int, chat_id: int) -> str:
+        return f"chat-participant:{user_id}:{chat_id}"
+
+    @classmethod
+    def cache_key_channel_internal(cls, user_id: int, channel_id: int) -> str:
+        return f"channel-participant:{user_id}:{channel_id}"
+
     def to_tl_chat_with_creator(
             self, chat_creator_id: int,
     ) -> TLChatParticipant | ChatParticipantCreator | ChatParticipantAdmin:

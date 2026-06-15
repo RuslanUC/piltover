@@ -190,6 +190,7 @@ internal_stickersbot.stickers_state_newemojipack#3d1302b7 flags:# type:internal_
 internal_stickersbot.stickers_state_addemoji#c7087987 set_id:long file_id:long = internal_stickersbot.StickersBotState;
 
 // Access hashes
+
 internal_access.access_hash_payload_user#916e7528 this_user_id:long user_id:long auth_id:long = internal_access.AccessHashPayload;
 internal_access.access_hash_payload_channel#8195bf26 this_user_id:long channel_id:long auth_id:long = internal_access.AccessHashPayload;
 internal_access.access_hash_payload_file#4c9a07fe this_user_id:long file_id:long auth_id:long = internal_access.AccessHashPayload;
@@ -223,6 +224,11 @@ messageToFormatInternal#e0a8fd99 flags:# content:internal.MessageToFormatContent
 channelMessageToFormatInternal#237ed5c2 flags:# content:internal.MessageToFormatContent common:internal.ChannelMessageToFormatCommon replies:flags.1?MessageReplies = Message;
 updateMessageIDToFormatInternal#5157a73d id:int random_id:long target_user:long = Update;
 stickerSetToFormatInternal#7108bc92 for_user:internal.StickerSetToFormatForUser info:internal.StickerSetToFormat = StickerSet;
+
+// Idk
+
+internal.contactInfoInternal#8934b158 flags:# known_phone_number:flags.0?string first_name:flags.1?string last_name:flags.2?string exists:flags.3?true = internal.ContactInfoInternal;
+internal.chatParticipantInfoInternal#2b20cddd flags:# left:flags.0?true admin_rights:flags.1?ChatAdminRights banned_rights:flags.2?ChatBannedRights invited_at:flags.3?long exists:flags.4?true = internal.ChatParticipantInfoInternal;
 
 // Uploaded files metadata
 

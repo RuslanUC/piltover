@@ -20,7 +20,8 @@ from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, Poll
 from piltover.exceptions import Unreachable
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
-from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues
+from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues, \
+    ChatParticipantInfoInternal, ContactInfoInternal
 from piltover.tl.utils import is_content_related, is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
 from piltover.tl.serialization_context import SerializationContext, ContextValues
@@ -338,12 +339,13 @@ class Session:
 
     async def _resolve_context_values(self, values: NeedsContextValues) -> ContextValues:
         result = ContextValues()
+        user_id = cast(int, self.user_id)
 
         # TODO: cache fetched values
 
         if values.poll_answers:
             selected_answers = await PollVote.filter(
-                answer__poll_id__in=values.poll_answers, user_id=self.user_id,
+                answer__poll_id__in=values.poll_answers, user_id=user_id,
             ).values_list("answer__poll_id", "answer_id")
             for poll_id, answer_id in selected_answers:
                 if poll_id not in result.poll_answers:
@@ -351,37 +353,139 @@ class Session:
                 result.poll_answers[poll_id].add(answer_id)
 
         if values.chat_participants or values.channel_participants:
-            participants_q = Q()
-            if values.chat_participants:
-                participants_q |= Q(chat_id__in=values.chat_participants)
-            if values.channel_participants:
-                participants_q |= Q(channel_id__in=values.channel_participants)
+            chat_participants = values.chat_participants or ()
+            channel_participants = values.channel_participants or ()
 
-            participants = await ChatParticipant.filter(participants_q, user_id=self.user_id).only(
+            cache_keys = []
+            for chat_id in chat_participants:
+                cache_keys.append(ChatParticipant.cache_key_chat_internal(user_id, chat_id))
+            for channel_id in channel_participants:
+                cache_keys.append(ChatParticipant.cache_key_channel_internal(user_id, channel_id))
+
+            chats_to_fetch = set(chat_participants)
+            channels_to_fetch = set(channel_participants)
+
+            cached_participants: list[ChatParticipantInfoInternal] = await Cache.obj.multi_get(cache_keys)
+            for idx, cached in enumerate(cached_participants):
+                if cached is None:
+                    continue
+                if idx < len(chat_participants):
+                    chat_id = chat_participants[idx]
+                    if cached.exists:
+                        result.chat_participants[chat_id] = cached
+                    chats_to_fetch.discard(chat_id)
+                else:
+                    channel_id = channel_participants[idx - len(chat_participants)]
+                    if cached.exists:
+                        result.channel_participants[channel_id] = cached
+                    channels_to_fetch.discard(channel_id)
+
+            participants_q = Q()
+            if chats_to_fetch:
+                participants_q |= Q(chat_id__in=chats_to_fetch)
+            if channels_to_fetch:
+                participants_q |= Q(channel_id__in=channels_to_fetch)
+
+            participants = await ChatParticipant.filter(participants_q, user_id=user_id).only(
                 "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at", "left",
             )
+            participants_to_cache = []
             for participant in participants:
+                tl = ChatParticipantInfoInternal(
+                    left=participant.left,
+                    admin_rights=participant.admin_rights.to_tl() if participant.admin_rights else None,
+                    banned_rights=participant.banned_rights.to_tl() if participant.banned_rights else None,
+                    invited_at=int(participant.invited_at.timestamp()),
+                    exists=True,
+                )
+
                 if participant.chat_id is not None:
-                    result.chat_participants[participant.chat_id] = participant
+                    result.chat_participants[participant.chat_id] = tl
+                    participants_to_cache.append((
+                        ChatParticipant.cache_key_chat_internal(user_id, participant.chat_id), tl,
+                    ))
                 elif participant.channel_id is not None:
-                    result.channel_participants[participant.channel_id] = participant
+                    result.channel_participants[participant.channel_id] = tl
+                    participants_to_cache.append((
+                        ChatParticipant.cache_key_channel_internal(user_id, participant.channel_id), tl,
+                    ))
                 else:
                     raise Unreachable
 
+            tl_nonexistent = ChatParticipantInfoInternal(exists=False)
+            for chat_id in chats_to_fetch:
+                if chat_id not in result.chat_participants:
+                    participants_to_cache.append((
+                        ChatParticipant.cache_key_chat_internal(user_id, chat_id), tl_nonexistent,
+                    ))
+            for channel_id in channels_to_fetch:
+                if channel_id not in result.channel_participants:
+                    participants_to_cache.append((
+                        ChatParticipant.cache_key_channel_internal(user_id, channel_id), tl_nonexistent,
+                    ))
+
+            if participants_to_cache:
+                await Cache.obj.multi_set(participants_to_cache)
+
         if values.users:
+            contacts_cache_keys = []
+            for target_user in values.users:
+                contacts_cache_keys.append(Contact.cache_key_internal(user_id, target_user))
+                contacts_cache_keys.append(Contact.cache_key_internal(target_user, user_id))
+
             contact_ids = set()
+            targets_to_fetch = set(values.users)
+            owners_to_fetch = set(values.users)
+
+            cached_contacts: list[ContactInfoInternal] = await Cache.obj.multi_get(contacts_cache_keys)
+            for idx, cached in enumerate(cached_contacts):
+                if cached is None:
+                    continue
+                target_id = values.users[idx // 2]
+                if idx % 2 == 0:
+                    targets_to_fetch.discard(target_id)
+                    if cached.exists:
+                        result.contacts[(user_id, target_id)] = cached
+                else:
+                    owners_to_fetch.discard(target_id)
+                    if cached.exists:
+                        result.contacts[(target_id, user_id)] = cached
+                        contact_ids.add(user_id)
+
+            contacts_to_cache = []
+
             for contact in await Contact.filter(
-                Q(owner_id=self.user_id, target_id__in=values.users)
-                | Q(owner_id__in=values.users, target_id=self.user_id)
+                Q(owner_id=user_id, target_id__in=targets_to_fetch)
+                | Q(owner_id__in=owners_to_fetch, target_id=user_id)
             ):
-                result.contacts[(contact.owner_id, contact.target_id)] = contact
-                if contact.owner_id != self.user_id:
-                    contact_ids.add(contact.owner_id)
+                target_id = cast(int, contact.target_id)
+                contact_info = ContactInfoInternal(
+                    known_phone_number=contact.known_phone_number,
+                    first_name=contact.first_name,
+                    last_name=contact.last_name,
+                )
+
+                result.contacts[(contact.owner_id, target_id)] = contact_info
+                if contact.owner_id != user_id:
+                    contact_ids.add(user_id)
+
+                contacts_to_cache.append((Contact.cache_key_internal(contact.owner_id, target_id), contact_info))
+
+            tl_nonexistent = ContactInfoInternal(exists=False)
+            for target in targets_to_fetch:
+                if (user_id, target) not in result.contacts:
+                    contacts_to_cache.append((Contact.cache_key_internal(user_id, target), tl_nonexistent))
+            for target in owners_to_fetch:
+                if (target, user_id) not in result.contacts:
+                    contacts_to_cache.append((Contact.cache_key_internal(target, user_id), tl_nonexistent))
+
+            if contacts_to_cache:
+                await Cache.obj.multi_set(contacts_to_cache)
 
             # NOTE (for future me refactoring this): this overwrites existing rules in context variables btw
             result.privacyrules = await PrivacyRule.has_access_to_bulk(
                 users=values.users,
-                user=self.user_id,
+                user=user_id,
                 keys=[
                     PrivacyRuleKeyType.PHONE_NUMBER,
                     PrivacyRuleKeyType.PROFILE_PHOTO,
@@ -396,8 +500,8 @@ class Session:
             messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
                 "peer", "peer__channel", "content", "content__media", "content__media__file",
             )
-            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, self.user_id)
-            reactionss = await MessageRef.to_tl_reactions_bulk(messages, self.user_id)
+            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, user_id)
+            reactionss = await MessageRef.to_tl_reactions_bulk(messages, user_id)
             for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
                 result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
 

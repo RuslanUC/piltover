@@ -9,6 +9,7 @@ from tortoise.expressions import Q, Subquery
 from tortoise.queryset import QuerySet
 
 import piltover.app.utils.updates_manager as upd
+from piltover.cache import Cache
 from piltover.config import APP_CONFIG
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
 from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, Channel, PrivacyRuleException, \
@@ -23,6 +24,7 @@ from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, 
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, \
     BlockedSlice, ImportedContacts
 from piltover.tl.base import User as TLUserBase, Peer as TLPeerBase
+from piltover.tl.types.internal import ContactInfoInternal
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("contacts")
@@ -249,6 +251,8 @@ async def add_contact(request: AddContact, user_id: int) -> Updates:
         "known_phone_number": request.phone or None,
     })
 
+    await Cache.obj.delete(Contact.cache_key_internal(user_id, peer_user_id))
+
     if request.add_phone_privacy_exception:
         rule = await PrivacyRule.get_or_create(user_id=user_id, key=PrivacyRuleKeyType.PHONE_NUMBER, defaults={
             "allow_all": False,
@@ -272,7 +276,14 @@ async def delete_contacts(request: DeleteContacts, user_id: int) -> Updates:
 
     contacts = await Contact.filter(owner_id=user_id, target_id__in=user_to_fetch_ids).values_list("id", "target_id")
     contact_ids = {contact_id for contact_id, _ in contacts}
-    await Contact.filter(id__in=contact_ids).delete()
+    if contact_ids:
+        await Contact.filter(id__in=contact_ids).delete()
+    if contacts:
+        nonexistent_contact = ContactInfoInternal(exists=False)
+        await Cache.obj.multi_set([
+            (Contact.cache_key_internal(user_id, target_id), nonexistent_contact)
+            for _, target_id in contacts
+        ])
 
     user_ids = {user_id for _, user_id in contacts}
     users = await User.filter(id__in=user_ids).select_related("username", "background_emojis", "emoji_status")
@@ -358,10 +369,20 @@ async def import_contacts(request: ImportContacts, user_id: int) -> ImportedCont
 
         imported.append(ImportedContact(user_id=contact_user_id, client_id=input_contact.client_id))
 
+    to_cache = []
+    empty_contact_info = ContactInfoInternal(exists=True)
     if to_update:
         await Contact.bulk_update(to_update, fields=["first_name", "last_name", "known_phone_number"])
+        for contact in to_update:
+            to_cache.append((Contact.cache_key_internal(user_id, contact.target_id), empty_contact_info))
     if to_create:
         await Contact.bulk_create(to_create)
+        for contact in to_create:
+            to_cache.append((Contact.cache_key_internal(user_id, contact.target_id), empty_contact_info))
+
+    if to_cache:
+        # Hopefully setting ttl to 0 works?
+        await Cache.obj.multi_set(to_cache, ttl=0)
 
     # TODO: updates?
 

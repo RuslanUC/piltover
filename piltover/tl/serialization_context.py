@@ -6,8 +6,8 @@ from .layer_info import layer as tl_base_layer
 
 if TYPE_CHECKING:
     from piltover.db.enums import PrivacyRuleKeyType
-    from piltover.db.models import ChatParticipant, Contact
     from piltover.tl.base import MessageReactions
+    from piltover.tl.types.internal import ChatParticipantInfoInternal, ContactInfoInternal
 
 
 class ContextValues:
@@ -17,9 +17,9 @@ class ContextValues:
 
     def __init__(self) -> None:
         self.poll_answers: dict[int, set[int]] = {}
-        self.chat_participants: dict[int, ChatParticipant] = {}
-        self.channel_participants: dict[int, ChatParticipant] = {}
-        self.contacts: dict[tuple[int, int], Contact] = {}
+        self.chat_participants: dict[int, ChatParticipantInfoInternal] = {}
+        self.channel_participants: dict[int, ChatParticipantInfoInternal] = {}
+        self.contacts: dict[tuple[int, int], ContactInfoInternal] = {}
         self.privacyrules: dict[int, dict[PrivacyRuleKeyType, bool]] = {}
         self.channel_messages: dict[int, tuple[MessageReactions, bool, bool]] = {}
 

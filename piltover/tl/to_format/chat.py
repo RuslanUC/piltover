@@ -15,7 +15,7 @@ class ChatToFormat(types.ChatToFormatInternal):
             ).write(ctx)
 
         participant = ctx.values.chat_participants[self.id]
-        is_admin = participant.is_admin or self.creator_id == ctx.user_id
+        is_admin = participant.admin_rights is not None or self.creator_id == ctx.user_id
 
         migrated_to = None
         if self.migrated_to is not None:

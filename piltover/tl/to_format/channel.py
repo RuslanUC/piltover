@@ -1,5 +1,3 @@
-from io import BytesIO
-
 from piltover.context import NeedContextValuesContext
 from piltover.tl import types
 from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
@@ -18,31 +16,31 @@ class ChannelToFormat(types.ChannelToFormatInternal):
     def _write(self, ctx: SerializationContext) -> bytes:
         from piltover.db.models import Channel
         from piltover.db.models.channel import CREATOR_RIGHTS
-        from piltover.db.enums import ChatAdminRights, ChatBannedRights
 
         if ctx.values is None:
             return self._forbidden(0).write(ctx)
 
-        participant = ctx.values.channel_participants.get(self.id) if ctx.values is not None else None
+        participant = ctx.values.channel_participants.get(self.id)
 
-        if participant is not None and participant.banned_rights & ChatBannedRights.VIEW_MESSAGES:
+        if participant is not None \
+                and participant.banned_rights is not None \
+                and participant.banned_rights.view_messages:
             return self._forbidden(-1).write(ctx)
 
-        if participant is None and not (self.nojoin_allow_view or self.username is not None):
+        if (participant is None or participant.left) and not (self.nojoin_allow_view or self.username is not None):
             return self._forbidden(-1).write(ctx)
 
         admin_rights = None
         if self.creator_id == ctx.user_id:
             admin_rights = CREATOR_RIGHTS
-            if participant is not None and bool(participant.admin_rights & ChatAdminRights.ANONYMOUS):
-                admin_rights = types.ChatAdminRights.read(BytesIO(admin_rights.write()))
+            if participant is not None and participant.admin_rights is not None and participant.admin_rights.anonymous:
                 admin_rights.anonymous = True
-        elif participant is not None and participant.is_admin:
-            admin_rights = participant.admin_rights.to_tl()
+        elif participant is not None and participant.admin_rights is not None:
+            admin_rights = participant.admin_rights
 
         date = self.created_at
-        if participant is not None and not participant.left:
-            date = int(participant.invited_at.timestamp())
+        if participant is not None and not participant.left and participant.invited_at is not None:
+            date = participant.invited_at
 
         return types.Channel(
             id=Channel.make_id_from(self.id),
@@ -68,7 +66,7 @@ class ChannelToFormat(types.ChannelToFormatInternal):
             username=self.username,
             usernames=[],
             default_banned_rights=self.default_banned_rights,
-            banned_rights=participant.banned_rights.to_tl() if participant is not None else None,
+            banned_rights=participant.banned_rights if participant is not None else None,
             color=self.color,
             profile_color=self.profile_color,
         ).write(ctx)
