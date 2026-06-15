@@ -70,8 +70,9 @@ async def init_connection(client: Client, request: Message[InitConnection], sess
     # hmm yes yes, I trust you client
     # the api id is always correct, it has always been!
 
-    if session.auth_id:
-        await UserAuthorization.filter(key_id=session.auth_id).update(
+    if session.auth_id and not session.had_init_connection:
+        session.had_init_connection = True
+        await UserAuthorization.filter(id=session.auth_id).update(
             active_at=datetime.now(UTC),
             device_model=request.obj.device_model,
             system_version=request.obj.system_version,

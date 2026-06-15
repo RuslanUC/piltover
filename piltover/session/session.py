@@ -50,7 +50,7 @@ class Session:
     __slots__ = (
         "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
         "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_values",
-        "out_seq_no", "message_queue", "message_available", "is_internal_push",
+        "out_seq_no", "message_queue", "message_available", "is_internal_push", "had_init_connection",
     )
 
     def __init__(self, session_id: int, client: Client | None = None, auth_data: AuthData | None = None) -> None:
@@ -67,6 +67,7 @@ class Session:
         self.is_bot = False
         self.mfa_pending = False
         self.auth_loaded_at = 0.
+        self.had_init_connection = False
 
         self.channel_ids: Collection[int] = []
         self.channels_loaded_at = 0.
@@ -104,6 +105,7 @@ class Session:
     def disconnect(self) -> None:
         self.client = None
         self.message_available = None
+        self.had_init_connection = False
         # TODO: clear message_queue
         piltover.session.SessionManager.broker.unsubscribe(self)
         piltover.session.SessionManager.cleanup(self)
