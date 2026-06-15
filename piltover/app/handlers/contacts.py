@@ -196,26 +196,28 @@ async def get_statuses(user_id: int) -> list[ContactStatus]:
 async def get_birthdays(user_id: int) -> ContactBirthdays:
     yesterday = date.today() - timedelta(days=1)
     tomorrow = date.today() + timedelta(days=1)
-    birthday_peers: list[Peer] = await Peer.filter(
-        owner_id=user_id, user__birthday__gte=yesterday, user__birthday__lte=tomorrow
-    ).select_related("user")
+    birthday_users = await User.filter(
+        id__in=Subquery(Contact.filter(owner_id=user_id).values_list("target_id", flat=True)),
+        birthday__gte=yesterday,
+        birthday__lte=tomorrow,
+    )
 
     privacyrules = await PrivacyRule.has_access_to_bulk(
-        users=[peer.user for peer in birthday_peers],
+        users=birthday_users,
         user=user_id,
         keys=[PrivacyRuleKeyType.BIRTHDAY],
     )
 
     users_to_tl = []
     birthdays = []
-    for peer in birthday_peers:
-        if not privacyrules[peer.user_id][PrivacyRuleKeyType.BIRTHDAY]:
+    for user in birthday_users:
+        if not privacyrules[user.id][PrivacyRuleKeyType.BIRTHDAY]:
             continue
         birthdays.append(ContactBirthday(
-            contact_id=peer.user_id,
-            birthday=peer.user.to_tl_birthday_noprivacycheck(),
+            contact_id=user.id,
+            birthday=user.to_tl_birthday_noprivacycheck(),
         ))
-        users_to_tl.append(peer.user)
+        users_to_tl.append(user)
 
     return ContactBirthdays(
         contacts=birthdays,
@@ -274,7 +276,7 @@ async def delete_contacts(request: DeleteContacts, user_id: int) -> Updates:
     contact_ids = {contact_id for contact_id, _ in contacts}
     await Contact.filter(id__in=contact_ids).delete()
 
-    user_ids = {user_id for _, user_id in contacts}
+    user_ids = {target_id for _, target_id in contacts}
     users = await User.filter(id__in=user_ids).select_related("username", "background_emojis", "emoji_status")
     return await upd.add_remove_contact(user_id, users)
 

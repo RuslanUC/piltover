@@ -269,12 +269,12 @@ class Session:
             logger.trace("Refreshing channels...")
             self.channels_loaded_at = time()
 
-            channel_ids: TaggedLongVector | None = await Cache.obj.get(f"channels:{self.user_id}")
-            if channel_ids is None:
+            channel_ids: TaggedLongVector
+            if (channel_ids := await Cache.obj.get(f"channels:{self.user_id}")) is None:
                 channel_ids = TaggedLongVector(
-                    vec=await ChatParticipant.filter(
+                    vec=cast(list[int], await ChatParticipant.filter(
                         channel_id__not_isnull=True, user_id=self.user_id, left=False,
-                    ).values_list("channel_id", flat=True),
+                    ).values_list("channel_id", flat=True)),
                 )
                 await Cache.obj.set(f"channels:{self.user_id}", channel_ids, ttl=60 * 10)
 
