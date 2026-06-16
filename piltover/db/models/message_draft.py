@@ -25,7 +25,11 @@ class MessageDraft(Model):
     peer_id: int
     reply_to_id: int | None
 
-    # TODO: add unique index for user-peer
+    class Meta:
+        unique_together = (
+            ("user_id", "peer_id"),
+        )
+
     # TODO: add index for user-date
 
     def to_tl(self) -> DraftMessage:
