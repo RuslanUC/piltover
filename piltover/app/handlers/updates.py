@@ -27,16 +27,10 @@ CHANNEL_UPDATES_TIMEOUT = 10
 
 async def get_seq_qts() -> tuple[int, int]:
     ctx = request_ctx.get()
-    seq_qts = await UserAuthorization.filter(
-        key_id=ctx.perm_auth_key_id,
-    ).first().values_list("upd_seq", "upd_qts")
-    if seq_qts is None:  # pragma: no cover
-        logger.warning(
-            f"Somehow auth is None for key {ctx.auth_key_id} (perm {ctx.perm_auth_key_id}), "
-            f"but it is in get_state_internal, where authorization must exist ???"
-        )
-
-    return seq_qts or (0, 0)
+    return cast(
+        tuple[int, int],
+        await UserAuthorization.filter(id=ctx.auth_id).first().values_list("upd_seq", "upd_qts")
+    )
 
 
 async def get_state_internal(user_id: int, pts: int | None = None) -> TLState:
