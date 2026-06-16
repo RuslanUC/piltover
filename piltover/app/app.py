@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import os
 from contextlib import asynccontextmanager
-from datetime import timedelta, datetime
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import AsyncIterator
@@ -289,7 +289,6 @@ if __name__ == "__main__":
         patch_queryset_for_measurement()
 
     try:
-        uvloop.install()
-        asyncio.run(app.run())
+        uvloop.run(app.run())
     except KeyboardInterrupt:
         pass

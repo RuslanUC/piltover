@@ -386,20 +386,24 @@ class Client:
             self, task: AsyncTaskiqTask[str], message_id: int, session: Session, method_name: str,
     ) -> TaskiqResult[str]:
         start_time = time.perf_counter()
+        result = None
 
         try:
-            return await task.wait_result(timeout=1.5)
+            result = await task.wait_result(timeout=1.5)
+            return result
         except TaskiqResultTimeoutError as e:
             logger.opt(exception=e).warning(f"Task timeout exceeded, sending ack to message {message_id}")
             await session.enqueue(MsgsAck(msg_ids=[message_id]), False)
-            return await task.wait_result(timeout=15)
+            result = await task.wait_result(timeout=15)
+            return result
         finally:
             end_time = time.perf_counter()
             logger.debug(
-                "\"{method_name}\" ({message_id}) took {time_taken:.2f} ms to execute",
+                "\"{method_name}\" ({message_id}) took {time_taken:.2f} ms to execute (taskiq reported {taskiq_time}s)",
                 method_name=method_name,
                 message_id=message_id,
                 time_taken=(end_time - start_time) * 1000,
+                taskiq_time=result.execution_time if result else None,
             )
 
     async def _process_request(self, request: Message, session: Session) -> RpcResult | None:
