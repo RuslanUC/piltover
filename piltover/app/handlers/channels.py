@@ -295,9 +295,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
 
     has_scheduled = False
     if participant is not None and channel.admin_has_permission(participant, ChatAdminRights.POST_MESSAGES):
-        has_scheduled = await MessageRef.filter(
-            peer=peer, content__author_id=user_id, content__scheduled_date__not_isnull=True,
-        ).exists()
+        has_scheduled = await MessageRef.filter(peer=peer, scheduled_by_user_id=user_id).exists()
 
     can_change_info = participant is not None and channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)
 
@@ -1231,9 +1229,7 @@ async def leave_channel(request: LeaveChannel, user_id: int) -> Updates:
         await ChatInvite.filter(channel=peer.channel, user_id=user_id).update(revoked=True)
         await Dialog.hide(user_id, peer)
         await MessageContent.filter(id__in=Subquery(
-            MessageRef.filter(
-                peer=peer, content__author_id=user_id, content__type=MessageType.SCHEDULED,
-            ).values_list("content_id", flat=True)
+            MessageRef.filter(peer=peer, scheduled_by_user_id=user_id).values_list("content_id", flat=True)
         )).delete()
         await AdminLogEntry.create(
             channel=peer.channel,

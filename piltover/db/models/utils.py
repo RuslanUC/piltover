@@ -5,10 +5,10 @@ from typing import Any, TypeVar, cast
 
 import tortoise
 from pypika_tortoise import SqlContext, Dialects
-from pypika_tortoise.terms import Function as PypikaFunction
+from pypika_tortoise.terms import Function as PypikaFunction, Term
 from pypika_tortoise.utils import format_alias_sql
-from tortoise import fields
-from tortoise.expressions import Function
+from tortoise.expressions import Function, Expression
+from tortoise.indexes import PartialIndex
 from tortoise.models import MODEL
 
 IntFlagT = TypeVar("IntFlagT", bound=IntFlag)
@@ -91,8 +91,8 @@ MISSING = Missing.MISSING
 def NullableFK(
         to: str,
         **kwargs: Any,
-) -> fields.ForeignKeyNullableRelation[MODEL]:
-    return fields.ForeignKeyField(
+) -> tortoise.fields.ForeignKeyNullableRelation[MODEL]:
+    return tortoise.fields.ForeignKeyField(
         to=to,
         null=True,
         default=None,
@@ -103,9 +103,30 @@ def NullableFK(
 def NullableFKSetNull(
         to: str,
         **kwargs: Any,
-) -> fields.ForeignKeyNullableRelation[MODEL]:
+) -> tortoise.fields.ForeignKeyNullableRelation[MODEL]:
     return NullableFK(
         to=to,
-        on_delete=fields.SET_NULL,
+        on_delete=tortoise.fields.SET_NULL,
         **kwargs,
     )
+
+
+class PartialIndexNonNull(PartialIndex):
+    def __init__(
+        self,
+        *expressions: Term | Expression,
+        fields: tuple[str, ...] | list[str] | None = None,
+        name: str | None = None,
+        condition: dict | None = None,
+        non_null_fields: tuple[str, ...] | list[str] | None = None,
+    ) -> None:
+        super().__init__(*expressions, fields=fields, name=name, condition=condition)
+        if non_null_fields:
+            cond = " "
+            if not self.extra:
+                cond += "WHERE "
+            items = [f"{col} IS NOT NULL" for col in non_null_fields]
+            if self.extra:
+                cond += " AND "
+            cond += " AND ".join(items)
+            self.extra = cond

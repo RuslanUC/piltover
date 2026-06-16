@@ -113,9 +113,6 @@ class PiltoverApp:
             )
         ))
 
-    async def _loop_lag_callback(self, lag: float, tasks: int, at: datetime) -> None:
-        logger.warning(f"Event loop {lag:.2f}s lag at {at}, tasks: {tasks}")
-
     async def run(self, host: str | None = None, port: int | None = None):
         if SYSTEM_CONFIG.debug_tracing:
             Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)

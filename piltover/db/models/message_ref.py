@@ -12,7 +12,7 @@ from tortoise.transactions import in_transaction
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
-from piltover.db.models.utils import NullableFKSetNull, NullableFK
+from piltover.db.models.utils import NullableFKSetNull, NullableFK, PartialIndexNonNull
 from piltover.exceptions import Unreachable
 from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount, \
     MessageReplies as TLMessageReplies, PeerChannel, PeerUser
@@ -63,7 +63,7 @@ class MessageRef(Model):
     content: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     random_id: int | None = fields.BigIntField(null=True, default=None, db_index=True)
-    random_user: models.User | None = NullableFK("models.User")
+    random_user: models.User | None = NullableFK("models.User", related_name="message_random")
     pinned: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
     from_scheduled: bool = fields.BooleanField(default=False)
@@ -71,6 +71,7 @@ class MessageRef(Model):
     top_message: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="msg_top_message")
     discussion: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="msg_discussion_message")
     is_discussion: bool = fields.BooleanField(default=False)
+    scheduled_by_user: models.User | None = NullableFK("models.User", related_name="message_scheduled")
 
     content_id: int
     peer_id: int
@@ -78,6 +79,7 @@ class MessageRef(Model):
     reply_to_id: int | None
     top_message_id: int | None
     discussion_id: int | None
+    scheduled_by_user_id: int | None
 
     taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
 
@@ -104,7 +106,11 @@ class MessageRef(Model):
         )
         indexes = (
             ("peer_id", "pinned"),
-            ("peer_id", "id")
+            ("peer_id", "id"),
+            PartialIndexNonNull(
+                fields=("peer_id", "scheduled_by_user_id"),
+                non_null_fields=("scheduled_by_user_id",),
+            ),
         )
 
     def __repr__(self) -> str:
@@ -594,6 +600,8 @@ class MessageRef(Model):
         else:
             raise ValueError(f"Expected User or int, got {author}")
 
+        scheduled_by_user_id = message_kwargs.pop("scheduled_by_user_id", None)
+
         content = await models.MessageContent.create_for_peer(
             related_peer=peer,
             **author_kwargs,
@@ -618,10 +626,12 @@ class MessageRef(Model):
             cls(
                 peer=to_peer,
                 content=content,
+                # TODO: remove "or to_peer.type is PeerType.CHANNEL"?
                 random_id=random_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
                 random_user_id=random_user_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
                 reply_to=replies.get(to_peer.id),
                 top_message=top_message,
+                scheduled_by_user_id=scheduled_by_user_id,
             )
             for to_peer in peers
         ]

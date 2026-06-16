@@ -226,6 +226,7 @@ async def send_message_internal(
         opposite = False
         message_kwargs["scheduled_date"] = datetime.fromtimestamp(scheduled_date, UTC)
         message_kwargs["type"] = MessageType.SCHEDULED
+        message_kwargs["scheduled_by_user_id"] = author.id if isinstance(author, User) else author
 
     ttl_not_in_kwargs = "ttl_period_days" not in message_kwargs
     if ttl_not_in_kwargs and peer.type is PeerType.USER and peer.user_ttl_period_days:
@@ -639,7 +640,7 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
     if peer.type is PeerType.CHANNEL:
         query = Q(id=request.id, peer=peer) & (
             Q(content__type=MessageType.REGULAR)
-            | Q(content__author_id=user.id, content__type=MessageType.SCHEDULED)
+            | Q(scheduled_by_user_id=user.id, content__type=MessageType.SCHEDULED)
         )
         query = append_channel_min_message_id_to_query_maybe(peer, query)
         message = await MessageRef.get_or_none(query).select_related(*MessageRef.PREFETCH_FIELDS)

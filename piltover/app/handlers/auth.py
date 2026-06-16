@@ -306,7 +306,7 @@ async def log_out() -> LoggedOut:
 @handler.on_request(ResetAuthorizations, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def reset_authorizations(user: User) -> bool:
     auth_id = request_ctx.get().auth_id
-    this_auth = await UserAuthorization.get(id=auth_id)
+    this_auth = await UserAuthorization.get(id=auth_id).only("created_at")
 
     if (this_auth.created_at + timedelta(days=1)) > datetime.now(UTC):
         raise ErrorRpc(error_code=406, error_message="FRESH_RESET_AUTHORISATION_FORBIDDEN")

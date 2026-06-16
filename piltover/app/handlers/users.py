@@ -84,8 +84,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     else:
         wallpaper = None
 
-    # TODO: add is_scheduled field and index peer-is_scheduled ?
-    has_scheduled = await MessageRef.filter(peer=peer, content__scheduled_date__not_isnull=True).exists()
+    has_scheduled = await MessageRef.filter(peer=peer, scheduled_by_user_id=user_id).exists()
     pinned_msg_id = cast(
         int | None,
         cast(
