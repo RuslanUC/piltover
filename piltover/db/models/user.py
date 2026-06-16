@@ -97,7 +97,9 @@ class User(Model):
         return username.username
 
     async def get_db_current_photo(self) -> models.UserPhoto | None:
-        return await models.UserPhoto.get_or_none(user=self, current=True).select_related("file")
+        return await models.UserPhoto.get_or_none(user=self, current=True).select_related("file").only(
+            *models.UserPhoto.ONLY_FIELDS,
+        )
 
     async def get_db_photos(self) -> tuple[models.UserPhoto | None, models.UserPhoto | None]:
         # TODO: also fetch personal_photo (when will be implemented)
@@ -107,7 +109,7 @@ class User(Model):
 
         photos = await models.UserPhoto.filter(
             Q(current=True, fallback=True, join_type=Q.OR), user=self
-        ).select_related("file")
+        ).select_related("file").only(*models.UserPhoto.ONLY_FIELDS, "current", "fallback")
         for photo in photos:
             if photo.current:
                 current = photo

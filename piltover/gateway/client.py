@@ -94,7 +94,10 @@ class Client:
         if isinstance(packet, MessagePacket):
             return packet
 
-        recv = await self.reader.read(32 * 1024)
+        try:
+            recv = await self.reader.read(32 * 1024)
+        except ConnectionResetError:
+            raise Disconnection
         if not recv:
             raise Disconnection
 
@@ -373,8 +376,11 @@ class Client:
         finally:
             logger.info("Client disconnected")
 
-            self.writer.close()
-            await self.writer.wait_closed()
+            try:
+                self.writer.close()
+                await self.writer.wait_closed()
+            except ConnectionResetError:
+                pass
 
             for session in self.active_sessions.values():
                 logger.info(f"Session {session.session_id} removed")

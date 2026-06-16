@@ -24,7 +24,7 @@ async def get_user_photos(request: GetUserPhotos, user_id: int) -> Photos | Phot
         return Photos(photos=[], users=[])
 
     limit = min(100, max(request.limit, 1))
-    photos_query = UserPhoto.filter(user=peer.user, fallback=False).select_related("file")
+    photos_query = UserPhoto.filter(user=peer.user, fallback=False).select_related("file").only(*UserPhoto.ONLY_FIELDS)
 
     photos: list[UserPhoto] = []
     if request.offset < 0:

@@ -127,6 +127,24 @@ class ChatParticipant(Model):
     def common_chats_query(
             cls, user_id: int, other_user_id: int, max_id: int | None = None,
     ) -> QuerySet[ChatParticipant]:
+        """
+        query = ChatParticipant.filter(
+            user_id=user_id,
+            left=False,
+            chat_channel_id__in=Subquery(
+                ChatParticipant.filter(
+                    user_id=other_user_id,
+                    left=False,
+                ).values("chat_channel_id")
+            )
+        )
+
+        if max_id is not None:
+            query = query.filter(chat_channel_id__lte=max_id)
+
+        return query
+        """
+
         chat_query = ChatParticipant.filter(
             user_id__in=[user_id, other_user_id], left=False,
         ).annotate(

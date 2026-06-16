@@ -16,6 +16,17 @@ class UserPhoto(Model):
     file_id: int
     user_id: int
 
+    ONLY_FIELDS = (
+        "id", "file_id",
+        "file__id",
+        "file__created_at",
+        "file__constant_access_hash",
+        "file__constant_file_ref",
+        "file__photo_stripped",
+        "file__photo_path",
+        "file__photo_sizes",
+    )
+
     def to_tl(self) -> TLPhoto:
         return self.file.to_tl_photo()
 
