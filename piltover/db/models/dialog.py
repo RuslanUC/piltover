@@ -90,12 +90,10 @@ class Dialog(DialogBase):
 
     @classmethod
     async def to_tl_bulk(
-            cls, dialogs: list[Dialog], messages: dict[int, tuple[Dialog, models.MessageRef | None]],
+            cls, user_id: int, dialogs: list[Dialog], messages: dict[int, tuple[Dialog, models.MessageRef | None]],
     ) -> list[TLDialog]:
         if not dialogs:
             return []
-
-        user_id = next(iter(dialogs)).owner_id
 
         drafts = {
             draft.peer_id: draft

@@ -167,7 +167,7 @@ class ReadState(Model):
             if chat_ids:
                 query_parts |= Q(chat_id__in=chat_ids)
             if channel_ids:
-                query_parts |= Q(chat_id__in=channel_ids)
+                query_parts |= Q(channel_id__in=channel_ids)
 
             if query_parts:
                 mentions = await mentions_query.filter(

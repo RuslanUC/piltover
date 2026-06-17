@@ -67,7 +67,7 @@ class SavedDialog(DialogBase):
 
     @classmethod
     async def to_tl_bulk(
-            cls, dialogs: list[SavedDialog],
+            cls, _: int, dialogs: list[SavedDialog],
             messages: dict[int, tuple[SavedDialog, models.MessageRef | None]],
     ) -> list[TLSavedDialog]:
         tl = []

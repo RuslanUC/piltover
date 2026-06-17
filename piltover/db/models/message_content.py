@@ -19,8 +19,7 @@ from piltover.tl import objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, MessageMedia as MessageMediaBase, \
     MessageEntity as MessageEntityBase
 from piltover.tl.base.internal import MessageToFormatContent as MessageToFormatContentBase
-from piltover.tl.types import PeerUser, MessageActionChatAddUser, \
-    MessageActionChatDeleteUser, MessageActionEmpty, \
+from piltover.tl.types import PeerUser, MessageActionChatAddUser, MessageActionChatDeleteUser, MessageActionEmpty, \
     MessageEntityMentionName, PeerChannel
 from piltover.tl.types.internal import MessageToFormatContent, MessageToFormatServiceContent
 
@@ -93,13 +92,6 @@ class MessageContent(Model):
             )
             action = MessageActionEmpty()
 
-        # NOTE: this is first step to making messages cachable for not-defined amount of time for all users.
-        #  But we need to keep in mind that:
-        #   1. Messages should be cached based on `internal_id` not actual message `id`
-        #    (or whole id system should be reworked and rewritten).
-        #   2. Fields such as `peer_id` or `reply_to` are NOT cachable based in internal id in private chats:
-        #    `peer_id` can be specified as PeerPrivate(user1_id=..., user2_id=...),
-        #    but `reply_to` is unknown for user users for private chats in this method.
         return MessageToFormatServiceContent(
             date=int(self.date.timestamp()),
             action=action,
@@ -232,7 +224,7 @@ class MessageContent(Model):
     def invalidate_reply_markup_cache(self) -> None:
         self._cached_reply_markup = MISSING
 
-    async def clone_scheduled(self) -> Self:
+    async def clone_scheduled(self) -> MessageContent:
         content = await models.MessageContent.create(
             message=self.message,
             date=datetime.now(UTC),
@@ -264,7 +256,7 @@ class MessageContent(Model):
             new_channel_author_id: int | None = None, channel_post: bool | None = None,
             post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
             anonymous: bool | None = None,
-    ) -> Self:
+    ) -> MessageContent:
         if new_author is None and self.author is not None:
             new_author = self.author
         if new_channel_author_id is None and self.send_as_channel_id is not None:
@@ -550,7 +542,7 @@ class MessageContent(Model):
         return fwd_headers
 
     @classmethod
-    async def create_for_peer(cls, related_peer: models.Peer, **message_kwargs) -> Self:
+    async def create_for_peer(cls, related_peer: models.Peer, **message_kwargs) -> MessageContent:
         related_user_ids: set[int] = set()
         related_chat_ids: set[int] = set()
         related_channel_ids: set[int] = set()
@@ -600,14 +592,14 @@ class MessageContent(Model):
                     continue
                 user_ids.add(entity["user_id"])
 
-        if self.fwd_header_id is not None:
+        if self.fwd_header_id is not None and self.fwd_header is not None:
             if self.fwd_header.from_user_id is not None:
                 user_ids.add(self.fwd_header.from_user_id)
             if self.fwd_header.from_chat_id is not None:
                 chat_ids.add(self.fwd_header.from_chat_id)
             if self.fwd_header.from_channel_id is not None:
                 channel_ids.add(self.fwd_header.from_channel_id)
-            if self.fwd_header.saved_peer_id is not None:
+            if self.fwd_header.saved_peer_id is not None and self.fwd_header.saved_peer is not None:
                 self._fill_related_peer(self.fwd_header.saved_peer, user_ids, chat_ids, channel_ids)
             if self.fwd_header.saved_from_id is not None:
                 user_ids.add(self.fwd_header.saved_from_id)
@@ -618,23 +610,14 @@ class MessageContent(Model):
     @staticmethod
     async def _create_related(
             message: MessageContent,
-            users: Iterable[models.User | int],
-            chats: Iterable[models.Chat | int],
-            channels: Iterable[models.Channel | int],
+            users: Iterable[int],
+            chats: Iterable[int],
+            channels: Iterable[int],
     ) -> None:
         related_to_create = [
-            *(
-                models.MessageRelated(message=message, user_id=(rel.id if isinstance(rel, models.User) else rel))
-                for rel in users
-            ),
-            *(
-                models.MessageRelated(message=message, chat_id=(rel.id if isinstance(rel, models.Chat) else rel))
-                for rel in chats
-            ),
-            *(
-                models.MessageRelated(message=message, channel_id=(rel.id if isinstance(rel, models.Channel) else rel))
-                for rel in channels
-            ),
+            *(models.MessageRelated(message_id=message.id, user_id=rel_id) for rel_id in users),
+            *(models.MessageRelated(message_id=message.id, chat_id=rel_id) for rel_id in chats),
+            *(models.MessageRelated(message_id=message.id, channel_id=rel_id) for rel_id in channels),
         ]
 
         if related_to_create:
