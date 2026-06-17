@@ -82,7 +82,7 @@ async def format_dialogs(
 
         result = tl_cls(
             dialogs=await model.to_tl_bulk(dialogs, dialog_by_peer),
-            messages=await MessageRef.to_tl_bulk_maybecached(messages, user_id),
+            messages=await MessageRef.to_tl_bulk_maybecached(messages, user_id, False),
             chats=[*chats, *channels],
             users=users,
         )
@@ -159,10 +159,7 @@ async def get_dialogs_internal(
     if limit > 100 or limit < 1:
         limit = 100
 
-    prefix = f"{model._meta.db_table}s"
-
-    query_filters: dict = {f"{prefix}__owner_id": user_id}
-    query = Q(**query_filters)
+    query = Q(owner_id=user_id)
 
     if offset_peer is not None:
         offset_peer_: Peer | None = None
@@ -195,30 +192,19 @@ async def get_dialogs_internal(
             offset_id = peer_message_id
 
     if offset_id:
-        query &= Q(last_message_id__lt=offset_id)
+        query &= Q(peer__last_message_id__lt=offset_id)
     if exclude_pinned:
-        query_filters = {f"{prefix}__pinned_index__isnull": True}
-        query &= Q(**query_filters)
+        query &= Q(pinned_index__isnull=True)
     if offset_date:
-        query &= Q(last_message_date__lt=datetime.fromtimestamp(offset_date, UTC))
+        query &= Q(peer__last_message_date__lt=datetime.fromtimestamp(offset_date, UTC))
     if folder_id is not None and issubclass(model, Dialog):
-        query &= Q(dialogs__folder_id=DialogFolderId(folder_id))
+        query &= Q(folder_id=DialogFolderId(folder_id))
     if only_visible and issubclass(model, Dialog):
-        query &= Q(dialogs__visible=True)
+        query &= Q(visible=True)
 
-    # Doing it this way because, as far as i know, in Tortoise you cant reference outer-value from inner query
-    #  and e.g. do something like
-    #  Dialogs.annotate(last_message_id=Subquery(Message.filter(peer=F("peer")).order_by("-id").first().values_list("id", flat=True)))
-    peers_with_dialogs_query: QuerySet[Peer] = Peer.filter(query).limit(limit).order_by("-last_message_id", "-id")\
-        .select_related(prefix)
-
-    dialogs: list[DialogT] = []
-
-    for peer_with_dialog in await peers_with_dialogs_query:
-        dialog: DialogT = getattr(cast(PeerWithDialogs, peer_with_dialog), prefix)
-        dialog.peer = peer_with_dialog
-        dialogs.append(dialog)
-
+    dialogs: list[DialogT] = await Dialog.filter(
+        query
+    ).limit(limit).order_by("-peer__last_message_id", "-id").select_related("peer")
     return await format_dialogs(model, tl_cls, tl_slice_cls, user_id, dialogs, allow_slicing, folder_id)
 
 

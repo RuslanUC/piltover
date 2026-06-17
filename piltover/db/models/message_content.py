@@ -56,6 +56,8 @@ class MessageContent(Model):
     author_reactions_unread: bool = fields.BooleanField(default=False)
     internal_random_id: UUID | None = fields.UUIDField(null=True, default=None, unique=True)
 
+    messagerelateds: fields.ReverseRelation[models.MessageRelated]
+
     peer_id: int
     author_id: int
     media_id: int | None
