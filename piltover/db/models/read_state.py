@@ -23,6 +23,7 @@ class ReadState(Model):
         unique_together = (
             ("owner_id", "peer_id"),
         )
+        # TODO: add index on peer-last_message_id?
 
     @classmethod
     async def for_peers_bulk(cls, user_id: int, peers: list[models.Peer]) -> list[ReadState]:

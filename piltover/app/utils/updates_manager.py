@@ -11,6 +11,7 @@ from piltover.db.models import User, State, Update, MessageDraft, Peer, Dialog, 
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
     Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef, \
     PhoneCall, UserEmojiStatus, Username
+from piltover.exceptions import Unreachable
 from piltover.session import SessionManager
 from piltover.tl import Updates, UpdateNewMessage, UpdateMessageID, UpdateReadHistoryInbox, \
     UpdateEditMessage, UpdateDialogPinned, DraftMessageEmpty, UpdateDraftMessage, \
@@ -1188,8 +1189,17 @@ async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[Use
 async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
     updates_to_create = []
 
-    # TODO: resolve related users/chats/channels here, before loop
-    #  (if peer is USER, then related users is [peer.user], and so on)
+    ucc = UsersChatsChannels()
+    for peer in messages:
+        if peer.type in (PeerType.USER, PeerType.SELF):
+            ucc.add_user(peer.owner_id)
+            ucc.add_user(peer.user_id)
+        elif peer.type is PeerType.CHAT:
+            ucc.add_chat(peer.chat_id)
+        else:
+            raise Unreachable
+
+    users, chats, _ = await ucc.resolve()
 
     items = list(messages.items())
     ptss = await State.add_pts_bulk([peer.owner_id for peer, _ in items], 1)
@@ -1205,11 +1215,6 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
             peer=peer,
         ))
 
-        ucc = UsersChatsChannels()
-        ucc.add_peer(peer)
-        # TODO: move this out of the loop
-        users, chats, channels = await ucc.resolve()
-
         await SessionManager.send(UpdatesWithDefaults(
             updates=[
                 UpdateReadHistoryOutbox(
@@ -1220,7 +1225,7 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
                 ),
             ],
             users=users,
-            chats=[*chats, *channels],
+            chats=chats,
         ), peer.owner_id)
 
     await Update.bulk_create(updates_to_create)

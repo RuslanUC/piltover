@@ -893,6 +893,9 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
 
     await upd.update_read_history_inbox_channel(user_id, peer.channel_id, unread_max_id, unread_count)
 
+    # TODO: when user reads messages in channel for the first time, it will fetch ALL messages available to that user;
+    #  need to figure out what telegram does in channels.ReadHistory;
+    #  maybe it sends outbox read updates to only messages that were not read yet?
     read_messages_by_user_ids = {
         user_id: max_id
         for user_id, max_id in await MessageRef.filter(
