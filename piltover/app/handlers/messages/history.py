@@ -508,7 +508,7 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
 
     messages_out: dict[Peer, int] = {}
     peers = await peer.get_opposite()
-    peers_by_id = {peer.id: peer for peer in peers}
+    peers_by_id = {opp_peer.id: opp_peer for opp_peer in peers}
     counts = []
     # TODO: this is probably wrong? we need to search by author, not peer probably
     if peers:
@@ -519,7 +519,6 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
         ).values_list("peer_id", "read_count", "max_read")
         counts = [(peer_id, max_read) for peer_id, read_count, max_read in counts if read_count]
 
-    peers_by_id = {peer.id: peer for peer in peers}
     for peer_id, max_read_id in counts:
         messages_out[peers_by_id[peer_id]] = max_read_id
 

@@ -874,7 +874,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         cast(
             object,
             await MessageRef.filter(
-                id__lte=request.max_id, peer__owner=None, peer=peer,
+                id__lte=request.max_id, peer=peer,
             ).order_by("-id").first().values_list("id", "content_id")
         )
     )
@@ -883,7 +883,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
 
     unread_max_id, content_id = unread_ids
 
-    unread_count = await MessageRef.filter(peer__owner=None, peer=peer, id__gt=unread_max_id).count()
+    unread_count = await MessageRef.filter(peer=peer, id__gt=unread_max_id).count()
 
     prev_last_id = read_state.last_message_id
     read_state.last_message_id = unread_max_id
@@ -896,7 +896,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
     read_messages_by_user_ids = {
         user_id: max_id
         for user_id, max_id in await MessageRef.filter(
-            peer__owner=None, peer=peer, id__gt=prev_last_id, id__lte=unread_max_id,
+            peer=peer, id__gt=prev_last_id, id__lte=unread_max_id,
         ).group_by("content__author_id").annotate(max_id=Max("id")).values_list("content__author_id", "max_id")
     }
     if read_messages_by_user_ids:

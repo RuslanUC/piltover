@@ -25,7 +25,7 @@ class ReadState(Model):
         )
 
     @classmethod
-    async def for_peer_bulk(cls, user_id: int, peers: list[models.Peer]) -> list[ReadState]:
+    async def for_peers_bulk(cls, user_id: int, peers: list[models.Peer]) -> list[ReadState]:
         peer_ids = [peer.id for peer in peers]
         async with in_transaction():
             existing = await cls.filter(owner_id=user_id, peer_id__in=peer_ids).values_list("peer_id", flat=True)
@@ -45,7 +45,7 @@ class ReadState(Model):
         if not peers:
             return []
 
-        in_read_states = await cls.for_peer_bulk(user_id, peers)
+        in_read_states = await cls.for_peers_bulk(user_id, peers)
 
         unreads_queries = [
             Q(peer=peer, id__gt=in_read_state.last_message_id)
