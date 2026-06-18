@@ -218,12 +218,15 @@ class MessageRef(Model):
         )
 
     @classmethod
-    async def to_tl_ref_bulk(cls, refs: list[models.MessageRef], user_id: int) -> list[MessageToFormatRef]:
+    async def to_tl_ref_bulk(cls, refs: list[models.MessageRef], user_id: int, skip_cache: bool = False) -> list[MessageToFormatRef]:
         if not refs:
             return []
 
         cache_keys = [ref.cache_key(user_id) for ref in refs]
-        cached = await Cache.obj.multi_get(cache_keys)
+        if skip_cache:
+            cached = [None] * len(refs)
+        else:
+            cached = await Cache.obj.multi_get(cache_keys)
 
         message_content_ids = {
             ref.content.id
@@ -369,7 +372,7 @@ class MessageRef(Model):
         need_fetch_contents = []
 
         for ref, ref_cached, content_cached in zip(refs, refs_cached, contents_cached):
-            if content_cached is None:
+            if content_cached is None and not ref.content.is_service():
                 need_fetch_contents.append(ref)
             elif ref_cached is None:
                 need_fetch_refs.append(ref)
@@ -381,11 +384,11 @@ class MessageRef(Model):
 
         refs_tl = await cls.to_tl_ref_bulk([
             ref for ref, cached in zip(refs, refs_cached) if cached is None
-        ], user_id)
+        ], user_id, True)
         refs_tl.reverse()
         contents_tl = await models.MessageContent.to_tl_content_bulk([
             ref.content for ref, cached in zip(refs, contents_cached) if cached is None
-        ])
+        ], True)
         contents_tl.reverse()
         if with_reactions:
             reactionss_tl = await cls.to_tl_reactions_bulk(refs, user_id)

@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, UTC
 from io import BytesIO
 from os import environ
-from typing import Iterable, Self, Sequence
+from typing import Iterable, Self, Sequence, cast
 from uuid import uuid4, UUID
 
 from loguru import logger
@@ -153,14 +153,25 @@ class MessageContent(Model):
         return message
 
     @classmethod
-    async def to_tl_content_bulk(cls, messages: list[models.MessageContent]) -> list[MessageToFormatContentBase]:
+    async def to_tl_content_bulk(
+            cls, messages: list[models.MessageContent], skip_cache: bool = False
+    ) -> list[MessageToFormatContentBase]:
         if not messages:
             return []
 
-        cache_keys = [message.cache_key() for message in messages]
-        cached = await Cache.obj.multi_get(cache_keys)
+        cached = [None] * len(messages)
+        if not skip_cache:
+            cache_keys = [message.cache_key() for message in messages if not message.is_service()]
+            if cache_keys:
+                idx_table = [idx for idx, message in enumerate(messages) if not message.is_service()]
+                for idx, cached_message in enumerate(await Cache.obj.multi_get(cache_keys)):
+                    cached[idx_table[idx]] = cached_message
 
-        medias_ = [message.media for message in messages if message.media is not None]
+        medias_ = [
+            cast(models.MessageMedia, message.media)
+            for message in messages
+            if message.media is not None and not message.is_service()
+        ]
         medias = {
             media.id: media_tl
             for media, media_tl in zip(medias_, await models.MessageMedia.to_tl_bulk(medias_))
