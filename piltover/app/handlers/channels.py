@@ -885,7 +885,6 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
 
     unread_count = await MessageRef.filter(peer=peer, id__gt=unread_max_id).count()
 
-    prev_last_id = read_state.last_message_id
     read_state.last_message_id = unread_max_id
     await read_state.save(update_fields=["last_message_id"])
 
@@ -893,21 +892,26 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
 
     await upd.update_read_history_inbox_channel(user_id, peer.channel_id, unread_max_id, unread_count)
 
-    # TODO: when user reads messages in channel for the first time, it will fetch ALL messages available to that user;
-    #  need to figure out what telegram does in channels.ReadHistory;
-    #  maybe it sends outbox read updates to only messages that were not read yet?
-    read_messages_by_user_ids = {
-        user_id: max_id
-        for user_id, max_id in await MessageRef.filter(
-            peer=peer, id__gt=prev_last_id, id__lte=unread_max_id,
+    prev_last_id = cast(
+        int | None,
+        cast(
+            object,
+            await ReadState.filter(
+                peer=peer
+            ).annotate(max_out=Max("out_max_read_id")).first().values_list("max_out", flat=True)
+        )
+    ) or 0
+
+    read_messages_by_user_ids: dict[int, int] = dict(
+        await MessageRef.filter(
+            peer=peer, id__gt=prev_last_id, id__lte=unread_max_id, content__author_id__not=user_id,
         ).group_by("content__author_id").annotate(max_id=Max("id")).values_list("content__author_id", "max_id")
-    }
+    )
     if read_messages_by_user_ids:
-        read_messages_by_users = {
-            read_user: read_messages_by_user_ids[read_user.id]
-            for read_user in await User.filter(id__in=list(read_messages_by_user_ids)).only("id")
-        }
-        await upd.update_read_history_outbox_channel(peer.channel, read_messages_by_users)
+        await ReadState.filter(
+            peer=peer, user_id__in=list(read_messages_by_user_ids), out_max_read_id__lt=unread_max_id,
+        ).update(out_max_read_id=unread_max_id)
+        await upd.update_read_history_outbox_channel(peer.channel, read_messages_by_user_ids)
 
     return True
 

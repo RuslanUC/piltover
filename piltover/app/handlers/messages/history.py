@@ -499,37 +499,76 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     old_last_message_id = read_state.last_message_id
     unread_count = await MessageRef.filter(peer=peer, id__gt=max_id).count()
 
+    update_fields = ["last_message_id"]
     read_state.last_message_id = max_id
-    await read_state.save(update_fields=["last_message_id"])
+    if peer.type is PeerType.SELF:
+        read_state.out_max_read_id = max_id
+        update_fields.append("out_max_read_id")
+    await read_state.save(update_fields=update_fields)
 
     await ReadHistoryChunk.create(user_id=user_id, peer=peer, read_content_id=content_id)
 
     logger.info(f"Set last read message id to {max_id} for peer {peer.id} of user {user_id}")
 
-    messages_out: dict[Peer, int] = {}
-    peers = await peer.get_opposite()
-    peers_by_id = {opp_peer.id: opp_peer for opp_peer in peers}
-    counts = []
-    # TODO: this is probably wrong? we need to search by author, not peer probably
-    if peers:
-        counts = await MessageRef.filter(
-            peer_id__in=list(peers_by_id), id__gt=old_last_message_id, content_id__lte=content_id,
-        ).group_by("peer_id").annotate(
-            read_count=Count("id"), max_read=Max("id"),
-        ).values_list("peer_id", "read_count", "max_read")
-        counts = [(peer_id, max_read) for peer_id, read_count, max_read in counts if read_count]
-
-    for peer_id, max_read_id in counts:
-        messages_out[peers_by_id[peer_id]] = max_read_id
-
     pts, _ = await upd.update_read_history_inbox(peer, max_id, unread_count)
-    if messages_out:
-        await upd.update_read_history_outbox(messages_out)
+    result = AffectedMessages(pts=pts, pts_count=1)
 
-    return AffectedMessages(
-        pts=pts,
-        pts_count=1,
-    )
+    if peer.type is PeerType.SELF:
+        return result
+
+    if peer.type is PeerType.USER:
+        other_read_state = await ReadState.get_or_none(
+            owner_id=peer.user_id, peer__owner_id=peer.user_id, peer__user_id=peer.owner_id
+        ).select_related("peer")
+        if other_read_state is None:
+            return result
+        other_max_out_id = cast(int | None, cast(
+            object,
+            await MessageRef.filter(
+                peer_id=other_read_state.peer_id, id__gt=other_read_state.out_max_read_id, content_id__lte=content_id,
+            ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
+        ))
+        if not other_max_out_id:
+            return result
+        await ReadState.filter(
+            id=other_read_state.id, out_max_read_id__lt=other_max_out_id
+        ).update(out_max_read_id=other_max_out_id)
+        await upd.update_read_history_outbox({other_read_state.peer: other_max_out_id})
+    elif peer.type is PeerType.CHAT:
+        ids_by_peers = dict(cast(
+            list[tuple[int, int]],
+            await MessageRef.filter(
+                peer__chat_id=peer.chat_id,
+                peer_id__not=peer.id,
+                id__gt=old_last_message_id,
+                content_id__lte=content_id,
+            ).group_by("peer_id").annotate(
+                read_count=Count("id"), max_read=Max("id"),
+            ).filter(read_count__gt=0).values_list("peer_id", "max_read")
+        ))
+
+        to_update: list[ReadState] = []
+        async with in_transaction():
+            read_states = await ReadState.select_for_update().filter(
+                peer_id__in=list(ids_by_peers),
+            ).select_related("peer")
+            for other_read_state in read_states:
+                if other_read_state.out_max_read_id < ids_by_peers[other_read_state.peer_id]:
+                    other_read_state.out_max_read_id = ids_by_peers[other_read_state.peer_id]
+                    to_update.append(other_read_state)
+
+            if to_update:
+                await ReadState.bulk_update(to_update, ["out_max_read_id"])
+
+        if to_update:
+            await upd.update_read_history_outbox({
+                other_read_state.peer: other_read_state.out_max_read_id
+                for other_read_state in to_update
+            })
+    else:
+        raise Unreachable
+
+    return result
 
 
 @handler.on_request(Search, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)

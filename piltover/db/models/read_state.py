@@ -13,6 +13,7 @@ from piltover.exceptions import Unreachable
 class ReadState(Model):
     id: int = fields.BigIntField(primary_key=True)
     last_message_id: int = fields.BigIntField(default=0)
+    out_max_read_id: int = fields.BigIntField(default=0)
     owner: models.User = fields.ForeignKeyField("models.User")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
 
@@ -24,6 +25,7 @@ class ReadState(Model):
             ("owner_id", "peer_id"),
         )
         # TODO: add index on peer-last_message_id?
+        # TODO: add index on peer-out_max_read_id?
 
     @classmethod
     async def for_peers_bulk(cls, user_id: int, peers: list[models.Peer]) -> list[ReadState]:
@@ -41,7 +43,6 @@ class ReadState(Model):
     @classmethod
     async def get_in_out_ids_and_unread_bulk(
             cls, user_id: int, peers: list[models.Peer], no_reactions: bool = False, no_mentions: bool = False,
-            no_out_id: bool = False,
     ) -> list[tuple[int, int, int, int, int]]:
         if not peers:
             return []
@@ -70,88 +71,6 @@ class ReadState(Model):
                 count=Count("message_id"),
             ).values_list("message__messagerefs__peer_id", "count")
             unread_reactions_by_peer: dict[int, int] = dict(unread_reactions_counts)
-
-        out_read_max_ids = {}
-        if not no_out_id:
-            user_ids = []
-            chat_ids = []
-            channel_ids = []
-
-            for peer, in_read_state in zip(peers, in_read_states):
-                if peer.type is PeerType.SELF:
-                    out_read_max_ids[(peer.type, peer.target_id_raw())] = in_read_state.last_message_id
-                elif peer.type is PeerType.USER:
-                    user_ids.append(peer.user_id)
-                elif peer.type is PeerType.CHAT:
-                    chat_ids.append(peer.chat_id)
-                elif peer.type is PeerType.CHANNEL:
-                    channel_ids.append(peer.channel_id)
-                else:
-                    raise Unreachable
-
-            if user_ids:
-                out_user_read_states = await models.ReadState.filter(
-                    owner_id__in=user_ids, peer__user_id=user_id,
-                ).group_by(
-                    "owner_id",
-                ).annotate(
-                    last_id=Max("last_message_id"),
-                ).values_list(
-                    "owner_id", "last_id",
-                )
-                for other_user_id, last_id in out_user_read_states:
-                    out_read_max_ids[(PeerType.USER, other_user_id)] = last_id
-
-            if chat_ids:
-                out_last_ids = await models.ReadState.filter(
-                    peer__chat_id__in=chat_ids, owner_id__not=user_id,
-                ).group_by(
-                    "peer__chat_id",
-                ).annotate(
-                    last_id=Max("last_message_id"),
-                ).values_list(
-                    "last_id", "peer__chat_id",
-                )
-                id_to_chat = dict(out_last_ids)
-                content_to_ref = await models.MessageRef.filter(id__in=id_to_chat).values_list("content_id", "id")
-                content_to_ref = dict(content_to_ref)
-                query_parts = []
-                for content_id, ref_id in content_to_ref.items():
-                    chat_id = id_to_chat[ref_id]
-                    query_parts.append(Q(peer__chat_id=chat_id, content_id__lte=content_id))
-                if query_parts:
-                    our_ids = await models.MessageRef.filter(
-                        Q(*query_parts, join_type=Q.OR), content__author_id=user_id, peer__owner_id=user_id,
-                    ).values_list("content_id", "id")
-                else:
-                    our_ids = []
-
-                for content_id, ref_id in our_ids:
-                    chat_id = id_to_chat[content_to_ref[content_id]]
-                    out_read_max_ids[(PeerType.CHAT, chat_id)] = ref_id
-
-            if channel_ids:
-                out_last_ids = await models.ReadState.filter(
-                    peer__channel_id__in=channel_ids, owner_id__not=user_id,
-                ).group_by(
-                    "peer_id",
-                ).annotate(
-                    last_id=Max("last_message_id"),
-                ).values_list(
-                    "last_id", "peer_id",
-                )
-                query_parts = []
-                for ref_id, peer_id in out_last_ids:
-                    query_parts.append(Q(peer_id=peer_id, id__lte=ref_id))
-                if query_parts:
-                    our_ids = await models.MessageRef.filter(
-                        Q(*query_parts, join_type=Q.OR), content__author_id=user_id,
-                    ).values_list("peer__channel_id", "id")
-                else:
-                    our_ids = []
-
-                for channel_id, ref_id in our_ids:
-                    out_read_max_ids[(PeerType.CHANNEL, channel_id)] = ref_id
 
         unread_mentions_by_chat = {}
         if not no_mentions:
@@ -188,7 +107,7 @@ class ReadState(Model):
         for peer, in_read_state in zip(peers, in_read_states):
             result.append((
                 in_read_state.last_message_id,
-                out_read_max_ids.get((peer.type, peer.target_id_raw()), 0),
+                in_read_state.out_max_read_id,
                 unread_by_peer.get(peer.id, 0),
                 unread_reactions_by_peer.get(peer.id, 0),
                 unread_mentions_by_chat.get((peer.chat_id, peer.channel_id), 0),
@@ -199,7 +118,6 @@ class ReadState(Model):
     @classmethod
     async def get_in_out_ids_and_unread(
             cls, user_id: int, peer: models.Peer, no_reactions: bool = False, no_mentions: bool = False,
-            no_out_id: bool = False,
     ) -> tuple[int, int, int, int, int]:
         in_read_state, _ = await models.ReadState.get_or_create(owner_id=user_id, peer=peer)
         unread_count = await models.MessageRef.filter(
@@ -215,35 +133,6 @@ class ReadState(Model):
                 author_reactions_unread=True,
             ).count()
 
-        out_read_max_id = 0
-        if not no_out_id:
-            if peer.type is PeerType.SELF:
-                out_read_max_id = in_read_state.last_message_id
-            elif peer.type is PeerType.USER:
-                out_read_max_id = await models.ReadState.filter(
-                    peer__owner_id=peer.user_id, peer__user_id=user_id
-                ).first().values_list("last_message_id", flat=True) or 0
-            elif peer.type is PeerType.CHAT:
-                # TODO: probably can be done in one query?
-                out_read_state = await models.ReadState.filter(
-                    peer__chat_id=peer.chat_id, peer_id__not=peer.id
-                ).order_by("-last_message_id").first()
-                if out_read_state:
-                    out_read_max_id = await models.MessageRef.filter(
-                        peer=peer, id__lte=out_read_state.last_message_id
-                    ).order_by("-id").first().values_list("id", flat=True)
-                    out_read_max_id = out_read_max_id or 0
-            elif peer.type is PeerType.CHANNEL:
-                # TODO: probably can be done in one query?
-                out_read_state = await models.ReadState.filter(
-                    peer=peer, owner_id__not=user_id,
-                ).order_by("-last_message_id").first()
-                if out_read_state:
-                    out_read_max_id = await models.MessageRef.filter(
-                        peer=peer, content__author_id=user_id, id__lte=out_read_state.last_message_id
-                    ).order_by("-id").first().values_list("id", flat=True)
-                    out_read_max_id = out_read_max_id or 0
-
         if no_mentions or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
             unread_mentions = 0
         else:
@@ -257,7 +146,7 @@ class ReadState(Model):
 
         return (
             in_read_state.last_message_id,
-            out_read_max_id or 0,
+            in_read_state.out_max_read_id,
             unread_count,
             unread_reactions_count,
             unread_mentions,

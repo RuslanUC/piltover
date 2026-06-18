@@ -172,7 +172,7 @@ async def send_message_channel(user_id: int, channel: Channel, message: MessageR
         channel_id=channel.id,
     )
 
-    updates = [
+    updates: list = [
         UpdateNewChannelMessage(
             message=message_for_user,
             pts=new_pts,
@@ -1150,7 +1150,7 @@ async def update_read_history_inbox_channel(
     return updates
 
 
-async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[User, int]) -> None:
+async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[int, int]) -> None:
     updates_to_create = []
 
     channels = [await channel.to_tl()]
@@ -1158,10 +1158,10 @@ async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[Use
     users = list(max_ids)
     ptss = await State.add_pts_bulk(users, 1)
 
-    for user, pts in zip(users, ptss):
-        max_id = max_ids[user]
+    for user_id, pts in zip(users, ptss):
+        max_id = max_ids[user_id]
         updates_to_create.append(Update(
-            user=user,
+            user_id=user_id,
             update_type=UpdateType.READ_OUTBOX_CHANNEL,
             pts=pts,
             pts_count=1,
@@ -1180,7 +1180,7 @@ async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[Use
             chats=channels,
         )
 
-        await SessionManager.send(updates, user.id)
+        await SessionManager.send(updates, user_id)
 
     if updates_to_create:
         await Update.bulk_create(updates_to_create)

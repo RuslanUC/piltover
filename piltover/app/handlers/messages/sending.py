@@ -274,7 +274,7 @@ async def send_message_internal(
 
     updates = await send_created_messages_internal(messages, opposite, peer, user, clear_draft, mentioned_user_ids)
 
-    _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True, True)
+    _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True)
     if not unread_count:
         if peer.type is PeerType.CHANNEL:
             message = next(iter(messages.values()))
