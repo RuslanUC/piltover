@@ -365,7 +365,7 @@ class User(Model):
                 last_seen=int(presence.last_seen.timestamp()) if presence is not None else None,
             ))
 
-            to_cache.append((user.id, tl[-1]))
+            to_cache.append((user._cache_key(), tl[-1]))
 
         if to_cache:
             await Cache.obj.multi_set(to_cache)

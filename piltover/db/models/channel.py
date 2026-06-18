@@ -118,12 +118,13 @@ class Channel(ChatBase):
         cached_channels = await Cache.obj.multi_get([
             channel.cache_key()
             for channel in channels
+            if not channel.deleted
         ])
 
         processing_channels = [
             channel
             for channel, cached in zip(channels, cached_channels)
-            if cached is None
+            if cached is None and not channel.deleted
         ]
         channel_ids = [channel.id for channel in processing_channels]
 
