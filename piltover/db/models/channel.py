@@ -118,18 +118,19 @@ class Channel(ChatBase):
         cached_channels = await Cache.obj.multi_get([
             channel.cache_key()
             for channel in channels
-            if not channel.deleted
         ])
 
         processing_channels = [
             channel
             for channel, cached in zip(channels, cached_channels)
-            if cached is None and not channel.deleted
+            if cached is None if not channel.deleted
         ]
         channel_ids = [channel.id for channel in processing_channels]
 
         usernames: dict[int, str | None]
-        if len(channel_ids) == 1:
+        if not channel_ids:
+            usernames = {}
+        elif len(channel_ids) == 1:
             channel_id = channel_ids[0]
             usernames = {
                 channel_id: cast(
@@ -149,7 +150,9 @@ class Channel(ChatBase):
                 ).values_list("channel_id", "username")
             }
 
-        if len(channel_ids) == 1:
+        if not channel_ids:
+            photos = {}
+        elif len(channel_ids) == 1:
             channel = processing_channels[0]
             if channel.photo_id is not None:
                 photos = {channel.id: await channel.photo}
