@@ -128,7 +128,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
 
     for update in new_updates:
         if update.update_type is UpdateType.NEW_MESSAGE and update.message is not None:
-            ucc.add_message(update.message.content_id)
+            ucc.add_message(update.message.content)
 
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.message_id in new_message_ids:
@@ -211,7 +211,7 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
         ).order_by("-id").first()
         if last_message:
             ucc = UsersChatsChannels()
-            ucc.add_message(last_message.content_id)
+            ucc.add_message(last_message.content)
             users, chats, channels = await ucc.resolve()
         else:
             users = chats = channels = []
@@ -249,7 +249,7 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
     ucc = UsersChatsChannels()
 
     for message in all_messages:
-        ucc.add_message(message.content_id)
+        ucc.add_message(message.content)
 
     all_messages_tl = await MessageRef.to_tl_bulk_maybecached(all_messages, user_id)
     new_messages = [

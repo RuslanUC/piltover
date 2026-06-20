@@ -61,7 +61,7 @@ async def send_message(
     current_user_id = user.id if isinstance(user, User) else user
 
     ucc = UsersChatsChannels()
-    ucc.add_message(next(iter(messages.values())).content_id)
+    ucc.add_message(next(iter(messages.values())).content)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
     updates_to_create = []
@@ -140,7 +140,7 @@ async def send_message_channel(user_id: int, channel: Channel, message: MessageR
     )
 
     ucc = UsersChatsChannels()
-    ucc.add_message(message.content_id)
+    ucc.add_message(message.content)
     users, chats, channels = await ucc.resolve()
 
     chats_and_channels = [*chats, *channels]
@@ -199,7 +199,7 @@ async def send_messages(
 
     ucc = UsersChatsChannels()
     for message in next(iter(messages.values())):
-        ucc.add_message(message.content_id)
+        ucc.add_message(message.content)
 
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
@@ -279,7 +279,7 @@ async def send_messages(
             result_pts = await State.add_pts(user.id, 0)
 
         for ref in prepend_existing:
-            ucc.add_message(ref.content_id)
+            ucc.add_message(ref.content)
         users, chats, channels = await ucc.resolve()
         messages_to_add = await MessageRef.to_tl_bulk_maybecached(prepend_existing, user.id)
         old_result = result_update
@@ -317,7 +317,7 @@ async def send_messages_channel(
             for num, message in enumerate(messages, start=1):
                 this_pts = start_pts + num
                 update_pts.append(this_pts)
-                ucc.add_message(message.content_id)
+                ucc.add_message(message.content)
 
                 updates_to_create.append(ChannelUpdate(
                     channel=channel,
@@ -357,7 +357,7 @@ async def send_messages_channel(
 
     if prepend_existing and prepend_user_id:
         for ref in prepend_existing:
-            ucc.add_message(ref.content_id)
+            ucc.add_message(ref.content)
         users, chats, channels = await ucc.resolve()
         messages_to_add = await MessageRef.to_tl_bulk_maybecached(prepend_existing, prepend_user_id)
         old_result = result
@@ -460,7 +460,7 @@ async def edit_message(user_id: int, messages: dict[Peer, MessageRef]) -> Update
     result_update = None
 
     ucc = UsersChatsChannels()
-    ucc.add_message(next(iter(messages.values())).content_id)
+    ucc.add_message(next(iter(messages.values())).content)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
@@ -511,7 +511,7 @@ async def edit_message_channel(channel: Channel, message: MessageRef) -> Updates
     )
 
     ucc = UsersChatsChannels()
-    ucc.add_message(message.content_id)
+    ucc.add_message(message.content)
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
@@ -1421,7 +1421,7 @@ async def update_reactions(user_id: int, messages: list[MessageRef], peer: Peer,
 
     # TODO: add reactions and not messages maybe?
     for message in messages:
-        ucc.add_message(message.content_id)
+        ucc.add_message(message.content)
 
     users, chats, channels = await ucc.resolve()
     reactions = await MessageRef.to_tl_reactions_bulk(messages, user_id)
@@ -1856,7 +1856,7 @@ async def bot_callback_query(bot_id: int, query: CallbackQuery) -> None:
     )
 
     ucc = UsersChatsChannels()
-    ucc.add_message(query.message.content_id)
+    ucc.add_message(query.message.content)
     users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(

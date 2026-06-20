@@ -98,7 +98,7 @@ class Update(Model):
                 if self.message is None:
                     return None
 
-                ucc.add_message(self.message.content_id)
+                ucc.add_message(self.message.content)
 
                 return UpdateEditMessage(
                     message=formatted_messages[self.message_id],
@@ -438,7 +438,7 @@ class Update(Model):
                 if self.message is None:
                     return None
 
-                ucc.add_message(self.message.content_id)
+                ucc.add_message(self.message.content)
 
                 return UpdateNewScheduledMessage(message=formatted_messages[self.message_id])
 
@@ -472,7 +472,7 @@ class Update(Model):
                 if query is None:
                     return None
 
-                ucc.add_message(query.message.content_id)
+                ucc.add_message(query.message.content)
 
                 return UpdateBotCallbackQuery(
                     query_id=query.id,

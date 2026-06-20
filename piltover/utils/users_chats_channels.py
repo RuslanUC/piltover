@@ -26,7 +26,6 @@ class UsersChatsChannels:
         self._user_ids: set[int] = set()
         self._chat_ids: set[int] = set()
         self._channel_ids: set[int] = set()
-        self._message_ids: set[int] = set()
 
     def add_user(self, user_id: int) -> None:
         self._user_ids.add(user_id)
@@ -37,8 +36,13 @@ class UsersChatsChannels:
     def add_channel(self, channel_id: int) -> None:
         self._channel_ids.add(channel_id)
 
-    def add_message(self, message_id: int) -> None:
-        self._message_ids.add(message_id)
+    def add_message(self, message: models.MessageContent) -> None:
+        if message.related_users:
+            self._user_ids.update(message.related_users)
+        if message.related_chats:
+            self._chat_ids.update(message.related_chats)
+        if message.related_channels:
+            self._channel_ids.update(message.related_channels)
 
     def add_peer(self, peer: models.Peer) -> None:
         peer_type = peer.type
@@ -60,8 +64,7 @@ class UsersChatsChannels:
     def _query(self) -> tuple[QsUser | None, QsChat | None, QsChannel | None]:
         if not self._user_ids \
                 and not self._chat_ids \
-                and not self._channel_ids \
-                and not self._message_ids:
+                and not self._channel_ids:
             return None, None, None
 
         users_q = Q()
@@ -74,13 +77,6 @@ class UsersChatsChannels:
             chats_q |= Q(id__in=self._chat_ids)
         if self._channel_ids:
             channels_q |= Q(id__in=self._channel_ids)
-
-        if self._message_ids:
-            # TODO: there's probably a better solution
-            base_messagerelated_query = models.MessageRelated.filter(message_id__in=self._message_ids).distinct()
-            users_q |= Q(id__in=Subquery(base_messagerelated_query.values("user_id")))
-            chats_q |= Q(id__in=Subquery(base_messagerelated_query.values("chat_id")))
-            channels_q |= Q(id__in=Subquery(base_messagerelated_query.values("channel_id")))
 
         return (
             models.User.filter(users_q) if users_q != _EMPTY else None,

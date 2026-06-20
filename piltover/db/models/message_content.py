@@ -54,8 +54,9 @@ class MessageContent(Model):
     send_as_channel: models.Channel | None = NullableFK("models.Channel")
     author_reactions_unread: bool = fields.BooleanField(default=False)
     internal_random_id: UUID | None = fields.UUIDField(null=True, default=None, unique=True)
-
-    messagerelateds: fields.ReverseRelation[models.MessageRelated]
+    related_users: list[int] | None = fields.JSONField(null=True, default=None)
+    related_chats: list[int] | None = fields.JSONField(null=True, default=None)
+    related_channels: list[int] | None = fields.JSONField(null=True, default=None)
 
     peer_id: int
     author_id: int
@@ -251,10 +252,10 @@ class MessageContent(Model):
             post_info=self.post_info,
             ttl_period_days=self.ttl_period_days,
             send_as_channel_id=self.send_as_channel_id,
+            related_users=self.related_users,
+            related_chats=self.related_chats,
+            related_channels=self.related_channels,
         )
-
-        related_user_ids, related_chat_ids, related_channel_ids = await models.MessageRelated.get_for_message(self)
-        await self._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
 
         return content
 
@@ -282,7 +283,7 @@ class MessageContent(Model):
         if post_author is None:
             post_author = self.post_author if not drop_author else None
 
-        content = await models.MessageContent.create(
+        content = MessageContent(
             message=self.message if self.media is None or not drop_captions else None,
             entities=self.entities if self.media is None or not drop_captions else None,
             date=self.date if not is_forward else datetime.now(UTC),
@@ -305,7 +306,10 @@ class MessageContent(Model):
         related_chat_ids = set()
         related_channel_ids = set()
         content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
-        await self._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
+        content.related_users = list(related_user_ids) if related_user_ids else None
+        content.related_chats = list(related_chat_ids) if related_chat_ids else None
+        content.related_channels = list(related_channel_ids) if related_channel_ids else None
+        await content.save(force_create=True)
 
         return content
 
@@ -375,7 +379,7 @@ class MessageContent(Model):
 
         await cls.filter(id__in=list(msg_id_by_random_id.values())).update(internal_random_id=None)
 
-        related_to_create = []
+        contents_to_update = []
 
         for content in new_contents:
             await asyncio.sleep(0)
@@ -387,16 +391,12 @@ class MessageContent(Model):
             related_chat_ids = set()
             related_channel_ids = set()
             content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
+            content.related_users = list(related_user_ids) if related_user_ids else None
+            content.related_chats = list(related_chat_ids) if related_chat_ids else None
+            content.related_channels = list(related_channel_ids) if related_channel_ids else None
 
-            for related_user_id in related_user_ids:
-                related_to_create.append(models.MessageRelated(message_id=content.id, user_id=related_user_id))
-            for related_chat_id in related_chat_ids:
-                related_to_create.append(models.MessageRelated(message_id=content.id, chat_id=related_chat_id))
-            for related_channel_id in related_channel_ids:
-                related_to_create.append(models.MessageRelated(message_id=content.id, channel_id=related_channel_id))
-
-        if related_to_create:
-            await models.MessageRelated.bulk_create(related_to_create)
+        if contents_to_update:
+            await MessageContent.bulk_update(contents_to_update, ["related_users", "related_chats", "related_channels"])
 
         return new_contents
 
@@ -558,10 +558,12 @@ class MessageContent(Model):
         related_chat_ids: set[int] = set()
         related_channel_ids: set[int] = set()
 
-        content = await MessageContent.create(**message_kwargs)
-
+        content = MessageContent(**message_kwargs)
         content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
-        await cls._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
+        content.related_users = list(related_user_ids) if related_user_ids else None
+        content.related_chats = list(related_chat_ids) if related_chat_ids else None
+        content.related_channels = list(related_channel_ids) if related_channel_ids else None
+        await content.save(force_create=True)
 
         return content
 
@@ -617,22 +619,6 @@ class MessageContent(Model):
 
         if self.via_bot_id is not None:
             user_ids.add(self.via_bot_id)
-
-    @staticmethod
-    async def _create_related(
-            message: MessageContent,
-            users: Iterable[int],
-            chats: Iterable[int],
-            channels: Iterable[int],
-    ) -> None:
-        related_to_create = [
-            *(models.MessageRelated(message_id=message.id, user_id=rel_id) for rel_id in users),
-            *(models.MessageRelated(message_id=message.id, chat_id=rel_id) for rel_id in chats),
-            *(models.MessageRelated(message_id=message.id, channel_id=rel_id) for rel_id in channels),
-        ]
-
-        if related_to_create:
-            await models.MessageRelated.bulk_create(related_to_create)
 
     def cache_key(self) -> str:
         return f"message-content:{self.id}:{self.version}"

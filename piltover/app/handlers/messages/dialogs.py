@@ -67,7 +67,7 @@ async def format_dialogs(
 
         messages = await model.top_message_query_bulk(user_id, dialogs)
         for message_ref in messages:
-            ucc.add_message(message_ref.content_id)
+            ucc.add_message(message_ref.content)
             dialog, _ = dialog_by_peer[message_ref.peer_id]
             dialog_by_peer[message_ref.peer_id] = dialog, message_ref
 

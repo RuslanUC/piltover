@@ -17,13 +17,14 @@ from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.scheduled")
+# TODO: use PREFETCH_MAYBECACHED in here?
 
 
 async def _format_messages(user_id: int, messages: list[MessageRef]) -> Messages:
     ucc = UsersChatsChannels()
 
     for message in messages:
-        ucc.add_message(message.content_id)
+        ucc.add_message(message.content)
 
     messages_tl = await MessageRef.to_tl_bulk(messages, user_id)
     users, chats, channels = await ucc.resolve()

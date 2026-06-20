@@ -334,7 +334,7 @@ async def format_messages_internal(
     ucc = UsersChatsChannels()
 
     for message in messages:
-        ucc.add_message(message.content_id)
+        ucc.add_message(message.content)
 
     messages_tl = await MessageRef.to_tl_bulk_maybecached(messages, user_id, with_reactions)
     users, chats, channels = await ucc.resolve()
@@ -768,12 +768,13 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user_id
             count=msg_count,
         ))
 
+    # TODO: prefetch maybecached?
     messages = await MessageRef.filter(id__in=message_ids).select_related(*MessageRef.PREFETCH_FIELDS)
     messages_tl = await MessageRef.to_tl_bulk(messages, user_id)
     ucc = UsersChatsChannels()
 
     for message in messages:
-        ucc.add_message(message.content_id)
+        ucc.add_message(message.content)
 
     users, chats, channels = await ucc.resolve()
 
@@ -1120,7 +1121,7 @@ async def get_discussion_message(request: GetDiscussionMessage, user_id: int) ->
     discussion_message = await MessageRef.get(id=message.discussion_id).select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
     ucc = UsersChatsChannels()
-    ucc.add_message(discussion_message.content_id)
+    ucc.add_message(discussion_message.content)
     users, chats, channels = await ucc.resolve()
 
     replies_query = Q(reply_to_id=discussion_message.id, top_message_id=discussion_message.id, join_type=Q.OR)
