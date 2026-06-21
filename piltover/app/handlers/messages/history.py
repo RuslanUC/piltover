@@ -115,10 +115,10 @@ async def get_messages_query_internal(
     else:
         query = Q(peer__owner_id=peer.id)
 
+    peer_not_user = peer if isinstance(peer, Peer) else None
     has_filter = False
     if filter_ is not None \
-            and isinstance(peer, Peer) \
-            and (filter_query := message_filter_to_query(filter_, peer, user_id)) is not None:
+            and (filter_query := message_filter_to_query(filter_, peer_not_user, user_id)) is not None:
         query &= filter_query
         has_filter = True
 
@@ -768,8 +768,8 @@ async def get_search_results_calendar(request: GetSearchResultsCalendar, user_id
             count=msg_count,
         ))
 
-    messages = await MessageRef.filter(id__in=message_ids).select_related(*MessageRef.PREFETCH_FIELDS)
-    messages_tl = await MessageRef.to_tl_bulk(messages, user_id)
+    messages = await MessageRef.filter(id__in=message_ids).select_related(*MessageRef.PREFETCH_MAYBECACHED)
+    messages_tl = await MessageRef.to_tl_bulk_maybecached(messages, user_id)
     ucc = UsersChatsChannels()
 
     for message in messages:

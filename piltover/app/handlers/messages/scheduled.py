@@ -6,7 +6,7 @@ from tortoise.transactions import in_transaction
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages import sending
 from piltover.app.utils.utils import telegram_hash
-from piltover.db.enums import MessageType, PeerType
+from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, TaskIqScheduledMessage
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Updates
@@ -25,7 +25,7 @@ async def _format_messages(user_id: int, messages: list[MessageRef]) -> Messages
     for message in messages:
         ucc.add_message(message.content_id)
 
-    messages_tl = await MessageRef.to_tl_bulk(messages, user_id)
+    messages_tl = await MessageRef.to_tl_bulk_maybecached(messages, user_id)
     users, chats, channels = await ucc.resolve()
 
     return Messages(
@@ -48,7 +48,7 @@ async def get_scheduled_history(request: GetScheduledHistory, user_id: int) -> M
         return MessagesNotModified(count=len(message_ids))
 
     messages = await MessageRef.filter(id__in=message_ids).order_by("content__scheduled_date").select_related(
-        *MessageRef.PREFETCH_FIELDS
+        *MessageRef.PREFETCH_MAYBECACHED
     )
 
     return await _format_messages(user_id, messages)
@@ -60,7 +60,7 @@ async def get_scheduled_messages(request: GetScheduledMessages, user_id: int) ->
 
     messages = await MessageRef.filter(
         peer=peer, scheduled_by_user_id=user_id, id__in=request.id,
-    ).order_by("content__scheduled_date").select_related(*MessageRef.PREFETCH_FIELDS)
+    ).order_by("content__scheduled_date").select_related(*MessageRef.PREFETCH_MAYBECACHED)
 
     return await _format_messages(user_id, messages)
 
