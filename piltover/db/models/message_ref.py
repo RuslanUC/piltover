@@ -835,6 +835,7 @@ class MessageRef(Model):
 
         results = []
         to_cache = []
+        recent_to_fetch = []
 
         for ref, cached, cache_key in zip(messages, cached_reactions, cache_keys):
             if ref.content.type is not MessageType.REGULAR:
@@ -843,6 +844,8 @@ class MessageRef(Model):
             if cached is not None:
                 results.append(cached)
                 continue
+
+            total_reactions = 0
 
             reaction_results = []
             for reaction_id, custom_emoji_id, reaction_emoji, msg_count in reactions[ref.content_id]:
@@ -853,6 +856,7 @@ class MessageRef(Model):
                 else:
                     raise Unreachable
 
+                total_reactions += msg_count
                 reaction_results.append(ReactionCount(
                     chosen_order=1 if (reaction_id, custom_emoji_id) == user_reactions.get(ref.content_id) else None,
                     reaction=reaction,
@@ -865,18 +869,9 @@ class MessageRef(Model):
             )
 
             recent_reactions = None
-            if can_see_list:
-                # TODO: do this outside the loop
-                if ref.content.author_id == user_id:
-                    is_unread = ref.content.author_reactions_unread
-                else:
-                    is_unread = False
-
+            if can_see_list and total_reactions <= 5:
                 recent_reactions = []
-                for recent in await models.MessageReaction.filter(
-                        message_id=ref.content_id,
-                ).order_by("-date").limit(5).select_related("reaction"):
-                    recent_reactions.append(recent.to_tl_peer_reaction(user_id, is_unread))
+                recent_to_fetch.append((ref, recent_reactions))
 
             results.append(MessageReactions(
                 min=ref.content_id not in user_reactions and ref.content.author_id != user_id,
@@ -885,6 +880,20 @@ class MessageRef(Model):
                 recent_reactions=recent_reactions,
             ))
             to_cache.append((cache_key, results[-1]))
+
+        if recent_to_fetch:
+            content_ids = [ref.content_id for ref, _ in recent_to_fetch]
+            content_by_id = {ref.content_id: ref.content for ref, _ in recent_to_fetch}
+            recents_by_message = {ref.content_id: recent_list for ref, recent_list in recent_to_fetch}
+            for recent in await models.MessageReaction.filter(
+                    message_id__in=content_ids,
+            ).order_by("-date").limit(5).select_related("reaction").only(
+                "user_id", "message_id", "custom_emoji_id", "date", "reaction_id",
+                "reaction__id", "reaction__reaction",
+            ):
+                content = content_by_id[recent.message_id]
+                is_unread = content.author_reactions_unread if content.author_id == user_id else False
+                recents_by_message[recent.message_id].append(recent.to_tl_peer_reaction(user_id, is_unread))
 
         if to_cache:
             await Cache.obj.multi_set(to_cache)
