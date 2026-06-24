@@ -88,16 +88,27 @@ SUPPORTED_LOCS = (
     InputDocumentFileLocation, InputPhotoFileLocation, InputPeerPhotoFileLocation, InputEncryptedFileLocation,
     InputStickerSetThumb,
 )
+ONE_MB = 1024 * 1024
+ONE_KB = 1024
+FOUR_KB = ONE_KB * 4
 
 
 @handler.on_request(GetFile, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_file(request: GetFile, user_id: int) -> TLFile:
     if not isinstance(request.location, SUPPORTED_LOCS):
         raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
-    if request.limit < 0 or request.limit > 1024 * 1024:
+    if request.limit < 0 or request.limit > ONE_MB:
+        raise ErrorRpc(error_code=400, error_message="LIMIT_INVALID")
+    if request.offset // ONE_MB != (request.offset + request.limit - 1) // ONE_MB:
         raise ErrorRpc(error_code=400, error_message="LIMIT_INVALID")
     if request.offset < 0:
         raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
+
+    check_div = ONE_KB if request.precise else FOUR_KB
+    if request.offset % check_div != 0:
+        raise ErrorRpc(error_code=400, error_message="OFFSET_INVALID")
+    if request.limit % check_div != 0:
+        raise ErrorRpc(error_code=400, error_message="LIMIT_INVALID")
 
     location = request.location
     ctx = request_ctx.get()
