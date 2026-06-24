@@ -9,7 +9,7 @@ from piltover.app.utils.utils import telegram_hash
 from piltover.config import APP_CONFIG
 from piltover.cache import Cache
 from piltover.db.enums import PeerType, FileType, MessageType
-from piltover.db.models import Reaction, User, Peer, MessageReaction, State, RecentReaction, UserReactionsSettings, \
+from piltover.db.models import Reaction, User, Peer, MessageReaction, RecentReaction, UserReactionsSettings, \
     MessageRef, AvailableChannelReaction, File, MessageContent
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -236,7 +236,7 @@ async def read_reactions(request: ReadReactions, user_id: int) -> AffectedHistor
         author_reactions_unread=False,
     )
 
-    pts = await State.add_pts(user_id, 0)
+    pts = await User.add_pts(user_id, 0)
 
     # TODO: UpdateMessageReactions with unread=False
 

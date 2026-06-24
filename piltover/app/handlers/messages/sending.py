@@ -16,7 +16,7 @@ from piltover.app.utils.utils import process_message_entities, process_reply_mar
 from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType, ChatAdminRights
-from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
+from piltover.db.models import User, Dialog, MessageDraft, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
     SlowmodeLastMessage, MessageRef, MessageContent, ReadState, Username, MessageFwdHeader
@@ -316,7 +316,7 @@ async def get_updates_for_random_id(user_id: int, peer: Peer, random_id: int) ->
     else:
         updates.updates.append(UpdateNewMessage(
             message=message_tl,
-            pts=await State.add_pts(user_id, 0),
+            pts=await User.add_pts(user_id, 0),
             pts_count=0,
         ))
 
@@ -601,7 +601,7 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
         )).select_related("peer")
         if not all_messages:
             return AffectedMessages(
-                pts=await State.add_pts(user_id, 0),
+                pts=await User.add_pts(user_id, 0),
                 pts_count=0,
             )
 
@@ -611,7 +611,7 @@ async def delete_messages(request: DeleteMessages, user_id: int) -> AffectedMess
     all_ids = [i for ids in messages.values() for i in ids]
     if not all_ids:
         return AffectedMessages(
-            pts=await State.add_pts(user_id, 0),
+            pts=await User.add_pts(user_id, 0),
             pts_count=0,
         )
 
@@ -1488,7 +1488,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
         content_ids.append(content_id)
 
     if not content_ids:
-        return AffectedHistory(pts=await State.add_pts(user_id, 0), pts_count=0, offset=0)
+        return AffectedHistory(pts=await User.add_pts(user_id, 0), pts_count=0, offset=0)
 
     if request.revoke and peer.type is not PeerType.SELF:
         peers_q = None
@@ -1642,7 +1642,7 @@ async def unpin_all_messages(request: UnpinAllMessages, user_id: int) -> Affecte
         if peer.type is PeerType.CHANNEL:
             pts = peer.channel.pts
         else:
-            pts = await State.add_pts(user_id, 0)
+            pts = await User.add_pts(user_id, 0)
 
         return AffectedHistory(
             pts=pts,

@@ -6,7 +6,7 @@ from tortoise.expressions import Q
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.dialogs import get_dialogs_internal, format_dialogs
 from piltover.app.handlers.messages.history import get_messages_internal, format_messages_internal
-from piltover.db.models import SavedDialog, Peer, State, MessageRef
+from piltover.db.models import SavedDialog, Peer, MessageRef, User
 from piltover.db.models.peer import PeerSelfT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -58,8 +58,7 @@ async def delete_saved_history(request: DeleteSavedHistory, user_id: int) -> Aff
 
     ids = cast(list[int], await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", flat=True))
     if not ids:
-        updates_state = await State.get(user_id=user_id)
-        return AffectedHistory(pts=updates_state.pts, pts_count=0, offset=0)
+        return AffectedHistory(pts=await User.add_pts(user_id, 0), pts_count=0, offset=0)
 
     offset = 0
     if len(ids) > 1000:

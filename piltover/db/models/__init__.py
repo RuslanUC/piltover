@@ -17,7 +17,6 @@ from .privacy_rule import PrivacyRule
 from .read_state import ReadState
 from .sentcode import SentCode, PhoneCodePurpose
 from .srp_session import SrpSession
-from .state import State
 from .update import Update
 from .uploading_file import UploadingFile, UploadingFilePart
 from .user import User

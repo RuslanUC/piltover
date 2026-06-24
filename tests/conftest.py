@@ -17,7 +17,7 @@ from pyrogram.types import Chat
 from pyrogram.utils import get_channel_id
 from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
-from tortoise import connections, Model
+from tortoise import connections
 from tortoise.backends.sqlite import SqliteClient
 
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
@@ -86,7 +86,7 @@ Auth.create = _real_auth_create
 
 
 async def _custom_auth_create(self: Auth) -> bytes:
-    from piltover.db.models import AuthKey, User, State, Peer, UserAuthorization
+    from piltover.db.models import AuthKey, User, Peer, UserAuthorization
     from piltover.db.enums import PeerType
     from piltover.tl import Long
 
@@ -101,7 +101,6 @@ async def _custom_auth_create(self: Auth) -> bytes:
             "last_name": "Last",
         })
         if created:
-            await State.create(user=user)
             await Peer.create(owner=user, type=PeerType.SELF, user=user)
         await UserAuthorization.create(user=user, key=auth_key, ip="0.0.0.0")
 
@@ -339,7 +338,7 @@ async def client_fake(faker: Faker) -> ClientFactorySync:
 
 @pytest_asyncio.fixture()
 async def client_with_key(client_fake: ClientFactorySync) -> ClientFactory:
-    from piltover.db.models import AuthKey, User, State, Peer
+    from piltover.db.models import AuthKey, User, Peer
     from piltover.db.enums import PeerType
     from piltover.tl import Long
 
@@ -357,7 +356,6 @@ async def client_with_key(client_fake: ClientFactorySync) -> ClientFactory:
             "last_name": client.last_name,
         })
         if created:
-            await State.create(user=user)
             await Peer.create(owner=user, type=PeerType.SELF, user=user)
 
         setattr(client, "_generated_key", key)

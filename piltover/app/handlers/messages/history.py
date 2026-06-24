@@ -14,7 +14,7 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.cache import Cache
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction, \
     READABLE_FILE_TYPES
-from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
+from piltover.db.models import User, MessageDraft, ReadState, Peer, ChannelPostInfo, MessageMention, \
     ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent, \
     MessageUniqueView, Channel
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
@@ -471,12 +471,11 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
         user_id, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
     )
     read_state, created = await ReadState.get_or_create(owner_id=user_id, peer=peer)
-    state, _ = await State.get_or_create(user_id=user_id)
 
     if request.max_id and request.max_id <= read_state.last_message_id:
         logger.debug(f"Ignoring ReadHistory, {request.max_id} <= {read_state.last_message_id}")
         return AffectedMessages(
-            pts=state.pts,
+            pts=await User.add_pts(user_id, 0),
             pts_count=0,
         )
 
@@ -492,7 +491,7 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     if not max_id or max_id <= read_state.last_message_id:
         logger.debug(f"Ignoring ReadHistory, (actual) {max_id} <= {read_state.last_message_id}")
         return AffectedMessages(
-            pts=state.pts,
+            pts=await User.add_pts(user_id, 0),
             pts_count=0,
         )
 
@@ -810,7 +809,7 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
 
     if peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
         return AffectedHistory(
-            pts=await State.add_pts(user_id, 0),
+            pts=await User.add_pts(user_id, 0),
             pts_count=0,
             offset=0,
         )
@@ -824,7 +823,7 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
         if peer.type is PeerType.CHANNEL:
             pts = peer.channel.pts
         else:
-            pts = await State.add_pts(user_id, 0)
+            pts = await User.add_pts(user_id, 0)
         return AffectedHistory(
             pts=pts,
             pts_count=0,
@@ -936,7 +935,7 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
 async def read_message_contents(request: ReadMessageContents, user_id: int) -> AffectedMessages:
     if not request.id:
         return AffectedMessages(
-            pts=await State.add_pts(user_id, 0),
+            pts=await User.add_pts(user_id, 0),
             pts_count=0,
         )
 
@@ -947,7 +946,7 @@ async def read_message_contents(request: ReadMessageContents, user_id: int) -> A
     message_ids = await read_message_contents_internal(user_id, valid_refs)
     if message_ids is None:
         return AffectedMessages(
-            pts=await State.add_pts(user_id, 0),
+            pts=await User.add_pts(user_id, 0),
             pts_count=0,
         )
 

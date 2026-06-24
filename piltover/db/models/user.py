@@ -4,11 +4,12 @@ import hashlib
 import hmac
 from datetime import date
 from enum import auto, Enum
-from typing import Iterable, Self, cast
+from typing import Iterable, Self, cast, Collection
 
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
 from tortoise.queryset import QuerySet
+from tortoise.transactions import in_transaction
 
 from piltover.config import APP_CONFIG
 from piltover.cache import Cache
@@ -21,6 +22,7 @@ from piltover.tl.to_format import UserToFormat
 from piltover.tl.types import User as TLUser, PeerColor, PeerUser, InputPeerSelf, InputPeerUser, InputUserSelf
 from piltover.tl.base import User as TLUserBase
 from piltover.tl.types.internal_access import AccessHashPayloadUser
+from piltover.utils import SingleElementList
 
 
 class _Missing(Enum):
@@ -49,6 +51,7 @@ class User(Model):
     history_ttl_days: int = fields.SmallIntField(default=0)
     read_dates_private: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
+    pts: int = fields.BigIntField(default=0)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -469,3 +472,48 @@ class User(Model):
     async def inc_version(self) -> None:
         await User.filter(id=self.id).update(version=F("version") + 1)
         await self.refresh_from_db(["version"])
+
+    @classmethod
+    async def add_pts(cls, user: models.User | int, pts_count: int) -> int:
+        user_id = user.id if isinstance(user, models.User) else user
+
+        if pts_count <= 0:
+            return cast(int, await cls.get(id=user_id).values_list("pts", flat=True))
+
+        async with in_transaction():
+            pts = cast(int, await cls.select_for_update().get(id=user_id).values_list("pts", flat=True))
+            new_pts = pts + pts_count
+            await cls.filter(id=user_id).update(pts=new_pts)
+
+        return new_pts
+
+    @classmethod
+    async def add_pts_bulk(cls, users: list[models.User | int], pts_counts: Collection[int] | int) -> list[int]:
+        if not users:
+            return []
+
+        user_ids = [(user.id if isinstance(user, models.User) else user) for user in users]
+
+        if not isinstance(pts_counts, Collection):
+            pts_counts = SingleElementList(pts_counts, len(users))
+        if len(pts_counts) != len(users):
+            raise ValueError("\"users\" and \"pts_count\" must have same length")
+
+        async with in_transaction():
+            to_update = []
+            user_by_user_id = {
+                user.id: user
+                for user in await cls.select_for_update().filter(id__in=user_ids).only("id", "pts")
+            }
+
+            for user_id, pts_count in zip(user_ids, pts_counts):
+                if pts_count <= 0:
+                    continue
+                state = user_by_user_id[user_id]
+                state.pts += pts_count
+                to_update.append(state)
+
+            if to_update:
+                await cls.bulk_update(to_update, fields=["pts"])
+
+        return [user_by_user_id[user_id].pts for user_id in user_ids]

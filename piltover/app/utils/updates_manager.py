@@ -7,7 +7,7 @@ from tortoise.transactions import in_transaction
 
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
-from piltover.db.models import User, State, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
+from piltover.db.models import User, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
     Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef, \
     PhoneCall, UserEmojiStatus, Username
@@ -74,7 +74,7 @@ async def send_message(
         pts_users.append(peer.owner_id)
         pts_counts.append(2 if message.random_id else 1)
 
-    ptss = await State.add_pts_bulk(pts_users, pts_counts)
+    ptss = await User.add_pts_bulk(pts_users, pts_counts)
 
     for target_user_id, new_pts in zip(pts_users, ptss):
         peer = peer_by_user_id[target_user_id]
@@ -215,7 +215,7 @@ async def send_messages(
         for message in peer_messages:
             pts_counts[-1] += 2 if message.random_id else 1
 
-    ptss = await State.add_pts_bulk(pts_users, pts_counts)
+    ptss = await User.add_pts_bulk(pts_users, pts_counts)
 
     for target_user_id, pts_count, new_pts in zip(pts_users, pts_counts, ptss):
         pts = new_pts - pts_count
@@ -276,7 +276,7 @@ async def send_messages(
         if result_update is None:
             result_update = UpdatesWithDefaults(updates=[])
         if result_pts is None:
-            result_pts = await State.add_pts(user.id, 0)
+            result_pts = await User.add_pts(user.id, 0)
 
         for ref in prepend_existing:
             ucc.add_message(ref.content_id)
@@ -385,7 +385,7 @@ async def delete_messages(user: User | int | None, messages: dict[User | int, li
     user_new_pts = None
 
     messages_items = list(messages.items())
-    ptss = await State.add_pts_bulk(
+    ptss = await User.add_pts_bulk(
         [user_or_id for user_or_id, _ in messages_items],
         [len(ids) for _, ids in messages_items]
     )
@@ -465,7 +465,7 @@ async def edit_message(user_id: int, messages: dict[Peer, MessageRef]) -> Update
     chats_and_channels = [*chats, *channels]
 
     messages_items = list(messages.items())
-    ptss = await State.add_pts_bulk([peer.owner_id for peer, _ in messages_items], 1)
+    ptss = await User.add_pts_bulk([peer.owner_id for peer, _ in messages_items], 1)
 
     for (peer, message), new_pts in zip(messages_items, ptss):
         updates_to_create.append(
@@ -539,7 +539,7 @@ async def edit_message_channel(channel: Channel, message: MessageRef) -> Updates
 
 
 async def pin_dialog(user_id: int, peer: Peer, dialog: Dialog) -> None:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.DIALOG_PIN,
@@ -571,7 +571,7 @@ async def pin_dialog(user_id: int, peer: Peer, dialog: Dialog) -> None:
 
 
 async def update_draft(user_id: int, peer: Peer, draft: MessageDraft | None) -> None:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.DRAFT_UPDATE,
@@ -603,7 +603,7 @@ async def update_drafts(user_id: int, peers: list[Peer], drafts: Collection[Mess
     if len(peers) != len(drafts):
         raise ValueError
 
-    new_pts = await State.add_pts(user_id, len(drafts))
+    new_pts = await User.add_pts(user_id, len(drafts))
     updates_to_create = []
     updates_to_send = []
     ucc = UsersChatsChannels()
@@ -642,7 +642,7 @@ async def update_drafts(user_id: int, peers: list[Peer], drafts: Collection[Mess
 
 
 async def reorder_pinned_dialogs(user_id: int, dialogs: list[Dialog]) -> None:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -687,7 +687,7 @@ async def pin_messages(
     chats_and_channels = [*chats, *channels]
 
     messages_items = list(messages_by_peer.items())
-    ptss = await State.add_pts_bulk(
+    ptss = await User.add_pts_bulk(
         [peer.owner_id for peer, _ in messages_items],
         [len(ids) for _, ids in messages_items],
     )
@@ -842,7 +842,7 @@ async def update_user(user: User) -> None:
 
     # for peer in await Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
     for peer in await Peer.filter(owner_id=user.id, type=PeerType.SELF):
-        pts = await State.add_pts(peer.owner_id, 1)
+        pts = await User.add_pts(peer.owner_id, 1)
 
         updates_to_create.append(
             Update(
@@ -863,7 +863,7 @@ async def update_user(user: User) -> None:
 
 async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
     user_ids = [peer.owner_id for peer in peers]
-    ptss = await State.add_pts_bulk(user_ids, 1)
+    ptss = await User.add_pts_bulk(user_ids, 1)
 
     updates_to_create = []
     for user_id, pts in zip(user_ids, ptss):
@@ -946,7 +946,7 @@ async def update_user_name(user: User) -> None:
     )
     # for peer in await Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
     for peer in await Peer.filter(owner_id=user.id, type=PeerType.SELF):
-        pts = await State.add_pts(peer.owner_id, 1)
+        pts = await User.add_pts(peer.owner_id, 1)
 
         updates_to_create.append(
             Update(
@@ -970,7 +970,7 @@ async def add_remove_contact(user_id: int, targets: list[User]) -> Updates:
     users = set()
     updates_to_create = []
 
-    new_pts = await State.add_pts(user_id, len(targets))
+    new_pts = await User.add_pts(user_id, len(targets))
     pts_before = new_pts - len(targets)
 
     for num, target in enumerate(targets, start=1):
@@ -1003,7 +1003,7 @@ async def add_remove_contact(user_id: int, targets: list[User]) -> Updates:
 
 
 async def block_unblock_user(user_id: int, target: Peer) -> None:
-    pts = await State.add_pts(user_id, 1)
+    pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.UPDATE_BLOCK,
@@ -1028,7 +1028,7 @@ async def update_chat(chat: Chat) -> Updates:
         list[int],
         await User.filter(chatparticipants__chat_id=chat.id, chatparticipants__left=False).values_list("id", flat=True)
     )
-    ptss = await State.add_pts_bulk(participant_ids, 1)
+    ptss = await User.add_pts_bulk(participant_ids, 1)
 
     updates_to_create = []
     for user_id, pts in zip(participant_ids, ptss):
@@ -1051,7 +1051,7 @@ async def update_chat(chat: Chat) -> Updates:
 
 
 async def update_dialog_unread_mark(user_id: int, dialog: Dialog) -> None:
-    pts = await State.add_pts(user_id, 1)
+    pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.UPDATE_DIALOG_UNREAD_MARK,
@@ -1077,7 +1077,7 @@ async def update_dialog_unread_mark(user_id: int, dialog: Dialog) -> None:
 
 
 async def update_read_history_inbox(peer: Peer, max_id: int, unread_count: int) -> tuple[int, Updates]:
-    pts = await State.add_pts(peer.owner_id, 1)
+    pts = await User.add_pts(peer.owner_id, 1)
     await Update.create(
         user_id=peer.owner_id,
         update_type=UpdateType.READ_INBOX,
@@ -1117,7 +1117,7 @@ async def update_read_history_inbox_channel(
 ) -> Updates:
     user_id = user.id if isinstance(user, User) else user
 
-    pts = await State.add_pts(user_id, 1)
+    pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.READ_INBOX_CHANNEL,
@@ -1156,7 +1156,7 @@ async def update_read_history_outbox_channel(channel: Channel, max_ids: dict[int
     channels = [await channel.to_tl()]
 
     users = list(max_ids)
-    ptss = await State.add_pts_bulk(users, 1)
+    ptss = await User.add_pts_bulk(users, 1)
 
     for user_id, pts in zip(users, ptss):
         max_id = max_ids[user_id]
@@ -1202,7 +1202,7 @@ async def update_read_history_outbox(messages: dict[Peer, int]) -> None:
     users, chats, _ = await ucc.resolve()
 
     items = list(messages.items())
-    ptss = await State.add_pts_bulk([peer.owner_id for peer, _ in items], 1)
+    ptss = await User.add_pts_bulk([peer.owner_id for peer, _ in items], 1)
 
     for new_pts, (peer, max_id) in zip(ptss, items):
         updates_to_create.append(Update(
@@ -1255,7 +1255,7 @@ async def update_channel(channel: Channel, send_to_users: list[int] | None = Non
 
 
 async def update_folder_peers(user_id: int, dialogs: list[Dialog]) -> Updates:
-    new_pts = await State.add_pts(user_id, len(dialogs))
+    new_pts = await User.add_pts(user_id, len(dialogs))
 
     await Update.create(
         user_id=user_id,
@@ -1299,7 +1299,7 @@ async def update_chat_default_banned_rights(chat: Chat) -> Updates:
     user_ids = []
 
     participants = await User.filter(chatparticipants__chat_id=chat.id, chatparticipants__left=False).only("id")
-    ptss = await State.add_pts_bulk(participants, 1)
+    ptss = await User.add_pts_bulk(participants, 1)
 
     for user, pts in zip(participants, ptss):
         updates_to_create.append(Update(
@@ -1330,7 +1330,7 @@ async def update_chat_default_banned_rights(chat: Chat) -> Updates:
 async def update_channel_for_user(channel: Channel, user: User | int) -> Updates:
     user_id = user.id if isinstance(user, User) else user
 
-    pts = await State.add_pts(user_id, 1)
+    pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id, update_type=UpdateType.UPDATE_CHANNEL, pts=pts, related_id=channel.id,
     )
@@ -1345,7 +1345,7 @@ async def update_channel_for_user(channel: Channel, user: User | int) -> Updates
 
 
 async def update_message_poll(poll: Poll, user_id: int) -> Updates:
-    pts = await State.add_pts(user_id, 1)
+    pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.UPDATE_POLL,
@@ -1368,7 +1368,7 @@ async def update_message_poll(poll: Poll, user_id: int) -> Updates:
 
 
 async def update_folder(user_id: int, folder_id: int, folder: DialogFolder | None) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -1396,7 +1396,7 @@ async def update_folder(user_id: int, folder_id: int, folder: DialogFolder | Non
 
 
 async def update_folders_order(user_id: int, folder_ids: list[int]) -> Updates:
-    new_pts = await State.add_pts(user_id, len(folder_ids))
+    new_pts = await User.add_pts(user_id, len(folder_ids))
 
     await Update.create(
         user_id=user_id,
@@ -1445,7 +1445,7 @@ async def update_reactions(user_id: int, messages: list[MessageRef], peer: Peer,
 
 
 async def encryption_update(user_id: int, chat: EncryptedChat) -> None:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.filter(user_id=user_id, update_type=UpdateType.UPDATE_ENCRYPTION, encrypted_chat_id=chat.id).delete()
     update = await Update.create(
@@ -1493,7 +1493,7 @@ async def send_encrypted_typing(chat_id: int, auth_id: int) -> None:
 
 
 async def update_config(user_id: int) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -1513,7 +1513,7 @@ async def update_config(user_id: int) -> Updates:
 
 
 async def update_recent_reactions(user_id: int) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -1533,7 +1533,7 @@ async def update_recent_reactions(user_id: int) -> Updates:
 
 
 async def new_auth(user: User, auth: UserAuthorization) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+    new_pts = await User.add_pts(user, 1)
 
     await Update.create(
         user=user,
@@ -1571,7 +1571,7 @@ async def new_auth(user: User, auth: UserAuthorization) -> Updates:
 
 
 async def new_stickerset(user_id: int, stickerset: Stickerset) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -1595,7 +1595,7 @@ async def new_stickerset(user_id: int, stickerset: Stickerset) -> Updates:
 
 
 async def update_stickersets(user_id: int) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -1613,7 +1613,7 @@ async def update_stickersets(user_id: int) -> Updates:
 
 
 async def update_stickersets_order(user_id: int, new_order: list[int]) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -1638,7 +1638,7 @@ async def update_stickersets_order(user_id: int, new_order: list[int]) -> Update
 
 
 async def update_chat_wallpaper(user: User, target: User, chat_wallpaper: ChatWallpaper | None) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+    new_pts = await User.add_pts(user, 1)
 
     await Update.create(
         user=user,
@@ -1667,7 +1667,7 @@ async def update_chat_wallpaper(user: User, target: User, chat_wallpaper: ChatWa
 
 async def read_messages_contents(user_id: int, message_ids: list[int]) -> tuple[int, Updates]:
     pts_count = len(message_ids)
-    new_pts = await State.add_pts(user_id, pts_count)
+    new_pts = await User.add_pts(user_id, pts_count)
 
     await Update.create(
         user_id=user_id,
@@ -1721,7 +1721,7 @@ async def read_channel_messages_contents(user_id: int, channel: Channel, message
 
 
 async def new_scheduled_message(user_id: int, message: MessageRef) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -1744,7 +1744,7 @@ async def delete_scheduled_messages(
         user_id: int, peer: Peer, deleted_message_ids: list[int], sent_message_ids: list[int] | None = None,
 ) -> Updates:
     pts_count = len(deleted_message_ids)
-    new_pts = await State.add_pts(user_id, pts_count)
+    new_pts = await User.add_pts(user_id, pts_count)
 
     await Update.create(
         user_id=user_id,
@@ -1777,7 +1777,7 @@ async def update_history_ttl(peer: Peer, ttl_days: int) -> Updates:
 
     result: Updates | None = None
 
-    ptss = await State.add_pts_bulk([peer.owner_id for peer in peers], 1)
+    ptss = await User.add_pts_bulk([peer.owner_id for peer in peers], 1)
 
     updates_to_create: list[Update] = []
     updates_to_send: list[tuple[Updates, int]] = []
@@ -1819,7 +1819,7 @@ async def migrate_chat(chat: Chat, channel: Channel, user_ids: list[int]) -> Upd
 
     chats_and_channels = [await chat.to_tl(), await channel.to_tl()]
 
-    ptss = await State.add_pts_bulk(user_ids, 2)
+    ptss = await User.add_pts_bulk(user_ids, 2)
 
     for user_id, pts in zip(user_ids, ptss):
         updates_to_create.append(Update(
@@ -1844,7 +1844,7 @@ async def migrate_chat(chat: Chat, channel: Channel, user_ids: list[int]) -> Upd
 
 
 async def bot_callback_query(bot_id: int, query: CallbackQuery) -> None:
-    new_pts = await State.add_pts(bot_id, 1)
+    new_pts = await User.add_pts(bot_id, 1)
 
     await Update.create(
         user_id=bot_id,
@@ -1878,7 +1878,7 @@ async def bot_callback_query(bot_id: int, query: CallbackQuery) -> None:
 
 
 async def update_user_phone(user: User) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+    new_pts = await User.add_pts(user, 1)
 
     await Update.create(
         user=user,
@@ -1908,7 +1908,7 @@ async def update_peer_notify_settings(
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.UPDATE_PEER_NOTIFY_SETTINGS,
-        pts=await State.add_pts(user_id, 1),
+        pts=await User.add_pts(user_id, 1),
         pts_count=1,
         related_id=peer.id if peer is not None else None,
         additional_data=[not_peer.value] if not_peer else None,
@@ -1932,7 +1932,7 @@ async def update_saved_gifs(user_id: int) -> Updates:
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.SAVED_GIFS,
-        pts=await State.add_pts(user_id, 1),
+        pts=await User.add_pts(user_id, 1),
         pts_count=1,
         related_id=None,
     )
@@ -1945,7 +1945,7 @@ async def update_saved_gifs(user_id: int) -> Updates:
 
 
 async def bot_inline_query(bot: User, query: InlineQuery) -> None:
-    new_pts = await State.add_pts(bot, 1)
+    new_pts = await User.add_pts(bot, 1)
 
     await Update.create(
         user=bot,
@@ -1973,7 +1973,7 @@ async def bot_inline_query(bot: User, query: InlineQuery) -> None:
 
 
 async def update_recent_stickers(user_id: int) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -1991,7 +1991,7 @@ async def update_recent_stickers(user_id: int) -> Updates:
 
 
 async def update_faved_stickers(user_id: int) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -2009,7 +2009,7 @@ async def update_faved_stickers(user_id: int) -> Updates:
 
 
 async def pin_saved_dialog(user_id: int, dialog: SavedDialog) -> None:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.SAVED_DIALOG_PIN,
@@ -2037,7 +2037,7 @@ async def pin_saved_dialog(user_id: int, dialog: SavedDialog) -> None:
 
 
 async def reorder_pinned_saved_dialogs(user_id: int, dialogs: list[SavedDialog]) -> None:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
 
     await Update.create(
         user_id=user_id,
@@ -2064,7 +2064,7 @@ async def reorder_pinned_saved_dialogs(user_id: int, dialogs: list[SavedDialog])
 
 
 async def update_privacy(user: User, rule: PrivacyRule, rules: PrivacyRules) -> Updates:
-    new_pts = await State.add_pts(user, 1)
+    new_pts = await User.add_pts(user, 1)
 
     await Update.create(
         user=user,
@@ -2116,7 +2116,7 @@ async def update_channel_participant_available_message(user_id: int, channel: Ch
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.UPDATE_CHANNEL_MIN_AVAILABLE_ID,
-        pts=await State.add_pts(user_id, 1),
+        pts=await User.add_pts(user_id, 1),
         pts_count=1,
         related_id=channel.id,
         additional_data=[min_id],
@@ -2136,7 +2136,7 @@ async def update_channel_participant_available_message(user_id: int, channel: Ch
 
 
 async def phone_call_update(user_id: int, call: PhoneCall, sessions: list[int] | None = None) -> Updates:
-    new_pts = await State.add_pts(user_id, 1)
+    new_pts = await User.add_pts(user_id, 1)
     await Update.create(
         user_id=user_id,
         update_type=UpdateType.PHONE_CALL,
@@ -2184,7 +2184,7 @@ async def update_user_emoji_status(user: User, status: UserEmojiStatus | None) -
     await Update.create(
         user=user,
         update_type=UpdateType.EMOJI_STATUS,
-        pts=await State.add_pts(user, 1),
+        pts=await User.add_pts(user, 1),
         pts_count=1,
         related_id=status.emoji_id if status is not None else None,
         additional_data=[int(status.until.timestamp()) if status is not None and status.until is not None else None],

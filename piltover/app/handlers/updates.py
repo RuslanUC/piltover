@@ -8,7 +8,8 @@ from tortoise.functions import Min, Max
 
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, SecretUpdateType
-from piltover.db.models import UserAuthorization, State, Update, Peer, ChannelUpdate, SecretUpdate, MessageRef, Dialog
+from piltover.db.models import UserAuthorization, Update, Peer, ChannelUpdate, SecretUpdate, MessageRef, Dialog, \
+    User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import UpdateChannelTooLong
@@ -35,7 +36,7 @@ async def get_seq_qts() -> tuple[int, int]:
 
 async def get_state_internal(user_id: int, pts: int | None = None) -> TLState:
     if pts is None:
-        pts = cast(int | None, await State.get_or_none(user_id=user_id).values_list("pts", flat=True)) or 0
+        pts = cast(int | None, await User.get(id=user_id).values_list("pts", flat=True)) or 0
 
     seq, qts = await get_seq_qts()
     return TLState(
