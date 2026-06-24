@@ -42,6 +42,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
         "user__version",
         "user__accent_color_id",
         "user__profile_color_id",
+        "user__last_seen",
 
         "user__username__username",
 

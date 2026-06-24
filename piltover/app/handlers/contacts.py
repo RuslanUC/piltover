@@ -11,8 +11,7 @@ from tortoise.queryset import QuerySet
 import piltover.app.utils.updates_manager as upd
 from piltover.config import APP_CONFIG
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, Contact, Username, Dialog, Presence, Channel, PrivacyRuleException, \
-    PrivacyRule
+from piltover.db.models import User, Peer, Contact, Username, Dialog, Channel, PrivacyRuleException, PrivacyRule
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBlocked, ImportedContact, \
@@ -182,13 +181,16 @@ async def get_top_peers():  # pragma: no cover
 
 @handler.on_request(GetStatuses, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_statuses(user_id: int) -> list[ContactStatus]:
-    statuses = await Presence.filter(user_id__in=Subquery(
-        Contact.filter(owner_id=user_id).values_list("target_id", flat=True)
-    ))
+    contacts = await Contact.filter(
+        owner_id=user_id
+    ).select_related("target").only("id", "target_id", "target__id", "target__last_seen")
 
     return TLObjectVector([
-        ContactStatus(user_id=status.user_id, status=await status.to_tl(None))
-        for status in statuses
+        ContactStatus(
+            user_id=cast(int, contact.target_id),
+            status=User.to_tl_presence_from_last_seen(int(cast(User, contact.target).last_seen.timestamp()), False)
+        )
+        for contact in contacts
     ])
 
 

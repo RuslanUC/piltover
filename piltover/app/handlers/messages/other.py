@@ -2,7 +2,7 @@ from fastrand import xorshift128plus_bytes
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
-from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel
+from piltover.db.models import User, Peer, ChatParticipant, DefaultSendAs, Channel
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
@@ -78,9 +78,9 @@ async def set_typing(request: SetTyping, user: User):
         )
 
     if not user.bot:
-        await Presence.update_to_now(user)
+        await user.update_presence_to_now()
         # TODO: send status update
-        #await upd.update_status(user, presence, peers)
+        #await upd.update_status(user, peers)
 
     return True
 

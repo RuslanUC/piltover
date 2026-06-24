@@ -7,7 +7,7 @@ from tortoise.transactions import in_transaction
 
 from piltover.context import request_ctx
 from piltover.db.enums import UpdateType, PeerType, ChannelUpdateType, NotifySettingsNotPeerType
-from piltover.db.models import User, Update, MessageDraft, Peer, Dialog, Chat, Presence, \
+from piltover.db.models import User, Update, MessageDraft, Peer, Dialog, Chat, \
     ChatParticipant, ChannelUpdate, Channel, Poll, DialogFolder, EncryptedChat, UserAuthorization, SecretUpdate, \
     Stickerset, ChatWallpaper, CallbackQuery, PeerNotifySettings, InlineQuery, SavedDialog, PrivacyRule, MessageRef, \
     PhoneCall, UserEmojiStatus, Username
@@ -902,23 +902,27 @@ async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
 
 
 async def update_status(
-        user: User, status: Presence, peers: list[Peer | User | int] | list[Peer] | list[User] | list[int],
+        user: User, peers: list[Peer | User | int] | list[Peer] | list[User] | list[int],
 ) -> None:
     user_tl = await user.to_tl()
 
+    peer_user_ids = []
     for peer in peers:
         if isinstance(peer, Peer):
-            peer_user_id = peer.owner_id
+            peer_user_ids.append(peer.owner_id)
         elif isinstance(peer, User):
-            peer_user_id = peer.id
+            peer_user_ids.append(peer.id)
         else:
-            peer_user_id = peer
+            peer_user_ids.append(peer)
 
+    # TODO: check if peer_user_ids have access to presence in bulk
+
+    for peer_user_id in peer_user_ids:
         updates = UpdatesWithDefaults(
             updates=[
                 UpdateUserStatus(
                     user_id=user.id,
-                    status=await status.to_tl(peer_user_id),
+                    status=await user.to_tl_presence(peer_user_id),
                 ),
             ],
             users=[user_tl],

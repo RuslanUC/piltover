@@ -12,7 +12,6 @@ from .message_draft import MessageDraft
 from .message_fwd_header import MessageFwdHeader
 from .message_media import MessageMedia
 from .peer import Peer
-from .presence import Presence
 from .privacy_rule import PrivacyRule
 from .read_state import ReadState
 from .sentcode import SentCode, PhoneCodePurpose

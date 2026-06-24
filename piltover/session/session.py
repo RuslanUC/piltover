@@ -15,8 +15,7 @@ import piltover
 from piltover.auth_data import AuthData
 from piltover.cache import Cache
 from piltover.db.enums import PrivacyRuleKeyType
-from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
-    MessageRef
+from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, MessageRef
 from piltover.exceptions import Unreachable
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer

@@ -47,7 +47,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [ ] Top peers
 - [ ] Proper contacts implementation (right now user is able to add/remove/import contact, but only contacts for existing users are created).
 - [ ] Support S3 as a storage backend
-- [ ] Its probably not a bad idea to move `State.pts` to `User` model? same with Presence.last_seen
+- [x] Its probably not a bad idea to move `State.pts` to `User` model? same with Presence.last_seen
 - [ ] Add registration/authorization through Telegram
 - [x] Completely rethink and rewrite layer converters implementation. 
 

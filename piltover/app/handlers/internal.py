@@ -9,7 +9,7 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
 from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards
 from piltover.db.enums import PeerType
-from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
+from piltover.db.models import Peer, MessageRef, MessageContent, User, MessageDraft, Channel, \
     TaskIqScheduledMessage
 from piltover.db.models.peer import PeerChannelT
 from piltover.enums import ReqHandlerFlags
@@ -157,7 +157,7 @@ async def process_message_to_builtin_bot(request: ProcessMessageToBuiltinBot) ->
 @handler.on_request(UpdateStatusForPeers, ReqHandlerFlags.INTERNAL)
 async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
     user = await User.get(id=request.peer_owner)
-    presence = await Presence.update_to_now(user)
+    await user.update_presence_to_now()
 
     peer_type = PeerType(request.peer_type)
 
@@ -177,7 +177,7 @@ async def update_status_for_peers(request: UpdateStatusForPeers) -> TLObject:
     else:
         return TaggedBool(value=False)
 
-    await upd.update_status(user, presence, peer_users)
+    await upd.update_status(user, peer_users)
     return TaggedBool(value=True)
 
 

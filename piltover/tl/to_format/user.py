@@ -8,9 +8,9 @@ from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, Seria
 class UserToFormat(types.UserToFormatInternal):
     def _write(self, ctx: SerializationContext) -> bytes:
         from piltover.db.enums import PrivacyRuleKeyType
-        from piltover.db.models.presence import Presence, EMPTY as PRESENCE_EMPTY
+        from piltover.db.models.user import User, STATUS_EMPTY
 
-        presence = PRESENCE_EMPTY
+        presence = STATUS_EMPTY
         has_access_to_phone = False
         has_access_to_photo = False
         has_access_to_status = False
@@ -25,7 +25,7 @@ class UserToFormat(types.UserToFormatInternal):
                 has_access_to_status = rules[PrivacyRuleKeyType.STATUS_TIMESTAMP]
 
             if self.last_seen is not None:
-                presence = Presence.to_tl_from_last_seen(self.last_seen, has_access_to_status)
+                presence = User.to_tl_presence_from_last_seen(self.last_seen, has_access_to_status)
         else:
             contact = None
             current_is_contact = False

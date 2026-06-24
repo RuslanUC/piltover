@@ -10,9 +10,9 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType, \
-    UserStatus, AdminLogEntryAction
+    AdminLogEntryAction
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, PrivacyRule, \
-    ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry, MessageRef, MessageContent
+    ChatInviteRequest, ChatInvite, Channel, Dialog, AdminLogEntry, MessageRef, MessageContent
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.peer import PeerChatT
 from piltover.enums import ReqHandlerFlags
@@ -641,8 +641,8 @@ async def get_onlines(request: GetOnlines, user_id: int) -> ChatOnlines:
     # TODO: dont fetch peer, only chat or channel
     peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
 
-    onlines = await Presence.filter(
-        status=UserStatus.ONLINE, last_seen__gt=datetime.now(UTC) - timedelta(minutes=1), user_id__in=Subquery(
+    onlines = await User.filter(
+        last_seen__gt=datetime.now(UTC) - timedelta(minutes=1), id__in=Subquery(
             ChatParticipant.filter(
                 **Chat.or_channel(peer.chat_or_channel), left=False,
             ).values_list("user_id", flat=True)

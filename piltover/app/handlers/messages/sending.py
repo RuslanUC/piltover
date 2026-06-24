@@ -16,7 +16,7 @@ from piltover.app.utils.utils import process_message_entities, process_reply_mar
 from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights, FileType, ChatAdminRights
-from piltover.db.models import User, Dialog, MessageDraft, Peer, MessageMedia, File, Presence, UploadingFile, \
+from piltover.db.models import User, Dialog, MessageDraft, Peer, MessageMedia, File, UploadingFile, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
     SlowmodeLastMessage, MessageRef, MessageContent, ReadState, Username, MessageFwdHeader
@@ -759,8 +759,8 @@ async def edit_message(request: EditMessage | EditMessage_133, user: User):
 
     if not user.bot:
         peers = [message_peer for message_peer in messages.keys() if message_peer != peer]
-        presence = await Presence.update_to_now(user)
-        await upd.update_status(user, presence, peers)
+        await user.update_presence_to_now()
+        await upd.update_status(user, peers)
 
     return await upd.edit_message(user.id, messages)
 
@@ -1317,8 +1317,8 @@ async def forward_messages(
         )
 
     if not user.bot:
-        presence = await Presence.update_to_now(user)
-        await upd.update_status(user, presence, peers[1:])
+        await user.update_presence_to_now()
+        await upd.update_status(user, peers[1:])
 
     if (update := await upd.send_messages(result, user, existing_by_random_id)) is None:
         raise Unreachable

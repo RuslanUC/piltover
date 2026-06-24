@@ -17,8 +17,8 @@ from piltover.app.utils.system_notifications import send_official_notification_m
 from piltover.app.utils.utils import check_password_internal, validate_username, telegram_hash, get_image_dims
 from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, PeerType, FileType
-from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
+from piltover.db.enums import PrivacyRuleKeyType, PushTokenType, PeerType, FileType
+from piltover.db.models import User, UserAuthorization, Peer, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis, \
     TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey, Channel
@@ -288,7 +288,7 @@ async def get_content_settings():  # pragma: no cover
 
 @handler.on_request(UpdateStatus, ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def update_status(request: UpdateStatus, user: User) -> bool:
-    presence = await Presence.update_to_now(user, UserStatus.OFFLINE if request.offline else UserStatus.ONLINE)
+    await user.update_presence_to_now()
     # TODO: how telegram sends status updates? surely not like this
     # await upd.update_status(user, presence, await Peer.filter(user=user).select_related("owner"))
 

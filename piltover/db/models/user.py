@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from datetime import date
+from datetime import date, datetime, UTC, timedelta
 from enum import auto, Enum
+from time import time
 from typing import Iterable, Self, cast, Collection
 
 from tortoise import fields, Model
@@ -16,11 +17,13 @@ from piltover.cache import Cache
 from piltover.context import request_ctx
 from piltover.db import models
 from piltover.db.enums import PrivacyRuleKeyType
+from piltover.db.models.utils import MISSING, Missing
 from piltover.exceptions import Unreachable, ErrorRpc
-from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long, InputUser
+from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long, InputUser, UserStatusEmpty, \
+    UserStatusRecently, UserStatusLastWeek, UserStatusLastMonth, UserStatusOnline, UserStatusOffline
 from piltover.tl.to_format import UserToFormat
 from piltover.tl.types import User as TLUser, PeerColor, PeerUser, InputPeerSelf, InputPeerUser, InputUserSelf
-from piltover.tl.base import User as TLUserBase
+from piltover.tl.base import User as TLUserBase, UserStatus as TLUserStatusBase
 from piltover.tl.types.internal_access import AccessHashPayloadUser
 from piltover.utils import SingleElementList
 
@@ -32,6 +35,11 @@ class _Missing(Enum):
 _MISSING = _Missing.MISSING
 _PROFILE_PHOTO_EMPTY = UserProfilePhotoEmpty()
 _PHOTO_EMPTY = PhotoEmpty(id=0)
+
+STATUS_EMPTY = UserStatusEmpty()
+STATUS_RECENTLY = UserStatusRecently()
+STATUS_LAST_WEEK = UserStatusLastWeek()
+STATUS_LAST_MONTH = UserStatusLastMonth()
 
 
 class User(Model):
@@ -52,6 +60,7 @@ class User(Model):
     read_dates_private: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
     pts: int = fields.BigIntField(default=0)
+    last_seen: datetime = fields.DatetimeField(auto_now_add=True)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -60,7 +69,6 @@ class User(Model):
     background_emojis: models.UserBackgroundEmojis | QuerySet[models.UserBackgroundEmojis] | None
     emoji_status: models.UserEmojiStatus | QuerySet[models.UserEmojiStatus] | None
     bot_info: models.BotInfo | QuerySet[models.BotInfo] | None
-    presence: models.Presence | QuerySet[models.Presence] | None
 
     _username: models.Username | None
 
@@ -79,10 +87,6 @@ class User(Model):
     @property
     def emoji_status_prefetched(self) -> bool:
         return self.emoji_status is None or isinstance(self.emoji_status, models.UserEmojiStatus)
-
-    @property
-    def presence_prefetched(self) -> bool:
-        return self.presence is None or isinstance(self.presence, models.Presence)
 
     def _cache_key(self) -> str:
         return f"user:{self.id}:{self.version}:{self._CACHE_VERSION}"
@@ -134,13 +138,7 @@ class User(Model):
 
         cache_key = self._cache_key()
 
-        presence_last_seen = None
-        if not self.bot:
-            if self.presence is None or isinstance(self.presence, models.Presence):
-                presence_last_seen = int(self.presence.last_seen.timestamp()) if self.presence else None
-            else:
-                presence = await models.Presence.get_or_none(user_id=self.id).only("last_seen")
-                presence_last_seen = int(presence.last_seen.timestamp()) if presence else None
+        presence_last_seen = None if self.bot else int(self.last_seen.timestamp())
 
         if (cached := await Cache.obj.get(cache_key)) is not None:
             if cached.last_seen != presence_last_seen:
@@ -309,23 +307,6 @@ class User(Model):
         else:
             emoji_statuses = {}
 
-        if user_ids:
-            presences = {
-                presence.user_id: presence
-                for presence in await models.Presence.filter(
-                    user_id__in=[
-                        user.id
-                        for user in users
-                        if not user.bot and not user.presence_prefetched
-                    ],
-                ).only("user_id", "last_seen")
-            }
-            for user in users:
-                if user.presence_prefetched:
-                    presences[user.id] = cast(models.Presence, user.presence)
-        else:
-            presences = {}
-
         tl = []
         to_cache = []
 
@@ -350,7 +331,6 @@ class User(Model):
                 )
 
             emoji_status = emoji_statuses.get(user.id)
-            presence = presences.get(user.id)
 
             tl.append(UserToFormat(
                 id=user.id,
@@ -365,7 +345,7 @@ class User(Model):
                 color=color,
                 profile_color=profile_color,
                 emoji_status=emoji_status.to_tl() if emoji_status is not None else None,
-                last_seen=int(presence.last_seen.timestamp()) if presence is not None else None,
+                last_seen=int(user.last_seen.timestamp()) if not user.bot else None,
             ))
 
             to_cache.append((user._cache_key(), tl[-1]))
@@ -517,3 +497,51 @@ class User(Model):
                 await cls.bulk_update(to_update, fields=["pts"])
 
         return [user_by_user_id[user_id].pts for user_id in user_ids]
+
+    async def update_presence_to_now(self) -> None:
+        if self.bot:
+            raise RuntimeError("Can't set presence for bot")
+
+        self.last_seen = datetime.now(UTC)
+        await self.save(update_fields=["last_seen"])
+
+    async def to_tl_presence(
+            self, user: models.User | int | None, has_access: bool | Missing = MISSING,
+    ) -> TLUserStatusBase:
+        now = datetime.now(UTC)
+        delta = now - self.last_seen
+        if delta < timedelta(seconds=30):
+            return UserStatusOnline(expires=int(time() + 30))
+
+        if has_access is _MISSING:
+            if user is None:
+                has_access = False
+            else:
+                user_id = user.id if isinstance(user, models.User) else user
+                has_access = await models.PrivacyRule.has_access_to(
+                    user_id, self.id, PrivacyRuleKeyType.STATUS_TIMESTAMP
+                )
+
+        return self.to_tl_presence_noprivacycheck(has_access)
+
+    def to_tl_presence_noprivacycheck(self, has_access: bool) -> TLUserStatusBase:
+        return self.to_tl_presence_from_last_seen(int(self.last_seen.timestamp()), has_access)
+
+    @classmethod
+    def to_tl_presence_from_last_seen(cls, last_seen: int, has_access: bool) -> TLUserStatusBase:
+        now = datetime.now(UTC)
+        delta = now - datetime.fromtimestamp(last_seen, UTC)
+        if delta < timedelta(seconds=30):
+            return UserStatusOnline(expires=int(time() + 30))
+
+        if has_access:
+            return UserStatusOffline(was_online=last_seen)
+
+        if delta <= timedelta(days=3):
+            return STATUS_RECENTLY
+        if delta <= timedelta(days=7):
+            return STATUS_LAST_WEEK
+        if delta <= timedelta(days=28):
+            return STATUS_LAST_MONTH
+
+        return STATUS_EMPTY

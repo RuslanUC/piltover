@@ -204,6 +204,7 @@ class PrivacyRule(Model):
 
         return result
 
+    # TODO: make `user` Iterable too
     @classmethod
     async def has_access_to_bulk(
             cls, users: Iterable[models.User | int], user: models.User | int, keys: list[PrivacyRuleKeyType],
