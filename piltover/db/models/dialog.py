@@ -119,6 +119,7 @@ class Dialog(DialogBase):
 
             in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = read_state
 
+            # TODO: include pts if peer is channel
             tl.append(TLDialog(
                 pinned=dialog.pinned_index is not None,
                 unread_mark=dialog.unread_mark,

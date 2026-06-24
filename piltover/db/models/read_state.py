@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from tortoise import fields, Model
 from tortoise.expressions import Q
-from tortoise.functions import Count, Max
+from tortoise.functions import Count
 from tortoise.transactions import in_transaction
 
 from piltover.db import models
@@ -13,6 +13,7 @@ from piltover.exceptions import Unreachable
 class ReadState(Model):
     id: int = fields.BigIntField(primary_key=True)
     last_message_id: int = fields.BigIntField(default=0)
+    # TODO: channels have single out_max_id for whole channel/supergroup
     out_max_read_id: int = fields.BigIntField(default=0)
     owner: models.User = fields.ForeignKeyField("models.User")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
