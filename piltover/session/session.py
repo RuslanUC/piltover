@@ -18,6 +18,7 @@ from piltover.db.enums import PrivacyRuleKeyType
 from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
     MessageRef
 from piltover.exceptions import Unreachable
+from piltover.session.queue.base_queue import BaseMessageQueue, QueueKey
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
 from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues
@@ -50,13 +51,19 @@ class Session:
     __slots__ = (
         "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
         "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_values",
-        "out_seq_no", "message_queue", "message_available", "is_internal_push", "had_init_connection",
+        "out_seq_no", "is_internal_push", "had_init_connection", "storage", "last_read_id",
     )
 
-    def __init__(self, session_id: int, client: Client | None = None, auth_data: AuthData | None = None) -> None:
+    def __init__(
+            self, session_id: int, storage: BaseMessageQueue, client: Client | None = None,
+            auth_data: AuthData | None = None,
+    ) -> None:
         self.client = client
         self.session_id = session_id
         self.auth_data = auth_data
+
+        self.storage = storage
+        self.last_read_id = 0
 
         self.min_msg_id = 0
         self.msg_id_values = MsgIdValues()
@@ -79,15 +86,16 @@ class Session:
         self.layer = 133
         self.is_internal_push = False
 
-        self.message_queue = Queue()
-        self.message_available: Event | None = None
-
         # TODO: store request states (i.e. received, processing, acked, etc.)
         # TODO: store whole session in redis or something
 
     def uniq_id(self) -> tuple[int, int]:
         key_id = 0 if self.auth_data is None or self.auth_data.auth_key_id is None else self.auth_data.auth_key_id
         return key_id, self.session_id
+
+    def sess_key(self) -> QueueKey:
+        key_id, session_id = self.uniq_id()
+        return QueueKey(key_id, session_id)
 
     def __hash__(self) -> int:
         return hash(self.uniq_id)
@@ -96,17 +104,12 @@ class Session:
     def connect(self, client: Client) -> None:
         # TODO: raise AuthKeyDuplicated if self.client is not None
         self.client = client
-        self.message_available = client.message_available
-        if not self.message_queue.empty():
-            self.message_available.set()
         piltover.session.SessionManager.broker.subscribe(self)
 
     # TODO: rewrite
     def disconnect(self) -> None:
         self.client = None
-        self.message_available = None
         self.had_init_connection = False
-        # TODO: clear message_queue
         piltover.session.SessionManager.broker.unsubscribe(self)
         piltover.session.SessionManager.cleanup(self)
 
@@ -182,10 +185,7 @@ class Session:
                 values=context_values,
             )
             # TODO: serialize in a different thread
-            self.message_queue.put_nowait((message.message_id, message.seq_no, message.obj.write(ctx)))
-
-        if self.message_available is not None:
-            self.message_available.set()
+            await self.storage.push(self.sess_key(), message.message_id, message.seq_no, message.obj.write(ctx))
 
         if isinstance(obj, Updates):
             obj.seq = 0

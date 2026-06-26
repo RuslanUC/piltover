@@ -10,6 +10,7 @@ class QueueKey(NamedTuple):
 class MessagePullResult(NamedTuple):
     session_key: QueueKey
     message_id: int
+    seq_no: int
     data: bytes
 
 
@@ -22,7 +23,7 @@ class BaseMessageQueue(ABC):
         ...
 
     @abstractmethod
-    async def push(self, session_key: QueueKey, message_id: int, data: bytes) -> None:
+    async def push(self, session_key: QueueKey, message_id: int, seq_no: int, data: bytes) -> None:
         ...
 
     @abstractmethod

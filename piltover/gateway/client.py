@@ -56,7 +56,8 @@ class Client:
         self.peername: tuple[str, int] = writer.get_extra_info("peername")
 
         self.gen_auth_data: GenAuthData | None = None
-        self.empty_session = Session(0)
+        # TODO: replace Session with some MsgId
+        self.empty_session = Session(0, None)
 
         self.disconnect_timeout: asyncio.Timeout | None = None
         self.write_lock = asyncio.Lock()
@@ -323,21 +324,17 @@ class Client:
 
     async def _worker_loop_send(self) -> None:
         while True:
-            try:
-                await asyncio.wait_for(self.message_available.wait(), 0.1)
-            except TimeoutError:
-                pass
+            query = {session.sess_key(): session.last_read_id for session in self.active_sessions.values()}
+            messages = await self.server.message_storage.pull(query, 1)
 
-            sent = False
-            for session in list(self.active_sessions.values()):
-                if session.message_queue.empty():
+            for message in messages:
+                uniq_id = message.session_key.key_id, message.session_key.session_id
+                session = self.active_sessions.get(uniq_id, None)
+                if session is None:
                     continue
-                message_id, seq_no, data = session.message_queue.get_nowait()
-                await self._write_message(message_id, seq_no, data, session)
-                sent = True
 
-            if not sent and not any(not sess.message_queue.empty() for sess in self.active_sessions.values()):
-                self.message_available.clear()
+                session.last_read_id = message.message_id
+                await self._write_message(message.message_id, message.seq_no, message.data, session)
 
     async def _timer_task(self) -> None:
         try:

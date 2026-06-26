@@ -39,8 +39,8 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [x] Refactor channels permission system and probably rewrite according to [channels-access.md](notes/channels-access.md) 
 - [x] Create "SELF" Peer when user is created
 - [ ] Proper sessions handling:
-  - [ ] msg_id and seq_no generation **MUST** be in the session, **NOT** in the connection
-  - [ ] when client is disconnected, session should be stored (and receive messages) for up to 10 minutes
+  - [x] msg_id and seq_no generation **MUST** be in the session, **NOT** in the connection
+  - [ ] when client is disconnected, session should be stored for up to 10 minutes
   - [ ] when client is disconnected and then reconnected, all missed (not-acked) messages should be sent
   - [ ] client .send method should enqueue message for sending, not send it right away
   - [ ] maybe poll for new client messages? session stores id of the last polled message, when client calls session.poll_messages, it gets all messages with id greater than one that is stored, saves new last id, and returns message list to the client? 

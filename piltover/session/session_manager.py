@@ -29,7 +29,12 @@ class SessionManager:
         if uniq_id in cls.sessions:
             return cls.sessions[uniq_id], False
 
-        cls.sessions[uniq_id] = session = Session(client=client, session_id=session_id, auth_data=auth_data)
+        cls.sessions[uniq_id] = session = Session(
+            client=client,
+            storage=client.server.message_storage,
+            session_id=session_id,
+            auth_data=auth_data,
+        )
         return session, True
 
     @classmethod
