@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-from asyncio import Queue, Event
 from time import time
 from typing import cast, TYPE_CHECKING, Collection
 
@@ -15,10 +14,10 @@ import piltover
 from piltover.auth_data import AuthData
 from piltover.cache import Cache
 from piltover.db.enums import PrivacyRuleKeyType
-from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
-    MessageRef
+from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, MessageRef
 from piltover.exceptions import Unreachable
-from piltover.session.queue.base_queue import BaseMessageQueue, QueueKey
+from piltover.session.msg_id_generator import MsgIdGenerator
+from piltover.session.storage.base_storage import BaseSessionStorage, SessionKey
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
 from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues
@@ -38,24 +37,16 @@ class Salt:
         self.valid_at = valid_at
 
 
-class MsgIdValues:
-    __slots__ = ("last_time", "offset",)
-
-    def __init__(self, last_time: int = 0, offset: int = 0) -> None:
-        self.last_time = last_time
-        self.offset = offset
-
-
 # TODO: store sessions in redis or something (with non-acked messages) to be able to restore session after reconnect
 class Session:
     __slots__ = (
         "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
-        "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_values",
+        "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_gen",
         "out_seq_no", "is_internal_push", "had_init_connection", "storage", "last_read_id",
     )
 
     def __init__(
-            self, session_id: int, storage: BaseMessageQueue, client: Client | None = None,
+            self, session_id: int, storage: BaseSessionStorage, client: Client | None = None,
             auth_data: AuthData | None = None,
     ) -> None:
         self.client = client
@@ -66,7 +57,7 @@ class Session:
         self.last_read_id = 0
 
         self.min_msg_id = 0
-        self.msg_id_values = MsgIdValues()
+        self.msg_id_gen = MsgIdGenerator()
         self.out_seq_no = 0
 
         self.user_id: int | None = None
@@ -93,9 +84,9 @@ class Session:
         key_id = 0 if self.auth_data is None or self.auth_data.auth_key_id is None else self.auth_data.auth_key_id
         return key_id, self.session_id
 
-    def sess_key(self) -> QueueKey:
+    def sess_key(self) -> SessionKey:
         key_id, session_id = self.uniq_id()
-        return QueueKey(key_id, session_id)
+        return SessionKey(key_id, session_id)
 
     def __hash__(self) -> int:
         return hash(self.uniq_id)
@@ -298,20 +289,6 @@ class Session:
                 piltover.session.SessionManager.broker.unsubscribe_auth(old_auth_id, self)
             piltover.session.SessionManager.broker.subscribe_auth(self.auth_id, self)
 
-    # https://core.telegram.org/mtproto/description#message-identifier-msg-id
-    def msg_id(self, in_reply: bool) -> int:
-        # Client message identifiers are divisible by 4, server message
-        # identifiers modulo 4 yield 1 if the message is a response to
-        # a client message, and 3 otherwise.
-
-        now = int(time())
-        self.msg_id_values.offset = (self.msg_id_values.offset + 4) if now == self.msg_id_values.last_time else 0
-        self.msg_id_values.last_time = now
-        msg_id = (now * 2 ** 32) + self.msg_id_values.offset + (1 if in_reply else 3)
-
-        assert msg_id % 4 in [1, 3], f"Invalid server msg_id: {msg_id}"
-        return msg_id
-
     def get_outgoing_seq_no(self, obj: TLObject) -> int:
         ret = self.out_seq_no * 2
         if is_content_related(obj):
@@ -321,7 +298,7 @@ class Session:
 
     def pack_message(self, obj: TLObject, in_reply: bool) -> Message:
         return Message(
-            message_id=self.msg_id(in_reply=in_reply),
+            message_id=self.msg_id_gen.make_id(in_reply=in_reply),
             seq_no=self.get_outgoing_seq_no(obj),
             obj=obj,
         )
@@ -329,7 +306,7 @@ class Session:
     def pack_container(self, objects: list[tuple[TLObject, bool]]) -> Message:
         container = MsgContainer(messages=[
             Message(
-                message_id=self.msg_id(in_reply=in_reply),
+                message_id=self.msg_id_gen.make_id(in_reply=in_reply),
                 seq_no=self.get_outgoing_seq_no(obj),
                 obj=obj,
             )

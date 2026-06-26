@@ -10,7 +10,7 @@ from loguru import logger
 from taskiq import TaskiqEvents, AsyncBroker
 
 from piltover.gateway.client import Client
-from piltover.session.queue.in_memory_queue import InMemoryMessageQueue
+from piltover.session.storage.in_memory_storage import InMemorySessionStorage
 
 try:
     from taskiq_aio_pika import AioPikaBroker
@@ -71,7 +71,7 @@ class Gateway:
         self.broker: AsyncBroker | None
         self.scheduler: Scheduler | None
 
-        self.message_storage = InMemoryMessageQueue()
+        self.session_storage = InMemorySessionStorage()
 
         if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
             logger.info("rabbitmq_address or redis_address is None, falling back to worker broker")
@@ -92,13 +92,13 @@ class Gateway:
         self.broker.add_event_handler(TaskiqEvents.CLIENT_SHUTDOWN, self._broker_shutdown)
 
     async def _broker_startup(self, _) -> None:
-        await self.message_storage.start()
+        await self.session_storage.start()
         await self.message_broker.startup()
         SessionManager.set_broker(self.message_broker)
 
     async def _broker_shutdown(self, _) -> None:
         await self.message_broker.shutdown()
-        await self.message_storage.stop()
+        await self.session_storage.stop()
 
     @logger.catch
     async def accept_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):

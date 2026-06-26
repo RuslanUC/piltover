@@ -7,7 +7,7 @@ from typing import TypeVar, Iterable, Generic
 from loguru import logger
 from sortedcontainers import SortedSet
 
-from piltover.session.queue.base_queue import BaseMessageQueue, MessagePullResult, QueueKey
+from piltover.session.storage.base_storage import BaseSessionStorage, MessagePullResult, SessionKey
 
 T = TypeVar("T")
 TKey = TypeVar("TKey")
@@ -83,7 +83,7 @@ class QueuePushJob(WorkerJob[None]):
     __slots__ = ("session_key", "message_id", "seq_no", "data",)
 
     def __init__(
-            self, future: asyncio.Future[T], session_key: QueueKey, message_id: int, seq_no: int, data: bytes,
+            self, future: asyncio.Future[T], session_key: SessionKey, message_id: int, seq_no: int, data: bytes,
     ) -> None:
         super().__init__(future)
         self.session_key = session_key
@@ -95,7 +95,7 @@ class QueuePushJob(WorkerJob[None]):
 class QueuePullJob(WorkerJob[list[MessagePullResult]]):
     __slots__ = ("sessions",)
 
-    def __init__(self, future: asyncio.Future[T], sessions: dict[QueueKey, int]) -> None:
+    def __init__(self, future: asyncio.Future[T], sessions: dict[SessionKey, int]) -> None:
         super().__init__(future)
         self.sessions = sessions
 
@@ -103,7 +103,7 @@ class QueuePullJob(WorkerJob[list[MessagePullResult]]):
 class QueueUnsubSessionsJob(WorkerJob[None]):
     __slots__ = ("sessions",)
 
-    def __init__(self, future: asyncio.Future[T], sessions: list[QueueKey]) -> None:
+    def __init__(self, future: asyncio.Future[T], sessions: list[SessionKey]) -> None:
         super().__init__(future)
         self.sessions = sessions
 
@@ -111,17 +111,16 @@ class QueueUnsubSessionsJob(WorkerJob[None]):
 class QueueAckJob(WorkerJob[None]):
     __slots__ = ("session_key", "message_ids",)
 
-    def __init__(self, future: asyncio.Future[T], session_key: QueueKey, message_ids: list[int]) -> None:
+    def __init__(self, future: asyncio.Future[T], session_key: SessionKey, message_ids: list[int]) -> None:
         super().__init__(future)
         self.session_key = session_key
         self.message_ids = message_ids
 
 
-# TODO: rename to InMemoryMessageStorage
-class InMemoryMessageQueue(BaseMessageQueue):
+class InMemorySessionStorage(BaseSessionStorage):
     def __init__(self) -> None:
-        self.by_session_key: dict[QueueKey, MaxLenSortedCollection[int, tuple[int, bytes]]] = {}
-        self.waiters: dict[QueueKey, tuple[asyncio.Future[list[MessagePullResult]], list[QueueKey]]] = {}
+        self.by_session_key: dict[SessionKey, MaxLenSortedCollection[int, tuple[int, bytes]]] = {}
+        self.waiters: dict[SessionKey, tuple[asyncio.Future[list[MessagePullResult]], list[SessionKey]]] = {}
         self.queue: SimpleQueue[WorkerJob] = SimpleQueue()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.thread: Thread | None = None
@@ -141,23 +140,23 @@ class InMemoryMessageQueue(BaseMessageQueue):
         await job.future
         self.loop = self.thread = None
 
-    def _notify(self, session_key: QueueKey, message_id: int, seq_no: int, data: bytes) -> None:
+    def _notify(self, session_key: SessionKey, message_id: int, seq_no: int, data: bytes) -> None:
         if session_key not in self.waiters:
             return
         waiter, other_sessions = self.waiters[session_key]
         for other_key in other_sessions:
             del self.waiters[other_key]
         if self.loop is None:
-            raise RuntimeError("_notify called after shutdown")
+            raise RuntimeError("_notify called before start or after shutdown")
         self.loop.call_soon_threadsafe(waiter.set_result, [MessagePullResult(session_key, message_id, seq_no, data)])
 
-    def _push_sync(self, session_key: QueueKey, message_id: int, seq_no: int, data: bytes) -> None:
+    def _push_sync(self, session_key: SessionKey, message_id: int, seq_no: int, data: bytes) -> None:
         if session_key not in self.by_session_key:
             self.by_session_key[session_key] = MaxLenSortedCollection(256)
         self.by_session_key[session_key][message_id] = seq_no, data
         self._notify(session_key, message_id, seq_no, data)
 
-    def _pull_sync(self, future: asyncio.Future[list[MessagePullResult]], sessions: dict[QueueKey, int]) -> None:
+    def _pull_sync(self, future: asyncio.Future[list[MessagePullResult]], sessions: dict[SessionKey, int]) -> None:
         result = []
         for session_key, message_id in sessions.items():
             if session_key in self.by_session_key \
@@ -172,7 +171,7 @@ class InMemoryMessageQueue(BaseMessageQueue):
 
         if result:
             if self.loop is None:
-                raise RuntimeError("_pull_sync called after shutdown")
+                raise RuntimeError("_pull_sync called before start or after shutdown")
             self.loop.call_soon_threadsafe(future.set_result, result)
             return
 
@@ -184,12 +183,12 @@ class InMemoryMessageQueue(BaseMessageQueue):
             self.waiters[session_key] = future, future_sessions
             future_sessions.append(session_key)
 
-    def _unsub_sync(self, sessions: list[QueueKey]) -> None:
+    def _unsub_sync(self, sessions: list[SessionKey]) -> None:
         for session_key in sessions:
             if session_key in self.waiters:
                 del self.waiters[session_key]
 
-    def _ack_sync(self, session_key: QueueKey, message_ids: list[int]) -> None:
+    def _ack_sync(self, session_key: SessionKey, message_ids: list[int]) -> None:
         if session_key not in self.by_session_key:
             return
         self.by_session_key[session_key].remove_many(message_ids)
@@ -220,11 +219,11 @@ class InMemoryMessageQueue(BaseMessageQueue):
             else:
                 raise RuntimeError(f"Unknown worker job class: {job}")
 
-    async def push(self, session_key: QueueKey, message_id: int, seq_no: int, data: bytes) -> None:
+    async def push(self, session_key: SessionKey, message_id: int, seq_no: int, data: bytes) -> None:
         self.queue.put(job := QueuePushJob(self.loop.create_future(), session_key, message_id, seq_no, data), False)
         await job.future
 
-    async def pull(self, sessions: dict[QueueKey, int], timeout: float = 0.1) -> list[MessagePullResult]:
+    async def pull(self, sessions: dict[SessionKey, int], timeout: float = 0.1) -> list[MessagePullResult]:
         self.queue.put(job := QueuePullJob(self.loop.create_future(), sessions), False)
         try:
             result = await asyncio.wait_for(job.future, timeout=timeout)
@@ -239,6 +238,6 @@ class InMemoryMessageQueue(BaseMessageQueue):
 
         return []
 
-    async def ack(self, session_key: QueueKey, message_ids: list[int]) -> None:
+    async def ack(self, session_key: SessionKey, message_ids: list[int]) -> None:
         self.queue.put(job := QueueAckJob(self.loop.create_future(), session_key, message_ids), False)
         await job.future

@@ -29,7 +29,8 @@ from piltover.tl.functions.auth import BindTempAuthKey
 from piltover.tl.functions.internal import CallRpc
 from piltover.tl.types.internal import RpcResponse
 from piltover.utils.debug import measure_time
-from ..db.models import AuthKey
+from piltover.db.models import AuthKey
+from piltover.session.msg_id_generator import MsgIdGenerator
 
 if TYPE_CHECKING:
     from .server import Gateway
@@ -43,7 +44,7 @@ _check_req_pq_tlid = (
 
 class Client:
     __slots__ = (
-        "server", "reader", "writer", "conn", "peername", "gen_auth_data", "empty_session", "disconnect_timeout",
+        "server", "reader", "writer", "conn", "peername", "gen_auth_data", "msg_id_gen", "disconnect_timeout",
         "write_lock", "active_sessions", "active_keys", "message_available", "loop", "tasks",
     )
 
@@ -56,8 +57,7 @@ class Client:
         self.peername: tuple[str, int] = writer.get_extra_info("peername")
 
         self.gen_auth_data: GenAuthData | None = None
-        # TODO: replace Session with some MsgId
-        self.empty_session = Session(0, None)
+        self.msg_id_gen = MsgIdGenerator()
 
         self.disconnect_timeout: asyncio.Timeout | None = None
         self.write_lock = asyncio.Lock()
@@ -151,7 +151,7 @@ class Client:
     async def send_unencrypted(self, obj: TLObject) -> None:
         logger.debug(obj)
         await self._write_packet(UnencryptedMessagePacket(
-            self.empty_session.msg_id(in_reply=True),
+            self.msg_id_gen.make_id(in_reply=True),
             obj.write(),
         ))
 
