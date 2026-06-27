@@ -1,5 +1,10 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import NamedTuple
+from typing import NamedTuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from piltover.session import Session
 
 
 class SessionKey(NamedTuple):
@@ -14,12 +19,19 @@ class MessagePullResult(NamedTuple):
     data: bytes
 
 
-# TODO: add methods for getting/creating sessions
 class BaseSessionStorage(ABC):
     async def start(self) -> None:
         ...
 
     async def stop(self) -> None:
+        ...
+
+    @abstractmethod
+    async def get_session(self, session_key: SessionKey) -> Session:
+        ...
+
+    @abstractmethod
+    async def save_session(self, session: Session) -> None:
         ...
 
     @abstractmethod

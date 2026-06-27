@@ -60,7 +60,7 @@ class Session:
         self.auth_loaded_at = 0.
         self.had_init_connection = False
 
-        self.channel_ids: list[int] = []
+        self.channel_ids: list[int] | set[int] = []
         self.channels_loaded_at = 0.
 
         self.salt_now = Salt(b"\x00" * 8, 0)
@@ -71,7 +71,6 @@ class Session:
         self.is_internal_push = False
 
         # TODO: store request states (i.e. received, processing, acked, etc.)
-        # TODO: store whole session in redis or something
 
     # TODO: remove, use sess_key instead
     def uniq_id(self) -> tuple[int, int]:
@@ -92,6 +91,7 @@ class Session:
         self.had_init_connection = False
         piltover.session.SessionManager.broker.unsubscribe(self)
         piltover.session.SessionManager.cleanup(self)
+        # await self.storage.save_session(self)
 
     @staticmethod
     def _get_attr_or_element(obj: TLObject | list, field_name: str) -> TLObject | list:
@@ -211,13 +211,10 @@ class Session:
             # TODO: if none - discard session because auth key was removed
             self.auth_data = await AuthKey.get_auth_data(self.auth_data.auth_key_id)
 
-        auth_key_id = self.auth_data.auth_key_id
-        perm_auth_key_id = self.auth_data.perm_auth_key_id
-
         old_user_id = self.user_id
         old_auth_id = self.auth_id
 
-        if perm_auth_key_id is None:
+        if self.auth_data.perm_auth_key_id is None:
             self._reset_auth()
             return
 
@@ -227,7 +224,7 @@ class Session:
             self.auth_loaded_at = time()
 
             auth = await UserAuthorization.get_or_none(
-                key_id=perm_auth_key_id,
+                key_id=self.auth_data.perm_auth_key_id,
             ).select_related("user").annotate(is_bot=F("user__bot")).only("id", "user_id", "mfa_pending", "is_bot")
             if auth is not None:
                 self.user_id = auth.user_id
