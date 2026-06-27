@@ -279,15 +279,18 @@ class BaseMessageBroker(ABC):
             case MessageToUsers() | MessageToUsersShort():
                 await self._process_message_to_users(message)
             case SetSessionInternalPush():
-                from piltover.session import SessionManager
+                # TODO: somehow get session and set is_internal_push to True
+
+                # from piltover.session import SessionManager
                 uniq_id = message.key_id, message.session_id
-                if uniq_id not in SessionManager.sessions:
-                    return
-                session = SessionManager.sessions[uniq_id]
-                session.is_internal_push = True
-                await session.refresh_auth_maybe(True)
-                self.subscribe(session)
-                logger.debug(f"Registered session {uniq_id} for internal push")
+                # if uniq_id not in SessionManager.sessions:
+                #     return
+                # session = SessionManager.sessions[uniq_id]
+                # session.is_internal_push = True
+                # await session.refresh_auth_maybe(True)
+                # self.subscribe(session)
+                # logger.debug(f"Registered session {uniq_id} for internal push")
+                logger.error(f"Should register session {uniq_id} for internal push")
             case ChannelSubscribe():
                 await self._process_channels_subscribe(message)
             case InternalPushForUsers() | InternalPushForUsersShort():

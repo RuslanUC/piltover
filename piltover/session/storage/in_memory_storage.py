@@ -1,17 +1,17 @@
+from __future__ import annotations
+
 import asyncio
 from collections.abc import MutableMapping
 from queue import SimpleQueue
 from threading import Thread
-from typing import TypeVar, Iterable, Generic, TYPE_CHECKING
+from typing import TypeVar, Iterable, Generic
 
 from loguru import logger
 from sortedcontainers import SortedSet
 
 from piltover.auth_data import AuthData
 from piltover.session.storage.base_storage import BaseSessionStorage, MessagePullResult, SessionKey
-
-if TYPE_CHECKING:
-    from piltover.session import Session
+from piltover.session import Session
 
 T = TypeVar("T")
 TKey = TypeVar("TKey")

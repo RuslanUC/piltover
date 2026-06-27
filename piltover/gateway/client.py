@@ -45,7 +45,7 @@ _check_req_pq_tlid = (
 class Client:
     __slots__ = (
         "server", "reader", "writer", "conn", "peername", "gen_auth_data", "msg_id_gen", "disconnect_timeout",
-        "write_lock", "active_sessions", "active_keys", "message_available", "loop", "tasks",
+        "write_lock", "active_sessions", "active_keys", "loop", "tasks",
     )
 
     def __init__(self, server: Gateway, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -65,28 +65,28 @@ class Client:
         self.active_sessions = LRU(4, callback=self._session_evicted)
         self.active_keys = cast("LRU[int, bytes]", LRU(8))
 
-        self.message_available = Event()
         self.loop = asyncio.get_running_loop()
         self.tasks = set()
 
-    @staticmethod
-    def _session_evicted(_: Any, session: Session) -> None:
-        session.disconnect()
+    def _session_evicted(self, _: Any, session: Session) -> None:
+        task = self.loop.create_task(session.disconnect())
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
 
     def _get_cached_session(self, auth_key_id: int, session_id: int) -> Session | None:
         uniq_id = (auth_key_id, session_id)
         if uniq_id in self.active_sessions:
             return self.active_sessions[uniq_id]
 
-    def _get_session(self, session_id: int, auth_data: AuthData) -> tuple[Session, bool]:
+    async def _get_session(self, session_id: int, auth_data: AuthData) -> Session:
         if (cached := self._get_cached_session(auth_data.auth_key_id, session_id)) is not None:
-            return cached, False
+            return cached
 
-        session, created = SessionManager.get_or_create(session_id, self, auth_data)
+        session = await self.server.session_storage.get_session(session_id, auth_data)
         session.connect()
 
         self.active_sessions[session.uniq_id()] = session
-        return session, created
+        return session
 
     async def read_packet(self) -> MessagePacket | None:
         packet = self.conn.next_event()
@@ -212,7 +212,7 @@ class Client:
             if session is None:
                 if auth_data is None:
                     auth_data = await self._get_auth_data(packet.auth_key_id)
-                session, _ = self._get_session(decrypted.session_id, auth_data)
+                session = await self._get_session(decrypted.session_id, auth_data)
                 session.update_salts_maybe(self.server.salt_key)
 
             if packet.needs_quick_ack:
@@ -378,7 +378,8 @@ class Client:
 
             for session in self.active_sessions.values():
                 logger.info(f"Session {session.session_id} removed")
-                session.disconnect()
+                # TODO: disconnect sessions in parallel
+                await session.disconnect()
 
             self.active_sessions.clear()
 

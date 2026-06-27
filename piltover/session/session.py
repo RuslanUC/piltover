@@ -86,12 +86,13 @@ class Session:
     def connect(self) -> None:
         piltover.session.SessionManager.broker.subscribe(self)
 
-    # TODO: rewrite
-    def disconnect(self) -> None:
+    # TODO: rewrite, probably
+    async def disconnect(self) -> None:
         self.had_init_connection = False
         piltover.session.SessionManager.broker.unsubscribe(self)
-        piltover.session.SessionManager.cleanup(self)
-        # await self.storage.save_session(self)
+        await self.storage.save_session(self)
+        # TODO: dont destroy session here, session should be destroyed after some time of inactivity by session storage
+        await self.storage.destroy_session(self.sess_key())
 
     @staticmethod
     def _get_attr_or_element(obj: TLObject | list, field_name: str) -> TLObject | list:

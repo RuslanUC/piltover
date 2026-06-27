@@ -2,45 +2,21 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from piltover.auth_data import AuthData
 from piltover.context import NeedContextValuesContext
-from piltover.session import Session
 from piltover.tl import TLObject, Vector
 from piltover.tl.types.internal import MessageToUsersShort, ChannelSubscribe, MessageToUsers, \
     ObjectWithLayerRequirement, InternalPushForUsers, InternalPushForUsersShort
 
 if TYPE_CHECKING:
-    from piltover.gateway import Client
     from piltover.message_brokers.base_broker import BaseMessageBroker
 
 
 class SessionManager:
-    sessions: dict[tuple[int, int], Session] = {}
     broker: BaseMessageBroker = None  # type: ignore[assignment]
 
     @classmethod
     def set_broker(cls, broker: BaseMessageBroker) -> None:
         cls.broker = broker
-
-    @classmethod
-    def get_or_create(cls, session_id: int, client: Client, auth_data: AuthData) -> tuple[Session, bool]:
-        uniq_id = auth_data.auth_key_id, session_id
-
-        if uniq_id in cls.sessions:
-            return cls.sessions[uniq_id], False
-
-        cls.sessions[uniq_id] = session = Session(
-            storage=client.server.session_storage,
-            session_id=session_id,
-            auth_data=auth_data,
-        )
-        return session, True
-
-    @classmethod
-    def cleanup(cls, session: Session) -> None:
-        uniq_id = session.uniq_id()
-        if uniq_id in cls.sessions:
-            del cls.sessions[uniq_id]
 
     @classmethod
     async def send(

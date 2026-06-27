@@ -225,7 +225,6 @@ class PiltoverApp:
         await self._gateway.broker.shutdown()
         await connections.close_all(True)
         await Cache.obj.clear()
-        SessionManager.sessions.clear()
 
 
 args: ArgsNamespace
