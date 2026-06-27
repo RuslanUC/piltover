@@ -17,7 +17,7 @@ from pyrogram.types import Chat
 from pyrogram.utils import get_channel_id
 from taskiq import TaskiqScheduler
 from taskiq.cli.scheduler.run import logger as taskiq_sched_logger
-from tortoise import connections, Model
+from tortoise import connections
 from tortoise.backends.sqlite import SqliteClient
 
 from tests import server_instance, USE_REAL_TCP_FOR_TESTING, test_phone_number, skipping_auth
@@ -136,7 +136,7 @@ async def app_server(request: pytest.FixtureRequest, pytestconfig: pytest.Config
 
     async with AsyncExitStack() as stack:
         if run_scheduler:
-            scheduler = cast(TaskiqScheduler, app._gateway.scheduler.scheduler)
+            scheduler = cast(TaskiqScheduler, app._scheduler)
 
             scheduler.startup = _empty_async_func
             scheduler.shutdown = _empty_async_func

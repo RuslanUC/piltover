@@ -6,39 +6,26 @@ from pathlib import Path
 from typing import Callable, Any, TypeVar, cast, Protocol, ParamSpec, Awaitable
 
 from loguru import logger
-from taskiq import InMemoryBroker, TaskiqEvents, AsyncTaskiqTask
+from taskiq import TaskiqEvents, AsyncTaskiqTask
+from taskiq.abc.broker import AsyncBroker
 from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from taskiq.kicker import AsyncKicker
-
-from piltover._faster_taskiq_inmemory_result_backend import FasterInmemoryResultBackend
-from piltover.message_brokers.base_broker import BrokerType
-from piltover.message_brokers.in_memory_broker import InMemoryMessageBroker
-from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
-from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
-from piltover.session import SessionManager
-from piltover.storage import LocalFileStorage
-from piltover.tl.functions.internal import CallRpc, CallRpcInternal
-from piltover.tl.types.internal import RpcResponse
-from piltover.utils.debug import measure_time
-
-try:
-    from taskiq_aio_pika import AioPikaBroker
-    from taskiq_redis import RedisAsyncResultBackend
-
-    REMOTE_BROKER_SUPPORTED = True
-except ImportError:
-    AioPikaBroker = None
-    RedisAsyncResultBackend = None
-    REMOTE_BROKER_SUPPORTED = False
 
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
 from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
+from piltover.message_brokers.base_broker import BaseMessageBroker
+from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
+from piltover.session import SessionManager
+from piltover.storage import LocalFileStorage
 from piltover.tl import TLObject, RpcError, TLRequest
-from piltover.tl.layer_info import layer
 from piltover.tl.core_types import RpcResult
+from piltover.tl.functions.internal import CallRpc, CallRpcInternal
+from piltover.tl.layer_info import layer
+from piltover.tl.types.internal import RpcResponse
 from piltover.utils import get_public_key_fingerprint
+from piltover.utils.debug import measure_time
 
 T = TypeVar("T", covariant=True)
 RequestT = TypeVar("RequestT", bound=TLRequest, contravariant=True)
@@ -158,27 +145,15 @@ class Worker(MessageHandler):
     RMQ_HOST = "amqp://guest:guest@127.0.0.1:5672"
     REDIS_HOST = "redis://127.0.0.1"
 
-    def __init__(
-            self, data_dir: Path, public_key: str,
-            rabbitmq_address: str | None = RMQ_HOST, redis_address: str | None = REDIS_HOST,
-    ):
+    def __init__(self, data_dir: Path, public_key: str, broker: AsyncBroker, message_broker: BaseMessageBroker) -> None:
         super().__init__()
 
         self._storage = LocalFileStorage(data_dir)
         self.public_key = public_key
         self.fingerprint: int = get_public_key_fingerprint(self.public_key)
 
-        if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
-            logger.info("Worker is initializing with InMemoryBroker")
-            self.broker = InMemoryBroker(
-                max_async_tasks=128,
-                cast_types=False,
-            ).with_result_backend(FasterInmemoryResultBackend())
-            self.message_broker = InMemoryMessageBroker()
-        else:
-            logger.info("Worker is initializing with AioPikaBroker + RedisAsyncResultBackend")
-            self.broker = AioPikaBroker(rabbitmq_address).with_result_backend(RedisAsyncResultBackend(redis_address))
-            self.message_broker = RabbitMqMessageBroker(BrokerType.WRITE, rabbitmq_address)
+        self.broker = broker
+        self.message_broker = message_broker
 
         # TODO: add RedisPubSub
         self.pubsub = InMemoryPubSub()
@@ -197,12 +172,10 @@ class Worker(MessageHandler):
         self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
 
     async def _broker_startup(self, _) -> None:
-        await self.message_broker.startup()
         SessionManager.set_broker(self.message_broker)
         await self.pubsub.startup()
 
     async def _broker_shutdown(self, _) -> None:
-        await self.message_broker.shutdown()
         await self.pubsub.shutdown()
 
     async def call_internal(self, request: TLObject) -> AsyncTaskiqTask[TLObject]:
