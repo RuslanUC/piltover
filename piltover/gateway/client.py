@@ -83,7 +83,7 @@ class Client:
             return cached, False
 
         session, created = SessionManager.get_or_create(session_id, self, auth_data)
-        session.connect(self)
+        session.connect()
 
         self.active_sessions[session.uniq_id()] = session
         return session, created
@@ -325,7 +325,7 @@ class Client:
     async def _worker_loop_send(self) -> None:
         while True:
             query = {session.sess_key(): session.last_read_id for session in self.active_sessions.values()}
-            messages = await self.server.message_storage.pull(query, 1)
+            messages = await self.server.session_storage.pull(query, 0.1)
 
             for message in messages:
                 uniq_id = message.session_key.key_id, message.session_key.session_id

@@ -30,8 +30,7 @@ class SessionManager:
             return cls.sessions[uniq_id], False
 
         cls.sessions[uniq_id] = session = Session(
-            client=client,
-            storage=client.server.message_storage,
+            storage=client.server.session_storage,
             session_id=session_id,
             auth_data=auth_data,
         )
@@ -39,7 +38,7 @@ class SessionManager:
 
     @classmethod
     def cleanup(cls, session: Session) -> None:
-        uniq_id = cast(int, cast(AuthData, session.auth_data).auth_key_id), session.session_id
+        uniq_id = cast(int, session.auth_data.auth_key_id), session.session_id
         if uniq_id in cls.sessions:
             del cls.sessions[uniq_id]
 

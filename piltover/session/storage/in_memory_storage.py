@@ -139,6 +139,7 @@ class InMemorySessionStorage(BaseSessionStorage):
         self.queue.put(job := WorkerStopJob(self.loop.create_future()), False)
         await job.future
         self.loop = self.thread = None
+        logger.info("Stopped InMemoryMessageQueue")
 
     def _notify(self, session_key: SessionKey, message_id: int, seq_no: int, data: bytes) -> None:
         if session_key not in self.waiters:

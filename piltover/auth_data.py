@@ -1,6 +1,7 @@
 class AuthData:
     __slots__ = ("auth_key_id", "auth_key", "is_temp", "perm_auth_key_id",)
 
+    # TODO: make all fields non-None
     def __init__(
             self, auth_key_id: int | None = None, auth_key: bytes | None = None, perm_auth_key_id: int | None = None,
     ) -> None:

@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import hmac
 from time import time
-from typing import cast, TYPE_CHECKING, Collection
+from typing import cast
 
 from loguru import logger
 from mtproto.transport.packets import DecryptedMessagePacket
@@ -20,13 +20,10 @@ from piltover.session.msg_id_generator import MsgIdGenerator
 from piltover.session.storage.base_storage import BaseSessionStorage, SessionKey
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
+from piltover.tl.serialization_context import SerializationContext, ContextValues
 from piltover.tl.types.internal import ObjectWithLayerRequirement, TaggedLongVector, NeedsContextValues
 from piltover.tl.utils import is_content_related, is_id_strictly_not_content_related, is_id_strictly_content_related
 from piltover.utils.debug import measure_time
-from piltover.tl.serialization_context import SerializationContext, ContextValues
-
-if TYPE_CHECKING:
-    from piltover.gateway import Client
 
 
 class Salt:
@@ -40,16 +37,12 @@ class Salt:
 # TODO: store sessions in redis or something (with non-acked messages) to be able to restore session after reconnect
 class Session:
     __slots__ = (
-        "client", "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
+        "session_id", "auth_data", "min_msg_id", "user_id", "auth_id", "channel_ids", "auth_loaded_at",
         "channels_loaded_at", "salt_now", "salt_prev", "no_updates", "layer", "is_bot", "mfa_pending", "msg_id_gen",
         "out_seq_no", "is_internal_push", "had_init_connection", "storage", "last_read_id",
     )
 
-    def __init__(
-            self, session_id: int, storage: BaseSessionStorage, client: Client | None = None,
-            auth_data: AuthData | None = None,
-    ) -> None:
-        self.client = client
+    def __init__(self, session_id: int, storage: BaseSessionStorage, auth_data: AuthData) -> None:
         self.session_id = session_id
         self.auth_data = auth_data
 
@@ -67,7 +60,7 @@ class Session:
         self.auth_loaded_at = 0.
         self.had_init_connection = False
 
-        self.channel_ids: Collection[int] = []
+        self.channel_ids: list[int] = []
         self.channels_loaded_at = 0.
 
         self.salt_now = Salt(b"\x00" * 8, 0)
@@ -80,8 +73,9 @@ class Session:
         # TODO: store request states (i.e. received, processing, acked, etc.)
         # TODO: store whole session in redis or something
 
+    # TODO: remove, use sess_key instead
     def uniq_id(self) -> tuple[int, int]:
-        key_id = 0 if self.auth_data is None or self.auth_data.auth_key_id is None else self.auth_data.auth_key_id
+        key_id = self.auth_data.auth_key_id or 0
         return key_id, self.session_id
 
     def sess_key(self) -> SessionKey:
@@ -92,14 +86,11 @@ class Session:
         return hash(self.uniq_id)
 
     # TODO: rewrite
-    def connect(self, client: Client) -> None:
-        # TODO: raise AuthKeyDuplicated if self.client is not None
-        self.client = client
+    def connect(self) -> None:
         piltover.session.SessionManager.broker.subscribe(self)
 
     # TODO: rewrite
     def disconnect(self) -> None:
-        self.client = None
         self.had_init_connection = False
         piltover.session.SessionManager.broker.unsubscribe(self)
         piltover.session.SessionManager.cleanup(self)
@@ -112,9 +103,6 @@ class Session:
             return getattr(obj, field_name)
 
     async def enqueue(self, obj: TLObject, in_reply: bool) -> None:
-        if self.client is None:
-            return
-
         await asyncio.sleep(0)
 
         if isinstance(obj, ObjectWithLayerRequirement):
@@ -188,7 +176,7 @@ class Session:
 
     # TODO: store salt_key in session?
     def update_salts_maybe(self, salt_key: bytes, force: bool = False) -> None:
-        if self.auth_data is None or self.auth_data.auth_key_id is None:
+        if self.auth_data.auth_key_id is None:
             self.salt_now = self.salt_prev = (b"\x00" * 8, 0)
             return
 
@@ -203,7 +191,7 @@ class Session:
         self.salt_now.valid_at = now - 1
 
     async def fetch_layer(self) -> None:
-        if self.auth_data is None or self.auth_data.perm_auth_key_id is None:
+        if self.auth_data.perm_auth_key_id is None:
             return
 
         perm_key_layer = cast(
@@ -225,9 +213,6 @@ class Session:
         self.channel_ids.clear()
 
     async def refresh_auth_maybe(self, force_refresh_auth: bool = False) -> None:
-        if self.auth_data is None:
-            return
-
         if force_refresh_auth and self.auth_data.auth_key_id is not None:
             self.auth_data = await AuthKey.get_auth_data(self.auth_data.auth_key_id)
 
@@ -317,12 +302,13 @@ class Session:
 
     async def _resolve_context_values(self, values: NeedsContextValues) -> ContextValues:
         result = ContextValues()
+        user_id = cast(int, self.user_id)
 
         # TODO: cache fetched values
 
         if values.poll_answers:
             selected_answers = await PollVote.filter(
-                answer__poll_id__in=values.poll_answers, user_id=self.user_id,
+                answer__poll_id__in=values.poll_answers, user_id=user_id,
             ).values_list("answer__poll_id", "answer_id")
             for poll_id, answer_id in selected_answers:
                 if poll_id not in result.poll_answers:
@@ -336,7 +322,7 @@ class Session:
             if values.channel_participants:
                 participants_q |= Q(channel_id__in=values.channel_participants)
 
-            participants = await ChatParticipant.filter(participants_q, user_id=self.user_id).only(
+            participants = await ChatParticipant.filter(participants_q, user_id=user_id).only(
                 "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at", "left",
             )
             for participant in participants:
@@ -350,17 +336,17 @@ class Session:
         if values.users:
             contact_ids = set()
             for contact in await Contact.filter(
-                Q(owner_id=self.user_id, target_id__in=values.users)
-                | Q(owner_id__in=values.users, target_id=self.user_id)
+                Q(owner_id=user_id, target_id__in=values.users)
+                | Q(owner_id__in=values.users, target_id=user_id)
             ):
                 result.contacts[(contact.owner_id, contact.target_id)] = contact
-                if contact.owner_id != self.user_id:
+                if contact.owner_id != user_id:
                     contact_ids.add(contact.owner_id)
 
             # NOTE (for future me refactoring this): this overwrites existing rules in context variables btw
             result.privacyrules = await PrivacyRule.has_access_to_bulk(
                 users=values.users,
-                user=self.user_id,
+                user=user_id,
                 keys=[
                     PrivacyRuleKeyType.PHONE_NUMBER,
                     PrivacyRuleKeyType.PROFILE_PHOTO,
@@ -375,8 +361,8 @@ class Session:
             messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
                 "peer", "peer__channel", "content", "content__media", "content__media__file",
             )
-            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, self.user_id)
-            reactionss = await MessageRef.to_tl_reactions_bulk(messages, self.user_id)
+            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, user_id)
+            reactionss = await MessageRef.to_tl_reactions_bulk(messages, user_id)
             for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
                 result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
 

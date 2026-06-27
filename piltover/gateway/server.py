@@ -93,11 +93,13 @@ class Gateway:
 
     async def _broker_startup(self, _) -> None:
         await self.session_storage.start()
-        await self.message_broker.startup()
-        SessionManager.set_broker(self.message_broker)
+        if self.worker is None:
+            await self.message_broker.startup()
+            SessionManager.set_broker(self.message_broker)
 
     async def _broker_shutdown(self, _) -> None:
-        await self.message_broker.shutdown()
+        if self.worker is None:
+            await self.message_broker.shutdown()
         await self.session_storage.stop()
 
     @logger.catch

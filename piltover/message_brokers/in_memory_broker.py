@@ -17,15 +17,17 @@ class InMemoryMessageBroker(BaseMessageBroker):
         self._listen_task = get_running_loop().create_task(self._listen())
 
     async def shutdown(self) -> None:
-        await self._messages.put(None)
-        self._messages = None
+        if self._messages is not None:
+            await self._messages.put(None)
+            self._messages = None
         if self._listen_task is not None:
             await self._listen_task
             self._listen_task = None
         await super().shutdown()
 
     async def send(self, message: MessageInternal) -> None:
-        await self._messages.put(message)
+        if self._messages is not None:
+            await self._messages.put(message)
 
     async def _listen(self) -> None:
         while self._messages is not None:
