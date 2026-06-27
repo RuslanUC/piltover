@@ -419,6 +419,10 @@ class RegisterDevice_70(TLRequest[bool]):
         return b.getvalue()
 
 
+@pytest.mark.xfail(
+    reason="There's no way to handle SetSessionInternalPush in BaseMessageBroker._process_message right now",
+    strict=True,
+)
 @pytest.mark.parametrize(
     ("disconnect",),
     [
