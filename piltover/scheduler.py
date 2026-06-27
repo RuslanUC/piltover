@@ -5,16 +5,11 @@ from time import time
 from typing import TypeVar
 
 from loguru import logger
-from taskiq import InMemoryBroker, TaskiqScheduler, ScheduleSource, ScheduledTask, AsyncBroker
+from taskiq import ScheduleSource, ScheduledTask
 
 from piltover.db.enums import TaskIqScheduledState
 from piltover.db.models import TaskIqScheduledMessage, TaskIqScheduledDeleteMessage
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CallRpcInternal
-
-try:
-    from taskiq_aio_pika import AioPikaBroker
-except ImportError:
-    AioPikaBroker = None
 
 T = TypeVar("T")
 
@@ -87,15 +82,3 @@ class OrmDatabaseScheduleSource(ScheduleSource):
             *(await self._get_scheduled_to_send_messages()),
             *(await self._get_scheduled_to_delete_messages()),
         ]
-
-
-class Scheduler:
-    def __init__(self, rabbitmq_address: str | None = None, *, _broker: AsyncBroker | None = None) -> None:
-        if AioPikaBroker is None or rabbitmq_address is None:
-            logger.info("Scheduler is initializing with InMemoryBroker")
-            self.broker = _broker or InMemoryBroker()
-        else:
-            logger.info("Scheduler is initializing with AioPikaBroker")
-            self.broker = AioPikaBroker(rabbitmq_address)
-
-        self.scheduler = TaskiqScheduler(self.broker, sources=[OrmDatabaseScheduleSource()])

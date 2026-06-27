@@ -4,33 +4,16 @@ import asyncio
 import base64
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from loguru import logger
 from taskiq import TaskiqEvents, AsyncBroker
 
 from piltover.gateway.client import Client
 from piltover.session.storage.in_memory_storage import InMemorySessionStorage
-
-try:
-    from taskiq_aio_pika import AioPikaBroker
-    from taskiq_redis import RedisAsyncResultBackend
-
-    REMOTE_BROKER_SUPPORTED = True
-except ImportError:
-    AioPikaBroker = None
-    RedisAsyncResultBackend = None
-    REMOTE_BROKER_SUPPORTED = False
-
-from piltover.message_brokers.base_broker import BrokerType
-from piltover.message_brokers.rabbitmq_broker import RabbitMqMessageBroker
-
+from piltover.message_brokers.base_broker import BaseMessageBroker
 from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, Keys
-
-if TYPE_CHECKING:
-    from piltover.worker import Worker
-    from piltover.scheduler import Scheduler
 
 
 class Gateway:
@@ -40,9 +23,8 @@ class Gateway:
     REDIS_HOST = "redis://127.0.0.1"
 
     def __init__(
-            self, data_dir: Path, host: str = HOST, port: int = PORT, server_keys: Keys | None = None,
-            rabbitmq_address: str | None = RMQ_HOST, redis_address: str | None = REDIS_HOST,
-            salt_key: bytes | None = None,
+            self, data_dir: Path, broker: AsyncBroker, message_broker: BaseMessageBroker,
+            host: str = HOST, port: int = PORT, server_keys: Keys | None = None, salt_key: bytes | None = None,
     ):
         self.data_dir = data_dir
 
@@ -67,39 +49,18 @@ class Gateway:
 
         self.salt_key = cast(bytes, salt_key)
 
-        self.worker: Worker | None
-        self.broker: AsyncBroker | None
-        self.scheduler: Scheduler | None
-
+        self.broker = broker
+        self.message_broker = message_broker
         self.session_storage = InMemorySessionStorage()
-
-        if not REMOTE_BROKER_SUPPORTED or rabbitmq_address is None or redis_address is None:
-            logger.info("rabbitmq_address or redis_address is None, falling back to worker broker")
-            from piltover.worker import Worker
-            from piltover.scheduler import Scheduler
-            self.worker = Worker(data_dir, self.server_keys.public_key, None, None)
-            self.broker = self.worker.broker
-            self.scheduler = Scheduler(None, _broker=self.broker)
-            self.message_broker = self.worker.message_broker
-        else:
-            logger.debug("Using AioPikaBroker + RedisAsyncResultBackend")
-            self.worker = None
-            self.scheduler = None
-            self.broker = AioPikaBroker(rabbitmq_address).with_result_backend(RedisAsyncResultBackend(redis_address))
-            self.message_broker = RabbitMqMessageBroker(BrokerType.READ, rabbitmq_address)
 
         self.broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, self._broker_startup)
         self.broker.add_event_handler(TaskiqEvents.CLIENT_SHUTDOWN, self._broker_shutdown)
 
-    async def _broker_startup(self, _) -> None:
+    async def _broker_startup(self, *args, **kwargs) -> None:
         await self.session_storage.start()
-        if self.worker is None:
-            await self.message_broker.startup()
-            SessionManager.set_broker(self.message_broker)
+        SessionManager.set_broker(self.message_broker)
 
     async def _broker_shutdown(self, _) -> None:
-        if self.worker is None:
-            await self.message_broker.shutdown()
         await self.session_storage.stop()
 
     @logger.catch

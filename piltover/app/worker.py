@@ -1,46 +1,37 @@
 from pathlib import Path
 
-from taskiq import TaskiqEvents, AsyncBroker
+from taskiq import TaskiqEvents
 from tortoise import Tortoise
 
 from piltover.app.handlers import register_handlers
+from piltover.app.utils.config_helper import make_broker_from_config, make_message_broker_from_config
 from piltover.cache import Cache
 from piltover.config import SYSTEM_CONFIG, TORTOISE_ORM, WORKER_CONFIG
 from piltover.utils.debug.tracing import Tracing
 from piltover.worker import Worker
 
 
-class PiltoverWorker:
-    def __init__(
-            self, data_dir: Path,  pubkey: str | Path, rabbitmq_address: str | None = None,
-            redis_address: str | None = None
-    ):
-        pubkey = Path(pubkey)
-        if not pubkey.exists():
-            raise RuntimeError(f"Public key at path \"{pubkey.absolute()}\" does not exist!")
+async def _run(*args, **kwargs) -> None:
+    if SYSTEM_CONFIG.debug_tracing:
+        Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
+    await Tortoise.init(config=TORTOISE_ORM)
 
-        self._public_key = pubkey.read_text()
 
-        self._worker = Worker(
-            data_dir=data_dir,
-            public_key=self._public_key,
-            rabbitmq_address=rabbitmq_address,
-            redis_address=redis_address,
-        )
+pubkey = Path(WORKER_CONFIG.pubkey_file)
+if not pubkey.exists():
+    raise RuntimeError(f"Public key at path \"{pubkey.absolute()}\" does not exist!")
 
-        register_handlers(self._worker)
+broker = make_broker_from_config()
+broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, _run)
 
-        self._worker.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._run)
+worker = Worker(
+    data_dir=SYSTEM_CONFIG.data_dir,
+    public_key=pubkey.read_text(),
+    broker=broker,
+    message_broker=make_message_broker_from_config(broker),
+)
 
-    @staticmethod
-    async def _run(_):
-        if SYSTEM_CONFIG.debug_tracing:
-            Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
-        await Tortoise.init(config=TORTOISE_ORM)
-
-    def get_broker(self) -> AsyncBroker:
-        return self._worker.broker
-
+register_handlers(worker)
 
 Cache.init(
     SYSTEM_CONFIG.cache.backend,
@@ -48,10 +39,3 @@ Cache.init(
     port=SYSTEM_CONFIG.cache.port,
     db=SYSTEM_CONFIG.cache.db,
 )
-worker = PiltoverWorker(
-    SYSTEM_CONFIG.data_dir,
-    WORKER_CONFIG.pubkey_file,
-    SYSTEM_CONFIG.rabbitmq_address,
-    SYSTEM_CONFIG.redis_address,
-)
-broker = worker.get_broker()

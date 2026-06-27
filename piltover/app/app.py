@@ -11,17 +11,21 @@ from typing import AsyncIterator
 
 import uvloop
 from loguru import logger
+from taskiq import TaskiqScheduler, InMemoryBroker
 from tortoise import Tortoise, connections
 
 from piltover.app.handlers import register_handlers
 from piltover.app.utils.app_create_system_data import create_system_data
+from piltover.app.utils.config_helper import make_broker_from_config, make_message_broker_from_config
 from piltover.cache import Cache
 from piltover.config import TORTOISE_ORM, GATEWAY_CONFIG, SYSTEM_CONFIG
 from piltover.gateway import Gateway
+from piltover.scheduler import OrmDatabaseScheduleSource
 from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, Keys
 from piltover.utils.debug.measure_queryset_times import patch_queryset_for_measurement
 from piltover.utils.debug.tracing import Tracing
+from piltover.worker import Worker
 
 
 class ArgsNamespace(SimpleNamespace):
@@ -61,7 +65,7 @@ class ArgsNamespace(SimpleNamespace):
 class PiltoverApp:
     def __init__(
             self, data_dir: Path, privkey: str | Path, pubkey: str | Path, host: str = "0.0.0.0", port: int = 4430,
-            rabbitmq_address: str | None = None, redis_address: str | None = None, salt_key: bytes | None = None,
+            salt_key: bytes | None = None,
     ):
         self._host = host
         self._port = port
@@ -79,26 +83,43 @@ class PiltoverApp:
         self._private_key = privkey.read_text()
         self._public_key = pubkey.read_text()
 
+        broker = make_broker_from_config()
+        message_broker = make_message_broker_from_config(broker)
+
         self._gateway = Gateway(
             data_dir=data_dir,
+            broker=broker,
+            message_broker=message_broker,
             host=host,
             port=port,
             server_keys=Keys(
                 private_key=self._private_key,
                 public_key=self._public_key,
             ),
-            rabbitmq_address=rabbitmq_address,
-            redis_address=redis_address,
             salt_key=salt_key,
         )
 
-        if self._gateway.worker is not None:
-            register_handlers(self._gateway.worker)
+        self._worker: Worker | None = None
+        self._scheduler: TaskiqScheduler | None = None
+
+        if isinstance(broker, InMemoryBroker):
+            logger.info(
+                "Running worker and scheduler in the same process as gateway "
+                "because InMemoryBroker is being used"
+            )
+            self._worker = worker = Worker(
+                data_dir=data_dir,
+                public_key=self._public_key,
+                broker=broker,
+                message_broker=message_broker,
+            )
+            register_handlers(worker)
+            self._scheduler = TaskiqScheduler(broker, sources=[OrmDatabaseScheduleSource()])
 
     def _run_in_memory_scheduler(
             self, update_interval: timedelta | None = None, loop_interval: timedelta | None = None,
     ) -> asyncio.Task | None:
-        if self._gateway.scheduler is None:
+        if self._scheduler is None:
             return None
 
         from taskiq.cli.scheduler.run import run_scheduler
@@ -106,7 +127,7 @@ class PiltoverApp:
 
         return asyncio.create_task(run_scheduler(
             SchedulerArgs(
-                scheduler=self._gateway.scheduler.scheduler,
+                scheduler=self._scheduler,
                 modules=[],
                 update_interval=update_interval,
                 loop_interval=loop_interval,
@@ -145,7 +166,8 @@ class PiltoverApp:
             monitor = aiomonitor.start_monitor(loop)
 
         await self._gateway.serve()
-        await scheduler_task
+        if scheduler_task is not None:
+            await scheduler_task
 
         if SYSTEM_CONFIG.debug_enable_aiomonitor:
             monitor.stop()
@@ -158,6 +180,9 @@ class PiltoverApp:
             run_actual_server: bool = False, scheduler_update_interval: timedelta | None = None,
             scheduler_loop_interval: timedelta | None = None,
     ) -> AsyncIterator[Gateway]:
+        if self._worker is None:
+            raise RuntimeError("PiltoverApp._worker must be set when testing")
+
         if SYSTEM_CONFIG.debug_tracing:
             Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
 
@@ -175,7 +200,7 @@ class PiltoverApp:
 
         from piltover.app.handlers import testing
         if not testing.handler.registered:
-            self._gateway.worker.register_handler(testing.handler)
+            self._worker.register_handler(testing.handler)
 
         await self._gateway.broker.startup()
 
@@ -278,8 +303,6 @@ app = PiltoverApp(
     pubkey=GATEWAY_CONFIG.pubkey_file,
     host=GATEWAY_CONFIG.host,
     port=GATEWAY_CONFIG.port,
-    rabbitmq_address=SYSTEM_CONFIG.rabbitmq_address,
-    redis_address=SYSTEM_CONFIG.redis_address,
     salt_key=GATEWAY_CONFIG.salt_key,
 )
 
