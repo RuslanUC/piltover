@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import NamedTuple, TYPE_CHECKING
 
+from piltover.auth_data import AuthData
+
 if TYPE_CHECKING:
     from piltover.session import Session
 
@@ -27,11 +29,15 @@ class BaseSessionStorage(ABC):
         ...
 
     @abstractmethod
-    async def get_session(self, session_key: SessionKey) -> Session:
+    async def get_session(self, session_id: int, auth_data: AuthData) -> Session:
         ...
 
     @abstractmethod
     async def save_session(self, session: Session) -> None:
+        ...
+
+    @abstractmethod
+    async def destroy_session(self, session_key: SessionKey) -> None:
         ...
 
     @abstractmethod

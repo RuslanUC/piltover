@@ -2,12 +2,16 @@ import asyncio
 from collections.abc import MutableMapping
 from queue import SimpleQueue
 from threading import Thread
-from typing import TypeVar, Iterable, Generic
+from typing import TypeVar, Iterable, Generic, TYPE_CHECKING
 
 from loguru import logger
 from sortedcontainers import SortedSet
 
+from piltover.auth_data import AuthData
 from piltover.session.storage.base_storage import BaseSessionStorage, MessagePullResult, SessionKey
+
+if TYPE_CHECKING:
+    from piltover.session import Session
 
 T = TypeVar("T")
 TKey = TypeVar("TKey")
@@ -67,6 +71,10 @@ class MaxLenSortedCollection(MutableMapping[TKey, TVal]):
             self._set.remove(key)
             del self._dict[key]
 
+    def clear(self) -> None:
+        self._dict.clear()
+        self._set.clear()
+
 
 class WorkerJob(Generic[T]):
     __slots__ = ("future",)
@@ -117,15 +125,39 @@ class QueueAckJob(WorkerJob[None]):
         self.message_ids = message_ids
 
 
+class GetSessionJob(WorkerJob[Session]):
+    __slots__ = ("session_id", "auth_data",)
+
+    def __init__(self, future: asyncio.Future[T], session_id: int, auth_data: AuthData) -> None:
+        super().__init__(future)
+        self.session_id = session_id
+        self.auth_data = auth_data
+
+
+class DestroySessionJob(WorkerJob[None]):
+    __slots__ = ("session_key",)
+
+    def __init__(self, future: asyncio.Future[T], session_key: SessionKey) -> None:
+        super().__init__(future)
+        self.session_key = session_key
+
+
 class InMemorySessionStorage(BaseSessionStorage):
     def __init__(self) -> None:
         self.by_session_key: dict[SessionKey, MaxLenSortedCollection[int, tuple[int, bytes]]] = {}
         self.waiters: dict[SessionKey, tuple[asyncio.Future[list[MessagePullResult]], list[SessionKey]]] = {}
+        # TODO: use LRU? or btrees package
+        self.sessions: dict[SessionKey, Session] = {}
         self.queue: SimpleQueue[WorkerJob] = SimpleQueue()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.thread: Thread | None = None
 
     # TODO: run background task to remove old messages and sessions
+
+    def _make_future(self) -> asyncio.Future:
+        if self.loop is None:
+            raise RuntimeError("Session storage was accessed before start or after stop")
+        return self.loop.create_future()
 
     async def start(self) -> None:
         if self.loop is not None:
@@ -136,9 +168,10 @@ class InMemorySessionStorage(BaseSessionStorage):
         logger.info("Started InMemoryMessageQueue")
 
     async def stop(self) -> None:
-        self.queue.put(job := WorkerStopJob(self.loop.create_future()), False)
+        self.queue.put(job := WorkerStopJob(self._make_future()), False)
         await job.future
         self.loop = self.thread = None
+        self.queue = SimpleQueue()
         logger.info("Stopped InMemoryMessageQueue")
 
     def _notify(self, session_key: SessionKey, message_id: int, seq_no: int, data: bytes) -> None:
@@ -194,6 +227,19 @@ class InMemorySessionStorage(BaseSessionStorage):
             return
         self.by_session_key[session_key].remove_many(message_ids)
 
+    def _get_session_sync(self, session_id: int, auth_data: AuthData) -> Session:
+        key = SessionKey(session_id, auth_data.auth_key_id)
+        if key not in self.sessions:
+            self.sessions[key] = Session(session_id=session_id, storage=self, auth_data=auth_data)
+        return self.sessions[key]
+
+    def _destroy_session_sync(self, session_key: SessionKey) -> None:
+        if session_key in self.by_session_key:
+            self.by_session_key.pop(session_key).clear()
+        if session_key in self.sessions:
+            del self.sessions[session_key]
+        ...  # TODO: mark session as destroyed
+
     def _worker_thread(self) -> None:
         while True:
             job = self.queue.get()
@@ -202,6 +248,9 @@ class InMemorySessionStorage(BaseSessionStorage):
 
             future = job.future
             if isinstance(job, WorkerStopJob):
+                self.by_session_key.clear()
+                # TODO: mark all sessions as destroyed
+                self.sessions.clear()
                 self.loop.call_soon_threadsafe(future.set_result, None)
                 return
             elif isinstance(job, QueuePushJob):
@@ -217,15 +266,32 @@ class InMemorySessionStorage(BaseSessionStorage):
             elif isinstance(job, QueueAckJob):
                 self._ack_sync(job.session_key, job.message_ids)
                 self.loop.call_soon_threadsafe(future.set_result, None)
+            elif isinstance(job, GetSessionJob):
+                session = self._get_session_sync(job.session_id, job.auth_data)
+                self.loop.call_soon_threadsafe(job.future.set_result, session)
+            elif isinstance(job, DestroySessionJob):
+                self._destroy_session_sync(job.session_key)
+                self.loop.call_soon_threadsafe(job.future.set_result, None)
             else:
                 raise RuntimeError(f"Unknown worker job class: {job}")
 
+    async def get_session(self, session_id: int, auth_data: AuthData) -> Session:
+        self.queue.put(job := GetSessionJob(self._make_future(), session_id, auth_data), False)
+        return await job.future
+
+    async def save_session(self, session: Session) -> None:
+        pass
+
+    async def destroy_session(self, session_key: SessionKey) -> None:
+        self.queue.put(job := DestroySessionJob(self._make_future(), session_key), False)
+        await job.future
+
     async def push(self, session_key: SessionKey, message_id: int, seq_no: int, data: bytes) -> None:
-        self.queue.put(job := QueuePushJob(self.loop.create_future(), session_key, message_id, seq_no, data), False)
+        self.queue.put(job := QueuePushJob(self._make_future(), session_key, message_id, seq_no, data), False)
         await job.future
 
     async def pull(self, sessions: dict[SessionKey, int], timeout: float = 0.1) -> list[MessagePullResult]:
-        self.queue.put(job := QueuePullJob(self.loop.create_future(), sessions), False)
+        self.queue.put(job := QueuePullJob(self._make_future(), sessions), False)
         try:
             result = await asyncio.wait_for(job.future, timeout=timeout)
         except TimeoutError:
@@ -234,11 +300,11 @@ class InMemorySessionStorage(BaseSessionStorage):
             return result
 
         sessions_keys = list(sessions.keys())
-        self.queue.put(job := QueueUnsubSessionsJob(self.loop.create_future(), sessions_keys), False)
+        self.queue.put(job := QueueUnsubSessionsJob(self._make_future(), sessions_keys), False)
         await job.future
 
         return []
 
     async def ack(self, session_key: SessionKey, message_ids: list[int]) -> None:
-        self.queue.put(job := QueueAckJob(self.loop.create_future(), session_key, message_ids), False)
+        self.queue.put(job := QueueAckJob(self._make_future(), session_key, message_ids), False)
         await job.future
