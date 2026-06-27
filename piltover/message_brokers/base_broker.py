@@ -96,8 +96,8 @@ class BaseMessageBroker(ABC):
         self.subscribed_sessions[session.session_id] = session
 
         self.subscribe_user(session.user_id, session)
-        self.subscribe_key(session.auth_data.auth_key_id if session.auth_data else None, session)
-        self.subscribe_key(session.auth_data.perm_auth_key_id if session.auth_data else None, session)
+        self.subscribe_key(session.auth_data.auth_key_id, session)
+        self.subscribe_key(session.auth_data.perm_auth_key_id, session)
         self.subscribe_auth(session.auth_id, session)
 
         self.channels_diff_update(session, [], session.channel_ids)
@@ -147,8 +147,8 @@ class BaseMessageBroker(ABC):
         self.subscribed_sessions.pop(session.session_id, None)
 
         self.unsubscribe_user(session.user_id, session)
-        self.unsubscribe_key(session.auth_data.auth_key_id if session.auth_data else None, session)
-        self.unsubscribe_key(session.auth_data.perm_auth_key_id if session.auth_data else None, session)
+        self.unsubscribe_key(session.auth_data.auth_key_id, session)
+        self.unsubscribe_key(session.auth_data.perm_auth_key_id, session)
         self.unsubscribe_auth(session.auth_id, session)
 
         self.channels_diff_update(session, session.channel_ids, [])

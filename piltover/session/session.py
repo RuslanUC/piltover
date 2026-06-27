@@ -75,12 +75,10 @@ class Session:
 
     # TODO: remove, use sess_key instead
     def uniq_id(self) -> tuple[int, int]:
-        key_id = self.auth_data.auth_key_id or 0
-        return key_id, self.session_id
+        return self.auth_data.auth_key_id, self.session_id
 
     def sess_key(self) -> SessionKey:
-        key_id, session_id = self.uniq_id()
-        return SessionKey(key_id, session_id)
+        return SessionKey(self.auth_data.auth_key_id, self.session_id)
 
     def __hash__(self) -> int:
         return hash(self.uniq_id)
@@ -176,10 +174,6 @@ class Session:
 
     # TODO: store salt_key in session?
     def update_salts_maybe(self, salt_key: bytes, force: bool = False) -> None:
-        if self.auth_data.auth_key_id is None:
-            self.salt_now = self.salt_prev = (b"\x00" * 8, 0)
-            return
-
         now = int(time() // (30 * 60))
         if self.salt_now.valid_at == now and not force:
             return
@@ -213,7 +207,8 @@ class Session:
         self.channel_ids.clear()
 
     async def refresh_auth_maybe(self, force_refresh_auth: bool = False) -> None:
-        if force_refresh_auth and self.auth_data.auth_key_id is not None:
+        if force_refresh_auth:
+            # TODO: if none - discard session because auth key was removed
             self.auth_data = await AuthKey.get_auth_data(self.auth_data.auth_key_id)
 
         auth_key_id = self.auth_data.auth_key_id
@@ -222,7 +217,7 @@ class Session:
         old_user_id = self.user_id
         old_auth_id = self.auth_id
 
-        if auth_key_id is None or perm_auth_key_id is None:
+        if perm_auth_key_id is None:
             self._reset_auth()
             return
 

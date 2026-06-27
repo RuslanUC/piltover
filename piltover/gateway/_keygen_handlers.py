@@ -107,8 +107,8 @@ def _req_dh_params_sync(client: Client, req_dh_params: ReqDHParams) -> tuple[int
     if auth_data.server_nonce != p_q_inner_data.server_nonce:
         raise Disconnection(404)
 
-    auth_data.is_temp = isinstance(p_q_inner_data, (PQInnerDataTemp, PQInnerDataTempDc))
-    auth_data.expires_in = max(cast(PQInnerDataTemp, p_q_inner_data).expires_in, 86400) if auth_data.is_temp else 0
+    is_temp = isinstance(p_q_inner_data, (PQInnerDataTemp, PQInnerDataTempDc))
+    auth_data.expires_in = max(cast(PQInnerDataTemp, p_q_inner_data).expires_in, 86400) if is_temp else 0
 
     new_nonce = Int256.write(p_q_inner_data.new_nonce)
     auth_data.new_nonce = new_nonce

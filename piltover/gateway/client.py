@@ -129,9 +129,6 @@ class Client:
     async def _write_message(
             self, message_id: int, seq_no: int, data: bytes, session: Session,
     ) -> None:
-        if not session.auth_data or session.auth_data.auth_key is None:
-            raise Unreachable("Trying to send encrypted response, but auth_key is empty")
-
         logger.debug(f"Sending message {message_id} to {session.session_id}")
 
         session.update_salts_maybe(self.server.salt_key)
@@ -207,7 +204,7 @@ class Client:
                 auth_key = self.active_keys[packet.auth_key_id]
             else:
                 auth_data = await self._get_auth_data(packet.auth_key_id)
-                self.active_keys[packet.auth_key_id] = auth_key = cast(bytes, auth_data.auth_key)
+                self.active_keys[packet.auth_key_id] = auth_key = auth_data.auth_key
 
             decrypted = await self.decrypt(packet, auth_key)
 

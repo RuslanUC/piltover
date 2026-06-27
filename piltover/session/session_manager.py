@@ -24,7 +24,7 @@ class SessionManager:
 
     @classmethod
     def get_or_create(cls, session_id: int, client: Client, auth_data: AuthData) -> tuple[Session, bool]:
-        uniq_id = cast(int, auth_data.auth_key_id), session_id
+        uniq_id = auth_data.auth_key_id, session_id
 
         if uniq_id in cls.sessions:
             return cls.sessions[uniq_id], False
@@ -38,7 +38,7 @@ class SessionManager:
 
     @classmethod
     def cleanup(cls, session: Session) -> None:
-        uniq_id = cast(int, session.auth_data.auth_key_id), session.session_id
+        uniq_id = session.uniq_id()
         if uniq_id in cls.sessions:
             del cls.sessions[uniq_id]
 
