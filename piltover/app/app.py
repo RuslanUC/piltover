@@ -27,6 +27,13 @@ from piltover.utils.debug.measure_queryset_times import patch_queryset_for_measu
 from piltover.utils.debug.tracing import Tracing
 from piltover.worker import Worker
 
+try:
+    from aiogram import Bot as AioGramBot
+    from aiogram.client.default import DefaultBotProperties
+    from aiogram.enums import ParseMode
+except:
+    AioGramBot = DefaultBotProperties = ParseMode = None
+
 
 class ArgsNamespace(SimpleNamespace):
     create_system_user: bool
@@ -134,6 +141,16 @@ class PiltoverApp:
             )
         ))
 
+    @staticmethod
+    def _run_telegram_integration() -> asyncio.Task | None:
+        tg_integration = SYSTEM_CONFIG.telegram_integration
+        if not tg_integration.enabled or AioGramBot is None:
+            return None
+
+        from .telegram_integration_bot import dp as _dispatcher
+        bot = AioGramBot(token=tg_integration.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        return asyncio.create_task(_dispatcher.start_polling(bot))
+
     async def run(self, host: str | None = None, port: int | None = None):
         if SYSTEM_CONFIG.debug_tracing:
             Tracing.init(SYSTEM_CONFIG.debug_tracing.backend, zipkin_address=SYSTEM_CONFIG.debug_tracing.zipkin_address)
@@ -156,6 +173,7 @@ class PiltoverApp:
         )
 
         scheduler_task = self._run_in_memory_scheduler()
+        telegram_integration_task = self._run_telegram_integration()
 
         logger.success(f"Running on {self._host}:{self._port}")
 
@@ -168,6 +186,8 @@ class PiltoverApp:
         await self._gateway.serve()
         if scheduler_task is not None:
             await scheduler_task
+        if telegram_integration_task is not None:
+            await telegram_integration_task
 
         if SYSTEM_CONFIG.debug_enable_aiomonitor:
             monitor.stop()

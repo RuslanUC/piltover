@@ -2,22 +2,31 @@ from collections import defaultdict
 from datetime import datetime, UTC
 from typing import cast
 
+from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
 from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards
+from piltover.config import SYSTEM_CONFIG, APP_CONFIG
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
-    TaskIqScheduledMessage
+    TaskIqScheduledMessage, TelegramUser
 from piltover.db.models.peer import PeerChannelT
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import TLObject
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
-    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft
+    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramAuthMessage
 from piltover.tl.types.internal import TaggedBool
 from piltover.worker import MessageHandler
+
+try:
+    from aiogram import Bot as AioGramBot
+    from aiogram.client.default import DefaultBotProperties
+    from aiogram.enums import ParseMode
+except:
+    AioGramBot = DefaultBotProperties = ParseMode = None
 
 handler = MessageHandler("internal")
 
@@ -189,3 +198,35 @@ async def clear_draft(request: ClearDraft) -> TLObject:
         return TaggedBool(value=True)
 
     return TaggedBool(value=False)
+
+
+@handler.on_request(SendTelegramAuthMessage, ReqHandlerFlags.INTERNAL)
+async def send_telegram_auth_message(request: SendTelegramAuthMessage) -> TLObject:
+    if AioGramBot is None:
+        logger.error("aiogram is not installed, not sending auth code.")
+        return TaggedBool(value=False)
+
+    tg_user = await TelegramUser.get_or_none(user_id=request.user_id)
+    if tg_user is None or not SYSTEM_CONFIG.telegram_integration.enabled:
+        return TaggedBool(value=False)
+
+    logger.info(f"Sending auth code to telegram user {tg_user.telegram_id}")
+
+    async with AioGramBot(
+        token=SYSTEM_CONFIG.telegram_integration.bot_token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    ) as bot:
+        try:
+            await bot.send_message(
+                chat_id=tg_user.telegram_id,
+                text=(
+                    f"<b>Login code</b>: <tg-spoiler>{str(request.code).zfill(5)}</tg-spoiler>. "
+                    f"Do not give this code to anyone!\n\n"
+                    f"❗️This code can be used to log in to your {APP_CONFIG.name} account.\n\n"
+                    "If you didn't request this code by trying to log in on another device, simply ignore this message."
+                ),
+            )
+        except TelegramBadRequest as e:
+            logger.opt(exception=e).error(f"Failed to send telegram message")
+
+    return TaggedBool(value=True)

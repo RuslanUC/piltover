@@ -13,17 +13,17 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.system_notifications import send_official_notification_message
 from piltover.app.utils.utils import check_password_internal
-from piltover.config import APP_CONFIG
+from piltover.config import APP_CONFIG, SYSTEM_CONFIG
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType
-from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, TempAuthKey, SentCode, User, \
-    QrLogin, PhoneCodePurpose, State
+from piltover.db.models import AuthKey, UserAuthorization, UserPassword, TempAuthKey, SentCode, User, \
+    QrLogin, PhoneCodePurpose, TelegramUser
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken, UpdateShort
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode, ImportBotAuthorization
+from piltover.tl.functions.internal import SendTelegramAuthMessage
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
     LoginToken, AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut, LoginTokenSuccess
 from piltover.utils.utils import sec_check
@@ -88,6 +88,10 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
     text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
     if not await send_official_notification_message(user.id, text, entities):
         return resp
+
+    if SYSTEM_CONFIG.telegram_integration.enabled and await TelegramUser.filter(user=user).exists():
+        ctx = request_ctx.get()
+        await ctx.worker.call_internal(SendTelegramAuthMessage(user_id=user.id, code=code.code))
 
     resp.type_ = SentCodeTypeApp(length=5)
     return resp
