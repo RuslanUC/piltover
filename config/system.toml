@@ -47,7 +47,7 @@ backend = "noop"
 enabled = false
 # Token of the bot used for integration.
 #bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-# How many accounts a single Telegram used may create.
+# How many accounts a single Telegram used may create. Set to 0 or any negative number to disable new registrations.
 #max_accounts_per_user = 3
 # How phone number for Piltover account is chosen.
 #  - "real" - user must share phone number with the bot, that phone number will be used.

@@ -9,9 +9,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from tortoise import Tortoise
+from tortoise.transactions import in_transaction
 
 from piltover.config import SYSTEM_CONFIG, APP_CONFIG, TORTOISE_ORM
-from piltover.db.models import User
+from piltover.db.models import User, TelegramUser
 
 NEW_ACCOUNT_BTN_TEXT = "Create new account"
 
@@ -52,7 +53,20 @@ async def command_start_handler(message: Message) -> None:
 
 @dp.message(F.text == NEW_ACCOUNT_BTN_TEXT)
 async def new_account_btn_handler(message: Message, state: FSMContext) -> None:
-    # TODO: check if user can create new account
+    max_per_user = SYSTEM_CONFIG.telegram_integration.max_accounts_per_user
+    if max_per_user <= 0:
+        await message.answer(
+            text=f"New accounts registration is currently disabled.",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        return
+
+    if await TelegramUser.filter(telegram_id=message.from_user.id).count() > max_per_user:
+        await message.answer(
+            text=f"You already have created maximum number of accounts.",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        return
 
     await state.set_state(BotState.first_name)
     await message.answer(
@@ -133,9 +147,22 @@ async def new_account_last_name_handler(message: Message, state: FSMContext) -> 
         await state.clear()
         return
 
+    await _create_new_user(message, state)
+
+
+@dp.message(BotState.phone_number)
+async def new_account_phone_number_handler(message: Message, state: FSMContext) -> None:
+    ...  # TODO: handle phone number
+
+
+async def _create_new_user(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
-    # TODO: handle exception when user with phone number already exists
-    user = await User.create_new_user(data["phone_number"], data["first_name"], data["last_name"])
+
+    async with in_transaction():
+        # TODO: handle exception when user with phone number already exists
+        user = await User.create_new_user(data["phone_number"], data["first_name"], data["last_name"])
+        await TelegramUser.create(user=user, telegram_id=message.from_user.id)
+
     await message.answer(
         text=(
             f"Account was created successfully! "
@@ -147,6 +174,7 @@ async def new_account_last_name_handler(message: Message, state: FSMContext) -> 
         ),
         reply_markup=ReplyKeyboardRemove(),
     )
+
     await state.clear()
 
 
