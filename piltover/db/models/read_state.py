@@ -55,7 +55,7 @@ class ReadState(Model):
             for peer, in_read_state in zip(peers, in_read_states)
         ]
         unread_counts = await models.MessageRef.filter(
-            Q(*unreads_queries, join_type=Q.OR), content__author_id__not=user_id,
+            Q(*unreads_queries, join_type=Q.OR),
         ).group_by("peer_id").annotate(count=Count("id")).values_list("peer_id", "count")
         unread_by_peer: dict[int, int] = dict(unread_counts)
 
