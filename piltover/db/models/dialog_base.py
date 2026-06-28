@@ -34,9 +34,6 @@ class DialogBase(Model):
     ) -> QuerySet[models.MessageRef]:
         raise NotImplementedError
 
-    def peer_key(self) -> tuple[PeerType, int]:
-        raise NotImplementedError
-
     @classmethod
     def get_from_input_peer(
             cls: type[DialogBaseT], user_id: int, input_peer: TLInputPeerBase | TLInputUserBase | TLInputChannelBase,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from tortoise.expressions import Q, Subquery
 from tortoise.queryset import QuerySet
@@ -86,15 +86,6 @@ class UsersChatsChannels:
             models.User.filter(users_q) if users_q != _EMPTY else None,
             models.Chat.filter(chats_q) if chats_q != _EMPTY else None,
             models.Channel.filter(channels_q) if channels_q != _EMPTY else None,
-        )
-
-    async def resolve_ids(self) -> tuple[list[int], list[int], list[int]]:
-        users_q, chats_q, channels_q = self._query()
-
-        return (
-            cast(list[int], cast(object, await users_q.values_list("id", flat=True))) if users_q else [],
-            cast(list[int], cast(object, await chats_q.values_list("id", flat=True))) if chats_q else [],
-            cast(list[int], cast(object, await channels_q.values_list("id", flat=True))) if channels_q else [],
         )
 
     async def resolve_nontl(

@@ -8,9 +8,8 @@ from tortoise.queryset import QuerySet
 from tortoise.transactions import in_transaction
 
 from piltover.db import models
-from piltover.db.enums import DialogFolderId, PeerType
+from piltover.db.enums import DialogFolderId
 from piltover.db.models.dialog_base import DialogBase, DialogBaseT
-from piltover.exceptions import Unreachable
 from piltover.tl import PeerNotifySettings
 from piltover.tl.base import InputUser as TLInputUserBase, InputPeer as TLInputPeerBase, \
     InputChannel as TLInputChannelBase
@@ -42,18 +41,6 @@ class Dialog(DialogBase):
         ).select_related(
             *(models.MessageRef.PREFETCH_MAYBECACHED if prefetch else ()),
         )
-
-    def peer_key(self) -> tuple[PeerType, int]:
-        if self.peer.type in (PeerType.SELF, PeerType.USER):
-            peer_id = self.peer.user_id
-        elif self.peer.type is PeerType.CHAT:
-            peer_id = self.peer.chat_id
-        elif self.peer.type is PeerType.CHANNEL:
-            peer_id = self.peer.channel_id
-        else:
-            raise Unreachable
-
-        return self.peer.type, peer_id
 
     async def to_tl(self, pts: int | None = None) -> TLDialog:
         in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = \

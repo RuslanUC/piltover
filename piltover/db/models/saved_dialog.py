@@ -7,9 +7,7 @@ from tortoise.functions import Max
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
-from piltover.db.enums import PeerType
 from piltover.db.models.dialog_base import DialogBase
-from piltover.exceptions import Unreachable
 from piltover.tl.types import SavedDialog as TLSavedDialog
 
 
@@ -32,20 +30,8 @@ class SavedDialog(DialogBase):
                 ).group_by("content__fwd_header__saved_peer_id").annotate(max_id=Max("id")).values("max_id")
             )
         ).select_related(
-            *(models.MessageRef.PREFETCH_FIELDS if prefetch else ()),
+            *(models.MessageRef.PREFETCH_MAYBECACHED if prefetch else ()),
         )
-
-    def peer_key(self) -> tuple[PeerType, int]:
-        if self.peer.type in (PeerType.SELF, PeerType.USER):
-            peer_id = self.peer.user_id
-        elif self.peer.type is PeerType.CHAT:
-            peer_id = self.peer.chat_id
-        elif self.peer.type is PeerType.CHANNEL:
-            peer_id = self.peer.channel_id
-        else:
-            raise Unreachable
-
-        return self.peer.type, peer_id
 
     async def to_tl(self) -> TLSavedDialog:
         top_message_id = cast(
