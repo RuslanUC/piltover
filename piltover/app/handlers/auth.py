@@ -48,6 +48,9 @@ def _validate_phone(phone_number: str) -> str:
     except ValueError:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
+    if len(phone_number) > 16:
+        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+
     return phone_number
 
 

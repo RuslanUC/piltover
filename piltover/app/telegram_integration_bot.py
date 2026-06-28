@@ -9,12 +9,16 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from tortoise import Tortoise
+from tortoise.exceptions import IntegrityError
 from tortoise.transactions import in_transaction
 
+from piltover.app.handlers.auth import _validate_phone
 from piltover.config import SYSTEM_CONFIG, APP_CONFIG, TORTOISE_ORM
 from piltover.db.models import User, TelegramUser
+from piltover.exceptions import ErrorRpc
 
 NEW_ACCOUNT_BTN_TEXT = "Create new account"
+BTN_TEXT_SHARE_CONTACT = "Share contact"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
@@ -51,6 +55,39 @@ async def command_start_handler(message: Message) -> None:
     )
 
 
+def _make_first_name_kbd(message: Message) -> ReplyKeyboardMarkup | ReplyKeyboardRemove:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(
+                    text=message.from_user.first_name,
+                ),
+            ],
+        ],
+        is_persistent=False,
+        one_time_keyboard=True,
+        input_field_placeholder="Send first name..."
+    ) if message.from_user else ReplyKeyboardRemove()
+
+
+def _make_last_name_kbd(message: Message) -> ReplyKeyboardMarkup | ReplyKeyboardRemove:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=message.from_user.last_name)]],
+        is_persistent=False,
+        one_time_keyboard=True,
+        input_field_placeholder="Send last name..."
+    ) if message.from_user and message.from_user.last_name else ReplyKeyboardRemove()
+
+
+def _make_phone_number_kbd() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=BTN_TEXT_SHARE_CONTACT)]],
+        is_persistent=False,
+        one_time_keyboard=True,
+        input_field_placeholder="Send phone_number..."
+    )
+
+
 @dp.message(F.text == NEW_ACCOUNT_BTN_TEXT)
 async def new_account_btn_handler(message: Message, state: FSMContext) -> None:
     max_per_user = SYSTEM_CONFIG.telegram_integration.max_accounts_per_user
@@ -71,52 +108,46 @@ async def new_account_btn_handler(message: Message, state: FSMContext) -> None:
     await state.set_state(BotState.first_name)
     await message.answer(
         text=f"What's the account {html.bold('first')} name will be?",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[
-                [
-                    KeyboardButton(
-                        text=message.from_user.first_name,
-                    ),
-                ],
-            ],
-            is_persistent=False,
-            one_time_keyboard=True,
-            input_field_placeholder="Send first name..."
-        ) if message.from_user else ReplyKeyboardRemove(),
+        reply_markup=_make_first_name_kbd(message),
     )
 
 
 @dp.message(BotState.first_name)
 async def new_account_first_name_handler(message: Message, state: FSMContext) -> None:
-    # TODO: validate first name
+    if not message.text or len(message.text) > 64 or "\n" in message.text:
+        await message.answer(
+            text=f"Invalid first name. It should be 1-64 characters in length and be a single line.",
+            reply_markup=_make_first_name_kbd(message),
+        )
+        return
+
     await state.update_data(first_name=message.text)
     await state.set_state(BotState.last_name)
     await message.answer(
         text=f"What's the account {html.bold('last')} name will be?",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[
-                [
-                    KeyboardButton(
-                        text=message.from_user.last_name,
-                    ),
-                ],
-            ],
-            is_persistent=False,
-            one_time_keyboard=True,
-            input_field_placeholder="Send first name..."
-        ) if message.from_user and message.from_user.last_name else ReplyKeyboardRemove(),
+        reply_markup=_make_last_name_kbd(message),
     )
 
 
 @dp.message(BotState.last_name)
 async def new_account_last_name_handler(message: Message, state: FSMContext) -> None:
-    # TODO: validate last name
+    if not message.text or len(message.text) > 64 or "\n" in message.text:
+        await message.answer(
+            text=f"Invalid last name. It should be 1-64 characters in length and be a single line.",
+            reply_markup=_make_last_name_kbd(message),
+        )
+        return
+
     await state.update_data(last_name=message.text)
     await state.set_state(BotState.phone_number)
 
     policy = SYSTEM_CONFIG.telegram_integration.phone_number_policy
     if policy == "real":
-        ...  # TODO: request user contact
+        await message.answer(
+            text=f"Share your phone number with bot and it will be used to create new account.",
+            reply_markup=_make_phone_number_kbd(),
+        )
+        return
     elif policy == "random":
         for _ in range(3):
             random_number = random.randint(0, 9999999)
@@ -133,7 +164,11 @@ async def new_account_last_name_handler(message: Message, state: FSMContext) -> 
 
         await state.update_data(phone_number=random_phone)
     elif policy == "user-provided":
-        ...  # TODO: ask user for phone number
+        await message.answer(
+            text=f"Send phone number that will be used for new account.",
+            reply_markup=_make_phone_number_kbd(),
+        )
+        return
     else:
         await message.answer(
             text=(
@@ -152,15 +187,53 @@ async def new_account_last_name_handler(message: Message, state: FSMContext) -> 
 
 @dp.message(BotState.phone_number)
 async def new_account_phone_number_handler(message: Message, state: FSMContext) -> None:
-    ...  # TODO: handle phone number
+    if message.contact is not None:
+        if message.contact.user_id != message.from_user.id:
+            await message.answer(
+                text=f"You need to share your own phone number with the bot.",
+                reply_markup=_make_phone_number_kbd(),
+            )
+            return
+        await state.update_data(phone_number=message.contact.phone_number)
+    else:
+        if SYSTEM_CONFIG.telegram_integration.phone_number_policy == "real":
+            await message.answer(
+                text=f"Share your phone number with bot and it will be used to create new account.",
+                reply_markup=_make_phone_number_kbd(),
+            )
+            return
+
+        try:
+            phone_number = _validate_phone(message.text or "")
+        except ErrorRpc:
+            await message.answer(
+                text=f"Invalid phone number. Try another one.",
+                reply_markup=_make_phone_number_kbd(),
+            )
+            return
+        else:
+            await state.update_data(phone_number=phone_number)
+
+    await _create_new_user(message, state)
 
 
 async def _create_new_user(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
 
     async with in_transaction():
-        # TODO: handle exception when user with phone number already exists
-        user = await User.create_new_user(data["phone_number"], data["first_name"], data["last_name"])
+        try:
+            user = await User.create_new_user(data["phone_number"], data["first_name"], data["last_name"])
+        except IntegrityError:
+            await message.answer(
+                text=(
+                    f"Failed to create account (possibly because user with specified phone number already exists). "
+                    f"You can try to create account again."
+                ),
+                reply_markup=MAIN_KEYBOARD,
+            )
+            await state.clear()
+            return
+
         await TelegramUser.create(user=user, telegram_id=message.from_user.id)
 
     await message.answer(
