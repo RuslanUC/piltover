@@ -36,7 +36,7 @@ class _System(BaseModel):
     debug_tracing: _TracingConfig
     debug_enable_aiomonitor: bool = False
     enable_system_bot: bool = False
-    telegram_integration: _TelegramIntegration
+    telegram_integration: _TelegramIntegration = Field(default_factory=_TelegramIntegration)
 
 
 class SystemConfig(BaseSettings):

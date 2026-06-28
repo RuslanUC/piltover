@@ -59,9 +59,7 @@ def _make_first_name_kbd(message: Message) -> ReplyKeyboardMarkup | ReplyKeyboar
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(
-                    text=message.from_user.first_name,
-                ),
+                KeyboardButton(text=message.from_user.first_name),
             ],
         ],
         is_persistent=False,
