@@ -9,17 +9,18 @@ from typing import Iterable, Self, cast
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
 from tortoise.queryset import QuerySet
+from tortoise.transactions import in_transaction
 
-from piltover.config import APP_CONFIG
 from piltover.cache import Cache
+from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db import models
-from piltover.db.enums import PrivacyRuleKeyType
+from piltover.db.enums import PrivacyRuleKeyType, PeerType
 from piltover.exceptions import Unreachable, ErrorRpc
 from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long, InputUser
+from piltover.tl.base import User as TLUserBase
 from piltover.tl.to_format import UserToFormat
 from piltover.tl.types import User as TLUser, PeerColor, PeerUser, InputPeerSelf, InputPeerUser, InputUserSelf
-from piltover.tl.base import User as TLUserBase
 from piltover.tl.types.internal_access import AccessHashPayloadUser
 
 
@@ -469,3 +470,11 @@ class User(Model):
     async def inc_version(self) -> None:
         await User.filter(id=self.id).update(version=F("version") + 1)
         await self.refresh_from_db(["version"])
+
+    @classmethod
+    async def create_new_user(cls, phone_number: str, first_name: str, last_name: str | None) -> User:
+        async with in_transaction():
+            user = await cls.create(phone_number=phone_number, first_name=first_name, last_name=last_name)
+            await models.State.create(user=user)
+            await models.Peer.create(owner=user, type=PeerType.SELF, user=user)
+        return user

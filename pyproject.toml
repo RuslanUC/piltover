@@ -53,6 +53,11 @@ dependencies = [
     "gmpy2>=2.3.0",
 ]
 
+[project.optional-dependencies]
+telegram-integration = [
+    "aiogram>=3.29.0",
+]
+
 [project.urls]
 repository = "https://github.com/RuslanUC/piltover"
 

@@ -47,6 +47,23 @@ wheels = [
 ]
 
 [[package]]
+name = "aiogram"
+version = "3.29.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "aiohttp" },
+    { name = "certifi" },
+    { name = "magic-filter" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0c/e0/fe516e9c424858e44d190636563e0b9a8c0cc940032d43212d4def861f01/aiogram-3.29.0.tar.gz", hash = "sha256:17be0061174fd5b3aa494537f166c2f147b983ebef60d9ede2a3e8837af9c01e", size = 1895315, upload-time = "2026-06-14T17:25:24.998Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/1a/c56efc85cee9aca96de596253936590df163d2dfb0f8993e1db50f0c4a70/aiogram-3.29.0-py3-none-any.whl", hash = "sha256:f4b2c39d89c44e37998b4b4a8510d6914fc24f3d31125d6b3f6ea9589e67ec85", size = 803438, upload-time = "2026-06-14T17:25:23.064Z" },
+]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1179,6 +1196,15 @@ wheels = [
 ]
 
 [[package]]
+name = "magic-filter"
+version = "1.0.12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/08/da7c2cc7398cc0376e8da599d6330a437c01d3eace2f2365f300e0f3f758/magic_filter-1.0.12.tar.gz", hash = "sha256:4751d0b579a5045d1dc250625c4c508c18c3def5ea6afaf3957cb4530d03f7f9", size = 11071, upload-time = "2023-10-01T12:33:19.006Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/75/f620449f0056eff0ec7c1b1e088f71068eb4e47a46eb54f6c065c6ad7675/magic_filter-1.0.12-py3-none-any.whl", hash = "sha256:e5929e544f310c2b1f154318db8c5cdf544dd658efa998172acd2e4ba0f6c6a6", size = 11335, upload-time = "2023-10-01T12:33:17.711Z" },
+]
+
+[[package]]
 name = "markupsafe"
 version = "3.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1655,6 +1681,11 @@ dependencies = [
     { name = "uvloop", marker = "sys_platform != 'win32'" },
 ]
 
+[package.optional-dependencies]
+telegram-integration = [
+    { name = "aiogram" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "aiomonitor" },
@@ -1685,6 +1716,7 @@ test = [
 requires-dist = [
     { name = "aiocache", specifier = ">=0.12.3,<1.0.0" },
     { name = "aiofiles", specifier = ">=25.1.0,<26.0.0" },
+    { name = "aiogram", marker = "extra == 'telegram-integration'", specifier = ">=3.29.0" },
     { name = "av", specifier = ">=17.0.0,<18.0.0" },
     { name = "cryptography", specifier = ">=48.0.0,<49.0.0" },
     { name = "fastrand", git = "https://github.com/RuslanUC/fastrand.git?rev=feat%2Fadd-functions-to-generate-random-bytes" },
@@ -1704,6 +1736,7 @@ requires-dist = [
     { name = "tortoise-orm", extras = ["accel", "asyncmy"], git = "https://github.com/tortoise/tortoise-orm.git?rev=9d0e53e178a04ebf3409ffaf62080442f74d9039" },
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.22.1,<1.0.0" },
 ]
+provides-extras = ["telegram-integration"]
 
 [package.metadata.requires-dev]
 dev = [
