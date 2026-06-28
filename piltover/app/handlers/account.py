@@ -328,7 +328,7 @@ async def update_profile(request: UpdateProfile, user: User):
 @handler.on_request(GetNotifySettings, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_notify_settings(request: GetNotifySettings, user_id: int) -> TLPeerNotifySettings:
     peer, not_peer = await PeerNotifySettings.peer_from_tl(user_id, request.peer)
-    settings, _ = await PeerNotifySettings.get_or_create(user=user_id, peer=peer, not_peer=not_peer)
+    settings, _ = await PeerNotifySettings.get_or_create(user_id=user_id, peer=peer, not_peer=not_peer)
 
     return settings.to_tl()
 
