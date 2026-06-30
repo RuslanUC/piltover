@@ -12,32 +12,18 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
   - [ ] move client setup instructions to a separate files?
   - [ ] describe process of downloading official Telegram reactions/languages/etc. into Piltover instance
   - [ ] make a list of working/broken/wip/etc. features/methods
-- [ ] Proper read states updates (updateReadHistoryInbox, updateReadHistoryOutbox)
-- [x] Reactions
-- [x] Stickers
 - [ ] Move UpdatesManager to separate worker
-- [x] Add caching of some tl objects (e.g. piltover.tl.types.User, piltover.tl.types.Chat, piltover.tl.types.Message, etc.) based on versions (i think maybe add `version` field to db models and cache to_tl method results to key `[current_user_id]:[to_tl_user_id]:[version]` or something like that)
-- [x] Add proper privacy rules handling
-- [x] Channels
-- [x] Supergroups
+- [ ] Add unversioned caching of some tl objects (e.g. types.User, types.Chat, types.Message, etc.)?
 - [x] Scheduled messages
 - [x] Bots
-- [x] Dialog filters (folders)
 - [x] Secret chats (https://core.telegram.org/api/end-to-end)
   - Secret chats work **kind of**. Sometimes messages are just not arriving at either both ends or participant (who accepted chat) end.
-- [x] Media read state (messages.readMessageContents / channels.readMessageContents and updateReadMessagesContents / updateChannelReadMessagesContents)
-- [x] Mentions read state
-- [x] Outbox read date (messages.getOutboxReadDate) (note to self: maybe save read state as "read chunks" like ReadHistoryChunk(peer, read_msg_id)? this would make getting outbox read dates much easier: just request chunk with read_msg_id__gte=request.id, if it exists - get date from it, if not - message is not read yet)
-- [x] Make `access_hash`es completely offline (e.g. `hmac(current_user_id + current_session_id + target_user_id)`)
 - [ ] InstallTheme_133, InstallTheme
 - [x] InstallWallPaper
-- [x] Rewrite related users/chats/channels collection code, cache (or write to database) related ids
 - [x] Channel admin log
 - [ ] [Min constructors](https://core.telegram.org/api/min)
 - [x] Channel discussions
 - [ ] [WebK](https://github.com/morethanwords/tweb) hangs on some requests, logs errors about wrong auth key id and/or session id???
-- [x] Refactor channels permission system and probably rewrite according to [channels-access.md](notes/channels-access.md) 
-- [x] Create "SELF" Peer when user is created
 - [ ] Proper sessions handling:
   - [ ] msg_id and seq_no generation **MUST** be in the session, **NOT** in the connection
   - [ ] when client is disconnected, session should be stored (and receive messages) for up to 10 minutes
@@ -49,7 +35,6 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [ ] Support S3 as a storage backend
 - [ ] Its probably not a bad idea to move `State.pts` to `User` model? same with Presence.last_seen
 - [ ] Add registration/authorization through Telegram
-- [x] Completely rethink and rewrite layer converters implementation.
 - [ ] Link previews
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
