@@ -896,8 +896,8 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         int | None,
         cast(
             object,
-            await ReadState.filter(
-                peer=peer
+            await Peer.filter(
+                id=peer.id
             ).annotate(max_out=Max("out_max_read_id")).first().values_list("max_out", flat=True)
         )
     ) or 0
@@ -908,9 +908,7 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         ).group_by("content__author_id").annotate(max_id=Max("id")).values_list("content__author_id", "max_id")
     )
     if read_messages_by_user_ids:
-        await ReadState.filter(
-            peer=peer, owner_id__in=list(read_messages_by_user_ids), out_max_read_id__lt=unread_max_id,
-        ).update(out_max_read_id=unread_max_id)
+        await peer.update_max_read_id(unread_max_id)
         await upd.update_read_history_outbox_channel(peer.channel, read_messages_by_user_ids)
 
     return True

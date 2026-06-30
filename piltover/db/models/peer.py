@@ -71,6 +71,7 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
     user_has_wallpaper: bool = fields.BooleanField(default=False)
     last_message_id: int | None = fields.BigIntField(null=True, default=None, db_index=True)
     last_message_date: datetime | None = fields.DatetimeField(null=True, default=None, db_index=True)
+    out_max_read_id: int = fields.BigIntField(default=0)
 
     user: UserT = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
     chat: ChatT = fields.ForeignKeyField("models.Chat", null=True, default=None)
@@ -437,3 +438,9 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
 
         sql = _LAST_MESSAGE_SYNC_SQL.format(where_condition=where_condition)
         await conn.execute_query(sql, peer_ids)
+
+    async def update_max_read_id(self, new_max_read_id: int) -> None:
+        if self.out_max_read_id >= new_max_read_id:
+            return
+        await Peer.filter(id=self.id, out_max_read_id__lt=new_max_read_id).update(out_max_read_id=new_max_read_id)
+        self.out_max_read_id = new_max_read_id

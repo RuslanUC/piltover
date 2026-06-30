@@ -499,12 +499,10 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     old_last_message_id = read_state.last_message_id
     unread_count = await MessageRef.filter(peer=peer, id__gt=max_id).count()
 
-    update_fields = ["last_message_id"]
     read_state.last_message_id = max_id
     if peer.type is PeerType.SELF:
-        read_state.out_max_read_id = max_id
-        update_fields.append("out_max_read_id")
-    await read_state.save(update_fields=update_fields)
+        await peer.update_max_read_id(max_id)
+    await read_state.save(update_fields=["last_message_id"])
 
     await ReadHistoryChunk.create(user_id=user_id, peer=peer, read_content_id=content_id)
 
@@ -525,14 +523,14 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
         other_max_out_id = cast(int | None, cast(
             object,
             await MessageRef.filter(
-                peer_id=other_read_state.peer_id, id__gt=other_read_state.out_max_read_id, content_id__lte=content_id,
+                peer_id=other_read_state.peer_id,
+                id__gt=other_read_state.peer.out_max_read_id,
+                content_id__lte=content_id,
             ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
         ))
         if not other_max_out_id:
             return result
-        await ReadState.filter(
-            id=other_read_state.id, out_max_read_id__lt=other_max_out_id
-        ).update(out_max_read_id=other_max_out_id)
+        await other_read_state.peer.update_max_read_id(other_max_out_id)
         await upd.update_read_history_outbox({other_read_state.peer: other_max_out_id})
     elif peer.type is PeerType.CHAT:
         ids_by_peers = dict(cast(
@@ -547,23 +545,21 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
             ).filter(read_count__gt=0).values_list("peer_id", "max_read")
         ))
 
-        to_update: list[ReadState] = []
+        to_update: list[Peer] = []
         async with in_transaction():
-            read_states = await ReadState.select_for_update().filter(
-                peer_id__in=list(ids_by_peers),
-            ).select_related("peer")
-            for other_read_state in read_states:
-                if other_read_state.out_max_read_id < ids_by_peers[other_read_state.peer_id]:
-                    other_read_state.out_max_read_id = ids_by_peers[other_read_state.peer_id]
-                    to_update.append(other_read_state)
+            other_peers = await Peer.select_for_update().filter(id=list(ids_by_peers))
+            for other_peer in other_peers:
+                if other_peer.out_max_read_id < ids_by_peers[other_peer.id]:
+                    other_peer.out_max_read_id = ids_by_peers[other_peer.id]
+                    to_update.append(other_peer)
 
             if to_update:
-                await ReadState.bulk_update(to_update, ["out_max_read_id"])
+                await Peer.bulk_update(to_update, ["out_max_read_id"])
 
         if to_update:
             await upd.update_read_history_outbox({
-                other_read_state.peer: other_read_state.out_max_read_id
-                for other_read_state in to_update
+                other_peer: other_peer.out_max_read_id
+                for other_peer in to_update
             })
     else:
         raise Unreachable

@@ -49,7 +49,8 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [ ] Support S3 as a storage backend
 - [ ] Its probably not a bad idea to move `State.pts` to `User` model? same with Presence.last_seen
 - [ ] Add registration/authorization through Telegram
-- [x] Completely rethink and rewrite layer converters implementation. 
+- [x] Completely rethink and rewrite layer converters implementation.
+- [ ] Link previews
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 

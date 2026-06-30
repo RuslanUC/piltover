@@ -13,8 +13,6 @@ from piltover.exceptions import Unreachable
 class ReadState(Model):
     id: int = fields.BigIntField(primary_key=True)
     last_message_id: int = fields.BigIntField(default=0)
-    # TODO: channels have single out_max_id for whole channel/supergroup
-    out_max_read_id: int = fields.BigIntField(default=0)
     owner: models.User = fields.ForeignKeyField("models.User")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
 
@@ -26,7 +24,6 @@ class ReadState(Model):
             ("owner_id", "peer_id"),
         )
         # TODO: add index on peer-last_message_id?
-        # TODO: add index on peer-out_max_read_id?
 
     @classmethod
     async def for_peers_bulk(cls, user_id: int, peers: list[models.Peer]) -> list[ReadState]:
@@ -108,7 +105,7 @@ class ReadState(Model):
         for peer, in_read_state in zip(peers, in_read_states):
             result.append((
                 in_read_state.last_message_id,
-                in_read_state.out_max_read_id,
+                peer.out_max_read_id,
                 unread_by_peer.get(peer.id, 0),
                 unread_reactions_by_peer.get(peer.id, 0),
                 unread_mentions_by_chat.get((peer.chat_id, peer.channel_id), 0),
@@ -147,7 +144,7 @@ class ReadState(Model):
 
         return (
             in_read_state.last_message_id,
-            in_read_state.out_max_read_id,
+            peer.out_max_read_id,
             unread_count,
             unread_reactions_count,
             unread_mentions,
