@@ -110,7 +110,7 @@ class UsersChatsChannels:
                 if rel.user_id is not None:
                     self._user_ids.add(rel.user_id)
                 elif rel.chat_id is not None:
-                    self._user_ids.add(rel.chat_id)
+                    self._chat_ids.add(rel.chat_id)
                 elif rel.channel_id is not None:
                     self._channel_ids.add(rel.channel_id)
             self._message_ids.clear()
