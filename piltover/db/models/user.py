@@ -223,6 +223,7 @@ class User(Model):
         user_ids = [user.id for user in users if not user.bot and user.id not in cached_users]
         bot_ids = [user.id for user in users if user.bot and user.id not in cached_users]
 
+        # TODO: use prefetched usernames
         if all_ids:
             usernames = {
                 user_id: username

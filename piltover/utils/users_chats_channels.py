@@ -16,9 +16,33 @@ if TYPE_CHECKING:
     QsChat = QuerySet[models.Chat]
     QsChannel = QuerySet[models.Channel]
 
-USER_SELECT_RELATED = ("username", "background_emojis", "emoji_status",)
+USER_SELECT_RELATED = ("username", "background_emojis", "emoji_status", "presence",)
 CHAT_SELECT_RELATED = ("photo",)
 CHANNEL_SELECT_RELATED = ("photo",)
+
+USER_SELECT_ONLY = (
+    "id", "version", "bot", "accent_color_id", "profile_color_id", "first_name", "last_name", "phone_number",
+    "lang_code",
+
+    "background_emojis__id", "background_emojis__accent_emoji_id", "background_emojis__profile_emoji_id",
+    "bot_info__id", "bot_info__version",
+    "emoji_status__id", "emoji_status__emoji_id", "emoji_status__until",
+    "presence__id", "presence__last_seen",
+)
+CHAT_SELECT_ONLY = (
+    "id", "version", "deleted", "migrated", "photo_id", "name", "creator_id", "no_forwards", "participants_count",
+    "created_at", "banned_rights",
+
+    "photo__id", "photo__photo_stripped",
+)
+CHANNEL_SELECT_ONLY = (
+    "id", "version", "deleted", "photo_id", "name", "accent_color_id", "profile_color_id", "accent_emoji_id",
+    "profile_emoji_id", "created_at", "creator_id", "channel", "supergroup", "signatures", "discussion_id",
+    "is_discussion", "slowmode_seconds", "no_forwards", "join_to_send", "join_request", "banned_rights",
+    "nojoin_allow_view",
+
+    "photo__id", "photo__photo_stripped",
+)
 
 
 class UsersChatsChannels:
@@ -88,21 +112,21 @@ class UsersChatsChannels:
             models.Channel.filter(channels_q) if channels_q != _EMPTY else None,
         )
 
-    async def resolve_nontl(
+    async def _resolve_nontl(
             self, fetch_users: bool = True, fetch_chats: bool = True, fetch_channels: bool = True
     ) -> tuple[list[models.User], list[models.Chat], list[models.Channel]]:
         users_q, chats_q, channels_q = self._query()
 
         return (
-            await users_q.select_related(*USER_SELECT_RELATED) if fetch_users and users_q else [],
-            await chats_q.select_related(*CHAT_SELECT_RELATED) if fetch_chats and chats_q else [],
-            await channels_q.select_related(*CHANNEL_SELECT_RELATED) if fetch_channels and channels_q else [],
+            await users_q.select_related(*USER_SELECT_RELATED).only(*USER_SELECT_ONLY) if fetch_users and users_q else [],
+            await chats_q.select_related(*CHAT_SELECT_RELATED).only(*CHAT_SELECT_ONLY) if fetch_chats and chats_q else [],
+            await channels_q.select_related(*CHANNEL_SELECT_RELATED).only(*CHANNEL_SELECT_ONLY) if fetch_channels and channels_q else [],
         )
 
     async def resolve(
             self, fetch_users: bool = True, fetch_chats: bool = True, fetch_channels: bool = True,
     ) -> tuple[list[TLUserBase], list[TLChatBase], list[TLChatBase]]:
-        users, chats, channels = await self.resolve_nontl(fetch_users, fetch_chats, fetch_channels)
+        users, chats, channels = await self._resolve_nontl(fetch_users, fetch_chats, fetch_channels)
 
         return (
             await models.User.to_tl_bulk(users),
