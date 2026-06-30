@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tortoise.expressions import Q, Subquery
+from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
 
 from piltover.db import models
 from piltover.db.enums import PeerType
 from piltover.tl.base import User as TLUserBase, Chat as TLChatBase
 
-
-_EMPTY = Q()
 if TYPE_CHECKING:
     QsUser = QuerySet[models.User]
     QsChat = QuerySet[models.Chat]
@@ -84,37 +82,39 @@ class UsersChatsChannels:
     def _query(self) -> tuple[QsUser | None, QsChat | None, QsChannel | None]:
         if not self._user_ids \
                 and not self._chat_ids \
-                and not self._channel_ids \
-                and not self._message_ids:
+                and not self._channel_ids:
             return None, None, None
 
-        users_q = Q()
-        chats_q = Q()
-        channels_q = Q()
+        users_q: Q | None = None
+        chats_q: Q | None = None
+        channels_q: Q | None = None
 
         if self._user_ids:
-            users_q |= Q(id__in=self._user_ids)
+            users_q = Q(id__in=self._user_ids)
         if self._chat_ids:
-            chats_q |= Q(id__in=self._chat_ids)
+            chats_q = Q(id__in=self._chat_ids)
         if self._channel_ids:
-            channels_q |= Q(id__in=self._channel_ids)
-
-        if self._message_ids:
-            # TODO: there's probably a better solution
-            base_messagerelated_query = models.MessageRelated.filter(message_id__in=self._message_ids).distinct()
-            users_q |= Q(id__in=Subquery(base_messagerelated_query.values("user_id")))
-            chats_q |= Q(id__in=Subquery(base_messagerelated_query.values("chat_id")))
-            channels_q |= Q(id__in=Subquery(base_messagerelated_query.values("channel_id")))
+            channels_q = Q(id__in=self._channel_ids)
 
         return (
-            models.User.filter(users_q) if users_q != _EMPTY else None,
-            models.Chat.filter(chats_q) if chats_q != _EMPTY else None,
-            models.Channel.filter(channels_q) if channels_q != _EMPTY else None,
+            models.User.filter(users_q) if users_q is not None else None,
+            models.Chat.filter(chats_q) if chats_q is not None else None,
+            models.Channel.filter(channels_q) if channels_q is not None else None,
         )
 
     async def _resolve_nontl(
             self, fetch_users: bool = True, fetch_chats: bool = True, fetch_channels: bool = True
     ) -> tuple[list[models.User], list[models.Chat], list[models.Channel]]:
+        if self._message_ids:
+            for rel in await models.MessageRelated.filter(message_id__in=self._message_ids):
+                if rel.user_id is not None:
+                    self._user_ids.add(rel.user_id)
+                elif rel.chat_id is not None:
+                    self._user_ids.add(rel.chat_id)
+                elif rel.channel_id is not None:
+                    self._channel_ids.add(rel.channel_id)
+            self._message_ids.clear()
+
         users_q, chats_q, channels_q = self._query()
 
         return (
