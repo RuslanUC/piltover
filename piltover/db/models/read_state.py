@@ -27,15 +27,18 @@ class ReadState(Model):
 
     @classmethod
     async def for_peers_bulk(cls, user_id: int, peers: list[models.Peer]) -> list[ReadState]:
-        peer_ids = [peer.id for peer in peers]
+        peer_ids = {peer.id for peer in peers}
         async with in_transaction():
-            existing = await cls.filter(owner_id=user_id, peer_id__in=peer_ids).values_list("peer_id", flat=True)
-            existing = set(existing)
-            to_create = [ReadState(owner_id=user_id, peer=peer) for peer in peers if peer.id not in existing]
+            read_states = {ex.peer_id: ex for ex in await cls.filter(owner_id=user_id, peer_id__in=peer_ids)}
+            to_create = [ReadState(owner_id=user_id, peer=peer) for peer in peers if peer.id not in read_states]
             if to_create:
                 await ReadState.bulk_create(to_create)
 
-        read_states = {state.peer_id: state for state in await cls.filter(owner_id=user_id, peer_id__in=peer_ids)}
+        created = peer_ids - read_states.keys()
+        if created:
+            for state in await cls.filter(owner_id=user_id, peer_id__in=created):
+                read_states[state.peer_id] = state
+
         return [read_states[peer.id] for peer in peers]
 
     @classmethod
