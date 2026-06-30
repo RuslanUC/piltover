@@ -2,6 +2,7 @@ from datetime import datetime, UTC
 from time import time
 from typing import cast
 
+from loguru import logger
 from tortoise.expressions import Q, Subquery, RawSQL, F
 from tortoise.functions import Max
 from tortoise.query_utils import Prefetch
@@ -402,10 +403,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
                 int | None,
                 cast(
                     object,
-                    # TODO: use Max("id") instead of .order_by("id").first() ?
                     await MessageRef.filter(
                         peer=peer, pinned=True,
-                    ).order_by("-id").first().values_list("id", flat=True)
+                    ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
                 )
             ),
             pts=channel.pts,
