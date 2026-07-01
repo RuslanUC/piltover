@@ -16,7 +16,7 @@ from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAd
     READABLE_FILE_TYPES
 from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
     ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent, \
-    MessageUniqueView, Channel
+    MessageUniqueView, Channel, Chat
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -152,14 +152,14 @@ async def get_messages_query_internal(
     if only_mentions:
         if isinstance(peer, Peer) and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
             if peer.type is PeerType.CHAT:
-                peer_q = Q(chat_id=peer.chat_id)
+                peer_q = Q(unread_target_id=Chat.make_id_from(peer.chat_id))
             elif peer.type is PeerType.CHANNEL:
-                peer_q = Q(channel_id=peer.channel_id)
+                peer_q = Q(unread_target_id=Channel.make_id_from(peer.channel_id))
             else:
                 raise Unreachable
 
             query &= Q(content_id__in=Subquery(
-                MessageMention.filter(peer_q, user_id=user_id, read=False).values("message_id")
+                MessageMention.filter(peer_q, user_id=user_id).values("message_id")
             ))
         else:
             # TODO: return EmptyQuerySet instead
@@ -811,9 +811,18 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
             offset=0,
         )
 
+    if peer.type is PeerType.CHAT:
+        unread_target_id = Chat.make_id_from(peer.chat_id)
+    elif peer.type is PeerType.CHANNEL:
+        unread_target_id = Channel.make_id_from(peer.channel_id)
+    else:
+        raise Unreachable
+
     mentioned_ids = await MessageMention.filter(
-        user_id=user_id, chat_id=peer.chat_id, channel_id=peer.channel_id, read=False,
-    ).values_list("message_id", flat=True)
+        user_id=user_id, unread_target_id=unread_target_id,
+    ).values_list("id", "message_id")
+    mention_ids = [mention_id for mention_id, _ in mentioned_ids]
+    mentioned_ids = [message_id for _, message_id in mentioned_ids]
     logger.trace("Unread mentioned ids: {ids}", ids=mentioned_ids)
 
     if not mentioned_ids:
@@ -827,7 +836,7 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
             offset=0,
         )
 
-    await MessageMention.filter(user_id=user_id, message_id__in=mentioned_ids).update(read=True)
+    await MessageMention.filter(id__in=mention_ids).update(read=True)
 
     inval_cache_query = MessageRef.filter(content_id__in=mentioned_ids)
     if peer.type is PeerType.CHANNEL:
@@ -868,7 +877,21 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
     content_ids = [ref.content_id for ref in valid_refs]
     ref_by_content_id = {ref.content_id: ref for ref in valid_refs}
 
-    mentions = await MessageMention.filter(user_id=user_id, message_id__in=content_ids, read=False)
+    unread_target_ids = set()
+    for ref in valid_refs:
+        if ref.peer.type is PeerType.CHAT:
+            unread_target_ids.add(Chat.make_id_from(ref.peer.chat_id))
+        elif ref.peer.type is PeerType.CHANNEL:
+            unread_target_ids.add(Channel.make_id_from(ref.peer.channel_id))
+
+    if len(unread_target_ids) == 1:
+        mention = await MessageMention.get_or_none(user_id=user_id, unread_target_id=list(unread_target_ids)[0])
+        mentions = [mention] if mention is not None else []
+    elif unread_target_ids:
+        mentions = await MessageMention.filter(user_id=user_id, unread_target_id__in=unread_target_ids)
+    else:
+        mentions = []
+
     refs_with_media = {
         ref.id: ref
         for ref in valid_refs
@@ -937,7 +960,7 @@ async def read_message_contents(request: ReadMessageContents, user_id: int) -> A
         )
 
     valid_refs = await MessageRef.filter(peer__owner_id=user_id, id__in=request.id[:100]).select_related(
-        "content", "content__media", "content__media__file",
+        "peer", "content", "content__media", "content__media__file",
     )
 
     message_ids = await read_message_contents_internal(user_id, valid_refs)

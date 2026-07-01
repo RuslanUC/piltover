@@ -104,6 +104,7 @@ async def send_created_messages_internal(
                 user=mentioned_user,
                 chat=peer.chat,
                 message=message_content,
+                unread_target_id=peer.chat.make_id(),
             ))
 
         if unread_mentions_to_create:
@@ -142,7 +143,8 @@ async def send_created_messages_internal(
                 unread_mentions_to_create.append(MessageMention(
                     user=mentioned_user,
                     channel=peer.channel,
-                    message=message_ref.content
+                    message=message_ref.content,
+                    unread_target_id=peer.channel.make_id(),
                 ))
 
             if unread_mentions_to_create:

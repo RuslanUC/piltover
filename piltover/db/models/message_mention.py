@@ -8,12 +8,11 @@ from piltover.db.models.utils import NullableFK
 
 class MessageMention(Model):
     id: int = fields.BigIntField(primary_key=True)
-    # TODO: replace with peer?
     user: models.User = fields.ForeignKeyField("models.User")
     chat: models.Chat | None = NullableFK("models.Chat")
     channel: models.Channel | None = NullableFK("models.Channel")
     message: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
-    read: bool = fields.BooleanField(default=False)
+    unread_target_id: int | None = fields.BigIntField(null=True, default=None)
 
     user_id: int
     chat_id: int
@@ -23,4 +22,7 @@ class MessageMention(Model):
     class Meta:
         unique_together = (
             ("user", "message"),
+        )
+        indexes = (
+            ("user_id", "unread_target_id"),
         )

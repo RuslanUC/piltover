@@ -164,11 +164,13 @@ class MessageRef(Model):
         if (cached := await Cache.obj.get(cache_key)) is not None:
             return cached
 
-        mention_read = await models.MessageMention.filter(
+        mention_id, mention_target_id = await models.MessageMention.get_or_none(
             user_id=user_id, message_id=self.content_id
-        ).first().values_list("read", flat=True)
-        mentioned = mention_read is not None
-        if not mentioned:
+        ).values_list("id", "unread_target_id")
+        mentioned = mention_id is not None
+        if mentioned:
+            mention_read = mention_target_id is None
+        else:
             mention_read = True
 
         media_unread = False
@@ -236,9 +238,9 @@ class MessageRef(Model):
         if message_content_ids:
             mentions_info = await models.MessageMention.filter(
                 user_id=user_id, message_id__in=message_content_ids,
-            ).values_list("message_id", "read")
-            for message_id, read in mentions_info:
-                mentioned[message_id] = read
+            ).values_list("message_id", "unread_target_id")
+            for message_id, mention_target_id in mentions_info:
+                mentioned[message_id] = mention_target_id is None
 
         valid_media_ref_ids = [
             ref.id

@@ -1706,7 +1706,7 @@ async def read_message_contents(request: ReadMessageContents, user_id: int) -> b
 
     valid_refs = await MessageRef.filter(
         peer__channel=channel, id__in=request.id[:100],
-    ).select_related("content", "content__media", "content__media__file")
+    ).select_related("peer", "content", "content__media", "content__media__file")
 
     message_ids = await read_message_contents_internal(user_id, valid_refs)
     if message_ids is None:

@@ -75,43 +75,40 @@ class ReadState(Model):
 
         unread_mentions_by_chat = {}
         if not no_mentions:
-            mentions_query = models.MessageMention.filter(read=False, user_id=user_id)
-            chat_ids = set()
-            channel_ids = set()
+            unread_target_ids = set()
             for peer in peers:
                 if peer.type is PeerType.CHANNEL:
-                    channel_ids.add(peer.channel_id)
+                    unread_target_ids.add(models.Channel.make_id_from(peer.channel_id))
                 elif peer.type is PeerType.CHAT:
-                    chat_ids.add(peer.chat_id)
+                    unread_target_ids.add(models.Chat.make_id_from(peer.chat_id))
 
-            query_parts = Q()
-            if chat_ids:
-                query_parts |= Q(chat_id__in=chat_ids)
-            if channel_ids:
-                query_parts |= Q(channel_id__in=channel_ids)
-
-            if query_parts:
-                mentions = await mentions_query.filter(
-                    query_parts,
+            if unread_target_ids:
+                mentions = await models.MessageMention.filter(
+                    user_id=user_id, unread_target_id__in=unread_target_ids,
                 ).group_by(
-                    "chat_id", "channel_id",
+                    "unread_target_id",
                 ).annotate(
                     count=Count("id"),
                 ).values_list(
-                    "chat_id", "channel_id", "count",
+                    "unread_target_id", "count",
                 )
 
-                for chat_id, channel_id, count in mentions:
-                    unread_mentions_by_chat[(chat_id, channel_id)] = count
+                for unread_target_id, count in mentions:
+                    unread_mentions_by_chat[unread_target_id] = count
 
         result = []
         for peer, in_read_state in zip(peers, in_read_states):
+            unread_target_id = None
+            if peer.type is PeerType.CHAT:
+                unread_target_id = models.Chat.make_id_from(peer.chat_id)
+            elif peer.type is PeerType.CHANNEL:
+                unread_target_id = models.Channel.make_id_from(peer.channel_id)
             result.append((
                 in_read_state.last_message_id,
                 peer.out_max_read_id,
                 unread_by_peer.get(peer.id, 0),
                 unread_reactions_by_peer.get(peer.id, 0),
-                unread_mentions_by_chat.get((peer.chat_id, peer.channel_id), 0),
+                unread_mentions_by_chat.get(unread_target_id, 0),
             ))
 
         return result
@@ -138,12 +135,14 @@ class ReadState(Model):
             unread_mentions = 0
         else:
             if peer.type is PeerType.CHAT:
-                unread_mentions_query = models.MessageMention.filter(chat_id=peer.chat_id)
+                unread_target_id = models.Chat.make_id_from(peer.chat_id)
             elif peer.type is PeerType.CHANNEL:
-                unread_mentions_query = models.MessageMention.filter(channel_id=peer.channel_id)
+                unread_target_id = models.Channel.make_id_from(peer.channel_id)
             else:
                 raise Unreachable
-            unread_mentions = await unread_mentions_query.filter(read=False, user_id=user_id).count()
+            unread_mentions = await models.MessageMention.filter(
+                user_id=user_id, unread_target_id=unread_target_id,
+            ).count()
 
         return (
             in_read_state.last_message_id,
