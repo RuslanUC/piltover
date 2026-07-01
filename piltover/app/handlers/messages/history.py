@@ -836,7 +836,7 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
             offset=0,
         )
 
-    await MessageMention.filter(id__in=mention_ids).update(read=True)
+    await MessageMention.filter(id__in=mention_ids).update(unread_target_id=None)
 
     inval_cache_query = MessageRef.filter(content_id__in=mentioned_ids)
     if peer.type is PeerType.CHANNEL:
