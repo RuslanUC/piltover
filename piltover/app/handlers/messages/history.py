@@ -920,7 +920,7 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
     read_ids = set()
 
     for mention in mentions:
-        mention.read = True
+        mention.unread_target_id = None
         read_ids.add(ref_by_content_id[mention.message_id].id)
 
     media_read_to_create = []
@@ -932,7 +932,7 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
         return None
 
     if mentions:
-        await MessageMention.bulk_update(mentions, fields=["read"])
+        await MessageMention.bulk_update(mentions, fields=["unread_target_id"])
 
     if media_read_to_create:
         await MessageMediaRead.bulk_create(media_read_to_create)
