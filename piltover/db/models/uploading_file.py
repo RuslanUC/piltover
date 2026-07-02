@@ -61,7 +61,7 @@ class UploadingFile(Model):
             type=file_type,
         )
         if attributes:
-            await file.parse_attributes_from_tl(attributes)
+            file.parse_attributes_from_tl(attributes)
 
         if file_type is FileType.PHOTO:
             finalize_as = StorageType.PHOTO

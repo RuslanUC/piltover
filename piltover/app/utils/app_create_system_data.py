@@ -98,7 +98,7 @@ async def _upload_doc(data_dir: Path, base_dir: Path, idx: int, doc: dict, file_
         sticker_pos=sticker_pos,
         sticker_alt=sticker_alt,
     )
-    await file.parse_attributes_from_tl([
+    file.parse_attributes_from_tl([
         cls_name_to_cls[attr.pop("_")](**attr)
         for attr in doc["attributes"]
     ])

@@ -84,7 +84,7 @@ class File(Model):
             return None
         return MaskCoords.deserialize(BytesIO(b85decode(self.sticker_mask_coords)))
 
-    async def parse_attributes_from_tl(self, attributes: list[TLObject]) -> None:
+    def parse_attributes_from_tl(self, attributes: list[TLObject]) -> None:
         for attribute in attributes:
             if isinstance(attribute, DocumentAttributeImageSize):
                 self.width = attribute.w
