@@ -88,16 +88,15 @@ class ReadState(Model):
 
         unread_reactions_by_peer = {}
         if not no_reactions:
-            unread_reactions_counts = await models.MessageReaction.filter(
-                user_id__not=user_id,
-                message__author_id=user_id,
-                message__author_reactions_unread=True,
-                message__messagerefs__peer_id__in=[peer.id for peer in peers],
+            unread_reactions_counts = await models.MessageContent.filter(
+                author_id=user_id,
+                author_reactions_unread=True,
+                messagerefs__peer_id__in=[peer.id for peer in peers],
             ).group_by(
-                "message__messagerefs__peer_id",
+                "messagerefs__peer_id",
             ).annotate(
-                count=Count("message_id"),
-            ).values_list("message__messagerefs__peer_id", "count")
+                count=Count("id"),
+            ).values_list("messagerefs__peer_id", "count")
             unread_reactions_by_peer: dict[int, int] = dict(unread_reactions_counts)
 
         unread_mentions_by_chat = {}
@@ -148,20 +147,17 @@ class ReadState(Model):
             cls, user_id: int, peer: models.Peer, no_reactions: bool = False, no_mentions: bool = False,
     ) -> tuple[int, int, int, int, int]:
         in_read_state, _ = await models.ReadState.get_or_create(owner_id=user_id, peer=peer)
-        unread_count = await models.MessageRef.filter(
-            peer=peer, id__gt=in_read_state.last_message_id, content__author_id__not=user_id,
-        ).count()
+        unread_count = await models.MessageRef.filter(peer=peer, id__gt=in_read_state.last_message_id).count()
         if no_reactions:
             unread_reactions_count = 0
         else:
             unread_reactions_count = await models.MessageContent.filter(
                 messagerefs__peer=peer,
-                messagereactions__user_id__not=user_id,
                 author_id=user_id,
                 author_reactions_unread=True,
             ).count()
 
-        if no_mentions or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
+        if not unread_count or no_mentions or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):
             unread_mentions = 0
         else:
             if peer.type is PeerType.CHAT:
