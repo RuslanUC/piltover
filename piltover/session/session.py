@@ -5,7 +5,7 @@ import hashlib
 import hmac
 from asyncio import Queue, Event
 from time import time
-from typing import cast, TYPE_CHECKING, Collection
+from typing import cast, TYPE_CHECKING
 
 from loguru import logger
 from mtproto.transport.packets import DecryptedMessagePacket
@@ -69,7 +69,7 @@ class Session:
         self.auth_loaded_at = 0.
         self.had_init_connection = False
 
-        self.channel_ids: Collection[int] = []
+        self.channel_ids: set[int] = set()
         self.channels_loaded_at = 0.
 
         self.salt_now = Salt(b"\x00" * 8, 0)

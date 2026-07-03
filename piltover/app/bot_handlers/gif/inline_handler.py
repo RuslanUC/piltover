@@ -19,18 +19,12 @@ from piltover.utils.utils import run_coro_with_additional_return
 
 # TODO: rewrite providers as different classes?
 
-_TENOR_SEARCH = "https://tenor.googleapis.com/v2/search"
-_TENOR_FEATURED = "https://tenor.googleapis.com/v2/featured"
 _KLIPY_SEARCH = "https://api.klipy.com/v2/search"
 _KLIPY_FEATURED = "https://api.klipy.com/v2/featured"
 
 
-def _get_api_endpoint(provider: Literal["tenor", "klipy"], search: bool) -> str | None:
-    if provider == "tenor":
-        if search:
-            return _TENOR_SEARCH
-        return _TENOR_FEATURED
-    elif provider == "klipy":
+def _get_api_endpoint(provider: Literal["klipy"], search: bool) -> str | None:
+    if provider == "klipy":
         if search:
             return _KLIPY_SEARCH
         return _KLIPY_FEATURED

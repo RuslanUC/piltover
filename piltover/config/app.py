@@ -16,7 +16,7 @@ class _Dc(BaseModel):
 
 
 class _Gifs(BaseModel):
-    provider: Literal["tenor", "klipy"]
+    provider: Literal["klipy"]
     api_key: str
 
 
