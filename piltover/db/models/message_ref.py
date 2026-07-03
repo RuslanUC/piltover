@@ -91,10 +91,10 @@ class MessageRef(Model):
         "content__media__poll", "content__fwd_header", "content__fwd_header__saved_peer", "content__post_info",
         "content__via_bot", "peer__channel",
     )
-    PREFETCH_MAYBECACHED = ("peer", "content", "peer__channel")
-    _FETCH_CACHED_REFS = ("content__media", "content__media__file")
+    PREFETCH_MAYBECACHED = ("content",)
+    _FETCH_CACHED_REFS = ("peer", "content__media", "content__media__file")
     _FETCH_CACHED_CONTENTS = (
-        "content__media", "content__media__file", "content__media__poll",
+        "peer", "content__media", "content__media__file", "content__media__poll",
         "content__media__poll__pollanswers", "content__post_info",
         "content__fwd_header", "content__fwd_header__saved_peer",
     )
@@ -473,6 +473,7 @@ class MessageRef(Model):
             post_author=post_author,
             anonymous=anonymous,
             new_channel_author_id=new_channel_author_id,
+            can_see_reactions_list=to_peer.can_see_reactions_list(),
         )
 
         peer_ids = [peer.id for peer in peers]
@@ -611,6 +612,7 @@ class MessageRef(Model):
             related_peer=peer,
             **author_kwargs,
             **message_kwargs,
+            can_see_reactions_list=peer.can_see_reactions_list(),
         )
 
         peers = [peer]
@@ -765,10 +767,7 @@ class MessageRef(Model):
                 count=msg_count,
             ))
 
-        can_see_list = (
-                self.peer.type in (PeerType.SELF, PeerType.USER, PeerType.CHAT)
-                or self.peer.type is PeerType.CHANNEL and self.peer.channel.supergroup
-        )
+        can_see_list = self.content.can_see_reactions_list
 
         recent_reactions = None
         if can_see_list:
@@ -865,10 +864,7 @@ class MessageRef(Model):
                     count=msg_count,
                 ))
 
-            can_see_list = (
-                    ref.peer.type in (PeerType.SELF, PeerType.USER, PeerType.CHAT)
-                    or ref.peer.type is PeerType.CHANNEL and ref.peer.channel.supergroup
-            )
+            can_see_list = ref.content.can_see_reactions_list
 
             recent_reactions = None
             if can_see_list and total_reactions <= 5:

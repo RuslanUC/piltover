@@ -1243,12 +1243,9 @@ async def forward_messages(
             # TODO: send correct error message
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
-    peers: list[Peer]
-    if to_peer.type is PeerType.CHANNEL:
-        to_peer = await Peer.get(owner=None, channel=to_peer.channel).select_related("channel")
-        peers = [to_peer]
-    else:
-        peers = [to_peer, *(await to_peer.get_opposite())]
+    peers: list[Peer] = [to_peer]
+    if to_peer.type is not PeerType.CHANNEL:
+        peers.extend(await to_peer.get_opposite())
     result: defaultdict[Peer, list[MessageRef]] = defaultdict(list)
 
     is_channel_post, post_infos, post_signature = await _make_channel_post_info_many(
@@ -1283,6 +1280,7 @@ async def forward_messages(
         channel_post=is_channel_post,
         post_author=post_signature,
         anonymous=is_anonymous,
+        can_see_reactions_list=to_peer.can_see_reactions_list(),
     )
 
     old_ids_to_new_ids = {old.content_id: new.id for old, new in zip(messages, forwarded_contents)}

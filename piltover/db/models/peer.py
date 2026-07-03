@@ -444,3 +444,9 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
             return
         await Peer.filter(id=self.id, out_max_read_id__lt=new_max_read_id).update(out_max_read_id=new_max_read_id)
         self.out_max_read_id = new_max_read_id
+
+    def can_see_reactions_list(self) -> bool:
+        return (
+                self.type in (PeerType.SELF, PeerType.USER, PeerType.CHAT)
+                or (self.type is PeerType.CHANNEL and self.channel.supergroup)
+        )

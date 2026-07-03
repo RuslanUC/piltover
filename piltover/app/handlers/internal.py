@@ -104,7 +104,7 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
             return TaggedBool(value=False)
 
         discussion_peer: PeerChannelT | None = await Peer.get_or_none(
-            owner=None, channel_id=discussion_channel_id,
+            channel_id=discussion_channel_id,
         ).select_related("channel")
         if discussion_peer is None:
             logger.warning(f"Internal channel ({discussion_channel_id}) peer does not exist")
