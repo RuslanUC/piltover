@@ -68,7 +68,7 @@ account_delete_wait_seconds = 604800  # 86400 * 7
 max_bots_per_user = 24
 
 #[app.gifs]
-# Gifs search provider. Currently supported: tenor (deprecated, will be removed before 01.06.2026), klipy.
-#provider = "tenor"
+# Gifs search provider. Currently supported: klipy.
+#provider = "klipy"
 # Api key of gifs provider
 #api_key = "..."
