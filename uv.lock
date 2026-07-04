@@ -6,6 +6,10 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[options]
+exclude-newer = "2026-06-27T16:33:01.968120226Z"
+exclude-newer-span = "P1W"
+
 [[package]]
 name = "aio-pika"
 version = "9.6.2"
@@ -1254,8 +1258,8 @@ wheels = [
 
 [[package]]
 name = "mtproto"
-version = "0.3.0b2"
-source = { git = "https://github.com/RuslanUC/mtproto.git#e5299fdc86cf21887a45f518b006042a8e89bfb1" }
+version = "0.3.0b3"
+source = { git = "https://github.com/RuslanUC/mtproto.git?rev=2698018c402029d64138a43670cf1781b39b3466#2698018c402029d64138a43670cf1781b39b3466" }
 
 [package.optional-dependencies]
 http = [
@@ -1692,7 +1696,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
     { name = "loguru", specifier = ">=0.7.3,<1.0.0" },
     { name = "lru-dict", specifier = ">=1.4.1,<2.0.0" },
-    { name = "mtproto", extras = ["tgcrypto", "http", "ws"], git = "https://github.com/RuslanUC/mtproto.git" },
+    { name = "mtproto", extras = ["tgcrypto", "http", "ws"], git = "https://github.com/RuslanUC/mtproto.git?rev=2698018c402029d64138a43670cf1781b39b3466" },
     { name = "pillow", specifier = ">=12.1.0,<13.0.0" },
     { name = "pydantic-settings", specifier = ">=2.13.1,<3.0.0" },
     { name = "pylinkify", git = "https://github.com/RuslanUC/pylinkify.git" },

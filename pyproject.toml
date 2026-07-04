@@ -37,7 +37,7 @@ dependencies = [
     # "tortoise-orm[accel,asyncmy] (>=1.1.7,<2.0.0)",
     "tortoise-orm[accel,asyncmy] @ git+https://github.com/tortoise/tortoise-orm.git@9d0e53e178a04ebf3409ffaf62080442f74d9039",
     "pillow (>=12.1.0,<13.0.0)",
-    "mtproto[tgcrypto,http,ws] @ git+https://github.com/RuslanUC/mtproto.git",
+    "mtproto[tgcrypto,http,ws] @ git+https://github.com/RuslanUC/mtproto.git@2698018c402029d64138a43670cf1781b39b3466",
     "aiofiles (>=25.1.0,<26.0.0)",
     "taskiq (>=0.12,<0.13)",
     "taskiq-aio-pika (>=0.6,<0.7)",
@@ -87,6 +87,7 @@ test = [
 
 [tool.uv]
 default-groups = "all"
+exclude-newer = "1 week"
 
 [tool.coverage.run]
 data_file = "coverage.coverage"
