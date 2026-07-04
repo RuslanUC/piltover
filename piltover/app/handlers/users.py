@@ -1,12 +1,13 @@
 from typing import cast
 
+from tortoise import Tortoise
 from tortoise.expressions import Q, Subquery
 from tortoise.functions import Max
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, ChatParticipant, MessageRef, Wallpaper
-from piltover.db.models.peer import PeerUserT
+from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, ChatParticipant, MessageRef, Wallpaper, \
+    Username, UserBackgroundEmojis, UserEmojiStatus, BotInfo, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
@@ -21,52 +22,121 @@ handler = MessageHandler("users")
 
 @handler.on_request(GetFullUser, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
-    ctx = request_ctx.get()
-
-    peer_query = Peer.query_from_input_user_or_raise(user_id, request.id, ctx.auth_id)
-    peer: PeerUserT = await peer_query.select_related(
-        "user__username", "user__background_emojis", "user__emoji_status", "user__bot_info"
-    ).only(
-        "id", "user_has_wallpaper", "user_ttl_period_days", "blocked_at", "type", "user_id",
-
-        "user__id",
-        "user__phone_number",
-        "user__first_name",
-        "user__last_name",
-        "user__lang_code",
-        "user__about",
-        "user__birthday",
-        "user__bot",
-        "user__deleted",
-        "user__read_dates_private",
-        "user__version",
-        "user__accent_color_id",
-        "user__profile_color_id",
-
-        "user__username__username",
-
-        "user__background_emojis__accent_emoji_id",
-        "user__background_emojis__profile_emoji_id",
-
-        "user__emoji_status__emoji_id",
-        "user__emoji_status__until",
-
-        "user__bot_info__user_id",
-        "user__bot_info__description",
-        "user__bot_info__description_photo_id",
-        "user__bot_info__privacy_policy_url",
-        "user__bot_info__version",
-
-        "user__bot_info__description_photo__id",
-        "user__bot_info__description_photo__created_at",
-        "user__bot_info__description_photo__photo_sizes",
-        "user__bot_info__description_photo__photo_stripped",
-        "user__bot_info__description_photo__photo_path",
-        "user__bot_info__description_photo__constant_access_hash",
-        "user__bot_info__description_photo__constant_file_ref",
-    )
-    if peer is None:
+    peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user_id, request.id)
+    if peer_type not in (PeerType.SELF, PeerType.USER):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+
+    conn = Tortoise.get_connection("default")
+
+    rows, results = await conn.execute_query(
+        """
+        SELECT 
+            peer.id peer_id, peer.user_has_wallpaper, peer.user_ttl_period_days, peer.blocked_at,
+            
+            user.id user__id, user.phone_number, user.first_name, user.last_name, user.lang_code, user.about, user.birthday,
+            user.bot, user.deleted, user.read_dates_private, user.version user__version, user.accent_color_id, user.profile_color_id,
+            
+            username.username,
+            
+            userbackgroundemojis.id backgroundemojis__id, userbackgroundemojis.accent_emoji_id, 
+            userbackgroundemojis.profile_emoji_id,
+            
+            useremojistatus.emoji_id, useremojistatus.until,
+            
+            botinfo.id botinfo__id, botinfo.description, botinfo.description_photo_id, botinfo.privacy_policy_url, 
+            botinfo.version botinfo__version,
+            
+            botinfo_description_photo.id botinfo_description_photo_id, botinfo_description_photo.created_at, botinfo_description_photo.photo_sizes, 
+            botinfo_description_photo.photo_stripped, botinfo_description_photo.photo_path,
+            botinfo_description_photo.constant_access_hash, botinfo_description_photo.constant_file_ref
+        FROM user
+            INNER JOIN peer on peer.owner_id = %s and user.id = peer.user_id
+            LEFT OUTER JOIN username on username.user_id = user.id
+            LEFT OUTER JOIN userbackgroundemojis on userbackgroundemojis.user_id = user.id
+            LEFT OUTER JOIN useremojistatus on useremojistatus.user_id = user.id
+            LEFT OUTER JOIN botinfo on botinfo.user_id = user.id
+            LEFT OUTER JOIN file botinfo_description_photo on botinfo_description_photo.id = botinfo.description_photo_id
+        WHERE user.id = %s
+        """,
+        [user_id, peer_user_id]
+    )
+
+    row = results[0]
+
+    if row["username"] is not None:
+        _username = Username(username=row["username"])
+        _username._saved_in_db = True
+    else:
+        _username = None
+
+    if row["backgroundemojis__id"] is not None:
+        _emojis = UserBackgroundEmojis(accent_emoji_id=row["accent_emoji_id"], profile_emoji_id=row["profile_emoji_id"])
+        _emojis._saved_in_db = True
+    else:
+        _emojis = None
+
+    if row["emoji_id"] is not None:
+        _emojistatus = UserEmojiStatus(emoji_id=row["emoji_id"], until=row["until"])
+        _emojistatus._saved_in_db = True
+    else:
+        _emojistatus = None
+
+    if row["botinfo__id"] is not None:
+        _botinfo = BotInfo(
+            id=row["botinfo__id"],
+            description=row["description"],
+            description_photo_id=row["description_photo_id"],
+            privacy_policy_url=row["privacy_policy_url"],
+            version=row["botinfo__version"],
+        )
+        _botinfo._saved_in_db = True
+
+        if row["botinfo_description_photo_id"] is not None:
+            _botinfo_description_photo = File(
+                id=row["botinfo_description_photo_id"],
+                created_at=row["created_at"],
+                photo_sizes=row["photo_sizes"],
+                photo_stripped=row["photo_stripped"],
+                photo_path=row["photo_path"],
+                constant_access_hash=row["constant_access_hash"],
+                constant_file_ref=row["constant_file_ref"],
+            )
+            _botinfo_description_photo._saved_in_db = True
+            _botinfo.description_photo = _botinfo_description_photo
+    else:
+        _botinfo = None
+
+    _user = User(
+        id=row["user__id"],
+        phone_number=row["phone_number"],
+        first_name=row["first_name"],
+        last_name=row["last_name"],
+        lang_code=row["lang_code"],
+        about=row["about"],
+        birthday=row["birthday"],
+        bot=row["bot"],
+        deleted=row["deleted"],
+        read_dates_private=row["read_dates_private"],
+        version=row["user__version"],
+        accent_color_id=row["accent_color_id"],
+        profile_color_id=row["profile_color_id"],
+    )
+    _user._username = _username
+    _user._background_emojis = _emojis
+    _user._emoji_status = _emojistatus
+    _user._bot_info = _botinfo
+    _user._saved_in_db = True
+
+    peer = Peer(
+        id=row["peer_id"],
+        type=peer_type,
+        owner_id=user_id,
+        user_id=peer_user_id,
+        user_has_wallpaper=row["user_has_wallpaper"],
+        user_ttl_period_days=row["user_ttl_period_days"],
+        blocked_at=row["blocked_at"],
+        user=_user,
+    )
 
     target_user = peer.user
 
