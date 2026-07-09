@@ -965,7 +965,7 @@ async def get_custom_emoji_documents(request: GetCustomEmojiDocuments) -> list[D
 async def get_emoji_stickers(request: GetEmojiStickers, user_id: int) -> AllStickers | AllStickersNotModified:
     sets = await InstalledStickerset.filter(user_id=user_id, archived=False, set__deleted=False, set__emoji=True)\
         .order_by("pos", "-installed_at")\
-        .select_related("set")
+        .select_related("set", "set__thumb")
     sets_hash = telegram_hash((stickerset.set.id for stickerset in sets), 64)
 
     if sets_hash == request.hash:

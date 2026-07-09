@@ -16,7 +16,7 @@ from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessag
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty, Updates, \
-    UpdateMessageID
+    UpdateMessageID, MessageMediaPoll
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F, Subquery
@@ -1561,3 +1561,37 @@ async def test_forward_messages_random_id_duplicate(
     messages_count = await client.get_chat_history_count(peer_id)
     assert messages_count == 3
 
+
+@pytest.mark.asyncio
+async def test_message_poll_min_flag(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    message = await client.send_poll("me", "test poll", ["answer 1", "answer 2", "answer 3"])
+
+    messages_raw = await client.invoke(GetMessages(id=[InputMessageID(id=message.id)]))
+    assert len(messages_raw.messages) == 1
+    message_raw = messages_raw.messages[0]
+    poll_raw = message_raw.media
+    assert isinstance(poll_raw, MessageMediaPoll)
+    assert poll_raw.results.min
+    for result in poll_raw.results.results:
+        assert result.voters == 0
+        assert not result.chosen
+
+    await client.vote_poll("me", message.id, 0)
+
+    # TODO: remove, voting in a poll should invalidate cache automatically
+    await MessageContent.filter(
+        id__in=Subquery(MessageRef.filter(id=message.id).values("content_id"))
+    ).update(version=F("version") + 1)
+
+    messages_raw = await client.invoke(GetMessages(id=[InputMessageID(id=message.id)]))
+    message_raw = messages_raw.messages[0]
+    poll_raw = message_raw.media
+    assert isinstance(poll_raw, MessageMediaPoll)
+    assert not poll_raw.results.min
+    assert poll_raw.results.results[0].chosen
+    assert poll_raw.results.results[0].voters == 1
+    for result in poll_raw.results.results[1:]:
+        assert result.voters == 0
+        assert not result.chosen

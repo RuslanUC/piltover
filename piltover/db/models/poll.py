@@ -136,7 +136,7 @@ class Poll(Model):
                 ).group_by(
                     "pollvotes__answer__poll_id",
                 ).annotate(
-                    voters=Count("id", distinct=True),
+                    total_voters=Count("id", distinct=True),
                 ).values_list("pollvotes__answer__poll_id", "total_voters")
             }
         else:
