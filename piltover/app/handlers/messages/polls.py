@@ -26,7 +26,7 @@ async def get_poll_results(request: GetPollResults, user_id: int) -> Updates:
 
     message = await MessageRef.get_or_none(query, id=request.msg_id).select_related(
         "content__media", "content__media__poll"
-    ).prefetch_related("media__poll__answers")
+    ).prefetch_related("content__media__poll__pollanswers")
     if message is None or message.content.media is None or message.content.media.poll is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 

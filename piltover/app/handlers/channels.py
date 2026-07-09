@@ -1825,7 +1825,7 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user_id: int) ->
     is_emoji = isinstance(request, SetEmojiStickers)
 
     field_name = "emojiset_id" if is_emoji else "stickerset_id"
-    select_related_name = "channel__emojiset" if is_emoji else "channel__stickerset"
+    select_related_name = "emojiset" if is_emoji else "stickerset"
 
     channel = await Channel.get_from_input(user_id, request.channel).select_related(select_related_name)
     if channel is None:

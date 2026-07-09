@@ -153,7 +153,7 @@ async def get_full_chat(request: GetFullChat, user_id: int) -> MessagesChatFull:
         Prefetch("chatparticipants", queryset=ChatParticipant.filter().only(
             "chat_id", "user_id", "admin_rights", "inviter_id", "invited_at",
         )),
-        Prefetch("migrated_to", queryset=Channel.filter().only("id")),
+        Prefetch("migrated_to", queryset=Channel.filter().only("id", "migrated_from_id")),
     )
     if chat is None:
         raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")

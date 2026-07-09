@@ -240,7 +240,7 @@ class BotInteractionHandler(Generic[StateEnumT, StateT]):
         if state is not None:
             key = command, state.state
             if key in self._commands_registry:
-                return await self._commands_registry[key](peer, message, None)
+                return await self._commands_registry[key](peer, message, state)
 
         key = command, None
         if key in self._commands_registry:

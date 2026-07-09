@@ -38,7 +38,7 @@ class Publish(BotInteractionHandler[StickersBotState, StickersBotUserState]):
         (
             self.command("publish").set_send_message_func(send_bot_message)
 
-            .when(state=StickersBotState.NEWPACK_WAIT_ICON).do(self._handle_newpack)
+            .when(state=StickersBotState.NEWPACK_WAIT_IMAGE).do(self._handle_newpack)
             .when(state=StickersBotState.NEWPACK_WAIT_EMOJI).do(self._handle_newpack)
 
             .when(state=StickersBotState.NEWEMOJIPACK_WAIT_IMAGE).do(self._handle_newemojipack)

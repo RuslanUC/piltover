@@ -163,7 +163,7 @@ class Update(Model):
                     Prefetch(
                         "chatparticipants",
                         queryset=models.ChatParticipant.filter(left=False).only(
-                            "user_id", "admin_rights", "inviter_id", "invited_at",
+                            "user_id", "admin_rights", "inviter_id", "invited_at", "chat_id",
                         )
                     ),
                 )

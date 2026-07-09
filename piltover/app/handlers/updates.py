@@ -92,7 +92,7 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
     new_updates = await Update.filter(
         user_id=user_id, pts__gt=request.pts, pts__lte=max_pts,
     ).order_by("pts").limit(500).select_related(
-        "peer", "dialog", "draft", "encrypted_chat", "authorization", "stickerset",
+        "peer", "dialog", "draft", "encrypted_chat", "authorization", "stickerset", "stickerset__thumb",
         *Update.MESSAGE_PREFETCH_MAYBECACHED,
     )
     new_secret = await SecretUpdate.filter(
