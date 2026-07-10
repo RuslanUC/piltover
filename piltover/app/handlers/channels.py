@@ -3,6 +3,7 @@ from time import time
 from typing import cast
 
 from loguru import logger
+from tortoise import Tortoise
 from tortoise.expressions import Q, Subquery, RawSQL, F
 from tortoise.functions import Max
 from tortoise.query_utils import Prefetch
@@ -21,7 +22,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
     Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent, \
-    ReadHistoryChunk, DefaultSendAs, Stickerset, StickersetThumb
+    ReadHistoryChunk, DefaultSendAs, Stickerset, StickersetThumb, Wallpaper, WallpaperSettings
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -241,35 +242,255 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    peer: Peer | None = await Peer.get_or_none(
-        channel_id=peer_channel_id, channel__deleted=False,
-    ).prefetch_related(
-        "channel",
-        "channel__stickerset", "channel__emojiset",
-        "channel__wallpaper", "channel__wallpaper__settings", "channel__wallpaper__document",
+    conn = Tortoise.get_connection("default")
+    rows, results = await conn.execute_query(
+        """
+        SELECT
+            channel.id __id, channel.all_reactions __all_reactions, channel.all_reactions_custom __all_reactions_custom,
+            channel.hidden_prehistory __hidden_prehistory, channel.migrated_from_id __migrated_from_id,
+            channel.discussion_id __discussion_id, channel.is_discussion __is_discussion, channel.slowmode_seconds __slowmode_seconds,
+            channel.participants_hidden __participants_hidden, channel.supergroup __supergroup, channel.creator_id __creator_id,
+            channel.description __description, channel.admins_count __admins_count, channel.pts __pts,
+            channel.ttl_period_days __ttl_period_days, channel.min_available_id __min_available_id, 
+            channel.min_available_id_force __min_available_id_force,
+            
+            peer.id peer__id, peer.out_max_read_id peer__out_max_read_id,
+            
+            stickerset_.id stickerset__id, stickerset_.hash stickerset__hash, stickerset_.title stickerset__title, 
+            stickerset_.short_name stickerset__short_name, stickerset_.official stickerset__official, 
+            stickerset_.owner_id stickerset__owner_id, stickerset_.stickers_count stickerset__stickers_count, 
+            stickerset_.masks stickerset__masks, stickerset_.emoji stickerset__emoji,
+            
+            stickerset_thumb_file.id stickerset__thumb__file__id, stickerset_thumb_file.size stickerset__thumb__file__size,
+            
+            emojiset_.id emojiset__id, emojiset_.hash emojiset__hash, emojiset_.title emojiset__title, 
+            emojiset_.short_name emojiset__short_name, emojiset_.official emojiset__official, 
+            emojiset_.owner_id emojiset__owner_id, emojiset_.stickers_count emojiset__stickers_count, 
+            emojiset_.masks emojiset__masks, emojiset_.emoji emojiset__emoji,
 
-        Prefetch("channel__photo", queryset=File.filter().only(
-            "id", "created_at", "photo_sizes", "photo_stripped", "photo_path", "constant_access_hash",
-            "constant_file_ref",
-        )),
-        Prefetch("channel__discussion", queryset=Channel.filter().only("id", "version")),
-        Prefetch("channel__discussion_channel", queryset=Channel.filter().only("id", "version", "discussion_id")),
-        Prefetch("channel__stickerset__thumb", queryset=StickersetThumb.filter().only("id", "file_id")),
-        Prefetch("channel__stickerset__thumb__file", queryset=File.filter().only("id", "size")),
-        Prefetch("channel__emojiset__thumb", queryset=StickersetThumb.filter().only("id", "file_id")),
-        Prefetch("channel__emojiset__thumb__file", queryset=File.filter().only("id", "size")),
+            emojiset_thumb_file.id emojiset__thumb__file__id, emojiset_thumb_file.size emojiset__thumb__file__size,
+            
+            wallpaper.id wallpaper__id, wallpaper.creator_id wallpaper__creator_id, wallpaper.dark wallpaper__dark, 
+            wallpaper.slug wallpaper__slug,
+            
+            wallpapersettings.id wallpaper__settings__id, wallpapersettings.blur wallpaper__settings__blur,
+            wallpapersettings.motion wallpaper__settings__motion, wallpapersettings.background_color wallpaper__settings__background_color,
+            wallpapersettings.second_background_color wallpaper__settings__second_background_color,
+            wallpapersettings.third_background_color wallpaper__settings__third_background_color,
+            wallpapersettings.fourth_background_color wallpaper__settings__fourth_background_color,
+            wallpapersettings.intensity wallpaper__settings__intensity, wallpapersettings.rotation wallpaper__settings__rotation,
+            wallpapersettings.emoticon wallpaper__settings__emoticon,
+            
+            wallpaper__document.id wallpaper__document__id, wallpaper__document.created_at wallpaper__document__created_at, 
+            wallpaper__document.mime_type wallpaper__document__mime_type,
+            wallpaper__document.size wallpaper__document__size, wallpaper__document.type wallpaper__document__type,
+            wallpaper__document.constant_access_hash wallpaper__document__constant_access_hash,
+            wallpaper__document.constant_file_ref wallpaper__document__constant_file_ref,
+            wallpaper__document.filename wallpaper__document__filename, wallpaper__document.width wallpaper__document__width,
+            wallpaper__document.height wallpaper__document__height, wallpaper__document.duration wallpaper__document__duration,
+            wallpaper__document.supports_streaming wallpaper__document__supports_streaming,
+            wallpaper__document.nosound wallpaper__document__nosound, wallpaper__document.preload_prefix_size wallpaper__document__preload_prefix_size,
+            wallpaper__document.photo_sizes wallpaper__document__photo_sizes, wallpaper__document.photo_stripped wallpaper__document__photo_stripped,
+            wallpaper__document.photo_path wallpaper__document__photo_path,
+            
+            photo.id photo__id, photo.created_at photo__created_at, photo.photo_sizes photo__photo_sizes,
+            photo.photo_stripped photo__photo_stripped, photo.photo_path photo__photo_path,
+            photo.constant_access_hash photo__constant_access_hash, photo.constant_file_ref photo__constant_file_ref,
+            
+            discussion.id discussion__id, discussion.version discussion__version,
+            
+            discussion_channel.id discussion_channel__id, discussion_channel.version discussion_channel__version,
+            
+            chatparticipant.id chatparticipant__id, chatparticipant.left chatparticipant__left, 
+            chatparticipant.admin_rights chatparticipant__admin_rights, chatparticipant.banned_rights chatparticipant__banned_rights, 
+            chatparticipant.min_message_id chatparticipant__min_message_id,
+            
+            COUNT(scheduled.id) > 0 has_scheduled,
+            
+            min_message.id min_message__id,
+            
+            migrated_from_message.id migrated_from__message_id,
+            
+            slowmodelastmessage.last_message slowmodelastmessage__last_message,
+            
+            defaultsendas__channel.id defaultsendas__channel__id, defaultsendas__channel.version defaultsendas__channel__version
+            
+        FROM channel
+            INNER JOIN peer ON peer.channel_id = channel.id
+            LEFT OUTER JOIN stickerset stickerset_ ON stickerset_.id = channel.stickerset_id
+            LEFT OUTER JOIN stickersetthumb stickerset__thumb ON stickerset__thumb.set_id = stickerset_.id 
+            LEFT OUTER JOIN file stickerset_thumb_file ON stickerset_thumb_file.id = stickerset__thumb.file_id 
+            LEFT OUTER JOIN stickerset emojiset_ ON emojiset_.id = channel.emojiset_id
+            LEFT OUTER JOIN stickersetthumb emojiset__thumb ON emojiset__thumb.set_id = emojiset_.id 
+            LEFT OUTER JOIN file emojiset_thumb_file ON emojiset_thumb_file.id = emojiset__thumb.file_id 
+            LEFT OUTER JOIN wallpaper ON wallpaper.id = channel.wallpaper_id
+            LEFT OUTER JOIN wallpapersettings ON wallpapersettings.id = wallpaper.settings_id
+            LEFT OUTER JOIN file wallpaper__document ON wallpaper__document.id = wallpaper.document_id
+            LEFT OUTER JOIN file photo ON photo.id = channel.photo_id
+            LEFT OUTER JOIN channel discussion ON discussion.id = channel.discussion_id
+            LEFT OUTER JOIN channel discussion_channel ON discussion_channel.discussion_id = channel.id
+            LEFT OUTER JOIN chatparticipant ON chatparticipant.channel_id = channel.id AND chatparticipant.user_id = %s
+            LEFT OUTER JOIN messageref scheduled ON scheduled.peer_id = peer.id AND scheduled.scheduled_by_user_id = %s
+            LEFT OUTER JOIN messageref min_message ON min_message.id = chatparticipant.min_message_id
+            LEFT OUTER JOIN peer migrated_from_peer ON migrated_from_peer.chat_id = channel.migrated_from_id AND migrated_from_peer.owner_id = %s 
+            LEFT OUTER JOIN messageref migrated_from_message ON migrated_from_message.id = migrated_from_peer.last_message_id
+            LEFT OUTER JOIN slowmodelastmessage ON slowmodelastmessage.channel_id = channel.id AND slowmodelastmessage.user_id = %s
+            LEFT OUTER JOIN defaultsendas ON defaultsendas.group_id = channel.id AND defaultsendas.user_id = %s
+            LEFT OUTER JOIN channel defaultsendas__channel ON defaultsendas__channel.id = defaultsendas.channel_id
+        WHERE channel.id = %s
+        """,
+        [user_id, user_id, user_id, user_id, user_id, peer_channel_id]
     )
-    if peer is None:
+
+    if not results:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_PRIVATE")
 
-    channel = peer.channel
+    channel_row = results[0]
+
+    peer = Peer(
+        id=channel_row["peer__id"],
+        type=PeerType.CHANNEL,
+        chat_id=None,
+        channel_id=peer_channel_id,
+        out_max_read_id=channel_row["peer__out_max_read_id"],
+    )
+
+    channel = Channel(
+        id=channel_row["__id"],
+        all_reactions=channel_row["__all_reactions"],
+        all_reactions_custom=channel_row["__all_reactions_custom"],
+        hidden_prehistory=channel_row["__hidden_prehistory"],
+        migrated_from_id=channel_row["__migrated_from_id"],
+        discussion_id=channel_row["__discussion_id"],
+        is_discussion=channel_row["__is_discussion"],
+        slowmode_seconds=channel_row["__slowmode_seconds"],
+        participants_hidden=channel_row["__participants_hidden"],
+        supergroup=channel_row["__supergroup"],
+        creator_id=channel_row["__creator_id"],
+        description=channel_row["__description"],
+        admins_count=channel_row["__admins_count"],
+        pts=channel_row["__pts"],
+        ttl_period_days=channel_row["__ttl_period_days"],
+        min_available_id=channel_row["__min_available_id"],
+        min_available_id_force=channel_row["__min_available_id_force"],
+    )
+
+    participant: ChatParticipant | None = None
+    if channel_row["chatparticipant__id"] is not None:
+        participant = ChatParticipant(
+            left=channel_row["chatparticipant__left"],
+            admin_rights=channel_row["chatparticipant__admin_rights"],
+            banned_rights=channel_row["chatparticipant__banned_rights"],
+            min_message_id=channel_row["chatparticipant__min_message_id"],
+        )
 
     photo = PhotoEmpty(id=0)
-    if channel.photo_id:
-        photo = channel.photo.to_tl_photo()
+    if channel_row["photo__id"] is not None:
+        photo = File(
+            id=channel_row["photo__id"],
+            created_at=channel_row["photo__created_at"],
+            photo_sizes=channel_row["photo__photo_sizes"],
+            photo_stripped=channel_row["photo__photo_stripped"],
+            photo_path=channel_row["photo__photo_path"],
+            constant_access_hash=channel_row["photo__constant_access_hash"],
+            constant_file_ref=channel_row["photo__constant_file_ref"],
+        ).to_tl_photo()
+
+    stickerset: Stickerset | None = None
+    if channel_row["stickerset__id"] is not None:
+        stickerset = Stickerset(
+            id=channel_row["stickerset__id"],
+            hash=channel_row["stickerset__hash"],
+            title=channel_row["stickerset__title"],
+            short_name=channel_row["stickerset__short_name"],
+            official=channel_row["stickerset__official"],
+            owner_id=channel_row["stickerset__owner_id"],
+            stickers_count=channel_row["stickerset__stickers_count"],
+            masks=channel_row["stickerset__masks"],
+            emoji=channel_row["stickerset__emoji"],
+        )
+
+        if channel_row["stickerset__thumb__file__id"] is not None:
+            thumb_file = File(
+                id=channel_row["stickerset__thumb__file__id"],
+                version=channel_row["stickerset__thumb__file__version"]
+            )
+            thumb_file._saved_in_db = True
+            thumb = StickersetThumb(file_id=thumb_file.id, file=thumb_file)
+            thumb._saved_in_db = True
+            stickerset._thumb = thumb
+
+    emojiset: Stickerset | None = None
+    if channel_row["emojiset__id"] is not None:
+        emojiset = Stickerset(
+            id=channel_row["emojiset__id"],
+            hash=channel_row["emojiset__hash"],
+            title=channel_row["emojiset__title"],
+            short_name=channel_row["emojiset__short_name"],
+            official=channel_row["emojiset__official"],
+            owner_id=channel_row["emojiset__owner_id"],
+            stickers_count=channel_row["emojiset__stickers_count"],
+            masks=channel_row["emojiset__masks"],
+            emoji=channel_row["emojiset__emoji"],
+        )
+
+        if channel_row["emojiset__thumb__file__id"] is not None:
+            thumb_file = File(
+                id=channel_row["emojiset__thumb__file__id"],
+                version=channel_row["emojiset__thumb__file__version"]
+            )
+            thumb_file._saved_in_db = True
+            thumb = StickersetThumb(file_id=thumb_file.id, file=thumb_file)
+            thumb._saved_in_db = True
+            emojiset._thumb = thumb
+
+    wallpaper: Wallpaper | None = None
+    if channel_row["wallpaper__id"] is not None:
+        wallpaper = Wallpaper(
+            id=channel_row["wallpaper__id"],
+            creator_id=channel_row["wallpaper__creator_id"],
+            dark=channel_row["wallpaper__dark"],
+            slug=channel_row["wallpaper__slug"],
+        )
+        if channel_row["wallpaper__settings__id"] is not None:
+            settings = WallpaperSettings(
+                id=channel_row["wallpaper__settings__id"],
+                blur=channel_row["wallpaper__settings__blur"],
+                motion=channel_row["wallpaper__settings__motion"],
+                background_color=channel_row['wallpaper__settings__background_color'],
+                second_background_color=channel_row["wallpaper__settings__second_background_color"],
+                third_background_color=channel_row["wallpaper__settings__third_background_color"],
+                fourth_background_color=channel_row["wallpaper__settings__fourth_background_color"],
+                intensity=channel_row["wallpaper__settings__intensity"],
+                rotation=channel_row["wallpaper__settings__rotation"],
+                emoticon=channel_row["wallpaper__settings__emoticon"],
+            )
+            settings._saved_in_db = True
+            wallpaper.settings = settings
+        if channel_row["wallpaper__document__id"] is not None:
+            document = File(
+                id=channel_row["wallpaper__document__id"],
+                created_at=channel_row["wallpaper__document__created_at"],
+                mime_type=channel_row["wallpaper__document__mime_type"],
+                size=channel_row["wallpaper__document__size"],
+                type=channel_row["wallpaper__document__type"],
+                constant_access_hash=channel_row["wallpaper__document__constant_access_hash"],
+                constant_file_ref=channel_row["wallpaper__document__constant_file_ref"],
+                filename=channel_row["wallpaper__document__filename"],
+                width=channel_row["wallpaper__document__width"],
+                height=channel_row["wallpaper__document__height"],
+                duration=channel_row["wallpaper__document__duration"],
+                supports_streaming=channel_row["wallpaper__document__supports_streaming"],
+                nosound=channel_row["wallpaper__document__nosound"],
+                preload_prefix_size=channel_row["wallpaper__document__preload_prefix_size"],
+                photo_sizes=channel_row["wallpaper__document__photo_sizes"],
+                photo_stripped=channel_row["wallpaper__document__photo_stripped"],
+                photo_path=channel_row["wallpaper__document__photo_path"],
+            )
+            document._saved_in_db = True
+            wallpaper.document = document
 
     invite = None
-    participant = await channel.get_participant(user_id, allow_left=True)
     if participant is not None \
             and not participant.left \
             and channel.admin_has_permission(participant, ChatAdminRights.INVITE_USERS):
@@ -301,70 +522,54 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     can_change_info = participant is not None and channel.admin_has_permission(participant, ChatAdminRights.CHANGE_INFO)
 
     min_message_id: int | None = None
-    if channel.hidden_prehistory and participant is not None and participant.min_message_id:
-        min_message_id = cast(
-            int | None,
-            cast(
-                object,
-                # TODO: use Min("id") instead of .order_by("id").first() ?
-                await MessageRef.filter(
-                    peer=peer, id__gte=participant.min_message_id,
-                ).order_by("id").first().values_list("id", flat=True)
-            )
-        )
+    if channel.hidden_prehistory:
+        if channel_row["min_message__id"]:
+            min_message_id = channel_row["min_message__id"]
+        elif participant.min_message_id:
+            min_message_id = participant.min_message_id
+        elif channel.min_available_id:
+            min_message_id = channel.min_available_id
+        if channel.min_available_id_force and min_message_id and channel.min_available_id_force > min_message_id:
+            min_message_id = channel.min_available_id_force
+        if not min_message_id:
+            min_message_id = None
 
-    migrated_from_chat_id = migrated_from_max_id = None
-    if channel.migrated_from_id is not None \
-            and await Peer.filter(owner_id=user_id, chat_id=channel.migrated_from_id).exists():
-        migrated_from_chat_id = channel.migrated_from_id
-        migrated_from_max_id = cast(
-            int | None,
-            cast(
-                object,
-                await MessageRef.filter(
-                    peer__owner_id=user_id,
-                    peer__chat_id=channel.migrated_from_id,
-                ).order_by("-id").first().values_list("id", flat=True)
-            )
-        ) or 0
+    migrated_from_chat_id = channel.migrated_from_id
+    migrated_from_max_id = (channel_row["migrated_from__message_id"] or 0) if channel.migrated_from_id else None
 
-    channels_to_tl = [channel]
+    channels_to_tl: list[Channel] = [channel]
 
-    linked_chat = None
+    linked_chat: Channel | None = None
     if channel.discussion_id:
-        linked_chat = channel.discussion
+        linked_chat = Channel(
+            id=channel_row["discussion__id"],
+            version=channel_row["discussion__version"],
+        ) if channel_row["discussion__id"] is not None else None
     elif channel.is_discussion:
-        linked_chat = channel.discussion_channel
+        linked_chat = Channel(
+            id=channel_row["discussion_channel__id"],
+            version=channel_row["discussion_channel__version"],
+        ) if channel_row["discussion_channel__id"] is not None else None
 
     if linked_chat is not None:
         channels_to_tl.append(linked_chat)
 
     slowmode_next_date = None
-    if channel.slowmode_seconds:
-        slowmode_last_date = cast(
-            datetime | None,
-            cast(
-                object,
-                await SlowmodeLastMessage.get_or_none(
-                    channel=channel, user_id=user_id
-                ).values_list("last_message", flat=True)
-            )
-        )
-        if slowmode_last_date is not None:
-            slowmode_next_date = int(slowmode_last_date.timestamp()) + channel.slowmode_seconds
+    if channel.slowmode_seconds and (slowmode_last_date := channel_row["slowmodelastmessage__last_message"]):
+        slowmode_next_date = int(slowmode_last_date.timestamp()) + channel.slowmode_seconds
 
     can_view_participants = not channel.participants_hidden
     if participant is not None and participant.is_admin:
         can_view_participants = True
 
     default_send_as = None
-    if channel.supergroup:
-        default_send_as_channel = await DefaultSendAs.get_or_none(
-            user_id=user_id, group_id=channel.id,
-        ).select_related("channel").only("channel__id", "channel__version")
-        if default_send_as_channel is not None:
-            default_send_as = PeerChannel(channel_id=default_send_as_channel.channel.make_id())
-            channels_to_tl.append(default_send_as_channel.channel)
+    if channel.supergroup and channel_row["defaultsendas__channel__id"] is not None:
+        dsa_channel_id = channel_row["defaultsendas__channel__id"]
+        default_send_as = PeerChannel(channel_id=Channel.make_id_from(dsa_channel_id))
+        channels_to_tl.append(Channel(
+            id=dsa_channel_id,
+            version=channel_row["defaultsendas__channel__version"],
+        ))
 
     return MessagesChatFull(
         full_chat=ChannelFull(
@@ -419,9 +624,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
             slowmode_seconds=channel.slowmode_seconds,
             slowmode_next_send_date=slowmode_next_date,
             default_send_as=default_send_as,
-            stickerset=await channel.stickerset.to_tl(user_id) if channel.stickerset is not None else None,
-            emojiset=await channel.emojiset.to_tl(user_id) if channel.emojiset is not None else None,
-            wallpaper=channel.wallpaper.to_tl() if channel.wallpaper is not None else None,
+            stickerset=await stickerset.to_tl(user_id) if stickerset is not None else None,
+            emojiset=await emojiset.to_tl(user_id) if emojiset is not None else None,
+            wallpaper=wallpaper.to_tl() if wallpaper is not None else None,
         ),
         chats=await Channel.to_tl_bulk_maybecached(channels_to_tl),
         users=[],
