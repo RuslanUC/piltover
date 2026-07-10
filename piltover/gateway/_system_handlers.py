@@ -98,11 +98,12 @@ async def rpc_drop_answer(_1: Client, request: Message[RpcDropAnswer], _3: Sessi
 
 async def get_future_salts(client: Client, request: Message[GetFutureSalts], session: Session) -> FutureSalts:
     limit = min(max(request.obj.num, 1), 64)
-    base_timestamp = int(time() // (30 * 60))
+    now = int(time())
+    base_timestamp = now // (30 * 60)
 
     return FutureSalts(
         req_msg_id=request.message_id,
-        now=int(time()),
+        now=now,
         salts=[
             FutureSalt(
                 valid_since=(base_timestamp + salt_offset) * 30 * 60,
