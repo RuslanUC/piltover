@@ -7,14 +7,15 @@ from PIL import Image
 from fastrand import xorshift128plus_bytes
 from pyrogram.errors import StickerPngDimensions, StickerPngNopng, StickerFileInvalid
 from pyrogram.file_id import FileId, FileType
-from pyrogram.raw.functions.messages import UploadMedia
+from pyrogram.raw.functions.messages import UploadMedia, GetAllStickers
 from pyrogram.raw.functions.stickers import CheckShortName, CreateStickerSet
 from pyrogram.errors.exceptions.bad_request_400 import BadRequest, PackShortNameOccupied
 from pyrogram.raw.types import InputStickerSetItem, InputPeerSelf, InputMediaUploadedDocument, DocumentAttributeSticker, \
-    InputStickerSetEmpty, Document, InputDocument, InputUserSelf, StickerSet
+    InputStickerSetEmpty, Document, InputDocument, InputUserSelf, StickerSet, InputPeerUser
 from pyrogram.raw.types.messages import StickerSet as MessagesStickerSet
 
 from tests.client import TestClient
+from tests.conftest import ClientFactory
 from tests.utils import color_is_near
 
 PHOTO_COLOR = (128, 128, 0)
@@ -166,7 +167,7 @@ async def test_create_stickerset_invalid_png_dims(exit_stack: AsyncExitStack) ->
 async def test_create_stickerset_not_png(exit_stack: AsyncExitStack) -> None:
     await exit_stack.enter_async_context(client := TestClient(phone_number="123456789"))
 
-    sticker_file = BytesIO(xorshift128plus_bytes(1024 *  32))
+    sticker_file = BytesIO(xorshift128plus_bytes(1024 * 32))
     setattr(sticker_file, "name", "sticker.png")
 
     sticker = await _make_input_stickerset_item(client, sticker_file, "👍")
@@ -178,3 +179,52 @@ async def test_create_stickerset_not_png(exit_stack: AsyncExitStack) -> None:
             stickers=[sticker],
         ))
 
+
+@pytest.mark.asyncio
+async def test_create_stickerset_via_bot(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    stickers_peer = await client.resolve_peer("stickers")
+    assert isinstance(stickers_peer, InputPeerUser)
+
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
+    await client.send_message("stickers", "/newpack")
+    message = await waiter
+    assert "A new sticker set" in message.message
+
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
+    await client.send_message("stickers", "test stickerpack")
+    message = await waiter
+    assert "Now send me the sticker" in message.message
+
+    sticker = client.make_image((512, 512), PHOTO_COLOR, "sticker.png")
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 3)
+    await client.send_document("stickers", sticker, force_document=True)
+    message = await waiter
+    assert "Now send me an emoji" in message.message
+
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
+    await client.send_message("stickers", "\U0001f408")
+    message = await waiter
+    assert "Stickers in the set: 1." in message.message
+
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
+    await client.send_message("stickers", "/publish")
+    message = await waiter
+    assert "You can set an icon for your sticker set." in message.message
+
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
+    await client.send_message("stickers", "/skip")
+    message = await waiter
+    assert "Please provide a short name for your set." in message.message
+
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
+    await client.send_message("stickers", "test_stickerset_idk")
+    message = await waiter
+    assert "addstickers/test_stickerset_idk" in message.message
+
+    stickersets = await client.invoke(GetAllStickers(hash=0))
+    assert len(stickersets.sets) == 1
+    assert stickersets.sets[0].title == "test stickerpack"
+    assert stickersets.sets[0].short_name == "test_stickerset_idk"
+    assert stickersets.sets[0].count == 1

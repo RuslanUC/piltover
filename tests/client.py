@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import socket
-from asyncio import Event, timeout
+from asyncio import Event, timeout, Future
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from enum import Enum, auto
 from io import BytesIO
 from time import time
-from typing import TypeVar, Self, TYPE_CHECKING, Any, cast, overload, Literal
+from typing import TypeVar, Self, TYPE_CHECKING, Any, cast, overload, Literal, Callable
 from urllib.parse import parse_qs, urlparse
 
 import pyrogram
+from PIL import Image
 from loguru import logger
 from pyrogram import Client
 from pyrogram.connection import Connection
@@ -19,6 +20,7 @@ from pyrogram.connection.transport import TCP
 from pyrogram.crypto import rsa, mtproto
 from pyrogram.crypto.rsa import PublicKey
 from pyrogram.errors import AuthKeyDuplicated, RPCError, SecurityCheckMismatch
+from pyrogram.handlers import RawUpdateHandler
 from pyrogram.raw.base import InputPrivacyKey
 from pyrogram.raw.core import TLObject as PyroTLObject
 from pyrogram.raw.core.tl_object import TLObjectT, TLRequest as PyroTLRequest
@@ -31,7 +33,9 @@ from pyrogram.raw.types import Updates, InputPrivacyKeyAddedByPhone, InputPrivac
     InputPrivacyKeyVoiceMessages, InputPrivacyKeyPhoneP2P, InputPrivacyValueAllowAll, InputPrivacyValueAllowUsers, \
     InputPrivacyValueDisallowChatParticipants, InputPrivacyValueDisallowUsers, InputPrivacyValueDisallowContacts, \
     InputPrivacyValueDisallowAll, InputPrivacyValueAllowChatParticipants, InputPrivacyValueAllowContacts, UpdateShort, \
-    UpdatesCombined, ExportedContactToken, UpdatesTooLong, ChannelAdminLogEventsFilter
+    UpdatesCombined, ExportedContactToken, UpdatesTooLong, ChannelAdminLogEventsFilter, UpdateNewMessage, \
+    Message as PyroRawMessage, PeerUser
+from pyrogram.raw.base import Peer as PeerBase
 from pyrogram.session import Session as PyroSession, Auth, Session
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
@@ -529,6 +533,51 @@ class TestClient(Client):
         ))
 
         return AdminLogResults.read(BytesIO(result.write()))
+
+    @staticmethod
+    def _raise_timeout_in_future_maybe(fut: asyncio.Future) -> None:
+        if not fut.done():
+            fut.set_exception(TimeoutError)
+
+    def wait_for_message(
+            self, predicate: Callable[[PyroRawMessage], bool], timeout_: float,
+    ) -> Future[PyroRawMessage]:
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+
+        async def _raw_handler(_client: TestClient, update: Any, _users: dict, _chats: dict) -> None:
+            if isinstance(update, UpdateNewMessage) \
+                    and isinstance(update.message, PyroRawMessage) \
+                    and predicate(update.message):
+                fut.set_result(update.message)
+
+        loop.call_later(timeout_, self._raise_timeout_in_future_maybe, fut)
+
+        handler = RawUpdateHandler(_raw_handler)
+        fut.add_done_callback(lambda _: self.remove_handler(handler))
+        self.add_handler(handler)
+
+        return fut
+
+    def wait_for_message_from_user(
+            self, user_id: int, peer: PeerBase | None, timeout_: float,
+    ) -> Future[PyroRawMessage]:
+        def predicate(message: PyroRawMessage) -> bool:
+            if peer is not None and message.peer_id != peer:
+                return False
+            if not isinstance(message.from_id, PeerUser):
+                return False
+            return message.from_id.user_id == user_id
+
+        return self.wait_for_message(predicate, timeout_)
+    
+    @staticmethod
+    def make_image(dims: tuple[int, int], color: tuple[int, int, int], filename: str = "image.png") -> BytesIO:
+        image = Image.new(mode="RGB", size=dims, color=color)
+        image_file = BytesIO()
+        setattr(image_file, "name", filename)
+        image.save(image_file, format="PNG")
+        return image_file
 
 
 class InternalPushSession(Session):

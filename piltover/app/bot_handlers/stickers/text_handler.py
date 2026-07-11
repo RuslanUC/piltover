@@ -583,6 +583,7 @@ class Text(BotInteractionHandler[StickersBotState, StickersBotUserState]):
 
             await state.delete()
 
+        stickerset._thumb = None
         await upd.new_stickerset(owner_id, stickerset)
 
     @classmethod
