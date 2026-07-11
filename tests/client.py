@@ -40,7 +40,7 @@ from pyrogram.session import Session as PyroSession, Auth, Session
 from pyrogram.session.internals import DataCenter
 from pyrogram.storage import Storage
 from pyrogram.storage.sqlite_storage import get_input_peer
-from pyrogram.types import User
+from pyrogram.types import User, Message as PyroMessage
 
 from piltover.tl.types.channels import AdminLogResults
 from piltover.tl import Long
@@ -578,6 +578,13 @@ class TestClient(Client):
         setattr(image_file, "name", filename)
         image.save(image_file, format="PNG")
         return image_file
+
+    async def send_message_to_user_and_get_reply(
+            self, user_id: int, text: str, reply_timeout: float,
+    ) -> tuple[PyroMessage, PyroRawMessage]:
+        waiter = self.wait_for_message_from_user(user_id, None, reply_timeout)
+        message = await self.send_message(user_id, text)
+        return message, await waiter
 
 
 class InternalPushSession(Session):

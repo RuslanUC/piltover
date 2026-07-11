@@ -1,3 +1,4 @@
+import os
 from contextlib import AsyncExitStack
 from io import BytesIO
 from typing import cast
@@ -186,15 +187,12 @@ async def test_create_stickerset_via_bot(client_with_auth: ClientFactory) -> Non
 
     stickers_peer = await client.resolve_peer("stickers")
     assert isinstance(stickers_peer, InputPeerUser)
+    stickersbot_id = stickers_peer.user_id
 
-    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
-    await client.send_message("stickers", "/newpack")
-    message = await waiter
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "/newpack", 1.5)
     assert "A new sticker set" in message.message
 
-    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
-    await client.send_message("stickers", "test stickerpack")
-    message = await waiter
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "test stickerpack", 1.5)
     assert "Now send me the sticker" in message.message
 
     sticker = client.make_image((512, 512), PHOTO_COLOR, "sticker.png")
@@ -203,24 +201,16 @@ async def test_create_stickerset_via_bot(client_with_auth: ClientFactory) -> Non
     message = await waiter
     assert "Now send me an emoji" in message.message
 
-    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
-    await client.send_message("stickers", "\U0001f408")
-    message = await waiter
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "\U0001f408", 1.5)
     assert "Stickers in the set: 1." in message.message
 
-    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
-    await client.send_message("stickers", "/publish")
-    message = await waiter
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "/publish", 1.5)
     assert "You can set an icon for your sticker set." in message.message
 
-    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
-    await client.send_message("stickers", "/skip")
-    message = await waiter
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "/skip", 1.5)
     assert "Please provide a short name for your set." in message.message
 
-    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 1.5)
-    await client.send_message("stickers", "test_stickerset_idk")
-    message = await waiter
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "test_stickerset_idk", 1.5)
     assert "addstickers/test_stickerset_idk" in message.message
 
     stickersets = await client.invoke(GetAllStickers(hash=0))
@@ -228,3 +218,108 @@ async def test_create_stickerset_via_bot(client_with_auth: ClientFactory) -> Non
     assert stickersets.sets[0].title == "test stickerpack"
     assert stickersets.sets[0].short_name == "test_stickerset_idk"
     assert stickersets.sets[0].count == 1
+
+
+@pytest.mark.asyncio
+async def test_create_stickerset_via_bot_invalid_name(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    stickers_peer = await client.resolve_peer("stickers")
+    assert isinstance(stickers_peer, InputPeerUser)
+    stickersbot_id = stickers_peer.user_id
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "/newpack", 1.5)
+    assert "A new sticker set" in message.message
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "test stickerpack"*5, 1.5)
+    assert "title is unacceptable." in message.message
+
+
+@pytest.mark.asyncio
+async def test_create_stickerset_via_bot_invalid_name_not_text(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    stickers_peer = await client.resolve_peer("stickers")
+    assert isinstance(stickers_peer, InputPeerUser)
+    stickersbot_id = stickers_peer.user_id
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "/newpack", 1.5)
+    assert "A new sticker set" in message.message
+
+    sticker = client.make_image((512, 512), PHOTO_COLOR, "sticker.png")
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 3)
+    await client.send_document("stickers", sticker, force_document=True)
+    message = await waiter
+    assert "title is unacceptable." in message.message
+
+
+@pytest.mark.asyncio
+async def test_create_stickerset_via_bot_sticker_no_media(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    stickers_peer = await client.resolve_peer("stickers")
+    assert isinstance(stickers_peer, InputPeerUser)
+    stickersbot_id = stickers_peer.user_id
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "/newpack", 1.5)
+    assert "A new sticker set" in message.message
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "test stickerpack", 1.5)
+    assert "Now send me the sticker" in message.message
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "asdqwe", 1.5)
+    assert "Please send me your sticker image as a file." in message.message
+
+
+@pytest.mark.asyncio
+async def test_create_stickerset_via_bot_sticker_not_image(client_with_auth: ClientFactory) -> None:
+    client = await client_with_auth(run=True)
+
+    stickers_peer = await client.resolve_peer("stickers")
+    assert isinstance(stickers_peer, InputPeerUser)
+    stickersbot_id = stickers_peer.user_id
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "/newpack", 1.5)
+    assert "A new sticker set" in message.message
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "test stickerpack", 1.5)
+    assert "Now send me the sticker" in message.message
+
+    file = BytesIO(os.urandom(32 * 1024))
+    file.name = "idk.png"
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 3)
+    await client.send_document("stickers", file, force_document=True)
+    message = await waiter
+    assert "Please send me your sticker image as a file." in message.message
+
+
+@pytest.mark.parametrize(
+    ("width", "height"),
+    [
+        (512, 513),
+        (511, 511),
+    ],
+    ids=[
+        "height is too big",
+        "width and height are too small",
+    ],
+)
+@pytest.mark.asyncio
+async def test_create_stickerset_via_bot_invalid_dims(client_with_auth: ClientFactory, width: int, height: int) -> None:
+    client = await client_with_auth(run=True)
+
+    stickers_peer = await client.resolve_peer("stickers")
+    assert isinstance(stickers_peer, InputPeerUser)
+    stickersbot_id = stickers_peer.user_id
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "/newpack", 1.5)
+    assert "A new sticker set" in message.message
+
+    _, message = await client.send_message_to_user_and_get_reply(stickersbot_id, "test stickerpack", 1.5)
+    assert "Now send me the sticker" in message.message
+
+    sticker = client.make_image((width, height), PHOTO_COLOR, "sticker.png")
+    waiter = client.wait_for_message_from_user(stickers_peer.user_id, None, 3)
+    await client.send_document("stickers", sticker, force_document=True)
+    message = await waiter
+    assert "Please send me your sticker image as a file." in message.message

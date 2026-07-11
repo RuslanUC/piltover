@@ -33,7 +33,29 @@ jobs:
 
       - name: Run tests
         run: |
-          uv run pytest --cov-append --cov-report=xml --cov=piltover/app --cov=piltover/db --cov=piltover/layer_converter --cov=piltover/utils --cov=piltover/*.py tests
+          uv run pytest \
+            --cov-append \
+            --cov-report=xml \
+            --cov=piltover/app \
+            --cov=piltover/config \
+            --cov=piltover/db \
+            --cov=piltover/gateway \
+            --cov=piltover/message_brokers \
+            --cov=piltover/pubsub \
+            --cov=piltover/session \
+            --cov=piltover/storage \
+            --cov=piltover/tl/layer_converters \
+            --cov=piltover/tl/placeholders \
+            --cov=piltover/tl/primitives \
+            --cov=piltover/tl/to_format \
+            --cov=piltover/tl/core_types.py \
+            --cov=piltover/tl/serialization_context.py \
+            --cov=piltover/tl/serialization_utils.py \
+            --cov=piltover/tl/tl_object.py \
+            --cov=piltover/tl/utils.py \
+            --cov=piltover/utils \
+            --cov=piltover/*.py \
+            tests
         env:
           LOGURU_LEVEL: WARNING
 
