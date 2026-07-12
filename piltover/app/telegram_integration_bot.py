@@ -31,6 +31,7 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
     ],
     is_persistent=True,
     one_time_keyboard=True,
+    resize_keyboard=True,
     input_field_placeholder="Select action..."
 )
 
@@ -57,13 +58,10 @@ async def command_start_handler(message: Message) -> None:
 
 def _make_first_name_kbd(message: Message) -> ReplyKeyboardMarkup | ReplyKeyboardRemove:
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text=message.from_user.first_name),
-            ],
-        ],
+        keyboard=[[KeyboardButton(text=message.from_user.first_name)]],
         is_persistent=False,
         one_time_keyboard=True,
+        resize_keyboard=True,
         input_field_placeholder="Send first name..."
     ) if message.from_user else ReplyKeyboardRemove()
 
@@ -73,6 +71,7 @@ def _make_last_name_kbd(message: Message) -> ReplyKeyboardMarkup | ReplyKeyboard
         keyboard=[[KeyboardButton(text=message.from_user.last_name)]],
         is_persistent=False,
         one_time_keyboard=True,
+        resize_keyboard=True,
         input_field_placeholder="Send last name..."
     ) if message.from_user and message.from_user.last_name else ReplyKeyboardRemove()
 
@@ -82,6 +81,7 @@ def _make_phone_number_kbd() -> ReplyKeyboardMarkup:
         keyboard=[[KeyboardButton(text=BTN_TEXT_SHARE_CONTACT)]],
         is_persistent=False,
         one_time_keyboard=True,
+        resize_keyboard=True,
         input_field_placeholder="Send phone_number..."
     )
 
