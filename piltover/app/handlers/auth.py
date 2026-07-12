@@ -15,15 +15,15 @@ from piltover.app.utils.system_notifications import send_official_notification_m
 from piltover.app.utils.utils import check_password_internal
 from piltover.config import APP_CONFIG, SYSTEM_CONFIG
 from piltover.context import request_ctx
-from piltover.db.models import AuthKey, UserAuthorization, UserPassword, TempAuthKey, SentCode, User, \
-    QrLogin, PhoneCodePurpose, TelegramUser
+from piltover.db.models import AuthKey, UserAuthorization, UserPassword, TempAuthKey, SentCode, User, QrLogin, \
+    PhoneCodePurpose
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken, UpdateShort
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode, ImportBotAuthorization
-from piltover.tl.functions.internal import SendTelegramAuthMessage
+from piltover.tl.functions.internal import SendTelegramMessage
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
     LoginToken, AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut, LoginTokenSuccess
 from piltover.utils.utils import sec_check
@@ -37,6 +37,12 @@ LOGIN_MESSAGE_FMT = FormatableTextWithEntities((
     f"❗️This code can be used to log in to your {APP_CONFIG.name} account. We never ask it for anything else.\n\n"
     "If you didn't request this code by trying to log in on another device, simply ignore this message."
 ))
+LOGIN_MESSAGE_FMT_HTML = (
+    f"<b>Login code</b>: <tg-spoiler>{{code}}</tg-spoiler>. "
+    f"Do not give this code to anyone!\n\n"
+    f"❗️This code can be used to log in to your {APP_CONFIG.name} account.\n\n"
+    "If you didn't request this code by trying to log in on another device, simply ignore this message."
+)
 
 
 def _validate_phone(phone_number: str) -> str:
@@ -85,13 +91,17 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
     if user is None:
         return resp
 
-    text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
+    code_str = str(code.code).zfill(5)
+
+    if SYSTEM_CONFIG.telegram_integration.enabled:
+        await request_ctx.get().worker.call_internal(SendTelegramMessage(
+            user_id=user.id,
+            text=LOGIN_MESSAGE_FMT_HTML.format(code=code_str),
+        ))
+
+    text, entities = LOGIN_MESSAGE_FMT.format(code=code_str)
     if not await send_official_notification_message(user.id, text, entities):
         return resp
-
-    if SYSTEM_CONFIG.telegram_integration.enabled and await TelegramUser.filter(user=user).exists():
-        ctx = request_ctx.get()
-        await ctx.worker.call_internal(SendTelegramAuthMessage(user_id=user.id, code=code.code))
 
     resp.type_ = SentCodeTypeApp(length=5)
     return resp

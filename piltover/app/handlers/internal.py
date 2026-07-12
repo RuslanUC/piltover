@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime, UTC
 from typing import cast
 
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramAPIError
 from loguru import logger
 from tortoise.transactions import in_transaction
 
@@ -17,7 +17,7 @@ from piltover.db.models.peer import PeerChannelT
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import TLObject
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
-    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramAuthMessage
+    ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage
 from piltover.tl.types.internal import TaggedBool
 from piltover.worker import MessageHandler
 
@@ -200,14 +200,14 @@ async def clear_draft(request: ClearDraft) -> TLObject:
     return TaggedBool(value=False)
 
 
-@handler.on_request(SendTelegramAuthMessage, ReqHandlerFlags.INTERNAL)
-async def send_telegram_auth_message(request: SendTelegramAuthMessage) -> TLObject:
+@handler.on_request(SendTelegramMessage, ReqHandlerFlags.INTERNAL)
+async def send_telegram_message(request: SendTelegramMessage) -> TLObject:
     if AioGramBot is None:
-        logger.error("aiogram is not installed, not sending auth code.")
+        logger.error("aiogram is not installed, not sending message.")
         return TaggedBool(value=False)
 
-    tg_user = await TelegramUser.get_or_none(user_id=request.user_id)
-    if tg_user is None or not SYSTEM_CONFIG.telegram_integration.enabled:
+    if not SYSTEM_CONFIG.telegram_integration.enabled \
+            or (tg_user := await TelegramUser.get_or_none(user_id=request.user_id)) is None:
         return TaggedBool(value=False)
 
     logger.info(f"Sending auth code to telegram user {tg_user.telegram_id}")
@@ -219,14 +219,9 @@ async def send_telegram_auth_message(request: SendTelegramAuthMessage) -> TLObje
         try:
             await bot.send_message(
                 chat_id=tg_user.telegram_id,
-                text=(
-                    f"<b>Login code</b>: <tg-spoiler>{str(request.code).zfill(5)}</tg-spoiler>. "
-                    f"Do not give this code to anyone!\n\n"
-                    f"❗️This code can be used to log in to your {APP_CONFIG.name} account.\n\n"
-                    "If you didn't request this code by trying to log in on another device, simply ignore this message."
-                ),
+                text=request.text,
             )
-        except TelegramBadRequest as e:
+        except TelegramAPIError as e:
             logger.opt(exception=e).error(f"Failed to send telegram message")
 
     return TaggedBool(value=True)
