@@ -5,10 +5,11 @@ from aiogram import Bot, Dispatcher, html, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
+from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, \
-    InlineKeyboardButton
+    InlineKeyboardButton, CallbackQuery
 from tortoise import Tortoise
 from tortoise.exceptions import IntegrityError
 from tortoise.transactions import in_transaction
@@ -248,6 +249,10 @@ async def _create_new_user(message: Message, state: FSMContext) -> None:
     await state.clear()
 
 
+class ManageUserCallbackData(CallbackData, prefix="manage-user"):
+    user_id: int
+
+
 @dp.message(F.text == LIST_ACCOUNTS_BTN_TEXT)
 async def list_accounts_btn_handler(message: Message) -> None:
     all_users = await User.filter(
@@ -278,7 +283,7 @@ async def list_accounts_btn_handler(message: Message) -> None:
             [
                 InlineKeyboardButton(
                     text=f"{user.full_name()}",
-                    callback_data=f"manager-user:{user.id}",
+                    callback_data=ManageUserCallbackData(user_id=user.id).pack(),
                 )
                 for user in users_batch
             ]
@@ -290,6 +295,24 @@ async def list_accounts_btn_handler(message: Message) -> None:
     await message.answer(
         text=f"You currently have {len(all_users)} account{s_maybe}.\n{can_create_accounts_text}",
         reply_markup=inline_keyboard,
+    )
+
+
+@dp.callback_query(ManageUserCallbackData.filter())
+async def manage_user_handler(query: CallbackQuery, callback_data: ManageUserCallbackData) -> None:
+    user = await User.get_or_none(id=callback_data.user_id, telegramuser__telegram_id=query.from_user.id)
+    if user is None:
+        await query.answer("Invalid user.")
+        return
+
+    await query.message.edit_text(
+        text=(
+            f"Account details:\n"
+            f"First name: {html.code(user.first_name)}\n"
+            f"Last name: {html.code(user.last_name)}\n"
+            f"Phone number: +{user.phone_number}"
+        ),
+        # TODO: add ability to setup 2fa, delete account, etc.
     )
 
 
