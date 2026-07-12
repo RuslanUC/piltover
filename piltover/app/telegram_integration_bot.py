@@ -7,7 +7,8 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, \
+    InlineKeyboardButton
 from tortoise import Tortoise
 from tortoise.exceptions import IntegrityError
 from tortoise.transactions import in_transaction
@@ -16,18 +17,16 @@ from piltover.app.handlers.auth import _validate_phone
 from piltover.config import SYSTEM_CONFIG, APP_CONFIG, TORTOISE_ORM
 from piltover.db.models import User, TelegramUser
 from piltover.exceptions import ErrorRpc
+from piltover.utils.utils import batched
 
 NEW_ACCOUNT_BTN_TEXT = "Create new account"
+LIST_ACCOUNTS_BTN_TEXT = "List my accounts"
 BTN_TEXT_SHARE_CONTACT = "Share contact"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
-        [
-            KeyboardButton(text=NEW_ACCOUNT_BTN_TEXT),
-        ],
-        [
-            KeyboardButton(text="List my accounts"),
-        ],
+        [KeyboardButton(text=NEW_ACCOUNT_BTN_TEXT)],
+        [KeyboardButton(text=LIST_ACCOUNTS_BTN_TEXT)],
     ],
     is_persistent=True,
     one_time_keyboard=True,
@@ -247,6 +246,51 @@ async def _create_new_user(message: Message, state: FSMContext) -> None:
     )
 
     await state.clear()
+
+
+@dp.message(F.text == LIST_ACCOUNTS_BTN_TEXT)
+async def list_accounts_btn_handler(message: Message) -> None:
+    all_users = await User.filter(
+        telegramuser__telegram_id=message.from_user.id,
+    ).only("id", "first_name", "last_name")
+
+    max_per_user = SYSTEM_CONFIG.telegram_integration.max_accounts_per_user
+    if max_per_user <= 0:
+        can_create_accounts_text = "New accounts registration is currently disabled."
+    elif not all_users:
+        can_create_accounts_text = f"You can create {max_per_user} accounts."
+    elif len(all_users) >= max_per_user:
+        can_create_accounts_text = (
+            f"You can not create any more accounts (maximum is {max_per_user}, you have {len(all_users)})."
+        )
+    else:
+        can_create_accounts_text = f"You can create {max_per_user - len(all_users)} more accounts."
+
+    if not all_users:
+        await message.answer(
+            text=f"You dont have any {APP_CONFIG.name} accounts.\n{can_create_accounts_text}",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        return
+
+    inline_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{user.full_name()}",
+                    callback_data=f"manager-user:{user.id}",
+                )
+                for user in users_batch
+            ]
+            for users_batch in batched(all_users, 2)
+        ],
+    )
+
+    s_maybe = "s" if len(all_users) > 1 else ""
+    await message.answer(
+        text=f"You currently have {len(all_users)} account{s_maybe}.\n{can_create_accounts_text}",
+        reply_markup=inline_keyboard,
+    )
 
 
 async def main() -> None:

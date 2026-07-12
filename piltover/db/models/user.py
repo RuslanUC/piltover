@@ -85,6 +85,12 @@ class User(Model):
     def _cache_key(self) -> str:
         return f"user:{self.id}:{self.version}:{self._CACHE_VERSION}"
 
+    def full_name(self) -> str:
+        result = self.first_name
+        if self.last_name:
+            result += f" {self.last_name}"
+        return result
+
     async def get_username(self) -> models.Username | None:
         if self.cached_username is _MISSING:
             self.cached_username = await models.Username.get_or_none(user=self)
