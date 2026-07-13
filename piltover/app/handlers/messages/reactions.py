@@ -142,16 +142,30 @@ async def send_reaction(request: SendReaction, user_id: int) -> Updates:
     )
     await message.content.refresh_from_db(["reactions_version", "author_reactions_unread"])
 
+    # TODO: send UpdateMessage update instead of UpdateMessageReactions
+    #  (use upd.edit_message instead of upd.update_reactions)
+
     result = await upd.update_reactions(user_id, [message], peer)
 
-    # TODO: if small supergroup - send updates to all participants,
-    #  if big supergroup - send updates only to author (+admins?)
-    #  if channel - dont send updates at all
-    if peer.type is not PeerType.CHANNEL:
+    if peer.type is PeerType.SELF:
+        ...  # Do nothing
+    elif peer.type is PeerType.USER:
+        opposite_message = await MessageRef.get_or_none(
+            content_id=message.content_id, peer__owner_id=peer.user_id, peer__user_id=user_id
+        ).select_related("peer", "content")
+        if opposite_message is not None:
+            # await upd.edit_message(peer.user_id, {opposite_message.peer: opposite_message})
+            await upd.update_reactions(peer.user_id, [opposite_message], opposite_message.peer)
+    elif peer.type is PeerType.CHAT:
+        # TODO: do this in bulk
         for opp_message in await MessageRef.filter(
-            content_id=message.content_id,
+                content_id=message.content_id,
         ).select_related("peer", "content"):
             await upd.update_reactions(opp_message.peer.owner_id, [opp_message], opp_message.peer)
+    elif peer.type is PeerType.CHANNEL and not peer.channel.channel:
+        # TODO: if small supergroup - send updates to all participants,
+        #  if big supergroup - send updates only to author (+admins?)
+        await upd.update_reactions(message.content.author_id, [message], peer)
 
     if (reaction is not None or custom_reaction is not None) and request.add_to_recent:
         await RecentReaction.update_time_or_create(user_id, reaction, custom_reaction, datetime.now(UTC))

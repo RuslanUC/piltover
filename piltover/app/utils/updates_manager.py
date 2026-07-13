@@ -482,7 +482,7 @@ async def edit_message(user_id: int, messages: dict[Peer, MessageRef]) -> Update
             updates=[
                 UpdateEditMessage(
                     # TODO: move out of the loop?
-                    message=await message.to_tl(peer.owner_id),
+                    message=await message.to_tl_maybecached(peer.owner_id),
                     pts=new_pts,
                     pts_count=1,
                 )
