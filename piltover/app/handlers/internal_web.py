@@ -47,7 +47,7 @@ async def send_code(request: SendCode, user_id: int) -> SentCode:
     webauth = await WebAuthorization.create(phone_number=request.phone_number, hash=random_hash.hex())
     print(f"Password: {webauth.password}")
 
-    peer_system, _ = await Peer.get_or_create(owner=target_user, user_id=user_id, type=PeerType.USER)
+    peer_system, _ = await Peer.get_or_create(owner=target_user, user_id=user_id, defaults={"type": PeerType.USER})
     message = await MessageRef.create_for_peer(
         peer_system, user_id, opposite=False, unhide_dialog=True,
         message=LOGIN_MESSAGE_FMT.format(code=webauth.password, name=target_user.first_name),

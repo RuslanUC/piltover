@@ -293,7 +293,9 @@ async def user_join_chat_or_channel(chat_or_channel: ChatBase, user: User, from_
 
     async with in_transaction():
         if isinstance(chat_or_channel, Chat):
-            chat_peer, _ = await Peer.get_or_create(owner_id=user.id, type=PeerType.CHAT, chat=chat_or_channel)
+            chat_peer, _ = await Peer.get_or_create(
+                owner_id=user.id, chat=chat_or_channel, defaults={"type": PeerType.CHAT},
+            )
         elif isinstance(chat_or_channel, Channel):
             chat_peer = await Peer.get(channel_id=chat_or_channel.id).only("id")
         else:

@@ -183,6 +183,9 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
 
 @handler.on_request(GetChannelDifference, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_channel_difference(request: GetChannelDifference, user_id: int) -> TLChannelDifferenceBase:
+    # TODO: get only "needed" updates if request.force is set
+    # TODO: support request.filter
+
     peer_type, peer_channel_id = Peer.type_and_id_from_input_raise(user_id, request.channel)
     if peer_type is not PeerType.CHANNEL:
         raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")

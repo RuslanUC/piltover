@@ -14,7 +14,9 @@ async def send_official_notification_message(user_id: int, text: str, entities: 
         )
         return False
 
-    peer_system, created = await Peer.get_or_create(owner_id=user_id, user=system_user, type=PeerType.USER)
+    peer_system, created = await Peer.get_or_create(
+        owner_id=user_id, user=system_user, defaults={"type": PeerType.USER}
+    )
     if not created:
         peer_system.user = system_user
 

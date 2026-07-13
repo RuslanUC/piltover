@@ -158,9 +158,7 @@ async def send_reaction(request: SendReaction, user_id: int) -> Updates:
             await upd.update_reactions(peer.user_id, [opposite_message], opposite_message.peer)
     elif peer.type is PeerType.CHAT:
         # TODO: do this in bulk
-        for opp_message in await MessageRef.filter(
-                content_id=message.content_id,
-        ).select_related("peer", "content"):
+        for opp_message in await MessageRef.filter(content_id=message.content_id).select_related("peer", "content"):
             await upd.update_reactions(opp_message.peer.owner_id, [opp_message], opp_message.peer)
     elif peer.type is PeerType.CHANNEL and not peer.channel.channel:
         # TODO: if small supergroup - send updates to all participants,

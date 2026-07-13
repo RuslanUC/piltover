@@ -49,9 +49,9 @@ async def get_contacts(user_id: int):
 async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPeer:
     peer: Peer
     if resolved.user_id == user_id:
-        peer = await Peer.get(owner_id=user_id, user_id=user_id, type=PeerType.SELF)
+        peer = await Peer.get(owner_id=user_id, user_id=user_id)
     elif resolved.user is not None:
-        peer, _ = await Peer.get_or_create(owner_id=user_id, user=resolved.user, type=PeerType.USER)
+        peer, _ = await Peer.get_or_create(owner_id=user_id, user=resolved.user, defaults={"type": PeerType.USER})
     elif resolved.channel is not None:
         peer = await Peer.get(channel_id=resolved.channel_id)
     else:  # pragma: no cover
@@ -67,14 +67,11 @@ async def _format_resolved_peer(user_id: int, resolved: Username) -> ResolvedPee
 
 
 async def _format_resolved_peer_by_phone(user_id: int, resolved: User) -> ResolvedPeer:
-    peer: Peer
-    if resolved.id == user_id:
-        peer = await Peer.get(owner_id=user_id, user_id=user_id, type=PeerType.SELF)
-    else:
-        peer, _ = await Peer.get_or_create(owner_id=user_id, user=resolved, type=PeerType.USER)
+    if resolved.id != user_id:
+        await Peer.get_or_create(owner_id=user_id, user=resolved, defaults={"type": PeerType.USER})
 
     return ResolvedPeer(
-        peer=peer.to_tl(),
+        peer=PeerUser(user_id=resolved.id),
         chats=[],
         users=[await resolved.to_tl()],
     )
@@ -414,7 +411,7 @@ async def import_contact_token(request: ImportContactToken, user_id: int) -> TLU
         raise ErrorRpc(error_code=400, error_message="IMPORT_TOKEN_INVALID", reason="user does not exist")
 
     if target_user.id != user_id:
-        await Peer.get_or_create(owner_id=user_id, user=target_user, type=PeerType.USER)
+        await Peer.get_or_create(owner_id=user_id, user=target_user, defaults={"type": PeerType.USER})
 
     return await target_user.to_tl()
 

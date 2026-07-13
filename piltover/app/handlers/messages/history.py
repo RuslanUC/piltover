@@ -993,7 +993,9 @@ async def set_history_ttl(request: SetHistoryTTL, user_id: int) -> Updates:
         if peer.user_ttl_period_days == ttl_days:
             raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
         opp_peer: Peer
-        opp_peer, _ = await Peer.get_or_create(type=PeerType.USER, owner_id=peer.user_id, user_id=peer.owner_id)
+        opp_peer, _ = await Peer.get_or_create(
+            owner_id=peer.user_id, user_id=peer.owner_id, defaults={"type": PeerType.USER},
+        )
         peer.user_ttl_period_days = opp_peer.user_ttl_period_days = ttl_days
         await Peer.bulk_update([peer, opp_peer], fields=["user_ttl_period_days"])
     elif peer.type in (PeerType.CHAT, PeerType.CHANNEL):
