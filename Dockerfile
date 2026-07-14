@@ -11,7 +11,8 @@ COPY pyproject.toml pyproject.toml
 COPY uv.lock uv.lock
 
 ENV UV_NO_DEV=1
-RUN uv sync --locked
+ENV UV_LINK_MODE=copy
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked
 
 FROM python:3.11-bookworm AS tl
 
