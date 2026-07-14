@@ -1,3 +1,5 @@
+# TODO: actually support docker-compose
+
 services:
   piltover:
     build: .

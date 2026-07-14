@@ -23,13 +23,21 @@ import shutil
 from collections import defaultdict
 from io import StringIO
 from pathlib import Path
-from typing import Literal, TextIO, Any, cast
-
-from tqdm import tqdm
+from typing import Literal, TextIO, Any, cast, TypeVar, Iterable
 
 from tl_gen_placeholders import PLACEHOLDERS
 from tl_gen_replace_constructors import REPLACE_CONSTRUCTORS, BASE_CLASSES_NEED_CONTEXT
 from tl_gen_write_hooks import WRITE_HOOKS, WriteHookRunCode
+
+
+T = TypeVar("T")
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(it: Iterable[T], *_a, **_kw) -> Iterable[T]:
+        yield from it
+
 
 DRY_RUN = False
 HOME_PATH = Path("./tools")
