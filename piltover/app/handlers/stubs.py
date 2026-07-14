@@ -1,7 +1,7 @@
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import StarsAmount, TLObjectVector, StarsTopupOption, EmojiList, StatsGraphError
 from piltover.tl.functions.account import GetCollectibleEmojiStatuses, GetContactSignUpNotification, \
-    SetContactSignUpNotification, GetChannelRestrictedStatusEmojis
+    SetContactSignUpNotification, GetChannelRestrictedStatusEmojis, GetRecentEmojiStatuses
 from piltover.tl.functions.bots import GetPopularAppBots, GetBotRecommendations
 from piltover.tl.functions.channels import GetChannelRecommendations
 from piltover.tl.functions.contacts import GetSponsoredPeers
@@ -146,3 +146,11 @@ async def get_broadcast_revenue_stats() -> BroadcastRevenueStats:  # pragma: no 
 @handler.on_request(GetChannelRecommendations, NOBOT_NOAUTH)
 async def get_channel_recommendations():  # pragma: no cover
     return Chats(chats=[])
+
+
+@handler.on_request(GetRecentEmojiStatuses, NOBOT_NOAUTH)
+async def get_recent_emoji_statuses() -> EmojiStatuses:
+    return EmojiStatuses(
+        hash=0,
+        statuses=[],
+    )
