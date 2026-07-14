@@ -5,7 +5,7 @@ from tortoise.migrations import operations as ops
 
 
 class Migration(migrations.Migration):
-    dependencies = [('models', '0056_auto_20260617_1910')]
+    dependencies = [('models', '0059_auto_20260703_1326')]
 
     initial = False
 
