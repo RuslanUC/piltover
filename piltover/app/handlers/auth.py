@@ -13,17 +13,17 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.app.utils.system_notifications import send_official_notification_message
 from piltover.app.utils.utils import check_password_internal
-from piltover.config import APP_CONFIG
+from piltover.config import APP_CONFIG, SYSTEM_CONFIG
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType
-from piltover.db.models import AuthKey, UserAuthorization, UserPassword, Peer, TempAuthKey, SentCode, User, \
-    QrLogin, PhoneCodePurpose, State
+from piltover.db.models import AuthKey, UserAuthorization, UserPassword, TempAuthKey, SentCode, User, QrLogin, \
+    PhoneCodePurpose
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
 from piltover.tl import BindAuthKeyInner, UpdatesTooLong, Authorization, UpdateLoginToken, UpdateShort
 from piltover.tl.functions.auth import SendCode, SignIn, BindTempAuthKey, ExportLoginToken, SignUp, CheckPassword, \
     SignUp_133, LogOut, ResetAuthorizations, AcceptLoginToken, ResendCode, CancelCode, ImportBotAuthorization
+from piltover.tl.functions.internal import SendTelegramMessage
 from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms, Authorization as AuthAuthorization, \
     LoginToken, AuthorizationSignUpRequired, SentCodeTypeApp, LoggedOut, LoginTokenSuccess
 from piltover.utils.utils import sec_check
@@ -37,6 +37,12 @@ LOGIN_MESSAGE_FMT = FormatableTextWithEntities((
     f"❗️This code can be used to log in to your {APP_CONFIG.name} account. We never ask it for anything else.\n\n"
     "If you didn't request this code by trying to log in on another device, simply ignore this message."
 ))
+LOGIN_MESSAGE_FMT_HTML = (
+    f"<b>Login code</b>: <tg-spoiler>{{code}}</tg-spoiler>. "
+    f"Do not give this code to anyone!\n\n"
+    f"❗️This code can be used to log in to your {APP_CONFIG.name} account.\n\n"
+    "If you didn't request this code by trying to log in on another device, simply ignore this message."
+)
 
 
 def _validate_phone(phone_number: str) -> str:
@@ -46,6 +52,9 @@ def _validate_phone(phone_number: str) -> str:
         if int(phone_number) < 100000:
             raise ValueError
     except ValueError:
+        raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
+
+    if len(phone_number) > 16:
         raise ErrorRpc(error_code=406, error_message="PHONE_NUMBER_INVALID")
 
     return phone_number
@@ -82,7 +91,15 @@ async def _send_or_resend_code(phone_number: str, code_hash: str | None) -> TLSe
     if user is None:
         return resp
 
-    text, entities = LOGIN_MESSAGE_FMT.format(code=str(code.code).zfill(5))
+    code_str = str(code.code).zfill(5)
+
+    if SYSTEM_CONFIG.telegram_integration.enabled:
+        await request_ctx.get().worker.call_internal(SendTelegramMessage(
+            user_id=user.id,
+            text=LOGIN_MESSAGE_FMT_HTML.format(code=code_str),
+        ))
+
+    text, entities = LOGIN_MESSAGE_FMT.format(code=code_str)
     if not await send_official_notification_message(user.id, text, entities):
         return resp
 
@@ -151,13 +168,7 @@ async def sign_up(request: SignUp | SignUp_133):
     if request.last_name is not None and len(request.last_name) > 128:
         raise ErrorRpc(error_code=400, error_message="LASTNAME_INVALID")
 
-    user = await User.create(
-        phone_number=phone_number,
-        first_name=request.first_name,
-        last_name=request.last_name
-    )
-    await State.create(user=user)
-    await Peer.create(owner=user, type=PeerType.SELF, user=user)
+    user = await User.create_new_user(phone_number, request.first_name, request.last_name)
     key = await AuthKey.get(id=request_ctx.get().perm_auth_key_id)
     await UserAuthorization.create(ip="127.0.0.1", user=user, key=key)
 

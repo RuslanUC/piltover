@@ -18,6 +18,15 @@ class _TracingConfig(BaseModel):
     zipkin_address: str | None = None
 
 
+class _TelegramIntegration(BaseModel):
+    # TODO: add "telethon" backend?
+
+    enabled: bool = False
+    bot_token: str | None = None
+    max_accounts_per_user: int = 3
+    phone_number_policy: Literal["real", "random", "user-provided"] = "random"
+
+
 class _System(BaseModel):
     data_dir: Path = Path("data")
     database_connection_string: str = "sqlite://data/secrets/piltover.db"
@@ -27,6 +36,7 @@ class _System(BaseModel):
     debug_tracing: _TracingConfig
     debug_enable_aiomonitor: bool = False
     enable_system_bot: bool = False
+    telegram_integration: _TelegramIntegration = Field(default_factory=_TelegramIntegration)
 
 
 class SystemConfig(BaseSettings):

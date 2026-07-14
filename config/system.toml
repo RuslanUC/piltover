@@ -38,3 +38,20 @@ backend = "memory"
 backend = "noop"
 # Zipkin address where to send all traces.
 #zipkin_address = "http://127.0.0.1:9411/api/v2/spans"
+
+# Integration with official Telegram
+[system.telegram_integration]
+# Whether integration is enabled.
+# Currently used only for authorization (receiving Piltover codes in Telegram).
+# Note that you will be able to run bot when this option is disabled.
+enabled = false
+# Token of the bot used for integration.
+#bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+# How many accounts a single Telegram used may create. Set to 0 or any negative number to disable new registrations.
+#max_accounts_per_user = 3
+# How phone number for Piltover account is chosen.
+#  - "real" - user must share phone number with the bot, that phone number will be used.
+#             setting `max_accounts_per_user` option to anything greater than 1 makes no sense when this policy is chosen.
+#  - "random" - generate random phone number in "+999XXXXXXX" format.
+#  - "user-provided" - user phovides phone number.
+#phone_number_policy = "random"
