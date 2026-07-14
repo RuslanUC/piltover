@@ -56,7 +56,7 @@ async def _get_or_download_gif(
 
     async with client.stream("GET", url) as resp:
         async for chunk in resp.aiter_bytes(1024 * 1024):
-            await storage.save_part(physical_id, part_id, chunk, False)
+            await storage.save_part(physical_id, part_id, chunk)
             part_id += 1
             size += len(chunk)
 

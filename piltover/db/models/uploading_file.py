@@ -21,6 +21,7 @@ class UploadingFile(Model):
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     mime: str | None = fields.CharField(max_length=64, null=True, default=None)
     user: models.User = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
+    part_size: int = fields.IntField(default=0)
 
     class Meta:
         unique_together = (

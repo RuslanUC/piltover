@@ -63,7 +63,7 @@ class LocalFileStorage(BaseStorage):
         (self._dir / "uploading").mkdir(parents=True, exist_ok=True)
 
     async def save_part(
-            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, suffix: str | None = None,
+            self, file_id: UUID, part_id: int, data: StorageBuffer, suffix: str | None = None,
     ) -> None:
         file_name = str(file_id)
         if suffix is not None:

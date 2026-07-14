@@ -24,7 +24,7 @@ class BaseStorageComponent(ABC):
 class BaseStorage(ABC):
     @abstractmethod
     async def save_part(
-            self, file_id: UUID, part_id: int, data: StorageBuffer, is_last: bool, suffix: str | None = None,
+            self, file_id: UUID, part_id: int, data: StorageBuffer, suffix: str | None = None,
     ) -> None:
         ...
 
