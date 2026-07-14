@@ -130,7 +130,6 @@ class PrivacyRule(Model):
         if self.allow_all:
             rules.append(PrivacyValueAllowAll())
         elif self.allow_contacts:
-            rules.append(PrivacyValueDisallowAll())
             rules.append(PrivacyValueAllowContacts())
         else:
             rules.append(PrivacyValueDisallowAll())
