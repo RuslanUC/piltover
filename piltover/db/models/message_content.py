@@ -299,7 +299,7 @@ class MessageContent(Model):
             post_info=post_info,
             anonymous=anonymous,
             no_forwards=no_forwards,
-            via_bot=self.via_bot,
+            via_bot_id=self.via_bot_id,
             send_as_channel_id=new_channel_author_id,
             can_see_reactions_list=can_see_reactions_list,
         )
@@ -362,7 +362,7 @@ class MessageContent(Model):
                 post_info=post_info,
                 anonymous=anonymous_c,
                 no_forwards=no_forwards,
-                via_bot=content.via_bot,
+                via_bot_id=content.via_bot_id,
                 send_as_channel_id=new_channel_author_id_c,
                 internal_random_id=internal_random_id,
                 can_see_reactions_list=can_see_reactions_list,
