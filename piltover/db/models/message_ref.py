@@ -494,8 +494,8 @@ class MessageRef(Model):
                 peer=peer,
                 content=content,
                 pinned=self.pinned if pinned is None else pinned,
-                random_id=random_id if peer == to_peer or peer.type is PeerType.CHANNEL else None,
-                random_user_id=random_user_id if peer == to_peer or peer.type is PeerType.CHANNEL else None,
+                random_id=random_id if peer == to_peer else None,
+                random_user_id=random_user_id if peer == to_peer else None,
                 reply_to_id=replies.get(peer.id),
                 is_discussion=is_discussion,
             ))
