@@ -632,9 +632,8 @@ class MessageRef(Model):
             cls(
                 peer=to_peer,
                 content=content,
-                # TODO: remove "or to_peer.type is PeerType.CHANNEL"?
-                random_id=random_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
-                random_user_id=random_user_id if to_peer == peer or to_peer.type is PeerType.CHANNEL else None,
+                random_id=random_id if to_peer == peer else None,
+                random_user_id=random_user_id if to_peer == peer else None,
                 reply_to=replies.get(to_peer.id),
                 top_message=top_message,
                 scheduled_by_user_id=scheduled_by_user_id,
