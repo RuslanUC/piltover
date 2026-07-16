@@ -60,26 +60,29 @@ async def send_message(
     result = None
     current_user_id = user.id if isinstance(user, User) else user
 
+    messages_ = list(messages.items())
+
     ucc = UsersChatsChannels()
-    ucc.add_message(next(iter(messages.values())).content_id)
+    messages_tl = []
+    for peer, message in messages_:
+        # TODO: move out of the loop
+        message_tl = await message.to_tl(peer.owner_id, False)
+        messages_tl.append(message_tl)
+        ucc.add_from_tl(message_tl)
+
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
     updates_to_create = []
 
     pts_users = []
     pts_counts = []
-    peer_by_user_id = {}
     for peer, message in messages.items():
-        peer_by_user_id[peer.owner_id] = peer
         pts_users.append(peer.owner_id)
         pts_counts.append(2 if message.random_id else 1)
 
     ptss = await State.add_pts_bulk(pts_users, pts_counts)
 
-    for target_user_id, new_pts in zip(pts_users, ptss):
-        peer = peer_by_user_id[target_user_id]
-        message = messages[peer]
-
+    for (peer, message), message_tl, target_user_id, new_pts in zip(messages_, messages_tl, pts_users, ptss):
         if message.random_id:
             updates_to_create.append(Update(
                 update_type=UpdateType.UPDATE_MESSAGE_ID,
@@ -102,8 +105,7 @@ async def send_message(
         updates = UpdatesWithDefaults(
             updates=[
                 UpdateNewMessage(
-                    # TODO: move out of the loop
-                    message=await message.to_tl(target_user_id, False),
+                    message=message_tl,
                     pts=new_pts,
                     pts_count=1,
                 ),
@@ -124,7 +126,7 @@ async def send_message(
     if updates_to_create:
         await Update.bulk_create(updates_to_create)
 
-    await SessionManager.send_internal_push(list(peer_by_user_id))
+    await SessionManager.send_internal_push(pts_users)
 
     return result
 
@@ -139,18 +141,17 @@ async def send_message_channel(user_id: int, channel: Channel, message: MessageR
         pts_count=1,
     )
 
-    ucc = UsersChatsChannels()
-    ucc.add_message(message.content_id)
-    users, chats, channels = await ucc.resolve()
-
-    chats_and_channels = [*chats, *channels]
-
     message_for_user = await message.to_tl(user_id, False)
     generic_message = ChannelMessageToFormat(
         content=message_for_user.content,
         common=message.to_tl_common_channel(),
         replies=message_for_user.replies,
     )
+
+    ucc = UsersChatsChannels()
+    ucc.add_from_tl(message_for_user)
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     await SessionManager.send(
         UpdatesWithDefaults(
@@ -197,9 +198,15 @@ async def send_messages(
     result_update = None
     result_pts = None
 
+    messages_ = list(messages.items())
+    messages_tl = []
+
     ucc = UsersChatsChannels()
-    for message in next(iter(messages.values())):
-        ucc.add_message(message.content_id)
+    for peer, peer_messages in messages_:
+        peer_messages_tl = await MessageRef.to_tl_bulk(peer_messages, peer.owner_id, False)
+        messages_tl.append(peer_messages_tl)
+        for peer_message_tl in peer_messages_tl:
+            ucc.add_from_tl(peer_message_tl)
 
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
@@ -207,9 +214,7 @@ async def send_messages(
 
     pts_users = []
     pts_counts = []
-    peer_by_user_id = {}
-    for peer, peer_messages in messages.items():
-        peer_by_user_id[peer.owner_id] = peer
+    for peer, peer_messages in messages_:
         pts_users.append(peer.owner_id)
         pts_counts.append(0)
         for message in peer_messages:
@@ -217,14 +222,14 @@ async def send_messages(
 
     ptss = await State.add_pts_bulk(pts_users, pts_counts)
 
-    for target_user_id, pts_count, new_pts in zip(pts_users, pts_counts, ptss):
+    # TODO: maybe refactor this whole thing somehow idk
+    what = zip(messages_, messages_tl, pts_users, pts_counts, ptss)
+    for (peer, peer_messages), peer_messages_tl, target_user_id, pts_count, new_pts in what:
         pts = new_pts - pts_count
-        peer = peer_by_user_id[target_user_id]
-        peer_messages = messages[peer]
 
         updates = []
 
-        for message in peer_messages:
+        for message, message_tl in zip(peer_messages, peer_messages_tl):
             if message.random_id:
                 pts += 1
                 updates_to_create.append(Update(
@@ -250,8 +255,7 @@ async def send_messages(
                 updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
 
             updates.append(UpdateNewMessage(
-                # TODO: move out of the loop?
-                message=await message.to_tl(target_user_id, False),
+                message=message_tl,
                 pts=pts,
                 pts_count=1,
             ))
@@ -270,7 +274,7 @@ async def send_messages(
     if updates_to_create:
         await Update.bulk_create(updates_to_create)
 
-    await SessionManager.send_internal_push(list(peer_by_user_id))
+    await SessionManager.send_internal_push(pts_users)
 
     if prepend_existing and user:
         if result_update is None:
@@ -278,10 +282,10 @@ async def send_messages(
         if result_pts is None:
             result_pts = await State.add_pts(user.id, 0)
 
-        for ref in prepend_existing:
-            ucc.add_message(ref.content_id)
-        users, chats, channels = await ucc.resolve()
         messages_to_add = await MessageRef.to_tl_bulk_maybecached(prepend_existing, user.id)
+        for message_tl in messages_to_add:
+            ucc.add_from_tl(message_tl)
+        users, chats, channels = await ucc.resolve()
         old_result = result_update
         result_update = UpdatesWithDefaults(
             updates=[],
@@ -307,8 +311,6 @@ async def send_messages_channel(
     update_pts = []
     updates_to_create = []
 
-    ucc = UsersChatsChannels()
-
     if messages:
         async with in_transaction():
             new_pts = await channel.add_pts(len(messages))
@@ -317,7 +319,6 @@ async def send_messages_channel(
             for num, message in enumerate(messages, start=1):
                 this_pts = start_pts + num
                 update_pts.append(this_pts)
-                ucc.add_message(message.content_id)
 
                 updates_to_create.append(ChannelUpdate(
                     channel=channel,
@@ -329,10 +330,14 @@ async def send_messages_channel(
 
             await ChannelUpdate.bulk_create(updates_to_create)
 
+        generic_messages = await MessageRef.to_tl_channel_bulk(messages)
+
+        ucc = UsersChatsChannels()
+        for message_tl in generic_messages:
+            ucc.add_from_tl(message_tl)
+
         users, chats, channels = await ucc.resolve()
         chats_and_channels = [*chats, *channels]
-
-        generic_messages = await MessageRef.to_tl_channel_bulk(messages)
 
         updates = []
         for generic_message, message, pts in zip(generic_messages, messages, update_pts):
@@ -356,10 +361,13 @@ async def send_messages_channel(
         result = UpdatesWithDefaults(updates=[])
 
     if prepend_existing and prepend_user_id:
-        for ref in prepend_existing:
-            ucc.add_message(ref.content_id)
-        users, chats, channels = await ucc.resolve()
         messages_to_add = await MessageRef.to_tl_bulk_maybecached(prepend_existing, prepend_user_id)
+
+        ucc = UsersChatsChannels()
+        for message_tl in messages_to_add:
+            ucc.add_from_tl(message_tl)
+        users, chats, channels = await ucc.resolve()
+
         old_result = result
         result = UpdatesWithDefaults(
             updates=[],
@@ -459,15 +467,22 @@ async def edit_message(user_id: int, messages: dict[Peer, MessageRef]) -> Update
     updates_to_create = []
     result_update = None
 
+    messages_items = list(messages.items())
+
     ucc = UsersChatsChannels()
-    ucc.add_message(next(iter(messages.values())).content_id)
+    messages_tl = []
+    for peer, message in messages_items:
+        # TODO: move out of the loop?
+        message_tl = await message.to_tl(peer.owner_id)
+        messages_tl.append(message_tl)
+        ucc.add_from_tl(message_tl)
+
     users, chats, channels = await ucc.resolve()
     chats_and_channels = [*chats, *channels]
 
-    messages_items = list(messages.items())
     ptss = await State.add_pts_bulk([peer.owner_id for peer, _ in messages_items], 1)
 
-    for (peer, message), new_pts in zip(messages_items, ptss):
+    for (peer, message), message_tl, new_pts in zip(messages_items, messages_tl, ptss):
         updates_to_create.append(
             Update(
                 user_id=peer.owner_id,
@@ -481,8 +496,7 @@ async def edit_message(user_id: int, messages: dict[Peer, MessageRef]) -> Update
         update = UpdatesWithDefaults(
             updates=[
                 UpdateEditMessage(
-                    # TODO: move out of the loop?
-                    message=await message.to_tl(peer.owner_id),
+                    message=message_tl,
                     pts=new_pts,
                     pts_count=1,
                 )
@@ -510,16 +524,16 @@ async def edit_message_channel(channel: Channel, message: MessageRef) -> Updates
         pts_count=1,
     )
 
-    ucc = UsersChatsChannels()
-    ucc.add_message(message.content_id)
-    users, chats, channels = await ucc.resolve()
-    chats_and_channels = [*chats, *channels]
-
     generic_message = ChannelMessageToFormat(
         content=await message.content.to_tl_content(),
         common=message.to_tl_common_channel(),
         replies=await message.to_tl_replies(),
     )
+
+    ucc = UsersChatsChannels()
+    ucc.add_from_tl(generic_message)
+    users, chats, channels = await ucc.resolve()
+    chats_and_channels = [*chats, *channels]
 
     updates = UpdatesWithDefaults(
         updates=[
@@ -1417,23 +1431,24 @@ async def update_folders_order(user_id: int, folder_ids: list[int]) -> Updates:
 
 
 async def update_reactions(user_id: int, messages: list[MessageRef], peer: Peer, send: bool = True) -> Updates:
-    ucc = UsersChatsChannels()
-
-    # TODO: add reactions and not messages maybe?
-    for message in messages:
-        ucc.add_message(message.content_id)
-
-    users, chats, channels = await ucc.resolve()
     reactions = await MessageRef.to_tl_reactions_bulk(messages, user_id)
 
+    ucc = UsersChatsChannels()
+    ucc.add_peer(peer)
+
+    reaction_updates = []
+    for message, reactions_ in zip(messages, reactions):
+        ucc.add_from_tl(reactions_)
+        reaction_updates.append(UpdateMessageReactions(
+            peer=peer.to_tl(),
+            msg_id=message.id,
+            reactions=reactions_,
+        ))
+
+    users, chats, channels = await ucc.resolve()
+
     updates = UpdatesWithDefaults(
-        updates=[
-            UpdateMessageReactions(
-                peer=peer.to_tl(),
-                msg_id=message.id,
-                reactions=reactions_,
-            ) for message, reactions_ in zip(messages, reactions)
-        ],
+        updates=reaction_updates,
         users=users,
         chats=[*chats, *channels],
     )
@@ -1855,8 +1870,11 @@ async def bot_callback_query(bot_id: int, query: CallbackQuery) -> None:
         related_ids=[],
     )
 
+    peer_tl = query.message.peer.to_tl()
+
     ucc = UsersChatsChannels()
-    ucc.add_message(query.message.content_id)
+    ucc.add_user(query.user_id)
+    ucc.add_from_tl(peer_tl)
     users, chats, channels = await ucc.resolve()
 
     updates = UpdatesWithDefaults(
@@ -1864,7 +1882,7 @@ async def bot_callback_query(bot_id: int, query: CallbackQuery) -> None:
             UpdateBotCallbackQuery(
                 query_id=query.id,
                 user_id=query.user_id,
-                peer=query.message.peer.to_tl(),
+                peer=peer_tl,
                 msg_id=query.message_id,
                 chat_instance=0,
                 data=query.data,

@@ -43,10 +43,9 @@ class ChannelUpdate(Model):
             case ChannelUpdateType.NEW_MESSAGE:
                 return None
             case ChannelUpdateType.EDIT_MESSAGE:
-                if self.message_id not in edited_messages:
+                if self.message_id is None or self.message_id not in edited_messages:
                     return None
 
-                ucc.add_message(self.message.content_id)
                 return UpdateEditChannelMessage(
                     message=edited_messages[self.message_id],
                     pts=self.pts,

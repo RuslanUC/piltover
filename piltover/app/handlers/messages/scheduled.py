@@ -20,12 +20,12 @@ handler = MessageHandler("messages.scheduled")
 
 
 async def _format_messages(user_id: int, messages: list[MessageRef]) -> Messages:
-    ucc = UsersChatsChannels()
-
-    for message in messages:
-        ucc.add_message(message.content_id)
-
     messages_tl = await MessageRef.to_tl_bulk_maybecached(messages, user_id)
+
+    ucc = UsersChatsChannels()
+    for message_tl in messages_tl:
+        ucc.add_from_tl(message_tl)
+
     users, chats, channels = await ucc.resolve()
 
     return Messages(

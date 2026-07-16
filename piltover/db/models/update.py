@@ -95,10 +95,8 @@ class Update(Model):
                 )
 
             case UpdateType.MESSAGE_EDIT:
-                if self.message is None:
+                if self.message is None or self.message_id is None:
                     return None
-
-                ucc.add_message(self.message.content_id)
 
                 return UpdateEditMessage(
                     message=formatted_messages[self.message_id],
@@ -435,10 +433,8 @@ class Update(Model):
                 )
 
             case UpdateType.NEW_SCHEDULED_MESSAGE:
-                if self.message is None:
+                if self.message is None or self.message_id is None:
                     return None
-
-                ucc.add_message(self.message.content_id)
 
                 return UpdateNewScheduledMessage(message=formatted_messages[self.message_id])
 
@@ -471,8 +467,6 @@ class Update(Model):
                 )
                 if query is None:
                     return None
-
-                ucc.add_message(query.message.content_id)
 
                 return UpdateBotCallbackQuery(
                     query_id=query.id,

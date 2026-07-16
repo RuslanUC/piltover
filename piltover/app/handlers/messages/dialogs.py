@@ -67,7 +67,6 @@ async def format_dialogs(
 
         messages = await model.top_message_query_bulk(user_id, dialogs)
         for message_ref in messages:
-            ucc.add_message(message_ref.content_id)
             dialog, _ = dialog_by_peer[message_ref.peer_id]
             dialog_by_peer[message_ref.peer_id] = dialog, message_ref
 
@@ -76,13 +75,17 @@ async def format_dialogs(
                 continue
             ucc.add_peer(dialog.peer)
 
+        tl_messages = await MessageRef.to_tl_bulk_maybecached(messages, user_id, False)
+        for tl_message in tl_messages:
+            ucc.add_from_tl(tl_message)
+
         chats: list[TLChatBase]
         channels: list[TLChatBase]
         users, chats, channels = await ucc.resolve()
 
         result = tl_cls(
             dialogs=await model.to_tl_bulk(user_id, dialogs, dialog_by_peer),
-            messages=await MessageRef.to_tl_bulk_maybecached(messages, user_id, False),
+            messages=tl_messages,
             chats=[*chats, *channels],
             users=users,
         )
