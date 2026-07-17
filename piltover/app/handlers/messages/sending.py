@@ -1270,7 +1270,6 @@ async def forward_messages(
         fwd_headers=fwd_headers,
         post_infos=post_infos,
         media_group_ids=[media_group_ids[ref.content.media_group_id] for ref in messages],
-        related_peer=to_peer,
         new_author=user,
         drop_captions=request.drop_media_captions,
         drop_author=request.drop_author,

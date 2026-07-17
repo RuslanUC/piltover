@@ -459,7 +459,6 @@ class MessageRef(Model):
             return []
 
         content = await self.content.clone_forward(
-            related_peer=to_peer,
             new_author=new_author,
             fwd_header=fwd_header,
             drop_captions=drop_captions,
@@ -607,8 +606,7 @@ class MessageRef(Model):
 
         scheduled_by_user_id = message_kwargs.pop("scheduled_by_user_id", None)
 
-        content = await models.MessageContent.create_for_peer(
-            related_peer=peer,
+        content = await models.MessageContent.create(
             **author_kwargs,
             **message_kwargs,
             can_see_reactions_list=peer.can_see_reactions_list(),

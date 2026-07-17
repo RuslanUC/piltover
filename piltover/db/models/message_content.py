@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, UTC
 from io import BytesIO
 from os import environ
-from typing import Iterable, Self, Sequence, cast
+from typing import Self, Sequence, cast
 from uuid import uuid4, UUID
 
 from loguru import logger
@@ -19,8 +19,7 @@ from piltover.tl import objects, TLObject
 from piltover.tl.base import MessageActionInst, ReplyMarkupInst, ReplyMarkup, MessageMedia as MessageMediaBase, \
     MessageEntity as MessageEntityBase
 from piltover.tl.base.internal import MessageToFormatContent as MessageToFormatContentBase
-from piltover.tl.types import PeerUser, MessageActionChatAddUser, MessageActionChatDeleteUser, MessageActionEmpty, \
-    MessageEntityMentionName, PeerChannel
+from piltover.tl.types import PeerUser, MessageActionEmpty, PeerChannel
 from piltover.tl.types.internal import MessageToFormatContent, MessageToFormatServiceContent
 
 
@@ -55,8 +54,6 @@ class MessageContent(Model):
     author_reactions_unread: bool = fields.BooleanField(default=False)
     internal_random_id: UUID | None = fields.UUIDField(null=True, default=None, unique=True)
     can_see_reactions_list: bool = fields.BooleanField(default=False)
-
-    messagerelateds: fields.ReverseRelation[models.MessageRelated]
 
     peer_id: int
     author_id: int
@@ -237,7 +234,7 @@ class MessageContent(Model):
         self._cached_reply_markup = MISSING
 
     async def clone_scheduled(self) -> MessageContent:
-        content = await models.MessageContent.create(
+        return await models.MessageContent.create(
             message=self.message,
             date=datetime.now(UTC),
             type=MessageType.REGULAR,
@@ -255,13 +252,8 @@ class MessageContent(Model):
             can_see_reactions_list=self.can_see_reactions_list,
         )
 
-        related_user_ids, related_chat_ids, related_channel_ids = await models.MessageRelated.get_for_message(self)
-        await self._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
-
-        return content
-
     async def clone_forward(
-            self, related_peer: models.Peer, new_author: models.User | None = None,
+            self, new_author: models.User | None = None,
             # TODO: make required
             fwd_header: models.MessageFwdHeader | None = None,
             drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
@@ -284,7 +276,7 @@ class MessageContent(Model):
         if post_author is None:
             post_author = self.post_author if not drop_author else None
 
-        content = await models.MessageContent.create(
+        return await models.MessageContent.create(
             message=self.message if self.media is None or not drop_captions else None,
             entities=self.entities if self.media is None or not drop_captions else None,
             date=self.date if not is_forward else datetime.now(UTC),
@@ -304,19 +296,11 @@ class MessageContent(Model):
             can_see_reactions_list=can_see_reactions_list,
         )
 
-        related_user_ids = set()
-        related_chat_ids = set()
-        related_channel_ids = set()
-        content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
-        await self._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
-
-        return content
-
     @classmethod
     async def clone_forward_bulk(
             cls, contents: list[Self], fwd_headers: Sequence[models.MessageFwdHeader | None],
             post_infos: Sequence[models.ChannelPostInfo | None], media_group_ids: Sequence[int | None],
-            related_peer: models.Peer, new_author: models.User | None = None, drop_captions: bool = False,
+            new_author: models.User | None = None, drop_captions: bool = False,
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
             new_channel_author_id: int | None = None, channel_post: bool | None = None, post_author: str | None = None,
             anonymous: bool | None = None, can_see_reactions_list: bool = False,
@@ -379,28 +363,10 @@ class MessageContent(Model):
 
         await cls.filter(id__in=list(msg_id_by_random_id.values())).update(internal_random_id=None)
 
-        related_to_create = []
-
         for content in new_contents:
             await asyncio.sleep(0)
-
             content.id = msg_id_by_random_id[content.internal_random_id]
             content._saved_in_db = True
-
-            related_user_ids = set()
-            related_chat_ids = set()
-            related_channel_ids = set()
-            content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
-
-            for related_user_id in related_user_ids:
-                related_to_create.append(models.MessageRelated(message_id=content.id, user_id=related_user_id))
-            for related_chat_id in related_chat_ids:
-                related_to_create.append(models.MessageRelated(message_id=content.id, chat_id=related_chat_id))
-            for related_channel_id in related_channel_ids:
-                related_to_create.append(models.MessageRelated(message_id=content.id, channel_id=related_channel_id))
-
-        if related_to_create:
-            await models.MessageRelated.bulk_create(related_to_create)
 
         return new_contents
 
@@ -555,88 +521,6 @@ class MessageContent(Model):
             await models.MessageFwdHeader.filter(id__in=list(ids.values())).update(internal_random_id=None)
 
         return fwd_headers
-
-    @classmethod
-    async def create_for_peer(cls, related_peer: models.Peer, **message_kwargs) -> MessageContent:
-        related_user_ids: set[int] = set()
-        related_chat_ids: set[int] = set()
-        related_channel_ids: set[int] = set()
-
-        content = await MessageContent.create(**message_kwargs)
-
-        content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
-        await cls._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
-
-        return content
-
-    @staticmethod
-    def _fill_related_peer(peer: models.Peer, user_ids: set[int], chat_ids: set[int], channel_ids: set[int]) -> None:
-        if peer.user_id is not None:
-            user_ids.add(peer.user_id)
-        if peer.owner_id is not None:
-            user_ids.add(peer.owner_id)
-        if peer.chat_id is not None:
-            chat_ids.add(peer.chat_id)
-        if peer.channel_id is not None:
-            channel_ids.add(peer.channel_id)
-
-    def _fill_related(
-            self, user_ids: set[int], chat_ids: set[int], channel_ids: set[int],
-            related_peer: models.Peer | None = None,
-    ) -> None:
-        if related_peer is not None:
-            self._fill_related_peer(related_peer, user_ids, chat_ids, channel_ids)
-
-        if not self.channel_post and not self.anonymous and self.author_id is not None:
-            user_ids.add(self.author_id)
-        if self.send_as_channel_id is not None:
-            channel_ids.add(self.send_as_channel_id)
-
-        if self.type is MessageType.SERVICE_CHAT_USER_ADD:
-            data = MessageActionChatAddUser.read(BytesIO(self.extra_info))
-            user_ids.update(data.users)
-        elif self.type is MessageType.SERVICE_CHAT_USER_DEL:
-            data = MessageActionChatDeleteUser.read(BytesIO(self.extra_info))
-            user_ids.add(data.user_id)
-
-        # TODO: SERVICE_CHAT_MIGRATE_FROM / SERVICE_CHAT_MIGRATE_TO ?
-
-        if self.entities:
-            for entity in self.entities:
-                if entity["_"] != MessageEntityMentionName.tlid():
-                    continue
-                user_ids.add(entity["user_id"])
-
-        if self.fwd_header_id is not None and self.fwd_header is not None:
-            if self.fwd_header.from_user_id is not None:
-                user_ids.add(self.fwd_header.from_user_id)
-            if self.fwd_header.from_chat_id is not None:
-                chat_ids.add(self.fwd_header.from_chat_id)
-            if self.fwd_header.from_channel_id is not None:
-                channel_ids.add(self.fwd_header.from_channel_id)
-            if self.fwd_header.saved_peer_id is not None and self.fwd_header.saved_peer is not None:
-                self._fill_related_peer(self.fwd_header.saved_peer, user_ids, chat_ids, channel_ids)
-            if self.fwd_header.saved_from_id is not None:
-                user_ids.add(self.fwd_header.saved_from_id)
-
-        if self.via_bot_id is not None:
-            user_ids.add(self.via_bot_id)
-
-    @staticmethod
-    async def _create_related(
-            message: MessageContent,
-            users: Iterable[int],
-            chats: Iterable[int],
-            channels: Iterable[int],
-    ) -> None:
-        related_to_create = [
-            *(models.MessageRelated(message_id=message.id, user_id=rel_id) for rel_id in users),
-            *(models.MessageRelated(message_id=message.id, chat_id=rel_id) for rel_id in chats),
-            *(models.MessageRelated(message_id=message.id, channel_id=rel_id) for rel_id in channels),
-        ]
-
-        if related_to_create:
-            await models.MessageRelated.bulk_create(related_to_create)
 
     def cache_key(self) -> str:
         return f"message-content:{self.id}:{self.version}"
