@@ -4,7 +4,7 @@ from typing import cast
 
 from loguru import logger
 from tortoise.expressions import Q, Subquery, RawSQL, F
-from tortoise.functions import Max
+from tortoise.functions import Max, Min
 from tortoise.query_utils import Prefetch
 from tortoise.transactions import in_transaction
 
@@ -306,10 +306,9 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
             int | None,
             cast(
                 object,
-                # TODO: use Min("id") instead of .order_by("id").first() ?
                 await MessageRef.filter(
                     peer=peer, id__gte=participant.min_message_id,
-                ).order_by("id").first().values_list("id", flat=True)
+                ).annotate(min_id=Min("id")).first().values_list("min_id", flat=True)
             )
         )
 
@@ -596,13 +595,18 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
 
     participant = await channel.get_participant_raise(user_id)
     if not channel.admin_has_permission(participant, ChatAdminRights.BAN_USERS):
-        raise ErrorRpc(error_code=403, error_message="RIGHT_FORBIDDEN")
+        raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     peer_type, target_id = Peer.type_and_id_from_input_raise(user_id, request.participant, "PARTICIPANT_ID_INVALID")
     if peer_type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="PARTICIPANT_ID_INVALID")
 
+    if target_id == channel.creator_id:
+        raise ErrorRpc(error_code=400, error_message="USER_ADMIN_INVALID")
+
     target_participant = await channel.get_participant(target_id, allow_left=True)
+    if target_participant is not None and target_participant.is_admin and user_id != channel.creator_id:
+        raise ErrorRpc(error_code=400, error_message="USER_ADMIN_INVALID")
 
     new_banned_rights = ChatBannedRights.from_tl(request.banned_rights)
     banned_for = request.banned_rights.until_date - time()
@@ -613,8 +617,6 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
 
     if target_participant is not None and target_participant.banned_rights == new_banned_rights:
         return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
-
-    # TODO: check if target_participant is not an admin
 
     was_participant = target_participant is not None and not target_participant.left
     left = (
@@ -627,21 +629,27 @@ async def edit_banned(request: EditBanned, user_id: int) -> Updates:
     if target_participant is not None:
         participant_tl_before = target_participant.to_tl_channel_with_creator(user_id, channel.creator_id)
 
-    target_participant, created = await ChatParticipant.update_or_create(
-        user_id=target_id,
-        channel=channel,
-        defaults={
-            "banned_rights": new_banned_rights,
-            "banned_until": banned_until,
-            "left": left,
-            "inviter_id": 0,
-            "invited_at": datetime.now(UTC),
-            "chat_channel_id": channel.make_id(),
-            "admin_rights": ChatAdminRights.NONE,
-        },
-    )
-    if not created:
-        await channel.sync_admins_count(False)
+    async with in_transaction():
+        target_participant, created = await ChatParticipant.get_or_create(
+            user_id=target_id,
+            channel=channel,
+            defaults={
+                "banned_rights": new_banned_rights,
+                "banned_until": banned_until,
+                "left": left,
+                "inviter_id": 0,
+                "invited_at": datetime.now(UTC),
+                "chat_channel_id": channel.make_id(),
+                "admin_rights": ChatAdminRights.NONE,
+            },
+        )
+        if not created:
+            target_participant.banned_rights = new_banned_rights
+            target_participant.banned_until = banned_until
+            target_participant.left = left
+            target_participant.admin_rights = ChatAdminRights.NONE
+            await target_participant.save(update_fields=["banned_rights", "banned_until", "left", "admin_rights"])
+            await channel.sync_admins_count(False)
 
     if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
         await ChatInviteRequest.filter(id__in=Subquery(
