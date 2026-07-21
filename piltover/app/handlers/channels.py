@@ -1288,10 +1288,9 @@ async def toggle_pre_history_hidden(request: TogglePreHistoryHidden, user_id: in
         int | None,
         cast(
             object,
-            # TODO: use Max("id") instead of .order_by("id").first() ?
             await MessageRef.filter(
                 peer__channel=channel,
-            ).order_by("-id").first().values_list("id", flat=True)
+            ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
         )
     )
     if channel.min_available_id is not None:
@@ -1737,10 +1736,9 @@ async def delete_history(request: DeleteHistory, user_id: int) -> Updates:
         int | None,
         cast(
             object,
-            # TODO: use Max("id") instead of .order_by("-id").first() ?
             await MessageRef.filter(
                 peer__channel=channel, id__lte=request.max_id,
-            ).order_by("-id").first().values_list("id", flat=True),
+            ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True),
         )
     ) or 0
 
