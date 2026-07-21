@@ -1062,6 +1062,9 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user_
         raise ErrorRpc(error_code=403, error_message="CHAT_ADMIN_REQUIRED")
 
     reactions = request.available_reactions
+    if isinstance(reactions, ChatReactionsSome) and not reactions.reactions:
+        reactions = ChatReactionsNone()
+
     if isinstance(reactions, ChatReactionsAll):
         if channel.all_reactions and reactions.allow_custom == channel.all_reactions_custom:
             raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
@@ -1076,9 +1079,6 @@ async def set_chat_available_reactions(request: SetChatAvailableReactions, user_
         channel.all_reactions = False
         await AvailableChannelReaction.filter(channel=channel).delete()
     elif isinstance(reactions, ChatReactionsSome):
-        if not reactions.reactions:
-            raise ErrorRpc(error_code=400, error_message="REACTION_INVALID")  # TODO: or set to ChatReactionsNone?
-
         reactions_emoticons = []
 
         for tl_reaction in reactions.reactions:
