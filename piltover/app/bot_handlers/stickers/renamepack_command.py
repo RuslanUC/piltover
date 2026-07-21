@@ -8,7 +8,7 @@ from piltover.db.models.stickers_state import StickersBotUserState
 from piltover.tl import ReplyKeyboardMarkup
 
 _text = "Choose the sticker set you want to rename."
-_text_no_sets = "You have no sets :("  # TODO: correct text
+_text_no_sets = "You don't have any sticker sets yet."
 
 
 class RenamePack(BotInteractionHandler[StickersBotState, StickersBotUserState]):

@@ -2,13 +2,16 @@ from datetime import datetime, UTC
 
 from piltover.app.bot_handlers.interaction_handler import BotInteractionHandler
 from piltover.app.bot_handlers.stickers.utils import send_bot_message, get_stickerset_selection_keyboard
+from piltover.app.utils.formatable_text_with_entities import FormatableTextWithEntities
 from piltover.db.enums import StickersBotState
 from piltover.db.models import Peer, MessageRef
 from piltover.db.models.stickers_state import StickersBotUserState
 from piltover.tl import ReplyKeyboardMarkup
 
 _text = "Choose a sticker set."
-_text_no_sets = "You have no sets :("  # TODO: correct text
+_text_no_sets, _text_no_sets_entities = FormatableTextWithEntities("""
+You don't have any sticker sets yet. To create a set, use <c>/newpack</c> for static stickers or <c>/newanimated</c> for animated stickers.
+""".strip()).format()
 
 
 class AddSticker(BotInteractionHandler[StickersBotState, StickersBotUserState]):
@@ -20,7 +23,7 @@ class AddSticker(BotInteractionHandler[StickersBotState, StickersBotUserState]):
     async def _handler(peer: Peer, _message: MessageRef, _state: None) -> MessageRef:
         keyboard_rows = await get_stickerset_selection_keyboard(peer.owner_id)
         if keyboard_rows is None:
-            return await send_bot_message(peer, _text_no_sets)
+            return await send_bot_message(peer, _text_no_sets, entities=_text_no_sets_entities)
 
         await StickersBotUserState.update_or_create(user_id=peer.owner_id, defaults={
             "state": StickersBotState.ADDSTICKER_WAIT_PACK,

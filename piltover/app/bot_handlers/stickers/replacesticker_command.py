@@ -8,7 +8,7 @@ from piltover.db.models.stickers_state import StickersBotUserState
 from piltover.tl import ReplyKeyboardMarkup
 
 _text = "Choose a sticker set or send me the sticker you want to replace."
-_text_no_sets = "You have no sets :("  # TODO: correct text
+_text_no_sets = "You don't have any sticker sets yet."
 
 
 class ReplaceSticker(BotInteractionHandler[StickersBotState, StickersBotUserState]):
