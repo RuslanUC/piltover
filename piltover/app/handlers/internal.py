@@ -2,14 +2,14 @@ from collections import defaultdict
 from datetime import datetime, UTC
 from typing import cast
 
-from aiogram.exceptions import TelegramBadRequest, TelegramAPIError
+from aiogram.exceptions import TelegramAPIError
 from loguru import logger
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.bot_handlers import bots
 from piltover.app.handlers.messages.sending import send_created_messages_internal, _resolve_noforwards
-from piltover.config import SYSTEM_CONFIG, APP_CONFIG
+from piltover.config import SYSTEM_CONFIG
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
     TaskIqScheduledMessage, TelegramUser
@@ -102,7 +102,7 @@ async def delete_scheduled_message(request: DeleteScheduledMessage) -> TLObject:
 async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
     logger.trace("Creating discussion thread for channel message {message_id}", message_id=request.message_id)
 
-    # TODO: forward media groups correctly
+    # TODO: forward media groups correctly: forward all grouped messages, create discussion only for the first one
 
     async with in_transaction():
         logger.info(f"Creating discussion thread for message {request.message_id}")

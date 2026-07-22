@@ -169,6 +169,7 @@ async def send_created_messages_internal(
     return update
 
 
+# TODO: make `send_message_internal` accept lists of random_id/media/text/entities/post_info
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool,
         author: User | int, opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, *,
@@ -1441,6 +1442,7 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
         is_anonymous = False
 
     updates = None
+    # TODO: send messages in bulk, not in a loop
     for idx, ((message, random_id, media, entities), post_info) in enumerate(zip(messages, post_infos)):
         new_updates = await send_message_internal(
             user, peer, random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,

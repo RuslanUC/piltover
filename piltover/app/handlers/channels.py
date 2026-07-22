@@ -2,7 +2,6 @@ from datetime import datetime, UTC
 from time import time
 from typing import cast
 
-from loguru import logger
 from tortoise.expressions import Q, Subquery, RawSQL, F
 from tortoise.functions import Max, Min
 from tortoise.query_utils import Prefetch
