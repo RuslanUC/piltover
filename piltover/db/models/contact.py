@@ -13,6 +13,8 @@ class Contact(Model):
     phone_number: str | None = fields.CharField(max_length=20, null=True, default=None)
     first_name: str = fields.CharField(max_length=128, null=True, default=None)
     last_name: str = fields.CharField(max_length=128, null=True, default=None)
+    # TODO: fill from AddContact.add_phone_privacy_exception
+    #target_can_view_phone: bool = fields.BooleanField(default=False)
 
     owner_id: int
     target_id: int | None

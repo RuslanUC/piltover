@@ -19,7 +19,7 @@ from piltover.tl import ContactBirthday, Updates, Contact as TLContact, PeerBloc
     ExportedContactToken, Long, TLObjectVector, PeerUser, ContactStatus, PeerChannel, LongVector
 from piltover.tl.functions.contacts import ResolveUsername, GetBlocked, Search, GetTopPeers, GetStatuses, \
     GetContacts, GetBirthdays, ResolvePhone, AddContact, DeleteContacts, Block, Unblock, Block_133, Unblock_133, \
-    ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken, GetContactIDs
+    ResolveUsername_133, ImportContacts, ExportContactToken, ImportContactToken, GetContactIDs, ResetSaved
 from piltover.tl.types.contacts import Blocked, Found, TopPeers, Contacts, ResolvedPeer, ContactBirthdays, \
     BlockedSlice, ImportedContacts
 from piltover.tl.base import User as TLUserBase, Peer as TLPeerBase
@@ -301,28 +301,33 @@ async def block_unblock(request: Block | Block_133 | Unblock | Unblock_133, user
 
 @handler.on_request(ImportContacts, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def import_contacts(request: ImportContacts, user_id: int) -> ImportedContacts:
-    # TODO: refactor this whole function
-
     to_import = request.contacts[:100]
     to_retry = [contact.client_id for contact in request.contacts[100:]]
 
     phone_numbers = {
-        contact.phone.strip("+"): idx
-        for idx, contact in enumerate(to_import)
+        contact.phone.strip("+"): contact
+        for contact in to_import
         if contact.phone.strip("+").isdigit()
     }
 
-    # TODO: still create contact if user does not exist ?
+    phone_numbers_list = list(phone_numbers.keys())
 
     users = {
         contact.id: contact
-        for contact in await User.filter(id__not=user_id, phone_number__in=list(phone_numbers.keys()))
+        for contact in await User.filter(phone_number__in=phone_numbers_list)
     }
+    user_ids = list(users.keys())
     existing_contacts = {
-        contact.target_id: contact
-        for contact in await Contact.filter(owner_id=user_id, target_id__in=list(users.keys()))
+        (contact.target_id, contact.phone_number): contact
+        for contact in await Contact.filter(
+            owner_id=user_id,
+            target_id__in=user_ids,
+        ).union(Contact.filter(
+            owner_id=user_id,
+            phone_number__in=phone_numbers_list,
+        ))
     }
-    not_allowed = await PrivacyRule.has_access_to_bulk(users.values(), user_id, [PrivacyRuleKeyType.ADDED_BY_PHONE])
+    not_allowed = await PrivacyRule.has_access_to_bulk(user_ids, user_id, [PrivacyRuleKeyType.ADDED_BY_PHONE])
     for contact_user_id, privacy in not_allowed.items():
         if not privacy[PrivacyRuleKeyType.ADDED_BY_PHONE] and contact_user_id in users:
             del users[contact_user_id]
@@ -331,15 +336,16 @@ async def import_contacts(request: ImportContacts, user_id: int) -> ImportedCont
 
     to_create = []
     to_update = []
+    phones_to_delete = []
     for contact_user_id, contact_user in users.items():
-        if contact_user.phone_number not in phone_numbers:
-            continue  # TODO: or place in to_retry?
+        input_contact = phone_numbers.pop(cast(str, contact_user.phone_number))
+        if contact_user_id == user_id:
+            continue
 
-        input_contact = to_import[phone_numbers[contact_user.phone_number]]
-
-        if contact_user_id in existing_contacts:
-            contact = existing_contacts[contact_user_id]
-            if contact.first_name == input_contact.first_name and contact.last_name == input_contact.last_name:
+        if (contact := existing_contacts.get((contact_user_id, None))) is not None:
+            if contact.first_name == input_contact.first_name \
+                    and contact.last_name == input_contact.last_name \
+                    and contact.known_phone_number == input_contact.phone:
                 continue
             contact.first_name = input_contact.first_name
             contact.last_name = input_contact.last_name
@@ -356,11 +362,31 @@ async def import_contacts(request: ImportContacts, user_id: int) -> ImportedCont
             to_create.append(contact)
 
         imported.append(ImportedContact(user_id=contact_user_id, client_id=input_contact.client_id))
+        phones_to_delete.append(input_contact.phone)
+
+    for input_phone, input_contact in phone_numbers.items():
+        if (contact := existing_contacts.get((None, input_phone))) is not None:
+            if contact.first_name == input_contact.first_name \
+                    and contact.last_name == input_contact.last_name:
+                continue
+            contact.first_name = input_contact.first_name
+            contact.last_name = input_contact.last_name
+            to_update.append(contact)
+        else:
+            contact = Contact(
+                owner_id=user_id,
+                phone_number=input_phone,
+                first_name=input_contact.first_name,
+                last_name=input_contact.last_name,
+            )
+            to_create.append(contact)
 
     if to_update:
         await Contact.bulk_update(to_update, fields=["first_name", "last_name", "known_phone_number"])
     if to_create:
         await Contact.bulk_create(to_create)
+    if phones_to_delete:
+        await Contact.filter(owner_id=user_id, phone_number__in=phones_to_delete).delete()
 
     # TODO: updates?
 
@@ -423,6 +449,12 @@ async def get_contact_ids(user_id: int) -> list[int]:
         await Contact.filter(owner_id=user_id, target_id__not_isnull=True).values_list("target_id", flat=True)
     )
     return LongVector(contact_ids)
+
+
+@handler.on_request(ResetSaved, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def reset_saved(user_id: int) -> bool:
+    await Contact.filter(owner_id=user_id, target_id__isnull=True).delete()
+    return True
 
 
 # TODO: contacts.GetSaved ?

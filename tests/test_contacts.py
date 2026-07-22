@@ -5,11 +5,13 @@ from os import urandom
 import pytest
 from pyrogram.errors import PeerIdInvalid, BadRequest
 from pyrogram.raw.functions.account import DeleteAccount
-from pyrogram.raw.functions.contacts import Search, ImportContactToken
-from pyrogram.raw.types import PeerUser
+from pyrogram.raw.functions.contacts import Search, ImportContactToken, ImportContacts
+from pyrogram.raw.types import PeerUser, InputPhoneContact, InputPrivacyValueAllowAll, InputPrivacyKeyAddedByPhone
 from pyrogram.utils import get_channel_id
 
+from piltover.db.models import Contact
 from tests.client import TestClient
+from tests.conftest import ClientFactory
 
 
 @pytest.mark.asyncio
@@ -168,3 +170,52 @@ async def test_contact_token_import_deleted_user(exit_stack: AsyncExitStack) -> 
 
     with pytest.raises(BadRequest):
         await client1.invoke(ImportContactToken(token=contact_token))
+
+
+@pytest.mark.asyncio
+async def test_import_contacts(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+    client3 = await client_with_auth(run=True)
+
+    input_contacts = [
+        InputPhoneContact(
+            client_id=0,
+            phone=client2.me.phone_number,
+            first_name="idk2 first",
+            last_name="idk2 last",
+        ),
+        InputPhoneContact(
+            client_id=1,
+            phone=client3.me.phone_number,
+            first_name="idk3 first",
+            last_name="idk3 last",
+        ),
+        InputPhoneContact(
+            client_id=2,
+            phone=client1.me.phone_number,
+            first_name="me",
+            last_name="lol",
+        ),
+    ]
+
+    import_result = await client1.invoke(ImportContacts(contacts=input_contacts))
+    assert len(import_result.imported) == 0
+    phones = set(await Contact.filter(owner_id=client1.me.id).values_list("phone_number", flat=True))
+    assert phones == {client2.me.phone_number, client3.me.phone_number}
+
+    assert not await client1.get_contacts()
+
+    await client2.set_privacy(InputPrivacyKeyAddedByPhone(), InputPrivacyValueAllowAll())
+
+    import_result = await client1.invoke(ImportContacts(contacts=input_contacts))
+    assert len(import_result.imported) == 1
+    assert import_result.imported[0].client_id == 0
+    assert import_result.imported[0].user_id == client2.me.id
+    phones = set(await Contact.filter(owner_id=client1.me.id).values_list("phone_number", flat=True))
+    assert phones == {None, client3.me.phone_number}
+
+    contacts = await client1.get_contacts()
+    assert len(contacts) == 1
+    assert contacts[0].id == client2.me.id
+
