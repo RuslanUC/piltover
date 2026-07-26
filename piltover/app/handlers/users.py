@@ -190,8 +190,6 @@ async def get_users(request: GetUsers, user_id: int):
                 continue
             user_ids.add(peer.user_id)
 
-        # TODO: *FromMessage
-
     users = await User.filter(
         Q(id__in=user_ids)
         | Q(id__in=Subquery(

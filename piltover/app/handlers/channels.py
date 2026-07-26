@@ -210,15 +210,15 @@ async def get_channels(request: GetChannels, user_id: int) -> Chats:
 
         channel_id = Channel.norm_id(input_channel.channel_id)
 
-        if isinstance(input_channel, InputChannel):
-            if input_channel.access_hash == 0:
-                channel_participants.add(channel_id)
-            else:
-                if not Channel.check_access_hash(user_id, auth_id, channel_id, input_channel.access_hash):
-                    continue
-                channel_peers.add(channel_id)
-        elif isinstance(input_channel, InputChannelFromMessage):
-            ...  # TODO: support channels from message
+        if not isinstance(input_channel, InputChannel):
+            continue
+
+        if input_channel.access_hash == 0:
+            channel_participants.add(channel_id)
+        else:
+            if not Channel.check_access_hash(user_id, auth_id, channel_id, input_channel.access_hash):
+                continue
+            channel_peers.add(channel_id)
 
     if not channel_peers and not channel_participants:
         return Chats(chats=[])
