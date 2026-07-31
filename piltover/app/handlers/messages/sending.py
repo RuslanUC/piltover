@@ -582,10 +582,9 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
         await MessageRef.filter(id=message.id).update(pinned=not request.unpin, version=F("version") + 1)
         await message.refresh_from_db(["pinned"])
         _, _, result = await upd.pin_channel_messages(peer.channel, [message])
+        request.pm_oneside = False
     else:
-        # TODO: pm_oneside
-
-        if peer.type is PeerType.SELF:
+        if peer.type is PeerType.SELF or (peer.type is PeerType.USER and request.pm_oneside):
             peer_query = Q(peer=peer)
         elif peer.type is PeerType.USER:
             peer_query = Q(peer__owner_id=peer.user_id, peer__user_id=peer.owner_id, peer__blocked_at__isnull=True)

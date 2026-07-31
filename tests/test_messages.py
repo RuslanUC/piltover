@@ -16,7 +16,7 @@ from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessag
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty, Updates, \
-    UpdateMessageID, MessageMediaPoll
+    UpdateMessageID, MessageMediaPoll, UpdatePinnedMessages, MessageService, MessageActionPinMessage
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F, Subquery
@@ -1595,3 +1595,59 @@ async def test_message_poll_min_flag(client_with_auth: ClientFactory) -> None:
     for result in poll_raw.results.results[1:]:
         assert result.voters == 0
         assert not result.chosen
+
+
+@pytest.mark.asyncio
+async def test_pin_message_both_sides_in_private_chat(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    user2 = await client1.resolve_user(client2)
+
+    message1 = await client1.send_message(user2.id, text="test 123")
+    async with client2.expect_updates_m(UpdatePinnedMessages, timeout_per_update=1):
+        service_message = await message1.pin(both_sides=True)
+    assert service_message is not None
+
+    messages = await client2.invoke(GetHistory(
+        peer=await client2.resolve_peer(client1.me.id),
+        offset_id=0,
+        offset_date=0,
+        add_offset=0,
+        limit=2,
+        max_id=0,
+        min_id=0,
+        hash=0,
+    ))
+    assert len(messages.messages) == 2
+    assert isinstance(messages.messages[0], MessageService)
+    assert isinstance(messages.messages[0].action, MessageActionPinMessage)
+    assert messages.messages[1].message == "test 123"
+    assert messages.messages[1].pinned
+
+
+@pytest.mark.asyncio
+async def test_pin_message_one_side_in_private_chat(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    user2 = await client1.resolve_user(client2)
+
+    message1 = await client1.send_message(user2.id, text="test 123")
+    async with client1.expect_updates_m(UpdatePinnedMessages, timeout_per_update=1):
+        service_message = await message1.pin(both_sides=False)
+    assert service_message is None
+
+    messages = await client2.invoke(GetHistory(
+        peer=await client2.resolve_peer(client1.me.id),
+        offset_id=0,
+        offset_date=0,
+        add_offset=0,
+        limit=2,
+        max_id=0,
+        min_id=0,
+        hash=0,
+    ))
+    assert len(messages.messages) == 1
+    assert messages.messages[0].message == "test 123"
+    assert not messages.messages[0].pinned
