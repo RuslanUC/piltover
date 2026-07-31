@@ -55,6 +55,8 @@ class MessageContent(Model):
     author_reactions_unread: bool = fields.BooleanField(default=False)
     internal_random_id: UUID | None = fields.UUIDField(null=True, default=None, unique=True)
     can_see_reactions_list: bool = fields.BooleanField(default=False)
+    reply_quote_text: str | None = fields.TextField(null=True, default=None)
+    reply_quote_offset: int | None = fields.IntField(null=True, default=None)
 
     messagerelateds: fields.ReverseRelation[models.MessageRelated]
 

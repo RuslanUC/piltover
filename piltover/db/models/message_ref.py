@@ -701,6 +701,9 @@ class MessageRef(Model):
         return MessageReplyHeader(
             reply_to_msg_id=self.reply_to_id,
             reply_to_top_id=self.top_message_id,
+            quote=self.content.reply_quote_text is not None,
+            quote_text=self.content.reply_quote_text,
+            quote_offset=self.content.reply_quote_offset,
         )
 
     async def _get_user_reaction(self, user_id: int) -> tuple[int, None] | tuple[None, int] | None:

@@ -30,7 +30,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
     DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
     InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage, \
-    InputDocument, InputPhoto, InputFile, InputFileBig
+    InputDocument, InputPhoto, InputFile, InputFileBig, InputReplyToMessage_166
 from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
     ClearDraft
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
@@ -38,7 +38,9 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
     UploadMedia, UploadMedia_133, SendMultiMedia, SendMultiMedia_148, DeleteHistory, SendMessage_176, SendMedia_176, \
     ForwardMessages_176, SaveDraft_166, ClearAllDrafts, SaveDraft_148, SaveDraft_133, SendInlineBotResult_133, \
     SendInlineBotResult_135, SendInlineBotResult_148, SendInlineBotResult_160, SendInlineBotResult_176, \
-    SendInlineBotResult, SendMultiMedia_176, UnpinAllMessages, StartBot
+    SendInlineBotResult, SendMultiMedia_176, UnpinAllMessages, StartBot, SendMedia_160, SendMultiMedia_133, \
+    SendMultiMedia_135, SendMultiMedia_160, SendMultiMedia_181, SendMedia_181, SendMessage_133, SendMessage_135, \
+    SendMessage_160, SendMessage_181
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
 from piltover.tl.base import InputPeer as TLInputPeerBase, InputMedia as TLInputMediaBase
 from piltover.utils import SingleElementList
@@ -173,7 +175,8 @@ async def send_created_messages_internal(
 async def send_message_internal(
         user: User, peer: Peer, random_id: int | None, reply_to_message_id: int | None, clear_draft: bool,
         author: User | int, opposite: bool = True, scheduled_date: int | None = None, unhide_dialog: bool = True, *,
-        text: str | None = None, entities: list[dict[str, int | str]] | None = None,
+        text: str | None = None, entities: list[dict[str, int | str]] | None = None, quote_text: str | None = None,
+        quote_offset: int | None = None,
         **message_kwargs
 ) -> Updates:
     """
@@ -197,6 +200,8 @@ async def send_message_internal(
 
     reply_to = None
     reply_to_top = None
+    reply_quote_text = None
+    reply_quote_offset = None
     if reply_to_message_id:
         reply_to = await MessageRef.get_or_none(
             peer=peer, id=reply_to_message_id,
@@ -210,6 +215,12 @@ async def send_message_internal(
                 reply_to_top = reply_to.top_message
             elif reply_to.reply_to is not None:
                 reply_to_top = reply_to.reply_to
+        if quote_text is not None:
+            quote_offset = quote_offset or 0
+            if quote_text not in reply_to.content.message or len(quote_text) > 1024 or quote_offset  > 4096:
+                raise ErrorRpc(error_code=400, error_message="QUOTE_TEXT_INVALID")
+            reply_quote_text = quote_text
+            reply_quote_offset = quote_offset
 
     mentioned_user_ids = set()
 
@@ -247,6 +258,9 @@ async def send_message_internal(
         entities=entities,
         reply_to=reply_to,
         top_message=reply_to_top,
+        # TODO: quote entities
+        reply_quote_text=reply_quote_text,
+        reply_quote_offset=reply_quote_offset,
         **message_kwargs,
     )
 
@@ -338,6 +352,7 @@ OLD_REPLY_TYPES = (
     SendMessage_148, SendMedia_148, SendMultiMedia_148, SaveDraft_148, SaveDraft_133, SendInlineBotResult_148,
     SendInlineBotResult_135, SendInlineBotResult_133,
 )
+INPUT_REPLY_QUOTE = InputReplyToMessage, InputReplyToMessage_166
 
 
 def _resolve_reply_id(
@@ -464,10 +479,18 @@ async def process_send_as(send_as: TLInputPeerBase | None, user: User | int) -> 
     return channel_id
 
 
+@handler.on_request(SendMessage_133, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMessage_135, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendMessage_148, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMessage_160, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendMessage_176, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMessage_181, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendMessage, ReqHandlerFlags.DONT_FETCH_USER)
-async def send_message(request: SendMessage, user_id: int):
+async def send_message(
+        request: SendMessage_133 | SendMessage_135 | SendMessage_148 | SendMessage_160 | SendMessage_176
+                 | SendMessage_181 | SendMessage,
+        user_id: int
+):
     user = await User.get(id=user_id).only("id", "bot", "first_name")
 
     if request.schedule_date and user.bot:
@@ -509,6 +532,12 @@ async def send_message(request: SendMessage, user_id: int):
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user_id)
 
+    quote_text = None
+    quote_offset = None
+    if isinstance(request, (SendMessage_160, SendMessage_176, SendMessage_181, SendMessage)):
+        quote_text = request.reply_to.quote_text if isinstance(request.reply_to, INPUT_REPLY_QUOTE) else None
+        quote_offset = request.reply_to.quote_offset if isinstance(request.reply_to, InputReplyToMessage) else None
+
     return await send_message_internal(
         user, peer, request.random_id, reply_to_message_id, request.clear_draft,
         author=user,
@@ -522,6 +551,8 @@ async def send_message(request: SendMessage, user_id: int):
         reply_markup=reply_markup.write() if reply_markup else None,
         no_forwards=_resolve_noforwards(peer, user, request.noforwards),
         send_as_channel_id=send_as_channel_id,
+        quote_text=quote_text,
+        quote_offset=quote_offset,
     )
 
 
@@ -1040,9 +1071,13 @@ async def _get_input_media_banned_rights(user_id: int, media: TLInputMediaBase) 
 
 
 @handler.on_request(SendMedia_148, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMedia_160, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendMedia_176, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMedia_181, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendMedia, ReqHandlerFlags.DONT_FETCH_USER)
-async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user_id: int):
+async def send_media(
+        request: SendMedia | SendMedia_148 | SendMedia_160 | SendMedia_176 | SendMedia_181, user_id: int,
+):
     user = await User.get(id=user_id).only("id", "bot", "first_name", "phone_number")
 
     if request.schedule_date and user.bot:
@@ -1088,13 +1123,28 @@ async def send_media(request: SendMedia | SendMedia_148 | SendMedia_176, user_id
     if peer.type is PeerType.CHANNEL:
         await _update_channel_slowmode_maybe(peer.channel, user_id)
 
+    quote_text = None
+    quote_offset = None
+    if isinstance(request, (SendMedia, SendMedia_181, SendMedia_176, SendMedia_160)):
+        quote_text = request.reply_to.quote_text if isinstance(request.reply_to, INPUT_REPLY_QUOTE) else None
+        quote_offset = request.reply_to.quote_offset if isinstance(request.reply_to, InputReplyToMessage) else None
+
     return await send_message_internal(
-        user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
-        author=user, text=request.message, media=media,
+        user, peer, request.random_id, reply_to_message_id, request.clear_draft,
+        scheduled_date=request.schedule_date,
+        author=user,
+        text=request.message,
+        media=media,
         entities=await process_message_entities(request.message, request.entities, user_id),
-        channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
+        channel_post=is_channel_post,
+        post_info=post_info,
+        post_author=post_signature,
+        anonymous=is_anonymous,
         reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel_id=send_as_channel_id,
+        no_forwards=_resolve_noforwards(peer, user, request.noforwards),
+        send_as_channel_id=send_as_channel_id,
+        quote_text=quote_text,
+        quote_offset=quote_offset,
     )
 
 
@@ -1353,10 +1403,18 @@ async def upload_media(request: UploadMedia | UploadMedia_133, user_id: int):
     return await media.to_tl()
 
 
-@handler.on_request(SendMultiMedia_176, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMultiMedia_133, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMultiMedia_135, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendMultiMedia_148, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMultiMedia_160, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMultiMedia_176, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SendMultiMedia_181, ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendMultiMedia, ReqHandlerFlags.DONT_FETCH_USER)
-async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMultiMedia_176, user_id: int):
+async def send_multi_media(
+        request: SendMultiMedia_133 | SendMultiMedia_135 | SendMultiMedia_148 | SendMultiMedia_160
+                 | SendMultiMedia_176 | SendMultiMedia_181,
+        user_id: int
+):
     user = await User.get(id=user_id).only("id", "bot", "first_name")
 
     # TODO: return existing messages by random_id
@@ -1441,14 +1499,31 @@ async def send_multi_media(request: SendMultiMedia | SendMultiMedia_148 | SendMu
     else:
         is_anonymous = False
 
+    quote_text = None
+    quote_offset = None
+    if isinstance(request, (SendMultiMedia, SendMultiMedia_181, SendMultiMedia_176, SendMultiMedia_160)):
+        quote_text = request.reply_to.quote_text if isinstance(request.reply_to, INPUT_REPLY_QUOTE) else None
+        quote_offset = request.reply_to.quote_offset if isinstance(request.reply_to, InputReplyToMessage) else None
+
     updates = None
     # TODO: send messages in bulk, not in a loop
     for idx, ((message, random_id, media, entities), post_info) in enumerate(zip(messages, post_infos)):
         new_updates = await send_message_internal(
-            user, peer, random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
-            author=user, text=message, media=media, entities=entities, media_group_id=group_id,
-            channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
-            no_forwards=_resolve_noforwards(peer, user, request.noforwards), send_as_channel_id=send_as_channel_id,
+            user, peer, random_id, reply_to_message_id, request.clear_draft,
+            scheduled_date=request.schedule_date,
+            author=user,
+            text=message,
+            media=media,
+            entities=entities,
+            media_group_id=group_id,
+            channel_post=is_channel_post,
+            post_info=post_info,
+            post_author=post_signature,
+            anonymous=is_anonymous,
+            no_forwards=_resolve_noforwards(peer, user, request.noforwards),
+            send_as_channel_id=send_as_channel_id,
+            quote_text=quote_text,
+            quote_offset=quote_offset,
         )
         if updates is None:
             updates = new_updates
@@ -1540,7 +1615,11 @@ async def clear_all_drafts(user_id: int) -> bool:
 @handler.on_request(SendInlineBotResult_160, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendInlineBotResult_176, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 @handler.on_request(SendInlineBotResult, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
-async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> Updates:
+async def send_inline_bot_result(
+        request: SendInlineBotResult_133 | SendInlineBotResult_135 | SendInlineBotResult_148 | SendInlineBotResult_160
+                 | SendInlineBotResult_176 | SendInlineBotResult,
+        user_id: int,
+) -> Updates:
     if not request.random_id:
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
@@ -1602,12 +1681,29 @@ async def send_inline_bot_result(request: SendInlineBotResult, user_id: int) -> 
     if request.hide_via and cast(User, via_bot).system:
         via_bot = None
 
+    quote_text = None
+    quote_offset = None
+    if isinstance(request, (SendInlineBotResult_160, SendInlineBotResult_176, SendInlineBotResult)):
+        quote_text = request.reply_to.quote_text if isinstance(request.reply_to, INPUT_REPLY_QUOTE) else None
+        quote_offset = request.reply_to.quote_offset if isinstance(request.reply_to, InputReplyToMessage) else None
+
     return await send_message_internal(
-        user, peer, request.random_id, reply_to_message_id, request.clear_draft, scheduled_date=request.schedule_date,
-        author=user, text=item.send_message_text or "", media=media, entities=item.send_message_entities,
-        channel_post=is_channel_post, post_info=post_info, post_author=post_signature, anonymous=is_anonymous,
+        user, peer, request.random_id, reply_to_message_id, request.clear_draft,
+        scheduled_date=request.schedule_date,
+        author=user,
+        text=item.send_message_text or "",
+        media=media,
+        entities=item.send_message_entities,
+        channel_post=is_channel_post,
+        post_info=post_info,
+        post_author=post_signature,
+        anonymous=is_anonymous,
         #reply_markup=reply_markup.write() if reply_markup else None,
-        no_forwards=_resolve_noforwards(peer, user), via_bot=via_bot, send_as_channel_id=send_as_channel_id,
+        no_forwards=_resolve_noforwards(peer, user),
+        via_bot=via_bot,
+        send_as_channel_id=send_as_channel_id,
+        quote_text=quote_text,
+        quote_offset=quote_offset,
     )
 
 
@@ -1725,8 +1821,10 @@ async def start_bot(request: StartBot, user_id: int):
 
     return await send_message_internal(
         user, chat_peer, request.random_id, None, False,
-        author=user, text=message_text,
+        author=user,
+        text=message_text,
         entities=await process_message_entities(message_text, [], user_id),
-        post_author=post_signature, anonymous=is_anonymous,
+        post_author=post_signature,
+        anonymous=is_anonymous,
         no_forwards=_resolve_noforwards(chat_peer, user),
     )
