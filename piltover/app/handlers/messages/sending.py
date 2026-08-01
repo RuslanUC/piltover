@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime, UTC, timedelta
 from time import time
 from typing import cast, Sequence
+from uuid import UUID
 
 from fastrand import xorshift128plusrandint
 from loguru import logger
@@ -1486,11 +1487,19 @@ async def send_multi_media(
         if media_id.id not in medias_by_file_id:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
+        media = medias_by_file_id[media_id.id]
+        file = cast(File, media.file)
+        _, const = File.is_file_ref_valid(media_id.file_reference, user_id, media_id.id)
+        if const:
+            if media_id.access_hash != file.constant_access_hash \
+                    or UUID(bytes=media_id.file_reference[12:]) != file.constant_file_ref:
+                raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
+
         random_ids.append(single_media.random_id)
         messages.append((
             single_media.message,
             single_media.random_id,
-            medias_by_file_id[media_id.id],
+            media,
             await process_message_entities(single_media.message, single_media.entities, user_id),
         ))
 
