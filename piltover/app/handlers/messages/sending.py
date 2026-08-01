@@ -3,7 +3,6 @@ from collections import defaultdict
 from datetime import datetime, UTC, timedelta
 from time import time
 from typing import cast, Sequence
-from uuid import UUID
 
 from fastrand import xorshift128plusrandint
 from loguru import logger
@@ -31,6 +30,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
     InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage, \
     InputDocument, InputPhoto, InputFile, InputFileBig, InputReplyToMessage_166
+from piltover.tl.base import InputPeer as TLInputPeerBase, InputMedia as TLInputMediaBase
 from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
     ClearDraft
 from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMessage, SendMedia, SaveDraft, \
@@ -42,7 +42,6 @@ from piltover.tl.functions.messages import SendMessage, DeleteMessages, EditMess
     SendMultiMedia_135, SendMultiMedia_160, SendMultiMedia_181, SendMedia_181, SendMessage_133, SendMessage_135, \
     SendMessage_160, SendMessage_181
 from piltover.tl.types.messages import AffectedMessages, AffectedHistory
-from piltover.tl.base import InputPeer as TLInputPeerBase, InputMedia as TLInputMediaBase
 from piltover.utils import SingleElementList
 from piltover.utils.debug import measure_time
 from piltover.utils.snowflake import Snowflake
@@ -1445,7 +1444,7 @@ async def send_multi_media(
     if reply_to_message_id and not await MessageRef.filter(id=reply_to_message_id, peer=peer).exists():
         raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
 
-    messages: list[tuple[str, int, MessageMedia, list[dict] | None]] = []
+    file_ids_to_fetch = []
     for single_media in request.multi_media:
         if len(single_media.message) > APP_CONFIG.max_caption_length:
             raise ErrorRpc(error_code=400, error_message="MEDIA_CAPTION_TOO_LONG")
@@ -1462,28 +1461,40 @@ async def send_multi_media(
         valid, const = File.is_file_ref_valid(media_id.file_reference, user_id, media_id.id)
         if not valid:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
-        media_q = Q(file_id=media_id.id)
-        if const:
-            file_ref = media_id.file_reference[12:]
-            media_q &= Q(file__constant_access_hash=media_id.access_hash, file__constant_file_ref=UUID(bytes=file_ref))
-        else:
+        if not const:
             auth_id = cast(int, request_ctx.get().auth_id)
             if not File.check_access_hash(user_id, auth_id, media_id.id, media_id.access_hash):
                 raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
-        # TODO: dont do this in a loop
-        media = await MessageMedia.get_or_none(media_q).select_related("file", "poll")
-        if media is None:
+        file_ids_to_fetch.append(media_id.id)
+
+    medias_by_file_id = {
+        media.file_id: media
+        for media in await MessageMedia.filter(file_id__in=file_ids_to_fetch).select_related("file")
+    }
+
+    random_ids = []
+    messages: list[tuple[str, int, MessageMedia, list[dict] | None]] = []
+    for single_media in request.multi_media:
+        if not isinstance(single_media.media, (InputMediaPhoto, InputMediaDocument, InputMediaDocument_133)):
+            raise Unreachable
+
+        media_id = single_media.media.id
+        if not isinstance(media_id, (InputDocument, InputPhoto)):
+            raise Unreachable
+
+        if media_id.id not in medias_by_file_id:
             raise ErrorRpc(error_code=400, error_message="MEDIA_INVALID")
 
+        random_ids.append(single_media.random_id)
         messages.append((
             single_media.message,
             single_media.random_id,
-            media,
+            medias_by_file_id[media_id.id],
             await process_message_entities(single_media.message, single_media.entities, user_id),
         ))
 
-    if await MessageRef.filter(peer=peer, random_id__in=[str(random_id) for _, random_id, _, _ in messages]).exists():
+    if await MessageRef.filter(peer=peer, random_user_id=user_id, random_id__in=random_ids).exists():
         raise ErrorRpc(error_code=500, error_message="RANDOM_ID_DUPLICATE")
 
     group_id = Snowflake.make_id()
