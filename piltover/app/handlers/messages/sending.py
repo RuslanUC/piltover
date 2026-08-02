@@ -30,7 +30,7 @@ from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedP
     GeoPoint, InputGeoPoint, InputMediaDice, MessageMediaDice, DocumentAttributeAnimated, DocumentAttributeVideo, \
     DocumentAttributeAudio, DocumentAttributeSticker, DocumentAttributeImageSize, InputPeerChannel, InputChannel, \
     InputReplyToMessage, UpdateNewChannelMessage, UpdateMessageID, UpdateNewMessage, \
-    InputDocument, InputPhoto, InputFile, InputFileBig, InputReplyToMessage_166
+    InputDocument, InputPhoto, InputFile, InputFileBig, InputReplyToMessage_166, MessageEntityBotCommand
 from piltover.tl.base import InputPeer as TLInputPeerBase, InputMedia as TLInputMediaBase
 from piltover.tl.functions.internal import CreateDiscussionThread, ProcessMessageToBuiltinBot, UpdateStatusForPeers, \
     ClearDraft
@@ -249,6 +249,11 @@ async def send_message_internal(
         message_kwargs["ttl_period_days"] = peer.user_ttl_period_days
     elif ttl_not_in_kwargs and peer.type in (PeerType.CHAT, PeerType.CHANNEL) and peer.chat_or_channel.ttl_period_days:
         message_kwargs["ttl_period_days"] = peer.chat_or_channel.ttl_period_days
+
+    if entities and (peer.type is PeerType.SELF or (peer.type is PeerType.USER and not peer.user.bot)):
+        command_tlid = MessageEntityBotCommand.tlid()
+        entities = [entity for entity in entities if entity["_"] != command_tlid]
+        entities = entities or None
 
     messages = await MessageRef.create_for_peer(
         peer, author,
