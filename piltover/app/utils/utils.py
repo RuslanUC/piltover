@@ -45,7 +45,9 @@ USERNAME_MENTION_REGEX = re.compile(r'@[a-z0-9_]{5,32}')
 USERNAME_REGEX = re.compile(r'^[a-z0-9_]{5,32}$')
 USERNAME_REGEX_NO_LEN = re.compile(r'[a-z0-9_]{1,32}')
 BOT_COMMAND_NAME_REGEX = re.compile(r'[a-zA-Z0-9_]{1,64}')
-BOT_COMMAND_REGEX = re.compile(r'/[a-zA-Z0-9_]{1,64}\b')
+BOT_COMMAND_REGEX = re.compile(r'\b/[a-zA-Z0-9_]{1,64}\b')
+HASHTAG_REGEX = re.compile(r'#[a-zA-Z0-9_]{1,64}\b')
+CASHTAG_REGEX = re.compile(r'\$[a-zA-Z0-9_]{3,4}\b')
 B64URL_STR_RE = re.compile(r'^[A-Za-z0-9\-_]*={0,2}$')
 
 MIME_TO_TL = {
@@ -295,7 +297,7 @@ async def check_password_internal(password: UserPassword, check: InputCheckPassw
         raise ErrorRpc(error_code=400, error_message="PASSWORD_HASH_INVALID")
 
 
-VALID_ENTITIES = (
+MANUAL_ENTITIES = (
     MessageEntityBold, MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl,
     MessageEntityUnderline, MessageEntityStrike, MessageEntityBankCard, MessageEntitySpoiler, MessageEntityBlockquote
 )
@@ -323,33 +325,19 @@ async def _validate_message_entities(
         if start is None or end is None:
             raise BOUNDS_ERROR
 
-        if isinstance(entity, MessageEntityMention):
-            if text[start] != "@":
-                raise BOUNDS_ERROR
-            if not USERNAME_REGEX.match(text[start+1:end]):
-                raise ErrorRpc(error_code=400, error_message="ENTITY_MENTION_USER_INVALID")
-        elif isinstance(entity, MessageEntityHashtag):
-            if text[start] != "#":
-                raise BOUNDS_ERROR
-        elif isinstance(entity, MessageEntityUrl):
-            if not text[start:].startswith("http"):
-                raise BOUNDS_ERROR
-        elif isinstance(entity, MessageEntityEmail):
+        if isinstance(entity, MessageEntityEmail):
             email = text[start+1:end]
             if "@" not in email:
                 raise BOUNDS_ERROR
         elif isinstance(entity, MessageEntityPhone):
             if text[start] != "+":
                 raise BOUNDS_ERROR
-        elif isinstance(entity, MessageEntityCashtag):
-            if text[start] != "$":
-                raise BOUNDS_ERROR
         elif isinstance(entity, InputMessageEntityMentionName):
             fetch_users.append((entity.user_id, len(result)))
             entity = MessageEntityMentionName(offset=entity.offset, length=entity.length, user_id=0)
         elif isinstance(entity, MessageEntityCustomEmoji):
             check_emojis.append((entity.document_id, len(result)))
-        elif not isinstance(entity, VALID_ENTITIES):
+        elif not isinstance(entity, MANUAL_ENTITIES):
             continue
 
         result.append(entity.to_dict() | {"_": entity.tlid()})
@@ -474,17 +462,19 @@ async def process_message_entities(
 
     entities.sort(key=lambda e: e["offset"])
 
-    for mention in USERNAME_MENTION_REGEX.finditer(text):
-        await sleep(0)
-        _insert_entity_maybe(MessageEntityMention.tlid(), entities, mention.span(), py_to_u16)
-
     for span in find_urls(text, require_scheme=False):
         await sleep(0)
         _insert_entity_maybe(MessageEntityUrl.tlid(), entities, span, py_to_u16)
 
-    for command in BOT_COMMAND_REGEX.finditer(text):
-        await sleep(0)
-        _insert_entity_maybe(MessageEntityBotCommand.tlid(), entities, command.span(), py_to_u16)
+    for pattern, tlid in (
+            (USERNAME_MENTION_REGEX, MessageEntityMention.tlid()),
+            (BOT_COMMAND_REGEX, MessageEntityBotCommand.tlid()),
+            (HASHTAG_REGEX, MessageEntityHashtag.tlid()),
+            (CASHTAG_REGEX, MessageEntityCashtag.tlid()),
+    ):
+        for entity in pattern.finditer(text):
+            await sleep(0)
+            _insert_entity_maybe(tlid, entities, entity.span(), py_to_u16)
 
     return entities
 
