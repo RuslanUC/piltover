@@ -1278,7 +1278,7 @@ async def test_delete_text_message_in_private_chat(client_with_auth: ClientFacto
         ("test 123", []),
         ("test 123", []),
         ("test 123.com", ["123.com"]),
-        ("test 123.com /test", ["123.com", None]),
+        ("test 123.com /test", ["123.com"]),
         ("test 123.com http://127.0.0.1:9999/idk+test.com", ["123.com", "http://127.0.0.1:9999/idk+test.com"]),
     ]
 )
