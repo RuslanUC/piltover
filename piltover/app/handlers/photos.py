@@ -125,7 +125,7 @@ async def delete_photos(request: DeletePhotos, user: User) -> list[int]:
         return deleted
 
     async with in_transaction():
-        photos = await UserPhoto.select_for_update().filter(user=user, id__in=ids).values_list("id", "current")
+        photos = await UserPhoto.select_for_update().filter(user=user, file_id__in=ids).values_list("id", "current")
         if not photos:
             return deleted
 
