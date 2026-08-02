@@ -572,7 +572,9 @@ class TestClient(Client):
         return self.wait_for_message(predicate, timeout_)
     
     @staticmethod
-    def make_image(dims: tuple[int, int], color: tuple[int, int, int], filename: str = "image.png") -> BytesIO:
+    def make_image(dims: int | tuple[int, int], color: tuple[int, int, int], filename: str = "image.png") -> BytesIO:
+        if isinstance(dims, int):
+            dims = dims, dims
         image = Image.new(mode="RGB", size=dims, color=color)
         image_file = BytesIO()
         setattr(image_file, "name", filename)

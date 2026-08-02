@@ -9,14 +9,18 @@ from fastrand import xorshift128plus_bytes
 from pyrogram.errors import StickerPngDimensions, StickerPngNopng, StickerFileInvalid
 from pyrogram.file_id import FileId, FileType
 from pyrogram.raw.functions.messages import UploadMedia, GetAllStickers
-from pyrogram.raw.functions.stickers import CheckShortName, CreateStickerSet
-from pyrogram.errors.exceptions.bad_request_400 import BadRequest, PackShortNameOccupied
+from pyrogram.raw.functions.stickers import CheckShortName, CreateStickerSet, RenameStickerSet
+from pyrogram.errors.exceptions.bad_request_400 import BadRequest, PackShortNameOccupied, UserIdInvalid, \
+    PackShortNameInvalid
 from pyrogram.raw.types import InputStickerSetItem, InputPeerSelf, InputMediaUploadedDocument, DocumentAttributeSticker, \
-    InputStickerSetEmpty, Document, InputDocument, InputUserSelf, StickerSet, InputPeerUser
+    InputStickerSetEmpty, Document, InputDocument, InputUserSelf, StickerSet, InputPeerUser, UpdateNewMessage, \
+    InputStickerSetShortName
 from pyrogram.raw.types.messages import StickerSet as MessagesStickerSet
 
+from piltover.db.models import User, Bot
 from tests.client import TestClient
 from tests.conftest import ClientFactory
+from tests.test_bots import _create_bots
 from tests.utils import color_is_near
 
 PHOTO_COLOR = (128, 128, 0)
@@ -323,3 +327,124 @@ async def test_create_stickerset_via_bot_invalid_dims(client_with_auth: ClientFa
     await client.send_document("stickers", sticker, force_document=True)
     message = await waiter
     assert "Please send me your sticker image as a file." in message.message
+
+
+async def _make_and_run_bot(client: TestClient, exit_stack: AsyncExitStack) -> tuple[Bot, TestClient]:
+    bot, = await _create_bots(client.me.id, 1)
+
+    token = f"{bot.bot_id}:{bot.token_nonce}"
+    bot_client: TestClient = await exit_stack.enter_async_context(TestClient(bot_token=token))
+
+    async with bot_client.expect_updates_m(UpdateNewMessage, timeout_per_update=3):
+        await client.send_message(bot_client.me.username, "/start")
+
+    return bot, bot_client
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_create_stickerset_managed_by_the_bot(
+        client_with_auth: ClientFactory, exit_stack: AsyncExitStack
+) -> None:
+    client = await client_with_auth(run=True)
+    bot, bot_client = await _make_and_run_bot(client, exit_stack)
+
+    sticker = await _make_input_stickerset_item(bot_client, client.make_image(512, PHOTO_COLOR, "sticker.png"), "👍")
+
+    name = "Test stickerset"
+    short_name = f"test_stickerset_by_{bot_client.me.username}"
+    stickerset = await bot_client.invoke(CreateStickerSet(
+        user_id=await bot_client.resolve_peer(client.me.id),
+        title=name,
+        short_name=short_name,
+        stickers=[sticker],
+    ))
+
+    assert isinstance(stickerset, MessagesStickerSet)
+    actual_set = cast(StickerSet, stickerset.set)
+
+    assert len(stickerset.documents) == 1
+    assert not actual_set.emojis
+    assert not actual_set.masks
+    assert actual_set.title == name
+    assert actual_set.short_name == short_name
+
+    stickersets = await client.invoke(GetAllStickers(hash=0))
+    assert len(stickersets.sets) == 1
+    assert stickersets.sets[0].title == name
+    assert stickersets.sets[0].short_name == short_name
+    assert stickersets.sets[0].count == 1
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_create_stickerset_managed_by_the_bot_and_rename(
+        client_with_auth: ClientFactory, exit_stack: AsyncExitStack
+) -> None:
+    client = await client_with_auth(run=True)
+    bot, bot_client = await _make_and_run_bot(client, exit_stack)
+
+    sticker = await _make_input_stickerset_item(bot_client, client.make_image(512, PHOTO_COLOR, "sticker.png"), "👍")
+
+    name = "Test stickerset"
+    short_name = f"test_stickerset_by_{bot_client.me.username}"
+    await bot_client.invoke(CreateStickerSet(
+        user_id=await bot_client.resolve_peer(client.me.id),
+        title=name,
+        short_name=short_name,
+        stickers=[sticker],
+    ))
+
+    name = f"{name} new name"
+    await bot_client.invoke(RenameStickerSet(
+        stickerset=InputStickerSetShortName(short_name=short_name),
+        title=name,
+    ))
+
+    stickersets = await client.invoke(GetAllStickers(hash=0))
+    assert len(stickersets.sets) == 1
+    assert stickersets.sets[0].title == name
+    assert stickersets.sets[0].short_name == short_name
+    assert stickersets.sets[0].count == 1
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_create_stickerset_managed_by_the_bot_no_user(
+        client_with_auth: ClientFactory, exit_stack: AsyncExitStack
+) -> None:
+    client = await client_with_auth(run=True)
+    bot, bot_client = await _make_and_run_bot(client, exit_stack)
+
+    sticker = await _make_input_stickerset_item(bot_client, client.make_image(512, PHOTO_COLOR, "sticker.png"), "👍")
+
+    name = "Test stickerset"
+    short_name = f"test_stickerset_by_{bot_client.me.username}"
+    with pytest.raises(UserIdInvalid):
+        await bot_client.invoke(CreateStickerSet(
+            user_id=InputUserSelf(),
+            title=name,
+            short_name=short_name,
+            stickers=[sticker],
+        ))
+
+
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_create_stickerset_managed_by_the_bot_no_bot_username_suffix(
+        client_with_auth: ClientFactory, exit_stack: AsyncExitStack
+) -> None:
+    client = await client_with_auth(run=True)
+    bot, bot_client = await _make_and_run_bot(client, exit_stack)
+
+    sticker = await _make_input_stickerset_item(bot_client, client.make_image(512, PHOTO_COLOR, "sticker.png"), "👍")
+
+    name = "Test stickerset"
+    short_name = f"test_stickerset_idk"
+    with pytest.raises(PackShortNameInvalid):
+        await bot_client.invoke(CreateStickerSet(
+            user_id=await bot_client.resolve_peer(client.me.id),
+            title=name,
+            short_name=short_name,
+            stickers=[sticker],
+        ))

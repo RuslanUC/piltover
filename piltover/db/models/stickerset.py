@@ -49,7 +49,8 @@ class Stickerset(Model):
     id: int = fields.BigIntField(primary_key=True)
     title: str = fields.CharField(max_length=64)
     short_name: str | None = fields.CharField(max_length=64, unique=True, null=True)
-    owner: models.User | None = fields.ForeignKeyField("models.User", null=True)
+    owner: models.User | None = fields.ForeignKeyField("models.User", null=True, related_name="owned_sets")
+    managed_by_bot: models.User | None = fields.ForeignKeyField("models.User", null=True, related_name="managed_sets")
     official: bool = fields.BooleanField(default=False)
     hash: int = fields.IntField(default=0)
     type: StickerSetType = fields.IntEnumField(StickerSetType, description="")
@@ -60,6 +61,7 @@ class Stickerset(Model):
     stickers_count: int = fields.SmallIntField(default=0)
 
     owner_id: int | None
+    managed_by_bot_id: int | None
 
     thumb: models.StickersetThumb | QuerySet[models.StickersetThumb] | None
     _thumb: models.StickersetThumb | None

@@ -50,7 +50,7 @@ async def test_create_botfather_bot(exit_stack: AsyncExitStack) -> None:
     assert bot_me.username == "test_user_created_bot"
 
 
-async def _create_bots(owner: User, count: int, username_prefix: str = "") -> list[Bot]:
+async def _create_bots(owner_id, count: int, username_prefix: str = "") -> list[Bot]:
     await User.bulk_create([
         User(phone_number=None, first_name=f"Bot #{i}", bot=True)
         for i in range(count)
@@ -64,7 +64,7 @@ async def _create_bots(owner: User, count: int, username_prefix: str = "") -> li
     for bot_user in await User.filter(bot=True, first_name__startswith="Bot #"):
         num = int(bot_user.first_name.replace("Bot #", ""))
         usernames_to_create.append(Username(user=bot_user, username=f"{username_prefix}test_{num}_bot"))
-        bots_to_create.append(Bot(owner=owner, bot=bot_user))
+        bots_to_create.append(Bot(owner_id=owner_id, bot=bot_user))
         states_to_create.append(State(user=bot_user))
         peers_to_create.append(Peer(owner=bot_user, type=PeerType.SELF, user=bot_user))
 
@@ -73,7 +73,7 @@ async def _create_bots(owner: User, count: int, username_prefix: str = "") -> li
     await State.bulk_create(states_to_create)
     await Peer.bulk_create(peers_to_create)
 
-    return await Bot.filter(owner=owner)
+    return await Bot.filter(owner_id=owner_id)
 
 
 @pytest.mark.real_auth
@@ -95,10 +95,8 @@ async def test_botfather_mybots(
 ) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
-    db_user = await User.get_or_none(phone_number="123456789")
-
     if bots_count:
-        await _create_bots(db_user, bots_count)
+        await _create_bots(client.me.id, bots_count)
 
     await client.send_message("botfather", "/mybots")
 
@@ -127,8 +125,7 @@ async def test_botfather_mybots(
 async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
-    db_user = await User.get_or_none(phone_number="123456789")
-    await _create_bots(db_user, 7)
+    await _create_bots(client.me.id, 7)
 
     await client.send_message("botfather", "/mybots")
 
@@ -182,8 +179,7 @@ async def test_botfather_mybots_pagination(exit_stack: AsyncExitStack) -> None:
 async def test_bot_send_message_get_response(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
-    db_user = await User.get_or_none(phone_number="123456789")
-    bot, = await _create_bots(db_user, 1)
+    bot, = await _create_bots(client.me.id, 1)
 
     token = f"{bot.bot_id}:{bot.token_nonce}"
     bot_client: TestClient = await exit_stack.enter_async_context(TestClient(bot_token=token))
@@ -205,8 +201,7 @@ async def test_bot_send_message_get_response(exit_stack: AsyncExitStack) -> None
 async def test_bot_send_callback_query_get_response(exit_stack: AsyncExitStack) -> None:
     client: TestClient = await exit_stack.enter_async_context(TestClient(phone_number="123456789"))
 
-    db_user = await User.get_or_none(phone_number="123456789")
-    bot, = await _create_bots(db_user, 1)
+    bot, = await _create_bots(client.me.id, 1)
 
     token = f"{bot.bot_id}:{bot.token_nonce}"
     bot_client: TestClient = await exit_stack.enter_async_context(TestClient(bot_token=token))

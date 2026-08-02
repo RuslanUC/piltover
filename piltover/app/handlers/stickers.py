@@ -15,8 +15,9 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.utils.utils import telegram_hash, get_image_dims, resize_photo, extract_video_metadata_for_sticker
 from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
-from piltover.db.enums import FileType, StickerSetType
-from piltover.db.models import Stickerset, File, InstalledStickerset, StickersetThumb, RecentSticker, FavedSticker
+from piltover.db.enums import FileType, StickerSetType, PeerType
+from piltover.db.models import Stickerset, File, InstalledStickerset, StickersetThumb, RecentSticker, FavedSticker, \
+    User, Peer
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Long, StickerSetCovered, StickerSetNoCovered, InputStickerSetItem, InputDocument, \
@@ -351,7 +352,21 @@ async def create_sticker_set(request: CreateStickerSet, user_id: int) -> Message
     if not request.title or len(request.title) > 64:
         raise ErrorRpc(error_code=400, error_message="PACK_TITLE_INVALID")
 
-    # TODO: handle request.user_id if current user is a bot
+    owner_id = user_id
+    managed_by_bot_id = None
+
+    user = await User.get(id=user_id).select_related("username").only(
+        "id", "bot", "username__id", "username__username"
+    )
+    if user.bot:
+        if user.username is None or not request.short_name.endswith(f"_by_{user.username.username}"):
+            raise ErrorRpc(error_code=400, error_message="PACK_SHORT_NAME_INVALID")
+
+        peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, request.user_id)
+        if peer_type != PeerType.USER:
+            raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+        owner_id = peer_target_id
+        managed_by_bot_id = user_id
 
     await check_stickerset_short_name(CheckShortName(short_name=request.short_name), "PACK_")
 
@@ -372,6 +387,7 @@ async def create_sticker_set(request: CreateStickerSet, user_id: int) -> Message
         type=set_type,
         emoji=request.emojis,
         owner=None,
+        managed_by_bot_id=managed_by_bot_id,
     )
 
     if isinstance(request.thumb, InputDocument):
@@ -404,27 +420,31 @@ async def create_sticker_set(request: CreateStickerSet, user_id: int) -> Message
         raise
 
     all_stickers = await stickerset.documents_query()
-    stickerset.owner_id = user_id
+    stickerset.owner_id = owner_id
     stickerset.hash = telegram_hash(stickerset.gen_for_hash(all_stickers), 32)
     stickerset.stickers_count = len(all_stickers)
     await stickerset.save(update_fields=["owner_id", "hash", "stickers_count"])
 
-    await InstalledStickerset.create(set=stickerset, user_id=user_id)
-    await upd.new_stickerset(user_id, stickerset)
+    await InstalledStickerset.create(set=stickerset, user_id=owner_id)
+    await upd.new_stickerset(owner_id, stickerset)
 
     return await stickerset.to_tl_messages(user_id)
 
 
-async def _get_sticker_with_set(sticker: InputDocument, user_id: int) -> tuple[File, Stickerset]:
+async def _get_sticker_with_set(sticker: InputDocument | InputDocumentEmpty, user_id: int) -> tuple[File, Stickerset]:
+    if not isinstance(sticker, InputDocument):
+        raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
+
     file = await File.from_input(
         user_id, sticker.id, sticker.access_hash, sticker.file_reference, FileType.DOCUMENT_STICKER,
-        add_query=Q(stickerset__owner_id=user_id), select_related=("stickerset",),
+        add_query=Q(stickerset__owner_id=user_id, stickerset__managed_by_bot_id=user_id, join_type=Q.OR),
+        select_related=("stickerset",),
     )
 
     if file is None:
         raise ErrorRpc(error_code=400, error_message="STICKER_INVALID")
 
-    return file, file.stickerset
+    return file, cast(Stickerset, file.stickerset)
 
 
 @handler.on_request(ChangeStickerPosition, ReqHandlerFlags.DONT_FETCH_USER)
@@ -470,7 +490,7 @@ async def change_sticker_position(request: ChangeStickerPosition, user_id: int) 
 async def rename_stickerset(request: RenameStickerSet, user_id: int) -> MessagesStickerSet:
     auth_id = cast(int, request_ctx.get().auth_id)
     stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset, True)
-    if stickerset is None or stickerset.owner_id != user_id:
+    if stickerset is None or (stickerset.owner_id != user_id and stickerset.managed_by_bot_id != user_id):
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
     if not request.title or len(request.title) > 64:
@@ -489,7 +509,7 @@ async def delete_stickerset(request: DeleteStickerSet, user_id: int) -> bool:
     if (q := Stickerset.from_input_q(user_id, auth_id, request.stickerset)) is None:
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
     stickerset = await Stickerset.get_or_none(q).only("id", "owner_id")
-    if stickerset is None or stickerset.owner_id != user_id:
+    if stickerset is None or (stickerset.owner_id != user_id and stickerset.managed_by_bot_id != user_id):
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
     async with in_transaction():
@@ -594,7 +614,7 @@ async def get_stickerset(request: GetStickerSet, user_id: int) -> MessagesSticke
 async def add_sticker_to_set(request: AddStickerToSet, user_id: int) -> MessagesStickerSet:
     auth_id = cast(int, request_ctx.get().auth_id)
     stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset, True)
-    if stickerset is None or stickerset.owner_id != user_id:
+    if stickerset is None or (stickerset.owner_id != user_id and stickerset.managed_by_bot_id != user_id):
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
     files, _ = await _get_sticker_files([request.sticker], user_id, stickerset.type, stickerset.emoji)
@@ -823,7 +843,7 @@ async def toggle_sticker_sets(request: ToggleStickerSets, user_id: int) -> bool:
 async def set_stickerset_thumb(request: SetStickerSetThumb, user_id: int) -> MessagesStickerSet:
     auth_id = cast(int, request_ctx.get().auth_id)
     stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
-    if stickerset is None or stickerset.owner_id != user_id:
+    if stickerset is None or (stickerset.owner_id != user_id and stickerset.managed_by_bot_id != user_id):
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
     if request.thumb is None:
@@ -844,7 +864,7 @@ async def set_stickerset_thumb(request: SetStickerSetThumb, user_id: int) -> Mes
     return await stickerset.to_tl_messages(user_id)
 
 
-@handler.on_request(GetRecentStickers, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(GetRecentStickers, ReqHandlerFlags.DONT_FETCH_USER | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_recent_stickers(request: GetRecentStickers, user_id: int) -> RecentStickers | RecentStickersNotModified:
     if request.attached:
         return RecentStickers(hash=0, packs=[], stickers=[], dates=[])
@@ -873,7 +893,7 @@ async def get_recent_stickers(request: GetRecentStickers, user_id: int) -> Recen
     )
 
 
-@handler.on_request(ClearRecentStickers, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(ClearRecentStickers, ReqHandlerFlags.DONT_FETCH_USER | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def clear_recent_stickers(request: ClearRecentStickers, user_id: int) -> bool:
     if request.attached:
         return True
@@ -884,7 +904,7 @@ async def clear_recent_stickers(request: ClearRecentStickers, user_id: int) -> b
     return True
 
 
-@handler.on_request(SaveRecentSticker, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(SaveRecentSticker, ReqHandlerFlags.DONT_FETCH_USER | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def save_recent_stickers(request: SaveRecentSticker, user_id: int) -> bool:
     if request.attached:
         return True
@@ -909,7 +929,7 @@ async def save_recent_stickers(request: SaveRecentSticker, user_id: int) -> bool
     return True
 
 
-@handler.on_request(FaveSticker, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(FaveSticker, ReqHandlerFlags.DONT_FETCH_USER | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def fave_sticker(request: FaveSticker, user_id: int) -> bool:
     if request.unfave:
         await FavedSticker.filter(user_id=user_id, sticker_id=request.id.id).delete()
@@ -931,7 +951,7 @@ async def fave_sticker(request: FaveSticker, user_id: int) -> bool:
     return True
 
 
-@handler.on_request(GetFavedStickers, ReqHandlerFlags.DONT_FETCH_USER)
+@handler.on_request(GetFavedStickers, ReqHandlerFlags.DONT_FETCH_USER | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def get_faved_stickers(request: GetFavedStickers, user_id: int) -> FavedStickers | FavedStickersNotModified:
     query = FavedSticker.filter(
         user_id=user_id,
