@@ -48,6 +48,7 @@ BOT_COMMAND_NAME_REGEX = re.compile(r'[a-zA-Z0-9_]{1,64}')
 BOT_COMMAND_REGEX = re.compile(r'\b/[a-zA-Z0-9_]{1,64}\b')
 HASHTAG_REGEX = re.compile(r'#[a-zA-Z0-9_]{1,64}\b')
 CASHTAG_REGEX = re.compile(r'\$[a-zA-Z0-9_]{3,4}\b')
+EMAIL_REGEX = re.compile(r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b')
 B64URL_STR_RE = re.compile(r'^[A-Za-z0-9\-_]*={0,2}$')
 
 MIME_TO_TL = {
@@ -325,11 +326,7 @@ async def _validate_message_entities(
         if start is None or end is None:
             raise BOUNDS_ERROR
 
-        if isinstance(entity, MessageEntityEmail):
-            email = text[start+1:end]
-            if "@" not in email:
-                raise BOUNDS_ERROR
-        elif isinstance(entity, MessageEntityPhone):
+        if isinstance(entity, MessageEntityPhone):
             if text[start] != "+":
                 raise BOUNDS_ERROR
         elif isinstance(entity, InputMessageEntityMentionName):
@@ -467,6 +464,7 @@ async def process_message_entities(
         _insert_entity_maybe(MessageEntityUrl.tlid(), entities, span, py_to_u16)
 
     for pattern, tlid in (
+            (EMAIL_REGEX, MessageEntityEmail.tlid()),
             (USERNAME_MENTION_REGEX, MessageEntityMention.tlid()),
             (BOT_COMMAND_REGEX, MessageEntityBotCommand.tlid()),
             (HASHTAG_REGEX, MessageEntityHashtag.tlid()),
