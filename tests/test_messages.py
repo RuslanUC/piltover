@@ -26,6 +26,7 @@ from piltover.db.models import MessageRef, Peer, User, MessageContent
 from piltover.tl import InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, Long
 from tests.client import TestClient
 from tests.conftest import ClientFactory, ChannelWithClientsFactory
+from tests.test_bots import _create_bots
 
 
 @pytest.mark.asyncio
@@ -1651,3 +1652,32 @@ async def test_pin_message_one_side_in_private_chat(client_with_auth: ClientFact
     assert len(messages.messages) == 1
     assert messages.messages[0].message == "test 123"
     assert not messages.messages[0].pinned
+
+
+@pytest.mark.parametrize(
+    ("peer", "text", "expected_entities",),
+    [
+        ("self", "test 123", []),
+        ("self", "test /test", []),
+        ("self", "/start", []),
+        ("test_0_bot", "test 123", []),
+        ("test_0_bot", "test /test", ["/test"]),
+        ("test_0_bot", "/start", ["/start"]),
+    ],
+)
+@pytest.mark.real_auth
+@pytest.mark.asyncio
+async def test_bot_command_entities(
+        client_with_auth: ClientFactory, exit_stack: AsyncExitStack, peer: str, text: str, expected_entities: list[str],
+) -> None:
+    client = await client_with_auth(run=True)
+    await _create_bots(client.me.id, 1)
+
+    message = await client.send_message(peer, text=text)
+    if not expected_entities:
+        assert not message.entities
+    else:
+        assert len(message.entities) == len(expected_entities)
+        for entity, expected in zip(message.entities, expected_entities):
+            assert entity.type == MessageEntityType.BOT_COMMAND
+            assert message.text[entity.offset:entity.offset + entity.length] == expected
