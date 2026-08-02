@@ -2,12 +2,14 @@ from tortoise.expressions import Subquery
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
+from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType
-from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule, Bot, Contact
+from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType, MessageType
+from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule, Bot, Contact, File
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector, InputFile, InputFileBig
+from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector, InputFile, InputFileBig, \
+    MessageActionSuggestProfilePhoto
 from piltover.tl.base import InputUser as TLInputUserBase, Photo as TLPhotoBase
 from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto, \
     UploadContactProfilePhoto
@@ -151,23 +153,30 @@ async def delete_photos(request: DeletePhotos, user: User) -> list[int]:
 @handler.on_request(UpdateProfilePhoto)
 async def update_profile_photo(request: UpdateProfilePhoto, user: User) -> PhotosPhoto:
     target_user = await _current_user_or_bot(request.bot, user)
+    if request.fallback and target_user.bot:
+        raise ErrorRpc(error_code=400, error_message="BOT_FALLBACK_UNSUPPORTED")
 
     photo = None
-    if isinstance(request.id, InputPhotoEmpty):
-        await UserPhoto.filter(user=target_user, fallback=request.fallback).delete()
-    elif (photo := await UserPhoto.get_or_none(id=request.id.id, user=target_user).select_related("file")) is not None:
-        async with in_transaction():
-            # TODO: figure out what telegram does when request.fallback is set
+    async with in_transaction():
+        if isinstance(request.id, InputPhotoEmpty):
+            await UserPhoto.filter(user=target_user, fallback=request.fallback).delete()
+        else:
+            file = await File.from_input(
+                user.id, request.id.id, request.id.access_hash, request.id.file_reference, FileType.PHOTO,
+            )
+            if file is None:
+                raise ErrorRpc(error_code=404, error_message="PHOTO_ID_INVALID")
             if request.fallback:
-                if target_user.bot:
-                    raise ErrorRpc(error_code=400, error_message="BOT_FALLBACK_UNSUPPORTED")
                 await UserPhoto.filter(user=target_user, fallback=True).delete()
-                await UserPhoto.create(user=target_user, fallback=True, current=False, file=photo.file)
-            else:
+                await UserPhoto.create(user=target_user, fallback=True, current=False, file=file)
+            elif (photo := await UserPhoto.get_or_none(file_id=file.id, user_id=target_user.id)) is not None:
                 await UserPhoto.filter(user=target_user).update(current=False)
                 photo.current = True
                 photo.fallback = False
                 await photo.save(update_fields=["current", "fallback"])
+            else:
+                await UserPhoto.filter(user=target_user).update(current=False)
+                photo = await UserPhoto.create(user_id=target_user.id, file=file, current=True)
 
             target_user.version += 1
             await target_user.save(update_fields=["version"])
@@ -182,18 +191,23 @@ async def update_profile_photo(request: UpdateProfilePhoto, user: User) -> Photo
 
 @handler.on_request(UploadContactProfilePhoto, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def upload_contact_profile_photo(request: UploadContactProfilePhoto, user_id: int) -> PhotosPhoto:
-    # TODO: support request.suggest
-    if not request.save:
+    if not request.save and not request.suggest:
         raise ErrorRpc(error_code=400, error_message="NEED_ACTION_MISSING")
 
     peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user_id, request.user_id)
     if peer_type is not PeerType.USER:
         raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
 
-    contact = await Contact.get_or_none(owner_id=user_id, target_id=peer_user_id)
+    contact = await Contact.get_or_none(owner_id=user_id, target_id=peer_user_id).select_related("target")
     if contact is None:
         raise ErrorRpc(error_code=400, error_message="CONTACT_MISSING")
 
+    if contact.target.bot:
+        request.suggest = False
+    if not request.save and not request.suggest:
+        raise ErrorRpc(error_code=400, error_message="NEED_ACTION_MISSING")
+
+    photo = None
     if request.file is not None:
         if not isinstance(request.file, (InputFile, InputFileBig)):
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
@@ -205,16 +219,30 @@ async def upload_contact_profile_photo(request: UploadContactProfilePhoto, user_
             raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
 
         storage = request_ctx.get().storage
-        file = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO, profile_photo=True)
-        contact.personal_photo = file
-        await contact.save(update_fields=["personal_photo_id"])
+        photo = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO, profile_photo=True)
+
+        if request.save:
+            contact.personal_photo = photo
+            await contact.save(update_fields=["personal_photo_id"])
+        if request.suggest:
+            user = await User.get(id=user_id).only("id", "bot")
+            peer, _ = await Peer.get_or_create(owner_id=user_id, user=contact.target, defaults={"type": PeerType.USER})
+            peer.owner = user
+            peer.user = contact.target
+            await send_message_internal(
+                user, peer, None, None, False, author=user_id, type=MessageType.SERVICE_SUGGEST_PHOTO,
+                extra_info=MessageActionSuggestProfilePhoto(photo=photo.to_tl_photo()).write(),
+            )
     else:
+        if request.suggest:
+            raise ErrorRpc(error_code=400, error_message="NEED_ACTION_MISSING")
+
         contact.personal_photo = None
         await contact.save(update_fields=["personal_photo_id"])
 
     # TODO: send update(s)?
 
     return PhotosPhoto(
-        photo=contact.personal_photo.to_tl_photo() if contact.personal_photo is not None else PhotoEmpty(id=0),
+        photo=photo.to_tl_photo() if photo is not None else PhotoEmpty(id=0),
         users=[],
     )
