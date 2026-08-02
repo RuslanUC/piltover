@@ -20,7 +20,7 @@ from loguru import logger
 from pylinkify import find_urls
 
 from piltover.context import request_ctx
-from piltover.db.enums import PeerType, PrivacyRuleKeyType, FileType
+from piltover.db.enums import PrivacyRuleKeyType, FileType
 from piltover.db.models import UserPassword, User, Peer, PrivacyRule, File
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.storage.base import BaseStorage, StorageType
@@ -299,9 +299,12 @@ VALID_ENTITIES = (
     MessageEntityBold, MessageEntityItalic, MessageEntityCode, MessageEntityPre, MessageEntityTextUrl,
     MessageEntityUnderline, MessageEntityStrike, MessageEntityBankCard, MessageEntitySpoiler, MessageEntityBlockquote
 )
+BOUNDS_ERROR = ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
 
 
-async def _validate_message_entities(text: str, entities: list[TLMessageEntityBase], user_id: int) -> list[dict]:
+async def _validate_message_entities(
+        text: str, entities: list[TLMessageEntityBase], user_id: int, u16_to_py: dict[int, int],
+) -> list[dict]:
     if not entities:
         return []
     if len(entities) > 1024:
@@ -310,39 +313,37 @@ async def _validate_message_entities(text: str, entities: list[TLMessageEntityBa
     fetch_users: list[tuple[InputUserBase, int]] = []
     check_emojis: list[tuple[int, int]] = []
 
-    u16text = text.encode("utf-16le")
-
     result = []
     for idx, entity in enumerate(entities):
         if (idx % 64) == 0:
             await asyncio.sleep(0)
 
-        u16off = entity.offset * 2
-        u16len = entity.length * 2
+        start = u16_to_py.get(entity.offset)
+        end = u16_to_py.get(entity.offset + entity.length)
+        if start is None or end is None:
+            raise BOUNDS_ERROR
 
-        if u16off < 0 or u16off > len(u16text) or (u16off + u16len) > len(u16text):
-            raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
         if isinstance(entity, MessageEntityMention):
-            if u16text[u16off] != ord(b"@"):
-                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
-            if not USERNAME_REGEX.match(u16text[u16off+2:u16off+u16len].decode("utf-16le")):
+            if text[start] != "@":
+                raise BOUNDS_ERROR
+            if not USERNAME_REGEX.match(text[start+1:end]):
                 raise ErrorRpc(error_code=400, error_message="ENTITY_MENTION_USER_INVALID")
         elif isinstance(entity, MessageEntityHashtag):
-            if u16text[u16off] != ord(b"#"):
-                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+            if text[start] != "#":
+                raise BOUNDS_ERROR
         elif isinstance(entity, MessageEntityUrl):
-            if not u16text[u16off:].startswith("http".encode("utf-16le")):
-                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+            if not text[start:].startswith("http"):
+                raise BOUNDS_ERROR
         elif isinstance(entity, MessageEntityEmail):
-            email = u16text[u16off+2:u16off+u16len]
-            if "@".encode("utf-16le") not in email:
-                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+            email = text[start+1:end]
+            if "@" not in email:
+                raise BOUNDS_ERROR
         elif isinstance(entity, MessageEntityPhone):
-            if u16text[u16off] != ord(b"+"):
-                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+            if text[start] != "+":
+                raise BOUNDS_ERROR
         elif isinstance(entity, MessageEntityCashtag):
-            if u16text[u16off] != ord(b"$"):
-                raise ErrorRpc(error_code=400, error_message="ENTITY_BOUNDS_INVALID")
+            if text[start] != "$":
+                raise BOUNDS_ERROR
         elif isinstance(entity, InputMessageEntityMentionName):
             fetch_users.append((entity.user_id, len(result)))
             entity = MessageEntityMentionName(offset=entity.offset, length=entity.length, user_id=0)
@@ -390,19 +391,36 @@ async def _validate_message_entities(text: str, entities: list[TLMessageEntityBa
         }
 
         for check_id, idx in reversed(check_emojis):
-            off = result[idx]["offset"] * 2
-            ln = result[idx]["length"] * 2
+            off = result[idx]["offset"]
+            ln = result[idx]["length"]
 
             if check_id not in files \
                     or files[check_id].stickerset_id is None \
-                    or files[check_id].sticker_alt != u16text[off:off+ln].decode("utf-16le"):
+                    or files[check_id].sticker_alt != text[u16_to_py[off]:u16_to_py[off+ln]]:
                 del result[idx]
                 continue
 
     return result
 
 
-def _span_to_offset_length(span: tuple[int, int], u8u16: dict[int, int]) -> tuple[int, int, int]:
+def _make_entity_u16_maps(text: str) -> tuple[list[int], dict[int, int]]:
+    n = len(text)
+    py_to_u16 = [0] * (n + 1)
+    u16_to_py = {}
+
+    u16 = 0
+    for idx, char in enumerate(text):
+        py_to_u16[idx] = u16
+        u16_to_py[u16] = idx
+        u16 += 2 if ord(char) > 0xFFFF else 1
+
+    py_to_u16[n] = u16
+    u16_to_py[u16] = n
+
+    return py_to_u16, u16_to_py
+
+
+def _span_to_offset_length(span: tuple[int, int], u8u16: list[int]) -> tuple[int, int, int]:
     start, end = span
     u16start = u8u16[start]
     u16end = u8u16[end]
@@ -427,7 +445,7 @@ def _check_entity_inside_entity(entities: list[dict], u16start: int, u16end: int
 
 
 def _insert_entity_maybe(
-        tlid: int, entities: list[dict], span: tuple[int, int], u8_to_u16: dict[int, int],
+        tlid: int, entities: list[dict], span: tuple[int, int], u8_to_u16: list[int],
 ) -> None:
     u16start, u16end, length = _span_to_offset_length(span, u8_to_u16)
     if _check_entity_inside_entity(entities, u16start, u16end):
@@ -447,44 +465,32 @@ async def process_message_entities(
     if not text:
         return None
 
+    py_to_u16, u16_to_py = _make_entity_u16_maps(text)
+
     if entities_to_check:
-        entities = await _validate_message_entities(text, entities_to_check, user_id)
+        entities = await _validate_message_entities(text, entities_to_check, user_id, u16_to_py)
     else:
         entities = []
-
-    # TODO: calculate this properly:
-    #  dont use utf16 at all,
-    #  dont use regex,
-    #  count lengths and offsets from utf8, like in https://core.telegram.org/api/entities#computing-entity-length
-
-    u8_to_u16 = {}
-    last_len = 0
-    for pos, char in enumerate(text):
-        last = u8_to_u16[pos - 1] if pos else 0
-        u8_to_u16[pos] = last + last_len
-        last_len = len(char.encode("utf-16le")) // 2
-        if pos == len(text) - 1:
-            u8_to_u16[pos + 1] = u8_to_u16[pos] + last_len
 
     entities.sort(key=lambda e: e["offset"])
 
     for mention in USERNAME_MENTION_REGEX.finditer(text):
         await sleep(0)
-        _insert_entity_maybe(MessageEntityMention.tlid(), entities, mention.span(), u8_to_u16)
+        _insert_entity_maybe(MessageEntityMention.tlid(), entities, mention.span(), py_to_u16)
 
     for span in find_urls(text, require_scheme=False):
         await sleep(0)
-        _insert_entity_maybe(MessageEntityUrl.tlid(), entities, span, u8_to_u16)
+        _insert_entity_maybe(MessageEntityUrl.tlid(), entities, span, py_to_u16)
 
     for command in BOT_COMMAND_REGEX.finditer(text):
         await sleep(0)
-        _insert_entity_maybe(MessageEntityBotCommand.tlid(), entities, command.span(), u8_to_u16)
+        _insert_entity_maybe(MessageEntityBotCommand.tlid(), entities, command.span(), py_to_u16)
 
     return entities
 
 
 def is_username_valid(username: str) -> bool:
-    return 5 < len(username) < 32 and USERNAME_REGEX.match(username)
+    return 5 < len(username) < 32 and USERNAME_REGEX.match(username) is not None
 
 
 def validate_username(username: str) -> None:

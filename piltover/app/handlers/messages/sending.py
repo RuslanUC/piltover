@@ -181,7 +181,7 @@ async def send_message_internal(
 ) -> Updates:
     """
     NOTE (probably only to myself):
-     `user` MUST have at least `id` and `bot` prefetched;
+     `user` MUST have at least `id` and `bot` fetched;
      `peer.user` must have `username` prefetched;
     """
     if opposite \

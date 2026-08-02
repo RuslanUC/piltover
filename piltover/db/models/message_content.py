@@ -263,14 +263,11 @@ class MessageContent(Model):
         return content
 
     async def clone_forward(
-            self, related_peer: models.Peer, new_author: models.User | None = None,
-            # TODO: make required
-            fwd_header: models.MessageFwdHeader | None = None,
+            self, related_peer: models.Peer, fwd_header: models.MessageFwdHeader, new_author: models.User | None = None,
             drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
-            is_forward: bool = False, no_forwards: bool = False,
-            new_channel_author_id: int | None = None, channel_post: bool | None = None,
-            post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
-            anonymous: bool | None = None, can_see_reactions_list: bool = False,
+            is_forward: bool = False, no_forwards: bool = False, new_channel_author_id: int | None = None,
+            channel_post: bool | None = None, post_info: models.ChannelPostInfo | None = None,
+            post_author: str | None = None, anonymous: bool | None = None, can_see_reactions_list: bool = False,
     ) -> MessageContent:
         if new_author is None and self.author is not None:
             new_author = self.author
