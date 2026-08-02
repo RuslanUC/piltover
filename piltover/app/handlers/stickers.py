@@ -513,7 +513,9 @@ async def delete_stickerset(request: DeleteStickerSet, user_id: int) -> bool:
         raise ErrorRpc(error_code=400, error_message="STICKERSET_INVALID")
 
     async with in_transaction():
-        await Stickerset.filter(id=stickerset.id).update(deleted=True, owner_id=None, short_name=None)
+        await Stickerset.filter(id=stickerset.id).update(
+            deleted=True, owner_id=None, managed_by_bot_id=None, short_name=None,
+        )
         await File.filter(stickerset_id=stickerset.id).update(stickerset_id=None)
 
     return True
@@ -647,6 +649,8 @@ async def replace_sticker(request: ReplaceSticker, user_id: int) -> MessagesStic
     files, _ = await _get_sticker_files([request.new_sticker], user_id, stickerset.type, stickerset.emoji)
     file = files[request.new_sticker.document.id]
 
+    old_pos = cast(int, old_file.sticker_pos)
+
     old_file.stickerset = None
     old_file.sticker_pos = None
     await old_file.save(update_fields=["stickerset_id", "sticker_pos"])
@@ -654,7 +658,7 @@ async def replace_sticker(request: ReplaceSticker, user_id: int) -> MessagesStic
     is_static = file.mime_type.startswith("image/")
     is_webm = file.mime_type == "video/webm"
     await make_sticker_from_file(
-        file, stickerset, old_file.sticker_pos, request.new_sticker.emoji, stickerset.masks,
+        file, stickerset, old_pos, request.new_sticker.emoji, stickerset.masks,
         request.new_sticker.mask_coords, is_static, is_webm,
     )
 
@@ -734,12 +738,13 @@ async def install_stickerset(
 @handler.on_request(UninstallStickerSet, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def uninstall_stickerset(request: UninstallStickerSet, user_id: int) -> bool:
     auth_id = cast(int, request_ctx.get().auth_id)
-    # TODO: only fetch id
-    stickerset = await Stickerset.from_input(user_id, auth_id, request.stickerset)
+    if (q := Stickerset.from_input_q(user_id, auth_id, request.stickerset)) is None:
+        raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
+    stickerset = await Stickerset.get_or_none(q).only("id")
     if stickerset is None:
         raise ErrorRpc(error_code=406, error_message="STICKERSET_INVALID")
 
-    if await InstalledStickerset.filter(set=stickerset, user_id=user_id).delete():
+    if await InstalledStickerset.filter(set_id=stickerset.id, user_id=user_id).delete():
         await upd.update_stickersets(user_id)
 
     return True
@@ -747,25 +752,25 @@ async def uninstall_stickerset(request: UninstallStickerSet, user_id: int) -> bo
 
 @handler.on_request(ReorderStickerSets, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def reorder_sticker_sets(request: ReorderStickerSets, user_id: int) -> bool:
-    sets: list[InstalledStickerset | None] = await InstalledStickerset.filter(
+    sets = await InstalledStickerset.filter(
         user_id=user_id, archived=False, set__deleted=False,
     ).order_by("pos", "-installed_at")
     by_ids = {
-        installed.set_id: (installed, idx)
-        for idx, installed in enumerate(sets)
+        installed.set_id: installed
+        for installed in sets
     }
 
     new_order = []
+    new_order_ids = set()
     for set_id in request.order:
-        if set_id not in by_ids:
+        if (stickerset := by_ids.get(set_id)) is None:
             continue
-        stickerset, idx = by_ids[set_id]
-        sets[idx] = None
+        new_order_ids.add(stickerset.id)
         stickerset.pos = len(new_order)
         new_order.append(stickerset)
 
     for left_set in sets:
-        if left_set is None:
+        if left_set.id in new_order_ids:
             continue
         left_set.pos = len(new_order)
         new_order.append(left_set)
@@ -909,12 +914,15 @@ async def save_recent_stickers(request: SaveRecentSticker, user_id: int) -> bool
     if request.attached:
         return True
 
+    doc = request.id
+    if not isinstance(doc, InputDocument):
+        raise ErrorRpc(error_code=400, error_message="STICKER_ID_INVALID")
+
     if request.unsave:
-        await RecentSticker.filter(user_id=user_id, sticker_id=request.id.id).delete()
+        await RecentSticker.filter(user_id=user_id, sticker_id=doc.id).delete()
         await upd.update_recent_stickers(user_id)
         return True
 
-    doc = request.id
     sticker = await File.from_input(
         user_id, doc.id, doc.access_hash, doc.file_reference, FileType.DOCUMENT_STICKER,
         add_query=Q(stickerset__not=None),
@@ -931,12 +939,15 @@ async def save_recent_stickers(request: SaveRecentSticker, user_id: int) -> bool
 
 @handler.on_request(FaveSticker, ReqHandlerFlags.DONT_FETCH_USER | ReqHandlerFlags.BOT_NOT_ALLOWED)
 async def fave_sticker(request: FaveSticker, user_id: int) -> bool:
+    doc = request.id
+    if not isinstance(doc, InputDocument):
+        raise ErrorRpc(error_code=400, error_message="STICKER_ID_INVALID")
+
     if request.unfave:
-        await FavedSticker.filter(user_id=user_id, sticker_id=request.id.id).delete()
-        await upd.update_faved_stickers(user_id)
+        if await FavedSticker.filter(user_id=user_id, sticker_id=doc.id).delete():
+            await upd.update_faved_stickers(user_id)
         return True
 
-    doc = request.id
     sticker = await File.from_input(
         user_id, doc.id, doc.access_hash, doc.file_reference, FileType.DOCUMENT_STICKER,
         add_query=Q(stickerset__not=None),

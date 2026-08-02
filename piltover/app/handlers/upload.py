@@ -120,8 +120,10 @@ async def get_file(request: GetFile, user_id: int) -> TLFile:
             raise ErrorRpc(error_code=400, error_message="LOCATION_INVALID")
         peer_type, peer_id = peer_info
         q = Q(id=location.photo_id)
-        if peer_type in (PeerType.SELF, PeerType.USER):
+        if peer_type is PeerType.SELF:
             q &= Q(userphotos__user_id=peer_id)
+        elif peer_type is PeerType.USER:
+            q &= Q(userphotos__user_id=peer_id) | Q(contacts__owner_id=user_id, contacts__target_id=peer_id)
         elif peer_type is PeerType.CHAT:
             q &= Q(chats__id=peer_id)
         elif peer_type is PeerType.CHANNEL:

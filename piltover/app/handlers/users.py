@@ -5,7 +5,7 @@ from tortoise.functions import Max
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, ChatParticipant, MessageRef, Wallpaper
+from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, ChatParticipant, MessageRef, Wallpaper, File
 from piltover.db.models.peer import PeerUserT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
@@ -134,6 +134,10 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
     else:
         common_chats_count = await ChatParticipant.common_chats_query(user_id, peer.user_id).count()
 
+    personal_photo = await File.get_or_none(contacts__owner_id=user_id, contacts__target_id=target_user.id).only(
+        "id", "created_at", "constant_access_hash", "constant_file_ref", "photo_stripped", "photo_path", "photo_sizes",
+    )
+
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
@@ -156,6 +160,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
             phone_calls_available=True,
             phone_calls_private=False,
             fallback_photo=photo_fallback_db.to_tl() if photo_fallback_db is not None else None,
+            personal_photo=personal_photo.to_tl_photo() if personal_photo is not None else None,
             translations_disabled=True,
             # video_calls_available=True,
         ),

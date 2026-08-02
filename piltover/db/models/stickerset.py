@@ -16,7 +16,8 @@ from piltover.db import models
 from piltover.db.enums import StickerSetType, StickerSetOfficialType
 from piltover.tl import InputStickerSetEmpty, InputStickerSetID, InputStickerSetShortName, Long, PhotoSize, \
     StickerPack, InputStickerSetAnimatedEmoji, InputStickerSetDice, InputStickerSetAnimatedEmojiAnimations, \
-    InputStickerSetEmojiGenericAnimations, InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons
+    InputStickerSetEmojiGenericAnimations, InputStickerSetEmojiDefaultStatuses, InputStickerSetEmojiDefaultTopicIcons, \
+    StickerKeyword
 from piltover.tl.to_format import StickerSetToFormat
 from piltover.tl.types.internal import StickerSetToFormatCommon, StickerSetToFormatForUser
 from piltover.tl.types.internal_access import AccessHashPayloadStickerset

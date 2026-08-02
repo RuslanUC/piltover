@@ -235,6 +235,8 @@ async def send_message_internal(
 
     schedule = False
     real_opposite = opposite
+    # TODO: handle scheduled_date=0x7FFFFFFE
+    #  https://core.telegram.org/api/scheduled-messages
     if scheduled_date is not None and (scheduled_date - APP_CONFIG.scheduled_instant_send_threshold) > time():
         schedule = True
         opposite = False

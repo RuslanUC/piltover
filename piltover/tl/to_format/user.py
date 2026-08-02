@@ -1,7 +1,7 @@
 from time import time
 
 from piltover.context import NeedContextValuesContext
-from piltover.tl import types
+from piltover.tl import types, UserProfilePhoto
 from piltover.tl.serialization_context import EMPTY_SERIALIZATION_CONTEXT, SerializationContext
 
 
@@ -9,12 +9,14 @@ class UserToFormat(types.UserToFormatInternal):
     def _write(self, ctx: SerializationContext) -> bytes:
         from piltover.db.enums import PrivacyRuleKeyType
         from piltover.db.models.presence import Presence, EMPTY as PRESENCE_EMPTY
+        from piltover.db.models import Contact
 
         presence = PRESENCE_EMPTY
         has_access_to_phone = False
         has_access_to_photo = False
         has_access_to_status = False
 
+        contact: Contact | None
         if ctx.values is not None:
             contact = ctx.values.contacts.get((ctx.user_id, self.id), None)
             current_is_contact = (self.id, ctx.user_id) in ctx.values.contacts
@@ -37,7 +39,14 @@ class UserToFormat(types.UserToFormatInternal):
             phone_number = self.phone
 
         photo = types.UserProfilePhotoEmpty()
-        if has_access_to_photo and self.photo is not None:
+        if contact is not None and contact.personal_photo_id is not None and contact.personal_photo is not None:
+            photo = UserProfilePhoto(
+                photo_id=contact.personal_photo_id,
+                dc_id=2,
+                stripped_thumb=contact.personal_photo.photo_stripped,
+                personal=True,
+            )
+        elif has_access_to_photo and self.photo is not None:
             photo = self.photo
 
         emoji_status = self.emoji_status

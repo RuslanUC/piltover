@@ -4,12 +4,13 @@ from tortoise.transactions import in_transaction
 import piltover.app.utils.updates_manager as upd
 from piltover.context import request_ctx
 from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType
-from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule, Bot
+from piltover.db.models import User, UserPhoto, Peer, UploadingFile, PrivacyRule, Bot, Contact
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector
+from piltover.tl import InputPhoto, InputPhotoEmpty, PhotoEmpty, LongVector, InputFile, InputFileBig
 from piltover.tl.base import InputUser as TLInputUserBase, Photo as TLPhotoBase
-from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto
+from piltover.tl.functions.photos import GetUserPhotos, UploadProfilePhoto, DeletePhotos, UpdateProfilePhoto, \
+    UploadContactProfilePhoto
 from piltover.tl.types.photos import Photos, Photo as PhotosPhoto, PhotosSlice
 from piltover.worker import MessageHandler
 
@@ -85,9 +86,7 @@ async def upload_profile_photo(request: UploadProfilePhoto, user: User):
         raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
 
     storage = request_ctx.get().storage
-    file = await uploaded_file.finalize_upload(
-        storage, "image/png", file_type=FileType.PHOTO, profile_photo=True,
-    )
+    file = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO, profile_photo=True)
     async with in_transaction():
         if target_user.bot:
             await UserPhoto.filter(user=target_user).delete()
@@ -150,7 +149,7 @@ async def delete_photos(request: DeletePhotos, user: User) -> list[int]:
 
 
 @handler.on_request(UpdateProfilePhoto)
-async def update_profile_photo(request: UpdateProfilePhoto, user: User):
+async def update_profile_photo(request: UpdateProfilePhoto, user: User) -> PhotosPhoto:
     target_user = await _current_user_or_bot(request.bot, user)
 
     photo = None
@@ -181,4 +180,41 @@ async def update_profile_photo(request: UpdateProfilePhoto, user: User):
     )
 
 
-# TODO: UploadContactProfilePhoto
+@handler.on_request(UploadContactProfilePhoto, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def upload_contact_profile_photo(request: UploadContactProfilePhoto, user_id: int) -> PhotosPhoto:
+    # TODO: support request.suggest
+    if not request.save:
+        raise ErrorRpc(error_code=400, error_message="NEED_ACTION_MISSING")
+
+    peer_type, peer_user_id = Peer.type_and_id_from_input_raise(user_id, request.user_id)
+    if peer_type is not PeerType.USER:
+        raise ErrorRpc(error_code=400, error_message="USER_ID_INVALID")
+
+    contact = await Contact.get_or_none(owner_id=user_id, target_id=peer_user_id)
+    if contact is None:
+        raise ErrorRpc(error_code=400, error_message="CONTACT_MISSING")
+
+    if request.file is not None:
+        if not isinstance(request.file, (InputFile, InputFileBig)):
+            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+
+        uploaded_file = await UploadingFile.get_or_none(user_id=user_id, file_id=request.file.id)
+        if uploaded_file is None:
+            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+        if uploaded_file.mime is None or not uploaded_file.mime.startswith("image/"):
+            raise ErrorRpc(error_code=400, error_message="INPUT_FILE_INVALID")
+
+        storage = request_ctx.get().storage
+        file = await uploaded_file.finalize_upload(storage, "image/png", file_type=FileType.PHOTO, profile_photo=True)
+        contact.personal_photo = file
+        await contact.save(update_fields=["personal_photo_id"])
+    else:
+        contact.personal_photo = None
+        await contact.save(update_fields=["personal_photo_id"])
+
+    # TODO: send update(s)?
+
+    return PhotosPhoto(
+        photo=contact.personal_photo.to_tl_photo() if contact.personal_photo is not None else PhotoEmpty(id=0),
+        users=[],
+    )

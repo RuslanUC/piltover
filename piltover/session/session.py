@@ -375,8 +375,11 @@ class Session:
             for contact in await Contact.filter(
                 Q(owner_id=self.user_id, target_id__in=values.users)
                 | Q(owner_id__in=values.users, target_id=self.user_id)
+            ).select_related("personal_photo").only(
+                "id", "owner_id", "target_id", "first_name", "last_name", "known_phone_number",
+                "personal_photo_id", "personal_photo__id", "personal_photo__photo_stripped",
             ):
-                result.contacts[(contact.owner_id, contact.target_id)] = contact
+                result.contacts[(contact.owner_id, cast(int, contact.target_id))] = contact
                 if contact.owner_id != self.user_id:
                     contact_ids.add(contact.owner_id)
 

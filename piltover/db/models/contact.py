@@ -15,9 +15,11 @@ class Contact(Model):
     last_name: str = fields.CharField(max_length=128, null=True, default=None)
     # TODO: fill from AddContact.add_phone_privacy_exception
     #target_can_view_phone: bool = fields.BooleanField(default=False)
+    personal_photo: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None)
 
     owner_id: int
     target_id: int | None
+    personal_photo_id: int | None
 
     class Meta:
         unique_together = (
