@@ -11,11 +11,11 @@ from piltover.exceptions import Unreachable
 
 _UNREAD_COUNTS_SQL = """
 SELECT
-    state.peer_id peer, COUNT(mref.id) count
+    state.id state_id, COUNT(mref.id) count
 FROM readstate state
     JOIN messageref mref on state.peer_id = mref.peer_id and mref.id > state.last_message_id
-WHERE state.owner_id = {user_id_param} AND state.peer_id {peer_condition}
-GROUP BY state.peer_id
+WHERE state.id {state_condition}
+GROUP BY state_id
 ;
 """
 
@@ -77,14 +77,12 @@ class ReadState(Model):
             else:
                 where_condition = f"IN ({','.join(placeholders[1:])})"
 
-            sql = _UNREAD_COUNTS_SQL.format(user_id_param=placeholders[0], peer_condition=where_condition)
-            params = [user_id]
-            for peer in peers:
-                params.append(peer.id)
+            sql = _UNREAD_COUNTS_SQL.format(state_condition=where_condition)
+            params = [state.id for state in in_read_states]
 
             _, results = await conn.execute_query(sql, params)
             for res in results:
-                unread_by_peer[res["peer"]] = res["count"]
+                unread_by_peer[res["state_id"]] = res["count"]
 
         unread_reactions_by_peer = {}
         if not no_reactions:
@@ -135,7 +133,7 @@ class ReadState(Model):
             result.append((
                 in_read_state.last_message_id,
                 peer.out_max_read_id,
-                unread_by_peer.get(peer.id, 0),
+                unread_by_peer.get(in_read_state.id, 0),
                 unread_reactions_by_peer.get(peer.id, 0),
                 unread_mentions_by_chat.get(unread_target_id, 0),
             ))
