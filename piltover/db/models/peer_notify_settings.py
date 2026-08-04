@@ -8,6 +8,7 @@ from tortoise import fields, Model
 from piltover.db import models
 from piltover.db.enums import NotifySettingsNotPeerType
 from piltover.exceptions import Unreachable, ErrorRpc
+from piltover.tl import NotificationSoundLocal, NotificationSoundDefault
 from piltover.tl.base import NotifyPeer as BaseNotifyPeer, InputNotifyPeer as BaseInputNotifyPeer
 from piltover.tl.types import PeerNotifySettings as TLPeerNotifySettings, NotifyPeer, NotifyUsers, NotifyChats, \
     NotifyBroadcasts, InputNotifyPeer, InputNotifyUsers, InputNotifyChats, InputNotifyBroadcasts
@@ -22,6 +23,9 @@ class PeerNotifySettings(Model):
     muted: bool = fields.BooleanField(default=False)
     muted_until: datetime = fields.DatetimeField(null=True, default=None)
 
+    user_id: int
+    peer_id: int | None
+
     class Meta:
         unique_together = (
             ("user", "peer"),
@@ -32,12 +36,12 @@ class PeerNotifySettings(Model):
         return TLPeerNotifySettings(
             show_previews=self.show_previews,
             silent=self.muted,
-            mute_until=int(self.muted_until.timestamp()) if self.muted_until else None,
-            android_sound=None,  # TODO
-            other_sound=None,  # TODO
-            ios_sound=None,
-            stories_muted=True,
-            stories_hide_sender=True,
+            mute_until=int(self.muted_until.timestamp()) if self.muted_until else 0,
+            android_sound=NotificationSoundLocal(title="default", data="default"),  # TODO
+            other_sound=NotificationSoundLocal(title="default", data="default"),  # TODO
+            ios_sound=NotificationSoundDefault(),
+            stories_muted=False,
+            stories_hide_sender=False,
             stories_android_sound=None,
             stories_ios_sound=None,
             stories_other_sound=None,

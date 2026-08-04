@@ -23,13 +23,14 @@ from piltover.db.models import User, UserAuthorization, Peer, Presence, Username
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis, \
     TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey, Channel
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session import SessionManager
 from piltover.tl import PeerNotifySettings as TLPeerNotifySettings, GlobalPrivacySettings, AccountDaysTTL, EmojiList, \
     AutoDownloadSettings, PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, Long, \
     UpdatesTooLong, DocumentAttributeFilename, TLObjectVector, InputWallPaperNoFile, InputChannelEmpty, \
     EmojiListNotModified, PrivacyValueDisallowAll, String, EmojiStatusEmpty, EmojiStatus, \
-    GlobalPrivacySettings_200, InputFile, InputFileBig, WallPaperSettings
+    GlobalPrivacySettings_200, InputFile, InputFileBig, WallPaperSettings, Updates, InputNotifyPeer, InputNotifyUsers, \
+    InputNotifyChats, InputNotifyBroadcasts, UpdateNotifySettings as UpdateUpdateNotifySettings
 from piltover.tl.base.account import ResetPasswordResult
 from piltover.tl.base import User as TLUserBase, WallPaper as TLWallPaperBase
 from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotifySettings, GetDefaultEmojiStatuses, \
@@ -41,7 +42,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
     SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis, \
     UpdatePersonalChannel, UpdateNotifySettings, SetGlobalPrivacySettings, SendConfirmPhoneCode, ConfirmPhone, \
-    UpdateEmojiStatus
+    UpdateEmojiStatus, GetNotifyExceptions
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -49,6 +50,7 @@ from piltover.tl.types.auth import SentCode as TLSentCode, SentCodeTypeSms
 from piltover.tl.types.internal import SetSessionInternalPush
 from piltover.utils import gen_safe_prime
 from piltover.utils.srp import btoi
+from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("account")
@@ -1014,5 +1016,45 @@ async def update_emoji_status(request: UpdateEmojiStatus, user: User) -> bool:
     raise ErrorRpc(error_code=400, error_message="DOCUMENT_INVALID")
 
 
-# TODO: GetNotifyExceptions
+@handler.on_request(GetNotifyExceptions, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def get_notify_exceptions(request: GetNotifyExceptions, user_id: int) -> Updates:
+    query = PeerNotifySettings.filter(user_id=user_id)
+    if isinstance(request.peer, InputNotifyPeer):
+        peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, request.peer.peer)
+        if peer_type in (PeerType.SELF, PeerType.USER):
+            query = query.filter(peer__user_id=peer_target_id)
+        elif peer_type is PeerType.CHAT:
+            query = query.filter(peer__chat_id=peer_target_id)
+        elif peer_type is PeerType.CHANNEL:
+            query = query.filter(peer__channel_id=peer_target_id)
+        else:
+            raise Unreachable
+    elif isinstance(request.peer, InputNotifyUsers):
+        query = query.filter(peer__user_id__not_isnull=True)
+    elif isinstance(request.peer, InputNotifyChats):
+        # TODO: chats includes supergroups
+        query = query.filter(peer__chat_id__not_isnull=True)
+    elif isinstance(request.peer, InputNotifyBroadcasts):
+        query = query.filter(peer__channel_id__not_isnull=True)
+
+    exceptions = await query.select_related("peer").order_by("id").limit(1000)
+
+    ucc = UsersChatsChannels()
+    result = []
+    for exception in exceptions:
+        ucc.add_peer(exception.peer)
+        result.append(UpdateUpdateNotifySettings(
+            peer=exception.peer_to_tl(exception.peer, None),
+            notify_settings=exception.to_tl(),
+        ))
+
+    users, chats, channels = await ucc.resolve()
+
+    return upd.UpdatesWithDefaults(
+        updates=result,
+        users=users,
+        chats=[*chats, *channels],
+    )
+
+
 # TODO: ResetNotifySettings

@@ -5,11 +5,12 @@ from tortoise.functions import Max
 
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, PrivacyRuleKeyType
-from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, ChatParticipant, MessageRef, Wallpaper, File
+from piltover.db.models import User, Peer, PrivacyRule, Contact, Channel, ChatParticipant, MessageRef, Wallpaper, File, \
+    PeerNotifySettings
 from piltover.db.models.peer import PeerUserT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.tl import PeerSettings, PeerNotifySettings, TLObjectVector
+from piltover.tl import PeerSettings, PeerNotifySettings as TLPeerNotifySettings, TLObjectVector
 from piltover.tl.functions.users import GetFullUser, GetUsers
 from piltover.tl.types import UserFull as FullUser, InputUser, BotInfo as TLBotInfo, InputUserSelf, \
     InputUserFromMessage, InputPeerUser, InputPeerSelf, InputPeerUserFromMessage
@@ -138,6 +139,11 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
         "id", "created_at", "constant_access_hash", "constant_file_ref", "photo_stripped", "photo_path", "photo_sizes",
     )
 
+    notify_settings_tl = TLPeerNotifySettings(show_previews=True)
+    notify_settings = await PeerNotifySettings.get_or_none(user_id=user_id, peer__user_id=target_user.id)
+    if notify_settings is not None:
+        notify_settings_tl = notify_settings.to_tl()
+
     return UserFull(
         full_user=FullUser(
             can_pin_message=True,
@@ -145,7 +151,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
             about=target_user.about if privacy_rules[PrivacyRuleKeyType.ABOUT] else "",
             settings=PeerSettings(),
             profile_photo=photo,
-            notify_settings=PeerNotifySettings(show_previews=True),
+            notify_settings=notify_settings_tl,
             common_chats_count=common_chats_count,
             birthday=birthday,
             read_dates_private=target_user.read_dates_private,

@@ -10,10 +10,13 @@ from tortoise.transactions import in_transaction
 from piltover.db import models
 from piltover.db.enums import DialogFolderId
 from piltover.db.models.dialog_base import DialogBase, DialogBaseT
-from piltover.tl import PeerNotifySettings
+from piltover.tl import PeerNotifySettings as TLPeerNotifySettings
 from piltover.tl.base import InputUser as TLInputUserBase, InputPeer as TLInputPeerBase, \
     InputChannel as TLInputChannelBase
 from piltover.tl.types import Dialog as TLDialog
+
+
+DEFAULT_NOTIFY_SETTINGS = TLPeerNotifySettings(show_previews=True)
 
 
 class Dialog(DialogBase):
@@ -56,6 +59,8 @@ class Dialog(DialogBase):
         draft = await models.MessageDraft.get_or_none(user_id=self.owner_id, peer_id=self.peer_id)
         draft = draft.to_tl() if draft else None
 
+        notify_settings = await models.PeerNotifySettings.get_or_none(user_id=self.owner_id, peer_id=self.peer_id)
+
         return TLDialog(
             pinned=self.pinned_index is not None,
             unread_mark=self.unread_mark,
@@ -72,7 +77,7 @@ class Dialog(DialogBase):
             pts=pts,
 
             view_forum_as_messages=False,
-            notify_settings=PeerNotifySettings(),
+            notify_settings=notify_settings.to_tl() if notify_settings is not None else DEFAULT_NOTIFY_SETTINGS,
         )
 
     @classmethod
@@ -82,16 +87,20 @@ class Dialog(DialogBase):
         if not dialogs:
             return []
 
+        peers = [dialog.peer for dialog in dialogs]
+        peer_ids = [dialog.peer_id for dialog in dialogs]
+
         drafts = {
             draft.peer_id: draft
-            for draft in await models.MessageDraft.filter(
-                user_id=user_id, peer_id__in=[dialog.peer_id for dialog in dialogs]
-            )
+            for draft in await models.MessageDraft.filter(user_id=user_id, peer_id__in=peer_ids)
         }
 
-        read_states = await models.ReadState.get_in_out_ids_and_unread_bulk(
-            user_id, [dialog.peer for dialog in dialogs],
-        )
+        read_states = await models.ReadState.get_in_out_ids_and_unread_bulk(user_id, peers)
+
+        notify_settings = {
+            settings.peer_id: settings
+            for settings in await models.PeerNotifySettings.filter(user_id=user_id, peer_id__in=peer_ids)
+        }
 
         tl = []
         for dialog, read_state in zip(dialogs, read_states):
@@ -101,10 +110,11 @@ class Dialog(DialogBase):
                 top_message = peer_message.id
 
             draft = None
-            if dialog.peer_id in drafts:
-                draft = drafts[dialog.peer_id].to_tl()
+            if peer_id in drafts:
+                draft = drafts[peer_id].to_tl()
 
             in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = read_state
+            this_notify_settings = notify_settings[peer_id].to_tl() if peer_id in notify_settings else None
 
             # TODO: include pts if peer is channel
             tl.append(TLDialog(
@@ -122,7 +132,7 @@ class Dialog(DialogBase):
                 ttl_period=dialog.peer.user_ttl_period_days * 86400 if dialog.peer.user_ttl_period_days else None,
 
                 view_forum_as_messages=False,
-                notify_settings=PeerNotifySettings(),
+                notify_settings=this_notify_settings if this_notify_settings is not None else DEFAULT_NOTIFY_SETTINGS,
             ))
 
         return tl
