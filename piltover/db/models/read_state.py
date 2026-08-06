@@ -63,24 +63,22 @@ class ReadState(Model):
         fetch_unreads_for = []
         for peer, read_state in zip(peers, in_read_states):
             if (peer.last_message_id or 0) > read_state.last_message_id:
-                fetch_unreads_for.append(peer.id)
+                fetch_unreads_for.append(read_state.id)
 
         unread_by_peer = {}
         if fetch_unreads_for:
             conn = Tortoise.get_connection("default")
             dialect = Dialects(conn.capabilities.dialect)
             placeholder_factory = Parameter.IDX_PLACEHOLDERS[dialect]
-            placeholders = [placeholder_factory(i + 1) for i in range(len(peers) + 1)]
+            placeholders = [placeholder_factory(i + 1) for i in range(len(fetch_unreads_for))]
 
-            if len(peers) == 1:
-                where_condition = f"= {placeholders[1]}"
+            if len(fetch_unreads_for) == 1:
+                where_condition = f"= {placeholders[0]}"
             else:
-                where_condition = f"IN ({','.join(placeholders[1:])})"
+                where_condition = f"IN ({','.join(placeholders)})"
 
             sql = _UNREAD_COUNTS_SQL.format(state_condition=where_condition)
-            params = [state.id for state in in_read_states]
-
-            _, results = await conn.execute_query(sql, params)
+            _, results = await conn.execute_query(sql, fetch_unreads_for)
             for res in results:
                 unread_by_peer[res["state_id"]] = res["count"]
 

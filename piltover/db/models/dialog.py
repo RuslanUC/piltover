@@ -10,13 +10,9 @@ from tortoise.transactions import in_transaction
 from piltover.db import models
 from piltover.db.enums import DialogFolderId
 from piltover.db.models.dialog_base import DialogBase, DialogBaseT
-from piltover.tl import PeerNotifySettings as TLPeerNotifySettings
 from piltover.tl.base import InputUser as TLInputUserBase, InputPeer as TLInputPeerBase, \
     InputChannel as TLInputChannelBase
 from piltover.tl.types import Dialog as TLDialog
-
-
-DEFAULT_NOTIFY_SETTINGS = TLPeerNotifySettings(show_previews=True)
 
 
 class Dialog(DialogBase):
@@ -60,6 +56,9 @@ class Dialog(DialogBase):
         draft = draft.to_tl() if draft else None
 
         notify_settings = await models.PeerNotifySettings.get_or_none(user_id=self.owner_id, peer_id=self.peer_id)
+        notify_settings_tl = models.PeerNotifySettings.DEFAULT_TL
+        if notify_settings is not None:
+            notify_settings_tl = notify_settings.to_tl()
 
         return TLDialog(
             pinned=self.pinned_index is not None,
@@ -75,9 +74,9 @@ class Dialog(DialogBase):
             unread_mentions_count=unread_mentions,
             ttl_period=self.peer.user_ttl_period_days * 86400 if self.peer.user_ttl_period_days else None,
             pts=pts,
+            notify_settings=notify_settings_tl,
 
             view_forum_as_messages=False,
-            notify_settings=notify_settings.to_tl() if notify_settings is not None else DEFAULT_NOTIFY_SETTINGS,
         )
 
     @classmethod
@@ -114,7 +113,9 @@ class Dialog(DialogBase):
                 draft = drafts[peer_id].to_tl()
 
             in_read_max_id, out_read_max_id, unread_count, unread_reactions, unread_mentions = read_state
-            this_notify_settings = notify_settings[peer_id].to_tl() if peer_id in notify_settings else None
+            this_notify_settings_tl = models.PeerNotifySettings.DEFAULT_TL
+            if peer_id in notify_settings:
+                this_notify_settings_tl = notify_settings[peer_id].to_tl()
 
             # TODO: include pts if peer is channel
             tl.append(TLDialog(
@@ -130,9 +131,9 @@ class Dialog(DialogBase):
                 folder_id=dialog.folder_id.value,
                 unread_mentions_count=unread_mentions,
                 ttl_period=dialog.peer.user_ttl_period_days * 86400 if dialog.peer.user_ttl_period_days else None,
+                notify_settings=this_notify_settings_tl,
 
                 view_forum_as_messages=False,
-                notify_settings=this_notify_settings if this_notify_settings is not None else DEFAULT_NOTIFY_SETTINGS,
             ))
 
         return tl

@@ -26,6 +26,20 @@ class PeerNotifySettings(Model):
     user_id: int
     peer_id: int | None
 
+    DEFAULT_TL = TLPeerNotifySettings(
+        show_previews=True,
+        silent=False,
+        mute_until=0,
+        android_sound=NotificationSoundLocal(title="default", data="default"),  # TODO
+        other_sound=NotificationSoundLocal(title="default", data="default"),  # TODO
+        ios_sound=NotificationSoundDefault(),
+        stories_muted=False,
+        stories_hide_sender=False,
+        stories_android_sound=None,
+        stories_ios_sound=None,
+        stories_other_sound=None,
+    )
+
     class Meta:
         unique_together = (
             ("user", "peer"),
