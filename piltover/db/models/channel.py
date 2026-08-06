@@ -7,7 +7,7 @@ from enum import auto, Enum
 from typing import cast
 
 from tortoise import fields
-from tortoise.expressions import Subquery
+from tortoise.expressions import Subquery, F
 from tortoise.models import MODEL
 from tortoise.queryset import QuerySet, QuerySetSingle
 from tortoise.transactions import in_transaction
@@ -82,6 +82,7 @@ class Channel(ChatBase):
     emojiset: models.Stickerset | None = NullableFKSetNullR("models.Stickerset", "channel_emojis")
     wallpaper: models.Wallpaper | None = NullableFKSetNull("models.Wallpaper")
     admins_count: int = fields.SmallIntField(default=0)
+    message_seq: int = fields.BigIntField(default=0)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -332,3 +333,11 @@ class Channel(ChatBase):
             await Channel.filter(id=self.id).update(admins_count=admins_count)
             if refresh:
                 await self.refresh_from_db(["admins_count"])
+
+    @classmethod
+    async def inc_msg_seq(cls, channel_id: int, amount: int = 1) -> int:
+        async with in_transaction():
+            rows = await cls.filter(id=channel_id).update(message_seq=F("message_seq") + amount)
+            if not rows:
+                raise RuntimeError(f"Expected inc_msg_seq to update 1 row")
+            return cast(int, cast(object, await cls.get(id=channel_id).values_list("message_seq", flat=True)))

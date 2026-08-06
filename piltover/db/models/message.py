@@ -1,0 +1,1597 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from datetime import datetime, UTC
+from io import BytesIO
+from os import environ
+from typing import TypeVar, Self, cast, Sequence
+from uuid import UUID, uuid4
+
+from loguru import logger
+from tortoise import fields, Model
+from tortoise.expressions import Q, Subquery
+from tortoise.functions import Count, Max, Coalesce
+from tortoise.transactions import in_transaction
+
+from piltover.cache import Cache
+from piltover.db import models
+from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
+from piltover.db.models.utils import NullableFKSetNull, NullableFK, PartialIndexNonNull, MISSING, Missing
+from piltover.exceptions import Unreachable
+from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount, \
+    MessageReplies as TLMessageReplies, PeerChannel, PeerUser, TLObject, MessageActionEmpty, objects
+from piltover.tl.base import Message as TLMessageBase, Peer as TLPeerBase, ReplyMarkup, MessageActionInst, \
+    ReplyMarkupInst
+from piltover.tl.base.internal import MessageToFormatRef
+from piltover.tl.to_format import MessageToFormat, ChannelMessageToFormat
+from piltover.tl.types.internal import ChannelMessageToFormatCommon, MessageToFormatServiceContent, \
+    MessageToFormatContent
+
+_T = TypeVar("_T")
+BackwardO2OOrT = fields.BackwardOneToOneRelation[_T] | _T
+
+
+def append_channel_min_message_id_to_query_maybe(
+        peer: models.Peer | models.Channel, query: Q, participant: models.ChatParticipant | None = None,
+        user: models.User | int | None = None,
+) -> Q:
+    user_id = user.id if isinstance(user, models.User) else user
+
+    channel = None
+    participant_user_id = None
+    if isinstance(peer, models.Peer) and peer.type is PeerType.CHANNEL:
+        channel = peer.channel
+        participant_user_id = peer.owner_id
+    elif isinstance(peer, models.Channel):
+        channel = peer
+        participant_user_id = user_id
+
+    if channel is not None:
+        if channel.min_available_id or channel.min_available_id_force:
+            query &= Q(id__gte=max(channel.min_available_id or 0, channel.min_available_id_force or 0))
+        if participant is not None and participant.min_message_id is not None:
+            query &= Q(id__gte=participant.min_message_id)
+        else:
+            query &= Q(id__gte=Coalesce(
+                Subquery(
+                    models.ChatParticipant.get_or_none(
+                        user_id=participant_user_id, channel=channel
+                    ).values("min_message_id")
+                ),
+                0,
+            ))
+
+    return query
+
+
+class Message(Model):
+    id: int = fields.BigIntField(primary_key=True)
+    peer: models.Peer = fields.ForeignKeyField("models.Peer")
+    local_id: int = fields.BigIntField()
+    random_id: int | None = fields.BigIntField(null=True, default=None)
+    internal_id: UUID | None = fields.UUIDField(null=True, default=None, db_index=True)
+    version: int = fields.IntField(default=0)
+    type: MessageType = fields.IntEnumField(MessageType, default=MessageType.REGULAR, description="")
+    link: models.MessageLink = fields.ForeignKeyField("models.MessageLink")
+
+    author: models.User = fields.ForeignKeyField("models.User", on_delete=fields.SET_NULL, null=True)
+    message: str | None = fields.CharField(max_length=8192, null=True, default=None, db_index=True)
+    media: models.MessageMedia | None = NullableFK("models.MessageMedia")
+    date: datetime = fields.DatetimeField(auto_now_add=True)
+    pinned: bool = fields.BooleanField(default=False)
+    from_scheduled: bool = fields.BooleanField(default=False)
+    reply_to: models.Message | None = NullableFKSetNull("models.Message", related_name="reply")
+    top_message: models.Message | None = NullableFKSetNull("models.Message", related_name="msg_top_message")
+    discussion: models.Message | None = NullableFKSetNull("models.Message", related_name="msg_discussion_message")
+    is_discussion: bool = fields.BooleanField(default=False)
+    scheduled_by_user: models.User | None = NullableFK("models.User", related_name="message_scheduled")
+    edit_date: datetime | None = fields.DatetimeField(null=True, default=None)
+    # TODO: use tl for entities
+    entities: list[dict] | None = fields.JSONField(null=True, default=None)
+    extra_info: bytes | None = fields.BinaryField(null=True, default=None)
+    media_group_id: int = fields.BigIntField(null=True, default=None)
+    channel_post: bool = fields.BooleanField(default=False)
+    anonymous: bool = fields.BooleanField(default=False)
+    post_author: str | None = fields.CharField(max_length=128, null=True, default=None)
+    scheduled_date: datetime | None = fields.DatetimeField(null=True, default=None)
+    ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
+    # TODO: create fields type for tl objects
+    reply_markup: bytes | None = fields.BinaryField(null=True, default=None)
+    no_forwards: bool = fields.BooleanField(default=False)
+    edit_hide: bool = fields.BooleanField(default=False)
+    fwd_header: models.MessageFwdHeader | None = NullableFK("models.MessageFwdHeader")
+    post_info: models.ChannelPostInfo | None = NullableFK("models.ChannelPostInfo")
+    via_bot: models.User | None = NullableFKSetNull("models.User", related_name="msg_via_bot")
+    reactions_version: int = fields.IntField(default=0)
+    replies_version: int = fields.IntField(default=0)
+    send_as_channel: models.Channel | None = NullableFK("models.Channel")
+    author_reactions_unread: bool = fields.BooleanField(default=False)
+    can_see_reactions_list: bool = fields.BooleanField(default=False)
+    reply_quote_text: str | None = fields.TextField(null=True, default=None)
+    reply_quote_offset: int | None = fields.IntField(null=True, default=None)
+
+    peer_id: int
+    reply_to_id: int | None
+    top_message_id: int | None
+    discussion_id: int | None
+    scheduled_by_user_id: int | None
+    author_id: int
+    media_id: int | None
+    fwd_header_id: int | None
+    post_info_id: int | None
+    via_bot_id: int | None
+    comments_info_id: int | None
+    send_as_channel_id: int | None
+    link_id: int
+
+    TTL_MULT = 86400
+    if (_ttl_mult := environ.get("DEBUG_MESSAGE_TTL_MULTIPLIER", "")).isdigit():
+        TTL_MULT = int(_ttl_mult)
+
+    _cached_reply_markup: ReplyMarkup | None | Missing = MISSING
+
+    taskiqscheduledmessages: BackwardO2OOrT[models.TaskIqScheduledMessage]
+
+    PREFETCH_FIELDS_MIN = (
+        "peer", "media",
+    )
+    PREFETCH_FIELDS = (
+        *PREFETCH_FIELDS_MIN, "media__file", "media__poll", "fwd_header", "fwd_header__saved_peer", "post_info",
+        "peer__channel",
+    )
+    PREFETCH_MAYBECACHED = ("content",)
+    _FETCH_CACHED_REFS = ("peer", "media", "media__file")
+    _FETCH_CACHED_CONTENTS = (
+        "peer", "media", "media__file", "media__poll", "media__poll__pollanswers", "post_info", "fwd_header",
+        "fwd_header__saved_peer",
+    )
+
+    class Meta:
+        unique_together = (
+            ("peer_id", "random_id", "author_id"),
+        )
+        indexes = (
+            ("peer_id", "pinned"),
+            ("peer_id", "local_id"),
+            ("peer_id", "scheduled_by_user_id"),
+        )
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(id={self.id}, peer={self.peer!r})"
+
+    def cache_key(self, user_id: int) -> str:
+        return f"message-ref:{user_id}:{self.id}:{self.version}"
+
+    @classmethod
+    async def get_(
+            cls, id_: int, peer: models.Peer, types: tuple[MessageType, ...] = (MessageType.REGULAR,),
+            prefetch_all: bool = False, prefetch: tuple[str, ...] = (),
+    ) -> Self | None:
+        types_query = Q()
+        for message_type in types:
+            types_query |= Q(type=message_type)
+
+        query = Q(id=id_, peer=peer) & types_query
+        query = append_channel_min_message_id_to_query_maybe(peer, query)
+
+        return await cls.get_or_none(query).select_related(
+            *(cls.PREFETCH_FIELDS if prefetch_all else cls.PREFETCH_FIELDS_MIN),
+            *prefetch,
+        )
+
+    @classmethod
+    async def get_many(
+            cls, ids: list[int], peer: models.Peer, prefetch_fields: tuple[str, ...] = ()
+    ) -> list[Self]:
+        query = Q(id__in=ids, peer=peer, type=MessageType.REGULAR)
+        query = append_channel_min_message_id_to_query_maybe(peer, query)
+
+        return await cls.filter(query).select_related(*cls.PREFETCH_FIELDS_MIN, *prefetch_fields)
+
+    def _to_tl_ref(
+            self, out: bool, mentioned: bool, media_unread: bool,
+    ) -> MessageToFormatRef:
+        return MessageToFormatRef(
+            id=self.id,
+            pinned=self.pinned,
+            peer_id=self.peer.to_tl(),
+            out=out,
+            reply_to=self.make_reply_to_header(),
+            mentioned=mentioned,
+            media_unread=media_unread,
+            from_scheduled=self.from_scheduled or self.scheduled_date is not None,
+        )
+
+    async def to_tl_ref(self, user_id: int) -> MessageToFormatRef:
+        cache_key = self.cache_key(user_id)
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            return cached
+
+        message_mention = await models.MessageMention.get_or_none(
+            user_id=user_id, message_id=self.content_id
+        ).values_list("id", "unread_target_id")
+
+        if message_mention is not None:
+            mentioned = message_mention is not None
+            _, mention_target_id = message_mention
+            mention_read = mention_target_id is None
+        else:
+            mentioned = False
+            mention_read = True
+
+        media_unread = False
+        if self.media \
+                and self.media.file \
+                and self.media.file.type in READABLE_FILE_TYPES:
+            media_unread = not await models.MessageMediaRead.filter(user_id=user_id, message=self).exists()
+
+        message = self._to_tl_ref(
+            out=user_id == self.author_id,
+            mentioned=mentioned,
+            media_unread=media_unread if media_unread else not mention_read,
+        )
+
+        await Cache.obj.set(cache_key, message)
+        return message
+
+    async def get_mentioned_media_unread(self, user_id: int) -> tuple[bool, bool]:
+        ref = await self.to_tl_ref(user_id)
+        return ref.mentioned, ref.media_unread
+
+    def to_tl_common_channel(self) -> ChannelMessageToFormatCommon:
+        return ChannelMessageToFormatCommon(
+            author_id=self.author_id,
+            id=self.id,
+            channel_id=self.peer.channel_id,
+            from_scheduled=self.from_scheduled or self.scheduled_date is not None,
+            pinned=self.pinned,
+            reply_to=self.make_reply_to_header(),
+        )
+
+    async def to_tl(self, user: models.User | int, with_reactions: bool = True) -> MessageToFormat:
+        user_id = user.id if isinstance(user, models.User) else user
+
+        reactions = None
+        if with_reactions and self.type is MessageType.REGULAR:
+            reactions = await self.to_tl_reactions(user_id)
+
+        return MessageToFormat(
+            ref=await self.to_tl_ref(user_id),
+            content=await self.to_tl_content(),
+            reactions=reactions,
+            replies=await self.to_tl_replies(),
+        )
+
+    @classmethod
+    async def to_tl_ref_bulk(cls, refs: list[models.Message], user_id: int, skip_cache: bool = False) -> list[MessageToFormatRef]:
+        if not refs:
+            return []
+
+        cache_keys = [ref.cache_key(user_id) for ref in refs]
+        if skip_cache:
+            cached = [None] * len(refs)
+        else:
+            cached = await Cache.obj.multi_get(cache_keys)
+
+        message_content_ids = {
+            ref.content.id
+            for ref, cached_ref in zip(refs, cached)
+            if cached_ref is None and not ref.is_service()
+        }
+
+        mentioned: dict[int, bool] = {}
+
+        if message_content_ids:
+            mentions_info = await models.MessageMention.filter(
+                user_id=user_id, message_id__in=message_content_ids,
+            ).values_list("message_id", "unread_target_id")
+            for message_id, mention_target_id in mentions_info:
+                mentioned[message_id] = mention_target_id is None
+
+        valid_media_ref_ids = [
+            ref.id
+            for ref in refs
+            if (
+                    ref.media is not None
+                    and ref.media.file is not None
+                    and ref.media.file.type in READABLE_FILE_TYPES
+            )
+        ]
+
+        if valid_media_ref_ids:
+            media_read = set(await models.MessageMediaRead.filter(
+                user_id=user_id, message_id__in=valid_media_ref_ids,
+            ).values_list("message_id", flat=True))
+        else:
+            media_read = set()
+
+        to_cache = []
+
+        result = []
+        for ref, cached_ref in zip(refs, cached):
+            if cached_ref is not None:
+                result.append(cached_ref)
+                continue
+
+            result.append(ref._to_tl_ref(
+                out=user_id == ref.author_id,
+                mentioned=ref.content_id in mentioned,
+                media_unread=ref.id not in media_read and not mentioned.get(ref.content_id, True),
+            ))
+
+            to_cache.append((ref.cache_key(user_id), result[-1]))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
+
+        return result
+
+    @classmethod
+    async def get_mentioned_media_unread_bulk(cls, messages: list[Message], user_id: int) -> list[tuple[bool, bool]]:
+        refs = await cls.to_tl_ref_bulk(messages, user_id)
+        return [(ref.mentioned, ref.media_unread) for ref in refs]
+
+    @classmethod
+    async def to_tl_bulk(
+            cls, messages: list[Message], user: models.User | int, with_reactions: bool = True,
+    ) -> list[TLMessageBase]:
+        user_id = user.id if isinstance(user, models.User) else user
+        raw_contents = [ref.content for ref in messages]
+
+        reactionss: list[MessageReactions | None] = [None for _ in messages]
+        if with_reactions:
+            reactionss = await Message.to_tl_reactions_bulk(messages, user_id)
+
+        refs = await Message.to_tl_ref_bulk(messages, user_id)
+        contents = await Message.to_tl_content_bulk(raw_contents)
+        repliess = await Message.to_tl_replies_bulk(messages)
+
+        if len(contents) != len(refs):
+            raise Unreachable(f"len(contents) != len(refs), {len(contents)} != {len(refs)}")
+
+        return [
+            MessageToFormat(ref=ref, content=content, reactions=reactions, replies=replies)
+            for ref, content, reactions, replies in zip(refs, contents, reactionss, repliess)
+        ]
+
+    @classmethod
+    async def to_tl_channel_bulk(cls, messages: list[Message]) -> list[ChannelMessageToFormat]:
+        raw_contents = [ref.content for ref in messages]
+
+        commons = [ref.to_tl_common_channel() for ref in messages]
+        contents = await Message.to_tl_content_bulk(raw_contents)
+        repliess = await Message.to_tl_replies_bulk(messages)
+
+        if len(contents) != len(commons):
+            raise Unreachable(f"len(contents) != len(commons), {len(contents)} != {len(commons)}")
+
+        return [
+            ChannelMessageToFormat(common=common, content=content, replies=replies)
+            for common, content, replies in zip(commons, contents, repliess)
+        ]
+
+    async def to_tl_maybecached(self, user_id: int, with_reactions: bool = True) -> TLMessageBase:
+        if self.discussion_id is not None or self.is_discussion:
+            ref, content, replies = await Cache.obj.multi_get([
+                self.cache_key(user_id), self.content.cache_key(), self.cache_key_replies(),
+            ])
+        else:
+            ref, content = await Cache.obj.multi_get([self.cache_key(user_id), self.content.cache_key()])
+            replies = None
+        reactions = None
+
+        need_fetch = set()
+        if ref is None:
+            need_fetch.update(self._FETCH_CACHED_REFS)
+        if content is None:
+            need_fetch.update(self._FETCH_CACHED_CONTENTS)
+
+        if need_fetch:
+            await self.fetch_related(*need_fetch)
+
+        if ref is None:
+            ref = await self.to_tl_ref(user_id)
+        if content is None:
+            content = await self.to_tl_content()
+        if with_reactions:
+            reactions = await self.to_tl_reactions(user_id)
+        if replies is None:
+            replies = await self.to_tl_replies()
+
+        return MessageToFormat(ref=ref, content=content, reactions=reactions, replies=replies)
+
+    @classmethod
+    async def to_tl_bulk_maybecached(
+            cls, refs: list[Message], user_id: int, with_reactions: bool = True,
+    ) -> list[TLMessageBase]:
+        if not refs:
+            return []
+
+        cache_keys = [ref.cache_key(user_id) for ref in refs] + [ref.cache_key() for ref in refs]
+
+        all_cached = await Cache.obj.multi_get(cache_keys)
+        refs_cached = all_cached[:len(refs)]
+        contents_cached = all_cached[len(refs):len(refs)*2]
+
+        need_fetch_refs = []
+        need_fetch_contents = []
+
+        for ref, ref_cached, content_cached in zip(refs, refs_cached, contents_cached):
+            if content_cached is None and not ref.is_service():
+                need_fetch_contents.append(ref)
+            elif ref_cached is None:
+                need_fetch_refs.append(ref)
+
+        if need_fetch_refs:
+            await Message.fetch_for_list(need_fetch_refs, *cls._FETCH_CACHED_REFS)
+        if need_fetch_contents:
+            await Message.fetch_for_list(need_fetch_contents, *cls._FETCH_CACHED_CONTENTS)
+
+        refs_tl = await cls.to_tl_ref_bulk([
+            ref for ref, cached in zip(refs, refs_cached) if cached is None
+        ], user_id, True)
+        refs_tl.reverse()
+        contents_tl = await models.Message.to_tl_content_bulk([
+            ref.content for ref, cached in zip(refs, contents_cached) if cached is None
+        ], True)
+        contents_tl.reverse()
+        if with_reactions:
+            reactionss_tl = await cls.to_tl_reactions_bulk(refs, user_id)
+        else:
+            reactionss_tl = [None] * len(refs)
+        replies_tl = await cls.to_tl_replies_bulk(refs)
+
+        results = []
+        zipped = zip(refs, refs_cached, contents_cached, reactionss_tl, replies_tl)
+        for ref, result_ref, result_content, result_reactions, result_replies in zipped:
+            if result_ref is None:
+                result_ref = refs_tl.pop()
+            if result_content is None:
+                result_content = contents_tl.pop()
+
+            results.append(MessageToFormat(
+                ref=result_ref,
+                content=result_content,
+                reactions=result_reactions,
+                replies=result_replies,
+            ))
+
+        return results
+
+    async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, Message]:
+        peers = [self.peer]
+        if opposite and self.peer.type is not PeerType.CHANNEL:
+            peers.extend(await self.peer.get_opposite())
+
+        if self.reply_to_id:
+            replies = {
+                ref.peer_id: ref
+                for ref in await Message.filter(content_id=self.reply_to.content_id)
+            }
+        else:
+            replies = {}
+
+        messages: dict[models.Peer, Message] = {}
+
+        async with in_transaction():
+            content = await self.clone_scheduled()
+
+            for to_peer in peers:
+                # TODO: probably create in bulk too?
+                messages[to_peer] = await Message.create(
+                    peer=to_peer,
+                    content=content,
+                    from_scheduled=to_peer == self.peer,
+                    reply_to=replies.get(to_peer.id),
+                )
+
+            await models.Peer.sync_last_message_bulk(peers)
+            await models.Dialog.create_or_unhide_bulk(peers)
+
+        return messages
+
+    async def forward_for_peers(
+            self, to_peer: models.Peer, peers: list[models.Peer], fwd_header: models.MessageFwdHeader,
+            new_author: models.User | None = None, random_id: int | None = None, random_user_id: int | None = None,
+            reply_to_content_id: int | None = None, drop_captions: bool = False, media_group_id: int | None = None,
+            drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
+            is_discussion: bool = False, channel_post: bool | None = None,
+            post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
+            anonymous: bool | None = None, new_channel_author_id: int | None = None,
+    ) -> list[Self]:
+        if not peers:
+            return []
+
+        content = await self.clone_forward(
+            related_peer=to_peer,
+            new_author=new_author,
+            fwd_header=fwd_header,
+            drop_captions=drop_captions,
+            media_group_id=media_group_id,
+            drop_author=drop_author,
+            is_forward=is_forward,
+            no_forwards=no_forwards,
+            channel_post=channel_post,
+            post_info=post_info,
+            post_author=post_author,
+            anonymous=anonymous,
+            new_channel_author_id=new_channel_author_id,
+            can_see_reactions_list=to_peer.can_see_reactions_list(),
+        )
+
+        peer_ids = [peer.id for peer in peers]
+
+        replies: dict[int, int]
+        if reply_to_content_id:
+            replies = {
+                peer_id: ref_id
+                for ref_id, peer_id in await Message.filter(
+                    peer_id__in=peer_ids, content_id=reply_to_content_id,
+                ).values_list("id", "peer_id")
+            }
+        else:
+            replies = {}
+
+        messages = []
+        for peer in peers:
+            messages.append(Message(
+                peer=peer,
+                content=content,
+                pinned=self.pinned if pinned is None else pinned,
+                random_id=random_id if peer == to_peer else None,
+                random_user_id=random_user_id if peer == to_peer else None,
+                reply_to_id=replies.get(peer.id),
+                is_discussion=is_discussion,
+            ))
+
+        async with in_transaction():
+            await Message.bulk_create(messages)
+            await models.Peer.sync_last_message_bulk(peers)
+
+        ref_ids_by_peer_ids = {
+            peer_id: ref_id
+            for ref_id, peer_id in await Message.filter(
+                peer_id__in=peer_ids, content_id=content.id,
+            ).values_list("id", "peer_id")
+        }
+
+        for message in messages:
+            message.id = ref_ids_by_peer_ids[message.peer.id]
+            message._saved_in_db = True
+
+        return messages
+
+    @classmethod
+    async def forward_for_peers_bulk(
+            cls,
+            new_contents: list[models.MessageContent],
+            to_peer: models.Peer,
+            peers: list[models.Peer],
+            random_ids: Sequence[int | None],
+            random_user_id: int | None,
+            reply_to_content_ids: Sequence[int | None],
+            pinned: Sequence[bool],
+            is_discussion: Sequence[bool],
+    ) -> list[Self]:
+        if not peers or not new_contents:
+            return []
+
+        messages = []
+        for content, random_id, pinned_ in zip(new_contents, random_ids, pinned):
+            for peer in peers:
+                # TODO: fill reply_to_id
+                messages.append(models.Message(
+                    peer=peer,
+                    content=content,
+                    pinned=pinned_,
+                    random_id=random_id if peer == to_peer else None,
+                    random_user_id=random_user_id if peer == to_peer else None,
+                    is_discussion=is_discussion,
+                ))
+
+        async with in_transaction():
+            await Message.bulk_create(messages)
+            await models.Peer.sync_last_message_bulk(peers)
+
+        ref_ids_by_peer_ids = {
+            (peer_id, content_id): ref_id
+            for ref_id, peer_id, content_id in await Message.filter(
+                peer_id__in=[peer.id for peer in peers], content_id__in=[content.id for content in new_contents],
+            ).values_list("id", "peer_id", "content_id")
+        }
+
+        replies_by_content_id = {
+            content.id: reply_to_content_id
+            for content, reply_to_content_id in zip(new_contents, reply_to_content_ids)
+            if reply_to_content_id is not None
+        }
+
+        to_update = []
+
+        for message in messages:
+            message.id = ref_ids_by_peer_ids[(message.peer.id, message.content.id)]
+            message._saved_in_db = True
+
+            if message.content.id in replies_by_content_id:
+                reply_to_ref_id = ref_ids_by_peer_ids.get(
+                    (message.peer.id, replies_by_content_id[message.content.id])
+                )
+                if reply_to_ref_id:
+                    message.reply_to_id = reply_to_ref_id
+                    to_update.append(message)
+
+        if to_update:
+            await cls.bulk_update(to_update, ["reply_to_id"])
+
+        return messages
+
+    @classmethod
+    async def create_for_peer(
+            cls, peer: models.Peer, author: models.User | int, *, random_id: int | None = None,
+            random_user_id: int | None = None, opposite: bool = True, unhide_dialog: bool = True,
+            reply_to: Message | None = None, top_message: Message | None = None,
+            **message_kwargs,
+    ) -> list[Message]:
+        author_kwargs = {}
+        if isinstance(author, models.User):
+            author_kwargs["author"] = author
+        elif isinstance(author, int):
+            author_kwargs["author_id"] = author
+        else:
+            raise ValueError(f"Expected User or int, got {author!r}")
+
+        internal_id = uuid4()
+        message_kwargs["internal_id"] = internal_id
+        message_kwargs["random_id"] = random_id
+        message_kwargs["random_user_id"] = random_user_id
+        message_kwargs["link"] = await models.MessageLink.create()
+
+        peers = [peer]
+
+        if peer.type is PeerType.CHANNEL:
+            messages = [
+                cls(
+                    **author_kwargs,
+                    **message_kwargs,
+                    top_message=top_message,
+                    can_see_reactions_list=peer.can_see_reactions_list(),
+                    reply_to=reply_to,
+                    peer=peer,
+                    local_id=await models.Channel.inc_msg_seq(peer.channel_id),
+                )
+            ]
+        else:
+            if opposite:
+                peers.extend(await peer.get_opposite())
+
+            msg_ids = await models.User.inc_msg_seq_bulk([msg_peer.owner_id for msg_peer in peers])
+
+            if reply_to is not None:
+                replies = {ref.peer_id: ref for ref in await cls.filter(internal_id=reply_to.internal_id)}
+            else:
+                replies = {}
+
+            messages = [
+                cls(
+                    **author_kwargs,
+                    **message_kwargs,
+                    can_see_reactions_list=msg_peer.can_see_reactions_list(),
+                    reply_to=replies.get(msg_peer.id),
+                    peer=msg_peer,
+                    local_id=msg_id,
+                )
+                for msg_peer, msg_id in zip(peers, msg_ids)
+            ]
+
+        async with in_transaction():
+            await cls.bulk_create(messages)
+            await models.Peer.sync_last_message_bulk(peers)
+            if unhide_dialog:
+                await models.Dialog.create_or_unhide_bulk(peers)
+
+        return messages
+
+    async def get_for_user(self, for_user: models.User) -> Message | None:
+        if self.peer.type is PeerType.CHANNEL:
+            return self
+
+        if self.peer.type is PeerType.SELF:
+            if for_user.id == self.peer.owner_id:
+                return self
+            return None
+
+        if self.peer.type is PeerType.USER:
+            return await Message.get_or_none(
+                peer__owner=for_user, peer__user=self.peer.owner_id, internal_id=self.internal_id,
+            ).select_related(*self.PREFETCH_FIELDS_MIN)
+
+        if self.peer.type is PeerType.CHAT:
+            return await Message.get_or_none(
+                peer__owner=for_user, peer__chat_id=self.peer.chat_id, internal_id=self.internal_id,
+            ).select_related(*self.PREFETCH_FIELDS_MIN)
+
+        raise Unreachable
+
+    def make_reply_to_header(self) -> MessageReplyHeader | None:
+        if self.reply_to_id is None and self.top_message_id is None:
+            return None
+
+        return MessageReplyHeader(
+            reply_to_msg_id=self.reply_to_id,
+            reply_to_top_id=self.top_message_id,
+            quote=self.reply_quote_text is not None,
+            quote_text=self.reply_quote_text,
+            quote_offset=self.reply_quote_offset,
+        )
+
+    async def _get_user_reaction(self, user_id: int) -> tuple[int, None] | tuple[None, int] | None:
+        return cast(
+            tuple[int, None] | tuple[None, int] | None,
+            await models.MessageReaction.get_or_none(
+                user_id=user_id, message_id=self.link_id,
+            ).values_list("reaction_id", "custom_emoji_id")
+        )
+
+    @staticmethod
+    async def _get_user_reaction_bulk(
+            link_ids: list[int], user_id: int,
+    ) -> dict[int, tuple[int, None] | tuple[None, int]]:
+        return {
+            message_id: (reaction_id, custom_emoji_id)
+            for message_id, reaction_id, custom_emoji_id in await models.MessageReaction.filter(
+                user_id=user_id, message_id__in=link_ids,
+            ).values_list("message_id", "reaction_id", "custom_emoji_id")
+        }
+
+    async def to_tl_reactions(self, user_id: int) -> MessageReactions | None:
+        if self.type is not MessageType.REGULAR:
+            return None
+
+        user_reaction = await self._get_user_reaction(user_id)
+        if user_reaction:
+            user_reaction_id, user_custom_emoji_id = user_reaction
+            min_ = False
+        else:
+            user_reaction_id = user_custom_emoji_id = None
+            min_ = True
+
+        if self.author_id == user_id:
+            cache_key = self.cache_key_reactions_author(user_id)
+        else:
+            cache_key = self.cache_key_reactions(user_reaction_id, user_custom_emoji_id)
+
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            return cached
+
+        reactions = await models.MessageReaction \
+            .annotate(msg_count=Count("id")) \
+            .filter(message_id=self.link_id) \
+            .group_by("reaction__id", "custom_emoji_id") \
+            .select_related("reaction") \
+            .values_list("reaction__id", "custom_emoji_id", "reaction__reaction", "msg_count")
+
+        results = []
+
+        for reaction_id, custom_emoji_id, reaction_emoji, msg_count in reactions:
+            if reaction_id is not None:
+                reaction = ReactionEmoji(emoticon=reaction_emoji)
+            elif custom_emoji_id is not None:
+                reaction = ReactionCustomEmoji(document_id=custom_emoji_id)
+            else:
+                raise Unreachable
+
+            results.append(ReactionCount(
+                chosen_order=1 if reaction_id == user_reaction_id and custom_emoji_id == user_custom_emoji_id else None,
+                reaction=reaction,
+                count=msg_count,
+            ))
+
+        can_see_list = self.can_see_reactions_list
+
+        recent_reactions = None
+        if can_see_list:
+            if self.author_id == user_id:
+                is_unread = self.author_reactions_unread
+            else:
+                is_unread = False
+
+            recent_reactions = [
+                recent.to_tl_peer_reaction(user_id, is_unread)
+                for recent in await models.MessageReaction.filter(
+                    message_id=self.link_id,
+                ).order_by("-date").limit(5).select_related("reaction")
+            ]
+
+        result = MessageReactions(
+            min=min_,
+            can_see_list=can_see_list,
+            results=results,
+            recent_reactions=recent_reactions,
+        )
+
+        await Cache.obj.set(cache_key, result)
+
+        return result
+
+    @classmethod
+    async def to_tl_reactions_bulk(cls, messages: list[Message], user_id: int) -> list[MessageReactions]:
+        if not messages:
+            return []
+
+        link_ids = [ref.link_id for ref in messages if ref.type is MessageType.REGULAR]
+        user_reactions = await cls._get_user_reaction_bulk(link_ids, user_id)
+
+        cache_keys = []
+        for ref in messages:
+            if ref.author_id == user_id:
+                cache_keys.append(ref.cache_key_reactions_author(user_id))
+            else:
+                if ref.link_id in user_reactions:
+                    cache_keys.append(ref.cache_key_reactions(*user_reactions[ref.link_id]))
+                else:
+                    cache_keys.append(ref.cache_key_reactions(None, None))
+
+        cached_reactions = await Cache.obj.multi_get(cache_keys)
+
+        not_cached_ids = [
+            ref.link_id
+            for ref, cached in zip(messages, cached_reactions)
+            if cached is None and ref.type is MessageType.REGULAR
+        ]
+        if not_cached_ids:
+            reactions_raw = await models.MessageReaction \
+                .annotate(msg_count=Count("id")) \
+                .filter(message_id__in=not_cached_ids) \
+                .group_by("message_id", "reaction__id", "custom_emoji_id") \
+                .select_related("reaction") \
+                .values_list("message_id", "reaction__id", "custom_emoji_id", "reaction__reaction", "msg_count")
+        else:
+            reactions_raw = []
+
+        reactions = defaultdict(list)
+        for message_id, reaction_id, custom_emoji_id, reaction_emoji, msg_count in reactions_raw:
+            reactions[message_id].append((reaction_id, custom_emoji_id, reaction_emoji, msg_count))
+
+        results = []
+        to_cache = []
+        recent_to_fetch: list[tuple[Message, list]] = []
+
+        for ref, cached, cache_key in zip(messages, cached_reactions, cache_keys):
+            if ref.type is not MessageType.REGULAR:
+                results.append(None)
+                continue
+            if cached is not None:
+                results.append(cached)
+                continue
+
+            total_reactions = 0
+
+            reaction_results = []
+            for reaction_id, custom_emoji_id, reaction_emoji, msg_count in reactions[ref.link_id]:
+                if reaction_id is not None:
+                    reaction = ReactionEmoji(emoticon=reaction_emoji)
+                elif custom_emoji_id is not None:
+                    reaction = ReactionCustomEmoji(document_id=custom_emoji_id)
+                else:
+                    raise Unreachable
+
+                total_reactions += msg_count
+                reaction_results.append(ReactionCount(
+                    chosen_order=1 if (reaction_id, custom_emoji_id) == user_reactions.get(ref.link_id) else None,
+                    reaction=reaction,
+                    count=msg_count,
+                ))
+
+            can_see_list = ref.can_see_reactions_list
+
+            recent_reactions = None
+            if can_see_list and total_reactions <= 5:
+                recent_reactions = []
+                recent_to_fetch.append((ref, recent_reactions))
+
+            results.append(MessageReactions(
+                min=ref.link_id not in user_reactions and ref.author_id != user_id,
+                can_see_list=can_see_list,
+                results=reaction_results,
+                recent_reactions=recent_reactions,
+            ))
+            to_cache.append((cache_key, results[-1]))
+
+        if recent_to_fetch:
+            link_ids = [ref.link_id for ref, _ in recent_to_fetch]
+            ref_by_id = {ref.link_id: ref for ref, _ in recent_to_fetch}
+            recents_by_message = {ref.link_id: recent_list for ref, recent_list in recent_to_fetch}
+            for recent in await models.MessageReaction.filter(
+                    message_id__in=link_ids,
+            ).order_by("-date").limit(5).select_related("reaction").only(
+                "user_id", "message_id", "custom_emoji_id", "date", "reaction_id",
+                "reaction__id", "reaction__reaction",
+            ):
+                content = ref_by_id[recent.message_id]
+                is_unread = content.author_reactions_unread if content.author_id == user_id else False
+                recents_by_message[recent.message_id].append(recent.to_tl_peer_reaction(user_id, is_unread))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
+
+        return results
+
+    def cache_key_reactions_author(self, user_id: int) -> str:
+        return f"message-reactions:{self.link_id}:a{user_id}:{self.reactions_version}"
+
+    def cache_key_reactions(self, reaction: int | None, custom_emoji: int | None) -> str:
+        return (
+            f"message-reactions:"
+            f"{self.link_id}:"
+            f"r{reaction or 0}-{custom_emoji or 0}:"
+            f"{self.reactions_version}"
+        )
+
+    async def _get_recent_repliers(self) -> list[TLPeerBase] | None:
+        query = Q(reply_to_id=self.discussion_id, top_message_id=self.discussion_id, join_type=Q.OR)
+        recent_replies = await Message.filter(query).order_by("-id").limit(5).distinct().values_list(
+            "author_id", "anonymous", "send_as_channel_id",
+        )
+
+        recent_repliers = []
+        for user_id, anon, as_channel_id in recent_replies:
+            if as_channel_id:
+                recent_repliers.append(PeerChannel(channel_id=models.Channel.make_id_from(as_channel_id)))
+            elif anon and self.peer.type is PeerType.CHANNEL:
+                channel_id = self.peer.channel_id
+                recent_repliers.append(PeerChannel(channel_id=models.Channel.make_id_from(channel_id)))
+            elif not anon:
+                recent_repliers.append(PeerUser(user_id=user_id))
+            else:
+                logger.warning(f"What: ref {self.id}; {user_id=}, {anon=}, {as_channel_id=}")
+
+        return recent_repliers or None
+
+    async def to_tl_replies(self, with_recent: bool = False) -> TLMessageReplies | None:
+        if not self.is_discussion and self.discussion_id is None:
+            return None
+
+        cache_key = self.cache_key_replies()
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            return cached
+
+        replies = None
+        if self.is_discussion:
+            query = Q(reply_to_id=self.id, top_message_id=self.id, join_type=Q.OR)
+            replies_info = await models.Message.filter(query).annotate(
+                count=Count("id"), max_id=Max("id")
+            ).first().values_list("count", "max_id")
+            if replies_info:
+                replies_count, max_id = replies_info
+            else:
+                replies_count = 0
+                max_id = None
+
+            replies = TLMessageReplies(
+                replies=replies_count,
+                replies_pts=0,
+                max_id=max_id,
+            )
+        elif self.discussion_id is not None:
+            query = Q(reply_to_id=self.discussion_id, top_message_id=self.discussion_id, join_type=Q.OR)
+            replies_info = await models.Message.filter(query).annotate(
+                count=Count("id"), max_id=Max("id"),
+            ).first().values_list("count", "max_id")
+            if replies_info:
+                replies_count, max_id = replies_info
+            else:
+                replies_count = 0
+                max_id = None
+
+            discussion_channel_id = cast(
+                int | None,
+                cast(
+                    object,
+                    await models.Message.get(id=self.discussion_id).values_list("peer__channel_id", flat=True)
+                )
+            )
+
+            recent_repliers = None
+            if with_recent:
+                recent_repliers = await self._get_recent_repliers()
+
+            replies = TLMessageReplies(
+                replies=replies_count,
+                replies_pts=0,
+                comments=True,
+                channel_id=models.Channel.make_id_from(discussion_channel_id) if discussion_channel_id else None,
+                max_id=max_id,
+                recent_repliers=recent_repliers or None,
+            )
+
+        await Cache.obj.set(cache_key, replies)
+
+        return replies
+
+    @classmethod
+    async def to_tl_replies_bulk(
+            cls, refs: list[Message], with_recent: bool = False,
+    ) -> list[TLMessageReplies | None]:
+        cache_keys = [
+            ref.cache_key_replies()
+            for ref in refs
+            if ref.is_discussion or ref.discussion_id is not None
+        ]
+
+        if not cache_keys:
+            return [None] * len(refs)
+
+        cached_replies = await Cache.obj.multi_get(cache_keys)
+
+        ids_to_get = set()
+        channel_ids_to_get = set()
+        cache_idx = 0
+        for ref in refs:
+            if not ref.is_discussion and ref.discussion_id is None:
+                continue
+            cached = cached_replies[cache_idx]
+            cache_idx += 1
+            if cached is not None:
+                continue
+            if ref.is_discussion:
+                ids_to_get.add(ref.id)
+            elif ref.discussion_id is not None:
+                ids_to_get.add(ref.discussion_id)
+                channel_ids_to_get.add(ref.discussion_id)
+            else:
+                raise Unreachable
+
+        replies_stats = {
+            top_msg_id: (count, max_id)
+            for top_msg_id, count, max_id in await models.Message.filter(
+                top_message_id__in=ids_to_get,
+            ).annotate(
+                count=Count("id"), max_id=Max("id"),
+            ).group_by(
+                "top_message_id"
+            ).values_list(
+                "top_message_id", "count", "max_id",
+            )
+        }
+
+        discussion_channel_ids: dict[int, int] = {
+            msg_id: channel_id
+            for msg_id, channel_id in await models.Message.filter(
+                id__in=channel_ids_to_get,
+            ).values_list("id", "peer__channel_id")
+        }
+
+        to_cache = []
+        replies = []
+        cache_idx = 0
+        for ref in refs:
+            if not ref.is_discussion and ref.discussion_id is None:
+                replies.append(None)
+                continue
+            cache_key = cache_keys[cache_idx]
+            cached = cached_replies[cache_idx]
+            cache_idx += 1
+            if cached is not None:
+                replies.append(cached)
+                continue
+
+            if ref.is_discussion:
+                replies_count, max_id = replies_stats.get(ref.id, (0, None))
+                replies_info = TLMessageReplies(
+                    replies=replies_count,
+                    replies_pts=0,
+                    max_id=max_id,
+                )
+            elif ref.discussion_id is not None:
+                replies_count, max_id = replies_stats.get(ref.discussion_id, (0, None))
+                discussion_channel_id = discussion_channel_ids.get(ref.discussion_id)
+
+                recent_repliers = None
+                if with_recent:
+                    recent_repliers = await ref._get_recent_repliers()
+
+                replies_info = TLMessageReplies(
+                    replies=replies_count,
+                    replies_pts=0,
+                    comments=True,
+                    channel_id=models.Channel.make_id_from(discussion_channel_id) if discussion_channel_id else None,
+                    max_id=max_id,
+                    recent_repliers=recent_repliers,
+                )
+            else:
+                raise Unreachable
+
+            replies.append(replies_info)
+            to_cache.append((cache_key, replies_info))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
+
+        return replies
+
+    def cache_key_replies(self) -> str:
+        return f"message-replies:{self.id}:{self.replies_version}"
+
+    @classmethod
+    async def get_from_random_id(cls, user_id: int, peer: models.Peer, random_id: int) -> Message | None:
+        return await Message.get_or_none(
+            peer=peer, author_id=user_id, random_id=random_id,
+        ).select_related(*cls.PREFETCH_MAYBECACHED)
+
+    def is_service(self) -> bool:
+        return self.type not in (MessageType.REGULAR, MessageType.SCHEDULED)
+
+    def _make_from_id(self) -> PeerUser | PeerChannel | None:
+        if self.send_as_channel_id is not None:
+            return PeerChannel(channel_id=models.Channel.make_id_from(self.send_as_channel_id))
+        if not (self.channel_post or self.anonymous):
+            return PeerUser(user_id=self.author_id)
+        return None
+
+    def to_tl_service_content(self) -> MessageToFormatServiceContent:
+        action = TLObject.read(BytesIO(self.extra_info))
+        if not isinstance(action, MessageActionInst):
+            logger.error(
+                f"Expected service message action to "
+                f"be any of this types: {MessageActionInst}, got {action=!r}"
+            )
+            action = MessageActionEmpty()
+
+        return MessageToFormatServiceContent(
+            date=int(self.date.timestamp()),
+            action=action,
+            from_id=self._make_from_id(),
+            ttl_period=self.ttl_period_days * self.TTL_MULT if self.ttl_period_days else None,
+        )
+
+    def _to_tl_content(
+            self, media: MessageMediaBase, entities: list[MessageEntityBase] | None,
+    ) -> MessageToFormatContent:
+        ttl_period = None
+        if self.ttl_period_days is not None and self.type is not MessageType.SCHEDULED:
+            ttl_period = self.ttl_period_days * self.TTL_MULT
+
+        # TODO: saved_peer_id
+        # TODO: invert_media
+        return MessageToFormatContent(
+            message=self.message or "",
+            date=int((self.date if self.scheduled_date is None else self.scheduled_date).timestamp()),
+            media=media,
+            edit_date=int(self.edit_date.timestamp()) if self.edit_date is not None else None,
+            from_id=self._make_from_id(),
+            entities=entities,
+            grouped_id=self.media_group_id,
+            post=self.channel_post,
+            views=self.post_info.views if self.post_info_id is not None else None,
+            forwards=self.post_info.forwards if self.post_info_id is not None else None,
+            post_author=self.post_author if self.channel_post or self.anonymous else None,
+            ttl_period=ttl_period,
+            reply_markup=self.make_reply_markup(),
+            noforwards=self.no_forwards,
+            via_bot_id=self.via_bot_id,
+            edit_hide=self.edit_hide,
+            fwd_from=self.fwd_header.to_tl() if self.fwd_header_id is not None else None,
+        )
+
+    async def to_tl_content(self) -> MessageToFormatContentBase:
+        # This function call is probably much cheaper than cache lookup, so doing this before Cache.obj.get(...)
+        if self.is_service():
+            return self.to_tl_service_content()
+
+        cache_key = self.cache_key()
+        if (cached := await Cache.obj.get(cache_key)) is not None:
+            return cached
+
+        media = None
+        if self.media_id is not None:
+            media = await self.media.to_tl() if self.media is not None else None
+
+        entities = []
+        for entity in (self.entities or []):
+            tl_id = entity.pop("_")
+            entities.append(objects[tl_id](**entity))
+            entity["_"] = tl_id
+
+        message = self._to_tl_content(media=media, entities=entities)
+
+        await Cache.obj.set(cache_key, message)
+        return message
+
+    @classmethod
+    async def to_tl_content_bulk(
+            cls, messages: list[models.Message], skip_cache: bool = False
+    ) -> list[MessageToFormatContentBase]:
+        if not messages:
+            return []
+
+        cached = [None] * len(messages)
+        if not skip_cache:
+            cache_keys = [message.cache_key() for message in messages if not message.is_service()]
+            if cache_keys:
+                idx_table = [idx for idx, message in enumerate(messages) if not message.is_service()]
+                for idx, cached_message in enumerate(await Cache.obj.multi_get(cache_keys)):
+                    cached[idx_table[idx]] = cached_message
+
+        medias_ = [
+            cast(models.MessageMedia, message.media)
+            for message in messages
+            if message.media is not None and not message.is_service()
+        ]
+        medias = {
+            media.id: media_tl
+            for media, media_tl in zip(medias_, await models.MessageMedia.to_tl_bulk(medias_))
+        }
+
+        to_cache = []
+
+        result: list[MessageToFormatContent | MessageToFormatServiceContent] = []
+        for message, cached_message in zip(messages, cached):
+            if message.is_service():
+                result.append(message.to_tl_service_content())
+                continue
+
+            if cached_message is not None:
+                result.append(cached_message)
+                continue
+
+            entities = []
+            for entity in (message.entities or []):
+                tl_id = entity.pop("_")
+                entities.append(objects[tl_id](**entity))
+                entity["_"] = tl_id
+
+            result.append(message._to_tl_content(
+                media=medias[message.media_id] if message.media_id is not None else None,
+                entities=entities,
+            ))
+
+            to_cache.append((message.cache_key(), result[-1]))
+
+        if to_cache:
+            await Cache.obj.multi_set(to_cache)
+
+        return result
+
+    async def to_tl_content_cached(self) -> MessageToFormatContent | None:
+        return await Cache.obj.get(self.cache_key())
+
+    @classmethod
+    async def to_tl_ref_bulk_cached(cls, refs: list[models.Message]) -> list[MessageToFormatContent | None]:
+        cache_keys = [ref.cache_key() for ref in refs]
+        if not cache_keys:
+            return []
+        return await Cache.obj.multi_get(cache_keys)
+
+    def make_reply_markup(self) -> ReplyMarkup | None:
+        if self._cached_reply_markup is MISSING:
+            if self.reply_markup is None:
+                self._cached_reply_markup = None
+            else:
+                reply_markup = TLObject.read(BytesIO(self.reply_markup))
+                if not isinstance(reply_markup, ReplyMarkupInst):
+                    logger.error(
+                        f"Expected reply markup to be any of this types: {ReplyMarkupInst}, got {reply_markup=!r}"
+                    )
+                    reply_markup = None
+                self._cached_reply_markup = reply_markup
+
+        return self._cached_reply_markup
+
+    def invalidate_reply_markup_cache(self) -> None:
+        self._cached_reply_markup = MISSING
+
+    async def clone_scheduled(self) -> Message:
+        return await Message.create(
+            message=self.message,
+            date=datetime.now(UTC),
+            type=MessageType.REGULAR,
+            author=self.author,
+            media=self.media,
+            fwd_header=self.fwd_header,
+            entities=self.entities,
+            media_group_id=self.media_group_id,
+            channel_post=self.channel_post,
+            anonymous=self.anonymous,
+            post_author=self.post_author,
+            post_info=self.post_info,
+            ttl_period_days=self.ttl_period_days,
+            send_as_channel_id=self.send_as_channel_id,
+            can_see_reactions_list=self.can_see_reactions_list,
+        )
+
+    async def clone_forward(
+            self, related_peer: models.Peer, fwd_header: models.MessageFwdHeader, new_author: models.User | None = None,
+            drop_captions: bool = False, media_group_id: int | None = None, drop_author: bool = False,
+            is_forward: bool = False, no_forwards: bool = False, new_channel_author_id: int | None = None,
+            channel_post: bool | None = None, post_info: models.ChannelPostInfo | None = None,
+            post_author: str | None = None, anonymous: bool | None = None, can_see_reactions_list: bool = False,
+    ) -> MessageContent:
+        if new_author is None and self.author is not None:
+            new_author = self.author
+        if new_channel_author_id is None and self.send_as_channel_id is not None:
+            new_channel_author_id = self.send_as_channel_id
+
+        if anonymous is None:
+            anonymous = self.anonymous if not drop_author else None
+        if channel_post is None:
+            channel_post = self.channel_post if not drop_author else None
+        if post_info is None:
+            post_info = self.post_info if not drop_author else None
+        if post_author is None:
+            post_author = self.post_author if not drop_author else None
+
+        content = await models.MessageContent.create(
+            message=self.message if self.media is None or not drop_captions else None,
+            entities=self.entities if self.media is None or not drop_captions else None,
+            date=self.date if not is_forward else datetime.now(UTC),
+            edit_date=self.edit_date if not is_forward else None,
+            type=self.type,
+            author=new_author,
+            media=self.media,
+            fwd_header=fwd_header,
+            media_group_id=media_group_id,
+            channel_post=channel_post,
+            post_author=post_author,
+            post_info=post_info,
+            anonymous=anonymous,
+            no_forwards=no_forwards,
+            via_bot_id=self.via_bot_id,
+            send_as_channel_id=new_channel_author_id,
+            can_see_reactions_list=can_see_reactions_list,
+        )
+
+        related_user_ids = set()
+        related_chat_ids = set()
+        related_channel_ids = set()
+        content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
+        await self._create_related(content, related_user_ids, related_chat_ids, related_channel_ids)
+
+        return content
+
+    @classmethod
+    async def clone_forward_bulk(
+            cls, contents: list[Self], fwd_headers: Sequence[models.MessageFwdHeader | None],
+            post_infos: Sequence[models.ChannelPostInfo | None], media_group_ids: Sequence[int | None],
+            related_peer: models.Peer, new_author: models.User | None = None, drop_captions: bool = False,
+            drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False,
+            new_channel_author_id: int | None = None, channel_post: bool | None = None, post_author: str | None = None,
+            anonymous: bool | None = None, can_see_reactions_list: bool = False,
+    ) -> list[Self]:
+        new_contents = []
+        internal_random_ids = []
+
+        for content, fwd_header, post_info, media_group_id in zip(contents, fwd_headers, post_infos, media_group_ids):
+            new_author_c = new_author
+            new_channel_author_id_c = new_channel_author_id
+            anonymous_c = anonymous
+            channel_post_c = channel_post
+            post_author_c = post_author
+
+            if new_author_c is None and content.author is not None:
+                new_author_c = content.author
+            if new_channel_author_id_c is None and content.send_as_channel_id is not None:
+                new_channel_author_id_c = content.send_as_channel_id
+
+            if anonymous_c is None:
+                anonymous_c = content.anonymous if not drop_author else None
+            if channel_post_c is None:
+                channel_post_c = content.channel_post if not drop_author else None
+            if post_info is None:
+                post_info = content.post_info if not drop_author else None
+            if post_author_c is None:
+                post_author_c = content.post_author if not drop_author else None
+
+            internal_random_id = uuid4()
+            internal_random_ids.append(internal_random_id)
+            new_contents.append(models.MessageContent(
+                message=content.message if content.media is None or not drop_captions else None,
+                entities=content.entities if content.media is None or not drop_captions else None,
+                date=content.date if not is_forward else datetime.now(UTC),
+                edit_date=content.edit_date if not is_forward else None,
+                type=content.type,
+                author=new_author_c,
+                media=content.media,
+                fwd_header=fwd_header,
+                media_group_id=media_group_id,
+                channel_post=channel_post_c,
+                post_author=post_author_c,
+                post_info=post_info,
+                anonymous=anonymous_c,
+                no_forwards=no_forwards,
+                via_bot_id=content.via_bot_id,
+                send_as_channel_id=new_channel_author_id_c,
+                internal_random_id=internal_random_id,
+                can_see_reactions_list=can_see_reactions_list,
+            ))
+
+        await cls.bulk_create(new_contents)
+
+        msg_id_by_random_id = {
+            internal_random_id: content_id
+            for content_id, internal_random_id in await cls.filter(
+                internal_random_id__in=internal_random_ids,
+            ).values_list("id", "internal_random_id")
+        }
+
+        await cls.filter(id__in=list(msg_id_by_random_id.values())).update(internal_random_id=None)
+
+        related_to_create = []
+
+        for content in new_contents:
+            await asyncio.sleep(0)
+
+            content.id = msg_id_by_random_id[content.internal_random_id]
+            content._saved_in_db = True
+
+            related_user_ids = set()
+            related_chat_ids = set()
+            related_channel_ids = set()
+            content._fill_related(related_user_ids, related_chat_ids, related_channel_ids, related_peer)
+
+            for related_user_id in related_user_ids:
+                related_to_create.append(models.MessageRelated(message_id=content.id, user_id=related_user_id))
+            for related_chat_id in related_chat_ids:
+                related_to_create.append(models.MessageRelated(message_id=content.id, chat_id=related_chat_id))
+            for related_channel_id in related_channel_ids:
+                related_to_create.append(models.MessageRelated(message_id=content.id, channel_id=related_channel_id))
+
+        if related_to_create:
+            await models.MessageRelated.bulk_create(related_to_create)
+
+        return new_contents
+
+    async def create_fwd_header(
+            self, ref: models.MessageRef, to_self: bool, discussion: bool = False,
+    ) -> models.MessageFwdHeader:
+        # TODO: pass prefetched privacy rules as an argument
+        # TODO: handle send_as_channel authors
+
+        if self.fwd_header is not None and not discussion:
+            from_user = self.fwd_header.from_user
+            from_chat = self.fwd_header.from_chat
+            from_channel = self.fwd_header.from_channel
+            from_name = self.fwd_header.from_name
+            channel_post_id = self.fwd_header.channel_post_id
+            channel_post_author = self.fwd_header.channel_post_author
+        else:
+            from_user = None
+            from_chat = None
+            from_channel = None
+            channel_post_id = None
+            channel_post_author = None
+            if self.channel_post:
+                from_channel = ref.peer.channel
+                from_name = from_channel.name
+                channel_post_id = ref.id
+                channel_post_author = self.post_author
+            else:
+                # TODO: handle anonymous admins and "send_as_channel" in chats and channels
+                if await models.PrivacyRule.has_access_to(ref.peer.owner_id, self.author, PrivacyRuleKeyType.FORWARDS):
+                    from_user = self.author
+                from_name = self.author.first_name
+
+        saved_peer = ref.peer if to_self or discussion else None
+        if saved_peer is not None and saved_peer.type is PeerType.USER:
+            peer_ = ref.peer
+            if not await models.PrivacyRule.has_access_to(peer_.owner_id, peer_.user_id, PrivacyRuleKeyType.FORWARDS):
+                saved_peer = None
+
+        return await models.MessageFwdHeader.create(
+            from_user=from_user,
+            from_chat=from_chat,
+            from_channel=from_channel,
+            from_name=from_name,
+            date=self.fwd_header.date if self.fwd_header else self.date,
+            saved_out=not discussion,
+
+            channel_post_id=channel_post_id,
+            channel_post_author=channel_post_author,
+
+            saved_peer=saved_peer,
+            saved_id=ref.id if to_self or discussion else None,
+            saved_from=self.author if to_self else None,
+            saved_name=self.author.first_name if to_self else None,
+            saved_date=self.date if to_self else None,
+        )
+
+    @classmethod
+    async def create_fwd_header_bulk(
+            cls, refs: list[models.MessageRef], user_id: int, to_self: bool,
+    ) -> list[models.MessageFwdHeader]:
+        if not refs:
+            return []
+
+        # TODO: pass prefetched privacy rules as an argument
+        # TODO: handle send_as_channel authors
+
+        fetch_privacy_rules_for = set()
+
+        for ref in refs:
+            if ref.content.fwd_header_id is None and not ref.content.channel_post:
+                fetch_privacy_rules_for.add(ref.content.author_id)
+            if to_self and ref.peer.type is PeerType.USER:
+                fetch_privacy_rules_for.add(ref.peer.user_id)
+
+        privacy_rules = await models.PrivacyRule.has_access_to_bulk(
+            fetch_privacy_rules_for, user_id, [PrivacyRuleKeyType.FORWARDS]
+        )
+
+        fwd_headers = []
+        internal_ids = []
+
+        for ref in refs:
+            content = ref.content
+
+            if content.fwd_header is not None:
+                from_user = content.fwd_header.from_user
+                from_chat = content.fwd_header.from_chat
+                from_channel = content.fwd_header.from_channel
+                from_name = content.fwd_header.from_name
+                channel_post_id = content.fwd_header.channel_post_id
+                channel_post_author = content.fwd_header.channel_post_author
+            else:
+                from_user = None
+                from_chat = None
+                from_channel = None
+                channel_post_id = None
+                channel_post_author = None
+                if content.channel_post:
+                    from_channel = ref.peer.channel
+                    from_name = from_channel.name
+                    channel_post_id = ref.id
+                    channel_post_author = content.post_author
+                else:
+                    # TODO: handle anonymous admins and "send_as_channel" in chats and channels
+                    if privacy_rules[content.author_id][PrivacyRuleKeyType.FORWARDS]:
+                        from_user = content.author
+                    from_name = content.author.first_name
+
+            saved_peer = ref.peer if to_self else None
+            if saved_peer is not None and saved_peer.type is PeerType.USER:
+                peer_ = ref.peer
+                if not privacy_rules[peer_.user_id][PrivacyRuleKeyType.FORWARDS]:
+                    saved_peer = None
+
+            internal_random_id = uuid4()
+            internal_ids.append(internal_random_id)
+            fwd_headers.append(models.MessageFwdHeader(
+                from_user=from_user,
+                from_chat=from_chat,
+                from_channel=from_channel,
+                from_name=from_name,
+                date=content.fwd_header.date if content.fwd_header else content.date,
+                saved_out=True,
+
+                channel_post_id=channel_post_id,
+                channel_post_author=channel_post_author,
+
+                saved_peer=saved_peer,
+                saved_id=ref.id if to_self else None,
+                saved_from=content.author if to_self else None,
+                saved_name=content.author.first_name if to_self else None,
+                saved_date=content.date if to_self else None,
+
+                internal_random_id=internal_random_id,
+            ))
+
+        async with in_transaction():
+            await models.MessageFwdHeader.bulk_create(fwd_headers)
+
+            ids = {
+                random_id: actual_id
+                for actual_id, random_id in await models.MessageFwdHeader.filter(
+                    internal_random_id__in=internal_ids,
+                ).values_list("id", "internal_random_id")
+            }
+
+            for fwd_header in fwd_headers:
+                fwd_header.id = ids[fwd_header.internal_random_id]
+                fwd_header._saved_in_db = True
+
+            await models.MessageFwdHeader.filter(id__in=list(ids.values())).update(internal_random_id=None)
+
+        return fwd_headers
+
+
+    def cache_key(self) -> str:
+        return f"message-content:{self.id}:{self.version}"

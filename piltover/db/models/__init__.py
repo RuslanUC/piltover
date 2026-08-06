@@ -74,7 +74,6 @@ from .faved_sticker import FavedSticker
 from .read_history_chunk import ReadHistoryChunk
 from .user_background_emojis import UserBackgroundEmojis
 from .bot_info import BotInfo
-from .message_related import MessageRelated
 from .admin_log_entry import AdminLogEntry
 from .gif_bot_file import GifBotFile
 from .inline_query_result import InlineQueryResult
@@ -84,8 +83,7 @@ from .slowmode_last_message import SlowmodeLastMessage
 from .bot_command import BotCommand
 from .emoji_group import EmojiGroup
 from .system_object_id import SystemObjectId
-from .message_content import MessageContent
-from .message_ref import MessageRef
+from .message import Message
 from .message_media_read import MessageMediaRead
 from .phone_call import PhoneCall
 from .taskiq_scheduled_delete_user import TaskIqScheduledDeleteUser
@@ -94,3 +92,4 @@ from .default_send_as import DefaultSendAs
 from .message_unique_view import MessageUniqueView
 from .user_emoji_status import UserEmojiStatus
 from .telegram_user import TelegramUser
+from .message_link import MessageLink

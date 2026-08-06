@@ -50,6 +50,7 @@ class User(Model):
     history_ttl_days: int = fields.SmallIntField(default=0)
     read_dates_private: bool = fields.BooleanField(default=False)
     version: int = fields.IntField(default=0)
+    message_seq: int = fields.BigIntField(default=0)
 
     accent_color_id: int | None
     profile_color_id: int | None
@@ -485,3 +486,12 @@ class User(Model):
             await models.State.create(user=user)
             await models.Peer.create(owner=user, type=PeerType.SELF, user=user)
         return user
+
+    @classmethod
+    async def inc_msg_seq_bulk(cls, user_ids: list[int], amount: int = 1) -> list[int]:
+        async with in_transaction():
+            rows = await cls.filter(id__in=user_ids).update(message_seq=F("message_seq") + amount)
+            if rows != len(user_ids):
+                raise RuntimeError(f"Expected inc_msg_seq_bulk to update {len(user_ids)} rows, actually updated {rows}")
+            new_seqs = dict(await cls.filter(id__in=user_ids).values_list("id", "message_seq"))
+            return [new_seqs[user_id] for user_id in user_ids]

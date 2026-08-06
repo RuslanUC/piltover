@@ -12,7 +12,7 @@ from piltover.tl import PeerUser, MessagePeerReaction, ReactionEmoji, ReactionCu
 class MessageReaction(Model):
     id: int = fields.BigIntField(primary_key=True)
     user: models.User = fields.ForeignKeyField("models.User")
-    message: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
+    message: models.MessageLink = fields.ForeignKeyField("models.MessageLink")
     reaction: models.Reaction | None = fields.ForeignKeyField("models.Reaction", null=True, default=None)
     custom_emoji: models.File | None = fields.ForeignKeyField("models.File", null=True, default=None)
     date: datetime = fields.DatetimeField(auto_now_add=True)
@@ -24,7 +24,7 @@ class MessageReaction(Model):
 
     class Meta:
         unique_together = (
-            ("user", "message",),
+            ("user_id", "message_id",),
         )
 
     def to_tl_peer_reaction(self, user_id: int, is_unread: bool) -> MessagePeerReaction:
