@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import TypeVar, Generic, TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar, Generic, Literal, Any, overload
 
 from piltover.tl import TLObject
 from piltover.tl.types.internal import NeedsContextValues
@@ -10,24 +10,21 @@ if TYPE_CHECKING:
     from piltover.worker import Worker
     from piltover.storage import BaseStorage
 
-T = TypeVar("T")
 
-
-class RequestContext(Generic[T]):
+class RequestContext:
     __slots__ = (
-        "auth_key_id", "perm_auth_key_id", "message_id", "session_id", "obj", "auth_id", "user_id", "layer", "worker",
+        "auth_key_id", "perm_auth_key_id", "message_id", "session_id", "auth_id", "user_id", "layer", "worker",
         "storage",
     )
 
     def __init__(
-            self, auth_key_id: int, perm_auth_key_id: int | None, message_id: int, session_id: int, obj: T, layer: int,
+            self, auth_key_id: int, perm_auth_key_id: int | None, message_id: int, session_id: int, layer: int,
             auth_id: int | None, user_id: int | None, worker: Worker, storage: BaseStorage,
     ):
         self.auth_key_id = auth_key_id
         self.perm_auth_key_id = perm_auth_key_id
         self.message_id = message_id
         self.session_id = session_id
-        self.obj = obj
         self.auth_id = auth_id
         self.user_id = user_id
         self.layer = layer

@@ -12,8 +12,7 @@ from piltover.db.models import Dialog, Peer, SavedDialog, MessageRef
 from piltover.db.models.peer import PeerOwnedT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
-from piltover.tl import DialogPeer, Updates, TLObjectVector, \
-    InputDialogPeer
+from piltover.tl import DialogPeer, Updates, TLObjectVector, InputDialogPeer
 from piltover.tl.base import InputPeer as TLInputPeerBase, Chat as TLChatBase, DialogPeer as TLDialogPeerBase
 from piltover.tl.functions.folders import EditPeerFolders
 from piltover.tl.functions.messages import GetPeerDialogs, GetDialogs, GetPinnedDialogs, ReorderPinnedDialogs, \
@@ -111,13 +110,6 @@ async def format_dialogs(
         )
 
     return result
-
-
-class PeerWithDialogs(Peer):
-    dialogs: Dialog | SavedDialog
-
-    class Meta:
-        abstract = True
 
 
 @overload

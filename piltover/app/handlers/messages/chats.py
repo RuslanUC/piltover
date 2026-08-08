@@ -211,14 +211,20 @@ async def edit_chat_title(request: EditChatTitle, user_id: int) -> Updates:
 
 @handler.on_request(EditChatAbout, ReqHandlerFlags.DONT_FETCH_USER)
 async def edit_chat_about(request: EditChatAbout, user_id: int) -> bool:
-    # TODO: dont fetch peer, only chat or channel
-    peer = await Peer.from_input_peer_raise(user_id, request.peer, peer_types=(PeerType.CHAT, PeerType.CHANNEL))
+    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, request.peer)
+    if peer_type is PeerType.CHAT:
+        chat_or_channel = await Chat.get_or_none(id=peer_target_id, deleted=False, migrated=False)
+    elif peer_type is PeerType.CHANNEL:
+        chat_or_channel = await Channel.get_or_none(id=peer_target_id, deleted=False)
+    else:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    if chat_or_channel is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
-    participant = await peer.chat_or_channel.get_participant(user_id)
-    if participant is None or not (participant.is_admin or peer.chat_or_channel.creator_id == user_id):
+    participant = await chat_or_channel.get_participant(user_id)
+    if participant is None or not (participant.is_admin or chat_or_channel.creator_id == user_id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    chat_or_channel = peer.chat_or_channel
     old_about = chat_or_channel.description
     await chat_or_channel.update(description=request.about)
 
@@ -226,7 +232,7 @@ async def edit_chat_about(request: EditChatAbout, user_id: int) -> bool:
         await upd.update_chat(chat_or_channel)
     elif isinstance(chat_or_channel, Channel):
         await AdminLogEntry.create(
-            channel=peer.channel,
+            channel=chat_or_channel,
             user_id=user_id,
             action=AdminLogEntryAction.CHANGE_ABOUT,
             prev=old_about.encode("utf8"),
@@ -347,18 +353,25 @@ async def add_chat_user(request: AddChatUser, user_id: int) -> InvitedUsers:
         limit = min(request.fwd_limit, 100)
         messages_to_forward = await MessageRef.filter(
             peer__owner_id=user_id, peer__chat_id=chat.id, content__type=MessageType.REGULAR
-        ).order_by("-id").limit(limit).select_related(*MessageRef.PREFETCH_FIELDS)
-        messages = []
-        async with in_transaction():
-            # TODO: do this in bulk?
-            for message in messages_to_forward:
-                messages.append(await MessageRef.create(
-                    peer=chat_peers[user_peer_id],
-                    content=message.content,
-                    pinned=message.pinned,
-                ))
-            await chat_peers[user_peer_id].sync_last_message()
-        await upd.send_messages({chat_peers[user_peer_id]: messages})
+        ).order_by("-id").limit(limit).only("id", "content_id", "pinned")
+        # TODO: reply_to
+        if messages_to_forward:
+            messages_to_forward.reverse()
+            async with in_transaction():
+                await MessageRef.bulk_create([
+                    MessageRef(
+                        peer=chat_peers[user_peer_id],
+                        content_id=message.content_id,
+                        pinned=message.pinned,
+                    )
+                    for message in messages_to_forward
+                ])
+                await chat_peers[user_peer_id].sync_last_message()
+            content_ids = [message.content_id for message in messages_to_forward]
+            new_messages = await MessageRef.filter(
+                peer=chat_peers[user_peer_id], content_id__in=content_ids,
+            ).order_by("id").select_related(*MessageRef.PREFETCH_FIELDS)
+            await upd.send_messages({chat_peers[user_peer_id]: new_messages})
 
     user = await User.get(id=user_id).only("id")
     user.bot = False

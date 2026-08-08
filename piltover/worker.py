@@ -261,8 +261,8 @@ class Worker(MessageHandler):
                 return self._err_response(req_message_id, 401, "SESSION_PASSWORD_NEEDED")
 
         ctx_token = request_ctx.set(RequestContext(
-            cast(int, call.auth_key_id), call.perm_auth_key_id, req_message_id, cast(int, call.session_id), call.obj,
-            call.layer, call.auth_id, call.user_id, self, self._storage,
+            cast(int, call.auth_key_id), call.perm_auth_key_id, req_message_id, cast(int, call.session_id), call.layer,
+            call.auth_id, call.user_id, self, self._storage,
         ))
 
         try:
@@ -320,7 +320,7 @@ class Worker(MessageHandler):
             return self._err_response_internal(500, "ERROR_METHOD_NOT_INTERNAL")
 
         ctx_token = request_ctx.set(RequestContext(
-            0, 0, 0, 0, call.obj, layer, call.as_auth_id or 0, call.as_user or 0, self, self._storage,
+            0, 0, 0, 0, layer, call.as_auth_id or 0, call.as_user or 0, self, self._storage,
         ))
 
         try:
