@@ -1140,7 +1140,7 @@ async def delete_channel(request: DeleteChannel, user_id: int) -> Updates:
 
     await UserPersonalChannel.filter(channel=channel).delete()
     await _unlink_channel_maybe(channel)
-    # TODO: delete channel peers, dialogs, participants and messages lazily or in background
+    # TODO: delete channel peer, dialogs, participants and messages lazily or in background
 
     return await upd.update_channel(channel)
 

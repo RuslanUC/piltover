@@ -20,8 +20,9 @@ from loguru import logger
 from pylinkify import find_urls
 
 from piltover.context import request_ctx
-from piltover.db.enums import PrivacyRuleKeyType, FileType
-from piltover.db.models import UserPassword, User, Peer, PrivacyRule, File
+from piltover.db.enums import PrivacyRuleKeyType, FileType, PeerType
+from piltover.db.models import UserPassword, User, Peer, PrivacyRule, File, Chat, Channel
+from piltover.db.models.peer import InputPeers
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.storage.base import BaseStorage, StorageType
 from piltover.tl import MessageEntityHashtag, MessageEntityMention, \
@@ -611,3 +612,21 @@ async def process_reply_markup(reply_markup: ReplyMarkup | None, user: User) -> 
 
     reply_markup.rows = processed_rows
     return reply_markup
+
+
+async def get_chat_or_channel_from_peer(
+        user_id: int, peer: InputPeers, allow_migrated_chat: bool = False,
+) -> Chat | Channel:
+    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, peer)
+    if peer_type is PeerType.CHAT:
+        query = Chat.filter(id=peer_target_id, deleted=False)
+        if not allow_migrated_chat:
+            query = query.filter(migrated=False)
+        chat_or_channel = await query.get_or_none()
+    elif peer_type is PeerType.CHANNEL:
+        chat_or_channel = await Channel.get_or_none(id=peer_target_id, deleted=False)
+    else:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    if chat_or_channel is None:
+        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+    return chat_or_channel

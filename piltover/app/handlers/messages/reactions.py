@@ -84,7 +84,7 @@ async def send_reaction(request: SendReaction, user_id: int) -> Updates:
                 and request.msg_id < channel_min_id:
             raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    if (message := await MessageRef.get_(request.msg_id, peer, prefetch=("peer__channel",))) is None:
+    if (message := await MessageRef.get_(request.msg_id, peer)) is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     if peer.type is PeerType.CHANNEL and not peer.channel.all_reactions:
@@ -210,7 +210,7 @@ async def get_messages_reactions(request: GetMessagesReactions, user_id: int) ->
         if not chat_or_channel.can_view_messages(participant):
             raise ErrorRpc(error_code=403, error_message="CHAT_WRITE_FORBIDDEN")
 
-    if (messages := await MessageRef.get_many(request.id, peer, prefetch_fields=("peer__channel",))) is None:
+    if not (messages := await MessageRef.get_many(request.id, peer)):
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
     return await upd.update_reactions(user_id, messages, peer, False)

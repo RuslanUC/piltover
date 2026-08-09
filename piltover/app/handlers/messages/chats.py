@@ -7,6 +7,7 @@ from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import send_message_internal
+from piltover.app.utils.utils import get_chat_or_channel_from_peer
 from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBannedRights, ChatAdminRights, FileType, \
@@ -33,19 +34,6 @@ from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.chats")
 InputUserWithId = (InputUser, InputPeerUser, InputUserFromMessage, InputPeerUserFromMessage)
-
-
-async def _get_chat_or_channel(user_id: int, peer: InputPeers) -> Chat | Channel:
-    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user_id, peer)
-    if peer_type is PeerType.CHAT:
-        chat_or_channel = await Chat.get_or_none(id=peer_target_id, deleted=False, migrated=False)
-    elif peer_type is PeerType.CHANNEL:
-        chat_or_channel = await Channel.get_or_none(id=peer_target_id, deleted=False)
-    else:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    if chat_or_channel is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
-    return chat_or_channel
 
 
 @handler.on_request(CreateChat, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
@@ -224,7 +212,7 @@ async def edit_chat_title(request: EditChatTitle, user_id: int) -> Updates:
 
 @handler.on_request(EditChatAbout, ReqHandlerFlags.DONT_FETCH_USER)
 async def edit_chat_about(request: EditChatAbout, user_id: int) -> bool:
-    chat_or_channel = await _get_chat_or_channel(user_id, request.peer)
+    chat_or_channel = await get_chat_or_channel_from_peer(user_id, request.peer)
 
     participant = await chat_or_channel.get_participant(user_id)
     if participant is None or not (participant.is_admin or chat_or_channel.creator_id == user_id):
@@ -497,7 +485,7 @@ async def edit_chat_admin(request: EditChatAdmin, user_id: int) -> bool:
 
 @handler.on_request(ToggleNoForwards, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def toggle_no_forwards(request: ToggleNoForwards, user_id: int) -> Updates:
-    chat_or_channel = await _get_chat_or_channel(user_id, request.peer)
+    chat_or_channel = await get_chat_or_channel_from_peer(user_id, request.peer)
 
     if request.enabled == chat_or_channel.no_forwards:
         raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
@@ -528,7 +516,7 @@ async def edit_chat_default_banned_rights(request: EditChatDefaultBannedRights, 
     if new_banned_rights & ChatBannedRights.VIEW_MESSAGES:
         raise ErrorRpc(error_code=406, error_message="BANNED_RIGHTS_INVALID")
 
-    chat_or_channel = await _get_chat_or_channel(user_id, request.peer)
+    chat_or_channel = await get_chat_or_channel_from_peer(user_id, request.peer)
 
     participant = await chat_or_channel.get_participant(user_id)
     if participant is None or not (participant.is_admin or chat_or_channel.creator_id == user_id):
@@ -658,7 +646,7 @@ async def get_onlines(request: GetOnlines, user_id: int) -> ChatOnlines:
     # TODO: this does not account for privacy rules
     # TODO: this does not check if current user has access to participants list
 
-    chat_or_channel = await _get_chat_or_channel(user_id, request.peer)
+    chat_or_channel = await get_chat_or_channel_from_peer(user_id, request.peer)
 
     onlines = await Presence.filter(
         status=UserStatus.ONLINE, last_seen__gt=datetime.now(UTC) - timedelta(minutes=1), user_id__in=Subquery(

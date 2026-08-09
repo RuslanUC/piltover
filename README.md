@@ -38,6 +38,7 @@ An experimental Telegram server written from scratch in Python. Fork of a [David
 - [ ] Link previews
 - [ ] Message translations (note to myself: look into offline translation libraries like [argos-translate](https://github.com/argosopentech/argos-translate), etc.)
 - [ ] Dont store user/chat/channel ids related to specific message in database, get them from tl message instead
+- [ ] Use separate message id sequence for each user/channel
 
 There is also many [`# TODO`'s](https://github.com/search?q=repo%3ARuslanUC%2Fpiltover+%23+TODO&type=code) in code that need to be done.
 
