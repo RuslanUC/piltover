@@ -404,30 +404,39 @@ async def add_chat_user_133(request: AddChatUser_133, user_id: int) -> Updates:
 async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
     chat_peer = await Peer.from_chat_id_raise(user_id, request.chat_id)
     user_peer_type, user_peer_id = Peer.type_and_id_from_input_raise(user_id, request.user_id)
-    if user_peer_type is not PeerType.USER:
+    if user_peer_type not in (PeerType.USER, PeerType.SELF):
         raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     participant = await ChatParticipant.get_or_none(chat=chat_peer.chat, user_id=user_id)
     if participant is None or not (participant.is_admin or chat_peer.chat.creator_id == user_id):
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+    if chat_peer.chat.creator_id == user_peer_id and user_id != user_peer_id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
     if not await Peer.filter(owner_id=user_peer_id, chat=chat_peer.chat).exists():
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
-    messages = await MessageRef.create_for_peer(
-        chat_peer, user_id,
-        type=MessageType.SERVICE_CHAT_USER_DEL,
-        extra_info=MessageActionChatDeleteUser(user_id=user_peer_id).write(),
-    )
-    await ChatParticipant.filter(chat=chat_peer.chat, user_id=user_peer_id).delete()
-    await Chat.filter(id=chat_peer.chat_id).update(
-        participants_count=F("participants_count") - 1,
-        version=F("version") + 1.
-    )
-    await chat_peer.chat.refresh_from_db(["participants_count", "version"])
+    async with in_transaction():
+        messages = await MessageRef.create_for_peer(
+            chat_peer, user_id,
+            type=MessageType.SERVICE_CHAT_USER_DEL,
+            extra_info=MessageActionChatDeleteUser(user_id=user_peer_id).write(),
+        )
+        await ChatParticipant.filter(chat=chat_peer.chat, user_id=user_peer_id).delete()
+        chat_update_fields: dict = {
+            "participants_count": F("participants_count") - 1,
+            "version": F("version") + 1.
+        }
+        if chat_peer.chat.creator_id == user_peer_id:
+            first_participant = await ChatParticipant.filter(chat=chat_peer.chat).order_by("id").first().only("user_id")
+            if first_participant is None:
+                chat_update_fields["deleted"] = True
+            else:
+                chat_update_fields["creator_id"] = first_participant.user_id
+        await Chat.filter(id=chat_peer.chat_id).update(**chat_update_fields)
+        await chat_peer.chat.refresh_from_db(list(chat_update_fields))
 
-    # TODO: if user was creator of the chat, make another user a creator
-    # TODO: remove scheduled messages?
+    # TODO: remove scheduled messages
 
     chat_peers: list[Peer] = await Peer.filter(chat=chat_peer.chat)
 

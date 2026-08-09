@@ -4,10 +4,10 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, Forbidden, UsersTooMuch
+from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, Forbidden, UsersTooMuch, BadRequest
 from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs, MigrateChat
 from pyrogram.raw.types import UpdateUserName, UpdateNewMessage, MessageService, MessageActionChatMigrateTo, \
-    UpdateNewChannelMessage, InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers
+    UpdateNewChannelMessage, InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputPrivacyValueAllowAll
 from pyrogram.raw.types.messages import Dialogs
 from pyrogram.utils import get_channel_id
 
@@ -340,3 +340,41 @@ async def test_demote_user_to_admin_exceed_admin_limit_success(client_with_auth:
         user_id=await client1.resolve_peer(user2.id),
         is_admin=False,
     ))
+
+
+@pytest.mark.asyncio
+async def test_delete_creator_in_group_chat(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    user1 = await client2.resolve_user(client1)
+    user2 = await client1.resolve_user(client2)
+
+    await client2.set_privacy(InputPrivacyKeyChatInvite(), InputPrivacyValueAllowAll())
+
+    group = await client1.create_group("idk", [user2.id])
+    await client1.invoke(EditChatAdmin(
+        chat_id=abs(group.id),
+        user_id=await client1.resolve_peer(user2.id),
+        is_admin=True,
+    ))
+
+    with pytest.raises(BadRequest):
+        await client2.ban_chat_member(group.id, user1.id)
+
+
+@pytest.mark.asyncio
+async def test_set_new_chat_creator_when_creator_left(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    user1 = await client2.resolve_user(client1)
+    user2 = await client1.resolve_user(client2)
+
+    await client2.set_privacy(InputPrivacyKeyChatInvite(), InputPrivacyValueAllowAll())
+
+    group = await client1.create_group("idk", [user2.id])
+    await client1.ban_chat_member(group.id, user1.id)
+
+    group2 = await client2.get_chat(group.id)
+    assert group2.is_creator
