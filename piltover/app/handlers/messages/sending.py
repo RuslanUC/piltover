@@ -11,7 +11,6 @@ from tortoise.expressions import Q, F, Subquery
 from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
-from piltover.app.bot_handlers import bots
 from piltover.app.utils.utils import process_message_entities, process_reply_markup, B64URL_STR_RE
 from piltover.config import APP_CONFIG, DICE_CONFIG
 from piltover.context import request_ctx
@@ -164,7 +163,7 @@ async def send_created_messages_internal(
     if (update := await upd.send_message(user.id, messages)) is None:
         raise Unreachable
 
-    if peer.user and peer.user.bot and await peer.user.get_raw_username() in bots.HANDLERS and ctx is not None:
+    if peer.user and peer.user.system and peer.user.bot and ctx is not None:
         message_ref = messages[peer]
         await ctx.worker.call_internal(ProcessMessageToBuiltinBot(messageref_id=message_ref.id))
 
@@ -182,14 +181,8 @@ async def send_message_internal(
     """
     NOTE (probably only to myself):
      `user` MUST have at least `id` and `bot` fetched;
-     `peer.user` must have `username` prefetched;
     """
-    if opposite \
-            and peer.type is PeerType.USER \
-            and peer.user.bot \
-            and peer.user.system \
-            and isinstance(peer.user.username, Username) \
-            and peer.user.username.username in bots.HANDLERS:
+    if opposite and peer.type is PeerType.USER and peer.user.system:
         opposite = False
 
     if opposite and reply_to_message_id and peer.type is PeerType.CHANNEL:
@@ -508,7 +501,7 @@ async def send_message(
     if not request.random_id:
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
-    peer = await Peer.from_input_peer_raise(user_id, request.peer, select_user_username=True)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if (updates := await get_updates_for_random_id(user_id, peer, request.random_id)) is not None:
         return updates
 
@@ -573,7 +566,7 @@ async def update_pinned_message(request: UpdatePinnedMessage, user_id: int):
     if user.bot and request.pm_oneside:
         raise ErrorRpc(error_code=400, error_message="BOT_ONESIDE_NOT_AVAIL")
 
-    peer = await Peer.from_input_peer_raise(user_id, request.peer, select_user_username=True)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
         participant = await chat_or_channel.get_participant_raise(user_id, message="PIN_RESTRICTED")
@@ -1094,7 +1087,7 @@ async def send_media(
     if not request.random_id:
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
-    peer = await Peer.from_input_peer_raise(user, request.peer, select_user_username=True)
+    peer = await Peer.from_input_peer_raise(user, request.peer)
     if (updates := await get_updates_for_random_id(user_id, peer, request.random_id)) is not None:
         return updates
 
@@ -1431,7 +1424,7 @@ async def send_multi_media(
     if request.schedule_date and user.bot:
         raise ErrorRpc(error_code=400, error_message="SCHEDULE_BOT_NOT_ALLOWED")
 
-    peer = await Peer.from_input_peer_raise(user_id, request.peer, select_user_username=True)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     participant = None
     if peer.type in (PeerType.CHAT, PeerType.CHANNEL):
         chat_or_channel = peer.chat_or_channel
@@ -1652,7 +1645,7 @@ async def send_inline_bot_result(
     if not request.random_id:
         raise ErrorRpc(error_code=400, error_message="RANDOM_ID_EMPTY")
 
-    peer = await Peer.from_input_peer_raise(user_id, request.peer, select_user_username=True)
+    peer = await Peer.from_input_peer_raise(user_id, request.peer)
     if (updates := await get_updates_for_random_id(user_id, peer, request.random_id)) is not None:
         return updates
 
@@ -1817,7 +1810,7 @@ async def start_bot(request: StartBot, user_id: int):
     if isinstance(request.peer, InputPeerEmpty):
         chat_peer = bot_peer
     else:
-        chat_peer = await Peer.from_input_peer_raise(user_id, request.peer, select_user_username=True)
+        chat_peer = await Peer.from_input_peer_raise(user_id, request.peer)
         if chat_peer.type is PeerType.SELF \
                 or (chat_peer.type is PeerType.USER and chat_peer.user_id != bot_peer.user_id) \
                 or (chat_peer.type is PeerType.CHANNEL and not chat_peer.channel.supergroup):
