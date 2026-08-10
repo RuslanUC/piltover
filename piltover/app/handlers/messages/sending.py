@@ -291,12 +291,15 @@ async def send_message_internal(
 
     updates = await send_created_messages_internal(messages, opposite, peer, user, clear_draft, mentioned_user_ids)
 
+    # TODO: select count if messages between last read and new message instead of this
     _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True)
-    if not unread_count:
+    if unread_count <= 1:
         if peer.type is PeerType.CHANNEL:
             message = next(iter(messages.values()))
         else:
             message = messages[peer]
+
+        logger.debug(f"No unread messages, setting last read id for user {user.id} peer {peer!r} to {message.id}")
 
         await ReadState.update_or_create(owner_id=user.id, peer_id=peer.id, defaults={
             "last_message_id": message.id,
@@ -308,6 +311,8 @@ async def send_message_internal(
             _, readstate_updates = await upd.update_read_history_inbox(peer, message.id, 0)
 
         updates.updates.extend(readstate_updates.updates)
+    else:
+        logger.debug(f"User {user.id} has {unread_count} unread messages in peer {peer!r}")
 
     return updates
 
