@@ -94,3 +94,4 @@ from .default_send_as import DefaultSendAs
 from .message_unique_view import MessageUniqueView
 from .user_emoji_status import UserEmojiStatus
 from .telegram_user import TelegramUser
+from .channel_forum_topic import ChannelForumTopic

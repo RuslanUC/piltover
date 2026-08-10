@@ -82,6 +82,8 @@ class Channel(ChatBase):
     emojiset: models.Stickerset | None = NullableFKSetNullR("models.Stickerset", "channel_emojis")
     wallpaper: models.Wallpaper | None = NullableFKSetNull("models.Wallpaper")
     admins_count: int = fields.SmallIntField(default=0)
+    is_forum: bool = fields.BooleanField(default=False)
+    forum_id_seq: int = fields.IntField(default=0)
 
     accent_color_id: int | None
     profile_color_id: int | None

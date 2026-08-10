@@ -22,6 +22,7 @@ from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, Rea
     Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent, \
     ReadHistoryChunk, DefaultSendAs, Stickerset, StickersetThumb
 from piltover.db.models.channel import CREATOR_RIGHTS
+from piltover.db.models.channel_forum_topic import ChannelForumTopic
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -41,7 +42,7 @@ from piltover.tl.functions.channels import GetAdminedPublicChannels, CheckUserna
     TogglePreHistoryHidden, ToggleJoinToSend, GetSendAs, GetSendAs_135, GetAdminLog, ToggleJoinRequest, \
     GetGroupsForDiscussion, SetDiscussionGroup, UpdateColor, ToggleSlowMode, ToggleParticipantsHidden, \
     ReadMessageContents, DeleteHistory, DeleteParticipantHistory, ReorderUsernames, DeactivateAllUsernames, SetStickers, \
-    SetEmojiStickers
+    SetEmojiStickers, ToggleForum
 from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAvailableReactions_136, \
     SetChatAvailableReactions_145, SetChatAvailableReactions_179
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
@@ -1501,7 +1502,7 @@ async def set_discussion_group(request: SetDiscussionGroup, user_id: int) -> boo
         if not group.check_rights(group_participant, ChatAdminRights.CHANGE_INFO, ChatBannedRights.VIEW_MESSAGES):
             raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-        if not group.supergroup or group.is_discussion:
+        if not group.supergroup or group.is_discussion or group.is_forum:
             raise ErrorRpc(error_code=400, error_message="MEGAGROUP_ID_INVALID")
         if group.hidden_prehistory:
             raise ErrorRpc(error_code=400, error_message="MEGAGROUP_PREHISTORY_HIDDEN")
@@ -1918,3 +1919,35 @@ async def set_stickers(request: SetStickers | SetEmojiStickers, user_id: int) ->
 #     await channel.save(update_fields=["participants_hidden", "version"])
 #
 #     return await upd.update_channel(channel, user)
+
+
+@handler.on_request(ToggleForum, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def toggle_forum(request: ToggleForum, user_id: int) -> Updates:
+    channel = await Channel.get_from_input(user_id, request.channel)
+    if channel is None:
+        raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
+    if channel.creator_id != user_id:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
+    if not channel.supergroup:
+        raise ErrorRpc(error_code=400, error_message="CHANNEL_INVALID")
+    if channel.is_discussion:
+        raise ErrorRpc(error_code=400, error_message="CHAT_DISCUSSION_UNALLOWED")
+    if channel.is_forum == request.enabled:
+        raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
+
+    channel.is_forum = request.enabled
+    await Channel.filter(id=channel.id).update(is_forum=request.enabled, version=F("version") + 1)
+    await channel.refresh_from_db(["version"])
+
+    await ChannelForumTopic.bulk_create([
+        ChannelForumTopic(
+            channel=channel,
+            creator_id=user_id,
+            topic_id=1,
+            message_id=...,
+            icon_color=0x6FB9F0,
+            title="General",
+        )
+    ])
+
+    return await upd.update_channel(channel)
