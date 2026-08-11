@@ -19,8 +19,8 @@ for entity in _text_notif_entities_dicts:
 
 
 async def send_bot_message(peer: Peer, text: str, entities: list[dict[str, str | int]] | None = None) -> MessageRef:
-    messages = await MessageRef.create_for_peer(peer, peer.user, opposite=False, message=text, entities=entities)
-    return messages[peer]
+    message, = await MessageRef.create_for_peer(peer, peer.user, opposite=False, message=text, entities=entities)
+    return message
 
 
 class PingTestBotBotInteractionHandler(BotInteractionHandler[NoneType, NoneType]):

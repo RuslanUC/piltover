@@ -96,13 +96,9 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
             updates.users.extend(msg_updates.users)
             updates.date = msg_updates.date
 
-            if peer.type is PeerType.CHANNEL and task.opposite:
-                new_message = next(iter(messages.values()))
-            else:
-                new_message = messages[peer]
-
-            new.append(new_message.id)
-            deleted.append(scheduled.id)
+            new_message = messages[0]
+            new.append(new_message.local_id)
+            deleted.append(scheduled.local_id)
 
     if deleted and new:
         delete_updates = await upd.delete_scheduled_messages(user_id, peer, deleted, new)

@@ -43,11 +43,11 @@ _LAST_MESSAGE_SYNC_SQL = """
 UPDATE peer
 SET
     last_message_id = (
-        SELECT m.id
+        SELECT m.local_id
         FROM messageref m
         INNER JOIN messagecontent mc ON m.content_id = mc.id
         WHERE m.peer_id = peer.id
-        ORDER BY m.id DESC
+        ORDER BY m.local_id DESC
         LIMIT 1
     ),
     last_message_date = (
@@ -55,7 +55,7 @@ SET
         FROM messageref m
         INNER JOIN messagecontent mc ON m.content_id = mc.id
         WHERE m.peer_id = peer.id
-        ORDER BY m.id DESC
+        ORDER BY m.local_id DESC
         LIMIT 1
     )
 WHERE {where_condition};

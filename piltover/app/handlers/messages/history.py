@@ -853,7 +853,7 @@ async def read_mentions(request: ReadMentions, user_id: int) -> AffectedHistory:
     else:
         raise Unreachable
 
-    ref_ids = cast(list[int], cast(object, await ref_ids_query.values_list("id", flat=True)))
+    ref_ids = cast(list[int], cast(object, await ref_ids_query.values_list("local_id", flat=True)))
     pts_count = len(ref_ids)
 
     if peer.type is PeerType.CHANNEL:

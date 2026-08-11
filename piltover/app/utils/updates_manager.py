@@ -86,7 +86,7 @@ async def send_message(
                 pts=new_pts - 1,
                 pts_count=1,
                 related_id=message.id,
-                related_ids=[message.random_id],
+                related_ids=[message.random_id, message.local_id],
                 user_id=target_user_id,
             ))
 
@@ -113,7 +113,7 @@ async def send_message(
         )
 
         if message.random_id:
-            updates.updates.insert(0, UpdateMessageID(id=message.id, random_id=message.random_id))
+            updates.updates.insert(0, UpdateMessageID(id=message.local_id, random_id=message.random_id))
 
         if target_user_id == current_user_id:
             result = updates
@@ -156,7 +156,7 @@ async def send_message_channel(user_id: int, channel: Channel, message: MessageR
         UpdatesWithDefaults(
             updates=[
                 UpdateMessageIDToFormat(
-                    id=message.id,
+                    id=message.local_id,
                     random_id=message.random_id or 0,
                     target_user=user_id,
                 ),
@@ -181,7 +181,7 @@ async def send_message_channel(user_id: int, channel: Channel, message: MessageR
     ]
 
     if message.random_id:
-        updates.insert(0, UpdateMessageID(id=message.id, random_id=message.random_id))
+        updates.insert(0, UpdateMessageID(id=message.local_id, random_id=message.random_id))
 
     return UpdatesWithDefaults(
         updates=updates,
@@ -232,7 +232,7 @@ async def send_messages(
                     pts=pts,
                     pts_count=1,
                     related_id=message.id,
-                    related_ids=[message.random_id],
+                    related_ids=[message.random_id, message.local_id],
                     user_id=target_user_id,
                 ))
 
@@ -247,7 +247,7 @@ async def send_messages(
             ))
 
             if message.random_id:
-                updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
+                updates.append(UpdateMessageID(id=message.local_id, random_id=message.random_id))
 
             updates.append(UpdateNewMessage(
                 # TODO: move out of the loop?
@@ -289,7 +289,7 @@ async def send_messages(
             chats=[*chats, *channels],
         )
         for message, tl_message in zip(prepend_existing, messages_to_add):
-            result_update.updates.append(UpdateMessageID(id=message.id, random_id=cast(int, message.random_id)))
+            result_update.updates.append(UpdateMessageID(id=message.local_id, random_id=cast(int, message.random_id)))
             result_update.updates.append(UpdateNewMessage(
                 message=tl_message,
                 pts=result_pts,
@@ -337,7 +337,7 @@ async def send_messages_channel(
         updates = []
         for generic_message, message, pts in zip(generic_messages, messages, update_pts):
             if message.random_id:
-                updates.append(UpdateMessageID(id=message.id, random_id=message.random_id))
+                updates.append(UpdateMessageID(id=message.local_id, random_id=message.random_id))
             updates.append(UpdateNewChannelMessage(
                 message=generic_message,
                 pts=pts,
@@ -367,7 +367,7 @@ async def send_messages_channel(
             chats=[*chats, *channels],
         )
         for message, tl_message in zip(prepend_existing, messages_to_add):
-            result.updates.append(UpdateMessageID(id=message.id, random_id=cast(int, message.random_id)))
+            result.updates.append(UpdateMessageID(id=message.local_id, random_id=cast(int, message.random_id)))
             result.updates.append(UpdateNewChannelMessage(
                 message=tl_message,
                 pts=new_pts,
@@ -712,10 +712,10 @@ async def pin_messages(
             await sleep(0)
             if message.pinned:
                 pinned_update.pts_count += 1
-                pinned_update.messages.append(message.id)
+                pinned_update.messages.append(message.local_id)
             else:
                 unpinned_update.pts_count += 1
-                unpinned_update.messages.append(message.id)
+                unpinned_update.messages.append(message.local_id)
 
         pinned_update.pts -= unpinned_update.pts_count
 
@@ -788,10 +788,10 @@ async def pin_channel_messages(channel: Channel, messages: list[MessageRef]) -> 
         await sleep(0)
         if message.pinned:
             pinned_update.pts_count += 1
-            pinned_update.messages.append(message.id)
+            pinned_update.messages.append(message.local_id)
         else:
             unpinned_update.pts_count += 1
-            unpinned_update.messages.append(message.id)
+            unpinned_update.messages.append(message.local_id)
 
     pinned_update.pts -= unpinned_update.pts_count
 
@@ -1430,7 +1430,7 @@ async def update_reactions(user_id: int, messages: list[MessageRef], peer: Peer,
         updates=[
             UpdateMessageReactions(
                 peer=peer.to_tl(),
-                msg_id=message.id,
+                msg_id=message.local_id,
                 reactions=reactions_,
             ) for message, reactions_ in zip(messages, reactions)
         ],

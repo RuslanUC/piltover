@@ -12,6 +12,7 @@ from tortoise.transactions import in_transaction
 from piltover.cache import Cache
 from piltover.db import models
 from piltover.db.enums import MessageType, PeerType, READABLE_FILE_TYPES
+from piltover.db.models import Peer
 from piltover.db.models.utils import NullableFKSetNull, NullableFK, PartialIndexNonNull
 from piltover.exceptions import Unreachable
 from piltover.tl import MessageReplyHeader, MessageReactions, ReactionEmoji, ReactionCustomEmoji, ReactionCount, \
@@ -60,6 +61,7 @@ def append_channel_min_message_id_to_query_maybe(
 
 class MessageRef(Model):
     id: int = fields.BigIntField(primary_key=True)
+    local_id: int = fields.BigIntField()
     content: models.MessageContent = fields.ForeignKeyField("models.MessageContent")
     peer: models.Peer = fields.ForeignKeyField("models.Peer")
     random_id: int | None = fields.BigIntField(null=True, default=None, db_index=True)
@@ -68,7 +70,9 @@ class MessageRef(Model):
     version: int = fields.IntField(default=0)
     from_scheduled: bool = fields.BooleanField(default=False)
     reply_to: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="reply")
+    reply_to_local_id: int | None = fields.BigIntField(null=True, default=None)
     top_message: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="msg_top_message")
+    top_message_local_id: int | None = fields.BigIntField(null=True, default=None)
     discussion: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="msg_discussion_message")
     is_discussion: bool = fields.BooleanField(default=False)
     scheduled_by_user: models.User | None = NullableFK("models.User", related_name="message_scheduled")
@@ -105,11 +109,8 @@ class MessageRef(Model):
         )
         indexes = (
             ("peer_id", "pinned"),
-            ("peer_id", "id"),
-            PartialIndexNonNull(
-                fields=("peer_id", "scheduled_by_user_id"),
-                non_null_fields=("scheduled_by_user_id",),
-            ),
+            ("peer_id", "local_id"),
+            ("peer_id", "scheduled_by_user_id"),
         )
 
     def __repr__(self) -> str:
@@ -148,7 +149,7 @@ class MessageRef(Model):
             self, out: bool, mentioned: bool, media_unread: bool,
     ) -> MessageToFormatRef:
         return MessageToFormatRef(
-            id=self.id,
+            id=self.local_id,
             pinned=self.pinned,
             peer_id=self.peer.to_tl(),
             out=out,
@@ -197,7 +198,7 @@ class MessageRef(Model):
     def to_tl_common_channel(self) -> ChannelMessageToFormatCommon:
         return ChannelMessageToFormatCommon(
             author_id=self.content.author_id,
-            id=self.id,
+            id=self.local.id,
             channel_id=self.peer.channel_id,
             from_scheduled=self.from_scheduled or self.content.scheduled_date is not None,
             pinned=self.pinned,
@@ -414,33 +415,50 @@ class MessageRef(Model):
 
         return results
 
-    async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, MessageRef]:
+    async def send_scheduled(self, opposite: bool = True) -> list[MessageRef]:
+        content = await self.content.clone_scheduled()
+
         peers = [self.peer]
-        if opposite and self.peer.type is not PeerType.CHANNEL:
-            peers.extend(await self.peer.get_opposite())
-
-        if self.reply_to_id:
-            replies = {
-                ref.peer_id: ref
-                for ref in await MessageRef.filter(content_id=self.reply_to.content_id)
-            }
+        if self.peer.type is PeerType.CHANNEL:
+            messages = [
+                MessageRef(
+                    local_id=models.Channel.inc_msg_seq(self.peer.channel_id),
+                    peer=self.peer,
+                    content=content,
+                    from_scheduled=True,
+                    reply_to=self.reply_to,
+                    reply_to_local_id=self.reply_to.local_id if self.reply_to is not None else None,
+                )
+            ]
         else:
+            if opposite:
+                peers.extend(await self.peer.get_opposite())
+
             replies = {}
+            if self.reply_to_id and self.reply_to:
+                replies = {
+                    ref.peer_id: ref
+                    for ref in await MessageRef.filter(
+                        content_id=self.reply_to.content_id
+                    ).only("id", "peer_id", "local_id")
+                }
 
-        messages: dict[models.Peer, MessageRef] = {}
+            msg_ids = await models.User.inc_msg_seq_bulk([peer.owner_id for peer in peers])
 
-        async with in_transaction():
-            content = await self.content.clone_scheduled()
-
-            for to_peer in peers:
-                # TODO: probably create in bulk too?
-                messages[to_peer] = await MessageRef.create(
+            messages = [
+                MessageRef(
+                    local_id=msg_id,
                     peer=to_peer,
                     content=content,
                     from_scheduled=to_peer == self.peer,
                     reply_to=replies.get(to_peer.id),
+                    reply_to_local_id=replies[to_peer.id].local_id if to_peer.id in replies else None,
                 )
+                for msg_id, to_peer in zip(msg_ids, peers)
+            ]
 
+        async with in_transaction():
+            await MessageRef.bulk_create(messages)
             await models.Peer.sync_last_message_bulk(peers)
             await models.Dialog.create_or_unhide_bulk(peers)
 
@@ -453,10 +471,12 @@ class MessageRef(Model):
             drop_author: bool = False, is_forward: bool = False, no_forwards: bool = False, pinned: bool | None = None,
             is_discussion: bool = False, channel_post: bool | None = None,
             post_info: models.ChannelPostInfo | None = None, post_author: str | None = None,
-            anonymous: bool | None = None, new_channel_author_id: int | None = None,
-    ) -> list[Self]:
+            anonymous: bool | None = None, new_channel_author_id: int | None = None, fetch_refs_ids: bool = False,
+    ) -> list[MessageRef]:
         if not peers:
             return []
+        if to_peer.type is PeerType.CHANNEL and (len(peers) != 1 or peers[0] != to_peer):
+            raise RuntimeError("expected peers to be equal to [to_peer]")
 
         content = await self.content.clone_forward(
             related_peer=to_peer,
@@ -475,45 +495,62 @@ class MessageRef(Model):
             can_see_reactions_list=to_peer.can_see_reactions_list(),
         )
 
-        peer_ids = [peer.id for peer in peers]
+        if to_peer.type is PeerType.CHANNEL:
+            reply_to = None
+            if reply_to_content_id:
+                reply_to = await MessageRef.get_or_none(content_id=reply_to_content_id).only("id", "local_id")
 
-        replies: dict[int, int]
-        if reply_to_content_id:
-            replies = {
-                peer_id: ref_id
-                for ref_id, peer_id in await MessageRef.filter(
-                    peer_id__in=peer_ids, content_id=reply_to_content_id,
-                ).values_list("id", "peer_id")
-            }
+            messages = [
+                MessageRef(
+                    local_id=await models.Channel.inc_msg_seq(to_peer.channel_id),
+                    peer=to_peer,
+                    content=content,
+                    pinned=self.pinned if pinned is None else pinned,
+                    random_id=random_id,
+                    random_user_id=random_user_id,
+                    reply_to=reply_to,
+                    reply_to_local_id=reply_to.local_id if reply_to is not None else None,
+                    is_discussion=is_discussion,
+                )
+            ]
         else:
+            msg_ids = await models.User.inc_msg_seq_bulk([msg_peer.owner_id for msg_peer in peers])
             replies = {}
+            if reply_to_content_id:
+                replies = {
+                    ref.peer_id: ref
+                    for ref in await MessageRef.filter(
+                        peer_id__in=[peer.id for peer in peers], content_id=reply_to_content_id,
+                    ).only("id", "local_id", "peer_id")
+                }
 
-        messages = []
-        for peer in peers:
-            messages.append(models.MessageRef(
-                peer=peer,
-                content=content,
-                pinned=self.pinned if pinned is None else pinned,
-                random_id=random_id if peer == to_peer else None,
-                random_user_id=random_user_id if peer == to_peer else None,
-                reply_to_id=replies.get(peer.id),
-                is_discussion=is_discussion,
-            ))
+            messages = [
+                MessageRef(
+                    local_id=msg_id,
+                    peer=msg_peer,
+                    content=content,
+                    pinned=self.pinned if pinned is None else pinned,
+                    random_id=random_id,
+                    random_user_id=random_user_id,
+                    reply_to=replies.get(msg_peer.id),
+                    reply_to_local_id=replies[msg_peer.id].local_id if msg_peer.id in replies else None,
+                )
+                for msg_peer, msg_id in zip(peers, msg_ids)
+            ]
 
         async with in_transaction():
             await MessageRef.bulk_create(messages)
             await models.Peer.sync_last_message_bulk(peers)
 
-        ref_ids_by_peer_ids = {
-            peer_id: ref_id
-            for ref_id, peer_id in await MessageRef.filter(
-                peer_id__in=peer_ids, content_id=content.id,
-            ).values_list("id", "peer_id")
-        }
+            if fetch_refs_ids:
+                created_refs = {
+                    ref.peer_id: ref.id
+                    for ref in await MessageRef.filter(content_id=content.id).only("id", "peer_id")
+                }
 
-        for message in messages:
-            message.id = ref_ids_by_peer_ids[message.peer.id]
-            message._saved_in_db = True
+                for message in messages:
+                    message.id = created_refs[message.peer.id]
+                    message._saved_in_db = True
 
         return messages
 
@@ -528,32 +565,54 @@ class MessageRef(Model):
             reply_to_content_ids: Sequence[int | None],
             pinned: Sequence[bool],
             is_discussion: Sequence[bool],
-    ) -> list[Self]:
+    ) -> list[MessageRef]:
         if not peers or not new_contents:
             return []
+        if to_peer.type is PeerType.CHANNEL and (len(peers) != 1 or peers[0] != to_peer):
+            raise RuntimeError("expected peers to be equal to [to_peer]")
 
-        messages = []
-        for content, random_id, pinned_ in zip(new_contents, random_ids, pinned):
-            for peer in peers:
-                # TODO: fill reply_to_id
-                messages.append(models.MessageRef(
+        msg_count = len(new_contents)
+
+        if to_peer.type is PeerType.CHANNEL:
+            last_message_id = await models.Channel.inc_msg_seq(to_peer.channel_id, msg_count)
+            messages = [
+                MessageRef(
+                    local_id=last_message_id - msg_count + num,
+                    peer=to_peer,
+                    content=content,
+                    pinned=pinned_,
+                    random_id=random_id,
+                    random_user_id=random_user_id,
+                    is_discussion=is_discussion,
+                )
+                for num, (content, random_id, pinned_) in enumerate(zip(new_contents, random_ids, pinned))
+            ]
+        else:
+            user_ids = [peer.owner_id for peer in peers]
+            last_message_ids = await models.User.inc_msg_seq_bulk(user_ids, msg_count)
+            messages = [
+                MessageRef(
+                    local_id=last_message_id - msg_count + num,
                     peer=peer,
                     content=content,
                     pinned=pinned_,
-                    random_id=random_id if peer == to_peer else None,
-                    random_user_id=random_user_id if peer == to_peer else None,
+                    random_id=random_id,
+                    random_user_id=random_user_id,
                     is_discussion=is_discussion,
-                ))
+                )
+                for num, (content, random_id, pinned_) in enumerate(zip(new_contents, random_ids, pinned))
+                for last_message_id, peer in zip(last_message_ids, peers)
+            ]
 
         async with in_transaction():
             await MessageRef.bulk_create(messages)
             await models.Peer.sync_last_message_bulk(peers)
 
-        ref_ids_by_peer_ids = {
-            (peer_id, content_id): ref_id
-            for ref_id, peer_id, content_id in await MessageRef.filter(
+        ref_ids_by_peer_ids: dict[tuple[int, int], tuple[int, int]] = {
+            (peer_id, content_id): (ref_id, local_id)
+            for ref_id, peer_id, content_id, local_id in await MessageRef.filter(
                 peer_id__in=[peer.id for peer in peers], content_id__in=[content.id for content in new_contents],
-            ).values_list("id", "peer_id", "content_id")
+            ).values_list("id", "peer_id", "content_id", "local_id")
         }
 
         replies_by_content_id = {
@@ -565,15 +624,17 @@ class MessageRef(Model):
         to_update = []
 
         for message in messages:
-            message.id = ref_ids_by_peer_ids[(message.peer.id, message.content.id)]
+            message.id = ref_ids_by_peer_ids[(message.peer.id, message.content.id)][0]
             message._saved_in_db = True
 
             if message.content.id in replies_by_content_id:
-                reply_to_ref_id = ref_ids_by_peer_ids.get(
-                    (message.peer.id, replies_by_content_id[message.content.id])
+                reply_to_ref_id, reply_to_ref_local_id = ref_ids_by_peer_ids.get(
+                    (message.peer.id, replies_by_content_id[message.content.id]),
+                    (None, None),
                 )
                 if reply_to_ref_id:
                     message.reply_to_id = reply_to_ref_id
+                    message.reply_to_local_id = reply_to_ref_local_id
                     to_update.append(message)
 
         if to_update:
@@ -594,9 +655,9 @@ class MessageRef(Model):
     async def create_for_peer(
             cls, peer: models.Peer, author: models.User | int, *, random_id: int | None = None,
             random_user_id: int | None = None, opposite: bool = True, unhide_dialog: bool = True,
-            reply_to: MessageRef | None = None, top_message: MessageRef | None = None,
+            reply_to: MessageRef | None = None, top_message: MessageRef | None = None, fetch_refs_ids: bool = False,
             **message_kwargs,
-    ) -> dict[models.Peer, MessageRef]:
+    ) -> list[MessageRef]:
         author_kwargs = {}
         if isinstance(author, models.User):
             author_kwargs["author"] = author
@@ -615,49 +676,63 @@ class MessageRef(Model):
         )
 
         peers = [peer]
-        if opposite and peer.type is not PeerType.CHANNEL:
-            peers.extend(await peer.get_opposite())
-
-        if reply_to is not None:
-            replies = {
-                ref.peer_id: ref
-                for ref in await MessageRef.filter(
-                    peer_id__in=[peer.id for peer in peers], content_id=reply_to.content_id,
+        if peer.type is PeerType.CHANNEL:
+            messages = [
+                cls(
+                    local_id=await models.Channel.inc_msg_seq(peer.channel_id),
+                    peer=peer,
+                    content=content,
+                    random_id=random_id,
+                    random_user_id=random_user_id,
+                    reply_to=reply_to,
+                    reply_to_local_id=reply_to.local_id if reply_to is not None else None,
+                    top_message=top_message,
+                    top_message_local_id=top_message.local_id if top_message is not None else None,
+                    scheduled_by_user_id=scheduled_by_user_id,
                 )
-            }
+            ]
         else:
-            replies = {}
+            if opposite:
+                peers.extend(await peer.get_opposite())
 
-        refs_to_create = [
-            cls(
-                peer=to_peer,
-                content=content,
-                random_id=random_id if to_peer == peer else None,
-                random_user_id=random_user_id if to_peer == peer else None,
-                reply_to=replies.get(to_peer.id),
-                top_message=top_message,
-                scheduled_by_user_id=scheduled_by_user_id,
-            )
-            for to_peer in peers
-        ]
+            msg_ids = await models.User.inc_msg_seq_bulk([msg_peer.owner_id for msg_peer in peers])
+            if reply_to is not None:
+                replies = {
+                    ref.peer_id: ref
+                    for ref in await cls.filter(content_id=reply_to.content_id).only("id", "local_id")
+                }
+            else:
+                replies = {}
 
-        if refs_to_create:
-            async with in_transaction():
-                await cls.bulk_create(refs_to_create)
-                await models.Peer.sync_last_message_bulk(peers)
+            messages = [
+                cls(
+                    local_id=msg_id,
+                    peer=peer,
+                    content=content,
+                    random_id=random_id,
+                    random_user_id=random_user_id,
+                    reply_to=replies.get(msg_peer.id),
+                    reply_to_local_id=replies[msg_peer.id].local_id if msg_peer.id in replies else None,
+                    scheduled_by_user_id=scheduled_by_user_id,
+                )
+                for msg_peer, msg_id in zip(peers, msg_ids)
+            ]
 
-        refs = await cls.filter(content=content)
+        async with in_transaction():
+            await cls.bulk_create(messages)
+            await models.Peer.sync_last_message_bulk(peers)
+            if unhide_dialog:
+                await models.Dialog.create_or_unhide_bulk(peers)
 
-        peer_by_id = {peer.id: peer for peer in peers}
-        messages: dict[models.Peer, MessageRef] = {}
+            if fetch_refs_ids:
+                created_refs = {
+                    ref.peer_id: ref.id
+                    for ref in await cls.filter(content_id=content.id).only("id", "peer_id")
+                }
 
-        for ref in refs:
-            ref.peer = peer_by_id[ref.peer_id]
-            ref.content = content
-            messages[ref.peer] = ref
-
-        if unhide_dialog:
-            await models.Dialog.create_or_unhide_bulk(peers)
+                for message in messages:
+                    message.id = created_refs[message.peer.id]
+                    message._saved_in_db = True
 
         return messages
 

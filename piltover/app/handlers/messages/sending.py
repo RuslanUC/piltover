@@ -83,7 +83,7 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
 
 
 async def send_created_messages_internal(
-        messages: dict[Peer, MessageRef], opposite: bool, peer: Peer, user: User, clear_draft: bool,
+        messages: list[MessageRef], opposite: bool, peer: Peer, user: User, clear_draft: bool,
         mentioned_user_ids: set[int],
 ) -> Updates:
     ctx = request_ctx.get(None)
@@ -97,7 +97,7 @@ async def send_created_messages_internal(
         ))
 
     if opposite and peer.type is PeerType.CHAT and mentioned_user_ids:
-        message_content = next(iter(messages.values())).content
+        message_content = messages[0].content
         mentioned_users = await User.filter(owner__chat_id=peer.chat_id, id__in=mentioned_user_ids).only("id")
         unread_mentions_to_create = []
         for mentioned_user in mentioned_users:
@@ -115,7 +115,7 @@ async def send_created_messages_internal(
         await ctx.worker.call_internal(ClearDraft(user_id=user.id, peer_id=peer.id))
 
     ttl_tasks = []
-    for message_ref in messages.values():
+    for message_ref in messages:
         if message_ref.content.ttl_period_days:
             ttl_tasks.append(TaskIqScheduledDeleteMessage(
                 message=message_ref.content,
@@ -133,7 +133,7 @@ async def send_created_messages_internal(
             logger.warning(f"Got {len(messages)} messages after creating message with channel peer!")
             return Updates(updates=[], users=[], chats=[], date=int(time()), seq=0)
 
-        message_ref = next(iter(messages.values()))
+        message_ref = messages[0]
 
         if mentioned_user_ids:
             mentioned_users = await User.filter(
@@ -160,11 +160,11 @@ async def send_created_messages_internal(
 
         return await upd.send_message_channel(user.id, peer.channel, message_ref)
 
-    if (update := await upd.send_message(user.id, messages)) is None:
+    if (update := await upd.send_message(user.id, {message.peer: message for message in messages})) is None:
         raise Unreachable
 
     if peer.user and peer.user.system and peer.user.bot and ctx is not None:
-        message_ref = messages[peer]
+        message_ref = messages[0]
         await ctx.worker.call_internal(ProcessMessageToBuiltinBot(messageref_id=message_ref.id))
 
     return update
@@ -272,7 +272,7 @@ async def send_message_internal(
         ).update(replies_version=F("replies_version") + 1)
 
     if schedule:
-        message = messages[peer]
+        message = messages[0]
 
         mentioned_users = None
         if mentioned_user_ids:
@@ -294,10 +294,7 @@ async def send_message_internal(
     # TODO: select count if messages between last read and new message instead of this
     _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True)
     if unread_count <= 1:
-        if peer.type is PeerType.CHANNEL:
-            message = next(iter(messages.values()))
-        else:
-            message = messages[peer]
+        message = messages[0]
 
         logger.debug(f"No unread messages, setting last read id for user {user.id} peer {peer!r} to {message.id}")
 

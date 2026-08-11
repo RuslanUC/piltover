@@ -594,7 +594,7 @@ class Update(Model):
 
             case UpdateType.UPDATE_MESSAGE_ID:
                 return UpdateMessageID(
-                    id=self.related_id,
+                    id=self.related_ids[1],
                     random_id=self.related_ids[0],
                 )
 

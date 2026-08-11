@@ -433,7 +433,7 @@ async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
 
     chat_peers: list[Peer] = await Peer.filter(chat=chat_peer.chat)
 
-    updates_msg = await upd.send_message(user_id, messages)
+    updates_msg = await upd.send_message(user_id, {message.peer: message for message in messages})
     updates = await upd.update_chat_participants(chat_peer.chat, chat_peers)
     if isinstance(updates_msg, Updates):
         updates.updates.extend(updates_msg.updates)

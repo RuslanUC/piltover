@@ -58,12 +58,9 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
     )
 
     peer = scheduled.peer
-    if peer.type is PeerType.CHANNEL and task.opposite:
-        new_message = next(iter(messages.values()))
-    else:
-        new_message = messages[peer]
+    new_message = messages[0]
 
-    await upd.delete_scheduled_messages(peer.owner_id, peer, [scheduled.id], [new_message.id])
+    await upd.delete_scheduled_messages(peer.owner_id, peer, [scheduled.local_id], [new_message.local_id])
 
     return TaggedBool(value=True)
 
@@ -127,9 +124,10 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
             is_forward=True,
             pinned=True,
             is_discussion=True,
+            fetch_refs_ids=True,
         )
 
-        logger.debug(f"Created discussion message {discussion_message.id} for message {message.id}")
+        logger.debug(f"Created discussion message {discussion_message.local_id} for message {message.local_id}")
 
         message.discussion = discussion_message
         message.content.edit_date = datetime.now(UTC)

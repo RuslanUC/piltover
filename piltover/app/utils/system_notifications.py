@@ -20,11 +20,11 @@ async def send_official_notification_message(user_id: int, text: str, entities: 
     if not created:
         peer_system.user = system_user
 
-    message = await MessageRef.create_for_peer(
+    message, = await MessageRef.create_for_peer(
         peer_system, system_user, opposite=False, unhide_dialog=True,
         message=text, entities=entities,
     )
 
-    await upd.send_message(user_id, message, False)
+    await upd.send_message(user_id, {peer_system: message}, False)
 
     return True
