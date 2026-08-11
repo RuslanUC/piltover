@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from os import urandom
 from time import time
 
 from tortoise import fields, Model
 
+from piltover.config import APP_CONFIG
 from piltover.db import models
 from piltover.tl import SecurePasswordKdfAlgoSHA512, \
     PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow
@@ -31,6 +32,8 @@ class UserPassword(Model):
     user: models.User = fields.OneToOneField("models.User")
     modified_at: datetime = fields.DatetimeField(auto_now_add=True)
 
+    user_id: int
+
     async def get_session(self) -> models.SrpSession:
         session, _ = await models.SrpSession.get_or_create(
             password=self,
@@ -46,6 +49,7 @@ class UserPassword(Model):
         current = None
         srp_B = None
         srp_id = None
+        pending_reset_date = None
         if self.password is not None:
             current = PasswordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow(
                 salt1=self.salt1,
@@ -56,6 +60,11 @@ class UserPassword(Model):
             session = await self.get_session()
             srp_B = session.pub_B()
             srp_id = session.id
+
+            reset_request = await models.UserPasswordReset.get_or_none(user_id=self.user_id)
+            if reset_request is not None:
+                reset_date = reset_request.date + timedelta(seconds=APP_CONFIG.srp_password_reset_wait_seconds)
+                pending_reset_date = int(reset_date.timestamp())
 
         return TLPassword(
             has_password=self.password is not None,
@@ -73,4 +82,5 @@ class UserPassword(Model):
             hint=self.hint,
             srp_B=srp_B,
             srp_id=srp_id,
+            pending_reset_date=pending_reset_date,
         )
