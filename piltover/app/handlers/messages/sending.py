@@ -210,7 +210,7 @@ async def send_message_internal(
                 reply_to_top = reply_to.reply_to
         if quote_text is not None:
             quote_offset = quote_offset or 0
-            if quote_text not in reply_to.content.message or len(quote_text) > 1024 or quote_offset  > 4096:
+            if quote_text not in reply_to.content.message or len(quote_text) > 1024 or quote_offset > 4096:
                 raise ErrorRpc(error_code=400, error_message="QUOTE_TEXT_INVALID")
             reply_quote_text = quote_text
             reply_quote_offset = quote_offset

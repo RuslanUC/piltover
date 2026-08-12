@@ -15,8 +15,7 @@ import piltover
 from piltover.auth_data import AuthData
 from piltover.cache import Cache
 from piltover.db.enums import PrivacyRuleKeyType
-from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, Presence, \
-    MessageRef
+from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, MessageRef
 from piltover.exceptions import Unreachable
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
@@ -339,13 +338,14 @@ class Session:
         return self.pack_message(container, False)
 
     async def _resolve_context_values(self, values: NeedsContextValues) -> ContextValues:
+        user_id = cast(int, self.user_id)
         result = ContextValues()
 
         # TODO: cache fetched values
 
         if values.poll_answers:
             selected_answers = await PollVote.filter(
-                answer__poll_id__in=values.poll_answers, user_id=self.user_id,
+                answer__poll_id__in=values.poll_answers, user_id=user_id,
             ).values_list("answer__poll_id", "answer_id")
             for poll_id, answer_id in selected_answers:
                 if poll_id not in result.poll_answers:
@@ -359,7 +359,7 @@ class Session:
             if values.channel_participants:
                 participants_q |= Q(channel_id__in=values.channel_participants)
 
-            participants = await ChatParticipant.filter(participants_q, user_id=self.user_id).only(
+            participants = await ChatParticipant.filter(participants_q, user_id=user_id).only(
                 "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at", "left",
             )
             for participant in participants:
@@ -373,20 +373,20 @@ class Session:
         if values.users:
             contact_ids = set()
             for contact in await Contact.filter(
-                Q(owner_id=self.user_id, target_id__in=values.users)
-                | Q(owner_id__in=values.users, target_id=self.user_id)
+                Q(owner_id=user_id, target_id__in=values.users)
+                | Q(owner_id__in=values.users, target_id=user_id)
             ).select_related("personal_photo").only(
                 "id", "owner_id", "target_id", "first_name", "last_name", "known_phone_number",
                 "personal_photo_id", "personal_photo__id", "personal_photo__photo_stripped",
             ):
                 result.contacts[(contact.owner_id, cast(int, contact.target_id))] = contact
-                if contact.owner_id != self.user_id:
+                if contact.owner_id != user_id:
                     contact_ids.add(contact.owner_id)
 
             # NOTE (for future me refactoring this): this overwrites existing rules in context variables btw
             result.privacyrules = await PrivacyRule.has_access_to_bulk(
                 users=values.users,
-                user=self.user_id,
+                user=user_id,
                 keys=[
                     PrivacyRuleKeyType.PHONE_NUMBER,
                     PrivacyRuleKeyType.PROFILE_PHOTO,
@@ -401,8 +401,8 @@ class Session:
             messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
                 "peer", "peer__channel", "content", "content__media", "content__media__file",
             )
-            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, self.user_id)
-            reactionss = await MessageRef.to_tl_reactions_bulk(messages, self.user_id)
+            mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, user_id)
+            reactionss = await MessageRef.to_tl_reactions_bulk(messages, user_id)
             for message, mmu, reactions in zip(messages, mentioned_media_unreads, reactionss):
                 result.channel_messages[message.id] = (reactions, mmu[0], mmu[1])
 

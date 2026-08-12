@@ -42,7 +42,7 @@ from piltover.tl.functions.account import UpdateStatus, UpdateProfile, GetNotify
     ChangePhone, DeleteAccount, GetChatThemes, UploadWallPaper_133, UploadWallPaper, GetWallPaper, GetMultiWallPapers, \
     SaveWallPaper, InstallWallPaper, GetWallPapers, ResetWallPapers, UpdateColor, GetDefaultBackgroundEmojis, \
     UpdatePersonalChannel, UpdateNotifySettings, SetGlobalPrivacySettings, SendConfirmPhoneCode, ConfirmPhone, \
-    UpdateEmojiStatus, GetNotifyExceptions
+    UpdateEmojiStatus, GetNotifyExceptions, ResetNotifySettings
 from piltover.tl.types.account import EmojiStatuses, Themes, ContentSettings, PrivacyRules, Password, Authorizations, \
     SavedRingtones, AutoDownloadSettings as AccAutoDownloadSettings, WebAuthorizations, PasswordSettings, \
     ResetPasswordOk, ResetPasswordRequestedWait, ThemesNotModified, WallPapersNotModified, WallPapers
@@ -1057,4 +1057,7 @@ async def get_notify_exceptions(request: GetNotifyExceptions, user_id: int) -> U
     )
 
 
-# TODO: ResetNotifySettings
+@handler.on_request(ResetNotifySettings, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
+async def reset_notify_settings(user_id: int) -> bool:
+    await PeerNotifySettings.filter(user_id=user_id).delete()
+    return True
