@@ -30,8 +30,7 @@ class _TelegramIntegration(BaseModel):
 class _System(BaseModel):
     data_dir: Path = Path("data")
     database_connection_string: str = "sqlite://data/secrets/piltover.db"
-    rabbitmq_address: str | None = None
-    redis_address: str | None = None
+    nats_address: str = "nats://127.0.0.1:4222"
     cache: _CacheConfig
     debug_tracing: _TracingConfig
     debug_enable_aiomonitor: bool = False

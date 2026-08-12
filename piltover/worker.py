@@ -5,25 +5,21 @@ from io import BytesIO
 from pathlib import Path
 from typing import Callable, Any, TypeVar, cast, Protocol, ParamSpec, Awaitable
 
+import nats
 from loguru import logger
-from taskiq import TaskiqEvents, AsyncTaskiqTask
-from taskiq.abc.broker import AsyncBroker
-from taskiq.brokers.inmemory_broker import InmemoryResultBackend
-from taskiq.kicker import AsyncKicker
+from nats.aio.msg import Msg as NatsMsg
 
+from piltover.config import SYSTEM_CONFIG
 from piltover.context import RequestContext, request_ctx, NeedContextValuesContext
 from piltover.db.models import User
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
-from piltover.message_brokers.base_broker import BaseMessageBroker
-from piltover.pubsub.in_memory_pubsub import InMemoryPubSub
-from piltover.session import SessionManager
 from piltover.storage import LocalFileStorage
 from piltover.tl import TLObject, RpcError, TLRequest
 from piltover.tl.core_types import RpcResult
 from piltover.tl.functions.internal import CallRpc, CallRpcInternal
 from piltover.tl.layer_info import layer
-from piltover.tl.types.internal import RpcResponse
+from piltover.tl.types.internal import RpcResponse, NeedsContextValues
 from piltover.utils import get_public_key_fingerprint
 from piltover.utils.debug import measure_time
 
@@ -33,32 +29,6 @@ P = ParamSpec("P")
 
 
 class HandlerFunc(Protocol[T]):
-    """
-    @overload
-    async def __call__(self) -> T:
-        ...
-
-    @overload
-    async def __call__(self, request: RequestT) -> T:
-        ...
-
-    @overload
-    async def __call__(self, user: User) -> T:
-        ...
-
-    @overload
-    async def __call__(self, request: RequestT, user: User) -> T:
-        ...
-
-    @overload
-    async def __call__(self, user_id: int) -> T:
-        ...
-
-    @overload
-    async def __call__(self, request: RequestT, user_id: int) -> T:
-        ...
-    """
-
     async def __call__(self, *args, **kwargs) -> T:
         ...
 
@@ -141,51 +111,28 @@ class MessageHandler:
         handler.registered = True
 
 
-class Worker(MessageHandler):
-    RMQ_HOST = "amqp://guest:guest@127.0.0.1:5672"
-    REDIS_HOST = "redis://127.0.0.1"
+NATS_WORKER_RPC_SUBJECT = "piltover.worker.handle_tl_rpc"
+NATS_WORKER_RPC_RESPONSE_SUBJECT = "piltover.session.{key_id}-{session_id}.rpc_response.{req_msg_id}"
+NATS_WORKER_RPC_INTERNAL_SUBJECT = "piltover.worker.handle_tl_rpc_internal"
 
-    def __init__(self, data_dir: Path, public_key: str, broker: AsyncBroker, message_broker: BaseMessageBroker) -> None:
+
+class Worker(MessageHandler):
+    def __init__(self, data_dir: Path, public_key: str) -> None:
         super().__init__()
 
         self._storage = LocalFileStorage(data_dir)
         self.public_key = public_key
         self.fingerprint: int = get_public_key_fingerprint(self.public_key)
 
-        self.broker = broker
-        self.message_broker = message_broker
+        self.nc = nats.NATS()
 
-        # TODO: add RedisPubSub
-        self.pubsub = InMemoryPubSub()
+    async def start(self) -> None:
+        await self.nc.connect(SYSTEM_CONFIG.nats_address)
+        await self.nc.subscribe(NATS_WORKER_RPC_SUBJECT, cb=self._handle_tl_rpc_measure_time)
+        await self.nc.subscribe(NATS_WORKER_RPC_INTERNAL_SUBJECT, cb=self._handle_tl_rpc_internal)
 
-        # https://github.com/taskiq-python/taskiq/issues/436
-        async def _handle_tl_rpc_measure_time(call_hex: str) -> RpcResponse | str:
-            return await self._handle_tl_rpc_measure_time(call_hex)
-
-        async def _handle_tl_rpc_internal(call: str) -> Any:
-            return await self._handle_tl_rpc_internal(call)
-
-        # self.broker.register_task(self._handle_tl_rpc, "handle_tl_rpc")
-        self.broker.register_task(_handle_tl_rpc_measure_time, "handle_tl_rpc")
-        self.broker.register_task(_handle_tl_rpc_internal, "handle_tl_rpc_internal")
-        self.broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, self._broker_startup)
-        self.broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, self._broker_shutdown)
-
-    async def _broker_startup(self, _) -> None:
-        SessionManager.set_broker(self.message_broker)
-        await self.pubsub.startup()
-
-    async def _broker_shutdown(self, _) -> None:
-        await self.pubsub.shutdown()
-
-    async def call_internal(self, request: TLObject) -> AsyncTaskiqTask[TLObject]:
-        return await AsyncKicker(
-            task_name="handle_tl_rpc_internal",
-            broker=self.broker,
-            labels={},
-        ).kiq(
-            call=CallRpcInternal(obj=request).write().hex(),
-        )
+    async def call_internal(self, request: TLObject) -> None:
+        await self.nc.publish(NATS_WORKER_RPC_INTERNAL_SUBJECT, CallRpcInternal(obj=request).write())
 
     @classmethod
     async def get_user(cls, call: CallRpc, allow_mfa_pending: bool = False, with_username: bool = False) -> User | None:
@@ -200,32 +147,39 @@ class Worker(MessageHandler):
 
         return await query
 
-    async def _handle_tl_rpc_measure_time(self, call_hex: str) -> RpcResponse | str:
+    async def _handle_tl_rpc_measure_time(self, msg: NatsMsg) -> None:
         with measure_time("_handle_tl_rpc()"):
-            return await self._handle_tl_rpc(call_hex)
+            return await self._handle_tl_rpc(msg)
 
-    def _err_response(self, req_msg_id: int, code: int, message: str) -> RpcResponse | str:
-        response = RpcResponse(obj=RpcResult(
+    async def _rpc_send_response(self, call: CallRpc, response: RpcResponse) -> None:
+        result = response.obj
+        if isinstance(result, NeedsContextValues):
+            result = result.obj
+        if not isinstance(result, RpcResult):
+            raise RuntimeError(f"Expected worker to return RpcResult object, got {result.__class__.__name__}")
+        await self.nc.publish(
+            NATS_WORKER_RPC_RESPONSE_SUBJECT.format(
+                key_id=call.auth_key_id,
+                session_id=call.session_id,
+                req_msg_id=result.req_msg_id,
+            ),
+            response.write(),
+        )
+
+    @staticmethod
+    def _err_response(req_msg_id: int, code: int, message: str) -> RpcResponse:
+        return RpcResponse(obj=RpcResult(
             req_msg_id=req_msg_id,
             result=RpcError(error_code=code, error_message=message),
         ))
 
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return response
-        else:
-            return response.write().hex()
+    @staticmethod
+    def _err_response_internal(code: int, message: str) -> RpcError:
+        return RpcError(error_code=code, error_message=message)
 
-    def _err_response_internal(self, code: int, message: str) -> RpcError | str:
-        response = RpcError(error_code=code, error_message=message)
-
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return response
-        else:
-            return response.write().hex()
-
-    async def _handle_tl_rpc(self, call_hex: str) -> RpcResponse | str:
+    async def _handle_tl_rpc(self, msg: NatsMsg) -> None:
         with measure_time("read CallRpc"):
-            call = CallRpc.read(BytesIO(bytes.fromhex(call_hex)), True)
+            call = CallRpc.read(BytesIO(msg.data), True)
 
         logger.trace("Got request: {call!r}", call=call)
 
@@ -233,16 +187,16 @@ class Worker(MessageHandler):
 
         if not (handler := self.request_handlers.get(call.obj.tlid())) or handler.is_internal:
             logger.warning("No handler found for obj: {obj}", obj=call.obj)
-            return self._err_response(req_message_id, 500, "NOT_IMPLEMENTED")
+            return await self._rpc_send_response(call, self._err_response(req_message_id, 500, "NOT_IMPLEMENTED"))
         if handler.is_internal:
             logger.warning("Client tried to execute internal request: {call!r}", call=call)
-            return self._err_response(req_message_id, 500, "NOT_IMPLEMENTED")
+            return await self._rpc_send_response(call, self._err_response(req_message_id, 500, "NOT_IMPLEMENTED"))
 
         # TODO: send this error from gateway
         if call.is_bot and handler.bots_not_allowed:
-            return self._err_response(req_message_id, 400, "BOT_METHOD_INVALID")
+            return await self._rpc_send_response(call, self._err_response(req_message_id, 400, "BOT_METHOD_INVALID"))
         elif not call.is_bot and handler.users_not_allowed:
-            return self._err_response(req_message_id, 400, "USER_BOT_REQUIRED")
+            return await self._rpc_send_response(call, self._err_response(req_message_id, 400, "USER_BOT_REQUIRED"))
 
         user = None
         if (handler.auth_required or handler.has_user_arg) and not handler.dont_fetch_user:
@@ -250,15 +204,23 @@ class Worker(MessageHandler):
                 with measure_time(".get_user(...)"):
                     user = await self.get_user(call, handler.allow_mfa_pending, handler.prefetch_username)
             except ErrorRpc as e:
-                return self._err_response(req_message_id, e.error_code, e.error_message)
+                return await self._rpc_send_response(
+                    call, self._err_response(req_message_id, e.error_code, e.error_message),
+                )
 
             if user is None and handler.auth_required:
-                return self._err_response(req_message_id, 401, "AUTH_KEY_UNREGISTERED")
+                return await self._rpc_send_response(
+                    call, self._err_response(req_message_id, 401, "AUTH_KEY_UNREGISTERED"),
+                )
         elif handler.dont_fetch_user and handler.auth_required:
             if not call.user_id:
-                return self._err_response(req_message_id, 401, "AUTH_KEY_UNREGISTERED")
+                return await self._rpc_send_response(
+                    call, self._err_response(req_message_id, 401, "AUTH_KEY_UNREGISTERED"),
+                )
             if call.mfa_pending and not handler.allow_mfa_pending:
-                return self._err_response(req_message_id, 401, "SESSION_PASSWORD_NEEDED")
+                return await self._rpc_send_response(
+                    call, self._err_response(req_message_id, 401, "SESSION_PASSWORD_NEEDED"),
+                )
 
         ctx_token = request_ctx.set(RequestContext(
             cast(int, call.auth_key_id), call.perm_auth_key_id, req_message_id, cast(int, call.session_id), call.layer,
@@ -296,28 +258,20 @@ class Worker(MessageHandler):
 
         logger.trace("Returning to gateway: {result!r}", result=result_obj)
 
-        response = RpcResponse(
-            obj=result_obj,
-            refresh_auth=handler.refresh_session,
-        )
+        return await self._rpc_send_response(call, RpcResponse(obj=result_obj, refresh_auth=handler.refresh_session))
 
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return response
-        else:
-            return response.write().hex()
-
-    async def _handle_tl_rpc_internal(self, call: str) -> Any:
+    async def _handle_tl_rpc_internal(self, msg: NatsMsg) -> None:
         with measure_time("read CallRpc"):
-            call = CallRpcInternal.read(BytesIO(bytes.fromhex(call)), True)
+            call = CallRpcInternal.read(BytesIO(msg.data), True)
 
         logger.trace("Got internal request: {call!r}", call=call)
 
         if not (handler := self.request_handlers.get(call.obj.tlid())):
             logger.warning("No handler found for obj: {obj}", obj=call.obj)
-            return self._err_response_internal(500, "NOT_IMPLEMENTED")
+            return  # self._err_response_internal(500, "NOT_IMPLEMENTED")
         if not handler.is_internal:
             logger.warning("Tried to execute non-internal request: {call!r}", call=call)
-            return self._err_response_internal(500, "ERROR_METHOD_NOT_INTERNAL")
+            return  # self._err_response_internal(500, "ERROR_METHOD_NOT_INTERNAL")
 
         ctx_token = request_ctx.set(RequestContext(
             0, 0, 0, 0, layer, call.as_auth_id or 0, call.as_user or 0, self, self._storage,
@@ -343,7 +297,7 @@ class Worker(MessageHandler):
 
         logger.trace("Returning internal result: {result!r}", result=result)
 
-        if isinstance(self.broker.result_backend, InmemoryResultBackend):
-            return result
-        else:
-            return result.write().hex()
+        # if isinstance(self.broker.result_backend, InmemoryResultBackend):
+        #     return result
+        # else:
+        #     return result.write().hex()
