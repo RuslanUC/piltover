@@ -154,3 +154,8 @@ module = [
     "piltover.db.migrations.*",
 ]
 ignore_errors = true
+
+[tool.vulture]
+ignore_decorators = ["@handler.on_request", "@dp.message", "@dp.callback_query"]
+paths = ["piltover/"]
+exclude = ["piltover/tl/base", "piltover/tl/types", "piltover/tl/functions", "piltover/db/migrations"]

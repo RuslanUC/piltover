@@ -33,7 +33,6 @@ from piltover.tl.types.messages import InvitedUsers, Chats, ChatFull as Messages
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.chats")
-InputUserWithId = (InputUser, InputPeerUser, InputUserFromMessage, InputPeerUserFromMessage)
 
 
 @handler.on_request(CreateChat, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)

@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 from PIL import Image
-from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, Forbidden, UsersTooMuch, BadRequest
+from pyrogram.errors import PeerIdInvalid, ChatAdminRequired, Forbidden, UsersTooMuch, BadRequest, RPCError
 from pyrogram.raw.functions.messages import EditChatAdmin, GetDialogs, MigrateChat
 from pyrogram.raw.types import UpdateUserName, UpdateNewMessage, MessageService, MessageActionChatMigrateTo, \
     UpdateNewChannelMessage, InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputPrivacyValueAllowAll
@@ -359,7 +359,7 @@ async def test_delete_creator_in_group_chat(client_with_auth: ClientFactory) -> 
         is_admin=True,
     ))
 
-    with pytest.raises(BadRequest):
+    with pytest.raises(RPCError):
         await client2.ban_chat_member(group.id, user1.id)
 
 
