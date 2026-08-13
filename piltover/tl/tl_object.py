@@ -26,10 +26,6 @@ class TLObject(ABC):
     def tlname(cls) -> str:
         return cls.__tl_name__
 
-    @classmethod
-    def tllayer(cls) -> int:
-        return cls.__tl_layer__
-
     @abstractmethod
     def serialize(self, ctx: SerializationContext = EMPTY_SERIALIZATION_CONTEXT) -> bytes: ...
 

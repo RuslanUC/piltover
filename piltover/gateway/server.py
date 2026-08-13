@@ -18,8 +18,6 @@ from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_ke
 class Gateway:
     HOST = "0.0.0.0"
     PORT = 4430
-    RMQ_HOST = "amqp://guest:guest@127.0.0.1:5672"
-    REDIS_HOST = "redis://127.0.0.1"
 
     def __init__(
             self, data_dir: Path, broker: AsyncBroker, message_broker: BaseMessageBroker,
@@ -39,8 +37,6 @@ class Gateway:
 
         self.fingerprint: int = get_public_key_fingerprint(self.server_keys.public_key)
         self.fingerprint_signed: int = get_public_key_fingerprint(self.server_keys.public_key, True)
-
-        self.clients: dict[str, Client] = {}
 
         if salt_key is None:
             salt_key = os.urandom(32)

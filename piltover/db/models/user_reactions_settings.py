@@ -3,9 +3,6 @@ from __future__ import annotations
 from tortoise import Model, fields
 
 from piltover.db import models
-from piltover.exceptions import Unreachable
-from piltover.tl import ReactionEmoji, ReactionCustomEmoji
-from piltover.tl.base import Reaction as TLReaction
 
 
 class UserReactionsSettings(Model):
@@ -17,12 +14,3 @@ class UserReactionsSettings(Model):
     user_id: int
     default_reaction_id: int | None
     default_custom_emoji_id: int | None
-
-    def to_tl_reaction(self) -> TLReaction:
-        if self.default_reaction_id is not None:
-            return ReactionEmoji(emoticon=self.default_reaction.reaction)
-        elif self.default_custom_emoji_id is not None:
-            return ReactionCustomEmoji(document_id=self.default_custom_emoji_id)
-
-        raise Unreachable
-

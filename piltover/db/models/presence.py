@@ -80,21 +80,6 @@ class Presence(Model):
         return EMPTY
 
     @classmethod
-    async def to_tl_or_empty(
-            cls, user: models.User, current_user: models.User, presence: Presence | _PresenceMissing | None = _MISSING,
-            has_access: bool | _PresenceMissing = _MISSING,
-    ) -> TLUserStatus:
-        if presence is _MISSING:
-            presence = await Presence.get_or_none(user=user)
-
-        if presence is not None:
-            if has_access is _MISSING:
-                return await presence.to_tl(current_user)
-            return presence.to_tl_noprivacycheck(has_access)
-
-        return EMPTY
-
-    @classmethod
     async def update_to_now(cls, user: models.User, status: UserStatus = UserStatus.ONLINE) -> Presence:
         if user.bot:
             raise RuntimeError("Can't set presence for bot")

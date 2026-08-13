@@ -5,7 +5,7 @@ if TYPE_CHECKING:
     from piltover.tl.serialization_context import SerializationContext
 
 
-def downgrade_provider_for_133(obj: tl.types.InputMediaInvoice, c_tx: SerializationContext) -> str:
+def downgrade_provider_for_133(obj: tl.types.InputMediaInvoice, _ctx: SerializationContext) -> str:
     if obj.provider is not None:
         return obj.provider
     return ""

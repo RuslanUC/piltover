@@ -421,12 +421,6 @@ class User(Model):
 
         return result
 
-    async def to_tl_birthday(self, user: User) -> Birthday | None:
-        if self.birthday is None or not await models.PrivacyRule.has_access_to(user, self, PrivacyRuleKeyType.BIRTHDAY):
-            return None
-
-        return self.to_tl_birthday_noprivacycheck()
-
     def to_tl_birthday_noprivacycheck(self) -> Birthday | None:
         if self.birthday is None:
             return None
@@ -449,30 +443,6 @@ class User(Model):
 
     def to_tl_peer(self) -> PeerUser:
         return PeerUser(user_id=self.id)
-
-    @classmethod
-    async def get_from_input(
-            cls, user_id: int, target_id: InputPeerSelf | InputPeerUser | InputUserSelf | InputUser,
-            select_related: tuple[str, ...] = (),
-    ) -> Self | None:
-        if isinstance(target_id, (InputPeerSelf, InputUserSelf)) \
-                or (isinstance(target_id, (InputPeerUser, InputUser)) and target_id.user_id == user_id):
-            return await cls.get(id=user_id).select_related(*select_related)
-        elif isinstance(target_id, (InputPeerUser, InputUser)):
-            ctx = request_ctx.get()
-            if not cls.check_access_hash(user_id, ctx.auth_id, target_id.user_id, target_id.access_hash):
-                return None
-            return await cls.get_or_none(id=target_id.user_id).select_related(*select_related)
-
-    @classmethod
-    async def get_from_input_raise(
-            cls, user_id: int, target_id: InputPeerSelf | InputPeerUser | InputUserSelf | InputUser,
-            select_related: tuple[str, ...] = (), code: int = 400, message: str = "PEER_ID_INVALID",
-    ) -> Self:
-        user = await cls.get_from_input(user_id, target_id, select_related)
-        if user is not None:
-            return user
-        raise ErrorRpc(error_code=code, error_message=message)
 
     async def inc_version(self) -> None:
         await User.filter(id=self.id).update(version=F("version") + 1)

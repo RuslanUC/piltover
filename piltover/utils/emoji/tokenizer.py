@@ -25,9 +25,6 @@ class Token(NamedTuple):
     is_zwj: bool
 
 
-STATUS_COMPONENT = 1
-
-
 def tokenize(string: str) -> Iterator[Token]:
     """
     Finds unicode emoji in a string. Yields all normal characters as a named

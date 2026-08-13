@@ -56,15 +56,6 @@ class ChatParticipant(Model):
         raise RuntimeError("Unreachable")
 
     @property
-    def chat_or_channel_id(self) -> int:
-        if self.chat_id is not None:
-            return self.chat_id
-        elif self.channel_id is not None:
-            return self.channel_id
-
-        raise RuntimeError("Unreachable")
-
-    @property
     def is_admin(self) -> bool:
         return self.admin_rights.value > 0
 

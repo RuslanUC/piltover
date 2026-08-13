@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-06-27T16:33:01.968120226Z"
+exclude-newer = "2026-08-06T16:52:58.504216277Z"
 exclude-newer-span = "P1W"
 
 [[package]]
@@ -52,7 +52,7 @@ wheels = [
 
 [[package]]
 name = "aiogram"
-version = "3.29.0"
+version = "3.30.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -62,9 +62,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0c/e0/fe516e9c424858e44d190636563e0b9a8c0cc940032d43212d4def861f01/aiogram-3.29.0.tar.gz", hash = "sha256:17be0061174fd5b3aa494537f166c2f147b983ebef60d9ede2a3e8837af9c01e", size = 1895315, upload-time = "2026-06-14T17:25:24.998Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/07/5978f99d7e799843a6a248c5418ef99a8a4aedc8e411b736739b0d93b78f/aiogram-3.30.0.tar.gz", hash = "sha256:04a5c43d0acedaf907ffa9a1b6c651cd5fde35b5bca82f521e57d77a57e63bc6", size = 1932144, upload-time = "2026-07-17T20:33:33.38Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/1a/c56efc85cee9aca96de596253936590df163d2dfb0f8993e1db50f0c4a70/aiogram-3.29.0-py3-none-any.whl", hash = "sha256:f4b2c39d89c44e37998b4b4a8510d6914fc24f3d31125d6b3f6ea9589e67ec85", size = 803438, upload-time = "2026-06-14T17:25:23.064Z" },
+    { url = "https://files.pythonhosted.org/packages/87/f7/0a828d29b3a3a59f22c03690b34773fadd64f1e9c3dc34c63cdb6eef0b72/aiogram-3.30.0-py3-none-any.whl", hash = "sha256:98c22665271912d258178cec591f78ee93a085a3423dd3b2e11c2851d4552470", size = 843818, upload-time = "2026-07-17T20:33:31.236Z" },
 ]
 
 [[package]]
@@ -1702,6 +1702,7 @@ dev = [
     { name = "pyinstrument" },
     { name = "tqdm" },
     { name = "types-aiofiles" },
+    { name = "vulture" },
     { name = "websockets" },
     { name = "yappi" },
 ]
@@ -1720,7 +1721,7 @@ test = [
 requires-dist = [
     { name = "aiocache", specifier = ">=0.12.3,<1.0.0" },
     { name = "aiofiles", specifier = ">=25.1.0,<26.0.0" },
-    { name = "aiogram", marker = "extra == 'telegram-integration'", specifier = ">=3.29.0" },
+    { name = "aiogram", marker = "extra == 'telegram-integration'", specifier = ">=3.29.1" },
     { name = "av", specifier = ">=17.0.0,<18.0.0" },
     { name = "cryptography", specifier = ">=48.0.0,<49.0.0" },
     { name = "fastrand", git = "https://github.com/RuslanUC/fastrand.git?rev=feat%2Fadd-functions-to-generate-random-bytes" },
@@ -1754,6 +1755,7 @@ dev = [
     { name = "pyinstrument", specifier = ">=5.1.2" },
     { name = "tqdm", specifier = ">=4.67.3" },
     { name = "types-aiofiles", specifier = ">=25.1.0.20260518" },
+    { name = "vulture", specifier = ">=2.16" },
     { name = "websockets", specifier = ">=16.0" },
     { name = "yappi", specifier = ">=1.7.6" },
 ]
@@ -2521,6 +2523,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/37/945b4ca0ac27e3dc4952642d4c900edd030b3da6c9634875af6e13ae80e5/uvloop-0.22.1-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b91328c72635f6f9e0282e4a57da7470c7350ab1c9f48546c0f2866205349d21", size = 4467065, upload-time = "2025-10-16T22:16:58.206Z" },
     { url = "https://files.pythonhosted.org/packages/97/cc/48d232f33d60e2e2e0b42f4e73455b146b76ebe216487e862700457fbf3c/uvloop-0.22.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:daf620c2995d193449393d6c62131b3fbd40a63bf7b307a1527856ace637fe88", size = 4328384, upload-time = "2025-10-16T22:16:59.36Z" },
     { url = "https://files.pythonhosted.org/packages/e4/16/c1fd27e9549f3c4baf1dc9c20c456cd2f822dbf8de9f463824b0c0357e06/uvloop-0.22.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:6cde23eeda1a25c75b2e07d39970f3374105d5eafbaab2a4482be82f272d5a5e", size = 4296730, upload-time = "2025-10-16T22:17:00.744Z" },
+]
+
+[[package]]
+name = "vulture"
+version = "2.16"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/3e/4d08c5903b2c0c70cad583c170cc4a663fc6a61e2ad00b711fcda61358cd/vulture-2.16.tar.gz", hash = "sha256:f8d9f6e2af03011664a3c6c240c9765b3f392917d3135fddca6d6a68d359f717", size = 52680, upload-time = "2026-03-25T14:41:27.141Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f5/be/f935130312330614811dae2ea9df3f395f6d63889eb6c2e68c14507152ee/vulture-2.16-py3-none-any.whl", hash = "sha256:6e0f1c312cef1c87856957e5c2ca9608834a7c794c2180477f30bf0e4cc58eee", size = 26993, upload-time = "2026-03-25T14:41:26.21Z" },
 ]
 
 [[package]]

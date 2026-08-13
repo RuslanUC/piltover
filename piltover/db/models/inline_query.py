@@ -37,12 +37,3 @@ class InlineQuery(Model):
         InlineQueryPeer.SUPERGROUP: InlineQueryPeerTypeMegagroup(),
     }
 
-    INLINE_PEER_FROM_TL = {
-        type(None): InlineQueryPeer.UNKNOWN,
-        InlineQueryPeerTypePM: InlineQueryPeer.USER,
-        InlineQueryPeerTypeBotPM: InlineQueryPeer.BOT,
-        InlineQueryPeerTypeSameBotPM: InlineQueryPeer.SAME_BOT,
-        InlineQueryPeerTypeChat: InlineQueryPeer.CHAT,
-        InlineQueryPeerTypeBroadcast: InlineQueryPeer.CHANNEL,
-        InlineQueryPeerTypeMegagroup: InlineQueryPeer.SUPERGROUP,
-    }

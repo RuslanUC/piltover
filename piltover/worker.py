@@ -28,37 +28,10 @@ from piltover.utils import get_public_key_fingerprint
 from piltover.utils.debug import measure_time
 
 T = TypeVar("T", covariant=True)
-RequestT = TypeVar("RequestT", bound=TLRequest, contravariant=True)
 P = ParamSpec("P")
 
 
 class HandlerFunc(Protocol[T]):
-    """
-    @overload
-    async def __call__(self) -> T:
-        ...
-
-    @overload
-    async def __call__(self, request: RequestT) -> T:
-        ...
-
-    @overload
-    async def __call__(self, user: User) -> T:
-        ...
-
-    @overload
-    async def __call__(self, request: RequestT, user: User) -> T:
-        ...
-
-    @overload
-    async def __call__(self, user_id: int) -> T:
-        ...
-
-    @overload
-    async def __call__(self, request: RequestT, user_id: int) -> T:
-        ...
-    """
-
     async def __call__(self, *args, **kwargs) -> T:
         ...
 
@@ -142,9 +115,6 @@ class MessageHandler:
 
 
 class Worker(MessageHandler):
-    RMQ_HOST = "amqp://guest:guest@127.0.0.1:5672"
-    REDIS_HOST = "redis://127.0.0.1"
-
     def __init__(self, data_dir: Path, public_key: str, broker: AsyncBroker, message_broker: BaseMessageBroker) -> None:
         super().__init__()
 

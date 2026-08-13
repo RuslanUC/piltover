@@ -118,15 +118,6 @@ class ChatBase(Model):
 
         return self.to_tl_photo_internal(photo)
 
-    async def to_tl_chat_photo(self, photo: PhotoOrMissing = _PHOTO_MISSING) -> ChatPhoto | ChatPhotoEmpty:
-        if not self.photo_id:
-            return ChatPhotoEmpty()
-
-        if photo is _PHOTO_MISSING:
-            self.photo = photo = await self.photo
-
-        return self.to_tl_chat_photo_internal(photo)
-
     @staticmethod
     def or_channel(chat_or_channel: ChatBase) -> dict:
         if isinstance(chat_or_channel, models.Chat):

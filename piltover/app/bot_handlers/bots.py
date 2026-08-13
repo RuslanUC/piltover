@@ -11,10 +11,6 @@ from piltover.db.models import Peer, InlineQuery, InlineQueryResult, InlineQuery
 from piltover.tl.types.messages import BotCallbackAnswer, BotResults
 
 
-async def _awaitable_none(_p: Peer, _m: MessageRef) -> None:
-    return None
-
-
 HANDLERS: dict[str, BotInteractionHandler] = {
     "test_bot": PingTestBotBotInteractionHandler(),
     "system": SystemBotInteractionHandler(),

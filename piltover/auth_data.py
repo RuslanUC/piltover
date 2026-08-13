@@ -9,11 +9,6 @@ class AuthData:
         self.is_temp = auth_key_id != perm_auth_key_id
         self.perm_auth_key_id = perm_auth_key_id
 
-    def check_key(self, expected_auth_key_id: int) -> bool:
-        if self.auth_key is None or expected_auth_key_id is None:
-            return False
-        return self.auth_key_id == expected_auth_key_id
-
 
 class GenAuthData(AuthData):
     __slots__ = (

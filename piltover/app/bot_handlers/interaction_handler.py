@@ -120,11 +120,6 @@ class RegisterInteraction(Generic[StateEnumT, StateT]):
         reg._pending.state = state
         return reg
 
-    def fetch_state(self) -> Self:
-        reg = self._clone()
-        reg._fetch_state = True
-        return reg
-
     def do(self, handler: HandlerFunc | None = None) -> Self:
         reg = self._clone()
         if handler is not None:

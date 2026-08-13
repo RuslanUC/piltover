@@ -190,10 +190,6 @@ class MessageRef(Model):
         await Cache.obj.set(cache_key, message)
         return message
 
-    async def get_mentioned_media_unread(self, user_id: int) -> tuple[bool, bool]:
-        ref = await self.to_tl_ref(user_id)
-        return ref.mentioned, ref.media_unread
-
     def to_tl_common_channel(self) -> ChannelMessageToFormatCommon:
         return ChannelMessageToFormatCommon(
             author_id=self.content.author_id,
@@ -681,18 +677,6 @@ class MessageRef(Model):
             ).select_related(*self.PREFETCH_FIELDS_MIN)
 
         raise Unreachable
-
-    def peer_key(self) -> tuple[PeerType, int]:
-        if self.peer.type in (PeerType.SELF, PeerType.USER):
-            peer_id = self.peer.user_id
-        elif self.peer.type is PeerType.CHAT:
-            peer_id = self.peer.chat_id
-        elif self.peer.type is PeerType.CHANNEL:
-            peer_id = self.peer.channel_id
-        else:
-            raise Unreachable
-
-        return self.peer.type, peer_id
 
     def make_reply_to_header(self) -> MessageReplyHeader | None:
         if self.reply_to_id is None and self.top_message_id is None:

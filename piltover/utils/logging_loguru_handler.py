@@ -34,9 +34,3 @@ class InterceptHandler(logging.Handler):
         std_logger.addHandler(cls._instance)
 
         return cls._instance
-
-    @classmethod
-    def get_instance(cls) -> Self:
-        if not isinstance(cls._instance, cls):
-            cls._instance = cls()
-        return cls._instance

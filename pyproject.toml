@@ -55,7 +55,7 @@ dependencies = [
 
 [project.optional-dependencies]
 telegram-integration = [
-    "aiogram>=3.29.0",
+    "aiogram>=3.29.1",
 ]
 
 [project.urls]
@@ -76,6 +76,7 @@ dev = [
     "pyinstrument>=5.1.2",
     "tqdm>=4.67.3",
     "types-aiofiles>=25.1.0.20260518",
+    "vulture>=2.16",
     "websockets>=16.0",
     "yappi>=1.7.6",
 ]
