@@ -31,6 +31,7 @@ class _System(BaseModel):
     data_dir: Path = Path("data")
     database_connection_string: str = "sqlite://data/secrets/piltover.db"
     nats_address: str = "nats://127.0.0.1:4222"
+    single_process: bool = True
     cache: _CacheConfig
     debug_tracing: _TracingConfig
     debug_enable_aiomonitor: bool = False

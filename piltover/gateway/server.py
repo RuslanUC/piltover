@@ -6,24 +6,21 @@ import os
 from pathlib import Path
 from typing import cast
 
+import nats
 from loguru import logger
-from taskiq import TaskiqEvents, AsyncBroker
 
+from piltover.config import SYSTEM_CONFIG
 from piltover.gateway.client import Client
-from piltover.message_brokers.base_broker import BaseMessageBroker
-from piltover.session import SessionManager
 from piltover.utils import gen_keys, get_public_key_fingerprint, load_private_key, load_public_key, Keys
 
 
 class Gateway:
     HOST = "0.0.0.0"
     PORT = 4430
-    RMQ_HOST = "amqp://guest:guest@127.0.0.1:5672"
-    REDIS_HOST = "redis://127.0.0.1"
 
     def __init__(
-            self, data_dir: Path, broker: AsyncBroker, message_broker: BaseMessageBroker,
-            host: str = HOST, port: int = PORT, server_keys: Keys | None = None, salt_key: bytes | None = None,
+            self, data_dir: Path, host: str = HOST, port: int = PORT, server_keys: Keys | None = None,
+            salt_key: bytes | None = None,
     ):
         self.data_dir = data_dir
 
@@ -48,21 +45,17 @@ class Gateway:
 
         self.salt_key = cast(bytes, salt_key)
 
-        self.broker = broker
-        self.message_broker = message_broker
-
-        self.broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, self._broker_startup)
-
-    async def _broker_startup(self, *args, **kwargs) -> None:
-        SessionManager.set_broker(self.message_broker)
+        self.nc = nats.NATS()
 
     @logger.catch
     async def accept_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         client = Client(server=self, reader=reader, writer=writer)
         await client.worker()
 
+    async def start(self) -> None:
+        await self.nc.connect(SYSTEM_CONFIG.nats_address)
+
     async def serve(self):
-        await self.broker.startup()
         server = await asyncio.start_server(self.accept_client, self.host, self.port)
         async with server:
             await server.serve_forever()

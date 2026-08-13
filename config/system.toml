@@ -5,7 +5,10 @@ data_dir = "data"
 database_connection_string = "sqlite://data/secrets/piltover.db"
 
 # NATS address to use for sending rpc requests and other system internal messages between gateway and workers.
-#nats_address = ""nats://127.0.0.1:4222""
+#nats_address = "nats://127.0.0.1:4222"
+
+# Whether to run everything (gateway, session layer, workers and scheduler) in a single process.
+single_process = true
 
 # Whether to enable @system bot. When enabled, it responds to /info command with instance info
 #  (name, versions, some non-critical config options).

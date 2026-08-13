@@ -11,12 +11,11 @@ from typing import AsyncIterator
 
 import uvloop
 from loguru import logger
-from taskiq import TaskiqScheduler, InMemoryBroker
+from taskiq import TaskiqScheduler
 from tortoise import Tortoise, connections
 
 from piltover.app.handlers import register_handlers
 from piltover.app.utils.app_create_system_data import create_system_data
-from piltover.app.utils.config_helper import make_broker_from_config, make_message_broker_from_config
 from piltover.cache import Cache
 from piltover.config import TORTOISE_ORM, GATEWAY_CONFIG, SYSTEM_CONFIG
 from piltover.gateway import Gateway
@@ -90,13 +89,8 @@ class PiltoverApp:
         self._private_key = privkey.read_text()
         self._public_key = pubkey.read_text()
 
-        broker = make_broker_from_config()
-        message_broker = make_message_broker_from_config(broker)
-
         self._gateway = Gateway(
             data_dir=data_dir,
-            broker=broker,
-            message_broker=message_broker,
             host=host,
             port=port,
             server_keys=Keys(
@@ -109,16 +103,11 @@ class PiltoverApp:
         self._worker: Worker | None = None
         self._scheduler: TaskiqScheduler | None = None
 
-        if isinstance(broker, InMemoryBroker):
-            logger.info(
-                "Running worker and scheduler in the same process as gateway "
-                "because InMemoryBroker is being used"
-            )
+        if SYSTEM_CONFIG.single_process:
+            logger.info("Running worker and scheduler in the same process as gateway")
             self._worker = worker = Worker(
                 data_dir=data_dir,
                 public_key=self._public_key,
-                broker=broker,
-                message_broker=message_broker,
             )
             register_handlers(worker)
             self._scheduler = TaskiqScheduler(broker, sources=[OrmDatabaseScheduleSource()])
@@ -172,6 +161,10 @@ class PiltoverApp:
             args.create_peer_colors, args.create_languages, args.create_system_stickersets, args.create_emoji_groups,
         )
 
+        worker_task = None
+        if self._worker is not None:
+            worker_task = asyncio.create_task(self._worker.start())
+
         scheduler_task = self._run_in_memory_scheduler()
         telegram_integration_task = self._run_telegram_integration()
 
@@ -184,6 +177,11 @@ class PiltoverApp:
             monitor = aiomonitor.start_monitor(loop)
 
         await self._gateway.serve()
+
+        # TODO: gateway and worker shutdown
+
+        if worker_task is not None:
+            await worker_task
         if scheduler_task is not None:
             await scheduler_task
         if telegram_integration_task is not None:
@@ -222,11 +220,13 @@ class PiltoverApp:
         if not testing.handler.registered:
             self._worker.register_handler(testing.handler)
 
-        await self._gateway.broker.startup()
+        worker_task = asyncio.create_task(self._worker.start())
 
         scheduler_task = None
         if run_scheduler:
             scheduler_task = self._run_in_memory_scheduler(scheduler_update_interval, scheduler_loop_interval)
+
+        await self._gateway.start()
 
         if run_actual_server:
             server = await asyncio.start_server(self._gateway.accept_client, "127.0.0.1", 0)
@@ -242,7 +242,8 @@ class PiltoverApp:
             scheduler_task.cancel()
             await scheduler_task
 
-        await self._gateway.broker.shutdown()
+        # TODO: gateway and worker shutdown
+        await worker_task
         await connections.close_all(True)
         await Cache.obj.clear()
         SessionManager.sessions.clear()

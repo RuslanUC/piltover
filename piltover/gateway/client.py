@@ -14,6 +14,7 @@ from mtproto.enums import TransportEvent
 from mtproto.transport import Connection
 from mtproto.transport.packets import MessagePacket, EncryptedMessagePacket, UnencryptedMessagePacket, \
     DecryptedMessagePacket, ErrorPacket, QuickAckPacket, BasePacket
+from nats.errors import NoRespondersError
 from taskiq import AsyncTaskiqTask, TaskiqResult, TaskiqResultTimeoutError
 from taskiq.brokers.inmemory_broker import InmemoryResultBackend
 from taskiq.kicker import AsyncKicker
@@ -61,7 +62,7 @@ class Client:
         self.disconnect_timeout: asyncio.Timeout | None = None
         self.write_lock = asyncio.Lock()
 
-        self.active_sessions = LRU(4, callback=self._session_evicted)
+        self.active_sessions = cast("LRU[tuple[int, int], Session]", LRU(4, callback=self._session_evicted))
         self.active_keys = cast("LRU[int, bytes]", LRU(8))
 
         self.message_available = Event()
@@ -212,6 +213,16 @@ class Client:
 
             session = self._get_cached_session(packet.auth_key_id, decrypted.session_id)
             if session is None:
+                try:
+                    await self.server.nc.request(
+                        f"piltover.session.connect",
+                        Long.write(packet.auth_key_id) + Long.write(decrypted.session_id),
+                        timeout=3,
+                    )
+                except (NoRespondersError, TimeoutError):
+                    ...  # TODO: send error to client
+                    raise
+
                 if auth_data is None:
                     auth_data = await self._get_auth_data(packet.auth_key_id)
                 session, _ = self._get_session(decrypted.session_id, auth_data)
@@ -382,9 +393,9 @@ class Client:
             except ConnectionResetError:
                 pass
 
-            for session in self.active_sessions.values():
+            for (key_id, session_id), session in self.active_sessions.items():
+                await self.server.nc.publish(f"piltover.session.{key_id}-{session_id}", b"disconnect")
                 logger.info(f"Session {session.session_id} removed")
-                session.disconnect()
 
             self.active_sessions.clear()
 

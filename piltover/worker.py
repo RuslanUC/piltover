@@ -122,14 +122,14 @@ class Worker(MessageHandler):
 
         self._storage = LocalFileStorage(data_dir)
         self.public_key = public_key
-        self.fingerprint: int = get_public_key_fingerprint(self.public_key)
+        self.fingerprint = get_public_key_fingerprint(self.public_key)
 
         self.nc = nats.NATS()
 
     async def start(self) -> None:
         await self.nc.connect(SYSTEM_CONFIG.nats_address)
-        await self.nc.subscribe(NATS_WORKER_RPC_SUBJECT, cb=self._handle_tl_rpc_measure_time)
-        await self.nc.subscribe(NATS_WORKER_RPC_INTERNAL_SUBJECT, cb=self._handle_tl_rpc_internal)
+        await self.nc.subscribe(NATS_WORKER_RPC_SUBJECT, "piltover-worker", cb=self._handle_tl_rpc_measure_time)
+        await self.nc.subscribe(NATS_WORKER_RPC_INTERNAL_SUBJECT, "piltover-worker", cb=self._handle_tl_rpc_internal)
 
     async def call_internal(self, request: TLObject) -> None:
         await self.nc.publish(NATS_WORKER_RPC_INTERNAL_SUBJECT, CallRpcInternal(obj=request).write())
