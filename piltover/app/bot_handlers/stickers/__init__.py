@@ -10,6 +10,7 @@ from piltover.app.bot_handlers.stickers.newvideo_command import NewVideo
 from piltover.app.bot_handlers.stickers.publish_command import Publish
 from piltover.app.bot_handlers.stickers.renamepack_command import RenamePack
 from piltover.app.bot_handlers.stickers.replacesticker_command import ReplaceSticker
+from piltover.app.bot_handlers.stickers.delpack_command import DelPack
 from piltover.app.bot_handlers.stickers.skip_command import Skip
 from piltover.app.bot_handlers.stickers.start_command import Start
 from piltover.app.bot_handlers.stickers.text_handler import Text
@@ -33,5 +34,6 @@ class StickersBotInteractionHandler(BotInteractionHandler[StickersBotState, Stic
         self.include(Publish())
         self.include(RenamePack())
         self.include(ReplaceSticker())
+        self.include(DelPack())
         self.include(Start())
         self.include(Text())

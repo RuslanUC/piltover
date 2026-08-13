@@ -11,7 +11,7 @@ _text = "Choose the sticker set you want to delete."
 _text_no_sets = "You don't have any sticker sets yet."
 
 
-class AddStickerBotInteractionHandler(BotInteractionHandler[StickersBotState, StickersBotUserState]):
+class DelPack(BotInteractionHandler[StickersBotState, StickersBotUserState]):
     def __init__(self) -> None:
         super().__init__(StickersBotUserState)
         self.command("delpack").do(self._handler).register()
