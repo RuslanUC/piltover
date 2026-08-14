@@ -174,6 +174,8 @@ async def test_check_username_success(client_with_auth: ClientFactory, exit_stac
 
 @pytest.mark.asyncio
 async def test_change_username_to_another_one(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
+    APP_CONFIG.username_change_protection_seconds = 0
+
     client1: TestClient = await exit_stack.enter_async_context(await client_with_auth())
     client2: TestClient = await exit_stack.enter_async_context(await client_with_auth())
 
@@ -192,6 +194,8 @@ async def test_change_username_to_another_one(client_with_auth: ClientFactory, e
 
 @pytest.mark.asyncio
 async def test_unset_username(client_with_auth: ClientFactory, exit_stack: AsyncExitStack) -> None:
+    APP_CONFIG.username_change_protection_seconds = 0
+
     client1: TestClient = await exit_stack.enter_async_context(await client_with_auth())
     client2: TestClient = await exit_stack.enter_async_context(await client_with_auth())
 
