@@ -11,6 +11,14 @@ from piltover.db.models import User, Username, Bot, State, Peer
 from tests.client import TestClient
 
 
+def sort_new_message_updates_key(update: UpdateNewMessage) -> int:
+    return update.message.id
+
+
+def usorted(updates: list[UpdateNewMessage]) -> list[UpdateNewMessage]:
+    return sorted(updates, key=sort_new_message_updates_key)
+
+
 @pytest.mark.real_auth
 @pytest.mark.asyncio
 async def test_create_botfather_bot(exit_stack: AsyncExitStack) -> None:
@@ -19,22 +27,22 @@ async def test_create_botfather_bot(exit_stack: AsyncExitStack) -> None:
     await client.send_message("botfather", "/start")
 
     bot_response: UpdateNewMessage
-    _, bot_response = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    _, bot_response = usorted(await client.expect_updates(UpdateNewMessage, UpdateNewMessage))
     assert "/newbot - create a new bot" in bot_response.message.message
 
     await client.send_message("botfather", "/newbot")
 
-    _, bot_response = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    _, bot_response = usorted(await client.expect_updates(UpdateNewMessage, UpdateNewMessage))
     assert "Alright, a new bot" in bot_response.message.message
 
     await client.send_message("botfather", "test user-created bot")
 
-    _, bot_response = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    _, bot_response = usorted(await client.expect_updates(UpdateNewMessage, UpdateNewMessage))
     assert "Good." in bot_response.message.message
 
     await client.send_message("botfather", "test_user_created_bot")
 
-    _, bot_response = await client.expect_updates(UpdateNewMessage, UpdateNewMessage)
+    _, bot_response = usorted(await client.expect_updates(UpdateNewMessage, UpdateNewMessage))
     assert "Congratulations on your new bot. You will find it at t.me/test_user_created_bot." in bot_response.message.message
 
     bot_user = await client.get_users("test_user_created_bot")
