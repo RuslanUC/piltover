@@ -66,6 +66,9 @@ scheduled_instant_send_threshold = 30
 account_delete_wait_seconds = 604800  # 86400 * 7
 # Maximum amount of bots single user can create
 max_bots_per_user = 24
+# How much time should pass before username removed by one user/channel can be claimed by other users/channels.
+# Set to 0 or any negative value to disable username change protection
+username_change_protection_seconds = 1800  # 60 * 30
 
 #[app.gifs]
 # Gifs search provider. Currently supported: klipy.

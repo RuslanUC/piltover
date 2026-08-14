@@ -50,6 +50,7 @@ class _AppConfig(BaseModel):
     account_delete_wait_seconds: int = 86400 * 7
     channel_delete_history_min_id_threshold: int = 1000
     max_bots_per_user: int = 24
+    username_change_protection_seconds: int = 1800
 
     gifs: _Gifs | None = None
 

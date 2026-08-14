@@ -1,6 +1,8 @@
 from contextlib import AsyncExitStack
+from datetime import datetime, UTC, timedelta
 from io import BytesIO
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -9,7 +11,7 @@ from pyrogram.errors import UsernameOccupied, PasswordMissing, PasswordHashInval
     ChatAdminRequired, UserIdInvalid, PeerIdInvalid, ChannelPrivate, Forbidden, InviteHashExpired, UsernameNotModified, \
     ChatTitleEmpty, ChatAboutTooLong, RightForbidden, UsersTooMuch
 from pyrogram.raw.functions.account import GetPassword
-from pyrogram.raw.functions.channels import EditCreator, DeleteHistory
+from pyrogram.raw.functions.channels import EditCreator, DeleteHistory, CheckUsername
 from pyrogram.raw.functions.updates import GetChannelDifference
 from pyrogram.raw.types import UpdateChannel, UpdateUserName, UpdateNewChannelMessage, InputUser, \
     InputPrivacyKeyChatInvite, InputPrivacyValueAllowUsers, InputPeerChannel, ChannelMessagesFilterEmpty, MessageService
@@ -798,6 +800,117 @@ async def test_channel_demote_user_exceed_admins_limit_success(channel_with_clie
     APP_CONFIG.channel_admin_limit = 1
 
     assert await client1.promote_chat_member(channel.id, user2.id, ChatPrivileges())
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_protected_by_user(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    channel_peer = await client1.resolve_peer(channel.id)
+
+    await client2.set_username(first_username)
+    with pytest.raises(UsernameOccupied):
+        assert await client1.invoke(CheckUsername(channel=channel_peer, username=first_username))
+
+    await client2.set_username(second_username)
+    assert await client1.invoke(CheckUsername(channel=channel_peer, username=first_username))
+
+    with pytest.raises(UsernameOccupied):
+        await client1.set_chat_username(channel.id, first_username)
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_protected_by_channel(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel1, (client1,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+    channel2, (client2,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client1.set_chat_username(channel1.id, first_username)
+    await client1.set_chat_username(channel1.id, second_username)
+
+    with pytest.raises(UsernameOccupied):
+        await client2.set_chat_username(channel2.id, first_username)
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_protected_allow_same_channel(
+        channel_with_clients: ChannelWithClientsFactory,
+) -> None:
+    channel, (client1,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client1.set_chat_username(channel.id, first_username)
+    await client1.set_chat_username(channel.id, second_username)
+    await client1.set_chat_username(channel.id, first_username)
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_protected_allow_same_user(
+        channel_with_clients: ChannelWithClientsFactory,
+) -> None:
+    channel, (client1,) = await channel_with_clients(1, clients_run=True, resolve_channel=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client1.set_username(first_username)
+    await client1.set_username(second_username)
+    await client1.set_chat_username(channel.id, first_username)
+
+
+@pytest.mark.asyncio
+async def test_change_channel_username_to_protected_after_protection_period(
+        channel_with_clients: ChannelWithClientsFactory
+) -> None:
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client2.set_username(first_username)
+    await client2.set_username(second_username)
+
+    now = datetime.now(UTC)
+
+    with patch("piltover.app.handlers.account.datetime") as m:
+        m.now.return_value = now + timedelta(seconds=APP_CONFIG.username_change_protection_seconds + 5)
+        await client1.set_chat_username(channel.id, first_username)
+
+
+@pytest.mark.parametrize(
+    ("when",),
+    [
+        ("before",),
+        ("after",),
+    ],
+)
+@pytest.mark.asyncio
+async def test_change_channel_username_to_protected_after_protection_period(
+        channel_with_clients: ChannelWithClientsFactory, when: str,
+) -> None:
+    channel, (client1, client2,) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client2.set_username(first_username)
+
+    if when == "before":
+        APP_CONFIG.username_change_protection_seconds = 0
+
+    await client2.set_username(second_username)
+
+    if when == "after":
+        APP_CONFIG.username_change_protection_seconds = 0
+
+    await client1.set_chat_username(channel.id, first_username)
 
 
 # TODO: add tests for restricting chat members (including restricting before join)

@@ -4,6 +4,7 @@ from contextlib import AsyncExitStack, contextmanager
 from datetime import timedelta, datetime, UTC
 from io import BytesIO
 from typing import cast, Any
+from unittest.mock import patch
 
 import pytest
 from faker import Faker
@@ -21,6 +22,7 @@ from pyrogram.raw.types import UpdateUserName, UpdateUser, AccountDaysTTL, CodeS
 from pyrogram.raw.types.auth import SentCode as TLSentCode
 from pyrogram.utils import compute_password_check, get_channel_id
 
+from piltover.config import APP_CONFIG
 from piltover.db.models import User, UserPassword, SentCode, PhoneCodePurpose, TaskIqScheduledDeleteUser
 from piltover.tl.layer_info import layer as piltover_layer
 from piltover.tl.types import UserFull
@@ -577,3 +579,101 @@ async def test_update_personal_channel_not_creator(channel_with_clients: Channel
         await client2.invoke(UpdatePersonalChannelCompat(
             channel=await client2.resolve_peer(channel.id),
         ))
+
+
+@pytest.mark.asyncio
+async def test_change_username_to_protected_by_user(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client1.set_username(first_username)
+    with pytest.raises(UsernameOccupied):
+        assert await client2.invoke(CheckUsername(username=first_username))
+
+    await client1.set_username(second_username)
+    assert await client2.invoke(CheckUsername(username=first_username))
+
+    with pytest.raises(UsernameOccupied):
+        await client2.set_username(first_username)
+
+
+@pytest.mark.asyncio
+async def test_change_username_to_protected_by_channel(channel_with_clients: ChannelWithClientsFactory) -> None:
+    channel1, (client1, client2) = await channel_with_clients(2, clients_run=True, resolve_channel=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client1.set_chat_username(channel1.id, first_username)
+    await client1.set_chat_username(channel1.id, second_username)
+
+    with pytest.raises(UsernameOccupied):
+        await client2.set_username(first_username)
+
+
+@pytest.mark.asyncio
+async def test_change_username_to_protected_allow_same_user(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client1.set_username(first_username)
+    await client1.set_username(second_username)
+    await client1.set_username(first_username)
+
+
+@pytest.mark.asyncio
+async def test_change_username_to_protected_after_protection_period(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client1.set_username(first_username)
+    with pytest.raises(UsernameOccupied):
+        assert await client2.invoke(CheckUsername(username=first_username))
+
+    await client1.set_username(second_username)
+    assert await client2.invoke(CheckUsername(username=first_username))
+
+    now = datetime.now(UTC)
+
+    with patch("piltover.app.handlers.account.datetime") as m:
+        m.now.return_value = now + timedelta(seconds=APP_CONFIG.username_change_protection_seconds + 5)
+        await client2.set_username(first_username)
+
+
+@pytest.mark.parametrize(
+    ("when",),
+    [
+        ("before",),
+        ("after",),
+    ],
+)
+@pytest.mark.asyncio
+async def test_change_username_to_protected_after_protection_period(client_with_auth: ClientFactory, when: str) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    first_username = "test_username_1"
+    second_username = "test_username_2"
+
+    await client1.set_username(first_username)
+    with pytest.raises(UsernameOccupied):
+        assert await client2.invoke(CheckUsername(username=first_username))
+
+    if when == "before":
+        APP_CONFIG.username_change_protection_seconds = 0
+
+    await client1.set_username(second_username)
+    assert await client2.invoke(CheckUsername(username=first_username))
+
+    if when == "after":
+        APP_CONFIG.username_change_protection_seconds = 0
+
+    await client2.set_username(first_username)

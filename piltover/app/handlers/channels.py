@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from time import time
 from typing import cast
 
@@ -20,7 +20,7 @@ from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdmin
 from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, ReadState, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
     Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent, \
-    ReadHistoryChunk, DefaultSendAs, Stickerset, StickersetThumb
+    ReadHistoryChunk, DefaultSendAs, Stickerset, StickersetThumb, ProtectedUsername
 from piltover.db.models.channel import CREATOR_RIGHTS
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
@@ -85,50 +85,75 @@ async def update_username(request: UpdateUsername, user_id: int) -> bool:
 
     if request.username:
         validate_username(request.username)
-        if await Username.filter(username__iexact=request.username).exists():
-            raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
 
-    old_username = ""
-    new_username = request.username
+    protection_seconds = APP_CONFIG.username_change_protection_seconds
 
-    if current_username is not None:
-        old_username = current_username.username
-        if not request.username:
-            await current_username.delete()
-            await UserPersonalChannel.filter(channel=channel).delete()
-            channel._username = None
+    async with in_transaction():
+        protected = None
+        now = datetime.now(UTC)
+
+        if request.username:
+            if await Username.filter(username__iexact=request.username).exists():
+                raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
+
+            if protection_seconds > 0:
+                protected = await ProtectedUsername.select_for_update().get_or_none(username=request.username)
+            if protected is not None \
+                    and protected.removed_at + timedelta(seconds=protection_seconds) > now \
+                    and protected.user_id != user_id \
+                    and protected.channel_id != channel.id:
+                raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
+
+        old_username = ""
+        new_username = request.username
+
+        if current_username is not None:
+            old_username = current_username.username
+            if protection_seconds > 0:
+                await ProtectedUsername.update_or_create(username=old_username, defaults={
+                    "user_id": None,
+                    "channel_id": channel.id,
+                    "removed_at": now,
+                })
+            if not request.username:
+                await current_username.delete()
+                await UserPersonalChannel.filter(channel=channel).delete()
+                channel._username = None
+            else:
+                current_username.username = request.username
+                await current_username.save(update_fields=["username"])
         else:
-            current_username.username = request.username
-            await current_username.save(update_fields=["username"])
-    else:
-        channel._username = await Username.create(channel=channel, username=request.username)
+            channel._username = await Username.create(channel=channel, username=request.username)
 
-    await AdminLogEntry.create(
-        channel=channel,
-        user_id=user_id,
-        action=AdminLogEntryAction.CHANGE_USERNAME,
-        prev=old_username.encode("utf8"),
-        new=new_username.encode("utf8"),
-        searchable=f"{old_username}\n{new_username}",
-    )
+        if protected is not None:
+            await protected.delete()
 
-    if channel.username is not None and channel.hidden_prehistory:
-        channel.min_available_id = cast(
-            int | None,
-            cast(
-                object,
-                await MessageRef.filter(
-                    peer__channel=channel,
-                ).order_by("-id").first().values_list("id", flat=True)
-            )
+        await AdminLogEntry.create(
+            channel=channel,
+            user_id=user_id,
+            action=AdminLogEntryAction.CHANGE_USERNAME,
+            prev=old_username.encode("utf8"),
+            new=new_username.encode("utf8"),
+            searchable=f"{old_username}\n{new_username}",
         )
-        if channel.min_available_id is not None:
-            channel.min_available_id += 1
-        channel.hidden_prehistory = False
-        await channel.save(update_fields=["min_available_id", "hidden_prehistory"])
 
-    await Channel.filter(id=channel.id).update(version=F("version") + 1)
-    await channel.refresh_from_db(["version"])
+        if channel.username is not None and channel.hidden_prehistory:
+            channel.min_available_id = cast(
+                int | None,
+                cast(
+                    object,
+                    await MessageRef.filter(
+                        peer__channel=channel,
+                    ).order_by("-id").first().values_list("id", flat=True)
+                )
+            )
+            if channel.min_available_id is not None:
+                channel.min_available_id += 1
+            channel.hidden_prehistory = False
+            await channel.save(update_fields=["min_available_id", "hidden_prehistory"])
+
+        await Channel.filter(id=channel.id).update(version=F("version") + 1)
+        await channel.refresh_from_db(["version"])
 
     await upd.update_channel(channel)
     return True

@@ -21,7 +21,7 @@ from piltover.db.enums import PrivacyRuleKeyType, UserStatus, PushTokenType, Pee
 from piltover.db.models import User, UserAuthorization, Peer, Presence, Username, UserPassword, PrivacyRule, \
     UserPasswordReset, SentCode, PhoneCodePurpose, Theme, UploadingFile, Wallpaper, WallpaperSettings, \
     InstalledWallpaper, PeerColorOption, UserPersonalChannel, PeerNotifySettings, File, UserBackgroundEmojis, \
-    TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey, Channel
+    TaskIqScheduledDeleteUser, UserEmojiStatus, AuthKey, Channel, ProtectedUsername
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session import SessionManager
@@ -84,19 +84,42 @@ async def update_username(request: UpdateUsername, user: User) -> TLUserBase:
     if request.username:
         validate_username(request.username)
 
+    protection_seconds = APP_CONFIG.username_change_protection_seconds
+
     async with in_transaction():
-        if await Username.filter(username__iexact=request.username).exists():
-            raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
+        protected = None
+        now = datetime.now(UTC)
+
+        if request.username:
+            if await Username.filter(username__iexact=request.username).exists():
+                raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
+
+            if protection_seconds > 0:
+                protected = await ProtectedUsername.select_for_update().get_or_none(username=request.username)
+            if protected is not None \
+                    and protected.removed_at + timedelta(seconds=protection_seconds) > now \
+                    and protected.user_id != user.id:
+                raise ErrorRpc(error_code=400, error_message="USERNAME_OCCUPIED")
 
         if user.username is None:
             user._username = await Username.create(user=user, username=request.username)
-        elif user.username is not None and request.username:
+        else:
             username = cast(Username, user.username)
-            username.username = request.username
-            await username.save(update_fields=["username"])
-        elif user.username is not None and not request.username:
-            await user.username.delete()
-            user._username = None
+            if protection_seconds > 0:
+                await ProtectedUsername.update_or_create(username=username.username, defaults={
+                    "user_id": user.id,
+                    "channel_id": None,
+                    "removed_at": now,
+                })
+            if request.username:
+                username.username = request.username
+                await username.save(update_fields=["username"])
+            else:
+                await user.username.delete()
+                user._username = None
+
+        if protected is not None:
+            await protected.delete()
 
         user.version += 1
         await user.save(update_fields=["version"])
