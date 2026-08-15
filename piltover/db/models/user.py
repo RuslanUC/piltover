@@ -4,7 +4,7 @@ import hashlib
 import hmac
 from datetime import date
 from enum import auto, Enum
-from typing import Iterable, Self, cast
+from typing import Iterable, cast
 
 from tortoise import fields, Model
 from tortoise.expressions import Q, F
@@ -13,14 +13,13 @@ from tortoise.transactions import in_transaction
 
 from piltover.cache import Cache
 from piltover.config import APP_CONFIG
-from piltover.context import request_ctx
 from piltover.db import models
-from piltover.db.enums import PrivacyRuleKeyType, PeerType
-from piltover.exceptions import Unreachable, ErrorRpc
-from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long, InputUser
+from piltover.db.enums import PeerType
+from piltover.exceptions import Unreachable
+from piltover.tl import UserProfilePhotoEmpty, PhotoEmpty, Birthday, Long
 from piltover.tl.base import User as TLUserBase
 from piltover.tl.to_format import UserToFormat
-from piltover.tl.types import User as TLUser, PeerColor, PeerUser, InputPeerSelf, InputPeerUser, InputUserSelf
+from piltover.tl.types import User as TLUser, PeerColor, PeerUser
 from piltover.tl.types.internal_access import AccessHashPayloadUser
 
 
@@ -62,8 +61,6 @@ class User(Model):
 
     _username: models.Username | None
 
-    cached_username: models.Username | None | _Missing = _MISSING
-
     _CACHE_VERSION = 1
 
     @property
@@ -91,17 +88,15 @@ class User(Model):
             result += f" {self.last_name}"
         return result
 
-    async def get_username(self) -> models.Username | None:
-        if self.cached_username is _MISSING:
-            self.cached_username = await models.Username.get_or_none(user=self)
-
-        return self.cached_username
-
-    async def get_raw_username(self) -> str | None:
-        username = await self.get_username()
-        if username is None:
+    async def get_raw_username(self, *, _fail: bool = False) -> str | None:
+        if self.username is None:
             return None
-        return username.username
+        if isinstance(self.username, models.Username):
+            return self.username.username
+        if _fail:
+            raise Unreachable
+        await self.fetch_related("username")
+        return await self.get_raw_username(_fail=True)
 
     async def get_db_current_photo(self) -> models.UserPhoto | None:
         return await models.UserPhoto.get_or_none(user=self, current=True).select_related("file").only(
@@ -109,8 +104,6 @@ class User(Model):
         )
 
     async def get_db_photos(self) -> tuple[models.UserPhoto | None, models.UserPhoto | None]:
-        # TODO: also fetch personal_photo (when will be implemented)
-
         current = None
         fallback = None
 

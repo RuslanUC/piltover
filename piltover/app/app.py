@@ -31,7 +31,7 @@ try:
     from aiogram import Bot as AioGramBot
     from aiogram.client.default import DefaultBotProperties
     from aiogram.enums import ParseMode
-except:
+except ImportError:
     AioGramBot = DefaultBotProperties = ParseMode = None
 
 
