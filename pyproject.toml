@@ -98,11 +98,11 @@ exclude-newer = "1 week"
 [tool.coverage.run]
 data_file = "coverage.coverage"
 omit = [
-    "*piltover/tl/base/*",
-    "*piltover/tl/types/*",
-    "*piltover/tl/functions/*",
-    "*piltover/tl/all.py",
-    "*piltover/db/migrations/*",
+    "piltover/tl/base/*",
+    "piltover/tl/types/*",
+    "piltover/tl/functions/*",
+    "piltover/tl/all.py",
+    "piltover/db/migrations/*",
 ]
 
 [tool.tortoise]
