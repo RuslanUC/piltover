@@ -2,7 +2,8 @@ from fastrand import xorshift128plus_bytes
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.sending import process_send_as
-from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel
+from piltover.db.enums import PeerType
+from piltover.db.models import User, Peer, Presence, ChatParticipant, DefaultSendAs, Channel, Chat
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.session import SessionManager
@@ -19,44 +20,46 @@ handler = MessageHandler("messages.other")
 
 @handler.on_request(SetTyping)
 async def set_typing(request: SetTyping, user: User):
-    # TODO: dont fetch peer?
-    peer = await Peer.from_input_peer_raise(user, request.peer)
-
-    if Peer.is_self(peer) or (Peer.is_channel(peer) and not peer.channel.supergroup):
+    peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user.id, request.peer)
+    if peer_type is PeerType.SELF:
         return True
-    elif Peer.is_user(peer):
-        peers = await peer.get_opposite()
-        if not peers:
-            return True
-
+    elif peer_type is PeerType.USER:
         await SessionManager.send(
             upd.UpdatesWithDefaults(
                 updates=[UpdateUserTyping(user_id=user.id, action=request.action)],
                 users=[await user.to_tl()],
             ),
-            user_id=[other.owner_id for other in peers],
+            user_id=[peer_target_id],
         )
-    elif Peer.is_chat(peer):
-        peers = await peer.get_opposite()
+    elif peer_type is PeerType.CHAT:
+        peers = await Peer.filter(chat_id=peer_target_id, owner_id__not=user.id).only("id", "owner_id")
         if not peers:
             return True
+
+        peer_chat = await Chat.get_or_none(deleted=False, id=peer_target_id)
+        if peer_chat is None:
+            return None
 
         await SessionManager.send(
             upd.UpdatesWithDefaults(
                 updates=[UpdateChatUserTyping(
-                    chat_id=peer.chat_id,
+                    chat_id=peer_target_id,
                     from_id=user.to_tl_peer(),
                     action=request.action,
                 )],
                 users=[await user.to_tl()],
-                chats=[await peer.chat.to_tl()],
+                chats=[await peer_chat.to_tl()],
             ),
             user_id=[other.owner_id for other in peers],
         )
-    elif Peer.is_channel(peer):
-        # TODO: support top_msg_id
+    elif peer_type is PeerType.CHANNEL:
+        channel = await Channel.get_or_none(id=peer_target_id)
+        if channel is None:
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
+        if channel.supergroup:
+            return True
 
-        channel = peer.channel
+        # TODO: support top_msg_id
 
         participant = await ChatParticipant.get_or_none(channel=channel, user=user, left=False)
         if participant is None and channel.join_to_send:
@@ -67,14 +70,14 @@ async def set_typing(request: SetTyping, user: User):
         await SessionManager.send(
             upd.UpdatesWithDefaults(
                 updates=[UpdateChannelUserTyping(
-                    channel_id=Channel.make_id_from(peer.channel_id),
+                    channel_id=Channel.make_id_from(peer_target_id),
                     from_id=user.to_tl_peer(),
                     action=request.action,
                 )],
                 users=[await user.to_tl()],
-                chats=[await peer.channel.to_tl()],
+                chats=[await channel.to_tl()],
             ),
-            channel_id=peer.channel_id,
+            channel_id=peer_target_id,
         )
 
     if not user.bot:
