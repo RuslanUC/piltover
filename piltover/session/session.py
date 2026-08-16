@@ -306,10 +306,7 @@ class Session:
         now = int(time())
         self.msg_id_values.offset = (self.msg_id_values.offset + 4) if now == self.msg_id_values.last_time else 0
         self.msg_id_values.last_time = now
-        msg_id = (now * 2 ** 32) + self.msg_id_values.offset + (1 if in_reply else 3)
-
-        assert msg_id % 4 in [1, 3], f"Invalid server msg_id: {msg_id}"
-        return msg_id
+        return (now * 2 ** 32) + self.msg_id_values.offset + (1 if in_reply else 3)
 
     def get_outgoing_seq_no(self, obj: TLObject) -> int:
         ret = self.out_seq_no * 2

@@ -19,7 +19,7 @@ handler = MessageHandler("messages.other")
 
 
 @handler.on_request(SetTyping)
-async def set_typing(request: SetTyping, user: User):
+async def set_typing(request: SetTyping, user: User) -> bool:
     peer_type, peer_target_id = Peer.type_and_id_from_input_raise(user.id, request.peer)
     if peer_type is PeerType.SELF:
         return True
@@ -38,7 +38,7 @@ async def set_typing(request: SetTyping, user: User):
 
         peer_chat = await Chat.get_or_none(deleted=False, id=peer_target_id)
         if peer_chat is None:
-            return None
+            raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
         await SessionManager.send(
             upd.UpdatesWithDefaults(
