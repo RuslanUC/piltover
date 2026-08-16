@@ -256,12 +256,12 @@ class Session:
 
             auth = await UserAuthorization.get_or_none(
                 key_id=perm_auth_key_id,
-            ).select_related("user").annotate(is_bot=F("user__bot")).only("id", "user_id", "mfa_pending", "is_bot")
-            if auth is not None:
-                self.user_id = auth.user_id
-                self.auth_id = auth.id
-                self.is_bot = auth.is_bot
-                self.mfa_pending = auth.mfa_pending
+            ).select_related("user").annotate(is_bot=F("user__bot")).values("id", "user_id", "mfa_pending", "is_bot")
+            if auth:
+                self.user_id = auth["user_id"]
+                self.auth_id = auth["id"]
+                self.is_bot = auth["is_bot"]
+                self.mfa_pending = auth["mfa_pending"]
             else:
                 self._reset_auth()
                 return
