@@ -396,7 +396,7 @@ class Session:
         # TODO: cache media unread statuses
         if values.channel_messages:
             messages = await MessageRef.filter(id__in=values.channel_messages).select_related(
-                "peer", "peer__channel", "content", "content__media", "content__media__file",
+                "peer", "content", "content__media", "content__media__file",
             )
             mentioned_media_unreads = await MessageRef.get_mentioned_media_unread_bulk(messages, user_id)
             reactionss = await MessageRef.to_tl_reactions_bulk(messages, user_id)

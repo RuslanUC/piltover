@@ -61,9 +61,6 @@ telegram-integration = [
 [project.urls]
 repository = "https://github.com/RuslanUC/piltover"
 
-[tool.poetry]
-package-mode = false
-
 [dependency-groups]
 dev = [
     "aiomonitor>=0.7.1",
@@ -91,9 +88,14 @@ test = [
     "tg-secret>=0.1.3",
 ]
 
+[tool.poetry]
+package-mode = false
+
 [tool.uv]
+package = false
 default-groups = "all"
 exclude-newer = "1 week"
+add-bounds = "major"
 
 [tool.coverage.run]
 data_file = "coverage.coverage"
