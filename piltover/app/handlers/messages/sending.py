@@ -1266,7 +1266,7 @@ async def forward_messages(
     src_messages_query = append_channel_min_message_id_to_query_maybe(from_peer, src_messages_query, from_participant)
 
     messages = await MessageRef.filter(src_messages_query).order_by("id").select_related(
-        *MessageRef.PREFETCH_FIELDS, "reply_to", "content__author", "content__send_as_channel",
+        *MessageRef.PREFETCH_FIELDS, "reply_to", "peer__channel", "content__author", "content__send_as_channel",
         "content__fwd_header__from_user", "content__fwd_header__from_chat", "content__fwd_header__from_channel",
     )
     media_group_ids: defaultdict[int | None, int | None] = defaultdict(Snowflake.make_id)

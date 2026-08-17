@@ -77,6 +77,7 @@ class Update(Model):
             ("user_id", "pts"),
         )
 
+    # TODO: remove "message__peer__channel"?
     MESSAGE_PREFETCH_MAYBECACHED = ("message", "message__peer", "message__content", "message__peer__channel")
 
     # TODO: add to_tl_bulk

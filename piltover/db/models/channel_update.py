@@ -28,6 +28,7 @@ class ChannelUpdate(Model):
     channel_id: int
     message_id: int | None
 
+    # TODO: remove "message__peer__channel"?
     MESSAGE_PREFETCH_MAYBECACHED = ("message__peer", "message__content", "message__peer__channel")
 
     async def to_tl(

@@ -88,7 +88,7 @@ class MessageRef(Model):
     )
     PREFETCH_FIELDS = (
         *PREFETCH_FIELDS_MIN, "content__media__file", "content__media__poll", "content__fwd_header",
-        "content__fwd_header__saved_peer", "content__post_info", "peer__channel",
+        "content__fwd_header__saved_peer", "content__post_info",
     )
     PREFETCH_MAYBECACHED = ("content",)
     _FETCH_CACHED_REFS = ("peer", "content__media", "content__media__file")
