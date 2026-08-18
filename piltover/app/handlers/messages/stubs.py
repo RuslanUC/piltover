@@ -1,6 +1,8 @@
+from time import time
+
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import WebPageEmpty, AttachMenuBots, EmojiKeywordsDifference, \
-    PeerSettings, TLObjectVector
+    PeerSettings, TLObjectVector, MessageMediaEmpty, MessageMediaWebPage, WebPagePending, WebPage
 from piltover.tl.base.channels import SponsoredMessageReportResult
 from piltover.tl.functions.channels import GetSponsoredMessages_133
 from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, GetMessageEditData, \
@@ -12,7 +14,7 @@ from piltover.tl.functions.messages import GetPeerSettings, GetQuickReplies, Get
 from piltover.tl.types.channels import SponsoredMessageReportResultReported
 from piltover.tl.types.messages import PeerSettings as MessagesPeerSettings, Reactions, SavedReactionTags, \
     Stickers, FeaturedStickers, MessageEditData, \
-    QuickReplies, AvailableEffects, SponsoredMessages, SponsoredMessagesEmpty
+    QuickReplies, AvailableEffects, SponsoredMessages, SponsoredMessagesEmpty, WebPagePreview
 from piltover.worker import MessageHandler
 
 handler = MessageHandler("messages.stubs")
@@ -79,7 +81,10 @@ async def get_emoji_keywords(request: GetEmojiKeywords):  # pragma: no cover
 
 @handler.on_request(GetWebPagePreview, ReqHandlerFlags.AUTH_NOT_REQUIRED)
 async def get_webpage_preview():  # pragma: no cover
-    return WebPageEmpty(id=0)
+    return WebPagePreview(
+        media=MessageMediaEmpty(),
+        users=[],
+    )
 
 
 @handler.on_request(GetMessageEditData, ReqHandlerFlags.AUTH_NOT_REQUIRED)
