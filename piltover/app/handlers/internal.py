@@ -2,7 +2,6 @@ from collections import defaultdict
 from datetime import datetime, UTC
 from typing import cast
 
-from aiogram.exceptions import TelegramAPIError
 from loguru import logger
 from tortoise.transactions import in_transaction
 
@@ -25,8 +24,9 @@ try:
     from aiogram import Bot as AioGramBot
     from aiogram.client.default import DefaultBotProperties
     from aiogram.enums import ParseMode
+    from aiogram.exceptions import TelegramAPIError
 except:
-    AioGramBot = DefaultBotProperties = ParseMode = None
+    AioGramBot = DefaultBotProperties = ParseMode = TelegramAPIError = None
 
 handler = MessageHandler("internal")
 

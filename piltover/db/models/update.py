@@ -152,8 +152,8 @@ class Update(Model):
                 )
 
             case UpdateType.USER_UPDATE:
-                ucc.add_user(self.related_id)
-                return UpdateUser(user_id=self.related_id)
+                ucc.add_user(self.user_id)
+                return UpdateUser(user_id=self.user_id)
 
             case UpdateType.CHAT_CREATE:
                 chat = await models.Chat.get_or_none(
@@ -189,7 +189,7 @@ class Update(Model):
 
             case UpdateType.USER_UPDATE_NAME:
                 # TODO: prefetch user
-                if (target := await models.User.get_or_none(id=self.related_id).select_related("username")) is None:
+                if (target := await models.User.get_or_none(id=self.user_id).select_related("username")) is None:
                     return None
 
                 ucc.add_user(target.id)

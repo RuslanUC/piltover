@@ -833,32 +833,28 @@ async def pin_channel_messages(channel: Channel, messages: list[MessageRef]) -> 
 
 
 async def update_user(user: User) -> None:
-    # TODO: create update to SELF here and then send a worker task to create updates for all other users.
-    #  In worker task, dont fetch all peers, but rather latest N `visible` dialogs with user.
-
-    updates_to_create = []
-
-    user_tl = await user.to_tl()
-
-    # for peer in await Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
-    for peer in await Peer.filter(owner_id=user.id, user_id=user.id):
-        pts = await State.add_pts(peer.owner_id, 1)
-
-        updates_to_create.append(
-            Update(
-                user_id=peer.owner_id,
-                update_type=UpdateType.USER_UPDATE,
-                pts=pts,
-                related_id=user.id,
-            )
+    async with in_transaction():
+        await Update.create(
+            user_id=user.id,
+            update_type=UpdateType.USER_UPDATE,
+            pts=await State.add_pts(user.id, 1),
         )
 
-        await SessionManager.send(UpdatesWithDefaults(
-            updates=[UpdateUser(user_id=user.id)],
-            users=[user_tl],
-        ), peer.owner_id)
+    # TODO: subscribe target users in gateway instead of this
+    target_user_ids = cast(
+        list[int],
+        await Peer.filter(
+            user_id=user.id
+        ).select_related("dialogs").filter(
+            dialogs__visible=True
+        ).order_by("-last_message_id").limit(50).values_list("owner_id", flat=True)
+    )
+    target_user_ids.append(user.id)
 
-    await Update.bulk_create(updates_to_create)
+    await SessionManager.send(UpdatesWithDefaults(
+        updates=[UpdateUser(user_id=user.id)],
+        users=[await user.to_tl()],
+    ), target_user_ids)
 
 
 async def update_chat_participants(chat: Chat, peers: list[Peer]) -> Updates:
@@ -928,41 +924,39 @@ async def update_status(
 
 
 async def update_user_name(user: User) -> None:
-    # TODO: create update to SELF here and then send a worker task to create updates for all other users.
-    #  In worker task, dont fetch all peers, but rather latest N `visible` dialogs with user.
-
     if user.username is not None and not isinstance(user.username, Username):
         raise ValueError("`username` must be prefetched")
 
-    updates_to_create = []
-
-    username = user.username.username if user.username is not None else None
-
-    user_tl = await user.to_tl()
-
-    usernames = [] if not username else [TLUsername(editable=True, active=True, username=username)]
-    update = UpdateUserName(
-        user_id=user.id, first_name=user.first_name, last_name=user.last_name or "", usernames=usernames,
-    )
-    # for peer in await Peer.filter(Q(user=user) | (Q(owner=user) & Q(type=PeerType.SELF))).select_related("owner"):
-    for peer in await Peer.filter(owner_id=user.id, user_id=user.id):
-        pts = await State.add_pts(peer.owner_id, 1)
-
-        updates_to_create.append(
-            Update(
-                user_id=peer.owner_id,
-                update_type=UpdateType.USER_UPDATE_NAME,
-                pts=pts,
-                related_id=user.id,
-            )
+    async with in_transaction():
+        await Update.create(
+            user_id=user.id,
+            update_type=UpdateType.USER_UPDATE_NAME,
+            pts=await State.add_pts(user.id, 1),
         )
 
-        await SessionManager.send(UpdatesWithDefaults(
-            updates=[update],
-            users=[user_tl],
-        ), peer.owner_id)
+    # TODO: subscribe target users in gateway instead of this
+    target_user_ids = cast(
+        list[int],
+        await Peer.filter(
+            user_id=user.id
+        ).select_related("dialogs").filter(
+            dialogs__visible=True
+        ).order_by("-last_message_id").limit(50).values_list("owner_id", flat=True)
+    )
+    target_user_ids.append(user.id)
 
-    await Update.bulk_create(updates_to_create)
+    username = user.username.username if user.username is not None else None
+    await SessionManager.send(UpdatesWithDefaults(
+        updates=[
+            UpdateUserName(
+                user_id=user.id,
+                first_name=user.first_name,
+                last_name=user.last_name or "",
+                usernames=[] if not username else [TLUsername(editable=True, active=True, username=username)],
+            )
+        ],
+        users=[await user.to_tl()],
+    ), target_user_ids)
 
 
 async def add_remove_contact(user_id: int, targets: list[User]) -> Updates:
