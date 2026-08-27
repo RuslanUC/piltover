@@ -11,7 +11,7 @@ from .file import File
 from .message_draft import MessageDraft
 from .message_fwd_header import MessageFwdHeader
 from .message_media import MessageMedia
-from .peer import Peer
+from .peer import Peer, peer_is_self, peer_is_user, peer_is_self_or_user, peer_is_chat, peer_is_channel, peer_is_owned
 from .presence import Presence
 from .privacy_rule import PrivacyRule
 from .read_state import ReadState

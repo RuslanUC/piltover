@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TypeVar, Generic, TYPE_CHECKING, Literal, TypeGuard, TypeAlias, cast
+from typing import TypeVar, TypeGuard, TypeAlias, cast, Protocol
 
 from pypika_tortoise import Parameter, Dialects
 from tortoise import fields, Model, Tortoise
@@ -19,25 +19,72 @@ from piltover.tl.base import InputUser as InputUserBase, InputPeer as InputPeerB
 InputPeers = InputPeerBase | InputUserBase | InputChannelBase
 InputOnlyPeers = InputPeerSelf | InputPeerUser | InputPeerChat | InputPeerChannel
 
-OwnerT = TypeVar("OwnerT", bound="models.User | None")
-UserT = TypeVar("UserT", bound="models.User | None")
-ChatT = TypeVar("ChatT", bound="models.Chat | None")
-ChannelT = TypeVar("ChannelT", bound="models.Channel | None")
-OwnerIdT = TypeVar("OwnerIdT", bound=int | None)
-UserIdT = TypeVar("UserIdT", bound=int | None)
-ChatIdT = TypeVar("ChatIdT", bound=int | None)
-ChannelIdT = TypeVar("ChannelIdT", bound=int | None)
-AnyPeerType = Literal[PeerType.SELF, PeerType.USER, PeerType.CHAT, PeerType.CHANNEL]
-PeerTypeT = TypeVar(
-    "PeerTypeT",
-    bound=AnyPeerType,
-)
+OwnerT = TypeVar("OwnerT", bound="models.User | None", covariant=True)
+UserT = TypeVar("UserT", bound="models.User | None", covariant=True)
+ChatT = TypeVar("ChatT", bound="models.Chat | None", covariant=True)
+ChannelT = TypeVar("ChannelT", bound="models.Channel | None", covariant=True)
+OwnerIdT = TypeVar("OwnerIdT", bound=int | None, covariant=True)
+UserIdT = TypeVar("UserIdT", bound=int | None, covariant=True)
+ChatIdT = TypeVar("ChatIdT", bound=int | None, covariant=True)
+ChannelIdT = TypeVar("ChannelIdT", bound=int | None, covariant=True)
 
-PeerSelfT: TypeAlias = "Peer[models.User, models.User, None, None, int, int, None, None, Literal[PeerType.SELF]]"  # noqa: E501
-PeerUserT: TypeAlias = "Peer[models.User, models.User, None, None, int, int, None, None, Literal[PeerType.USER]]"  # noqa: E501
-PeerChatT: TypeAlias = "Peer[models.User, None, models.Chat, None, int, None, int, None, Literal[PeerType.CHAT]]"  # noqa: E501
-PeerChannelT: TypeAlias = "Peer[None, None, None, models.Channel, None, None, None, int, Literal[PeerType.CHANNEL]]"  # noqa: E501
-PeerOwnedT: TypeAlias = "Peer[models.User, models.User | None, models.Chat | None, models.Channel | None, int, int | None, int | None, int | None, AnyPeerType]"  # noqa: E501
+
+class PeerAny(Protocol[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, ChatIdT, ChannelIdT]):
+    @property
+    def owner(self) -> OwnerT: ...
+
+    @property
+    def user(self) -> UserT: ...
+
+    @property
+    def chat(self) -> ChatT: ...
+
+    @property
+    def channel(self) -> ChannelT: ...
+
+    @property
+    def owner_id(self) -> OwnerIdT: ...
+
+    @property
+    def user_id(self) -> UserIdT: ...
+
+    @property
+    def chat_id(self) -> ChatIdT: ...
+
+    @property
+    def channel_id(self) -> ChannelIdT: ...
+
+
+PeerAnySelfT: TypeAlias = PeerAny["models.User", "models.User", None, None, int, int, None, None]
+PeerAnyUserT: TypeAlias = PeerAny["models.User", "models.User", None, None, int, int, None, None]
+PeerAnyChatT: TypeAlias = PeerAny["models.User", None, "models.Chat", None, int, None, int, None]
+PeerAnyChannelT: TypeAlias = PeerAny[None, None, None, "models.Channel", None, None, None, int]
+PeerAnyOwnedT: TypeAlias = PeerAny["models.User", "models.User | None", "models.Chat | None", "models.Channel | None", int, int | None, int | None, int | None]  # noqa: E501
+
+
+def peer_is_self(peer: PeerAny) -> TypeGuard[PeerAnySelfT]:
+    return peer.owner_id is not None and peer.user_id is not None and peer.owner_id == peer.user_id
+
+
+def peer_is_user(peer: PeerAny) -> TypeGuard[PeerAnyUserT]:
+    return peer.owner_id is not None and peer.user_id is not None and peer.owner_id != peer.user_id
+
+
+def peer_is_self_or_user(peer: PeerAny) -> TypeGuard[PeerAnyUserT]:
+    return peer.owner_id is not None and peer.user_id is not None
+
+
+def peer_is_chat(peer: PeerAny) -> TypeGuard[PeerAnyChatT]:
+    return peer.owner_id is not None and peer.chat_id is not None
+
+
+def peer_is_channel(peer: PeerAny) -> TypeGuard[PeerAnyChannelT]:
+    return peer.owner_id is None and peer.channel_id is not None
+
+
+def peer_is_owned(peer: PeerAny) -> TypeGuard[PeerAnyOwnedT]:
+    return peer.owner_id is not None
+
 
 _LAST_MESSAGE_SYNC_SQL = """
 UPDATE peer
@@ -62,10 +109,10 @@ WHERE {where_condition};
 """
 
 
-class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, ChatIdT, ChannelIdT, PeerTypeT]):
+class Peer(Model):
     id: int = fields.BigIntField(primary_key=True)
     owner: models.User = fields.ForeignKeyField("models.User", related_name="owner", null=True)
-    type: PeerTypeT = fields.IntEnumField(PeerType, description="")
+    type: PeerType = fields.IntEnumField(PeerType, description="")
     blocked_at: datetime | None = fields.DatetimeField(null=True, default=None)
     user_ttl_period_days: int | None = fields.SmallIntField(null=True, default=None)
     user_has_wallpaper: bool = fields.BooleanField(default=False)
@@ -73,9 +120,9 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
     last_message_date: datetime | None = fields.DatetimeField(null=True, default=None, db_index=True)
     out_max_read_id: int = fields.BigIntField(default=0)
 
-    user: UserT = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
-    chat: ChatT = fields.ForeignKeyField("models.Chat", null=True, default=None)
-    channel: ChannelT = fields.OneToOneField("models.Channel", null=True, default=None, related_name="peer")
+    user: models.User = fields.ForeignKeyField("models.User", related_name="user", null=True, default=None)
+    chat: models.Chat = fields.ForeignKeyField("models.Chat", null=True, default=None)
+    channel: models.Channel = fields.OneToOneField("models.Channel", null=True, default=None, related_name="peer")
 
     class Meta:
         unique_together = (
@@ -83,70 +130,10 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
             ("owner", "chat",),
         )
 
-    owner_id: OwnerIdT
-    user_id: UserIdT
-    chat_id: ChatIdT
-    channel_id: ChannelIdT
-
-    # PyCharm cant properly infer None without this
-    if TYPE_CHECKING:
-        @property
-        def type(self) -> PeerTypeT: raise Unreachable
-        @property
-        def owner(self) -> OwnerT: raise Unreachable
-        @property
-        def user(self) -> UserT: raise Unreachable
-        @property
-        def chat(self) -> ChatT: raise Unreachable
-        @property
-        def channel(self) -> ChannelT: raise Unreachable
-        @property
-        def owner_id(self) -> OwnerIdT: raise Unreachable
-        @property
-        def user_id(self) -> UserIdT: raise Unreachable
-        @property
-        def chat_id(self) -> ChatIdT: raise Unreachable
-        @property
-        def channel_id(self) -> ChannelIdT: raise Unreachable
-
-        @type.setter
-        def type(self, value: PeerType) -> None: ...
-        @owner.setter
-        def owner(self, value: models.User | None) -> None: ...
-        @user.setter
-        def user(self, value: models.User | None) -> None: ...
-        @chat.setter
-        def chat(self, value: models.Chat | None) -> None: ...
-        @channel.setter
-        def channel(self, value: models.Channel | None) -> None: ...
-        @owner_id.setter
-        def owner_id(self, value: int | None) -> None: ...
-        @user_id.setter
-        def user_id(self, value: int | None) -> None: ...
-        @chat_id.setter
-        def chat_id(self, value: int | None) -> None: ...
-        @channel_id.setter
-        def channel_id(self, value: int | None) -> None: ...
-
-    @staticmethod
-    def is_self(peer: Peer) -> TypeGuard[PeerSelfT]:
-        return peer.owner_id is not None and peer.user_id is not None and peer.owner_id == peer.user_id
-
-    @staticmethod
-    def is_user(peer: Peer) -> TypeGuard[PeerUserT]:
-        return peer.owner_id is not None and peer.user_id is not None and peer.owner_id != peer.user_id
-
-    @staticmethod
-    def is_chat(peer: Peer) -> TypeGuard[PeerChatT]:
-        return peer.owner_id is not None and peer.chat_id is not None
-
-    @staticmethod
-    def is_channel(peer: Peer) -> TypeGuard[PeerChannelT]:
-        return peer.owner_id is None and peer.channel_id is not None
-
-    @staticmethod
-    def is_owned(peer: Peer) -> TypeGuard[PeerOwnedT]:
-        return peer.owner_id is not None
+    owner_id: int | None
+    user_id: int | None
+    chat_id: int | None
+    channel_id: int | None
 
     @classmethod
     async def from_chat_id_raise(
@@ -318,49 +305,42 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
         return []
 
     def to_tl(self) -> PeerUser | PeerChat | PeerChannel:
-        if self.type is PeerType.SELF:
+        if peer_is_self(self):
             return PeerUser(user_id=self.owner_id)
-        if self.type is PeerType.USER:
+        if peer_is_user(self):
             return PeerUser(user_id=self.user_id)
-        if self.type == PeerType.CHAT:
+        if peer_is_chat(self):
             return PeerChat(chat_id=models.Chat.make_id_from(self.chat_id))
-        if self.type == PeerType.CHANNEL:
+        if peer_is_channel(self):
             return PeerChannel(channel_id=models.Channel.make_id_from(self.channel_id))
 
         raise Unreachable
 
     def target_id_raw(self) -> int:
-        if self.type is PeerType.SELF:
+        if peer_is_self(self):
             return self.user_id
-        if self.type is PeerType.USER:
+        if peer_is_user(self):
             return self.user_id
-        if self.type == PeerType.CHAT:
+        if peer_is_chat(self):
             return self.chat_id
-        if self.type == PeerType.CHANNEL:
+        if peer_is_channel(self):
             return self.channel_id
 
         raise Unreachable
 
     def to_input_peer(self, self_is_user: bool = False) -> InputOnlyPeers:
-        return self.to_input_peer_cls(self.type, self.user_id, self.chat_id, self.channel_id, self_is_user)
-
-    @classmethod
-    def to_input_peer_cls(
-            cls, type_: PeerType, user_id: int | None, chat_id: int | None, channel_id: int | None,
-            self_is_user: bool = False,
-    ) -> InputOnlyPeers:
-        if type_ is PeerType.SELF:
+        if peer_is_self(self):
             if self_is_user:
-                return InputPeerUser(user_id=user_id, access_hash=-1)
+                return InputPeerUser(user_id=self.user_id, access_hash=-1)
             return InputPeerSelf()
-        if type_ is PeerType.USER:
-            return InputPeerUser(user_id=user_id, access_hash=-1)
-        if type_ == PeerType.CHAT:
-            return InputPeerChat(chat_id=models.Chat.make_id_from(chat_id))
-        if type_ == PeerType.CHANNEL:
-            return InputPeerChannel(channel_id=models.Channel.make_id_from(channel_id), access_hash=-1)
+        if peer_is_user(self):
+            return InputPeerUser(user_id=self.user_id, access_hash=-1)
+        if peer_is_chat(self):
+            return InputPeerChat(chat_id=models.Chat.make_id_from(self.chat_id))
+        if peer_is_channel(self):
+            return InputPeerChannel(channel_id=models.Channel.make_id_from(self.channel_id), access_hash=-1)
 
-        raise RuntimeError("Unreachable")
+        raise Unreachable
 
     @property
     def chat_or_channel(self) -> models.ChatBase:
@@ -372,18 +352,22 @@ class Peer(Model, Generic[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, Cha
         raise RuntimeError(f".chat_or_channel called on peer with type {self.type}")
 
     def __repr__(self) -> str:
-        if self.type in (PeerType.SELF, PeerType.USER):
-            peer_id = f"user_id={self.user_id}"
-        elif self.type is PeerType.CHAT:
-            peer_id = f"chat_id={self.chat_id}"
-        elif self.type is PeerType.CHANNEL:
-            peer_id = f"channel_id={self.channel_id}"
+        obj_fields = [f"type={self.type!r}"]
+        if (peer_id := getattr(self, "id")) is not None:
+            obj_fields.append(f"id={peer_id!r}")
+        if (owner_id := getattr(self, "owner_id")) is not None:
+            obj_fields.append(f"owner_id={owner_id!r}")
+
+        if peer_is_self_or_user(self):
+            obj_fields.append(f"user_id={self.user_id}")
+        elif peer_is_chat(self):
+            obj_fields.append(f"chat_id={self.chat_id}")
+        elif peer_is_channel(self):
+            obj_fields.append(f"channel_id={self.channel_id}")
         else:
             raise Unreachable
 
-        id_maybe = f"id={self.id!r}, " if hasattr(self, "id") else ""
-        owner_id_maybe = f"owner_id={self.owner_id!r}, " if hasattr(self, "owner_id") else ""
-        return f"{self.__class__.__name__}({id_maybe}{owner_id_maybe}type={self.type!r}, {peer_id})"
+        return f"{self.__class__.__name__}({', '.join(obj_fields)})"
 
     @staticmethod
     def input_is_self(user_id: int, input_peer: InputUserBase | InputPeerBase) -> bool:

@@ -586,6 +586,7 @@ class MessageRef(Model):
     ) -> list[models.MessageFwdHeader]:
         return await models.MessageContent.create_fwd_header_bulk(refs, user_id, to_self)
 
+    # TODO: allow passing User/Chat/Channel instead of Peer
     @classmethod
     async def create_for_peer(
             cls, peer: models.Peer, author: models.User | int, *, random_id: int | None = None,

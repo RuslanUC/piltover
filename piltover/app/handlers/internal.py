@@ -12,7 +12,6 @@ from piltover.config import SYSTEM_CONFIG
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
     TaskIqScheduledMessage, TelegramUser
-from piltover.db.models.peer import PeerChannelT
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import TLObject
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
@@ -112,7 +111,7 @@ async def create_discussion_thread(request: CreateDiscussionThread) -> TLObject:
         if message is None or not (discussion_channel_id := message.peer.channel.discussion_id):
             return TaggedBool(value=False)
 
-        discussion_peer: PeerChannelT | None = await Peer.get_or_none(
+        discussion_peer = await Peer.get_or_none(
             channel_id=discussion_channel_id,
         ).select_related("channel")
         if discussion_peer is None:

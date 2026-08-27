@@ -7,7 +7,6 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.dialogs import get_dialogs_internal, format_dialogs
 from piltover.app.handlers.messages.history import get_messages_internal, format_messages_internal
 from piltover.db.models import SavedDialog, Peer, State, MessageRef
-from piltover.db.models.peer import PeerSelfT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc
 from piltover.tl import InputDialogPeer
@@ -29,7 +28,7 @@ async def get_saved_dialogs(request: GetSavedDialogs, user_id: int) -> SavedDial
 
 @handler.on_request(GetSavedHistory, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_saved_history(request: GetSavedHistory, user_id: int) -> Messages | MessagesSlice:
-    self_peer: PeerSelfT = await Peer.get(owner_id=user_id, user_id=user_id)
+    self_peer = await Peer.get(owner_id=user_id, user_id=user_id)
 
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 

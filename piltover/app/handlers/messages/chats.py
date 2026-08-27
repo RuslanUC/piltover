@@ -15,15 +15,14 @@ from piltover.db.enums import PeerType, MessageType, PrivacyRuleKeyType, ChatBan
 from piltover.db.models import User, Peer, Chat, File, UploadingFile, ChatParticipant, PrivacyRule, \
     ChatInviteRequest, ChatInvite, Channel, Dialog, Presence, AdminLogEntry, MessageRef, MessageContent
 from piltover.db.models.channel import CREATOR_RIGHTS
-from piltover.db.models.peer import PeerChatT, InputPeers
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.session import SessionManager
-from piltover.tl import MissingInvitee, InputUserFromMessage, InputUser, Updates, ChatFull, PeerNotifySettings, \
-    ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, InputPeerUser, \
-    MessageActionChatCreate, MessageActionChatEditTitle, MessageActionChatAddUser, \
+from piltover.tl import MissingInvitee, Updates, ChatFull, PeerNotifySettings, \
+    ChatParticipants, InputChatPhotoEmpty, InputChatPhoto, InputChatUploadedPhoto, PhotoEmpty, MessageActionChatCreate, \
+    MessageActionChatEditTitle, MessageActionChatAddUser, \
     MessageActionChatDeleteUser, MessageActionChatMigrateTo, MessageActionChannelMigrateFrom, ChatOnlines, \
-    MessageActionChatEditPhoto, InputPeerUserFromMessage, InputChatUploadedPhoto_133
+    MessageActionChatEditPhoto, InputChatUploadedPhoto_133
 from piltover.tl.base import InputChatPhoto as TLInputChatPhotoBase, Photo as TLPhotoBase
 from piltover.tl.base.messages import Chats as ChatsBase
 from piltover.tl.functions.messages import CreateChat, GetChats, CreateChat_150, GetFullChat, EditChatTitle, \
@@ -92,7 +91,7 @@ async def create_chat(request: CreateChat, user_id: int) -> InvitedUsers:
 
     chat_peers: dict[int, Peer] = {
         peer.owner_id: peer
-        for peer in cast(list[PeerChatT], await Peer.filter(chat=chat))
+        for peer in await Peer.filter(chat=chat)
     }
     for peer in chat_peers.values():
         peer.chat = chat
@@ -133,10 +132,7 @@ async def create_chat_133_150(request: CreateChat_133 | CreateChat_150, user_id:
 @handler.on_request(GetChats, ReqHandlerFlags.DONT_FETCH_USER)
 async def get_chats(request: GetChats, user_id: int) -> Chats:
     chat_ids = [Chat.norm_id(chat_id) for chat_id in request.id]
-    peers = cast(
-        list[PeerChatT],
-        await Peer.filter(owner_id=user_id, chat_id__in=chat_ids, chat__deleted=False).select_related("chat"),
-    )
+    peers = await Peer.filter(owner_id=user_id, chat_id__in=chat_ids, chat__deleted=False).select_related("chat")
 
     return Chats(
         chats=await Chat.to_tl_bulk([peer.chat for peer in peers]),
@@ -312,7 +308,7 @@ async def add_chat_user(request: AddChatUser, user_id: int) -> InvitedUsers:
 
     chat_peers = {
         peer.owner_id: peer
-        for peer in cast(list[PeerChatT], await Peer.filter(chat_id=chat.id))
+        for peer in await Peer.filter(chat_id=chat.id)
     }
     if user_peer_id not in chat_peers:
         async with in_transaction():
@@ -699,12 +695,15 @@ async def get_common_chats(request: GetCommonChats, user_id: int) -> ChatsBase:
 
 @handler.on_request(DeleteChat, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def delete_chat(request: DeleteChat, user_id: int) -> bool:
-    peer = await Peer.from_chat_id_raise(user_id, request.chat_id, allow_migrated=True)
-    if peer.chat.creator_id != user_id:
+    chat_id = Chat.norm_id(request.chat_id)
+    if (chat := await Chat.get_or_none(id=chat_id, deleted=False)) is None:
+        raise ErrorRpc(error_code=400, error_message="CHAT_ID_INVALID")
+
+    if chat.creator_id != user_id:
         raise ErrorRpc(error_code=400, error_message="CHAT_ADMIN_REQUIRED")
 
-    await Chat.filter(id=peer.chat_id).update(version=F("version") + 1, deleted=True)
-    await peer.chat.refresh_from_db(["version", "deleted"])
+    await Chat.filter(id=chat_id).update(version=F("version") + 1, deleted=True)
+    await chat.refresh_from_db(["version", "deleted"])
 
-    await upd.update_chat(peer.chat)
+    await upd.update_chat(chat)
     return True

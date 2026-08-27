@@ -9,7 +9,6 @@ import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.updates import get_state_internal
 from piltover.db.enums import PeerType, DialogFolderId
 from piltover.db.models import Dialog, Peer, SavedDialog, MessageRef
-from piltover.db.models.peer import PeerOwnedT
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import DialogPeer, Updates, TLObjectVector, InputDialogPeer
@@ -390,9 +389,7 @@ async def mark_dialog_unread(request: MarkDialogUnread, user_id: int) -> bool:
 
 @handler.on_request(GetDialogUnreadMarks, ReqHandlerFlags.BOT_NOT_ALLOWED | ReqHandlerFlags.DONT_FETCH_USER)
 async def get_dialog_unread_marks(user_id: int) -> TLObjectVector[TLDialogPeerBase]:
-    peers: list[PeerOwnedT] = await Peer.filter(
-        dialogs__owner_id=user_id, dialogs__unread_mark=True, dialogs__visible=True,
-    )
+    peers = await Peer.filter(dialogs__owner_id=user_id, dialogs__unread_mark=True, dialogs__visible=True)
 
     return TLObjectVector([
         DialogPeer(peer=peer.to_tl())
