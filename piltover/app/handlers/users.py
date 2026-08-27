@@ -65,8 +65,6 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
         "user__bot_info__description_photo__constant_access_hash",
         "user__bot_info__description_photo__constant_file_ref",
     )
-    if peer is None:
-        raise ErrorRpc(error_code=400, error_message="PEER_ID_INVALID")
 
     target_user = peer.user
 
@@ -112,7 +110,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
         personal_channel_msg_id = None
 
     bot_info = None
-    if target_user.bot is not None:
+    if target_user.bot:
         if target_user.bot_info is None:
             bot_info = TLBotInfo()
         else:

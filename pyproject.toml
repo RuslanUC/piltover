@@ -51,6 +51,7 @@ dependencies = [
     "pylinkify @ git+https://github.com/RuslanUC/pylinkify.git",
     "pydantic-settings (>=2.15.0,<3.0.0)",
     "gmpy2>=2.3.1",
+    "pyrefly>=0.60.0",
 ]
 
 [project.optional-dependencies]
@@ -67,6 +68,7 @@ dev = [
     "aiozipkin>=1.1.1",
     "austin-dist>=4.0.0",
     "austin-python>=2.2.0",
+    "basedpyright>=1.39.10,<2.0.0",
     "loopmon>=1.0.1",
     "mypy>=2.1.0",
     "py-spy>=0.4.2",
@@ -161,3 +163,11 @@ ignore_errors = true
 ignore_decorators = ["@handler.on_request", "@dp.message", "@dp.callback_query"]
 paths = ["piltover/"]
 exclude = ["piltover/tl/base", "piltover/tl/types", "piltover/tl/functions", "piltover/db/migrations"]
+
+[tool.basedpyright]
+reportUninitializedInstanceVariable = false
+reportPrivateLocalImportUsage = false
+reportUnannotatedClassAttribute = false
+# TODO: enable following checks and fix issues in code
+reportImplicitOverride = false
+reportUnknownVariableType = false

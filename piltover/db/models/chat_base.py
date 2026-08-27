@@ -9,10 +9,10 @@ from tortoise.expressions import Q
 
 from piltover.db import models
 from piltover.db.enums import ChatBannedRights, ChatAdminRights
-from piltover.db.models.utils import IntFlagField
+from piltover.db.models.utils import IntFlagField, MISSING, Missing
 from piltover.exceptions import ErrorRpc
-from piltover.tl import Chat, ChatForbidden, ChannelForbidden, Channel, Photo, PhotoEmpty, ChatPhoto, ChatPhotoEmpty, \
-    PeerChat, PeerChannel
+from piltover.tl import Photo, PhotoEmpty, ChatPhoto, ChatPhotoEmpty, PeerChat, PeerChannel
+from piltover.tl.base import Chat as TLChatBase
 
 
 class _PhotoMissing(Enum):
@@ -48,9 +48,9 @@ class ChatBase(Model):
 
     async def update(
             self, title: str | None = None, description: str | None = None,
-            photo: models.File | None | _PhotoMissing = _PHOTO_MISSING, ttl_period_days: int | None = None,
+            photo: models.File | None | Missing = MISSING, ttl_period_days: int | None = None,
     ) -> None:
-        save_fields = []
+        save_fields: list[str] = []
 
         if title is not None:
             title = title.strip()
@@ -72,7 +72,7 @@ class ChatBase(Model):
             self.description = description
             save_fields.append("description")
 
-        if photo is not _PHOTO_MISSING:
+        if photo is not MISSING:
             if photo == self.photo:
                 raise ErrorRpc(error_code=400, error_message="CHAT_NOT_MODIFIED")
 
@@ -187,7 +187,7 @@ class ChatBase(Model):
     def norm_id(t_id: int) -> int:
         return t_id // 2
 
-    async def to_tl(self) -> Chat | ChatForbidden | Channel | ChannelForbidden:
+    async def to_tl(self) -> TLChatBase:
         raise NotImplementedError
 
     def to_tl_peer(self) -> PeerChat | PeerChannel:
