@@ -74,12 +74,13 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
     new = []
 
     async with in_transaction():
+        # TODO: filter by scheduled_by_user_id?
         scheduled_messages = await MessageRef.select_for_update(
             skip_locked=True, no_key=True,
         ).filter(
             peer=peer, id__in=request.id[:100],
         ).select_related(
-            "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",
+            "taskiqscheduledmessages", "peer", "peer__user", "content", "content__author",
             "content__media", "content__reply_to", "content__fwd_header", "content__post_info",
         )
 
@@ -87,7 +88,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
             task = cast(TaskIqScheduledMessage, scheduled.taskiqscheduledmessages)
             messages = await scheduled.send_scheduled(task.opposite)
             msg_updates = await sending.send_created_messages_internal(
-                messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
+                messages, task.opposite, scheduled.peer, user_id, False, False, task.mentioned_users_set,
             )
             await scheduled.content.delete()
 

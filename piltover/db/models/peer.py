@@ -29,19 +29,7 @@ ChatIdT = TypeVar("ChatIdT", bound=int | None, covariant=True)
 ChannelIdT = TypeVar("ChannelIdT", bound=int | None, covariant=True)
 
 
-class PeerAny(Protocol[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, ChatIdT, ChannelIdT]):
-    @property
-    def owner(self) -> OwnerT: ...
-
-    @property
-    def user(self) -> UserT: ...
-
-    @property
-    def chat(self) -> ChatT: ...
-
-    @property
-    def channel(self) -> ChannelT: ...
-
+class PeerProtocolMin(Protocol[OwnerIdT, UserIdT, ChatIdT, ChannelIdT]):
     @property
     def owner_id(self) -> OwnerIdT: ...
 
@@ -55,35 +43,96 @@ class PeerAny(Protocol[OwnerT, UserT, ChatT, ChannelT, OwnerIdT, UserIdT, ChatId
     def channel_id(self) -> ChannelIdT: ...
 
 
-PeerAnySelfT: TypeAlias = PeerAny["models.User", "models.User", None, None, int, int, None, None]
-PeerAnyUserT: TypeAlias = PeerAny["models.User", "models.User", None, None, int, int, None, None]
-PeerAnyChatT: TypeAlias = PeerAny["models.User", None, "models.Chat", None, int, None, int, None]
-PeerAnyChannelT: TypeAlias = PeerAny[None, None, None, "models.Channel", None, None, None, int]
-PeerAnyOwnedT: TypeAlias = PeerAny["models.User", "models.User | None", "models.Chat | None", "models.Channel | None", int, int | None, int | None, int | None]  # noqa: E501
+PeerProtocolMinSelfT: TypeAlias = PeerProtocolMin[int, int, None, None]
+PeerProtocolMinUserT: TypeAlias = PeerProtocolMin[int, int, None, None]
+PeerProtocolMinChatT: TypeAlias = PeerProtocolMin[int, None, int, None]
+PeerProtocolMinChannelT: TypeAlias = PeerProtocolMin[None, None, None, int]
+PeerProtocolMinOwnedT: TypeAlias = PeerProtocolMin[int, int | None, int | None, int | None]
 
 
-def peer_is_self(peer: PeerAny) -> TypeGuard[PeerAnySelfT]:
+def peer_is_self_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinSelfT]:
     return peer.owner_id is not None and peer.user_id is not None and peer.owner_id == peer.user_id
 
 
-def peer_is_user(peer: PeerAny) -> TypeGuard[PeerAnyUserT]:
+def peer_is_user_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinUserT]:
     return peer.owner_id is not None and peer.user_id is not None and peer.owner_id != peer.user_id
 
 
-def peer_is_self_or_user(peer: PeerAny) -> TypeGuard[PeerAnyUserT]:
+def peer_is_self_or_user_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinChatT]:
     return peer.owner_id is not None and peer.user_id is not None
 
 
-def peer_is_chat(peer: PeerAny) -> TypeGuard[PeerAnyChatT]:
+def peer_is_chat_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinChatT]:
     return peer.owner_id is not None and peer.chat_id is not None
 
 
-def peer_is_channel(peer: PeerAny) -> TypeGuard[PeerAnyChannelT]:
+def peer_is_channel_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinChannelT]:
     return peer.owner_id is None and peer.channel_id is not None
 
 
-def peer_is_owned(peer: PeerAny) -> TypeGuard[PeerAnyOwnedT]:
+def peer_is_owned_min(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolMinOwnedT]:
     return peer.owner_id is not None
+
+
+class PeerProtocolFull(
+    PeerProtocolMin[OwnerIdT, UserIdT, ChatIdT, ChannelIdT],
+    Protocol[UserT, ChatT, ChannelT, OwnerIdT, UserIdT, ChatIdT, ChannelIdT],
+):
+    @property
+    def user(self) -> UserT: ...
+
+    @property
+    def chat(self) -> ChatT: ...
+
+    @property
+    def channel(self) -> ChannelT: ...
+
+
+PeerProtocolFullSelfT: TypeAlias = PeerProtocolFull["models.User", None, None, int, int, None, None]
+PeerProtocolFullUserT: TypeAlias = PeerProtocolFull["models.User", None, None, int, int, None, None]
+PeerProtocolFullChatT: TypeAlias = PeerProtocolFull[None, "models.Chat", None, int, None, int, None]
+PeerProtocolFullChannelT: TypeAlias = PeerProtocolFull[None, None, "models.Channel", None, None, None, int]
+PeerProtocolFullOwnedT: TypeAlias = PeerProtocolFull["models.User | None", "models.Chat | None", "models.Channel | None", int, int | None, int | None, int | None]  # noqa: E501
+
+
+def peer_is_self(peer: PeerProtocolFull) -> TypeGuard[PeerProtocolFullSelfT]:
+    if not peer_is_full(peer):
+        raise RuntimeError("Expected full peer, got min")
+    return bool(peer_is_self_min(peer))
+
+
+def peer_is_user(peer: PeerProtocolFull) -> TypeGuard[PeerProtocolFullUserT]:
+    if not peer_is_full(peer):
+        raise RuntimeError("Expected full peer, got min")
+    return bool(peer_is_user_min(peer))
+
+
+def peer_is_self_or_user(peer: PeerProtocolFull) -> TypeGuard[PeerProtocolFullUserT]:
+    if not peer_is_full(peer):
+        raise RuntimeError("Expected full peer, got min")
+    return bool(peer_is_self_or_user_min(peer))
+
+
+def peer_is_chat(peer: PeerProtocolFull) -> TypeGuard[PeerProtocolFullChatT]:
+    if not peer_is_full(peer):
+        raise RuntimeError("Expected full peer, got min")
+    return bool(peer_is_chat_min(peer))
+
+
+def peer_is_channel(peer: PeerProtocolFull) -> TypeGuard[PeerProtocolFullChannelT]:
+    if not peer_is_full(peer):
+        raise RuntimeError("Expected full peer, got min")
+    return bool(peer_is_channel_min(peer))
+
+
+def peer_is_owned(peer: PeerProtocolFull) -> TypeGuard[PeerProtocolFullOwnedT]:
+    if not peer_is_full(peer):
+        raise RuntimeError("Expected full peer, got min")
+    return bool(peer_is_owned_min(peer))
+
+
+def peer_is_full(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolFull]:
+    return hasattr(peer, "user") and hasattr(peer, "chat") and hasattr(peer, "channel")
 
 
 _LAST_MESSAGE_SYNC_SQL = """
@@ -434,3 +483,49 @@ class Peer(Model):
                 self.type in (PeerType.SELF, PeerType.USER, PeerType.CHAT)
                 or (self.type is PeerType.CHANNEL and self.channel.supergroup)
         )
+
+
+class PeerMinimalMin:
+    __slots__ = ("owner_id", "user_id", "chat_id", "channel_id",)
+
+    def __init__(
+            self,
+            *,
+            owner_id: int | None = None,
+            user_id: int | None = None,
+            chat_id: int | None = None,
+            channel_id: int | None = None,
+    ) -> None:
+        self.owner_id = owner_id
+        self.user_id = user_id
+        self.chat_id = chat_id
+        self.channel_id = channel_id
+
+
+class PeerMinimalFull(PeerMinimalMin):
+    __slots__ = ("user", "chat", "channel", "owner_id", "user_id", "chat_id", "channel_id",)
+
+    def __init__(
+            self,
+            *,
+            user: models.User | None = None,
+            chat: models.Chat | None = None,
+            channel: models.Channel | None = None,
+            owner_id: int | None = None,
+            user_id: int | None = None,
+            chat_id: int | None = None,
+            channel_id: int | None = None,
+    ) -> None:
+        super().__init__(owner_id=owner_id, user_id=user_id, chat_id=chat_id, channel_id=channel_id)
+        self.user = user
+        self.chat = chat
+        self.channel = channel
+
+        if user is not None:
+            self.user_id = user.id
+        elif chat is not None:
+            self.chat_id = chat.id
+        elif channel is not None:
+            self.channel_id = channel.id
+        else:
+            raise ValueError("At least one of \"user\", \"chat\", \"channel\" must be passed.")

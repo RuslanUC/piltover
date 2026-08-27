@@ -20,6 +20,7 @@ from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageM
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
     SlowmodeLastMessage, MessageRef, MessageContent, ReadState, Username, MessageFwdHeader
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
+from piltover.db.models.peer import peer_is_owned_min, peer_is_user, peer_is_channel, peer_is_chat
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import Updates, InputMediaUploadedDocument, InputMediaUploadedPhoto, InputMediaPhoto, \
@@ -83,17 +84,18 @@ async def _extract_mentions_from_message(entities: list[dict], text: str, author
 
 
 async def send_created_messages_internal(
-        messages: dict[Peer, MessageRef], opposite: bool, peer: Peer, user: User, clear_draft: bool,
-        mentioned_user_ids: set[int],
+        messages: dict[Peer, MessageRef], opposite: bool, peer: Peer, user_id: int, user_is_bot: bool,
+        clear_draft: bool, mentioned_user_ids: set[int],
 ) -> Updates:
     ctx = request_ctx.get(None)
 
-    if opposite and peer.type is not PeerType.CHANNEL and not user.bot and ctx is not None:
+    peer_ = peer
+    if opposite and peer_is_owned_min(peer_) and not user_is_bot and ctx is not None:
         await ctx.worker.call_internal(UpdateStatusForPeers(
             peer_type=peer.type.value,
-            peer_owner=peer.owner_id,
-            peer_user=peer.user_id or 0,
-            peer_chat=peer.chat_id or 0,
+            peer_owner=peer_.owner_id,
+            peer_user=peer_.user_id or 0,
+            peer_chat=peer_.chat_id or 0,
         ))
 
     if opposite and peer.type is PeerType.CHAT and mentioned_user_ids:
@@ -112,7 +114,7 @@ async def send_created_messages_internal(
             await MessageMention.bulk_create(unread_mentions_to_create)
 
     if clear_draft and ctx is not None:
-        await ctx.worker.call_internal(ClearDraft(user_id=user.id, peer_id=peer.id))
+        await ctx.worker.call_internal(ClearDraft(user_id=user_id, peer_id=peer.id))
 
     ttl_tasks = []
     for message_ref in messages.values():
@@ -158,9 +160,9 @@ async def send_created_messages_internal(
             logger.debug(f"Creating task create_discussion({message_ref.id})...")
             await ctx.worker.call_internal(CreateDiscussionThread(message_id=message_ref.id))
 
-        return await upd.send_message_channel(user.id, peer.channel, message_ref)
+        return await upd.send_message_channel(user_id, peer.channel, message_ref)
 
-    if (update := await upd.send_message(user.id, messages)) is None:
+    if (update := await upd.send_message(user_id, messages)) is None:
         raise Unreachable
 
     if peer.user and peer.user.system and peer.user.bot and ctx is not None:
@@ -182,12 +184,14 @@ async def send_message_internal(
     NOTE (probably only to myself):
      `user` MUST have at least `id` and `bot` fetched;
     """
-    if opposite and peer.type is PeerType.USER and peer.user.system:
+    peer_ = peer
+
+    if opposite and peer_is_user(peer_) and peer_.user.system:
         opposite = False
 
-    if opposite and reply_to_message_id and peer.type is PeerType.CHANNEL:
-        participant = await peer.channel.get_participant(user.id)
-        if (channel_min_id := peer.channel.min_id(participant)) is not None:
+    if opposite and reply_to_message_id and peer_is_channel(peer_):
+        participant = await peer_.channel.get_participant(user.id)
+        if (channel_min_id := peer_.channel.min_id(participant)) is not None:
             if channel_min_id >= reply_to_message_id:
                 reply_to_message_id = None
 
@@ -201,7 +205,7 @@ async def send_message_internal(
         ).select_related("content", "reply_to", "top_message")
         if reply_to is None:
             raise ErrorRpc(error_code=400, error_message="REPLY_TO_INVALID")
-        if opposite and peer.type is PeerType.CHANNEL and peer.channel.supergroup:
+        if opposite and peer_is_channel(peer_) and peer_.channel.supergroup:
             if reply_to.is_discussion:
                 reply_to_top = reply_to
             elif reply_to.top_message is not None:
@@ -217,7 +221,7 @@ async def send_message_internal(
 
     mentioned_user_ids = set()
 
-    if opposite and (peer.type is PeerType.CHAT or (peer.type is PeerType.CHANNEL and peer.channel.supergroup)):
+    if opposite and (peer_is_chat(peer_) or (peer_is_channel(peer_) and peer_.channel.supergroup)):
         if entities and text:
             mentioned_user_ids = await _extract_mentions_from_message(
                 entities, text, author.id if isinstance(author, User) else author,
@@ -289,7 +293,9 @@ async def send_message_internal(
 
         return await upd.new_scheduled_message(user.id, message)
 
-    updates = await send_created_messages_internal(messages, opposite, peer, user, clear_draft, mentioned_user_ids)
+    updates = await send_created_messages_internal(
+        messages, opposite, peer, user.id, user.bot, clear_draft, mentioned_user_ids,
+    )
 
     # TODO: select count if messages between last read and new message instead of this
     _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True)

@@ -40,7 +40,7 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
         ).get_or_none(
             id=request.message_id,
         ).select_related(
-            "taskiqscheduledmessages", "peer", "peer__owner", "peer__user", "content", "content__author",
+            "taskiqscheduledmessages", "peer", "peer__user", "content", "content__author",
             "content__media", "reply_to", "content__fwd_header", "content__post_info", "content__send_as_channel",
         )
         if scheduled is None:
@@ -52,8 +52,10 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
         messages = await scheduled.send_scheduled(task.opposite)
         await scheduled.delete()
 
+    scheduled_by_user_id = cast(int, scheduled.scheduled_by_user_id)
+
     await send_created_messages_internal(
-        messages, task.opposite, scheduled.peer, scheduled.peer.owner, False, task.mentioned_users_set,
+        messages, task.opposite, scheduled.peer, scheduled_by_user_id, False, False, task.mentioned_users_set,
     )
 
     peer = scheduled.peer
@@ -62,7 +64,7 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
     else:
         new_message = messages[peer]
 
-    await upd.delete_scheduled_messages(peer.owner_id, peer, [scheduled.id], [new_message.id])
+    await upd.delete_scheduled_messages(scheduled_by_user_id, peer, [scheduled.id], [new_message.id])
 
     return TaggedBool(value=True)
 
