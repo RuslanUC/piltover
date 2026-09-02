@@ -18,7 +18,7 @@ from piltover.db.enums import MediaType, MessageType, PeerType, ChatBannedRights
 from piltover.db.models import User, Dialog, MessageDraft, State, Peer, MessageMedia, File, Presence, UploadingFile, \
     SavedDialog, ChatParticipant, ChannelPostInfo, Poll, PollAnswer, MessageMention, \
     TaskIqScheduledMessage, TaskIqScheduledDeleteMessage, Contact, RecentSticker, InlineQueryResultItem, Channel, \
-    SlowmodeLastMessage, MessageRef, MessageContent, ReadState, Username, MessageFwdHeader
+    SlowmodeLastMessage, MessageRef, MessageContent, Username, MessageFwdHeader
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.peer import peer_is_owned_min, peer_is_user, peer_is_channel, peer_is_chat
 from piltover.enums import ReqHandlerFlags
@@ -298,7 +298,7 @@ async def send_message_internal(
     )
 
     # TODO: select count if messages between last read and new message instead of this
-    _, _, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(user.id, peer, True, True)
+    _, _, unread_count, _, _ = await Dialog.get_in_out_ids_and_unread(user.id, peer, True, True)
     if unread_count <= 1:
         if peer.type is PeerType.CHANNEL:
             message = next(iter(messages.values()))
@@ -307,9 +307,12 @@ async def send_message_internal(
 
         logger.debug(f"No unread messages, setting last read id for user {user.id} peer {peer!r} to {message.id}")
 
-        await ReadState.update_or_create(owner_id=user.id, peer_id=peer.id, defaults={
-            "last_message_id": message.id,
-        })
+        async with in_transaction():
+            if not await Dialog.filter(owner_id=user.id, peer_id=peer.id).update(last_read_message_id=message.id):
+                await Dialog.update_or_create(owner_id=user.id, peer_id=peer.id, defaults={
+                    "visible": False,
+                    "last_message_id": message.id,
+                })
 
         if peer.type is PeerType.CHANNEL:
             readstate_updates = await upd.update_read_history_inbox_channel(user.id, peer.channel_id, message.id, 0)

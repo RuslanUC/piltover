@@ -17,7 +17,7 @@ from piltover.config import APP_CONFIG
 from piltover.context import request_ctx
 from piltover.db.enums import MessageType, PeerType, ChatBannedRights, ChatAdminRights, PrivacyRuleKeyType, \
     AdminLogEntryAction
-from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, ReadState, PrivacyRule, \
+from piltover.db.models import User, Channel, Peer, Dialog, ChatParticipant, PrivacyRule, \
     ChatInviteRequest, Username, ChatInvite, AvailableChannelReaction, Reaction, UserPassword, UserPersonalChannel, \
     Chat, PeerColorOption, File, SlowmodeLastMessage, AdminLogEntry, Contact, MessageRef, MessageContent, \
     ReadHistoryChunk, DefaultSendAs, Stickerset, StickersetThumb, ProtectedUsername
@@ -34,6 +34,8 @@ from piltover.tl import MessageActionChannelCreate, UpdateChannel, Updates, \
     InputUserFromMessage, PeerColor, InputPeerChannel, InputChannelEmpty, Int, ChannelParticipantsBots, \
     ChannelParticipantsContacts, ChannelParticipantsMentions, ChannelParticipantsBanned, ChannelParticipantsKicked, \
     ChannelParticipantLeft, PeerChannel, InputStickerSetEmpty, InputStickerSetID
+from piltover.tl.base import InputStickerSet as TLInputStickerSetBase, ChatReactions as TLChatReactionsBase, \
+    Reaction as TLReactionBase, ChannelParticipant as TLChannelParticipantBase, Updates as TLUpdatesBase
 from piltover.tl.functions.channels import GetAdminedPublicChannels, CheckUsername, \
     CreateChannel, GetChannels, GetFullChannel, EditTitle, EditPhoto, GetMessages, DeleteMessages, EditBanned, \
     EditAdmin, GetParticipants, GetParticipant, ReadHistory, InviteToChannel, InviteToChannel_133, ToggleSignatures, \
@@ -47,8 +49,6 @@ from piltover.tl.functions.messages import SetChatAvailableReactions, SetChatAva
 from piltover.tl.types.channels import ChannelParticipants, ChannelParticipant, SendAsPeers, AdminLogResults
 from piltover.tl.types.messages import Chats, ChatFull as MessagesChatFull, Messages, AffectedMessages, InvitedUsers, \
     AffectedHistory, MessagesSlice
-from piltover.tl.base import InputStickerSet as TLInputStickerSetBase, ChatReactions as TLChatReactionsBase, \
-    Reaction as TLReactionBase, ChannelParticipant as TLChannelParticipantBase, Updates as TLUpdatesBase
 from piltover.utils.users_chats_channels import UsersChatsChannels
 from piltover.worker import MessageHandler
 
@@ -301,7 +301,7 @@ async def get_full_channel(request: GetFullChannel, user_id: int) -> MessagesCha
     if participant is not None and participant.banned_rights & ChatBannedRights.VIEW_MESSAGES:
         raise ErrorRpc(error_code=406, error_message="CHANNEL_PRIVATE")
 
-    in_read_max_id, out_read_max_id, unread_count, _, _ = await ReadState.get_in_out_ids_and_unread(
+    in_read_max_id, out_read_max_id, unread_count, _, _ = await Dialog.get_in_out_ids_and_unread(
         user_id, peer, True, True,
     )
 
@@ -897,8 +897,8 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         user_id, request.channel, message="CHANNEL_PRIVATE", code=406, peer_types=(PeerType.CHANNEL,)
     )
 
-    read_state, created = await ReadState.get_or_create(owner_id=user_id, peer=peer)
-    if request.max_id <= read_state.last_message_id:
+    dialog = await Dialog.get_or_create_hidden(user_id, peer)
+    if request.max_id <= dialog.last_read_message_id:
         return True
 
     unread_ids = cast(
@@ -914,12 +914,8 @@ async def read_channel_history(request: ReadHistory, user_id: int) -> bool:
         return True
 
     unread_max_id, content_id = unread_ids
-
     unread_count = await MessageRef.filter(peer=peer, id__gt=unread_max_id).count()
-
-    read_state.last_message_id = unread_max_id
-    await read_state.save(update_fields=["last_message_id"])
-
+    await Dialog.filter(id=dialog.id).update(last_read_message_id=unread_max_id)
     await ReadHistoryChunk.create(user_id=user_id, peer=peer, read_content_id=content_id)
 
     await upd.update_read_history_inbox_channel(user_id, peer.channel_id, unread_max_id, unread_count)

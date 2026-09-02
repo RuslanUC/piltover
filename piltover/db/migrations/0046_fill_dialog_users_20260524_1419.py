@@ -13,7 +13,7 @@ from tortoise.queryset import QuerySet, BulkUpdateQuery
 
 if TYPE_CHECKING:
     from piltover.db.models import Dialog as DialogT, SavedDialog as SavedDialogT, ReadState as ReadStateT, \
-        MessageDraft as MessageDraftT, Peer as PeerT
+        MessageDraft as MessageDraftT
 
 BATCH_SIZE = 1000
 

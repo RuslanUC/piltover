@@ -14,7 +14,6 @@ from .message_media import MessageMedia
 from .peer import Peer, peer_is_self, peer_is_user, peer_is_self_or_user, peer_is_chat, peer_is_channel, peer_is_owned
 from .presence import Presence
 from .privacy_rule import PrivacyRule
-from .read_state import ReadState
 from .sentcode import SentCode, PhoneCodePurpose
 from .srp_session import SrpSession
 from .state import State

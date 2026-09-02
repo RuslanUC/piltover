@@ -14,9 +14,9 @@ from piltover.app.handlers.messages.sending import send_message_internal
 from piltover.cache import Cache
 from piltover.db.enums import MediaType, PeerType, FileType, MessageType, ChatAdminRights, AdminLogEntryAction, \
     READABLE_FILE_TYPES
-from piltover.db.models import User, MessageDraft, ReadState, State, Peer, ChannelPostInfo, MessageMention, \
-    ReadHistoryChunk, AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent, \
-    MessageUniqueView, Channel, Chat
+from piltover.db.models import User, MessageDraft, State, Peer, ChannelPostInfo, MessageMention, ReadHistoryChunk, \
+    AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent, \
+    MessageUniqueView, Channel, Chat, Dialog
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
@@ -470,11 +470,11 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     peer = await Peer.from_input_peer_raise(
         user_id, request.peer, peer_types=(PeerType.SELF, PeerType.USER, PeerType.CHAT)
     )
-    read_state, created = await ReadState.get_or_create(owner_id=user_id, peer=peer)
+    dialog = await Dialog.get_or_create_hidden(user_id, peer)
     state, _ = await State.get_or_create(user_id=user_id)
 
-    if request.max_id and request.max_id <= read_state.last_message_id:
-        logger.debug(f"Ignoring ReadHistory, {request.max_id} <= {read_state.last_message_id}")
+    if request.max_id and request.max_id <= dialog.last_read_message_id:
+        logger.debug(f"Ignoring ReadHistory, {request.max_id} <= {dialog.last_read_message_id}")
         return AffectedMessages(
             pts=state.pts,
             pts_count=0,
@@ -489,20 +489,19 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
     max_id, content_id = await query.order_by("-id").first().values_list("id", "content_id")
     logger.debug(f"Actual max_id is {max_id} (content id is {content_id})")
 
-    if not max_id or max_id <= read_state.last_message_id:
-        logger.debug(f"Ignoring ReadHistory, (actual) {max_id} <= {read_state.last_message_id}")
+    if not max_id or max_id <= dialog.last_read_message_id:
+        logger.debug(f"Ignoring ReadHistory, (actual) {max_id} <= {dialog.last_read_message_id}")
         return AffectedMessages(
             pts=state.pts,
             pts_count=0,
         )
 
-    old_last_message_id = read_state.last_message_id
+    old_last_message_id = dialog.last_read_message_id
     unread_count = await MessageRef.filter(peer=peer, id__gt=max_id).count()
 
-    read_state.last_message_id = max_id
     if peer.type is PeerType.SELF:
         await peer.update_max_read_id(max_id)
-    await read_state.save(update_fields=["last_message_id"])
+    await Dialog.filter(id=dialog.id).update(last_read_message_id=max_id)
 
     await ReadHistoryChunk.create(user_id=user_id, peer=peer, read_content_id=content_id)
 
@@ -515,23 +514,21 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
         return result
 
     if peer.type is PeerType.USER:
-        other_read_state = await ReadState.get_or_none(
-            owner_id=peer.user_id, peer__owner_id=peer.user_id, peer__user_id=peer.owner_id
-        ).select_related("peer")
-        if other_read_state is None:
+        other_peer = await Peer.get_or_none(owner_id=peer.user_id, user_id=peer.owner_id)
+        if other_peer is None:
             return result
         other_max_out_id = cast(int | None, cast(
             object,
             await MessageRef.filter(
-                peer_id=other_read_state.peer_id,
-                id__gt=other_read_state.peer.out_max_read_id,
+                peer_id=other_peer.id,
+                id__gt=other_peer.out_max_read_id,
                 content_id__lte=content_id,
             ).annotate(max_id=Max("id")).first().values_list("max_id", flat=True)
         ))
         if not other_max_out_id:
             return result
-        await other_read_state.peer.update_max_read_id(other_max_out_id)
-        await upd.update_read_history_outbox({other_read_state.peer: other_max_out_id})
+        await other_peer.update_max_read_id(other_max_out_id)
+        await upd.update_read_history_outbox({other_peer: other_max_out_id})
     elif peer.type is PeerType.CHAT:
         ids_by_peers = dict(cast(
             list[tuple[int, int]],
