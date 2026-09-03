@@ -405,8 +405,10 @@ async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
         raise ErrorRpc(error_code=400, error_message="USER_NOT_PARTICIPANT")
 
     async with in_transaction():
+        peers = [chat_peer, *await chat_peer.get_opposite()]
+
         messages = await MessageRef.create_for_peer(
-            chat_peer, user_id,
+            peers, user_id,
             type=MessageType.SERVICE_CHAT_USER_DEL,
             extra_info=MessageActionChatDeleteUser(user_id=user_peer_id).write(),
         )
@@ -426,10 +428,8 @@ async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
 
     # TODO: remove scheduled messages
 
-    chat_peers: list[Peer] = await Peer.filter(chat=chat_peer.chat)
-
-    updates_msg = await upd.send_message(user_id, messages)
-    updates = await upd.update_chat_participants(chat_peer.chat, chat_peers)
+    updates_msg = await upd.send_message(user_id, dict(zip(peers, messages)))
+    updates = await upd.update_chat_participants(chat_peer.chat, peers)
     if isinstance(updates_msg, Updates):
         updates.updates.extend(updates_msg.updates)
         updates.users.extend(updates_msg.users)

@@ -589,11 +589,14 @@ class MessageRef(Model):
     # TODO: allow passing User/Chat/Channel instead of Peer
     @classmethod
     async def create_for_peer(
-            cls, peer: models.Peer, author: models.User | int, *, random_id: int | None = None,
-            random_user_id: int | None = None, opposite: bool = True, unhide_dialog: bool = True,
+            cls, peers: list[models.Peer], author: models.User | int, *, random_id: int | None = None,
+            random_user_id: int | None = None, unhide_dialog: bool = True,
             reply_to: MessageRef | None = None, top_message: MessageRef | None = None,
             **message_kwargs,
-    ) -> dict[models.Peer, MessageRef]:
+    ) -> list[MessageRef]:
+        if not peers:
+            return []
+
         author_kwargs = {}
         if isinstance(author, models.User):
             author_kwargs["author"] = author
@@ -605,23 +608,22 @@ class MessageRef(Model):
         scheduled_by_user_id = message_kwargs.pop("scheduled_by_user_id", None)
 
         content = await models.MessageContent.create_for_peer(
-            related_peer=peer,
+            related_peer=peers[0],
             **author_kwargs,
             **message_kwargs,
-            can_see_reactions_list=peer.can_see_reactions_list(),
+            can_see_reactions_list=peers[0].can_see_reactions_list(),
         )
 
-        peers = [peer]
-        if opposite and peer.type is not PeerType.CHANNEL:
-            peers.extend(await peer.get_opposite())
-
         if reply_to is not None:
-            replies = {
-                ref.peer_id: ref
-                for ref in await MessageRef.filter(
-                    peer_id__in=[peer.id for peer in peers], content_id=reply_to.content_id,
-                )
-            }
+            if len(peers) == 1:
+                replies = {peers[0].id: reply_to}
+            else:
+                replies = {
+                    ref.peer_id: ref
+                    for ref in await MessageRef.filter(
+                        peer_id__in=[peer.id for peer in peers], content_id=reply_to.content_id,
+                    ).only("id", "peer_id")
+                }
         else:
             replies = {}
 
@@ -629,8 +631,8 @@ class MessageRef(Model):
             cls(
                 peer=to_peer,
                 content=content,
-                random_id=random_id if to_peer == peer else None,
-                random_user_id=random_user_id if to_peer == peer else None,
+                random_id=random_id,
+                random_user_id=random_user_id,
                 reply_to=replies.get(to_peer.id),
                 top_message=top_message,
                 scheduled_by_user_id=scheduled_by_user_id,
@@ -638,25 +640,26 @@ class MessageRef(Model):
             for to_peer in peers
         ]
 
-        if refs_to_create:
-            async with in_transaction():
-                await cls.bulk_create(refs_to_create)
-                await models.Peer.sync_last_message_bulk(peers)
+        async with in_transaction():
+            await cls.bulk_create(refs_to_create)
+            await models.Peer.sync_last_message_bulk(peers)
+            if unhide_dialog:
+                await models.Dialog.create_or_unhide_bulk(peers)
 
-        refs = await cls.filter(content=content)
+            refs = await cls.filter(content=content).only("id", "peer_id")
 
-        peer_by_id = {peer.id: peer for peer in peers}
-        messages: dict[models.Peer, MessageRef] = {}
+        ref_by_peer = {ref.peer_id: ref.id for ref in refs}
+        notsaved_ref_by_peer = {ref.peer.id: ref for ref in refs_to_create}
 
-        for ref in refs:
-            ref.peer = peer_by_id[ref.peer_id]
-            ref.content = content
-            messages[ref.peer] = ref
+        result = []
+        for peer in peers:
+            ref_id = ref_by_peer[peer.id]
+            ref = notsaved_ref_by_peer[peer.id]
+            ref.id = ref_id
+            ref._saved_in_db = True
+            result.append(ref)
 
-        if unhide_dialog:
-            await models.Dialog.create_or_unhide_bulk(peers)
-
-        return messages
+        return result
 
     async def get_for_user(self, for_user: models.User) -> MessageRef | None:
         if self.peer.type is PeerType.CHANNEL:

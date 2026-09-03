@@ -252,8 +252,12 @@ async def send_message_internal(
         entities = [entity for entity in entities if entity["_"] != command_tlid]
         entities = entities or None
 
+    peers = [peer]
+    if opposite and peer.type is not PeerType.CHANNEL:
+        peers.extend(await peer.get_opposite())
+
     messages = await MessageRef.create_for_peer(
-        peer, author,
+        peers, author,
         random_id=random_id,
         random_user_id=user.id,
         opposite=opposite,
@@ -276,7 +280,7 @@ async def send_message_internal(
         ).update(replies_version=F("replies_version") + 1)
 
     if schedule:
-        message = messages[peer]
+        message = messages[0]
 
         mentioned_users = None
         if mentioned_user_ids:
@@ -294,16 +298,13 @@ async def send_message_internal(
         return await upd.new_scheduled_message(user.id, message)
 
     updates = await send_created_messages_internal(
-        messages, opposite, peer, user.id, user.bot, clear_draft, mentioned_user_ids,
+        dict(zip(peers, messages)), opposite, peer, user.id, user.bot, clear_draft, mentioned_user_ids,
     )
 
     # TODO: select count if messages between last read and new message instead of this
     _, _, unread_count, _, _ = await Dialog.get_in_out_ids_and_unread(user.id, peer, True, True)
     if unread_count <= 1:
-        if peer.type is PeerType.CHANNEL:
-            message = next(iter(messages.values()))
-        else:
-            message = messages[peer]
+        message = messages[0]
 
         logger.debug(f"No unread messages, setting last read id for user {user.id} peer {peer!r} to {message.id}")
 
