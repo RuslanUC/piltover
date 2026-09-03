@@ -330,6 +330,10 @@ async def _validate_message_entities(
             if text[start] != "+":
                 raise BOUNDS_ERROR
         elif isinstance(entity, InputMessageEntityMentionName):
+            # NOTE: Telegram stops processing mention entities completely after 100 entities
+            # TODO: make mentions limit configurable
+            if len(fetch_users) > 50:
+                continue
             fetch_users.append((entity.user_id, len(result)))
             entity = MessageEntityMentionName(offset=entity.offset, length=entity.length, user_id=0)
         elif isinstance(entity, MessageEntityCustomEmoji):
@@ -351,9 +355,7 @@ async def _validate_message_entities(
             # TODO: InputUserFromMessage
 
         if users_ids:
-            got_users.update(
-                await Peer.filter(owner_id=user_id, user_id__in=users_ids).values_list("user_id", flat=True)
-            )
+            got_users.update(await User.filter(id__in=users_ids, deleted=False).values_list("user_id", flat=True))
 
         for input_user, idx in reversed(fetch_users):
             # entity = cast(MessageEntityMentionName, result[idx])

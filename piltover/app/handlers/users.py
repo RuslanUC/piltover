@@ -112,7 +112,7 @@ async def get_full_user(request: GetFullUser, user_id: int) -> UserFull:
         personal_channel_msg_id = None
 
     bot_info = None
-    if target_user.bot is not None:
+    if target_user.bot:
         if target_user.bot_info is None:
             bot_info = TLBotInfo()
         else:
