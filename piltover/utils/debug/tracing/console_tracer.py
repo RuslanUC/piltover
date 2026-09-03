@@ -13,12 +13,13 @@ _measure_time_level: ContextVar[int] = ContextVar("_measure_time_level", default
 
 
 class ConsoleTracerContext(BaseTracerContext):
-    __slots__ = ("trace_name", "loglevel", "end_loglevel", "start", "time",)
+    __slots__ = ("trace_name", "loglevel", "end_loglevel", "start", "time", "add_depth",)
 
-    def __init__(self, trace_name: str, loglevel: str, end_loglevel: str) -> None:
+    def __init__(self, trace_name: str, loglevel: str, end_loglevel: str, add_depth: int) -> None:
         self.trace_name = trace_name
         self.loglevel = loglevel
         self.end_loglevel = end_loglevel
+        self.add_depth = add_depth
         self.start = None
         self.time = None
         self.ctx_token: Token | None = None
@@ -27,7 +28,7 @@ class ConsoleTracerContext(BaseTracerContext):
         level = _measure_time_level.get()
         hyphens = "-" * level * 2
 
-        logger.opt(depth=3).log(self.loglevel, f"---{hyphens}> running {self.trace_name}...")
+        logger.opt(depth=3 + self.add_depth).log(self.loglevel, f"---{hyphens}> running {self.trace_name}...")
         self.ctx_token = _measure_time_level.set(level + 1)
 
         self.start = perf_counter()
@@ -40,7 +41,9 @@ class ConsoleTracerContext(BaseTracerContext):
         _measure_time_level.reset(self.ctx_token)
         level = _measure_time_level.get()
         hyphens = "-" * level * 2
-        logger.opt(depth=3).log(self.end_loglevel, f"<---{hyphens} {self.trace_name} took {time_spent_ms:.2f}ms")
+        logger.opt(depth=3 + self.add_depth).log(
+            self.end_loglevel, f"<---{hyphens} {self.trace_name} took {time_spent_ms:.2f}ms"
+        )
         self.time.ms = time_spent_ms
 
 
@@ -51,6 +54,7 @@ class ConsoleTracer(BaseTracer):
             *,
             loglevel: str = _measure_time_loglevel,
             end_loglevel: str = _measure_time_end_loglevel,
+            add_depth: int = 0,
             **kwargs,
     ) -> ConsoleTracerContext:
-        return ConsoleTracerContext(trace_name, loglevel, end_loglevel)
+        return ConsoleTracerContext(trace_name, loglevel, end_loglevel, add_depth)

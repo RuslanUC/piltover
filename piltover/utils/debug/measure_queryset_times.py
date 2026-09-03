@@ -120,7 +120,7 @@ def patch_queryset_for_measurement() -> QueryStats:
     for cls in query_clss:
         async def _execute(self: AwaitableQuery, *args, **kwargs) -> Any:
             name, execute_real = _get_patched_cls_original_method(self, execute_methods, real_suffix)
-            with measure_time(f"{self.__class__.__name__}.{name}()") as _time_spent:
+            with measure_time(f"{self.__class__.__name__}.{name}()", add_depth=1) as _time_spent:
                 result = await execute_real(*args, **kwargs)
 
             query_stats = handler_stats_ctx.get(None)
@@ -132,7 +132,7 @@ def patch_queryset_for_measurement() -> QueryStats:
 
         def _make_query(self: AwaitableQuery, *args, **kwargs) -> Any:
             name, make_query_real = _get_patched_cls_original_method(self, make_query_methods, real_suffix)
-            with measure_time(f"{self.__class__.__name__}.{name}()") as _time_spent:
+            with measure_time(f"{self.__class__.__name__}.{name}()", add_depth=2) as _time_spent:
                 result = make_query_real(*args, **kwargs)
 
             query_stats = handler_stats_ctx.get(None)
