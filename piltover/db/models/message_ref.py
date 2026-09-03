@@ -72,6 +72,9 @@ class MessageRef(Model):
     discussion: models.MessageRef | None = NullableFKSetNull("models.MessageRef", related_name="msg_discussion_message")
     is_discussion: bool = fields.BooleanField(default=False)
     scheduled_by_user: models.User | None = NullableFK("models.User", related_name="message_scheduled")
+    # This is ugly, MessageRef and MessageContent should be one single model
+    author_id_for_unread_reactions: int = fields.BigIntField(default=0)
+    reactions_unread_author_id: int = fields.BigIntField(null=True, default=None)
 
     content_id: int
     peer_id: int
@@ -110,6 +113,7 @@ class MessageRef(Model):
                 fields=("peer_id", "scheduled_by_user_id"),
                 non_null_fields=("scheduled_by_user_id",),
             ),
+            ("reactions_unread_author_id", "peer_id", "id"),
         )
 
     def __repr__(self) -> str:
@@ -435,6 +439,7 @@ class MessageRef(Model):
                     content=content,
                     from_scheduled=to_peer == self.peer,
                     reply_to=replies.get(to_peer.id),
+                    author_id_for_unread_reactions=content.author_id,
                 )
 
             await models.Peer.sync_last_message_bulk(peers)
@@ -494,6 +499,7 @@ class MessageRef(Model):
                 random_user_id=random_user_id if peer == to_peer else None,
                 reply_to_id=replies.get(peer.id),
                 is_discussion=is_discussion,
+                author_id_for_unread_reactions=content.author_id,
             ))
 
         async with in_transaction():
@@ -539,6 +545,7 @@ class MessageRef(Model):
                     random_id=random_id if peer == to_peer else None,
                     random_user_id=random_user_id if peer == to_peer else None,
                     is_discussion=is_discussion,
+                    author_id_for_unread_reactions=content.author_id,
                 ))
 
         async with in_transaction():
@@ -636,6 +643,7 @@ class MessageRef(Model):
                 reply_to=replies.get(to_peer.id),
                 top_message=top_message,
                 scheduled_by_user_id=scheduled_by_user_id,
+                author_id_for_unread_reactions=content.author_id,
             )
             for to_peer in peers
         ]
@@ -760,10 +768,7 @@ class MessageRef(Model):
 
         recent_reactions = None
         if can_see_list:
-            if self.content.author_id == user_id:
-                is_unread = self.content.author_reactions_unread
-            else:
-                is_unread = False
+            is_unread = self.reactions_unread_author_id == user_id
 
             recent_reactions = []
 
@@ -869,17 +874,16 @@ class MessageRef(Model):
             to_cache.append((cache_key, results[-1]))
 
         if recent_to_fetch:
-            content_ids = [ref.content_id for ref, _ in recent_to_fetch]
-            content_by_id = {ref.content_id: ref.content for ref, _ in recent_to_fetch}
+            ref_by_content_id = {ref.content_id: ref for ref, _ in recent_to_fetch}
             recents_by_message = {ref.content_id: recent_list for ref, recent_list in recent_to_fetch}
             for recent in await models.MessageReaction.filter(
-                    message_id__in=content_ids,
+                    message_id__in=[ref.content_id for ref, _ in recent_to_fetch],
             ).order_by("-date").limit(5).select_related("reaction").only(
                 "user_id", "message_id", "custom_emoji_id", "date", "reaction_id",
                 "reaction__id", "reaction__reaction",
             ):
-                content = content_by_id[recent.message_id]
-                is_unread = content.author_reactions_unread if content.author_id == user_id else False
+                ref = ref_by_content_id[recent.message_id]
+                is_unread = ref.reactions_unread_author_id == user_id
                 recents_by_message[recent.message_id].append(recent.to_tl_peer_reaction(user_id, is_unread))
 
         if to_cache:

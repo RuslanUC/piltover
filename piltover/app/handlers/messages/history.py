@@ -18,6 +18,7 @@ from piltover.db.models import User, MessageDraft, State, Peer, ChannelPostInfo,
     AdminLogEntry, MessageRef, MessageMediaRead, ChatParticipant, DiscussionReadState, MessageContent, \
     MessageUniqueView, Channel, Chat, Dialog
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
+from piltover.db.models.peer import peer_is_chat_min, peer_is_channel_min
 from piltover.db.models.utils import DatetimeToUnix
 from piltover.enums import ReqHandlerFlags
 from piltover.exceptions import ErrorRpc, Unreachable
@@ -147,7 +148,7 @@ async def get_messages_query_internal(
         query &= Q(content__fwd_header__saved_peer=saved_peer)
 
     if unread_reactions:
-        query &= Q(content__author_reactions_unread=True, content__author_id__not=user_id)
+        query &= Q(reactions_unread_author_id=user_id)
 
     if only_mentions:
         if isinstance(peer, Peer) and peer.type in (PeerType.CHAT, PeerType.CHANNEL):
@@ -871,15 +872,15 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
     if not valid_refs:
         return None
 
-    content_ids = [ref.content_id for ref in valid_refs]
     ref_by_content_id = {ref.content_id: ref for ref in valid_refs}
 
     unread_target_ids = set()
     for ref in valid_refs:
-        if ref.peer.type is PeerType.CHAT:
-            unread_target_ids.add(Chat.make_id_from(ref.peer.chat_id))
-        elif ref.peer.type is PeerType.CHANNEL:
-            unread_target_ids.add(Channel.make_id_from(ref.peer.channel_id))
+        peer_ = ref.peer
+        if peer_is_chat_min(peer_):
+            unread_target_ids.add(Chat.make_id_from(peer_.chat_id))
+        elif peer_is_channel_min(peer_):
+            unread_target_ids.add(Channel.make_id_from(peer_.channel_id))
 
     if len(unread_target_ids) == 1:
         mention = await MessageMention.get_or_none(user_id=user_id, unread_target_id=list(unread_target_ids)[0])
@@ -898,15 +899,13 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
                 and ref.content.media.file.type in READABLE_FILE_TYPES
         )
     }
-    unread_reaction_ids = cast(
-        list[int],
-        cast(
-            object,
-            await MessageContent.filter(
-                id__in=content_ids, author_id=user_id, author_reactions_unread=True,
-            ).values_list("id", flat=True)
-        )
-    )
+    unread_reaction_ids = []
+    unread_reaction_content_ids = []
+    for ref in valid_refs:
+        if ref.author_id_for_unread_reactions != user_id:
+            continue
+        unread_reaction_ids.append(ref.id)
+        unread_reaction_content_ids.append(ref.content_id)
 
     for read_media in await MessageMediaRead.filter(user_id=user_id, message_id__in=list(refs_with_media)):
         del refs_with_media[read_media.message_id]
@@ -928,17 +927,20 @@ async def read_message_contents_internal(user_id: int, valid_refs: list[MessageR
     if not read_ids and not unread_reaction_ids:
         return None
 
-    if mentions:
-        await MessageMention.bulk_update(mentions, fields=["unread_target_id"])
+    async with in_transaction():
+        if mentions:
+            await MessageMention.bulk_update(mentions, fields=["unread_target_id"])
 
-    if media_read_to_create:
-        await MessageMediaRead.bulk_create(media_read_to_create)
+        if media_read_to_create:
+            await MessageMediaRead.bulk_create(media_read_to_create)
 
-    if unread_reaction_ids:
-        await MessageContent.filter(id__in=unread_reaction_ids).update(
-            reactions_version=F("reactions_version") + 1,
-            author_reactions_unread=False,
-        )
+        if unread_reaction_ids:
+            await MessageContent.filter(id__in=unread_reaction_content_ids).update(
+                reactions_version=F("reactions_version") + 1
+            )
+            await MessageRef.filter(id__in=unread_reaction_ids).update(
+                reactions_unread_author_id=None,
+            )
 
     for ref in valid_refs:
         if ref.id not in read_ids:

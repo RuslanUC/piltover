@@ -88,15 +88,14 @@ class Dialog(DialogBase):
 
         unread_reactions_by_peer = {}
         if not no_reactions:
-            unread_reactions_counts = await models.MessageContent.filter(
-                author_id=user_id,
-                author_reactions_unread=True,
-                messagerefs__peer_id__in=[dialog.peer_id for dialog in dialogs],
+            unread_reactions_counts = await models.MessageRef.filter(
+                peer_id__in=[dialog.peer_id for dialog in dialogs],
+                reactions_unread_author_id=user_id,
             ).group_by(
-                "messagerefs__peer_id",
+                "peer_id"
             ).annotate(
-                count=Count("id"),
-            ).values_list("messagerefs__peer_id", "count")
+                count=Count("id")
+            ).values_list("peer_id", "count")
             unread_reactions_by_peer: dict[int, int] = dict(unread_reactions_counts)
 
         unread_mentions_by_chat = {}
@@ -159,10 +158,8 @@ class Dialog(DialogBase):
         if no_reactions:
             unread_reactions_count = 0
         else:
-            unread_reactions_count = await models.MessageContent.filter(
-                messagerefs__peer=peer,
-                author_id=user_id,
-                author_reactions_unread=True,
+            unread_reactions_count = await models.MessageRef.filter(
+                peer_id=peer.id, reactions_unread_author_id=user_id,
             ).count()
 
         if not unread_count or no_mentions or peer.type not in (PeerType.CHAT, PeerType.CHANNEL):

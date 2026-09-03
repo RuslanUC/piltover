@@ -2,6 +2,7 @@ from datetime import datetime, UTC
 from typing import cast
 
 from tortoise.expressions import Subquery, F, Q
+from tortoise.transactions import in_transaction
 
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages.history import format_messages_internal, get_messages_query_internal
@@ -13,7 +14,7 @@ from piltover.db.models import Reaction, User, Peer, MessageReaction, State, Rec
     MessageRef, AvailableChannelReaction, File, MessageContent
 from piltover.db.models.message_ref import append_channel_min_message_id_to_query_maybe
 from piltover.enums import ReqHandlerFlags
-from piltover.exceptions import ErrorRpc
+from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import ReactionEmoji, ReactionCustomEmoji, Updates, ReactionEmpty
 from piltover.tl.functions.messages import GetAvailableReactions, SendReaction, SetDefaultReaction, \
     GetMessagesReactions, GetUnreadReactions, ReadReactions, GetRecentReactions, ClearRecentReactions, \
@@ -124,23 +125,35 @@ async def send_reaction(request: SendReaction, user_id: int) -> Updates:
             ).values_list("id", flat=True)
             await MessageReaction.filter(id__in=Subquery(reactions_q)).delete()
 
-    author_reactions_unread: F | bool = F("author_reactions_unread")
+    reactions_unread_author_id: F | None = None
 
-    if reaction is not None or custom_reaction is not None:
-        await MessageReaction.create(
-            user_id=user_id,
-            message=message.content,
-            reaction=reaction,
-            custom_emoji=custom_reaction,
-        )
-        if message.content.author_id != user_id:
-            author_reactions_unread = True
+    async with in_transaction():
+        if reaction is not None or custom_reaction is not None:
+            await MessageReaction.create(
+                user_id=user_id,
+                message=message.content,
+                reaction=reaction,
+                custom_emoji=custom_reaction,
+            )
+            if message.content.author_id != user_id:
+                reactions_unread_author_id = F("author_id_for_unread_reactions")
 
-    await MessageContent.filter(id=message.content_id).update(
-        reactions_version=F("reactions_version") + 1,
-        author_reactions_unread=author_reactions_unread,
-    )
-    await message.content.refresh_from_db(["reactions_version", "author_reactions_unread"])
+        await MessageContent.filter(id=message.content_id).update(reactions_version=F("reactions_version") + 1)
+        if reactions_unread_author_id is not None:
+            if peer.type in (PeerType.USER, PeerType.CHAT):
+                if peer.type is PeerType.USER:
+                    peer_query = Peer.filter(owner_id=peer.user_id, user_id=peer.owner_id).values("id")
+                elif peer.type is PeerType.CHAT:
+                    peer_query = Peer.filter(owner_id=message.content.author_id, chat_id=peer.chat_id).values("id")
+                else:
+                    raise Unreachable
+                await MessageRef.filter(
+                    peer_id=Subquery(peer_query),
+                    content_id=message.content_id,
+                ).update(reactions_unread_author_id=reactions_unread_author_id)
+            else:
+                await MessageRef.filter(id=message.id).update(reactions_unread_author_id=reactions_unread_author_id)
+        await message.content.refresh_from_db(["reactions_version"])
 
     # TODO: send UpdateMessage update instead of UpdateMessageReactions
     #  (use upd.edit_message instead of upd.update_reactions)
@@ -239,14 +252,13 @@ async def get_unread_reactions(request: GetUnreadReactions, user_id: int) -> Mes
 async def read_reactions(request: ReadReactions, user_id: int) -> AffectedHistory:
     peer = await Peer.from_input_peer_raise(user_id, request.peer)
 
-    await MessageContent.filter(
-        id__in=Subquery(
-            MessageContent.filter(messagerefs__peer=peer, author_reactions_unread=True, author_id=user_id).values("id")
-        )
-    ).update(
-        reactions_version=F("reactions_version") + 1,
-        author_reactions_unread=False,
-    )
+    async with in_transaction():
+        refs = await MessageRef.filter(peer=peer, reactions_unread_author_id=user_id).only("id", "content_id")
+        if refs:
+            await MessageContent.filter(id__in=[ref.content_id for ref in refs]).update(
+                reactions_version=F("reactions_version") + 1,
+            )
+            await MessageRef.filter(id__in=[ref.id for ref in refs]).update(reactions_unread_author_id=None)
 
     pts = await State.add_pts(user_id, 0)
 
@@ -314,16 +326,11 @@ async def get_message_reactions_list(request: GetMessageReactionsList, user_id: 
 
     message_query = Q(id=request.id, peer=peer, content__type=MessageType.REGULAR)
     message_query = append_channel_min_message_id_to_query_maybe(peer, message_query)
-    message = await MessageRef.get_or_none(message_query).select_related("content").only(
-        "content_id", "content__author_id", "content__author_reactions_unread"
-    )
+    message = await MessageRef.get_or_none(message_query).only("content_id", "reactions_unread_author_id")
     if message is None:
         raise ErrorRpc(error_code=400, error_message="MESSAGE_ID_INVALID")
 
-    if message.content.author_id == user_id:
-        is_unread = message.content.author_reactions_unread
-    else:
-        is_unread = False
+    is_unread = message.reactions_unread_author_id == user_id
 
     limit = max(1, min(100, request.limit))
 

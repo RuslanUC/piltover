@@ -52,7 +52,6 @@ class MessageContent(Model):
     reactions_version: int = fields.IntField(default=0)
     replies_version: int = fields.IntField(default=0)
     send_as_channel: models.Channel | None = NullableFK("models.Channel")
-    author_reactions_unread: bool = fields.BooleanField(default=False)
     internal_random_id: UUID | None = fields.UUIDField(null=True, default=None, unique=True)
     can_see_reactions_list: bool = fields.BooleanField(default=False)
     reply_quote_text: str | None = fields.TextField(null=True, default=None)
