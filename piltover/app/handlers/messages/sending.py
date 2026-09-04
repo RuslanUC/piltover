@@ -312,7 +312,7 @@ async def send_message_internal(
             if not await Dialog.filter(owner_id=user.id, peer_id=peer.id).update(last_read_message_id=message.id):
                 await Dialog.update_or_create(owner_id=user.id, peer_id=peer.id, defaults={
                     "visible": False,
-                    "last_message_id": message.id,
+                    "last_read_message_id": message.id,
                 })
 
         if peer.type is PeerType.CHANNEL:
