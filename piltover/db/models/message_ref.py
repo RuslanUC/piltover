@@ -881,7 +881,7 @@ class MessageRef(Model):
             recents_by_message = {ref.content_id: recent_list for ref, recent_list in recent_to_fetch}
             for recent in await models.MessageReaction.filter(
                     message_id__in=[ref.content_id for ref, _ in recent_to_fetch],
-            ).order_by("-date").limit(5).select_related("reaction").only(
+            ).order_by("-id").select_related("reaction").only(
                 "user_id", "message_id", "custom_emoji_id", "date", "reaction_id",
                 "reaction__id", "reaction__reaction",
             ):
