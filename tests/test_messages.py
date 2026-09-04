@@ -12,12 +12,12 @@ from pyrogram.errors import NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft, GetMessagesViews, \
-    SendMessage, ForwardMessages
+    SendMessage, ForwardMessages, GetDialogs
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty, Updates, \
-    UpdateMessageID, MessageMediaPoll, UpdatePinnedMessages, MessageService, MessageActionPinMessage
-from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar
+    UpdateMessageID, MessageMediaPoll, UpdatePinnedMessages, MessageService, MessageActionPinMessage, InputPeerEmpty
+from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar, DialogsSlice
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F, Subquery
 
@@ -1681,3 +1681,32 @@ async def test_bot_command_entities(
         for entity, expected in zip(message.entities, expected_entities):
             assert entity.type == MessageEntityType.BOT_COMMAND
             assert message.text[entity.offset:entity.offset + entity.length] == expected
+
+
+@pytest.mark.asyncio
+async def test_get_dialogs_slice(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+    client3 = await client_with_auth(run=True)
+    client4 = await client_with_auth(run=True)
+
+    user3 = await client1.resolve_user(client3)
+    user4 = await client1.resolve_user(client4)
+
+    await client2.set_username("test2_username")
+    await client1.get_users("test2_username")
+
+    await client1.send_message(user3.id, "test message")
+    await client1.send_message(user4.id, "test message")
+
+    dialogs = await client1.invoke(GetDialogs(
+        offset_date=0,
+        offset_id=0,
+        offset_peer=InputPeerEmpty(),
+        limit=1,
+        hash=0,
+    ))
+
+    assert isinstance(dialogs, DialogsSlice)
+    assert len(dialogs.dialogs) == 1
+    assert dialogs.count == 2

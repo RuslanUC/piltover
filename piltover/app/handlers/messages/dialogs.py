@@ -98,6 +98,8 @@ async def format_dialogs(
     dialogs_query = model.filter(owner_id=user_id)
     if folder_id is not None and issubclass(model, Dialog):
         dialogs_query = dialogs_query.filter(folder_id=DialogFolderId(folder_id))
+    if issubclass(model, Dialog):
+        dialogs_query = dialogs_query.filter(visible=True)
     count = await dialogs_query.count()
     if count > len(dialogs):
         return tl_slice_cls(
@@ -116,7 +118,7 @@ async def get_dialogs_internal(
         model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
-        exclude_pinned: bool = False, allow_slicing: Literal[False] = False, only_visible: bool = True,
+        exclude_pinned: bool = False, allow_slicing: Literal[False] = False,
 ) -> TLDialogsT:
     ...
 
@@ -126,7 +128,7 @@ async def get_dialogs_internal(
         model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
-        exclude_pinned: bool = False, allow_slicing: Literal[True] = True, only_visible: bool = True,
+        exclude_pinned: bool = False, allow_slicing: Literal[True] = True,
 ) -> TLDialogsT | TLDialogsSliceT:
     ...
 
@@ -136,7 +138,7 @@ async def get_dialogs_internal(
         model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
-        exclude_pinned: bool = False, allow_slicing: bool = False, only_visible: bool = True,
+        exclude_pinned: bool = False, allow_slicing: bool = False,
 ) -> TLDialogsT | TLDialogsSliceT:
     ...
 
@@ -145,7 +147,7 @@ async def get_dialogs_internal(
         model: type[DialogT], tl_cls: type[TLDialogsT], tl_slice_cls: type[TLDialogsSliceT], user_id: int,
         offset_id: int = 0, offset_date: int = 0, limit: int = 100,
         offset_peer: TLInputPeerBase | None = None, folder_id: int | None = None,
-        exclude_pinned: bool = False, allow_slicing: bool = False, only_visible: bool = True,
+        exclude_pinned: bool = False, allow_slicing: bool = False,
 ) -> TLDialogsT | TLDialogsSliceT:
     if limit > 100 or limit < 1:
         limit = 100
@@ -190,9 +192,10 @@ async def get_dialogs_internal(
         query &= Q(peer__last_message_date__lt=datetime.fromtimestamp(offset_date, UTC))
     if folder_id is not None and issubclass(model, Dialog):
         query &= Q(folder_id=DialogFolderId(folder_id))
-    if only_visible and issubclass(model, Dialog):
+    if issubclass(model, Dialog):
         query &= Q(visible=True)
 
+    # TODO: order_by probably should be -peer__last_message_date, -peer_id
     dialogs: list[DialogT] = await model.filter(
         query
     ).limit(limit).order_by("-peer__last_message_id", "-id").select_related("peer")
@@ -203,7 +206,7 @@ async def get_dialogs_internal(
 async def get_dialogs(request: GetDialogs, user_id: int) -> Dialogs | DialogsSlice:
     return await get_dialogs_internal(
         Dialog, Dialogs, DialogsSlice, user_id, request.offset_id, request.offset_date, request.limit,
-        request.offset_peer, request.folder_id, request.exclude_pinned, True, True,
+        request.offset_peer, request.folder_id, request.exclude_pinned, True,
     )
 
 
