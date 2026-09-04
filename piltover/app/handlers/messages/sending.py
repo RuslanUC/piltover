@@ -461,7 +461,7 @@ async def _check_channel_slowmode(channel: Channel, participant: ChatParticipant
     now = datetime.now(UTC)
     next_time = last_date + timedelta(seconds=channel.slowmode_seconds - 1)
     if next_time > now:
-        wait = (now - next_time).total_seconds()
+        wait = (next_time - now).total_seconds()
         raise ErrorRpc(error_code=420, error_message=f"SLOWMODE_WAIT_{wait}")
 
 
@@ -1579,15 +1579,17 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
     if request.max_id:
         query &= Q(id__lte=request.max_id)
     if request.min_date:
-        query &= Q(date__gte=datetime.fromtimestamp(request.min_date, UTC))
+        query &= Q(content__date__gte=datetime.fromtimestamp(request.min_date, UTC))
     if request.max_date:
-        query &= Q(date__lte=datetime.fromtimestamp(request.max_date, UTC))
+        query &= Q(content__date__lte=datetime.fromtimestamp(request.max_date, UTC))
 
     content_ids: list[int] = []
     messages: dict[int, list[int]] = defaultdict(list)
     offset_id = 0
 
-    messages_to_delete = await MessageRef.filter(query).order_by("-id").limit(1001).values_list("id", "content_id")
+    messages_to_delete = await MessageRef.filter(
+        query
+    ).select_related("content").order_by("-id").limit(1001).values_list("id", "content_id")
     for message_id, content_id in messages_to_delete:
         if len(messages[user_id]) == 1000:
             offset_id = message_id
@@ -1617,6 +1619,7 @@ async def delete_history(request: DeleteHistory, user_id: int) -> AffectedHistor
                 messages[peer_user_id].append(ref_id)
 
     await MessageContent.filter(id__in=content_ids).delete()
+    await Peer.sync_last_message_bulk([peer, *await peer.get_opposite(True)])
     pts = await upd.delete_messages(user_id, messages)
 
     if not offset_id:

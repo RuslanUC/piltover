@@ -10,7 +10,7 @@ from tortoise.queryset import QuerySetSingle
 
 from piltover.context import request_ctx
 from piltover.db import models
-from piltover.db.enums import PeerType
+from piltover.db.enums import PeerType, MessageType
 from piltover.exceptions import ErrorRpc, Unreachable
 from piltover.tl import PeerUser, InputPeerUser, InputPeerSelf, InputUserSelf, InputUser, PeerChat, InputPeerChat, \
     InputUserEmpty, InputPeerEmpty, InputPeerChannel, InputChannelEmpty, InputChannel, PeerChannel, InputUserFromMessage
@@ -135,14 +135,14 @@ def peer_is_full(peer: PeerProtocolMin) -> TypeGuard[PeerProtocolFull]:
     return hasattr(peer, "user") and hasattr(peer, "chat") and hasattr(peer, "channel")
 
 
-_LAST_MESSAGE_SYNC_SQL = """
+_LAST_MESSAGE_SYNC_SQL = f"""
 UPDATE peer
 SET
     last_message_id = (
         SELECT m.id
         FROM messageref m
         INNER JOIN messagecontent mc ON m.content_id = mc.id
-        WHERE m.peer_id = peer.id
+        WHERE m.peer_id = peer.id AND mc.type != {MessageType.SCHEDULED.value} 
         ORDER BY m.id DESC
         LIMIT 1
     ),
@@ -150,11 +150,11 @@ SET
         SELECT mc.date
         FROM messageref m
         INNER JOIN messagecontent mc ON m.content_id = mc.id
-        WHERE m.peer_id = peer.id
+        WHERE m.peer_id = peer.id AND mc.type != {MessageType.SCHEDULED.value} 
         ORDER BY m.id DESC
         LIMIT 1
     )
-WHERE {where_condition};
+WHERE {{where_condition}};
 """
 
 

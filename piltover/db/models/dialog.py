@@ -23,7 +23,7 @@ _UNREAD_COUNTS_SQL = """
 SELECT
     dialog.id dialog_id, COUNT(mref.id) count
 FROM dialog
-    JOIN messageref mref on dialog.peer_id = mref.peer_id and mref.id > dialog.last_read_message_id
+    JOIN messageref mref on dialog.peer_id = mref.peer_id and mref.id > dialog.last_read_message_id and mref.scheduled_by_user_id is null
 WHERE dialog.id {state_condition}
 GROUP BY dialog_id
 ;
