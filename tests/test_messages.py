@@ -12,11 +12,12 @@ from pyrogram.errors import NotAcceptable, Forbidden
 from pyrogram.raw.functions.channels import GetMessages as GetMessagesChannel, SetDiscussionGroup
 from pyrogram.raw.functions.messages import GetHistory, DeleteHistory, GetMessages, GetUnreadMentions, ReadMentions, \
     GetSearchResultsCalendar, EditMessage, DeleteScheduledMessages, SetHistoryTTL, SaveDraft, GetMessagesViews, \
-    SendMessage, ForwardMessages, GetDialogs
+    SendMessage, ForwardMessages, GetDialogs, ReadHistory
 from pyrogram.raw.types import InputPeerSelf, InputMessageID, InputMessageReplyTo, InputChannel, \
     InputMessagesFilterPhotoVideo, UpdateNewMessage, UpdateDeleteScheduledMessages, UpdateDeleteMessages, \
     UpdateNewChannelMessage, UpdateEditChannelMessage, UpdateDraftMessage, DraftMessage, DraftMessageEmpty, Updates, \
-    UpdateMessageID, MessageMediaPoll, UpdatePinnedMessages, MessageService, MessageActionPinMessage, InputPeerEmpty
+    UpdateMessageID, MessageMediaPoll, UpdatePinnedMessages, MessageService, MessageActionPinMessage, InputPeerEmpty, \
+    PeerUser, Dialog
 from pyrogram.raw.types.messages import Messages, AffectedHistory, SearchResultsCalendar, DialogsSlice
 from pyrogram.types import InputMediaDocument, ChatPermissions
 from tortoise.expressions import F, Subquery
@@ -1710,3 +1711,42 @@ async def test_get_dialogs_slice(client_with_auth: ClientFactory) -> None:
     assert isinstance(dialogs, DialogsSlice)
     assert len(dialogs.dialogs) == 1
     assert dialogs.count == 2
+
+
+@pytest.mark.asyncio
+async def test_messages_are_marked_as_read_after_sending(client_with_auth: ClientFactory) -> None:
+    client1 = await client_with_auth(run=True)
+    client2 = await client_with_auth(run=True)
+
+    user2 = await client1.resolve_user(client2)
+    user1 = await client2.resolve_user(client1)
+
+    await client2.send_message(user1.id, "test message")
+    dialogs = await client1.invoke(GetDialogs(
+        offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=1, hash=0,
+    ))
+    dialog = dialogs.dialogs[0]
+    assert isinstance(dialog, Dialog)
+    assert dialog.peer == PeerUser(user_id=user2.id)
+    assert dialog.unread_count == 1
+
+    await client1.send_message(user2.id, "test message 2")
+    dialogs = await client1.invoke(GetDialogs(
+        offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=1, hash=0,
+    ))
+    assert dialogs.dialogs[0].unread_count == 2
+
+    await client1.invoke(ReadHistory(
+        peer=await client1.resolve_peer(user2.id),
+        max_id=0,
+    ))
+    dialogs = await client1.invoke(GetDialogs(
+        offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=1, hash=0,
+    ))
+    assert dialogs.dialogs[0].unread_count == 0
+
+    await client1.send_message(user2.id, "test message 3")
+    dialogs = await client1.invoke(GetDialogs(
+        offset_date=0, offset_id=0, offset_peer=InputPeerEmpty(), limit=1, hash=0,
+    ))
+    assert dialogs.dialogs[0].unread_count == 0

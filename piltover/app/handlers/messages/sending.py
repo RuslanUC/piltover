@@ -308,12 +308,7 @@ async def send_message_internal(
 
         logger.debug(f"No unread messages, setting last read id for user {user.id} peer {peer!r} to {message.id}")
 
-        async with in_transaction():
-            if not await Dialog.filter(owner_id=user.id, peer_id=peer.id).update(last_read_message_id=message.id):
-                await Dialog.update_or_create(owner_id=user.id, peer_id=peer.id, defaults={
-                    "visible": False,
-                    "last_read_message_id": message.id,
-                })
+        await Dialog.filter(owner_id=user.id, peer_id=peer.id).update(last_read_message_id=message.id)
 
         if peer.type is PeerType.CHANNEL:
             readstate_updates = await upd.update_read_history_inbox_channel(user.id, peer.channel_id, message.id, 0)
