@@ -485,9 +485,20 @@ async def read_history(request: ReadHistory, user_id: int) -> AffectedMessages:
 
     max_id = request.max_id
     if max_id:
-        query = query.filter(id__lte=request.max_id)
+        query = query.filter(id__lte=max_id)
 
-    max_id, content_id = await query.order_by("-id").first().values_list("id", "content_id")
+    latest_before_max = cast(
+        tuple[int, int] | None,
+        await query.order_by("-id").first().values_list("id", "content_id"),
+    )
+    if latest_before_max is None:
+        logger.debug(f"Ignoring ReadHistory, no messages before {max_id}")
+        return AffectedMessages(
+            pts=state.pts,
+            pts_count=0,
+        )
+
+    max_id, content_id = latest_before_max
     logger.debug(f"Actual max_id is {max_id} (content id is {content_id})")
 
     if not max_id or max_id <= dialog.last_read_message_id:
