@@ -90,7 +90,7 @@ async def toggle_saved_dialog_pin(request: ToggleSavedDialogPin, user_id: int) -
 
     dialog.peer = peer
 
-    if bool(dialog.pinned_index) == request.pinned:
+    if (dialog.pinned_index is not None) == request.pinned:
         return True
 
     if request.pinned:

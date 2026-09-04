@@ -20,7 +20,7 @@ CHANNEL_SELECT_RELATED = ("photo",)
 
 USER_SELECT_ONLY = (
     "id", "version", "bot", "accent_color_id", "profile_color_id", "first_name", "last_name", "phone_number",
-    "lang_code",
+    "lang_code", "deleted",
 
     "background_emojis__id", "background_emojis__accent_emoji_id", "background_emojis__profile_emoji_id",
     "bot_info__id", "bot_info__version",

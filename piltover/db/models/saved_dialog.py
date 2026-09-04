@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import cast, Self
 
 from tortoise.expressions import Subquery
 from tortoise.functions import Max
@@ -19,7 +19,7 @@ class SavedDialog(DialogBase):
 
     @classmethod
     def top_message_query_bulk(
-            cls, user_id: int, dialogs: list[SavedDialog], prefetch: bool = True
+            cls, user_id: int, dialogs: list[Self], prefetch: bool = True
     ) -> QuerySet[models.MessageRef]:
         peer_ids = [dialog.peer_id for dialog in dialogs]
         return models.MessageRef.filter(
@@ -46,7 +46,7 @@ class SavedDialog(DialogBase):
         )
 
         return TLSavedDialog(
-            pinned=False,
+            pinned=self.pinned_index is not None,
             peer=self.peer.to_tl(),
             top_message=top_message_id or 0,
         )
@@ -64,7 +64,7 @@ class SavedDialog(DialogBase):
                 top_message = peer_message.id
 
             tl.append(TLSavedDialog(
-                pinned=False,
+                pinned=dialog.pinned_index is not None,
                 peer=dialog.peer.to_tl(),
                 top_message=top_message,
             ))
