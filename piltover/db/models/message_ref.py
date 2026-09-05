@@ -291,6 +291,29 @@ class MessageRef(Model):
         return [(ref.mentioned, ref.media_unread) for ref in refs]
 
     @classmethod
+    async def to_tl_bulk(
+            cls, messages: list[MessageRef], user: models.User | int, with_reactions: bool = True,
+    ) -> list[TLMessageBase]:
+        user_id = user.id if isinstance(user, models.User) else user
+        raw_contents = [ref.content for ref in messages]
+
+        reactionss: list[MessageReactions | None] = [None for _ in messages]
+        if with_reactions:
+            reactionss = await MessageRef.to_tl_reactions_bulk(messages, user_id)
+
+        refs = await MessageRef.to_tl_ref_bulk(messages, user_id)
+        contents = await models.MessageContent.to_tl_content_bulk(raw_contents)
+        repliess = await MessageRef.to_tl_replies_bulk(messages)
+
+        if len(contents) != len(refs):
+            raise Unreachable(f"len(contents) != len(refs), {len(contents)} != {len(refs)}")
+
+        return [
+            MessageToFormat(ref=ref, content=content, reactions=reactions, replies=replies)
+            for ref, content, reactions, replies in zip(refs, contents, reactionss, repliess)
+        ]
+
+    @classmethod
     async def to_tl_channel_bulk(cls, messages: list[MessageRef]) -> list[ChannelMessageToFormat]:
         raw_contents = [ref.content for ref in messages]
 

@@ -126,9 +126,8 @@ async def get_difference(request: GetDifference | GetDifference_133, user_id: in
     other_updates = []
     ucc = UsersChatsChannels()
 
-    for update in new_updates:
-        if update.update_type is UpdateType.NEW_MESSAGE and update.message is not None:
-            ucc.add_message(update.message.content_id)
+    for message_tl in all_messages.values():
+        ucc.add_from_tl(message_tl)
 
     for update in new_updates:
         if update.update_type is UpdateType.MESSAGE_EDIT and update.message_id in new_message_ids:
@@ -214,16 +213,18 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
         ).order_by("-id").first()
         if last_message:
             ucc = UsersChatsChannels()
-            ucc.add_message(last_message.content_id)
+            last_message_tl = await last_message.to_tl_maybecached(user_id)
+            ucc.add_from_tl(last_message_tl)
             users, chats, channels = await ucc.resolve()
         else:
+            last_message_tl = None
             users = chats = channels = []
 
         return ChannelDifferenceTooLong(
             final=True,
             timeout=CHANNEL_UPDATES_TIMEOUT,
             dialog=await dialog.to_tl(peer.channel.pts),
-            messages=[await last_message.to_tl_maybecached(user_id)] if last_message else [],
+            messages=[last_message_tl] if last_message_tl else [],
             chats=[*chats, *channels],
             users=users,
         )
@@ -246,15 +247,20 @@ async def get_channel_difference(request: GetChannelDifference, user_id: int) ->
 
     new_message_ids = {update.message_id for update in new_updates if update.type is ChannelUpdateType.NEW_MESSAGE}
     update_by_message_id = {update.message_id: update for update in new_updates if update.message_id is not None}
-    all_messages = [update.message for update in new_updates if update.message_id is not None]
+    all_messages = [
+        update.message
+        for update in new_updates
+        if update.message_id is not None and update.message is not None
+    ]
 
     other_updates = []
     ucc = UsersChatsChannels()
 
-    for message in all_messages:
-        ucc.add_message(message.content_id)
-
     all_messages_tl = await MessageRef.to_tl_bulk_maybecached(all_messages, user_id)
+
+    for message_tl in all_messages_tl:
+        ucc.add_from_tl(message_tl)
+
     new_messages = [
         message
         for message in all_messages_tl
