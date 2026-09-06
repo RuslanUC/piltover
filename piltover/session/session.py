@@ -15,7 +15,8 @@ import piltover
 from piltover.auth_data import AuthData
 from piltover.cache import Cache
 from piltover.db.enums import PrivacyRuleKeyType
-from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, MessageRef
+from piltover.db.models import UserAuthorization, AuthKey, ChatParticipant, PollVote, Contact, PrivacyRule, MessageRef, \
+    Chat, Channel
 from piltover.exceptions import Unreachable
 from piltover.tl import Updates, Long, Int, BadServerSalt, BadMsgNotification
 from piltover.tl.core_types import TLObject, Message, MsgContainer
@@ -350,13 +351,12 @@ class Session:
                 result.poll_answers[poll_id].add(answer_id)
 
         if values.chat_participants or values.channel_participants:
-            participants_q = Q()
-            if values.chat_participants:
-                participants_q |= Q(chat_id__in=values.chat_participants)
-            if values.channel_participants:
-                participants_q |= Q(channel_id__in=values.channel_participants)
+            chat_channel_ids = [
+                *(Chat.make_id_from(chat_id) for chat_id in (values.chat_participants or ())),
+                *(Channel.make_id_from(channel_id) for channel_id in (values.channel_participants or ())),
+            ]
 
-            participants = await ChatParticipant.filter(participants_q, user_id=user_id).only(
+            participants = await ChatParticipant.filter(chat_channel_id__in=chat_channel_ids, user_id=user_id).only(
                 "chat_id", "channel_id", "admin_rights", "banned_rights", "invited_at", "left",
             )
             for participant in participants:

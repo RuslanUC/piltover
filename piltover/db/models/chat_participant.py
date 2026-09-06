@@ -23,7 +23,7 @@ class ChatParticipant(Model):
     user: models.User = fields.ForeignKeyField("models.User")
     chat: models.Chat | None = fields.ForeignKeyField("models.Chat", null=True, default=None)
     channel: models.Channel | None = fields.ForeignKeyField("models.Channel", null=True, default=None)
-    chat_channel_id: int = fields.BigIntField(db_index=True)
+    chat_channel_id: int = fields.BigIntField()
     inviter_id: int = fields.BigIntField(default=0)
     invited_at: datetime = fields.DatetimeField(auto_now_add=True)
     banned_until: datetime = fields.DatetimeField(null=True, default=None)
@@ -44,6 +44,7 @@ class ChatParticipant(Model):
         unique_together = (
             ("user", "chat"),
             ("user", "channel"),
+            ("user_id", "chat_channel_id"),
         )
 
     @property

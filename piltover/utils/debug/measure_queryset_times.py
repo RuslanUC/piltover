@@ -12,7 +12,7 @@ try:
 except ImportError:
     CompiledQuerySet = None
 
-from piltover.gateway import Client
+from piltover.session import Session
 from piltover.utils.debug import measure_time
 from piltover.worker import RequestHandler
 
@@ -101,8 +101,8 @@ def patch_queryset_for_measurement() -> QueryStats:
 
     _patch_cls_replace_method(RequestHandler, call_methods, real_suffix, _RequestHandler___call__)
 
-    async def _Client__resolve_context_values(*args, **kwargs):
-        _, _resolve_real = _get_patched_cls_original_method(Client, resolve_ctx_methods, real_suffix)
+    async def _Session__resolve_context_values(*args, **kwargs):
+        _, _resolve_real = _get_patched_cls_original_method(Session, resolve_ctx_methods, real_suffix)
         query_stats = QueryStats()
         token = handler_stats_ctx.set(query_stats)
         try:
@@ -115,7 +115,7 @@ def patch_queryset_for_measurement() -> QueryStats:
                 f"that took {query_stats.execute_time:.2f}ms ({query_stats.make_query_time:.2f}ms)"
             )
 
-    _patch_cls_replace_method(Client, resolve_ctx_methods, real_suffix, staticmethod(_Client__resolve_context_values))
+    _patch_cls_replace_method(Session, resolve_ctx_methods, real_suffix, _Session__resolve_context_values)
 
     for cls in query_clss:
         async def _execute(self: AwaitableQuery, *args, **kwargs) -> Any:
@@ -154,4 +154,4 @@ def unpatch_queryset_for_measurement() -> None:
         _unpatch_cls_replaced_method(cls, make_query_methods, real_suffix)
 
     _unpatch_cls_replaced_method(RequestHandler, call_methods, real_suffix)
-    _unpatch_cls_replaced_method(Client, resolve_ctx_methods, real_suffix)
+    _unpatch_cls_replaced_method(Session, resolve_ctx_methods, real_suffix)
