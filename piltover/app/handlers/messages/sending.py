@@ -1324,7 +1324,7 @@ async def forward_messages(
     if request.drop_author:
         fwd_headers = SingleElementList(None, len(messages))
     else:
-        fwd_headers = await MessageRef.create_fwd_header_bulk(messages, user.id, to_peer.type is PeerType.SELF)
+        fwd_headers = await MessageContent.create_fwd_header_bulk(messages, user.id, to_peer.type is PeerType.SELF)
 
     # TODO: schedule_date
 
