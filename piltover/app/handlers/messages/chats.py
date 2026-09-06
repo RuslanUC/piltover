@@ -428,7 +428,7 @@ async def delete_chat_user(request: DeleteChatUser, user_id: int) -> Updates:
 
     # TODO: remove scheduled messages
 
-    updates_msg = await upd.send_message(user_id, dict(zip(peers, messages)))
+    updates_msg = await upd.send_message(user_id, messages)
     updates = await upd.update_chat_participants(chat_peer.chat, peers)
     if isinstance(updates_msg, Updates):
         updates.updates.extend(updates_msg.updates)

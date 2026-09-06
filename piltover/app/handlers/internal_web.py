@@ -53,7 +53,7 @@ async def send_code(request: SendCode, user_id: int) -> SentCode:
         message=LOGIN_MESSAGE_FMT.format(code=webauth.password, name=target_user.first_name),
     )
 
-    await upd.send_message(target_user, {peer_system: message}, False)
+    await upd.send_message(target_user, [message], False)
     return resp
 
 

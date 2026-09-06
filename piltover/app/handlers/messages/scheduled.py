@@ -6,7 +6,6 @@ from tortoise.transactions import in_transaction
 import piltover.app.utils.updates_manager as upd
 from piltover.app.handlers.messages import sending
 from piltover.app.utils.utils import telegram_hash
-from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, TaskIqScheduledMessage
 from piltover.enums import ReqHandlerFlags
 from piltover.tl import Updates
@@ -97,12 +96,7 @@ async def send_scheduled_messages(request: SendScheduledMessages, user_id: int) 
             updates.users.extend(msg_updates.users)
             updates.date = msg_updates.date
 
-            if peer.type is PeerType.CHANNEL and task.opposite:
-                new_message = next(iter(messages.values()))
-            else:
-                new_message = messages[peer]
-
-            new.append(new_message.id)
+            new.append(messages[0].id)
             deleted.append(scheduled.id)
 
     if deleted and new:

@@ -25,6 +25,6 @@ async def send_official_notification_message(user_id: int, text: str, entities: 
         message=text, entities=entities,
     )
 
-    await upd.send_message(user_id, {peer_system: message}, False)
+    await upd.send_message(user_id, [message], False)
 
     return True

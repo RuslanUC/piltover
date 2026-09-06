@@ -12,7 +12,9 @@ from piltover.config import SYSTEM_CONFIG
 from piltover.db.enums import PeerType
 from piltover.db.models import Peer, MessageRef, MessageContent, User, Presence, MessageDraft, Channel, \
     TaskIqScheduledMessage, TelegramUser
+from piltover.db.models.peer import peer_is_owned_min, peer_is_channel_min, peer_is_channel
 from piltover.enums import ReqHandlerFlags
+from piltover.exceptions import Unreachable
 from piltover.tl import TLObject
 from piltover.tl.functions.internal import SendScheduledMessage, DeleteScheduledMessage, CreateDiscussionThread, \
     ProcessMessageToBuiltinBot, UpdateStatusForPeers, ClearDraft, SendTelegramMessage
@@ -59,10 +61,7 @@ async def send_scheduled_message(request: SendScheduledMessage) -> TLObject:
     )
 
     peer = scheduled.peer
-    if peer.type is PeerType.CHANNEL and task.opposite:
-        new_message = next(iter(messages.values()))
-    else:
-        new_message = messages[peer]
+    new_message = messages[0]
 
     await upd.delete_scheduled_messages(scheduled_by_user_id, peer, [scheduled.id], [new_message.id])
 
@@ -79,15 +78,17 @@ async def delete_scheduled_message(request: DeleteScheduledMessage) -> TLObject:
         ).filter(content_id=request.message_id).select_related("peer", "peer__channel")
 
         all_ids = []
-        regular_messages: dict[User | int, list[int]] = defaultdict(list)
+        regular_messages: dict[int, list[int]] = defaultdict(list)
         channel_messages: dict[Channel, list[int]] = defaultdict(list)
 
         for message in to_delete:
             all_ids.append(message.id)
-            if message.peer.type is PeerType.CHANNEL:
+            if peer_is_channel(message.peer):
                 channel_messages[message.peer.channel].append(message.id)
-            else:
+            elif peer_is_owned_min(message.peer):
                 regular_messages[message.peer.owner_id].append(message.id)
+            else:
+                raise Unreachable
 
         await MessageContent.filter(id=request.message_id).delete()
 
@@ -159,7 +160,7 @@ async def process_message_to_builtin_bot(request: ProcessMessageToBuiltinBot) ->
 
     bot_message = await bots.process_message_to_bot(peer, message)
     if bot_message is not None:
-        await upd.send_message(None, {peer: bot_message})
+        await upd.send_message(None, [bot_message])
 
     return TaggedBool(value=True)
 

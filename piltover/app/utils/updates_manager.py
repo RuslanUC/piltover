@@ -55,18 +55,16 @@ class UpdatesWithDefaults(Updates):
 # TODO: move this module to separate worker
 
 async def send_message(
-        user: User | int | None, messages: dict[Peer, MessageRef], ignore_current: bool = True,
+        user: User | int | None, messages: list[MessageRef], ignore_current: bool = True,
 ) -> Updates:
     result = None
     current_user_id = user.id if isinstance(user, User) else user
 
-    messages_ = list(messages.items())
-
     ucc = UsersChatsChannels()
     messages_tl = []
-    for peer, message in messages_:
+    for message in messages:
         # TODO: move out of the loop
-        message_tl = await message.to_tl(peer.owner_id, False)
+        message_tl = await message.to_tl(message.peer.owner_id, False)
         messages_tl.append(message_tl)
         ucc.add_from_tl(message_tl)
 
@@ -76,13 +74,13 @@ async def send_message(
 
     pts_users = []
     pts_counts = []
-    for peer, message in messages.items():
-        pts_users.append(peer.owner_id)
+    for message in messages:
+        pts_users.append(message.peer.owner_id)
         pts_counts.append(2 if message.random_id else 1)
 
     ptss = await State.add_pts_bulk(pts_users, pts_counts)
 
-    for (peer, message), message_tl, target_user_id, new_pts in zip(messages_, messages_tl, pts_users, ptss):
+    for message, message_tl, target_user_id, new_pts in zip(messages, messages_tl, pts_users, ptss):
         if message.random_id:
             updates_to_create.append(Update(
                 update_type=UpdateType.UPDATE_MESSAGE_ID,

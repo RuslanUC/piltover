@@ -417,36 +417,43 @@ class MessageRef(Model):
 
         return results
 
-    async def send_scheduled(self, opposite: bool = True) -> dict[models.Peer, MessageRef]:
-        peers = [self.peer]
-        if opposite and self.peer.type is not PeerType.CHANNEL:
-            peers.extend(await self.peer.get_opposite())
+    async def send_scheduled(self, opposite: bool) -> list[MessageRef]:
+        peers = [self.peer, *(await self.peer.get_opposite() if opposite else ())]
 
         if self.reply_to_id:
-            replies = {
-                ref.peer_id: ref
-                for ref in await MessageRef.filter(content_id=self.reply_to.content_id)
-            }
+            if len(peers) == 1:
+                replies = {self.peer_id: self.reply_to_id}
+            else:
+                replies = {
+                    peer_id: ref_id
+                    for ref_id, peer_id in await MessageRef.filter(
+                        content_id=self.reply_to.content_id,
+                    ).values_list("id", "peer_id")
+                }
         else:
             replies = {}
 
-        messages: dict[models.Peer, MessageRef] = {}
-
         async with in_transaction():
             content = await self.content.clone_scheduled()
-
-            for to_peer in peers:
-                # TODO: probably create in bulk too?
-                messages[to_peer] = await MessageRef.create(
-                    peer=to_peer,
+            messages = [
+                MessageRef(
+                    peer=peer,
                     content=content,
-                    from_scheduled=to_peer == self.peer,
-                    reply_to=replies.get(to_peer.id),
+                    from_scheduled=True,
+                    reply_to_id=replies.get(peer.id),
                     author_id_for_unread_reactions=content.author_id,
                 )
-
+                for peer in peers
+            ]
+            await MessageRef.bulk_create(messages)
             await models.Peer.sync_last_message_bulk(peers)
             await models.Dialog.create_or_unhide_bulk(peers)
+
+            id_by_peer_id = dict(await MessageRef.filter(content_id=content.id).values_list("peer_id", "id"))
+
+            for ref in messages:
+                ref.id = id_by_peer_id[ref.peer_id]
+                ref._saved_in_db = True
 
         return messages
 

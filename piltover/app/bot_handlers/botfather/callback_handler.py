@@ -304,7 +304,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             peer.owner_id, BotFatherState.EDITBOT_WAIT_NAME, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         new_message = await send_bot_message(peer, __editbot_name)
-        await upd.send_message(None, {peer: new_message}, False)
+        await upd.send_message(None, [new_message], False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -321,7 +321,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             peer.owner_id, BotFatherState.EDITBOT_WAIT_ABOUT, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         new_message = await send_bot_message(peer, __editbot_about)
-        await upd.send_message(None, {peer: new_message}, False)
+        await upd.send_message(None, [new_message], False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -338,7 +338,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             peer.owner_id, BotFatherState.EDITBOT_WAIT_DESCRIPTION, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         new_message = await send_bot_message(peer, __editbot_desc)
-        await upd.send_message(None, {peer: new_message}, False)
+        await upd.send_message(None, [new_message], False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -355,7 +355,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             peer.owner_id, BotFatherState.EDITBOT_WAIT_PHOTO, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         new_message = await send_bot_message(peer, __editbot_photo)
-        await upd.send_message(None, {peer: new_message}, False)
+        await upd.send_message(None, [new_message], False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -372,7 +372,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             peer.owner_id, BotFatherState.EDITBOT_WAIT_PRIVACY, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         new_message = await send_bot_message(peer, __editbot_privacy, entities=__editbot_privacy_entities)
-        await upd.send_message(None, {peer: new_message}, False)
+        await upd.send_message(None, [new_message], False)
 
         return BotCallbackAnswer(cache_time=0)
 
@@ -389,7 +389,7 @@ async def botfather_callback_query_handler(peer: Peer, message: MessageRef, data
             peer.owner_id, BotFatherState.EDITBOT_WAIT_COMMANDS, BotfatherStateEditbot(bot_id=bot_id).serialize()
         )
         new_message = await send_bot_message(peer, __editbot_commands, entities=__editbot_commands_entities)
-        await upd.send_message(None, {peer: new_message}, False)
+        await upd.send_message(None, [new_message], False)
 
         return BotCallbackAnswer(cache_time=0)
 
