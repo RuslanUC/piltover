@@ -244,7 +244,7 @@ class User(Model):
                 usernames = {}
             for user in users:
                 if user.username_prefetched:
-                    usernames[user.id] = cast(models.Username, user.username).username
+                    usernames[user.id] = user.username.username if user.username is not None else None
         else:
             usernames = {}
 
