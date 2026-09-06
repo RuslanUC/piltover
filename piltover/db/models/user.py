@@ -64,6 +64,10 @@ class User(Model):
     _CACHE_VERSION = 1
 
     @property
+    def username_prefetched(self) -> bool:
+        return self.username is None or isinstance(self.username, models.Username)
+
+    @property
     def background_emojis_prefetched(self) -> bool:
         return self.background_emojis is None or isinstance(self.background_emojis, models.UserBackgroundEmojis)
 
@@ -223,14 +227,24 @@ class User(Model):
         user_ids = [user.id for user in users if not user.bot and user.id not in cached_users]
         bot_ids = [user.id for user in users if user.bot and user.id not in cached_users]
 
-        # TODO: use prefetched usernames
         if all_ids:
-            usernames = {
-                user_id: username
-                for user_id, username in await models.Username.filter(
-                    user_id__in=all_ids,
-                ).values_list("user_id", "username")
-            }
+            fetch_usernames_ids = [
+                user.id
+                for user in users
+                if user.id not in cached_users and not user.username_prefetched
+            ]
+            if fetch_usernames_ids:
+                usernames = {
+                    user_id: username
+                    for user_id, username in await models.Username.filter(
+                        user_id__in=fetch_usernames_ids,
+                    ).values_list("user_id", "username")
+                }
+            else:
+                usernames = {}
+            for user in users:
+                if user.username_prefetched:
+                    usernames[user.id] = cast(models.Username, user.username).username
         else:
             usernames = {}
 
