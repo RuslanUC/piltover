@@ -71,6 +71,7 @@ dev = [
     "mypy>=2.1.0",
     "py-spy>=0.4.2",
     "pyinstrument>=5.1.2",
+    "ruff>=0.16.5,<0.17.0",
     "tqdm>=4.67.3",
     "types-aiofiles>=25.1.0.20260518",
     "vulture>=2.16",
@@ -161,3 +162,39 @@ ignore_errors = true
 ignore_decorators = ["@handler.on_request", "@dp.message", "@dp.callback_query"]
 paths = ["piltover/"]
 exclude = ["piltover/tl/base", "piltover/tl/types", "piltover/tl/functions", "piltover/db/migrations"]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+target-version = "py311"
+exclude = [
+    "piltover/tl/base",
+    "piltover/tl/types",
+    "piltover/tl/functions",
+    "piltover/tl/all.py",
+    "piltover/db/migrations",
+    "tests",
+]
+fix = false
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+ignore = [
+    "E501",  # line too long
+    "I001",  # imports
+    "RUF023",  # unsorted __slots__
+    "F401",  # imported but unused in __init__.py (with __all__ missing)
+    "PLC0105",  # TypeVar name does not reflect covariance
+    "PYI019",  # custom TypeVar for self/cls
+    "B028",  # no "stacklevel" in warnings.warn
+]
+extend-select = [
+    "UP",  # pyupgrade
+    "B",
+    "S101",
+    "C4",
+]

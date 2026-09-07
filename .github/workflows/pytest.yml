@@ -31,6 +31,10 @@ jobs:
       - name: Generate tl
         run: uv run python tools/tl_gen.py
 
+      - name: Check code with ruff
+        run: |
+          uv run ruff check piltover
+
       - name: Run tests
         run: |
           uv run pytest \
